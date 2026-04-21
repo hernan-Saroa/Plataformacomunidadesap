@@ -19,7 +19,8 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Save, AlertCircle, CheckCircle, Plus, Trash2,
-  User, Calendar, Target, FileText, Shield, Info, MapPin, Zap, Clock
+  User, Calendar, Target, FileText, Shield, Info, MapPin, Zap, Clock,
+  Layers, Search, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -32,6 +33,7 @@ import {
   type AuditoriaFormData,
   type ValidationError
 } from '../../../utils/validation';
+import { controlInternoService, type EvaluacionProceso } from '../../../services/api/controlInternoService';
 
 // ============ TIPOS ============
 
@@ -185,24 +187,8 @@ export function ModalFormularioAuditoria({
 
   // Función auxiliar para normalizar tipo de auditoría
   const normalizarTipo = (tipo: any): string => {
-    if (!tipo) return 'Regular';
-    const tiposValidos = ['Regular', 'Territorial', 'Especial'];
-    if (tiposValidos.includes(tipo)) return tipo;
-    // Mapeo de tipos antiguos
-    const mapping: Record<string, string> = {
-      'gestión': 'Regular',
-      'cumplimiento': 'Regular',
-      'desempeño': 'Regular',
-      'sistemas': 'Regular',
-      'financiera': 'Regular',
-      'seguimiento': 'Regular',
-      'control interno': 'Regular',
-      'académica': 'Regular',
-      'rrhh': 'Regular',
-      'ti': 'Regular',
-      'operacional': 'Regular'
-    };
-    return mapping[tipo.toString().toLowerCase()] || 'Regular';
+    if (!tipo) return '';
+    return String(tipo);
   };
 
   // Estado del formulario
@@ -219,8 +205,10 @@ export function ModalFormularioAuditoria({
     fechaFin: initialData?.fechaFin || '',
     objetivos: initialData?.objetivos || [],
     alcance: initialData?.alcance || '',
-    riesgo: initialData?.riesgo || 'Medio'
-  });
+    riesgo: initialData?.riesgo || 'Medio',
+    procesoAuditadoId: (initialData as any)?.procesoAuditadoId || '',
+    procesoAuditadoNombre: (initialData as any)?.procesoAuditadoNombre || ''
+  } as AuditoriaFormData);
 
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -229,6 +217,65 @@ export function ModalFormularioAuditoria({
   const [objetivoTemporal, setObjetivoTemporal] = useState('');
   const [auditoresDisponibles, setAuditoresDisponibles] = useState<Persona[]>([]);
   const [cargandoAuditores, setCargandoAuditores] = useState(false);
+
+  // Tipos de auditoría desde configuración
+  const [tiposAuditoria, setTiposAuditoria] = useState<{ id: string; nombre: string; color?: string; descripcion?: string }[]>([]);
+  const [cargandoTipos, setCargandoTipos] = useState(false);
+
+  // Evaluaciones y procesos del universo auditable
+  const [evaluacionesDisponibles, setEvaluacionesDisponibles] = useState<EvaluacionProceso[]>([]);
+  const [cargandoEvaluaciones, setCargandoEvaluaciones] = useState(false);
+  const [busquedaProceso, setBusquedaProceso] = useState('');
+  const [selectorProcesoAbierto, setSelectorProcesoAbierto] = useState(false);
+
+  // Cargar tipos de auditoría desde configuración
+  useEffect(() => {
+    const cargarTipos = async () => {
+      setCargandoTipos(true);
+      try {
+        const { auditoriasApi } = await import('./services/api');
+        const response = await auditoriasApi.getTiposAuditoria(true);
+        if (response.success && Array.isArray(response.data) && response.data.length > 0) {
+          const activos = response.data.filter((t: any) => t.activo !== false && t.activa !== false);
+          setTiposAuditoria(activos.map((t: any) => ({
+            id: t.id,
+            nombre: t.nombre,
+            color: t.color,
+            descripcion: t.descripcion
+          })));
+        }
+      } catch (error) {
+        console.error('[ModalFormularioAuditoria] Error cargando tipos:', error);
+      } finally {
+        setCargandoTipos(false);
+      }
+    };
+    if (open) cargarTipos();
+  }, [open]);
+
+  // Cargar evaluaciones del universo auditable desde la API
+  useEffect(() => {
+    const cargarEvaluaciones = async () => {
+      setCargandoEvaluaciones(true);
+      try {
+        const data = await controlInternoService.getEvaluaciones();
+        // Filtrar solo las que tienen proceso asociado y están activas
+        const conProceso = (data || []).filter(
+          (ev: EvaluacionProceso) => ev.proceso && ev.activo !== false
+        );
+        setEvaluacionesDisponibles(conProceso);
+      } catch (error) {
+        console.error('[ModalFormularioAuditoria] Error cargando evaluaciones:', error);
+        setEvaluacionesDisponibles([]);
+      } finally {
+        setCargandoEvaluaciones(false);
+      }
+    };
+
+    if (open) {
+      cargarEvaluaciones();
+    }
+  }, [open]);
 
   // Cargar auditores disponibles desde la API
   useEffect(() => {
@@ -349,7 +396,9 @@ export function ModalFormularioAuditoria({
         fechaFin: initialData.fechaFin || '',
         objetivos: normalizedObjetivos,
         alcance: initialData.alcance || '',
-        riesgo: initialData.riesgo || 'Medio'
+        riesgo: initialData.riesgo || 'Medio',
+        procesoAuditadoId: (initialData as any)?.procesoAuditadoId || '',
+        procesoAuditadoNombre: (initialData as any)?.procesoAuditadoNombre || ''
       };
       
       console.log('[ModalFormularioAuditoria] Actualizando formData con initialData:', {
@@ -584,66 +633,94 @@ export function ModalFormularioAuditoria({
                         required
                         helpText="Seleccione el tipo de auditoría según su naturaleza"
                       >
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                          {[
-                            { value: 'Regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
-                            { value: 'Territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
-                            { value: 'Especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> }
-                          ].map(tipo => (
-                            <button
-                              key={tipo.value}
-                              type="button"
-                              onClick={() => {
-                                handleChange('tipo', tipo.value);
-                                handleBlur('tipo');
-                              }}
-                              className={`
-                                px-4 py-3 rounded-lg border-2 transition-all duration-200
-                                flex flex-col items-center justify-center gap-2 font-medium
-                                ${
-                                  formData.tipo === tipo.value
-                                    ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                    : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                                }
-                                ${
-                                  hasFieldError(errors, 'Tipo de auditoría') && touched.tipo
-                                    ? 'border-red-500'
-                                    : ''
-                                }
-                              `}
-                            >
-                              {tipo.icono}
-                              <span className="text-sm">{tipo.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                        {/* Información contextual según tipo */}
-                        {formData.tipo === 'Especial' && (
-                          <div className="mt-3 p-4 bg-amber-50 rounded-lg border border-amber-200">
-                            <div className="flex items-start gap-3">
-                              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                              <div className="text-sm">
-                                <p className="font-bold text-amber-900 mb-1">Auditoría Especial</p>
-                                <p className="text-amber-700">
-                                  Las auditorías especiales se realizan por solicitudes específicas, denuncias o necesidades urgentes no contempladas en el Plan Anual.
-                                </p>
-                              </div>
-                            </div>
+                        {cargandoTipos ? (
+                          <div className="flex items-center gap-2 py-3 text-gray-500 text-sm">
+                            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            Cargando tipos de auditoría...
+                          </div>
+                        ) : tiposAuditoria.length > 0 ? (
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            {tiposAuditoria.map(tipo => (
+                              <button
+                                key={tipo.id}
+                                type="button"
+                                onClick={() => {
+                                  handleChange('tipo', tipo.nombre);
+                                  handleBlur('tipo');
+                                }}
+                                className={`
+                                  px-4 py-3 rounded-lg border-2 transition-all duration-200
+                                  flex flex-col items-center justify-center gap-2 font-medium
+                                  ${
+                                    formData.tipo === tipo.nombre
+                                      ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                      : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                                  }
+                                  ${
+                                    hasFieldError(errors, 'Tipo de auditoría') && touched.tipo
+                                      ? 'border-red-500'
+                                      : ''
+                                  }
+                                `}
+                              >
+                                <div
+                                  className="w-5 h-5 rounded-full"
+                                  style={{ backgroundColor: tipo.color || '#003DA5' }}
+                                />
+                                <span className="text-sm">{tipo.nombre}</span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            {[
+                              { value: 'Regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
+                              { value: 'Territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
+                              { value: 'Especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> }
+                            ].map(tipo => (
+                              <button
+                                key={tipo.value}
+                                type="button"
+                                onClick={() => {
+                                  handleChange('tipo', tipo.value);
+                                  handleBlur('tipo');
+                                }}
+                                className={`
+                                  px-4 py-3 rounded-lg border-2 transition-all duration-200
+                                  flex flex-col items-center justify-center gap-2 font-medium
+                                  ${
+                                    formData.tipo === tipo.value
+                                      ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                      : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                                  }
+                                  ${
+                                    hasFieldError(errors, 'Tipo de auditoría') && touched.tipo
+                                      ? 'border-red-500'
+                                      : ''
+                                  }
+                                `}
+                              >
+                                {tipo.icono}
+                                <span className="text-sm">{tipo.label}</span>
+                              </button>
+                            ))}
                           </div>
                         )}
-                        {formData.tipo === 'Territorial' && (
-                          <div className="mt-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                            <div className="flex items-start gap-3">
-                              <MapPin className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                              <div className="text-sm">
-                                <p className="font-bold text-blue-900 mb-1">Auditoría Territorial</p>
-                                <p className="text-blue-700">
-                                  Auditoría realizada a sedes territoriales de la ESAP en diferentes regiones del país.
+                        {/* Descripción contextual del tipo seleccionado */}
+                        {formData.tipo && (() => {
+                          const tipoSel = tiposAuditoria.find(t => t.nombre === formData.tipo);
+                          if (tipoSel?.descripcion) {
+                            return (
+                              <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                <p className="text-sm text-blue-800">
+                                  <span className="font-semibold">{tipoSel.nombre}: </span>
+                                  {tipoSel.descripcion}
                                 </p>
                               </div>
-                            </div>
-                          </div>
-                        )}
+                            );
+                          }
+                          return null;
+                        })()}
                       </FieldWrapper>
 
                       {/* Título */}
@@ -718,6 +795,201 @@ export function ModalFormularioAuditoria({
                         </select>
                       </FieldWrapper>
                     </div>
+                  </div>
+
+                  {/* PROCESO AUDITADO */}
+                  <div className="bg-white rounded-lg border-2 border-gray-200 p-5">
+                    <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+                      <Layers className="w-5 h-5" style={{ color: '#003DA5' }} />
+                      Proceso Auditado
+                      <span className="text-xs font-normal text-gray-500 ml-1">(del Universo Auditable)</span>
+                    </h3>
+
+                    {(formData as any).procesoAuditadoId ? (
+                      // Proceso seleccionado: mostrar resumen
+                      (() => {
+                        const evSel = evaluacionesDisponibles.find(
+                          ev => ev.proceso?.id === (formData as any).procesoAuditadoId
+                        );
+                        const proc = evSel?.proceso;
+                        const criticidadColors: Record<string, string> = {
+                          Extremo: 'bg-red-100 text-red-800 border-red-300',
+                          Alto: 'bg-orange-100 text-orange-800 border-orange-300',
+                          Moderado: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+                          Bajo: 'bg-blue-100 text-blue-800 border-blue-300',
+                        };
+                        const criticidadClass =
+                          criticidadColors[evSel?.nivelCriticidadDafp || ''] ||
+                          'bg-gray-100 text-gray-700 border-gray-200';
+                        return (
+                          <div className="p-4 bg-blue-50 border-2 border-blue-300 rounded-lg">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-bold text-gray-900 text-sm">
+                                  {proc?.codigo && (
+                                    <span className="font-mono text-xs text-gray-500 mr-2">{proc.codigo}</span>
+                                  )}
+                                  {proc?.nombre || (formData as any).procesoAuditadoNombre}
+                                </p>
+                                {proc?.macroproceso && (
+                                  <p className="text-xs text-gray-500 mt-0.5">{proc.macroproceso}</p>
+                                )}
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {proc?.tipo && (
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-700">
+                                      {proc.tipo}
+                                    </span>
+                                  )}
+                                  {evSel?.nivelCriticidadDafp && (
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${criticidadClass}`}>
+                                      {evSel.nivelCriticidadDafp}
+                                    </span>
+                                  )}
+                                  {evSel?.cicloRotacionDafp && (
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                      {evSel.cicloRotacionDafp}
+                                    </span>
+                                  )}
+                                  {evSel?.ponderacionFinalDafp != null && (
+                                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[#003DA5] text-white">
+                                      DAFP: {Number(evSel.ponderacionFinalDafp).toFixed(2)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    procesoAuditadoId: '',
+                                    procesoAuditadoNombre: ''
+                                  } as AuditoriaFormData))
+                                }
+                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                                title="Quitar proceso seleccionado"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      // Selector de proceso
+                      <div>
+                        {/* Buscador */}
+                        <div className="relative mb-3">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                          <input
+                            type="text"
+                            value={busquedaProceso}
+                            onChange={e => setBusquedaProceso(e.target.value)}
+                            onFocus={() => setSelectorProcesoAbierto(true)}
+                            placeholder={cargandoEvaluaciones ? 'Cargando procesos...' : 'Buscar proceso por nombre, código o dependencia...'}
+                            disabled={cargandoEvaluaciones}
+                            className="w-full pl-9 pr-4 py-2.5 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-sm disabled:bg-gray-50 disabled:text-gray-400"
+                          />
+                          {cargandoEvaluaciones && (
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                              <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Lista de procesos */}
+                        {!cargandoEvaluaciones && (() => {
+                          const evaluacionesFiltradas = evaluacionesDisponibles.filter(ev => {
+                            if (!busquedaProceso.trim()) return true;
+                            const q = busquedaProceso.toLowerCase();
+                            const p = ev.proceso;
+                            return (
+                              p?.nombre?.toLowerCase().includes(q) ||
+                              p?.codigo?.toLowerCase().includes(q) ||
+                              p?.macroproceso?.toLowerCase().includes(q) ||
+                              ev.dependenciaResponsable?.toLowerCase().includes(q)
+                            );
+                          });
+
+                          if (evaluacionesDisponibles.length === 0) {
+                            return (
+                              <div className="text-center py-8 text-gray-400">
+                                <Layers className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                                <p className="text-sm">No hay evaluaciones registradas en el universo auditable</p>
+                              </div>
+                            );
+                          }
+
+                          if (evaluacionesFiltradas.length === 0) {
+                            return (
+                              <p className="text-sm text-gray-400 text-center py-4">
+                                Sin resultados para "<em>{busquedaProceso}</em>"
+                              </p>
+                            );
+                          }
+
+                          const criticidadColors: Record<string, string> = {
+                            Extremo: 'bg-red-100 text-red-800',
+                            Alto: 'bg-orange-100 text-orange-800',
+                            Moderado: 'bg-yellow-100 text-yellow-800',
+                            Bajo: 'bg-blue-100 text-blue-800',
+                          };
+
+                          return (
+                            <div className="max-h-64 overflow-y-auto space-y-1.5 border-2 border-gray-100 rounded-lg p-1">
+                              {evaluacionesFiltradas.map(ev => {
+                                const proc = ev.proceso;
+                                const criticidadClass =
+                                  criticidadColors[ev.nivelCriticidadDafp || ''] ||
+                                  'bg-gray-100 text-gray-600';
+                                return (
+                                  <button
+                                    key={ev.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        procesoAuditadoId: proc?.id || ev.procesoId,
+                                        procesoAuditadoNombre: proc?.nombre || ''
+                                      } as AuditoriaFormData));
+                                      setBusquedaProceso('');
+                                      setSelectorProcesoAbierto(false);
+                                    }}
+                                    className="w-full text-left px-3 py-2.5 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-200"
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-semibold text-gray-900 truncate">
+                                          {proc?.codigo && (
+                                            <span className="font-mono text-xs text-gray-400 mr-1.5">{proc.codigo}</span>
+                                          )}
+                                          {proc?.nombre || 'Sin nombre'}
+                                        </p>
+                                        {proc?.macroproceso && (
+                                          <p className="text-xs text-gray-500 truncate">{proc.macroproceso}</p>
+                                        )}
+                                      </div>
+                                      <div className="flex flex-col items-end gap-1 shrink-0">
+                                        {ev.nivelCriticidadDafp && (
+                                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${criticidadClass}`}>
+                                            {ev.nivelCriticidadDafp}
+                                          </span>
+                                        )}
+                                        {ev.ponderacionFinalDafp != null && (
+                                          <span className="text-[10px] font-bold text-[#003DA5]">
+                                            {Number(ev.ponderacionFinalDafp).toFixed(2)}/5.0
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
 
                   {/* EQUIPO AUDITOR */}

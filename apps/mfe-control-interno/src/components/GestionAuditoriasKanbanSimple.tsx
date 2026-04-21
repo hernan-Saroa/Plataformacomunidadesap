@@ -1126,16 +1126,11 @@ function TarjetaAuditoria({
             </div>
           </div>
 
-          {/* Información Territorial (si aplica) */}
-          {auditoria.territorialInfo && (
-            <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-              <p className="text-xs text-gray-500 mb-1">📍 Territorial:</p>
-              <div className="bg-green-50 border border-green-200 rounded p-1.5">
-                <p className="text-xs font-bold text-green-900">{auditoria.territorialInfo.ciudad}</p>
-                <p className="text-xs text-green-700">{auditoria.territorialInfo.departamento}</p>
-              </div>
-            </div>
-          )}
+          {/* Proceso Auditado */}
+          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
+            <p className="text-xs text-gray-500 mb-0.5">🔍 Proceso:</p>
+            <p className="text-xs font-bold text-gray-900">{auditoria.areaObjetivo || auditoria.territorial || 'Sin proceso'}</p>
+          </div>
 
           {/* Información Especial (si aplica) */}
           {auditoria.especial && (
@@ -1187,9 +1182,12 @@ function TarjetaAuditoria({
                 </span>
               </div>
               <div className="flex flex-wrap gap-1">
-                {auditoria.equipoAuditores.slice(0, 3).map((auditor, index) => {
+                {auditoria.equipoAuditores.slice(0, 3).map((auditor: any, index: number) => {
                   // Manejar tanto string como objeto
-                  const nombreAuditor = typeof auditor === 'string' ? auditor : (auditor.nombre || `Auditor ${auditor.personaId || index + 1}`);
+                  const nombreAuditor = typeof auditor === 'string'
+                    ? auditor
+                    : (auditor.nombre || (auditor.personaId ? `Auditor` : (auditor.rol || 'Sin asignar')));
+                  console.log(`[Kanban] equipoAuditores[${index}]:`, auditor, '→', nombreAuditor);
                   const partes = nombreAuditor.split(' ');
                   return (
                     <span 
@@ -1210,10 +1208,7 @@ function TarjetaAuditoria({
           )}
 
           {/* Área Objetivo */}
-          <div className="mb-1.5 pb-1.5 border-b border-gray-200">
-            <p className="text-xs text-gray-500 mb-0.5">🏢 Área Objetivo:</p>
-            <p className="text-xs font-bold text-gray-900">{auditoria.areaObjetivo}</p>
-          </div>
+          {(() => { console.log('[Kanban] areaObjetivo:', auditoria.areaObjetivo, '| territorial:', auditoria.territorial, '| auditorLider:', auditoria.auditorLider); return null; })()}
 
           {/* Última Actuación */}
           <div className="mb-1.5">
@@ -4589,7 +4584,7 @@ export function GestionAuditoriasKanbanSimple() {
                     aud.id === auditoriaSeleccionada.id 
                       ? {
                           ...aud,
-                          auditorLiderId: Number(auditorId), // ✅ Guardar también el ID
+                          auditorLiderId: auditorId, // ✅ Guardar también el ID (UUID string)
                           auditorLider: {
                             nombre: auditorSeleccionado.nombre,
                             cargo: auditorSeleccionado.cargo || 'Auditor',
@@ -4606,6 +4601,7 @@ export function GestionAuditoriasKanbanSimple() {
               }
             }}
             auditoresDisponibles={auditoresBackend}
+            equipoAuditoresIds={(auditoriaSeleccionada.equipoAuditores as any[])?.map((e: any) => e?.personaId).filter(Boolean)}
           />
         )}
 
