@@ -51,6 +51,7 @@ SERVER_URL_ENV="https://comunidadesap.esap.edu.co"
 ENV_FILE=".env.prod"
 ENV_NETWORK_KEY="superapp-net-prod"
 ENV_CONTAINER_SUFFIX="-prod"
+SSL_PROXY_CONTAINER="${SSL_PROXY_CONTAINER:-nginx-ss-proxy}"
 FRONTEND_MFE_SERVICES=(
     frontend
     frontend-shell
@@ -118,6 +119,25 @@ compose_env_mfe_prebuilt() {
 
 compose_env_mfe_gateway_prebuilt() {
     FRONTEND_GATEWAY_DOCKERFILE="Dockerfile.frontend.gateway.prebuilt" compose_env_mfe "$@"
+}
+
+restart_ssl_proxy() {
+    if ! docker inspect "$SSL_PROXY_CONTAINER" >/dev/null 2>&1; then
+        echo -e "${YELLOW}Proxy SSL ${SSL_PROXY_CONTAINER} no encontrado. Omitiendo reinicio.${NC}"
+        return 0
+    fi
+
+    if [ "$(docker inspect -f '{{.State.Running}}' "$SSL_PROXY_CONTAINER" 2>/dev/null)" != "true" ]; then
+        echo -e "${YELLOW}Proxy SSL ${SSL_PROXY_CONTAINER} no está en ejecución. Omitiendo reinicio.${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}Validando configuración Nginx SSL en ${SSL_PROXY_CONTAINER}...${NC}"
+    docker exec "$SSL_PROXY_CONTAINER" nginx -t
+
+    echo -e "${YELLOW}Reiniciando proxy SSL ${SSL_PROXY_CONTAINER} para tomar cambios...${NC}"
+    docker restart "$SSL_PROXY_CONTAINER" >/dev/null
+    echo -e "${GREEN}Proxy SSL ${SSL_PROXY_CONTAINER} reiniciado${NC}"
 }
 
 cleanup_build_artifacts() {
@@ -318,6 +338,7 @@ cmd_rebuild_changed() {
         echo -e "${YELLOW}Reconstruyendo frontend afectado:${NC} ${frontend_services[*]}"
         compose_env_mfe build "${frontend_services[@]}"
         compose_env_mfe up -d --no-deps "${frontend_services[@]}"
+        restart_ssl_proxy
     fi
 
     if [ $run_migrations -eq 1 ] || [ ${#backend_services[@]} -gt 0 ]; then
@@ -383,6 +404,7 @@ usage() {
 cmd_up() {
     echo -e "${GREEN}Iniciando servicios PROD...${NC}"
     compose_env up -d
+    restart_ssl_proxy
     echo -e "${GREEN}Servicios PROD iniciados exitosamente${NC}"
 
     # Esperar a que la base de datos esté lista
@@ -411,6 +433,7 @@ cmd_down() {
 cmd_restart() {
     echo -e "${YELLOW}Reiniciando servicios PROD...${NC}"
     compose_env restart
+    restart_ssl_proxy
     echo -e "${GREEN}Servicios PROD reiniciados${NC}"
 }
 
@@ -426,6 +449,7 @@ cmd_rebuild() {
 
     # Publicar nueva versión una vez terminado el build.
     compose_env up -d
+    restart_ssl_proxy
     # Ejecutar migraciones automáticamente
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
@@ -467,6 +491,7 @@ cmd_rebuild_all_mfe() {
 
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+    restart_ssl_proxy
     echo -e "${GREEN}App completa PROD publicada: microservicios + microfrontends.${NC}"
 }
 
@@ -475,6 +500,7 @@ cmd_rebuild_frontend() {
     echo -e "${YELLOW}Reconstruyendo solo frontend PROD...${NC}"
     compose_env build frontend
     compose_env up -d --no-deps frontend
+    restart_ssl_proxy
     echo -e "${GREEN}Frontend PROD reconstruido y reiniciado${NC}"
 }
 
@@ -524,6 +550,7 @@ cmd_up_mfe() {
     fi
     echo -e "${GREEN}Iniciando frontend desacoplado PROD...${NC}"
     compose_env_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    restart_ssl_proxy
     echo -e "${GREEN}Frontend MFE PROD iniciado exitosamente${NC}"
 }
 
@@ -536,6 +563,7 @@ cmd_down_mfe() {
 cmd_restart_mfe() {
     echo -e "${YELLOW}Reiniciando frontend desacoplado PROD...${NC}"
     compose_env_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    restart_ssl_proxy
     echo -e "${GREEN}Frontend MFE PROD reiniciado${NC}"
 }
 
@@ -572,6 +600,7 @@ cmd_rebuild_mfe() {
     echo -e "${YELLOW}Reconstruyendo servicio frontend MFE PROD: ${resolved_service}${NC}"
     compose_env_mfe build "$resolved_service"
     compose_env_mfe up -d --no-deps "$resolved_service"
+    restart_ssl_proxy
     echo -e "${GREEN}Servicio ${resolved_service} reconstruido y reiniciado${NC}"
 }
 
