@@ -314,6 +314,8 @@ interface TarjetaNoticiaProps {
 }
 
 function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa }: TarjetaNoticiaProps) {
+  const esJefe = authService.hasRole('rol-jefe-oci') || authService.isSuperAdmin();
+
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
     item: { ...noticia, tipoItem: 'noticia' },
@@ -472,53 +474,72 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                   Detalles
                 </KanbanButtonSecondary>
               )}
-              <KanbanButtonPrimary
-                onClick={() => onConvertir(noticia)}
-                icon={<PlusCircle className="w-3.5 h-3.5" />}
-                title="Convertir a proceso"
-              >
-                Convertir
-              </KanbanButtonPrimary>
+              {esJefe ? (
+                <KanbanButtonPrimary
+                  onClick={() => onConvertir(noticia)}
+                  icon={<PlusCircle className="w-3.5 h-3.5" />}
+                  title="Convertir a proceso"
+                >
+                  Convertir
+                </KanbanButtonPrimary>
+              ) : (
+                onEditarNoticia && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
+                  <KanbanButtonPrimary
+                    onClick={() => onEditarNoticia(noticia)}
+                    icon={<Edit className="w-3.5 h-3.5" />}
+                    title="Editar noticia"
+                  >
+                    Editar
+                  </KanbanButtonPrimary>
+                )
+              )}
             </KanbanActionRowPrimary>
 
-            <KanbanActionRowTertiary>
-              {onEditarNoticia && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
+            {noticia.estado === 'devuelta' ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-50 border border-orange-200 rounded-lg mt-1">
+                <ArrowLeft className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                <span className="text-xs font-semibold text-orange-700">Noticia Devuelta</span>
+              </div>
+            ) : esJefe ? (
+              <KanbanActionRowTertiary>
+                {onEditarNoticia && etapa && (normalizeText(etapa).includes('recep') || normalizeText(etapa).includes('recib') || normalizeText(etapa).includes('valora')) && (
+                  <KanbanButtonTertiary
+                    onClick={() => onEditarNoticia(noticia)}
+                    icon={<Edit className="w-3.5 h-3.5" />}
+                    title="Editar noticia"
+                  />
+                )}
+                {!noticia.procesoAsociado && onAsociarNoticiaNoticia && (
+                  <KanbanButtonTertiary
+                    onClick={() => onAsociarNoticiaNoticia(noticia)}
+                    icon={<Link2 className="w-3.5 h-3.5" />}
+                    title="Asociar a otra noticia"
+                  />
+                )}
+                {!noticia.procesoAsociado && onAsociarNoticiaProceso && (
+                  <KanbanButtonTertiary
+                    onClick={() => onAsociarNoticiaProceso(noticia)}
+                    icon={<Link2 className="w-3.5 h-3.5" />}
+                    title="Asociar a proceso"
+                  />
+                )}
                 <KanbanButtonTertiary
-                  onClick={() => onEditarNoticia(noticia)}
-                  icon={<Edit className="w-3.5 h-3.5" />}
-                  title="Editar noticia"
+                  onClick={() => onDevolver(noticia)}
+                  icon={<ArrowLeft className="w-3.5 h-3.5" />}
+                  title="Devolver"
                 />
-              )}
-              {!noticia.procesoAsociado && onAsociarNoticiaNoticia && (
                 <KanbanButtonTertiary
-                  onClick={() => onAsociarNoticiaNoticia(noticia)}
-                  icon={<Link2 className="w-3.5 h-3.5" />}
-                  title="Asociar a otra noticia"
+                  onClick={() => onDevolverCompetencia(noticia)}
+                  icon={<Send className="w-3.5 h-3.5" />}
+                  title="Remitir por competencia"
                 />
-              )}
-              {!noticia.procesoAsociado && onAsociarNoticiaProceso && (
-                <KanbanButtonTertiary
-                  onClick={() => onAsociarNoticiaProceso(noticia)}
-                  icon={<Link2 className="w-3.5 h-3.5" />}
-                  title="Asociar a proceso"
+                <KanbanButtonDestructive
+                  onClick={() => onArchivar(noticia)}
+                  icon={<Archive className="w-3.5 h-3.5" />}
+                  title="Archivar"
                 />
-              )}
-              <KanbanButtonTertiary
-                onClick={() => onDevolver(noticia)}
-                icon={<ArrowLeft className="w-3.5 h-3.5" />}
-                title="Devolver"
-              />
-              <KanbanButtonTertiary
-                onClick={() => onDevolverCompetencia(noticia)}
-                icon={<Send className="w-3.5 h-3.5" />}
-                title="Remitir por competencia"
-              />
-              <KanbanButtonDestructive
-                onClick={() => onArchivar(noticia)}
-                icon={<Archive className="w-3.5 h-3.5" />}
-                title="Archivar"
-              />
-            </KanbanActionRowTertiary>
+              </KanbanActionRowTertiary>
+            ) : null}
           </KanbanActionSection>
         </KanbanCard>
       </motion.div>
@@ -6178,10 +6199,7 @@ export function DashboardKanbanOperativo({
               procesoDestino={procesoDestino}
               tipoAsociacion={procesoOrigen.procesoAsociadoTipo}
               fechaAsociacion={procesoOrigen.procesoAsociadoFecha}
-              onVerProceso={(proceso) => {
-                setItemSeleccionado(proceso);
-                setModalActivo('ver-detalles');
-              }}
+              onVerProceso={handleVerProcesoAsociado}
             />
           );
         })()}

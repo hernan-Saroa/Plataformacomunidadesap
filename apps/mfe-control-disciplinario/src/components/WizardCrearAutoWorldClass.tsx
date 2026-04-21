@@ -162,7 +162,6 @@ export function WizardCrearAutoWorldClass({
   const [fechaAuto, setFechaAuto] = useState('');
   const [fechaVencimiento, setFechaVencimiento] = useState('');
   const [observaciones, setObservaciones] = useState('');
-  const [etapaDestino, setEtapaDestino] = useState('');
   const [prorrogaMeses, setProrrogaMeses] = useState<number | null>(null);
 
   // Estados del Paso 3
@@ -340,10 +339,6 @@ export function WizardCrearAutoWorldClass({
         return;
       }
       const esApertura = tipoSeleccionado?.tipo && ['AUTO_APERTURA', 'AUTO_APERTURA_INVESTIGACION', 'AUTO_APERTURA_INDAGACION'].includes(tipoSeleccionado.tipo);
-      if (esApertura && !etapaDestino) {
-        toast.error('Debes seleccionar la etapa a la que transiciona el proceso');
-        return;
-      }
       if (tipoSeleccionado?.tipo === 'AUTO_PRORROGA' && !prorrogaMeses) {
         toast.error('Debes seleccionar la duración de la prórroga: 3 o 6 meses');
         return;
@@ -402,6 +397,8 @@ export function WizardCrearAutoWorldClass({
       return;
     }
 
+    const esApertura = tipoSeleccionado?.tipo && ['AUTO_APERTURA', 'AUTO_APERTURA_INVESTIGACION', 'AUTO_APERTURA_INDAGACION'].includes(tipoSeleccionado.tipo);
+
     try {
       setGuardando(true);
 
@@ -455,7 +452,7 @@ export function WizardCrearAutoWorldClass({
         documentName: archivoAdjunto.name,
         documentType: archivoAdjunto.type,
         documentSize: archivoAdjunto.size,
-        etapaDestino: etapaDestino || undefined,
+        etapaDestino: esApertura ? (tipoSeleccionado.etapa || undefined) : undefined,
         prorrogaMeses: prorrogaMeses || undefined,
       });
 
@@ -487,7 +484,6 @@ export function WizardCrearAutoWorldClass({
     setFechaAuto(new Date().toISOString().split('T')[0]);
     setFechaVencimiento('');
     setObservaciones('');
-    setEtapaDestino('');
     setProrrogaMeses(null);
     setArchivoAdjunto(null);
     setObservacionesAdjunto('');
@@ -515,7 +511,8 @@ export function WizardCrearAutoWorldClass({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 flex items-center justify-center z-[100000] p-4 sm:p-6 bg-black/50 backdrop-blur-sm"
+      className="fixed inset-0 flex items-center justify-center z-[100000] bg-black/50 backdrop-blur-sm"
+      style={{ padding: '4vh 4vw' }}
       onClick={onClose}
     >
       <motion.div
@@ -524,13 +521,14 @@ export function WizardCrearAutoWorldClass({
         exit={{ scale: 0.9, opacity: 0, y: 40 }}
         transition={{ type: 'spring', duration: 0.5 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-3xl shadow-2xl w-full max-w-7xl max-h-[95vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-7xl overflow-hidden flex flex-col"
         style={{
+          maxHeight: '88vh',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05)'
         }}
       >
         {/* ==================== HEADER PREMIUM ==================== */}
-        <div className="relative overflow-hidden">
+        <div className="relative overflow-hidden flex-shrink-0">
           {/* Gradient Background */}
           <div
             className="absolute inset-0"
@@ -586,7 +584,7 @@ export function WizardCrearAutoWorldClass({
         </div>
 
         {/* ==================== TABS PREMIUM ==================== */}
-        <div className="bg-gradient-to-b from-gray-50 to-white border-b border-gray-200">
+        <div className="bg-gradient-to-b from-gray-50 to-white border-b border-gray-200 flex-shrink-0">
           <div className="px-6 sm:px-8 pt-4">
             <div className="flex gap-2">
               <button
@@ -1078,33 +1076,6 @@ export function WizardCrearAutoWorldClass({
                         </div>
                       </div>
 
-                      {/* Etapa Destino — solo para autos de apertura */}
-                      {tipoSeleccionado?.tipo && ['AUTO_APERTURA', 'AUTO_APERTURA_INVESTIGACION', 'AUTO_APERTURA_INDAGACION'].includes(tipoSeleccionado.tipo) && (
-                        <div className="mb-5">
-                          <label className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
-                            <ChevronRight className="w-4 h-4 text-blue-600" />
-                            Etapa a la que transiciona el proceso
-                            <span className="text-red-500">*</span>
-                          </label>
-                          <select
-                            value={etapaDestino}
-                            onChange={(e) => setEtapaDestino(e.target.value)}
-                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-600 transition-all text-sm font-medium shadow-sm bg-white"
-                          >
-                            <option value="">Selecciona la etapa destino...</option>
-                            <option value="INDAGACION_PREVIA">Indagación Previa</option>
-                            <option value="INVESTIGACION">Investigación Disciplinaria</option>
-                            <option value="EVALUACION">Evaluación y Análisis</option>
-                            <option value="JUZGAMIENTO">Juzgamiento</option>
-                            <option value="INDAGACION">Indagación</option>
-                            <option value="FALLO">Fallo / Decisión</option>
-                            <option value="SEGUNDA_INSTANCIA">Segunda Instancia</option>
-                          </select>
-                          <p className="text-xs text-gray-500 mt-1">
-                            Al aprobar este auto, el proceso pasará automáticamente a esta etapa.
-                          </p>
-                        </div>
-                      )}
 
                       {/* Prórroga — solo para AUTO_PRORROGA */}
                       {tipoSeleccionado?.tipo === 'AUTO_PRORROGA' && (

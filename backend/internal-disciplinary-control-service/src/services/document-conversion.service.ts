@@ -9,6 +9,8 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { promisify } from 'util';
 import { buildStoredFileName, StorageService } from './storage.service';
+import * as mammoth from 'mammoth';
+import puppeteer from 'puppeteer';
 
 const execFileAsync = promisify(execFile);
 
@@ -32,10 +34,25 @@ export class DocumentConversionService {
     const inputFilename = path.basename(documentUrl);
     const inputPath = this.storageService.getFullPath(inputFilename);
 
+    this.logger.log(`[Conversion] Converting document: ${documentUrl} (${inputFilename})`);
+
     if (!existsSync(inputPath)) {
+      this.logger.error(`[Conversion] Input file not found: ${inputPath}`);
       throw new InternalServerErrorException(
         `No se encontro el documento fuente del auto: ${documentUrl}`,
       );
+    }
+
+    // Validar que sea un archivo DOCX
+    const stats = await fs.stat(inputPath);
+    this.logger.log(`[Conversion] File exists, size: ${stats.size} bytes`);
+
+    if (stats.size === 0) {
+      throw new InternalServerErrorException('El archivo DOCX está vacío');
+    }
+
+    if (stats.size > 50 * 1024 * 1024) { // 50MB
+      throw new InternalServerErrorException('El archivo DOCX es demasiado grande (máx. 50MB)');
     }
 
     const outputDocumentName = preferredPdfName.toLowerCase().endsWith('.pdf')
@@ -84,30 +101,46 @@ export class DocumentConversionService {
     inputPath: string,
     outputPath: string,
   ): Promise<void> {
+    this.logger.log(`[Conversion] Starting Word to PDF conversion for: ${inputPath}`);
     const errors: string[] = [];
+
+    // Intentar conversión con mammoth + puppeteer (más confiable)
+    try {
+      this.logger.log(`[Conversion] Trying Mammoth + Puppeteer...`);
+      await this.convertWithMammothAndPuppeteer(inputPath, outputPath);
+      this.logger.log(`[Conversion] Mammoth + Puppeteer succeeded`);
+      return;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[Conversion] Mammoth + Puppeteer failed: ${errorMsg}`);
+      errors.push(`Mammoth+Puppeteer: ${errorMsg}`);
+    }
 
     if (process.platform === 'win32') {
       try {
+        this.logger.log(`[Conversion] Trying Word COM...`);
         await this.convertWithWordCom(inputPath, outputPath);
+        this.logger.log(`[Conversion] Word COM succeeded`);
         return;
       } catch (error) {
-        errors.push(
-          `Word COM: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        this.logger.error(`[Conversion] Word COM failed: ${errorMsg}`);
+        errors.push(`Word COM: ${errorMsg}`);
       }
     }
 
     try {
+      this.logger.log(`[Conversion] Trying LibreOffice...`);
       await this.convertWithLibreOffice(inputPath, outputPath);
+      this.logger.log(`[Conversion] LibreOffice succeeded`);
       return;
     } catch (error) {
-      errors.push(
-        `LibreOffice: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[Conversion] LibreOffice failed: ${errorMsg}`);
+      errors.push(`LibreOffice: ${errorMsg}`);
     }
 
+    this.logger.error(`[Conversion] All conversion methods failed. Errors: ${errors.join(' | ')}`);
     throw new Error(errors.join(' | '));
   }
 
@@ -232,6 +265,112 @@ export class DocumentConversionService {
       await fs.unlink(tempInputPath).catch(() => undefined);
       if (generatedPdfPath !== outputPath) {
         await fs.unlink(generatedPdfPath).catch(() => undefined);
+      }
+    }
+  }
+
+  private async convertWithMammothAndPuppeteer(
+    inputPath: string,
+    outputPath: string,
+  ): Promise<void> {
+    let browser;
+    try {
+      this.logger.log(`[Mammoth] Starting conversion: ${inputPath} -> ${outputPath}`);
+
+      // Verificar que el archivo existe
+      if (!existsSync(inputPath)) {
+        throw new Error(`Input file does not exist: ${inputPath}`);
+      }
+
+      // Leer el archivo DOCX
+      this.logger.log(`[Mammoth] Reading DOCX file...`);
+      const docxBuffer = await fs.readFile(inputPath);
+      this.logger.log(`[Mammoth] File size: ${docxBuffer.length} bytes`);
+
+      // Convertir DOCX a HTML usando Mammoth
+      this.logger.log(`[Mammoth] Converting DOCX to HTML...`);
+      const result = await mammoth.convertToHtml({ buffer: docxBuffer });
+      const htmlContent = result.value;
+
+      if (result.messages && result.messages.length > 0) {
+        this.logger.warn(`[Mammoth] Conversion messages:`, result.messages);
+      }
+
+      this.logger.log(`[Mammoth] HTML content length: ${htmlContent.length}`);
+
+      // Crear HTML completo con estilos básicos
+      const fullHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body {
+              font-family: 'Times New Roman', Times, serif;
+              font-size: 12pt;
+              line-height: 1.5;
+              margin: 2cm;
+            }
+            .mammoth-style-wrapper {
+              max-width: 100%;
+            }
+            /* Estilos adicionales para mejor compatibilidad */
+            p { margin: 0 0 10pt 0; }
+            table { border-collapse: collapse; width: 100%; }
+            td, th { border: 1px solid #000; padding: 4pt; }
+          </style>
+        </head>
+        <body>
+          <div class="mammoth-style-wrapper">
+            ${htmlContent}
+          </div>
+        </body>
+        </html>
+      `;
+
+      // Convertir HTML a PDF usando puppeteer
+      this.logger.log(`[Mammoth] Launching Puppeteer...`);
+      browser = await puppeteer.launch({
+        headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-gpu'
+        ]
+      });
+
+      this.logger.log(`[Mammoth] Creating page and setting content...`);
+      const page = await browser.newPage();
+      await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
+
+      // Generar PDF
+      this.logger.log(`[Mammoth] Generating PDF...`);
+      await page.pdf({
+        path: outputPath,
+        format: 'A4',
+        printBackground: true,
+        margin: {
+          top: '2cm',
+          right: '2cm',
+          bottom: '2cm',
+          left: '2cm'
+        }
+      });
+
+      this.logger.log(`[Mammoth] PDF generated successfully at: ${outputPath}`);
+
+    } catch (error) {
+      this.logger.error(`[Mammoth] Conversion failed:`, error);
+      throw error;
+    } finally {
+      if (browser) {
+        await browser.close();
       }
     }
   }

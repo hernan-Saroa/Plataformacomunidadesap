@@ -320,6 +320,22 @@ export class UsersService {
     await this.userRepo.save(user);
   }
 
+  async setPassword(userId: string, newPassword: string): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { id_user: userId } });
+    if (!user) throw new Error('User not found');
+
+    user.password_hash = await bcrypt.hash(newPassword, 10);
+    await this.userRepo.save(user);
+  }
+
+  async setResetToken(userId: string, token: string | null): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { id_user: userId } });
+    if (!user) throw new Error('User not found');
+
+    user.token = token;
+    await this.userRepo.save(user);
+  }
+
   async findAll(): Promise<User[]> {
     return this.userRepo.find({
       relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'roles']

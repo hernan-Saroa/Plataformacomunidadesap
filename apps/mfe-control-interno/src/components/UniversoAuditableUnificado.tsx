@@ -803,14 +803,22 @@ interface TabProgramaAnualProps {
 function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMostrarFormulario, puedeCrear = true }: TabProgramaAnualProps) {
   const [vistaProgramaAnual, setVistaProgramaAnual] = useState<'lista' | 'cronograma'>('cronograma'); // 🆕 Estado para alternar vista
   
-  const getColorEstado = (estado: EstadoAuditoria) => {
-    const colores = {
-      'PROGRAMADA': { bg: '#DBEAFE', text: '#1E40AF', icon: Clock },
-      'EN_EJECUCION': { bg: '#FEF08A', text: '#854D0E', icon: Activity },
-      'COMPLETADA': { bg: '#D1FAE5', text: '#065F46', icon: CheckCircle2 },
-      'CANCELADA': { bg: '#FEE2E2', text: '#991B1B', icon: X }
+  const getColorEstado = (auditoria: AuditoriaProgramada) => {
+    const kanban = (auditoria.estadoKanban || '').toLowerCase().trim();
+    if (kanban === 'plan anual') return { bg: '#EDE9FE', text: '#5B21B6', icon: Clock, label: 'Plan Anual' };
+    if (kanban === 'planeación' || kanban === 'planeacion') return { bg: '#DBEAFE', text: '#1E40AF', icon: Clock, label: 'Planeación' };
+    if (kanban === 'ejecución' || kanban === 'ejecucion') return { bg: '#FEF08A', text: '#854D0E', icon: Activity, label: 'Ejecución' };
+    if (kanban === 'comunicación' || kanban === 'comunicacion') return { bg: '#D1FAE5', text: '#065F46', icon: CheckCircle2, label: 'Comunicación' };
+    if (kanban === 'seguimiento') return { bg: '#E0F2FE', text: '#075985', icon: TrendingUp, label: 'Seguimiento' };
+    if (kanban === 'finalizada') return { bg: '#F0FDF4', text: '#166534', icon: CheckCircle2, label: 'Finalizada' };
+    // Fallback por estado UI
+    const colores: Record<string, { bg: string; text: string; icon: any; label: string }> = {
+      'PROGRAMADA': { bg: '#DBEAFE', text: '#1E40AF', icon: Clock, label: 'Planeación' },
+      'EN_EJECUCION': { bg: '#FEF08A', text: '#854D0E', icon: Activity, label: 'Ejecución' },
+      'COMPLETADA': { bg: '#D1FAE5', text: '#065F46', icon: CheckCircle2, label: 'Completada' },
+      'CANCELADA': { bg: '#FEE2E2', text: '#991B1B', icon: X, label: 'Cancelada' }
     };
-    return colores[estado];
+    return colores[auditoria.estado] || colores['PROGRAMADA'];
   };
 
   return (
@@ -954,7 +962,7 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
               className="p-6 space-y-4"
             >
               {auditorias.map((auditoria) => {
-                const colorEstado = getColorEstado(auditoria.estado);
+                const colorEstado = getColorEstado(auditoria);
                 const IconoEstado = colorEstado.icon;
                 
                 return (
@@ -973,7 +981,7 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
                             style={{ backgroundColor: colorEstado.bg, color: colorEstado.text }}
                           >
                             <IconoEstado className="w-3 h-3" />
-                            {auditoria.estado.replace('_', ' ')}
+                            {colorEstado.label}
                           </span>
                           <span className="px-3 py-1 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold">
                             Q{auditoria.trimestre} {new Date(auditoria.fechaInicio).getFullYear()}

@@ -281,8 +281,8 @@ const mapApiListaToUI = (lista: any): ListaChequeo => {
     'PLANEACION': 'PLANEACION',
     'ejecucion': 'EJECUCION',
     'EJECUCION': 'EJECUCION',
-    'comunicacion': 'EJECUCION', // Comunicación se mapea a Ejecución
-    'COMUNICACION': 'EJECUCION',
+    'comunicacion': 'COMUNICACION', // ✅ Comunicación tiene su propia etapa
+    'COMUNICACION': 'COMUNICACION',
     'seguimiento': 'SEGUIMIENTO',
     'SEGUIMIENTO': 'SEGUIMIENTO',
     'cierre': 'CIERRE',
@@ -1037,9 +1037,33 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
   const [listaAEliminar, setListaAEliminar] = useState<ListaChequeo | null>(null);
   const [eliminando, setEliminando] = useState(false);
 
+  // ✅ OBTENER AUDITORÍA FOCO Y SU FASE ACTUAL
+  const auditoriaFoco = auditoriaIdFoco ? auditorias.find((a: any) => (a?.id ?? '') === auditoriaIdFoco) : null;
+
   useEffect(() => {
     setListas(listasIniciales || []);
   }, [listasIniciales]);
+
+  // ✅ AUTO-FILTRAR POR FASE ACTUAL DE LA AUDITORÍA
+  useEffect(() => {
+    if (auditoriaFoco) {
+      // Mapear el estado de la auditoría a una etapa Kanban
+      const estadoToEtapa: Record<string, string> = {
+        'Planeación': 'PLANEACION',
+        'PLANEACION': 'PLANEACION',
+        'Ejecución': 'EJECUCION',
+        'EJECUCION': 'EJECUCION',
+        'Comunicación': 'COMUNICACION',
+        'COMUNICACION': 'COMUNICACION',
+        'Seguimiento': 'SEGUIMIENTO',
+        'SEGUIMIENTO': 'SEGUIMIENTO',
+      };
+
+      const faseActual = estadoToEtapa[auditoriaFoco.estado] || 'TODOS';
+      setFiltroEtapa(faseActual);
+      console.log('🔍 [AUTO-FILTRO] Auditoría:', auditoriaFoco.codigo, '| Estado:', auditoriaFoco.estado, '| Filtro aplicado:', faseActual);
+    }
+  }, [auditoriaFoco]);
 
   // ✅ ELIMINAR LISTA DE CHEQUEO (Backend conectado)
   const handleEliminarLista = async () => {
@@ -1080,6 +1104,14 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
         ? listaEditada.auditoriaId
         : undefined;
 
+      // ✅ FASES DINÁMICAS: Asignar según la etapa seleccionada
+      const fases = {
+        fasePlaneacion: listaEditada.etapaKanban === 'PLANEACION',
+        faseEjecucion: listaEditada.etapaKanban === 'EJECUCION',
+        faseComunicacion: listaEditada.etapaKanban === 'COMUNICACION',
+        faseSeguimiento: listaEditada.etapaKanban === 'SEGUIMIENTO'
+      };
+
       const actualizada = await controlInternoService.updateListaChequeo(listaAEditar.id, {
         nombre: listaEditada.nombre,
         descripcion: listaEditada.descripcion,
@@ -1088,11 +1120,8 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
         // ✅ VINCULACIÓN CON AUDITORÍA
         auditoriaId: auditoriaIdSanitized,
         nombreAuditoria: listaEditada.auditoriaCodigoNombre || undefined,
-        // ✅ FASES FIJAS: Planeación (crear) + Ejecución (visualizar)
-        fasePlaneacion: true,
-        faseEjecucion: true,
-        faseComunicacion: false,
-        faseSeguimiento: false,
+        // ✅ FASES DINÁMICAS según la etapa seleccionada
+        ...fases,
       });
 
       setListas(prev => prev.map(l => 
@@ -1110,16 +1139,23 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
     }
   };
 
-  const listasFiltradas = listas.filter(lista => 
-    filtroEtapa === 'TODOS' || lista.etapaKanban === filtroEtapa
-  );
-
-  const auditoriaFoco = auditoriaIdFoco ? auditorias.find((a: any) => (a?.id ?? '') === auditoriaIdFoco) : null;
+  // ✅ FILTRO COMBINADO: Etapa + Auditoría específica
+  const listasFiltradas = listas.filter(lista => {
+    const cumpleFiltroEtapa = filtroEtapa === 'TODOS' || lista.etapaKanban === filtroEtapa;
+    
+    // Si hay auditoriaIdFoco, filtrar solo listas de esa auditoría
+    const cumpleFiltroAuditoria = auditoriaIdFoco 
+      ? lista.auditoriaId === auditoriaIdFoco 
+      : true;
+    
+    return cumpleFiltroEtapa && cumpleFiltroAuditoria;
+  });
 
   const estadisticas = {
     totalListas: listas.length,
     planeacion: listas.filter(l => l.etapaKanban === 'PLANEACION').length,
     ejecucion: listas.filter(l => l.etapaKanban === 'EJECUCION').length,
+    comunicacion: listas.filter(l => l.etapaKanban === 'COMUNICACION').length,
     completitudPromedio: listas.length > 0
       ? Math.round(listas.reduce((sum, l) => sum + l.completitud, 0) / listas.length)
       : 0
@@ -1149,12 +1185,13 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
     };
 
     try {
+      // ✅ Usar listaCompleta.etapaKanban que ya tiene el valor garantizado
       const tipo: ListaChequeoService['tipo'] =
-        (nuevaLista.etapaKanban === 'EJECUCION'
+        (listaCompleta.etapaKanban === 'EJECUCION'
           ? 'ejecucion'
-          : nuevaLista.etapaKanban === 'COMUNICACION'
+          : listaCompleta.etapaKanban === 'COMUNICACION'
           ? 'comunicacion'
-          : nuevaLista.etapaKanban === 'SEGUIMIENTO'
+          : listaCompleta.etapaKanban === 'SEGUIMIENTO'
           ? 'seguimiento'
           : 'planeacion') as ListaChequeoService['tipo'];
 
@@ -1165,6 +1202,18 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
       const auditoriaIdSanitized = listaCompleta.auditoriaId && typeof listaCompleta.auditoriaId === 'string'
         ? listaCompleta.auditoriaId
         : undefined;
+
+      // ✅ FASES DINÁMICAS: Asignar según la etapa seleccionada
+      const fases = {
+        fasePlaneacion: listaCompleta.etapaKanban === 'PLANEACION',
+        faseEjecucion: listaCompleta.etapaKanban === 'EJECUCION',
+        faseComunicacion: listaCompleta.etapaKanban === 'COMUNICACION',
+        faseSeguimiento: listaCompleta.etapaKanban === 'SEGUIMIENTO'
+      };
+
+      console.log('🔍 [DEBUG CREATE] Etapa seleccionada:', listaCompleta.etapaKanban);
+      console.log('🔍 [DEBUG CREATE] Tipo mapeado:', tipo);
+      console.log('🔍 [DEBUG CREATE] Fases asignadas:', fases);
 
       const creadaApi = await controlInternoService.createListaChequeo({
         codigo: codigoLista,
@@ -1182,11 +1231,8 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
         // ✅ VINCULACIÓN CON AUDITORÍA
         auditoriaId: auditoriaIdSanitized,
         nombreAuditoria: listaCompleta.auditoriaCodigoNombre || undefined,
-        // ✅ FASES FIJAS: Planeación (crear) + Ejecución (visualizar)
-        fasePlaneacion: true,
-        faseEjecucion: true,
-        faseComunicacion: false,
-        faseSeguimiento: false,
+        // ✅ FASES DINÁMICAS según la etapa seleccionada
+        ...fases,
       });
 
       setListas(prev => [mapApiListaToUI(creadaApi), ...prev]);
@@ -1212,15 +1258,27 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
     <div className="p-3 w-full">
       {/* Banner: contexto de auditoría cuando se navega desde expediente/Comunicación */}
       {auditoriaIdFoco && (
-        <div className="mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl flex items-center gap-3">
-          <CheckSquare className="w-6 h-6 text-blue-600 flex-shrink-0" />
-          <div>
-            <p className="text-sm font-bold text-blue-900">Listas de chequeo para la auditoría</p>
-            <p className="text-sm text-blue-700">
-              {auditoriaFoco
-                ? [auditoriaFoco.codigo, auditoriaFoco.nombre].filter(Boolean).join(' - ') || 'Auditoría seleccionada'
-                : 'Auditoría seleccionada'}
-            </p>
+        <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl">
+          <div className="flex items-start gap-3">
+            <CheckSquare className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-bold text-blue-900 mb-1">
+                📋 Listas de Chequeo de la Auditoría
+              </p>
+              <p className="text-base font-black text-blue-800 mb-2">
+                {auditoriaFoco
+                  ? [auditoriaFoco.codigo, auditoriaFoco.nombre].filter(Boolean).join(' - ') || 'Auditoría seleccionada'
+                  : 'Auditoría seleccionada'}
+              </p>
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold">
+                  Fase Actual: {auditoriaFoco?.estado || 'No definida'}
+                </span>
+                <span className="text-xs text-blue-700">
+                  • Mostrando solo listas de esta fase
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1269,7 +1327,14 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
           </div>
           <p className="text-xl sm:text-2xl font-black text-purple-700">{estadisticas.ejecucion}</p>
         </div>
-        <div className="bg-white rounded-xl border-2 border-red-200 p-3 sm:p-4 col-span-2 sm:col-span-1">
+        <div className="bg-white rounded-xl border-2 border-orange-200 p-3 sm:p-4">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px] sm:text-xs font-semibold text-orange-700">Comunicación</span>
+            <Users className="w-3 h-3 sm:w-4 sm:h-4 text-orange-600" />
+          </div>
+          <p className="text-xl sm:text-2xl font-black text-orange-700">{estadisticas.comunicacion}</p>
+        </div>
+        <div className="bg-white rounded-xl border-2 border-red-200 p-3 sm:p-4">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] sm:text-xs font-semibold text-red-700">Completitud Prom.</span>
             <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 text-red-600" />
@@ -1317,27 +1382,24 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
               Ejecución
             </button>
             <button
-              onClick={() => setFiltroEtapa('SEGUIMIENTO')}
+              onClick={() => setFiltroEtapa('COMUNICACION')}
               className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
-                filtroEtapa === 'SEGUIMIENTO'
-                  ? 'bg-blue-600 text-white'
+                filtroEtapa === 'COMUNICACION'
+                  ? 'bg-orange-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              Seguimiento
-            </button>
-            <button
-              onClick={() => setFiltroEtapa('CIERRE')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
-                filtroEtapa === 'CIERRE'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Cierre
+              Comunicación
             </button>
           </div>
         </div>
+        {auditoriaIdFoco && (
+          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-xs text-blue-800">
+              ℹ️ <strong>Filtro automático activo:</strong> Se muestran solo las listas de la fase actual de la auditoría. Puedes cambiar el filtro manualmente si necesitas ver otras fases.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Lista de Listas de Chequeo */}
@@ -1672,8 +1734,8 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
   const modoEdicion = !!listaEditar;
   const [nombre, setNombre] = useState(listaEditar?.nombre || '');
   const [descripcion, setDescripcion] = useState(listaEditar?.descripcion || '');
-  // ✅ ETAPA FIJA: Siempre PLANEACION (oculto para el usuario)
-  const etapaKanban = 'PLANEACION' as EtapaKanban;
+  // ✅ ETAPA KANBAN: Seleccionable por el usuario
+  const [etapaKanban, setEtapaKanban] = useState<EtapaKanban>(listaEditar?.etapaKanban || 'PLANEACION');
   const [items, setItems] = useState<ItemChequeo[]>(listaEditar?.items || []);
   const [nuevoItemTexto, setNuevoItemTexto] = useState('');
   const [plantillaItemActual, setPlantillaItemActual] = useState<string>(''); // Plantilla para el ítem que se está creando
@@ -1756,13 +1818,16 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
       return;
     }
 
-    // ✅ Las listas se crean en Planeación y se visualizan en Ejecución (fijas)
-    const fasesSeleccionadasFijas = {
-      planeacion: true,
-      ejecucion: true,
-      comunicacion: false,
-      seguimiento: false
+    // ✅ FASES DINÁMICAS: Asignar según la etapa seleccionada
+    const fasesSeleccionadas = {
+      planeacion: etapaKanban === 'PLANEACION',
+      ejecucion: etapaKanban === 'EJECUCION',
+      comunicacion: etapaKanban === 'COMUNICACION',
+      seguimiento: etapaKanban === 'SEGUIMIENTO'
     };
+
+    console.log('🔍 [DEBUG MODAL] Etapa Kanban al enviar:', etapaKanban);
+    console.log('🔍 [DEBUG MODAL] Fases seleccionadas:', fasesSeleccionadas);
 
     // Buscar info completa de la auditoría seleccionada
     let auditoriaInfo = undefined;
@@ -1771,13 +1836,13 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
       if (auditoria) {
         auditoriaInfo = {
           auditoriaId: auditoria.id,
-          auditoriaCodigoNombre: `${auditoria.codigo} - ${auditoria.nombre}`,
-          fasesImpactadas: fasesSeleccionadasFijas
+          auditoriaCodigoNombre: `${auditoria.codigo} - ${auditoria.titulo || auditoria.nombre || 'Sin título'}`,
+          fasesImpactadas: fasesSeleccionadas
         };
       }
     }
 
-    onCrear({
+    const listaACrear = {
       nombre,
       descripcion,
       etapaKanban,
@@ -1788,7 +1853,11 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
       // ✅ LEGACY: GESTIÓN DOCUMENTAL (mantener compatibilidad)
       etapaProceso: etapaProceso || undefined,
       auditoriaAsignada: auditoriaAsignada || undefined
-    });
+    };
+
+    console.log('🔍 [DEBUG MODAL] Objeto enviado a onCrear:', listaACrear);
+
+    onCrear(listaACrear);
   };
 
   return (
@@ -1859,7 +1928,48 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
             />
           </div>
 
-          {/* Etapa Kanban - FIJA EN PLANEACION (OCULTA) */}
+          {/* ✅ SELECTOR DE ETAPA KANBAN - VISIBLE Y FUNCIONAL */}
+          <div>
+            <label className="block text-xs sm:text-sm font-bold text-gray-900 mb-2">
+              Etapa del Kanban <span className="text-red-600">*</span>
+            </label>
+            <p className="text-xs text-gray-600 mb-3">
+              Selecciona en qué etapa del proceso de auditoría se utilizará esta lista de chequeo
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {ETAPAS_KANBAN_AUDITORIA.map((etapa) => {
+                // ✅ Mapeo correcto sin tildes para el backend
+                const etapaValue: EtapaKanban = 
+                  etapa.value === 'Planeación' ? 'PLANEACION' :
+                  etapa.value === 'Ejecución' ? 'EJECUCION' :
+                  etapa.value === 'Comunicación' ? 'COMUNICACION' : 'PLANEACION';
+                
+                return (
+                  <button
+                    key={etapa.value}
+                    type="button"
+                    onClick={() => setEtapaKanban(etapaValue)}
+                    className={`
+                      px-4 py-3 rounded-lg font-bold text-sm transition-all border-2
+                      ${etapaKanban === etapaValue
+                        ? 'bg-blue-600 text-white border-blue-700 shadow-lg scale-105'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+                      }
+                    `}
+                  >
+                    {etapa.label}
+                  </button>
+                );
+              })}
+            </div>
+            {etapaKanban && (
+              <div className="mt-3 bg-blue-50 border-2 border-blue-200 rounded-lg p-3">
+                <p className="text-xs text-blue-700">
+                  ✅ <strong>Etapa seleccionada:</strong> {ETAPA_LABEL[etapaKanban]}
+                </p>
+              </div>
+            )}
+          </div>
 
           {/* ═══════════════════════════════════════════════════════════════ */}
           {/* SECCIÓN: VINCULACIÓN CON AUDITORÍAS OCI */}
