@@ -3926,6 +3926,174 @@ function SeccionGestionYSeguimiento({
 
   // Asignar responsables integrados
   const [asignandoId, setAsignandoId] = useState<string | number | null>(null);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TAREAS DE SEGUIMIENTO — Monitoreo (no modifica el plan)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const [formTareaActividadId, setFormTareaActividadId] = useState<string | number | null>(null);
+  const [nuevaTarea, setNuevaTarea] = useState({ descripcion: '', responsable: '', fechaLimite: '' });
+  const [guardandoTarea, setGuardandoTarea] = useState(false);
+  const [comentarioTareaId, setComentarioTareaId] = useState<string | null>(null);
+  const [textoComentarioTarea, setTextoComentarioTarea] = useState('');
+
+  // Verificar si el usuario actual puede gestionar tareas de seguimiento
+  // (Director OCI + responsables del rol)
+  const puedeGestionarTareas = (rol: any) => {
+    if (!currentUser) return false;
+    // Super usuario siempre puede
+    if (esSuperUsuario) return true;
+    // Director OCI (jefe del plan)
+    if (plan.jefeOCI?.id === currentUser.idPerson || plan.jefeOCI?.id === currentUser.id) return true;
+    // Responsable asignado al rol
+    if ((rol as any).responsables?.some((r: Auditor) => r.id === currentUser.idPerson || r.id === currentUser.id)) return true;
+    // Permiso de seguimiento
+    return puedeEditarPlan || puedeSeguimiento;
+  };
+
+  // Agregar nueva tarea de seguimiento a una actividad
+  const agregarTareaSeguimiento = async (rolNumero: number, actividadId: string | number) => {
+    if (!nuevaTarea.descripcion.trim()) {
+      toast.error('La descripción de la tarea es obligatoria');
+      return;
+    }
+    setGuardandoTarea(true);
+    try {
+      const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
+      if (!actividadActual) throw new Error('Actividad no encontrada');
+      const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
+      const nuevaTareaObj: TareaSeguimiento = {
+        id: `tarea-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        descripcion: nuevaTarea.descripcion.trim(),
+        completada: false,
+        responsables: nuevaTarea.responsable ? [nuevaTarea.responsable] : [],
+        fechaEntrega: nuevaTarea.fechaLimite || undefined,
+        observaciones: '',
+      };
+      const tareasActualizadas = [...tareasActuales, nuevaTareaObj];
+      // Actualizar en el plan local
+      const planActualizado = {
+        ...plan,
+        roles: plan.roles.map(rol => {
+          if (rol.numero === rolNumero) {
+            return { ...rol, actividades: rol.actividades.map(act => 
+              act.id === actividadId ? { ...act, tareasSeguimiento: tareasActualizadas } : act
+            )};
+          }
+          return rol;
+        })
+      };
+      onActualizar(planActualizado);
+      // Persistir en backend
+      if (typeof actividadId === 'string' && actividadId.length >= 32) {
+        const backendTareas = tareasActualizadas.map(t => ({
+          id: t.id,
+          descripcion: t.descripcion,
+          completada: t.completada,
+          responsables: (t.responsables || []).map(r => typeof r === 'string' ? { id: r, nombre: r } : r),
+          fechaLimite: t.fechaEntrega || null,
+          fechaCompletada: t.fechaCompletado || null,
+        }));
+        await fetch(`/api/control-interno/plan-anual-5-roles/actividades/${actividadId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tareas_seguimiento: backendTareas }),
+        });
+      }
+      toast.success('Tarea de seguimiento agregada');
+      setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '' });
+      setFormTareaActividadId(null);
+    } catch (err) {
+      console.error('Error al agregar tarea:', err);
+      toast.error('Error al agregar la tarea');
+    }
+    setGuardandoTarea(false);
+  };
+
+  // Toggle completar tarea (verifica requisitos)
+  const toggleCompletarTarea = async (rolNumero: number, actividadId: string | number, tareaId: string) => {
+    const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
+    if (!actividadActual) return;
+    const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
+    const tarea = tareasActuales.find(t => t.id === tareaId);
+    if (!tarea) return;
+    // Si quiere completar, verificar requisitos
+    if (!tarea.completada) {
+      if (tarea.requiereAdjuntos && (!tarea.adjuntosTarea || tarea.adjuntosTarea.length === 0)) {
+        toast.error('Esta tarea requiere al menos un adjunto para ser completada');
+        return;
+      }
+      if (tarea.requiereObservaciones && (!tarea.observaciones || !tarea.observaciones.trim())) {
+        toast.error('Esta tarea requiere una observación para ser completada');
+        return;
+      }
+    }
+    const tareasActualizadas = tareasActuales.map(t => 
+      t.id === tareaId ? { ...t, completada: !t.completada, fechaCompletado: !t.completada ? new Date().toISOString() : undefined } : t
+    );
+    const planActualizado = {
+      ...plan,
+      roles: plan.roles.map(rol => {
+        if (rol.numero === rolNumero) {
+          return { ...rol, actividades: rol.actividades.map(act => 
+            act.id === actividadId ? { ...act, tareasSeguimiento: tareasActualizadas } : act
+          )};
+        }
+        return rol;
+      })
+    };
+    onActualizar(planActualizado);
+    // Persistir
+    if (typeof actividadId === 'string' && actividadId.length >= 32) {
+      const backendTareas = tareasActualizadas.map(t => ({
+        id: t.id, descripcion: t.descripcion, completada: t.completada,
+        responsables: (t.responsables || []).map(r => typeof r === 'string' ? { id: r, nombre: r } : r),
+        fechaLimite: t.fechaEntrega || null, fechaCompletada: t.fechaCompletado || null,
+      }));
+      fetch(`/api/control-interno/plan-anual-5-roles/actividades/${actividadId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tareas_seguimiento: backendTareas }),
+      }).catch(e => console.error('Error persistiendo tarea:', e));
+    }
+    toast.success(tareasActualizadas.find(t => t.id === tareaId)?.completada ? 'Tarea completada' : 'Tarea reabierta');
+  };
+
+  // Agregar comentario/observación a una tarea
+  const agregarComentarioTarea = async (rolNumero: number, actividadId: string | number, tareaId: string, comentario: string) => {
+    if (!comentario.trim()) return;
+    const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
+    if (!actividadActual) return;
+    const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
+    const tareasActualizadas = tareasActuales.map(t => 
+      t.id === tareaId ? { ...t, observaciones: comentario.trim(), evaluada: true, fechaEvaluacion: new Date().toISOString() } : t
+    );
+    const planActualizado = {
+      ...plan,
+      roles: plan.roles.map(rol => {
+        if (rol.numero === rolNumero) {
+          return { ...rol, actividades: rol.actividades.map(act => 
+            act.id === actividadId ? { ...act, tareasSeguimiento: tareasActualizadas } : act
+          )};
+        }
+        return rol;
+      })
+    };
+    onActualizar(planActualizado);
+    if (typeof actividadId === 'string' && actividadId.length >= 32) {
+      const backendTareas = tareasActualizadas.map(t => ({
+        id: t.id, descripcion: t.descripcion, completada: t.completada,
+        responsables: (t.responsables || []).map(r => typeof r === 'string' ? { id: r, nombre: r } : r),
+        fechaLimite: t.fechaEntrega || null, fechaCompletada: t.fechaCompletado || null,
+      }));
+      fetch(`/api/control-interno/plan-anual-5-roles/actividades/${actividadId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tareas_seguimiento: backendTareas }),
+      }).catch(e => console.error('Error persistiendo comentario:', e));
+    }
+    toast.success('Comentario agregado a la tarea');
+    setComentarioTareaId(null);
+    setTextoComentarioTarea('');
+  };
+
   
   const asignarResponsableInline = async (rolNumero: number, actividadId: number | string, auditor: Auditor) => {
     setAsignandoId(actividadId);
@@ -5134,13 +5302,17 @@ function SeccionGestionYSeguimiento({
                                     }`}>
                                       {/* Fila 1: Checkbox + Descripción */}
                                       <div className="flex items-start gap-2.5">
-                                        <span className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${
-                                          tarea.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white'
-                                        }`}>
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); puedeGestionarTareas(rol) && toggleCompletarTarea(rol.numero, actividad.id, tarea.id); }}
+                                          disabled={!puedeGestionarTareas(rol)}
+                                          className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                            tarea.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white hover:border-blue-400'
+                                          } ${puedeGestionarTareas(rol) ? 'cursor-pointer' : 'cursor-default'}`}
+                                        >
                                           {tarea.completada && (
                                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
                                           )}
-                                        </span>
+                                        </button>
                                         <div className="flex-1 min-w-0">
                                           <p className={`text-sm font-medium leading-snug ${tarea.completada ? 'line-through text-gray-400' : 'text-gray-900'}`}>
                                             {tarea.descripcion}
@@ -5217,6 +5389,69 @@ function SeccionGestionYSeguimiento({
                                   );
                                 })}
                               </div>
+
+                              {/* ═══ Botón + Agregar tarea de seguimiento ═══ */}
+                              {puedeGestionarTareas(rol) && (
+                                formTareaActividadId === actividad.id ? (
+                                  <div className="mt-3 p-3 bg-teal-50 border-2 border-teal-300 rounded-lg" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <h5 className="text-xs font-bold text-teal-800 uppercase tracking-wider flex items-center gap-1">
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                        Nueva tarea de seguimiento
+                                      </h5>
+                                      <button onClick={() => { setFormTareaActividadId(null); setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '' }); }} className="text-teal-600 hover:text-teal-800 text-sm">✕</button>
+                                    </div>
+                                    <div className="space-y-2">
+                                      <input
+                                        type="text"
+                                        value={nuevaTarea.descripcion}
+                                        onChange={(e) => setNuevaTarea({ ...nuevaTarea, descripcion: e.target.value })}
+                                        placeholder="Descripción de la tarea *"
+                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-teal-500"
+                                      />
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <select
+                                          value={nuevaTarea.responsable}
+                                          onChange={(e) => setNuevaTarea({ ...nuevaTarea, responsable: e.target.value })}
+                                          className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-teal-500"
+                                        >
+                                          <option value="">Responsable (opcional)</option>
+                                          {auditores.map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
+                                          {/* Fallback: responsables del rol */}
+                                          {(rol as any).responsables?.filter((r: Auditor) => !auditores.some(a => a.id === r.id)).map((r: Auditor) => (
+                                            <option key={r.id} value={r.nombre}>{r.nombre} (Rol)</option>
+                                          ))}
+                                        </select>
+                                        <input
+                                          type="date"
+                                          value={nuevaTarea.fechaLimite}
+                                          onChange={(e) => setNuevaTarea({ ...nuevaTarea, fechaLimite: e.target.value })}
+                                          className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-teal-500"
+                                        />
+                                      </div>
+                                      <div className="flex justify-end gap-2">
+                                        <button
+                                          onClick={() => { setFormTareaActividadId(null); setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '' }); }}
+                                          className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                                        >Cancelar</button>
+                                        <button
+                                          onClick={() => agregarTareaSeguimiento(rol.numero, actividad.id)}
+                                          disabled={guardandoTarea || !nuevaTarea.descripcion.trim()}
+                                          className="px-3 py-1.5 text-xs font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 disabled:opacity-50"
+                                        >{guardandoTarea ? 'Guardando...' : 'Agregar tarea'}</button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setFormTareaActividadId(actividad.id); }}
+                                    className="mt-3 w-full py-2 text-xs font-semibold text-teal-700 bg-teal-50 border-2 border-dashed border-teal-300 rounded-lg hover:bg-teal-100 hover:border-teal-400 transition-colors flex items-center justify-center gap-1.5"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                    Agregar tarea de seguimiento
+                                  </button>
+                                )
+                              )}
                             </div>
                           )}
                         </div>
