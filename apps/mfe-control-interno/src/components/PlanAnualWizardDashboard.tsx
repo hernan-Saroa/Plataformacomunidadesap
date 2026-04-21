@@ -5522,8 +5522,12 @@ function SeccionGestionYSeguimiento({
                                         <button
                                           onClick={() => agregarTareaSeguimiento(rol.numero, actividad.id)}
                                           disabled={guardandoTarea || !nuevaTarea.descripcion.trim()}
-                                          className="px-3 py-1.5 text-xs font-medium text-white bg-teal-600 rounded-md hover:bg-teal-700 disabled:opacity-50"
-                                        >{guardandoTarea ? 'Guardando...' : 'Agregar tarea'}</button>
+                                          className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                                            guardandoTarea || !nuevaTarea.descripcion.trim()
+                                              ? 'bg-gray-200 text-gray-400 border border-gray-300 cursor-not-allowed'
+                                              : 'bg-teal-600 text-white hover:bg-teal-700 shadow-sm'
+                                          }`}
+                                        >{guardandoTarea ? 'Guardando...' : '✚ Agregar tarea'}</button>
                                       </div>
                                     </div>
                                   </div>
