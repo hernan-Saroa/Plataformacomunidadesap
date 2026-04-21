@@ -5114,11 +5114,15 @@ function SeccionGestionYSeguimiento({
             if (r.id && possibleIds.includes(String(r.id))) return true;
             // Comparar por email
             if (r.email && currentEmail && r.email.toLowerCase() === currentEmail.toLowerCase()) return true;
-            // Comparar por nombre (parcial)
-            if (r.nombre && currentName && (
-              r.nombre.toLowerCase().includes(currentName.toLowerCase()) || 
-              currentName.toLowerCase().includes(r.nombre.toLowerCase())
-            )) return true;
+            // Comparar por nombre (basado en palabras - "Diana Martinez" matchea "Diana Patricia Martinez López")
+            if (r.nombre && currentName) {
+              const rWords = r.nombre.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+              const cWords = currentName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+              // Si todas las palabras del nombre más corto están en el más largo
+              const shorterWords = cWords.length <= rWords.length ? cWords : rWords;
+              const longerName = cWords.length <= rWords.length ? r.nombre.toLowerCase() : currentName.toLowerCase();
+              if (shorterWords.length > 0 && shorterWords.every((w: string) => longerName.includes(w))) return true;
+            }
             return false;
           };
 
