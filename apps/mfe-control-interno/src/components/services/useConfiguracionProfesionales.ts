@@ -36,8 +36,8 @@ export interface ConfiguracionOCI {
   id?: string;          // UUID de la configuración (si existe en BD)
   usuarioId: string;    // id_person UUID
   idTercero: string;    // id_person UUID (para el backend)
-  rolOCI: 'Jefe OCI' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
-  rolOCIG?: 'Jefe OCI' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
+  rolOCI: string;
+  rolOCIG?: string;
   especialidades: string[];
   capacidadMaximaAuditorias: number;
   horasMensualesDisponibles: number;
@@ -73,30 +73,31 @@ export type ProfesionalOCIG = ProfesionalOCI;
 // CONSTANTES
 // ════════════════════════════════════════════════════════════════════════════
 
-export const ESPECIALIDADES_DISPONIBLES = [
-  'Auditoría Financiera',
-  'Auditoría de Gestión',
-  'Auditoría TI',
-  'Cumplimiento Normativo',
-  'Gestión de Riesgos',
-  'Control Interno',
-  'Seguridad de la Información',
-  'Gestión Tecnológica',
-  'Gestión Pública',
-  'Estrategia',
-  'Contratación Pública',
-  'Gestión Presupuestal'
-];
+// Especialidades dinámicas (ahora siempre desde la API)
+export const ESPECIALIDADES_DEFAULT: string[] = [];
 
-export const ROLES_OCI = [
-  'Jefe OCI',
-  'Auditor Sénior',
-  'Auditor',
-  'Auditor Júnior',
-  'Apoyo Técnico'
-] as const;
+// Interfaz para especialidades con descripción desde la BD
+export interface EspecialidadOCIG {
+  id: number;
+  nombre: string;
+  descripcion: string;
+}
 
-export const ROLES_OCIG = ROLES_OCI;
+// Exportación de compatibilidad (se sobreescribe dinámicamente en el hook)
+export let ESPECIALIDADES_DISPONIBLES: string[] = [];
+
+// Roles OCIG (ahora siempre desde la API)
+export const ROLES_OCI_DEFAULT: readonly string[] = [];
+
+// Interfaz para roles con descripción desde la BD
+export interface RolOCIG {
+  name: string;
+  description: string;
+}
+
+// Exportaciones de compatibilidad (se sobreescriben dinámicamente en el hook)
+export let ROLES_OCI: readonly string[] = [];
+export let ROLES_OCIG: readonly string[] = [];
 
 // ════════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -162,6 +163,10 @@ export function useConfiguracionProfesionales() {
   // Estado
   const [usuariosControlInterno, setUsuariosControlInterno] = useState<UsuarioSistema[]>([]);
   const [configuracionesOCI, setConfiguracionesOCI] = useState<ConfiguracionOCI[]>([]);
+  const [rolesOCIG, setRolesOCIG] = useState<RolOCIG[]>([]);
+  const [rolesOCIGNames, setRolesOCIGNames] = useState<readonly string[]>(ROLES_OCI_DEFAULT);
+  const [especialidadesOCIG, setEspecialidadesOCIG] = useState<EspecialidadOCIG[]>([]);
+  const [especialidadesNames, setEspecialidadesNames] = useState<string[]>([...ESPECIALIDADES_DEFAULT]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -175,7 +180,28 @@ export function useConfiguracionProfesionales() {
     setError(null);
     
     try {
-      // 1. Cargar usuarios candidatos de auth.personas (personas que AÚN NO están configuradas como OCI)
+      // 1. Cargar roles OCIG desde la BD (no hardcodeados)
+      const responseRoles = await configuracionesProfesionalesOCIApi.getRolesOCIG();
+      if (responseRoles.data && responseRoles.data.length > 0) {
+        setRolesOCIG(responseRoles.data);
+        const nombres = responseRoles.data.map(r => r.name);
+        setRolesOCIGNames(nombres);
+        ROLES_OCI = nombres;
+        ROLES_OCIG = nombres;
+        console.log('✅ Roles OCIG cargados desde BD:', nombres);
+      }
+
+      // 2. Cargar especialidades OCIG desde la BD (no hardcodeadas)
+      const responseEsp = await configuracionesProfesionalesOCIApi.getEspecialidades();
+      if (responseEsp.data && responseEsp.data.length > 0) {
+        setEspecialidadesOCIG(responseEsp.data);
+        const nombresEsp = responseEsp.data.map(e => e.nombre);
+        setEspecialidadesNames(nombresEsp);
+        ESPECIALIDADES_DISPONIBLES = nombresEsp;
+        console.log('✅ Especialidades cargadas desde BD:', nombresEsp.length);
+      }
+
+      // 2. Cargar usuarios candidatos de auth.personas (personas que AÚN NO están configuradas como OCI)
       const responseUsuarios = await configuracionesProfesionalesOCIApi.buscarCandidatos();
       const personas = responseUsuarios.data || [];
       const usuarios = personas.map((p: any) => ({
@@ -191,7 +217,7 @@ export function useConfiguracionProfesionales() {
       }));
       setUsuariosControlInterno(usuarios);
       
-      // 2. Cargar configuraciones OCI desde el backend
+      // 3. Cargar configuraciones OCI desde el backend
       const responseConfigs = await configuracionesProfesionalesOCIApi.getAll(true);
       const configuraciones = (responseConfigs.data || []).map(convertirConfigBackendALocal);
       setConfiguracionesOCI(configuraciones);
@@ -441,9 +467,11 @@ export function useConfiguracionProfesionales() {
     eliminarProfesional,
     buscarUsuariosExternos,
     
-    // Constantes
-    ESPECIALIDADES_DISPONIBLES,
-    ROLES_OCI,
-    ROLES_OCIG
+    // Constantes (dinámicas desde BD)
+    ESPECIALIDADES_DISPONIBLES: especialidadesNames,
+    especialidadesConDescripcion: especialidadesOCIG,
+    ROLES_OCI: rolesOCIGNames,
+    ROLES_OCIG: rolesOCIGNames,
+    rolesOCIGConDescripcion: rolesOCIG,
   };
 }

@@ -415,7 +415,7 @@ export function ModuleLayout({
 
         {/* Área de Contenido con Scroll - PADDING REDUCIDO */}
         <div className="flex-1">
-          <div className="p-3 sm:p-4 md:p-5 lg:p-6">
+          <div className="p-2">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeSection}

@@ -201,15 +201,7 @@ function ControlInternoContent({
     });
   }, [esSuperUsuario, puedeAcceder, loadingPlanes, planesBackend.length]);
 
-  // Log de depuración de permisos
-  useEffect(() => {
-    console.log('🔐 [ControlInternoFull] Permisos:', {
-      esSuperUsuario,
-      menuItemsCount: menuItems.length,
-      menuIds: menuItems.map(m => m.id),
-      seccionActiva
-    });
-  }, [menuItems, esSuperUsuario, seccionActiva]);
+
 
   // Si la sección activa no está en los menús disponibles, navegar a la primera disponible
   useEffect(() => {

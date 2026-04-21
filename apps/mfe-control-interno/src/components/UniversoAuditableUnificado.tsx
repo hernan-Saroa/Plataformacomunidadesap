@@ -49,6 +49,7 @@ import { loadTipos, loadEspIds } from './ConfiguracionProcesosModule';
 import { useConfiguracionProfesionales, type ProfesionalOCI } from './services/useConfiguracionProfesionales';
 // ✅ HOOK DE PERMISOS FLEXIBLE
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
+import { ModuleHeaderBar } from './ModuleHeaderBar';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS LOCALES (re-exportados desde hooks)
@@ -457,44 +458,43 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* HEADER */}
       {/* ═══════════════════════════════════════════════════════════════ */}
-      <div className="bg-white border-b-2 border-gray-200 shadow-sm flex-shrink-0">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-base sm:text-lg font-black leading-tight" style={{ color: '#F97316' }}>
-                {modoSeguimiento ? `Seguimiento y Evaluación — Auditorías ${vigencia}` : `Programa de Auditoría ${vigencia}`}
-              </h1>
-              <p className="text-[11px] sm:text-xs text-gray-600 mt-0.5">
-                {modoSeguimiento
-                  ? 'Visualización y seguimiento de auditorías del Universo — Rol 4: Evaluación y Seguimiento'
-                  : 'Gestión integral del universo auditable y programa anual de auditorías'}
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              {onVolver && (
-                <button
-                  onClick={onVolver}
-                  className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-semibold transition-colors"
-                >
-                  Volver
-                </button>
-              )}
-            </div>
-          </div>
+      <div className="flex-shrink-0 px-3 pt-3">
+        <ModuleHeaderBar
+          title={modoSeguimiento ? `Seguimiento y Evaluación — ${vigencia}` : `Programa de Auditoría ${vigencia}`}
+          subtitle={modoSeguimiento
+            ? 'Visualización y seguimiento de auditorías del Universo'
+            : 'Gestión integral del universo auditable y programa anual'}
+          icon={<Layers className="w-5 h-5 text-white" />}
+          color="#003DA5"
+          rightContent={onVolver ? (
+            <button
+              onClick={onVolver}
+              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-semibold transition-colors"
+            >
+              Volver
+            </button>
+          ) : undefined}
+        />
+      </div>
 
-          {/* Tabs */}
-          <div className="flex gap-2">
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* CONTENIDO */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      <div className="flex-1 overflow-y-auto p-3">
+        {/* Tabs - dentro del área de contenido, separados del título */}
+        <div className="mb-3">
+          <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
             <button
               onClick={() => setTabActiva('universo')}
-              className={`px-6 py-3 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-md font-semibold text-sm transition-all flex items-center gap-1.5 ${
                 tabActiva === 'universo'
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-[#1e5da8] text-white shadow-sm'
+                  : 'text-gray-600 hover:bg-white'
               }`}
             >
               <Layers className="w-4 h-4" />
               Universo Auditable
-              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
                 tabActiva === 'universo' ? 'bg-white/20' : 'bg-gray-200'
               }`}>
                 {estadisticas.procesosAuditables}
@@ -502,15 +502,15 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             </button>
             <button
               onClick={() => setTabActiva('programa')}
-              className={`px-6 py-3 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-md font-semibold text-sm transition-all flex items-center gap-1.5 ${
                 tabActiva === 'programa'
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-[#1e5da8] text-white shadow-sm'
+                  : 'text-gray-600 hover:bg-white'
               }`}
             >
               <CalendarIcon className="w-4 h-4" />
               Programa Anual
-              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
                 tabActiva === 'programa' ? 'bg-white/20' : 'bg-gray-200'
               }`}>
                 {estadisticas.totalProgramadas}
@@ -518,15 +518,15 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             </button>
             <button
               onClick={() => setTabActiva('profesionales')}
-              className={`px-6 py-3 rounded-lg font-bold text-sm transition-all flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-md font-semibold text-sm transition-all flex items-center gap-1.5 ${
                 tabActiva === 'profesionales'
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-[#1e5da8] text-white shadow-sm'
+                  : 'text-gray-600 hover:bg-white'
               }`}
             >
               <Users className="w-4 h-4" />
               Profesionales
-              <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
                 tabActiva === 'profesionales' ? 'bg-white/20' : 'bg-gray-200'
               }`}>
                 {loadingProfesionales ? '...' : profesionalesOCI.length}
@@ -534,12 +534,6 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             </button>
           </div>
         </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* CONTENIDO */}
-      {/* ═══════════════════════════════════════════════════════════════ */}
-      <div className="flex-1 overflow-y-auto p-8">
         {/* Estado de carga */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-16 gap-4">

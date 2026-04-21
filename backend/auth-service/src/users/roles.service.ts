@@ -187,8 +187,15 @@ export class RolesService {
 
     // Asignar permisos si se proporcionan
     if (createRoleDto.permissionIds && createRoleDto.permissionIds.length > 0) {
+      const uuidIds = createRoleDto.permissionIds.filter(id => isUUID(id));
+      const codeIds = createRoleDto.permissionIds.filter(id => !isUUID(id));
+      
+      const whereConditions: any[] = [];
+      if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
+      if (codeIds.length > 0) whereConditions.push({ code: In(codeIds) });
+
       const permissions = await this.permissionRepo.find({
-        where: { id_permission: In(createRoleDto.permissionIds) }
+        where: whereConditions
       });
       role.permissions = permissions;
     }
@@ -229,8 +236,15 @@ export class RolesService {
       if (updateRoleDto.permissionIds.length === 0) {
         role.permissions = [];
       } else {
+        const uuidIds = updateRoleDto.permissionIds.filter(id => isUUID(id));
+        const codeIds = updateRoleDto.permissionIds.filter(id => !isUUID(id));
+        
+        const whereConditions: any[] = [];
+        if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
+        if (codeIds.length > 0) whereConditions.push({ code: In(codeIds) });
+
         const permissions = await this.permissionRepo.find({
-          where: { id_permission: In(updateRoleDto.permissionIds) }
+          where: whereConditions
         });
         role.permissions = permissions;
       }
@@ -310,13 +324,15 @@ export class RolesService {
   }
 
   async getPermissions(roleId: string): Promise<Permission[]> {
-    if (!roleId || !isUUID(roleId)) {
-      throw new BadRequestException('ID de rol inválido');
+    if (!roleId || roleId === 'undefined') {
+      throw new BadRequestException('ID o código de rol requerido');
     }
 
     // Obtener el rol con sus permisos usando la relación de TypeORM
+    const whereCondition = isUUID(roleId) ? { id: roleId } : { code: roleId };
+    
     const role = await this.roleRepo.findOne({
-      where: { id: roleId },
+      where: whereCondition,
       relations: ['permissions'],
     });
 
@@ -328,9 +344,11 @@ export class RolesService {
   }
 
   async updatePermissions(roleId: string, permissionIds: string[], updatedBy?: string): Promise<Role> {
+    const whereCondition = isUUID(roleId) ? { id: roleId } : { code: roleId };
+    
     // Obtener el rol con sus permisos actuales
     const role = await this.roleRepo.findOne({
-      where: { id: roleId },
+      where: whereCondition,
       relations: ['permissions'],
     });
 
@@ -341,8 +359,15 @@ export class RolesService {
     if (permissionIds.length === 0) {
       role.permissions = [];
     } else {
+      const uuidIds = permissionIds.filter(id => isUUID(id));
+      const codeIds = permissionIds.filter(id => !isUUID(id));
+      
+      const whereConditions: any[] = [];
+      if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
+      if (codeIds.length > 0) whereConditions.push({ code: In(codeIds) });
+
       const permissions = await this.permissionRepo.find({
-        where: { id_permission: In(permissionIds) }
+        where: whereConditions
       });
       role.permissions = permissions;
     }

@@ -36,6 +36,7 @@ import { HTML5Backend } from 'react-dnd-html5-backend';
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { HeaderModuloCIG } from './HeaderModuloCIG';
+import { ModuleHeaderBar } from './ModuleHeaderBar';
 import { ModalDetallePlanMejoramiento } from './ModalDetallePlanMejoramiento';
 
 // Integración
@@ -660,9 +661,11 @@ export function PlanesMejoramientoModuleRediseno() {
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="min-h-screen bg-gray-50">
-        <HeaderModuloCIG
-          titulo="Planes de Mejoramiento"
-          subtitulo="Control Interno de Gestión"
+        <ModuleHeaderBar
+          title="Planes de Mejoramiento"
+          subtitle="Formulación, seguimiento y cierre de acciones correctivas"
+          icon={<AlertTriangle className="w-5 h-5 text-white" />}
+          color="#EF4444"
         />
 
         {/* Contenido Principal */}
@@ -820,38 +823,31 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
   };
 
   return (
-    <div className="w-full px-8 py-6">
+    <div className="w-full p-3">
       {/* Header con Métricas */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-        <div className="flex items-center justify-between mb-6">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-4">
+        <div className="flex items-start justify-between mb-3">
           <div>
-            <h2 className="text-xl text-gray-900 font-medium mb-1">Panel de Seguimiento</h2>
-            <p className="text-sm text-gray-600">Gestión integral de planes de mejoramiento</p>
+            <h2 className="text-sm font-bold text-gray-900">Panel de Seguimiento</h2>
+            <p className="text-[11px] text-gray-500">Gestión integral de planes de mejoramiento</p>
           </div>
           
           <div className="flex items-center gap-3">
             {/* Botón Crear Plan */}
             <button
               onClick={onAbrirCrearPlan}
-              className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium"
+              className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-all flex items-center gap-2 text-sm font-semibold"
             >
               <Plus className="w-4 h-4" />
               Crear Plan desde Auditoría
-              {auditoriasDisponibles.length > 0 && (
-                <span className="px-2 py-0.5 bg-white/20 rounded-full text-xs">
-                  {auditoriasDisponibles.length}
-                </span>
-              )}
             </button>
 
-            {/* Toggle Vista - Lista primero (opción por defecto) */}
-            <div className="flex gap-2 bg-gray-100 p-1 rounded-lg">
+            {/* Toggle Vista - Estilo Kanban referencia */}
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
               <button
                 onClick={() => setVistaTablero('lista')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                  vistaTablero === 'lista'
-                    ? 'bg-white text-[#1e5da8] shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
+                  vistaTablero === 'lista' ? 'bg-[#1e5da8] text-white shadow-sm' : 'text-gray-600 hover:bg-white'
                 }`}
               >
                 <List className="w-4 h-4" />
@@ -859,10 +855,8 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
               </button>
               <button
                 onClick={() => setVistaTablero('kanban')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                  vistaTablero === 'kanban'
-                    ? 'bg-white text-[#1e5da8] shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
+                className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
+                  vistaTablero === 'kanban' ? 'bg-[#1e5da8] text-white shadow-sm' : 'text-gray-600 hover:bg-white'
                 }`}
               >
                 <LayoutGrid className="w-4 h-4" />
@@ -874,7 +868,7 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
       </div>
 
       {/* Búsqueda */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mb-6">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-4">
         <div className="flex items-center gap-4">
           <div className="flex-1 relative">
             <input

@@ -39,6 +39,27 @@ export class ConfiguracionesProfesionalesOCIGController {
   }
 
   /**
+   * Obtener roles OCIG disponibles desde la BD
+   * Devuelve los roles backoffice (OCIG) + Aprobador PAI con sus descripciones
+   */
+  @Get('roles-ocig')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.CONFIG_MANAGE)
+  async getRolesOCIG(): Promise<Array<{ name: string; description: string }>> {
+    return this.service.getRolesOCIG();
+  }
+
+  /**
+   * Obtener especialidades OCIG disponibles desde la BD
+   */
+  @Get('especialidades')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.CONFIG_MANAGE)
+  async getEspecialidades(): Promise<Array<{ id: number; nombre: string; descripcion: string }>> {
+    return this.service.getEspecialidadesOCIG();
+  }
+
+  /**
    * Buscar personas candidatas de auth.personas que pueden ser configuradas como profesionales OCIG
    * Devuelve personas que AÚN NO están en configuracion_profesionales_ocig
    */

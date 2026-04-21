@@ -15,3 +15,4 @@ WHERE macroproceso IS NOT NULL AND macroproceso != '' AND unidades_auditables = 
 
 -- 3. Permitir que macroproceso sea null (opcional, por si deciden dejar de enviarlo desde el frontend)
 ALTER TABLE control_interno.proceso_auditable ALTER COLUMN macroproceso DROP NOT NULL;
+ñ

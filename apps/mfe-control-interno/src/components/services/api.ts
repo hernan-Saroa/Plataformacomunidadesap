@@ -725,6 +725,20 @@ export const configuracionesProfesionalesOCIApi = {
   },
 
   /**
+   * Obtener roles OCIG disponibles desde la BD (no hardcodeados)
+   */
+  getRolesOCIG: async (): Promise<ApiResponse<Array<{ name: string; description: string }>>> => {
+    return apiRequest<Array<{ name: string; description: string }>>('/configuraciones/profesionales-ocig/roles-ocig');
+  },
+
+  /**
+   * Obtener especialidades OCIG desde la BD (no hardcodeadas)
+   */
+  getEspecialidades: async (): Promise<ApiResponse<Array<{ id: number; nombre: string; descripcion: string }>>> => {
+    return apiRequest<Array<{ id: number; nombre: string; descripcion: string }>>('/configuraciones/profesionales-ocig/especialidades');
+  },
+
+  /**
    * Obtener configuración por ID
    */
   getById: async (id: string): Promise<ApiResponse<ConfiguracionProfesionalOCI>> => {

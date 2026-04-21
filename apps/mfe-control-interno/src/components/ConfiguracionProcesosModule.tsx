@@ -353,7 +353,7 @@ export function ConfiguracionProcesosModule() {
   }
 
   return (
-    <div className="w-full h-full p-4 sm:p-6 lg:p-8">
+    <div className="w-full h-full p-3">
 
       {/* ─── Cabecera ─── */}
       <HeaderSeccionConfig

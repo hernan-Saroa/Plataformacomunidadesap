@@ -1257,12 +1257,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     updateEstado,
   } = usePlanAnualCompleto(añoActual);
 
-  console.log('🔄 [HOOK] usePlanAnualCompleto resultado:', { 
-    planDesdeBackend, 
-    auditores: auditores?.length, 
-    cargandoDatos, 
-    errorCarga 
-  });
+
 
   // Estado local para el plan (sincronizado con backend)
   const [planActual, setPlanActual] = useState<PlanAnual | null>(null);
@@ -1294,11 +1289,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   // Sincronizar plan del backend con estado local
   useEffect(() => {
     if (planDesdeBackend) {
-      console.log('🔍 [DEBUG] Plan recibido del backend:', planDesdeBackend);
-      console.log('🔍 [DEBUG] Cantidad de roles:', planDesdeBackend.roles?.length);
-      planDesdeBackend.roles?.forEach(rol => {
-        console.log(`🔍 [DEBUG] Rol ${rol.rol_numero}: ${rol.nombre}, ID: ${rol.id}, Actividades: ${rol.actividades?.length}`);
-      });
+
+
+
       
       // Transformar datos del backend al formato del frontend
       // ✅ IMPORTANTE: Ordenar roles por rol_numero para mantener el orden del Decreto 648/2017
@@ -1313,6 +1306,8 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         fechaCreacion: planDesdeBackend.fecha_creacion,
         fechaAprobacion: null,
         actaCICC: null,
+        equipoAprobacion: planDesdeBackend.equipo_aprobacion || [],
+        ordenAprobacion: planDesdeBackend.orden_aprobacion || 'secuencial',
         roles: rolesOrdenados.map(rol => ({
           id: rol.id, // ID del rol desde el backend (requerido para crear actividades)
           numero: rol.rol_numero,
@@ -1455,12 +1450,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         }))
       };
       
-      console.log('✅ [DEBUG] Plan transformado para frontend:', planTransformado);
-      console.log('✅ [DEBUG] Roles transformados con IDs:', planTransformado.roles.map(r => ({ numero: r.numero, id: r.id, actividades: r.actividades.length })));
-      // Log específico para campo activo
-      console.log('✅ [DEBUG] Campo activo por actividad:', planTransformado.roles.flatMap(r => 
-        r.actividades.map(a => ({ id: a.id, nombre: a.nombre.substring(0, 30), activo: a.activo }))
-      ));
+
+
+
       
       setPlanActual(planTransformado);
       setVista('dashboard'); // Cambiar a dashboard cuando hay datos
@@ -1522,8 +1514,35 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   // Hook para crear plan en backend
   const { mutate: crearPlanEnBackend, loading: creandoPlan } = useCreatePlanAnual();
 
-  const handleCrearPlan = async (vigencia: number, jefeOCI: Auditor, rolesConfig: any[], fechaInicio: string, fechaFin: string): Promise<boolean> => {
+  const handleCrearPlan = async (vigencia: number, jefeOCI: Auditor, rolesConfig: any[], fechaInicio: string, fechaFin: string, comiteAprobacion?: Auditor[], ordenAprobacion?: string): Promise<boolean> => {
     try {
+      // ═══════════════════════════════════════════════════════════════
+      // DEBUG: Resumen completo de lo que se va a enviar al backend
+      // ═══════════════════════════════════════════════════════════════
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('🚀 [handleCrearPlan] INICIO - Creando Plan Anual');
+      console.log(`   Vigencia: ${vigencia}`);
+      console.log(`   Jefe OCI: ${jefeOCI.nombre} (id: ${jefeOCI.id})`);
+      console.log(`   Fechas: ${fechaInicio} → ${fechaFin}`);
+      console.log(`   Roles configurados: ${rolesConfig.length}`);
+      
+      let totalActividadesEsperadas = 0;
+      let totalTareasEsperadas = 0;
+      for (const rc of rolesConfig) {
+        const actSel = rc.actividadesSeleccionadas?.length || 0;
+        const actCus = rc.actividadesCustom?.length || 0;
+        const totalAct = actSel + actCus;
+        totalActividadesEsperadas += totalAct;
+        
+        const todasActs = [...(rc.actividadesSeleccionadas || []), ...(rc.actividadesCustom || [])];
+        const tareasEnRol = todasActs.reduce((sum: number, a: any) => sum + (a.tareasSeguimiento?.length || 0), 0);
+        totalTareasEsperadas += tareasEnRol;
+        
+        console.log(`   Rol ${rc.numero} "${rc.nombre}": ${actSel} sel + ${actCus} custom = ${totalAct} actividades, ${tareasEnRol} tareas, ${rc.responsables?.length || 0} responsables`);
+      }
+      console.log(`   📊 TOTAL ESPERADO: ${totalActividadesEsperadas} actividades, ${totalTareasEsperadas} tareas`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
       // Validar si el id es un UUID válido. Si no lo es, enviamos undefined para evitar el Error 400 del Backend.
       const esIdUUID = jefeOCI.id && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(jefeOCI.id);
 
@@ -1533,7 +1552,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       responsable: jefeOCI.nombre,
       responsable_id: esIdUUID ? jefeOCI.id : undefined,
       fecha_inicio: fechaInicio,
-      fecha_fin: fechaFin
+      fecha_fin: fechaFin,
+      equipo_aprobacion: comiteAprobacion || [],
+      orden_aprobacion: ordenAprobacion || 'secuencial',
     });
 
     if (planCreado && planCreado.roles) {
@@ -1680,6 +1701,15 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       // NO recargamos el plan ni cambiamos la vista aquí, 
       // lo hará el Wizard después de mostrar el Modal de feedback.
 
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`✅ [handleCrearPlan] RESUMEN FINAL:`);
+      console.log(`   Actividades creadas: ${actividadesCreadas}`);
+      console.log(`   Actividades fallidas: ${actividadesFallidas}`);
+      if (erroresPorActividad.length > 0) {
+        console.log(`   Errores:`, erroresPorActividad);
+      }
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
       if (actividadesFallidas === 0) {
         toast.success('Plan creado exitosamente', {
           description: `Plan anual ${vigencia} — ${actividadesCreadas} actividades guardadas`
@@ -1697,7 +1727,12 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       }
       return true;
     } else {
-      // Ya se disparó el toast de error desde useCreatePlanAnual
+      // crearPlanEnBackend devolvió null — el hook ya mostró toast, pero reforzamos el mensaje
+      console.error('[handleCrearPlan] ❌ No se pudo crear el plan. Posible duplicado de vigencia.');
+      toast.error('No se pudo crear el Plan Anual', {
+        description: `Verifique que no exista un plan para la vigencia ${vigencia} o que las fechas no se solapen con otro plan existente. Puede eliminar el plan existente desde el Dashboard.`,
+        duration: 12000
+      });
       return false;
     }
   } catch (error: any) {
@@ -1826,7 +1861,7 @@ function PantallaInicio({ planesAnteriores, onCrearNuevo, onAbrirPlan, onCargarM
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="flex-1 overflow-y-auto p-8"
+      className="flex-1 overflow-y-auto p-3"
     >
       <div className="max-w-6xl mx-auto">
         {/* Header */}

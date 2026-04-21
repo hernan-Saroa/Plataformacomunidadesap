@@ -29,6 +29,7 @@ import {
   EstadoActividad,
 } from './types';
 import { planAnualApi, actividadesApi, auditoresApi, estadisticasApi } from './api';
+import { configuracionesProfesionalesOCIApi } from '../api';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS PARA HOOKS
@@ -217,14 +218,30 @@ export function useAuditores(): UseQueryResult<Auditor[]> {
     setLoading(true);
     setError(null);
 
-    const response = await auditoresApi.getAll();
+    // ⚡ NUEVO: Cargar los profesionales explícitamente configurados en el módulo OCI
+    const response = await configuracionesProfesionalesOCIApi.getAll();
 
     if (response.success && response.data) {
-      setData(response.data);
+      const profesionales = response.data
+        .filter((config: any) => config.activo !== false)
+        .map((config: any) => {
+          const rawRole = String(config.rolOcig || config.rolOCI || config.rol_ocig || config.cargo || 'Auditor');
+          return {
+            id: String(config.idTercero || config.id), // UUID de la persona
+            nombre: config.nombre || `Profesional ${config.idTercero?.substring(0,6) || config.id?.substring(0,6)}`,
+            cargo: rawRole,
+            email: config.email || ''
+          };
+        });
+      console.log('⚡ [useAuditores] Profesionales mapeados:', profesionales);
+      setData(profesionales);
     } else {
-      // Si no hay endpoint de auditores, usar array vacío sin error
       setData([]);
-      console.warn('Endpoint de auditores no disponible:', response.error);
+      if (response.error && (String(response.error).includes('403') || String(response.error).includes('No tienes permisos') || String(response.error).includes('Forbidden'))) {
+        console.info('[useAuditores] Carga de configuraciones OCI omitida por diseño de permisos del usuario actual.');
+      } else {
+        console.warn('Endpoint de configuraciones OCI no disponible:', response.error);
+      }
     }
 
     setLoading(false);

@@ -617,7 +617,7 @@ export function NotificacionesModule() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="p-3 w-full">
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* ESTADO DE CARGA */}
       {/* ═══════════════════════════════════════════════════════════════ */}
@@ -674,40 +674,40 @@ export function NotificacionesModule() {
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* TABS */}
       {/* ═══════════════════════════════════════════════════════════════ */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 mb-6">
-        <div className="flex gap-2 border-b-2 border-gray-200 p-2">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-5">
+        <div className="flex gap-1.5 p-1.5">
           <button
             onClick={() => setTabActiva('configuracion')}
-            className={`flex-1 px-4 py-3 font-bold text-sm transition-all flex items-center justify-center gap-2 rounded-lg ${
+            className={`flex-1 px-4 py-2.5 font-semibold text-sm transition-all flex items-center justify-center gap-2 rounded-lg ${
               tabActiva === 'configuracion'
-                ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg'
-                : 'text-gray-600 hover:bg-gray-100'
+                ? 'bg-[#2962FF] text-white shadow-sm'
+                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
             }`}
           >
             <Settings className="w-4 h-4" />
             Configuración de Eventos
-            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
               tabActiva === 'configuracion'
                 ? 'bg-white/20 text-white'
-                : 'bg-blue-100 text-blue-700'
+                : 'bg-gray-100 text-gray-500'
             }`}>
               {eventos.length}
             </span>
           </button>
           <button
             onClick={() => setTabActiva('historial')}
-            className={`flex-1 px-4 py-3 font-bold text-sm transition-all flex items-center justify-center gap-2 rounded-lg ${
+            className={`flex-1 px-4 py-2.5 font-semibold text-sm transition-all flex items-center justify-center gap-2 rounded-lg ${
               tabActiva === 'historial'
-                ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg'
-                : 'text-gray-600 hover:bg-gray-100'
+                ? 'bg-[#7C3AED] text-white shadow-sm'
+                : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
             }`}
           >
             <History className="w-4 h-4" />
             Historial de Notificaciones
-            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
               tabActiva === 'historial'
                 ? 'bg-white/20 text-white'
-                : 'bg-purple-100 text-purple-700'
+                : 'bg-gray-100 text-gray-500'
             }`}>
               {historial.length}
             </span>
@@ -789,20 +789,20 @@ function TabConfiguracion({
       className="space-y-4"
     >
       {/* Filtro de categorías */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-4">
-        <div className="flex items-center gap-3 mb-3">
-          <Filter className="w-5 h-5 text-blue-600" />
-          <span className="font-bold text-gray-900">Filtrar por categoría:</span>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Filter className="w-4 h-4 text-gray-400" />
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Filtrar por categoría</span>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {categorias.map(cat => (
             <button
               key={cat}
               onClick={() => onCambiarCategoria(cat)}
-              className={`px-4 py-2 rounded-lg font-semibold text-sm transition-all ${
+              className={`px-3.5 py-1.5 rounded-lg font-semibold text-xs transition-all ${
                 categoriaFiltro === cat
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? 'bg-gray-900 text-white shadow-sm'
+                  : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
               }`}
             >
               {cat}
@@ -827,7 +827,7 @@ function TabConfiguracion({
       {/* Botón para crear nueva notificación */}
       <button
         onClick={onCrear}
-        className="flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-bold text-sm transition-all shadow-lg"
+        className="flex items-center gap-2 px-4 py-2.5 bg-[#2962FF] hover:bg-[#1e50d4] text-white rounded-lg font-semibold text-sm transition-all shadow-sm"
       >
         <Plus className="w-4 h-4" />
         Crear Notificación Personalizada
@@ -848,6 +848,18 @@ interface TarjetaEventoProps {
 }
 
 function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEventoProps) {
+  const getCategoriaHex = (categoria: string) => {
+    switch (categoria) {
+      case 'Kanban': return '#2962FF';
+      case 'Auditorías': return '#7C3AED';
+      case 'Planes Mejoramiento': return '#16A34A';
+      case 'Aprobaciones': return '#EAB308';
+      case 'Sistema': return '#6B7280';
+      case 'Personalizada': return '#EC4899';
+      default: return '#6B7280';
+    }
+  };
+
   const getCategoriaColor = (categoria: string) => {
     switch (categoria) {
       case 'Kanban': return { bg: 'bg-blue-50', border: 'border-blue-300', text: 'text-blue-700', icon: 'bg-blue-600' };
@@ -863,7 +875,7 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
   const color = getCategoriaColor(evento.categoria);
 
   return (
-    <div className={`bg-white rounded-xl border-2 ${color.border} p-5 hover:shadow-md transition-all ${!evento.activo && 'opacity-60'}`}>
+    <div className={`bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-all ${!evento.activo && 'opacity-50'}`} style={{ borderLeft: `3px solid ${getCategoriaHex(evento.categoria)}` }}>
       <div className="flex items-start gap-4">
         {/* Icono */}
         <div className={`${color.icon} p-3 rounded-xl flex-shrink-0`}>
@@ -874,8 +886,8 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between mb-2">
             <div>
-              <h3 className="text-lg font-black text-gray-900 mb-1">{evento.nombre}</h3>
-              <p className="text-sm text-gray-600 mb-3">{evento.descripcion}</p>
+              <h3 className="text-sm font-bold text-gray-900 mb-0.5">{evento.nombre}</h3>
+              <p className="text-xs text-gray-500">{evento.descripcion}</p>
             </div>
 
             {/* Toggle */}
@@ -902,15 +914,15 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
           </div>
 
           {/* Detalles */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-            <div className={`${color.bg} border-2 ${color.border} rounded-lg p-2`}>
-              <div className="text-xs font-semibold text-gray-500 mb-1">Categoría</div>
-              <div className={`text-sm font-bold ${color.text}`}>{evento.categoria}</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-3 mt-3">
+            <div className={`${color.bg} border ${color.border} rounded-lg px-2.5 py-1.5`}>
+              <div className="text-[10px] font-medium text-gray-400 mb-0.5">Categoría</div>
+              <div className={`text-xs font-bold ${color.text}`}>{evento.categoria}</div>
             </div>
 
-            <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-2">
-              <div className="text-xs font-semibold text-gray-500 mb-1">Canal</div>
-              <div className="flex items-center gap-1 text-sm font-bold text-gray-700">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5">
+              <div className="text-[10px] font-medium text-gray-400 mb-0.5">Canal</div>
+              <div className="flex items-center gap-1 text-xs font-bold text-gray-700">
                 {evento.canal === 'sistema' && <Bell className="w-3 h-3" />}
                 {evento.canal === 'email' && <Mail className="w-3 h-3" />}
                 {evento.canal === 'ambos' && (
@@ -923,16 +935,16 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
               </div>
             </div>
 
-            <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-2">
-              <div className="text-xs font-semibold text-gray-500 mb-1">Destinatarios</div>
-              <div className="text-sm font-bold text-gray-700">
+            <div className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5">
+              <div className="text-[10px] font-medium text-gray-400 mb-0.5">Destinatarios</div>
+              <div className="text-xs font-bold text-gray-700">
                 {evento.destinatarios.length} rol(es)
               </div>
             </div>
 
-            <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-2">
-              <div className="text-xs font-semibold text-gray-500 mb-1">Condición</div>
-              <div className="text-xs text-gray-600 line-clamp-1" title={evento.condicion}>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5">
+              <div className="text-[10px] font-medium text-gray-400 mb-0.5">Condición</div>
+              <div className="text-[11px] text-gray-600 line-clamp-1" title={evento.condicion}>
                 {evento.condicion || 'Inmediato'}
               </div>
             </div>
@@ -952,7 +964,7 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
           <div className="flex gap-2">
             <button
               onClick={() => onEditar(evento)}
-              className="px-4 py-2 bg-white border-2 border-gray-300 hover:border-blue-600 hover:bg-blue-50 text-gray-700 hover:text-blue-700 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all"
+              className="px-3 py-1.5 bg-white border border-gray-200 hover:border-gray-400 text-gray-600 hover:text-gray-900 rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-all"
             >
               <Edit2 className="w-4 h-4" />
               Configurar
@@ -960,7 +972,7 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
             {evento.esPersonalizada && (
               <button
                 onClick={() => onEliminar(evento.id)}
-                className="px-4 py-2 bg-red-50 border-2 border-red-300 hover:border-red-600 hover:bg-red-50 text-red-700 hover:text-red-700 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all"
+                className="px-3 py-1.5 bg-red-50 border border-red-200 hover:border-red-400 text-red-600 hover:text-red-700 rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-all"
               >
                 <Trash2 className="w-4 h-4" />
                 Eliminar
