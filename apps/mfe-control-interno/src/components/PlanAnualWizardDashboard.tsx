@@ -5105,6 +5105,38 @@ function SeccionGestionYSeguimiento({
               </div>
               
               <div className="flex items-center gap-3">
+                {/* 👤 Responsable(s) del rol */}
+                {(() => {
+                  const responsablesRol = (rol as any).responsables?.length > 0
+                    ? (rol as any).responsables
+                    : null;
+                  if (responsablesRol) {
+                    return (
+                      <div className="hidden sm:flex items-center gap-1.5">
+                        {responsablesRol.slice(0, 2).map((r: any, i: number) => (
+                          <span key={r.id || i} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium border border-blue-200">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                            {r.nombre || r}
+                          </span>
+                        ))}
+                        {responsablesRol.length > 2 && (
+                          <span className="text-xs text-blue-500 font-medium">+{responsablesRol.length - 2}</span>
+                        )}
+                      </div>
+                    );
+                  }
+                  // Fallback: mostrar Jefe OCI del plan
+                  if (plan.jefeOCI?.nombre) {
+                    return (
+                      <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium border border-gray-200">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                        {plan.jefeOCI.nombre}
+                        <span className="text-[9px] text-gray-400 ml-0.5">OCI</span>
+                      </span>
+                    );
+                  }
+                  return null;
+                })()}
                 <span className="px-3 py-1 rounded-lg text-sm font-semibold" style={{ 
                   backgroundColor: rol.color + '20', 
                   color: rol.color 
