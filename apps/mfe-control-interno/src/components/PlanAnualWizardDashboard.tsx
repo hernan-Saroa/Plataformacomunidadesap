@@ -3931,7 +3931,7 @@ function SeccionGestionYSeguimiento({
   // TAREAS DE SEGUIMIENTO — Monitoreo (no modifica el plan)
   // ═══════════════════════════════════════════════════════════════════════════
   const [formTareaActividadId, setFormTareaActividadId] = useState<string | number | null>(null);
-  const [nuevaTarea, setNuevaTarea] = useState({ descripcion: '', responsable: '', fechaLimite: '' });
+  const [nuevaTarea, setNuevaTarea] = useState({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false });
   const [guardandoTarea, setGuardandoTarea] = useState(false);
   const [comentarioTareaId, setComentarioTareaId] = useState<string | null>(null);
   const [textoComentarioTarea, setTextoComentarioTarea] = useState('');
@@ -3968,6 +3968,8 @@ function SeccionGestionYSeguimiento({
         responsables: nuevaTarea.responsable ? [nuevaTarea.responsable] : [],
         fechaEntrega: nuevaTarea.fechaLimite || undefined,
         observaciones: '',
+        requiereAdjuntos: nuevaTarea.requiereAdjuntos,
+        requiereObservaciones: nuevaTarea.requiereObservaciones,
       };
       const tareasActualizadas = [...tareasActuales, nuevaTareaObj];
       // Actualizar en el plan local
@@ -4000,7 +4002,7 @@ function SeccionGestionYSeguimiento({
         });
       }
       toast.success('Tarea de seguimiento agregada');
-      setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '' });
+      setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false });
       setFormTareaActividadId(null);
     } catch (err) {
       console.error('Error al agregar tarea:', err);
@@ -5373,6 +5375,26 @@ function SeccionGestionYSeguimiento({
                                             ✅ {tarea.fechaCompletado ? new Date(tarea.fechaCompletado).toLocaleDateString('es-CO') : 'Completada'}
                                           </span>
                                         )}
+
+                                        {/* 🔒 Requisitos para completar */}
+                                        {!tarea.completada && (tarea.requiereAdjuntos || tarea.requiereObservaciones) && (
+                                          <>
+                                            {tarea.requiereAdjuntos && (
+                                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                                                cantAdjuntos > 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-300'
+                                              }`}>
+                                                📎 {cantAdjuntos > 0 ? '✓ Adjunto OK' : 'Adjunto requerido'}
+                                              </span>
+                                            )}
+                                            {tarea.requiereObservaciones && (
+                                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                                                tieneObservacion ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-300'
+                                              }`}>
+                                                📝 {tieneObservacion ? '✓ Observación OK' : 'Observación requerida'}
+                                              </span>
+                                            )}
+                                          </>
+                                        )}
                                       </div>
 
                                       {/* Fila 3: Texto del comentario si existe */}
@@ -5399,7 +5421,7 @@ function SeccionGestionYSeguimiento({
                                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
                                         Nueva tarea de seguimiento
                                       </h5>
-                                      <button onClick={() => { setFormTareaActividadId(null); setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '' }); }} className="text-teal-600 hover:text-teal-800 text-sm">✕</button>
+                                      <button onClick={() => { setFormTareaActividadId(null); setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false }); }} className="text-teal-600 hover:text-teal-800 text-sm">✕</button>
                                     </div>
                                     <div className="space-y-2">
                                       <input
@@ -5429,9 +5451,40 @@ function SeccionGestionYSeguimiento({
                                           className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-teal-500"
                                         />
                                       </div>
+                                      {/* Requisitos para completar la tarea */}
+                                      <div className="flex items-center gap-4 py-1">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                          <button
+                                            type="button"
+                                            onClick={() => setNuevaTarea({ ...nuevaTarea, requiereAdjuntos: !nuevaTarea.requiereAdjuntos })}
+                                            className={`relative w-8 h-4 rounded-full transition-colors ${
+                                              nuevaTarea.requiereAdjuntos ? 'bg-teal-500' : 'bg-gray-300'
+                                            }`}
+                                          >
+                                            <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                                              nuevaTarea.requiereAdjuntos ? 'translate-x-4' : ''
+                                            }`} />
+                                          </button>
+                                          <span className="text-xs text-gray-700">📎 Requiere adjunto</span>
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                          <button
+                                            type="button"
+                                            onClick={() => setNuevaTarea({ ...nuevaTarea, requiereObservaciones: !nuevaTarea.requiereObservaciones })}
+                                            className={`relative w-8 h-4 rounded-full transition-colors ${
+                                              nuevaTarea.requiereObservaciones ? 'bg-teal-500' : 'bg-gray-300'
+                                            }`}
+                                          >
+                                            <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                                              nuevaTarea.requiereObservaciones ? 'translate-x-4' : ''
+                                            }`} />
+                                          </button>
+                                          <span className="text-xs text-gray-700">📝 Requiere observación</span>
+                                        </label>
+                                      </div>
                                       <div className="flex justify-end gap-2">
                                         <button
-                                          onClick={() => { setFormTareaActividadId(null); setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '' }); }}
+                                          onClick={() => { setFormTareaActividadId(null); setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false }); }}
                                           className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
                                         >Cancelar</button>
                                         <button
