@@ -188,6 +188,8 @@ interface Noticia {
   hechosSeparados?: { id: string; descripcion: string; fecha?: string }[];
   archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string; url: string }[];
   radicador?: string;
+  radicadorId?: string;
+  radicadorEmail?: string;
   fechaRegistro?: string;
 }
 
@@ -312,9 +314,10 @@ interface TarjetaNoticiaProps {
   colapsada?: boolean; // NUEVO: Indica si la tarjeta está colapsada
   onToggleColapso?: () => void; // NUEVO: Toggle para colapsar/expandir
   etapa?: string; // ✅ NUEVO: Etapa actual para condicionales
+  currentUserId?: string; // ✅ NUEVO: ID del usuario actual
 }
 
-function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa }: TarjetaNoticiaProps) {
+function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa, currentUserId }: TarjetaNoticiaProps) {
   const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
   const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR);
   const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
@@ -411,6 +414,32 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                 )}
               </div>
             </div>
+            {/* Radicador */}
+            {(noticia.radicador || noticia.radicadorId) && (
+              <div className="flex items-start gap-2.5">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">RAD</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                    {noticia.radicador || (noticia.radicadorId ? 'Usuario no encontrado' : 'Sin información')}
+                  </p>
+                  {noticia.radicadorEmail && (
+                    <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                      {noticia.radicadorEmail}
+                    </p>
+                  )}
+                  {!noticia.radicador && noticia.radicadorId && (
+                    <p className="text-[10px] text-gray-400 truncate mt-0.5">
+                      ID: {noticia.radicadorId}
+                    </p>
+                  )}
+                  {noticia.radicadorId && currentUserId && noticia.radicadorId === currentUserId && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-blue-100 text-blue-800 mt-1">
+                      Radicada por ti
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </KanbanCardInfoSection>
 
           {/* Proceso Asociado — compacto */}
@@ -1546,6 +1575,7 @@ interface ColumnaKanbanProps {
   onToggleColapso?: () => void;
   tarjetasColapsadas?: Set<string>; // NUEVO: Set de IDs de tarjetas colapsadas
   onToggleColapsoTarjeta?: (id: string) => void; // NUEVO: Toggle para tarjetas individuales
+  currentUserId?: string; // ✅ NUEVO: ID del usuario actual
 }
 
 function ColumnaKanban({
@@ -1584,7 +1614,8 @@ function ColumnaKanban({
   colapsada = false,
   onToggleColapso,
   tarjetasColapsadas,
-  onToggleColapsoTarjeta
+  onToggleColapsoTarjeta,
+  currentUserId
 }: ColumnaKanbanProps) {
   const [expandTimeout, setExpandTimeout] = useState<NodeJS.Timeout | null>(null);
 
@@ -1919,6 +1950,7 @@ function ColumnaKanban({
               colapsada={tarjetasColapsadas?.has(noticia.id)}
               onToggleColapso={() => onToggleColapsoTarjeta?.(noticia.id)}
               etapa={etapa} // ✅ NUEVO: Pasar etapa para condicionales
+              currentUserId={currentUserId} // ✅ NUEVO: ID del usuario actual
             />
           ))}
 
@@ -2500,7 +2532,9 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     tipo: 'noticia',
     kanbanStage: (noticia as any).kanbanStage,
     etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion',
-    radicador: (noticia as any).radicadorId,
+    radicador: (noticia as any).radicadorNombre || (noticia as any).radicador,
+    radicadorId: (noticia as any).radicadorId,
+    radicadorEmail: (noticia as any).radicadorEmail,
     procesoAsociado: (noticia as any).procesoAsociadoId ? {
       id: (noticia as any).procesoAsociadoId,
       numeroProceso: (noticia as any).procesoAsociadoNumero || '',
@@ -2554,7 +2588,10 @@ export const normalizeNoticia = (raw: any): Noticia => {
     diasPendientes: raw.diasPendientes || 0,
     etapaActual: raw.kanbanStage || raw.etapaActual || 'Recepcion',
     estado: raw.estado || 'pendiente',
-    adjuntos: raw.adjuntos || []
+    adjuntos: raw.adjuntos || [],
+    radicador: raw.radicadorNombre || raw.radicador,
+    radicadorId: raw.radicadorId,
+    radicadorEmail: raw.radicadorEmail
   };
 };
 
@@ -2682,6 +2719,10 @@ export function DashboardKanbanOperativo({
 
   // ✅ ESTADO PARA MODALES
   const [modalActivo, setModalActivo] = useState<ModalType>(null);
+
+  // ✅ USUARIO ACTUAL
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.id;
 
   // ✅ BÚSQUEDA GLOBAL COLAPSABLE — ícono → campo expandido
   const [busquedaGlobal, setBusquedaGlobal] = useState('');
@@ -2898,8 +2939,6 @@ export function DashboardKanbanOperativo({
       console.log('canViewAll', canViewAll);
       console.log('canViewMine', canViewMine);
       
-      const user = authService.getCurrentUser();
-      const currentUserId = user?.id;
       const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
 
       console.log('esJefe', esJefe);
@@ -3105,7 +3144,9 @@ export function DashboardKanbanOperativo({
       diasPendientes: (noticia as any).diasPendientes ?? dias,
       tipo: 'noticia' as const,
       etapaActual: etapaNormalizada,
-      radicador: (noticia as any).radicadorId,
+    radicador: (noticia as any).radicadorNombre || (noticia as any).radicador,
+    radicadorId: (noticia as any).radicadorId,
+    radicadorEmail: (noticia as any).radicadorEmail,
       // ✅ NUEVO: Mapear campos de remisión por competencia
       numeroRC: (noticia as any).numeroRC || (noticia as any).radicadoRemision || undefined,
       entidadRemision: (noticia as any).entidadRemision || (noticia as any).entidadDestino || undefined,
@@ -5421,6 +5462,7 @@ export function DashboardKanbanOperativo({
                           etapasConfig={etapasConfig}
                           tarjetasColapsadas={tarjetasColapsadas}
                           onToggleColapsoTarjeta={toggleTarjetaColapsada}
+                          currentUserId={currentUserId}
                         />
                       </div>
                     );
