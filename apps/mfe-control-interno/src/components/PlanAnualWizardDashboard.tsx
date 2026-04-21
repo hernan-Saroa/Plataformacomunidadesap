@@ -5098,20 +5098,23 @@ function SeccionGestionYSeguimiento({
         const actividadesVisibles = actividadesActivas.filter(actividad => {
           if (liderazgoVerTodos) return true; // Líderes o planificadores ven todo
           
-          // Leer datos del usuario directamente (evita race condition con useEffect)
-          const user = currentUser || (() => {
+          // Leer datos del usuario - usar fallback si currentUser no tiene campos de identidad
+          const hasIdentity = currentUser?.nombre || currentUser?.email || currentUser?.nombres;
+          const user = hasIdentity ? currentUser : (() => {
             try {
               const raw = localStorage.getItem('esap_user_data') || localStorage.getItem('esap-sesion-activa');
-              if (!raw) return null;
+              if (!raw) return currentUser; // al menos devolver lo que tenemos
               const d = JSON.parse(raw);
               const u = d?.user || d?.usuario || d;
-              return {
+              const result = {
+                ...(currentUser || {}),
                 ...u,
-                nombre: u?.person?.first_name ? `${u.person.first_name} ${u.person.last_name || ''}`.trim() : u?.fullName || u?.name || u?.username || '',
+                nombre: u?.person?.first_name ? `${u.person.first_name} ${u.person.last_name || ''}`.trim() : u?.fullName || u?.name || u?.username || u?.nombre || '',
                 email: u?.person?.email || u?.email || '',
-                idPerson: u?.person?.id || u?.idPerson,
+                idPerson: u?.person?.id || u?.idPerson || currentUser?.idPerson,
               };
-            } catch { return null; }
+              return result;
+            } catch { return currentUser; }
           })();
           if (!user) return false;
           
