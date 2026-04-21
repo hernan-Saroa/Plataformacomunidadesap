@@ -4,7 +4,7 @@
  * v2.0 - Con soporte para puntos de control
  */
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
@@ -21,6 +21,11 @@ import {
   type PuntoControl, 
   type FrecuenciaPuntoControl 
 } from './ModalConfiguracionPuntosControl';
+import { ModalFirmaOTP, type FirmaElectronicaMetadata } from './ModalFirmaOTP';
+
+// ⚠️ IMPORTACIÓN OBLIGATORIA DE REGLAS DE NEGOCIO Y CUMPLIMIENTO NORMATIVO
+import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
+import { createPortal } from 'react-dom';
 // Hook para sincronizar evidencias con backend y API de auditores
 import { useSaveEvidencias, actividadesApi, planAnualApi, type CreateActividadDto } from './services/plan-anual';
 import { configuracionesProfesionalesOCIApi } from './services/api';
@@ -36,9 +41,10 @@ import {
 } from './services/pdfESAPHeader';
 // ✅ NUEVO: Exportación Excel con logo
 import { exportarPlanAnualExcel } from './services/exportarPlanAnualExcel';
+import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 
 // Tipos re-exportados (deben coincidir con el archivo principal)
-type EstadoPlan = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'VIGENTE' | 'CERRADO';
+type EstadoPlan = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'VIGENTE' | 'CERRADO' | 'DEVUELTO';
 type EstadoActividad = 'PENDIENTE' | 'EN_EJECUCION' | 'COMPLETADA';
 
 interface Auditor {
@@ -218,6 +224,17 @@ interface Rol {
   actividades: Actividad[];
 }
 
+interface HistorialAprobacion {
+  auditorId: string;
+  auditorNombre: string;
+  estado: 'PENDIENTE' | 'OBSERVADA' | 'APROBADA';
+  observacion?: string;
+  fecha?: string;
+  firmaElectronica?: FirmaElectronicaMetadata;
+  respuestaSubsanacion?: string;
+  fechaRespuesta?: string;
+}
+
 interface PlanAnual {
   id: string;
   vigencia: number;
@@ -228,6 +245,9 @@ interface PlanAnual {
   fechaAprobacion: string | null;
   actaCICC: string | null;
   roles: Rol[];
+  equipoAprobacion?: Auditor[];
+  ordenAprobacion?: 'secuencial' | 'paralelo';
+  historialAprobaciones?: HistorialAprobacion[];
 }
 
 // Auditores - Valor por defecto mientras se cargan del backend
@@ -615,14 +635,47 @@ function SelectorProfesional({
   const [busqueda, setBusqueda] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+
+  const updatePosition = useCallback(() => {
+    if (isOpen && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setCoords({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width
+      });
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      updatePosition();
+      const handleScroll = () => {
+        setIsOpen(false); // Close on external scroll to prevent floating away
+      };
+      // Capture true to catch scroll events from any nested container
+      document.addEventListener('scroll', handleScroll, true);
+      window.addEventListener('resize', updatePosition);
+      return () => {
+        document.removeEventListener('scroll', handleScroll, true);
+        window.removeEventListener('resize', updatePosition);
+      };
+    }
+  }, [isOpen, updatePosition]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
+      // Allow clicks within the portal dropdown (prevent closing)
+      const popup = document.getElementById('selector-profesional-popup');
+      if (popup && popup.contains(e.target as Node)) return;
+      
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
       }
     };
     if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
@@ -657,14 +710,22 @@ function SelectorProfesional({
         <svg className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
       </button>
 
-      <AnimatePresence>
-        {isOpen && (
+      {isOpen && createPortal(
+        <AnimatePresence>
           <motion.div 
+            id="selector-profesional-popup"
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -5 }}
             transition={{ duration: 0.15 }}
-            className="absolute z-50 mt-1 w-[320px] max-w-[90vw] md:w-[380px] bg-white border border-gray-200 rounded-xl shadow-xl left-0 top-full overflow-hidden flex flex-col max-h-[320px]"
+            style={{
+              position: 'fixed',
+              top: coords.top,
+              left: coords.left,
+              width: coords.width,
+              zIndex: 99999
+            }}
+            className="bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[320px]"
           >
             <div className="p-2 border-b border-gray-100 sticky top-0 bg-gray-50 shadow-sm z-10 flex gap-2 items-center">
               <Search className="w-4 h-4 text-gray-400 absolute left-4" />
@@ -721,8 +782,9 @@ function SelectorProfesional({
               )}
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }
@@ -742,6 +804,8 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
   const [vigencia, setVigencia] = useState(new Date().getFullYear());
   const [fechaInicio, setFechaInicio] = useState(`${new Date().getFullYear()}-01-01`);
   const [fechaFin, setFechaFin] = useState(`${new Date().getFullYear()}-12-31`);
+  const [comiteAprobacion, setComiteAprobacion] = useState<Auditor[]>([]);
+  const [ordenAprobacion, setOrdenAprobacion] = useState<'secuencial' | 'paralelo'>('secuencial');
   
   // Estado para auditores cargados desde backend (profesionales OCI configurados)
   const [auditores, setAuditores] = useState<Auditor[]>(AUDITORES_DEFAULT);
@@ -979,7 +1043,7 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
     setPaso(paso + 1);
   };
 
-  const handleFinalizar = async () => {
+    const handleFinalizar = async () => {
     // Validación final de seguridad antes de crear el plan
     const rolesConActividades = rolesConfig.filter(rol => 
       (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0) > 0
@@ -1004,7 +1068,7 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
     
     try {
       setIsSubmitting(true);
-      const exito = await onCrear(vigencia, jefeSeleccionado, rolesConfig, fechaInicio, fechaFin);
+      const exito = await onCrear(vigencia, jefeSeleccionado, rolesConfig, fechaInicio, fechaFin, comiteAprobacion, ordenAprobacion);
       setIsSubmitting(false);
       
       if (exito) {
@@ -1023,11 +1087,11 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
       exit={{ opacity: 0 }}
       className="flex-1 flex flex-col bg-white relative"
     >
-      {/* Success Modal Overlay */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Fondo blanco difuminado */}
-          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm" />
+      {/* Success Modal Overlay (Portaled to body to cover whole screen) */}
+      {showSuccessModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+          {/* Fondo blanco difuminado intenso */}
+          <div className="absolute inset-0 bg-white/70 backdrop-blur-md" />
           {/* Modal */}
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -1049,7 +1113,8 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
               Ir al Dashboard <ArrowRight className="w-5 h-5" />
             </button>
           </motion.div>
-        </div>
+        </div>,
+        document.body
       )}
       {/* Header */}
       <div className="border-b-2 border-gray-200 px-8 py-6">
@@ -1094,7 +1159,19 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
               />
             )}
             {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={setRolesConfig} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} jefeOCI={jefeSeleccionado} />}
-            {paso === 3 && <Paso3 key="paso3" vigencia={vigencia} jefeOCI={jefeSeleccionado} rolesConfig={rolesConfig} />}
+            {paso === 3 && (
+              <Paso3 
+                key="paso3" 
+                vigencia={vigencia} 
+                jefeOCI={jefeSeleccionado} 
+                rolesConfig={rolesConfig} 
+                auditores={auditores}
+                comiteAprobacion={comiteAprobacion}
+                setComiteAprobacion={setComiteAprobacion}
+                ordenAprobacion={ordenAprobacion}
+                setOrdenAprobacion={setOrdenAprobacion}
+              />
+            )}
           </AnimatePresence>
         </div>
       </div>
@@ -1274,17 +1351,14 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               <span className="text-gray-600">Cargando profesionales OCI...</span>
             </div>
           ) : (() => {
-            // Solo mostrar profesionales con rol Jefe OCIG / Auditor Sénior
-            const responsablesAutorizados = auditores.filter((a: any) => {
-              const cargo = (a.cargo || '').toLowerCase();
-              const esJefeOCI = cargo.includes('jefe') && (cargo.includes('oci') || cargo.includes('ocig'));
-              const esAuditorSenior = cargo.includes('auditor') && (cargo.includes('senior') || cargo.includes('sénior') || cargo.includes('señior') || cargo.includes('sr'));
-              return esJefeOCI || esAuditorSenior;
-            });
+            // Solo mostrar profesionales con base en las reglas de negocio y perfil normativo
+            const responsablesAutorizados = auditores.filter((a: any) => 
+              REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esAutorizadoParaResponsablePlan(a.cargo)
+            );
             return responsablesAutorizados.length === 0 ? (
               <div className="flex items-center gap-2 px-4 py-3 border-2 border-orange-300 rounded-lg bg-orange-50">
                 <AlertCircle className="w-5 h-5 text-orange-600" />
-                <span className="text-orange-700">No hay profesionales con rol Jefe OCIG o Auditor Sénior configurados. Configure uno en Profesionales OCI.</span>
+                <span className="text-orange-700">No hay profesionales con rol Jefe OCIG o Auditor Líder configurados. Configure uno en Profesionales OCI.</span>
               </div>
             ) : (
               <select 
@@ -1299,7 +1373,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               </select>
             );
           })()}
-          <p className="text-xs text-gray-500 mt-1">Solo profesionales con rol Jefe OCIG o Auditor Sénior pueden ser responsables del Plan Anual</p>
+          <p className="text-xs text-gray-500 mt-1">Solo profesionales con rol Jefe OCIG o Auditor Líder pueden ser responsables del Plan Anual</p>
         </div>
       </div>
     </motion.div>
@@ -1790,7 +1864,7 @@ function Paso2({
                           ))}
                           {/* Dropdown para agregar — mismo estilo que SeccionAsignar */}
                           <SelectorProfesional
-                            auditores={auditores.filter(a => !rol.responsables.some((r: any) => r.id === a.id))}
+                            auditores={auditores.filter(a => !rol.responsables.some((r: any) => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
                             onSelect={(id) => {
                               if (!id) return;
                               const auditor = auditores.find(a => a.id === id);
@@ -2099,7 +2173,7 @@ function Paso2({
                                         Responsables de esta actividad
                                       </p>
                                       <div className="flex flex-col gap-1">
-                                        {/* Chips estilo SeccionAsignar */}
+                                        {/* Chips de responsables asignados */}
                                         {(actividadData?.responsables || []).map(r => (
                                           <div key={r.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
                                             <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">
@@ -2115,7 +2189,7 @@ function Paso2({
                                         ))}
                                         {/* Dropdown punteado */}
                                         <SelectorProfesional
-                                          auditores={auditores.filter(a => !(actividadData?.responsables || []).some(r => r.id === a.id))}
+                                          auditores={auditores.filter(a => !(actividadData?.responsables || []).some(r => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
                                           onSelect={(id) => {
                                             if (!id) return;
                                             const auditor = auditores.find(a => a.id === id);
@@ -2584,7 +2658,7 @@ function Paso2({
                                         </div>
                                       ))}
                                       <SelectorProfesional
-                                        auditores={auditores.filter(a => !(actividad.responsables || []).some(r => r.id === a.id))}
+                                        auditores={auditores.filter(a => !(actividad.responsables || []).some(r => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
                                         onSelect={(id) => {
                                           if (!id) return;
                                           const auditor = auditores.find(a => a.id === id);
@@ -2924,7 +2998,16 @@ function Paso2({
 }
 
 // Paso 3: Confirmación
-function Paso3({ vigencia, jefeOCI, rolesConfig }: any) {
+function Paso3({ 
+  vigencia, 
+  jefeOCI, 
+  rolesConfig,
+  auditores = [],
+  comiteAprobacion = [],
+  setComiteAprobacion,
+  ordenAprobacion,
+  setOrdenAprobacion
+}: any) {
   const totalActividades = rolesConfig.reduce((total: number, rol: any) => {
     return total + (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0);
   }, 0);
@@ -2980,40 +3063,133 @@ function Paso3({ vigencia, jefeOCI, rolesConfig }: any) {
           </div>
         </div>
 
-        {/* Detalle por rol */}
+        {/* COMITÉ DE APROBACIÓN */}
         <div className="mt-6 pt-6 border-t border-gray-200">
-          <h4 className="font-bold text-gray-900 mb-4">Detalle por rol</h4>
-          <div className="space-y-3">
-            {[...rolesConfig].sort((a: any, b: any) => a.numero - b.numero).map((rol: any) => {
-              const numActividades = (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0);
-              if (numActividades === 0) return null;
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h4 className="font-bold text-gray-900 flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-600" />
+                Comité Aprobador del Plan
+              </h4>
+              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                <Shield className="w-3 h-3 text-blue-400" /> Numeral 648 de 2017: Selecciona hasta 5 miembros aprobadores.
+              </p>
+            </div>
+            
+            <div className="flex bg-gray-100 p-1 rounded-lg">
+              <button
+                type="button"
+                onClick={() => setOrdenAprobacion?.('secuencial')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${ordenAprobacion === 'secuencial' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                📝 Secuencial
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrdenAprobacion?.('paralelo')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${ordenAprobacion === 'paralelo' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                ⚡ Paralelo
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-inner">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               
-              return (
-                <div key={rol.numero} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white text-sm ${
-                      rol.numero === 1 ? 'bg-blue-600' :
-                      rol.numero === 2 ? 'bg-purple-600' :
-                      rol.numero === 3 ? 'bg-green-600' :
-                      rol.numero === 4 ? 'bg-orange-600' :
-                      'bg-red-600'
-                    }`}>
-                      {rol.numero}
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-900 text-sm">{rol.nombre}</p>
-                      <p className="text-xs text-gray-600">
-                        {numActividades} actividad{numActividades !== 1 ? 'es' : ''}{(() => {
-                          const totalTareas = [...(rol.actividadesSeleccionadas || []), ...(rol.actividadesCustom || [])]
-                            .reduce((sum: number, a: any) => sum + (a.tareasSeguimiento?.length || 0), 0);
-                          return totalTareas > 0 ? ` • ${totalTareas} tarea${totalTareas !== 1 ? 's' : ''}` : '';
-                        })()} • {rol.responsables?.length || 0} responsable{(rol.responsables?.length || 0) !== 1 ? 's' : ''}
-                      </p>
-                    </div>
-                  </div>
+              {/* Buscador */}
+              <div className="space-y-3">
+                <label className="text-xs font-bold text-blue-900 uppercase tracking-wider">Agregar Miembro</label>
+                <div className="relative">
+                  <SelectorProfesional
+                    auditores={auditores.filter((a: any) => {
+                      const esAprobador = /aprobador/i.test(a.cargo || '');
+                      const yaSeleccionado = comiteAprobacion.find((c: any) => String(c.id) === String(a.id));
+                      return esAprobador && !yaSeleccionado;
+                    })}
+                    onSelect={(id) => {
+                      if (!id || comiteAprobacion.length >= 5) return;
+                      const auditor = auditores.find((a: any) => String(a.id) === String(id));
+                      if (auditor && setComiteAprobacion) {
+                        setComiteAprobacion([...comiteAprobacion, auditor]);
+                      }
+                    }}
+                    placeholder={comiteAprobacion.length >= 5 ? "Límite de 5 miembros alcanzado" : "+ Buscar Aprobador PAI..."}
+                    disabled={comiteAprobacion.length >= 5}
+                    className="w-full bg-white shadow-sm"
+                  />
                 </div>
-              );
-            })}
+                <p className="text-[10px] text-gray-500 leading-tight bg-white/50 p-2 rounded border border-blue-100">
+                  <span className="font-semibold text-blue-600">Tip:</span> Dependiendo de la jerarquía de la ESAP, elige estratégicamente el orden si optaste por modalidad secuencial.
+                </p>
+              </div>
+
+              {/* Lista Seleccionada */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-blue-900 uppercase tracking-wider">Flujo de Aprobación</label>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${comiteAprobacion.length === 5 ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                    {comiteAprobacion.length} / 5
+                  </span>
+                </div>
+                
+                {comiteAprobacion.length === 0 ? (
+                  <div className="text-sm text-gray-400 italic text-center p-6 border-2 border-dashed border-blue-200 rounded-xl bg-white shadow-sm flex flex-col items-center justify-center">
+                    <Users className="w-8 h-8 text-blue-200 mb-2" />
+                    El comité está vacío
+                  </div>
+                ) : (
+                  <div className="space-y-2 relative">
+                    {/* Línea conectora si es secuencial */}
+                    {ordenAprobacion === 'secuencial' && comiteAprobacion.length > 1 && (
+                      <div className="absolute left-3 top-4 bottom-4 w-0.5 bg-blue-200" />
+                    )}
+                    
+                    {comiteAprobacion.map((miembro: any, index: number) => {
+                      const getInitials = (name: string) => name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
+                      const getRoleBadgeColor = (role: string) => {
+                        const r = role.toLowerCase();
+                        if (r.includes('jefe') || r.includes('super') || r.includes('director')) return 'bg-purple-100 text-purple-700';
+                        if (r.includes('líder') || r.includes('lider') || r.includes('senior') || r.includes('sénior')) return 'bg-cyan-100 text-cyan-700';
+                        if (r.includes('junior') || r.includes('júnior')) return 'bg-green-100 text-green-700';
+                        if (r.includes('auditado')) return 'bg-amber-100 text-amber-700';
+                        if (r.includes('aprobador pai')) return 'bg-orange-100 text-orange-700';
+                        return 'bg-blue-100 text-blue-700';
+                      };
+
+                      return (
+                        <div key={miembro.id} className="relative flex items-center gap-3 p-2.5 bg-white border border-gray-200 rounded-xl shadow-sm group hover:border-blue-300 transition-all z-10">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${ordenAprobacion === 'secuencial' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-100 text-blue-700'}`}>
+                            {ordenAprobacion === 'secuencial' ? index + 1 : '•'}
+                          </div>
+                          
+                          <div className="w-9 h-9 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-[11px] font-black shrink-0">
+                            {getInitials(miembro.nombre)}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">{miembro.nombre}</p>
+                            <p className="text-[11px] text-gray-400 truncate">{miembro.email || 'jefe.oci@esap.edu.co'}</p>
+                          </div>
+
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${getRoleBadgeColor(miembro.cargo || 'Funcionario')}`}>
+                            {miembro.cargo || 'Funcionario'}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() => setComiteAprobacion && setComiteAprobacion(comiteAprobacion.filter((c: any) => c.id !== miembro.id))}
+                            className="w-7 h-7 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all ml-1"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -3675,7 +3851,6 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         <div className="flex gap-2 border-b border-gray-200">
           {[
             { id: 'gestion', label: 'Gestión y Seguimiento', icon: <TrendingUp className="w-4 h-4" />, visible: true },
-            { id: 'asignar', label: 'Asignar responsables', icon: <Users className="w-4 h-4" />, visible: puedeAsignarActividades },
             { id: 'aprobar', label: 'Aprobación', icon: <FileCheck className="w-4 h-4" />, visible: true }
           ].filter(tab => tab.visible).map((tab) => (
             <button
@@ -3694,9 +3869,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       <div className="flex-1 overflow-y-auto bg-gray-50 px-8 py-6">
         <div className="max-w-7xl mx-auto">
           <AnimatePresence mode="wait">
-            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} onCambiarPlan={onCambiarPlan} />}
-            {seccion === 'asignar' && <SeccionAsignar key="asignar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} auditores={auditores} cargandoAuditores={cargandoAuditores} puedeAsignar={puedeAsignarActividades} />}
-            {seccion === 'aprobar' && <SeccionAprobacion key="aprobar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} puedeAprobarPlan={puedeAprobarPlan} puedeActivarPlan={puedeActivarPlan} />}
+            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} cargandoAuditores={cargandoAuditores} onCambiarPlan={onCambiarPlan} />}
+            {seccion === 'aprobar' && <SeccionAprobacion key="aprobar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} puedeAprobarPlan={puedeAprobarPlan} puedeActivarPlan={puedeActivarPlan} puedeEditarPlan={puedeEditarPlan} auditores={auditores} />}
           </AnimatePresence>
         </div>
       </div>
@@ -3717,6 +3891,7 @@ function SeccionGestionYSeguimiento({
   onRefetchPlan,
   onAbrirRol4,
   auditores,
+  cargandoAuditores = false,
   onCambiarPlan
 }: { 
   plan: PlanAnual; 
@@ -3725,14 +3900,128 @@ function SeccionGestionYSeguimiento({
   onRefetchPlan?: () => Promise<void>;
   onAbrirRol4?: () => void;
   auditores: Auditor[];
+  cargandoAuditores?: boolean;
   onCambiarPlan?: (planId: string) => void;
 }) {
 
   // Estados para el seguimiento
+  const [rolExpandido, setRolExpandido] = useState<number | string | null>(null);
   const [actividadExpandida, setActividadExpandida] = useState<number | string | null>(null);
+  const [modoCardExpandida, setModoCardExpandida] = useState<'seguimiento' | 'edicion'>('seguimiento');
   const [modalAdjuntos, setModalAdjuntos] = useState<{ actividadId: number | string; rolNumero: number } | null>(null);
   const [nuevaObservacion, setNuevaObservacion] = useState('');
   const [mostrarSelectorApoyo, setMostrarSelectorApoyo] = useState(false);
+
+  // Estado para formulario de nueva actividad inline
+  const [mostrarFormNuevaActividad, setMostrarFormNuevaActividad] = useState<number | null>(null);
+  const [nuevaActividad, setNuevaActividad] = useState<ActividadBase>({
+    nombre: '',
+    descripcion: '',
+    fechaInicio: new Date().toISOString().split('T')[0],
+    fechaFin: new Date().toISOString().split('T')[0],
+    control: 'Seguimiento trimestral',
+    evaluacion: '0% avance',
+    seguimiento: 'Por definir'
+  });
+
+  // Asignar responsables integrados
+  const [asignandoId, setAsignandoId] = useState<string | number | null>(null);
+  
+  const asignarResponsableInline = async (rolNumero: number, actividadId: number | string, auditor: Auditor) => {
+    setAsignandoId(actividadId);
+    const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
+    const responsablesActuales = actividadActual?.responsables?.length ? actividadActual.responsables : (actividadActual?.responsable ? [actividadActual.responsable] : []);
+    
+    if (responsablesActuales.some((r: Auditor) => r.id === auditor.id)) {
+      toast.info('Ya asignado', { description: `${auditor.nombre} ya es responsable de esta actividad` });
+      setAsignandoId(null);
+      return;
+    }
+    
+    const nuevosResponsables = [...responsablesActuales, auditor];
+    const planActualizado = {
+      ...plan,
+      roles: plan.roles.map(rol => {
+        if (rol.numero === rolNumero) {
+          return { ...rol, actividades: rol.actividades.map(act => act.id === actividadId ? { ...act, responsables: nuevosResponsables, responsable: nuevosResponsables[0] } : act) };
+        }
+        return rol;
+      })
+    };
+    onActualizar(planActualizado as any);
+    
+    try {
+      const res = await actividadesApi.update(String(actividadId), { responsable: nuevosResponsables[0].nombre, responsables: nuevosResponsables });
+      if (res.success) { toast.success('Responsable agregado'); onRefetchPlan?.(); } else { toast.error('Error', { description: res.error }); }
+    } catch (e) { toast.error('Error al guardar en el servidor'); }
+    finally { setAsignandoId(null); }
+  };
+
+  const quitarResponsableInline = async (rolNumero: number, actividadId: number | string, auditorId: string) => {
+    setAsignandoId(actividadId);
+    const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
+    const responsablesActuales = actividadActual?.responsables?.length ? actividadActual.responsables : (actividadActual?.responsable ? [actividadActual.responsable] : []);
+    const nuevosResponsables = responsablesActuales.filter((r: Auditor) => r.id !== auditorId);
+    
+    const planActualizado = {
+      ...plan,
+      roles: plan.roles.map(rol => {
+        if (rol.numero === rolNumero) {
+          return { ...rol, actividades: rol.actividades.map(act => act.id === actividadId ? { ...act, responsables: nuevosResponsables, responsable: nuevosResponsables[0] || null } : act) };
+        }
+        return rol;
+      })
+    };
+    onActualizar(planActualizado as any);
+    
+    try {
+      const res = await actividadesApi.update(String(actividadId), { responsable: nuevosResponsables[0]?.nombre || '', responsables: nuevosResponsables });
+      if (res.success) { toast.success('Asignación removida'); onRefetchPlan?.(); } else { toast.error('Error', { description: res.error }); }
+    } catch (e) { toast.error('Error al guardar en el servidor'); }
+    finally { setAsignandoId(null); }
+  };
+
+  // ── AGREGAR ACTIVIDAD INLINE ─────────────────────────────────────────────
+  const agregarActividadInline = async (rolNumero: number) => {
+    if (!nuevaActividad.nombre.trim()) {
+      toast.error('El nombre de la actividad es obligatorio');
+      return;
+    }
+
+    try {
+      const payload = {
+        nombre: nuevaActividad.nombre.trim(),
+        descripcion: nuevaActividad.descripcion.trim(),
+        fecha_inicio: nuevaActividad.fechaInicio,
+        fecha_fin: nuevaActividad.fechaFin,
+        rol_numero: rolNumero,
+        plan_anual_id: plan.id,
+        estado: 'pendiente',
+        porcentaje_avance: 0,
+      };
+
+      const res = await actividadesApi.create(payload);
+      if (res.success) {
+        toast.success('Actividad agregada', { description: `"${nuevaActividad.nombre}" añadida al Rol ${rolNumero}` });
+        setNuevaActividad({
+          nombre: '',
+          descripcion: '',
+          fechaInicio: new Date().toISOString().split('T')[0],
+          fechaFin: new Date().toISOString().split('T')[0],
+          control: 'Seguimiento trimestral',
+          evaluacion: '0% avance',
+          seguimiento: 'Por definir'
+        });
+        setMostrarFormNuevaActividad(null);
+        onRefetchPlan?.();
+      } else {
+        toast.error('Error al crear actividad', { description: res.error || 'Inténtalo de nuevo' });
+      }
+    } catch (error: any) {
+      console.error('[agregarActividadInline] Error:', error);
+      toast.error('Error al crear actividad', { description: error?.message || 'Error de red' });
+    }
+  };
 
   // ── ENTRADAS DE SEGUIMIENTO POR CORTE ────────────────────────────────────
   const [corteConFormAbierto, setCorteConFormAbierto] = useState<string | null>(null);
@@ -3763,12 +4052,21 @@ function SeccionGestionYSeguimiento({
     evaluacion: '',
     seguimiento: '',
     fechaInicio: '',
-    fechaFin: ''
+    fechaFin: '',
+    tareas: [] as any[],
+    puntosControl: [] as any[],
+    frecuenciaPuntosControl: 'trimestral',
+    fechaCorte: ''
   });
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
+  const [modalCortesConfig, setModalCortesConfig] = useState(false);
   
-  // ✅ NUEVO: Estado para controlar qué roles están colapsados/expandidos
-  const [rolesColapsados, setRolesColapsados] = useState<Record<number, boolean>>({});
+  // ✅ Modificado: roles colapsados por defecto (true)
+  const [rolesColapsados, setRolesColapsados] = useState<Record<number, boolean>>(() => {
+    const estado: Record<number, boolean> = {};
+    if (plan?.roles) plan.roles.forEach(r => estado[r.numero] = true);
+    return estado;
+  });
   const [formulario, setFormulario] = useState({
     control: '',
     evaluacion: '',
@@ -3980,7 +4278,7 @@ function SeccionGestionYSeguimiento({
     }
   };
 
-  // ✅ NUEVO: Abrir modal de edición de actividad
+  // ✅ NUEVO: Abrir edición de actividad inline
   const abrirModalEdicion = (actividad: Actividad, rolNumero: number) => {
     setFormularioEdicion({
       nombre: actividad.nombre || '',
@@ -3989,9 +4287,15 @@ function SeccionGestionYSeguimiento({
       evaluacion: actividad.evaluacion || '',
       seguimiento: actividad.seguimiento || '',
       fechaInicio: actividad.fechaInicio || '',
-      fechaFin: actividad.fechaFin || ''
+      fechaFin: actividad.fechaFin || '',
+      tareas: actividad.tareasSeguimiento || [],
+      puntosControl: actividad.puntosControl || [],
+      frecuenciaPuntosControl: actividad.frecuenciaPuntosControl || 'trimestral',
+      fechaCorte: (actividad.puntosControl && actividad.puntosControl.length > 0) ? actividad.puntosControl[actividad.puntosControl.length - 1].fechaProgramada : (actividad.fechaFin || '')
     });
     setModalEdicion({ visible: true, rolNumero, actividad });
+    setActividadExpandida(actividad.id || null);
+    setModoCardExpandida('edicion');
   };
 
   // ✅ NUEVO: Guardar edición de actividad
@@ -4007,7 +4311,10 @@ function SeccionGestionYSeguimiento({
         evaluacion: formularioEdicion.evaluacion,
         seguimiento: formularioEdicion.seguimiento,
         fecha_inicio: formularioEdicion.fechaInicio,
-        fecha_fin: formularioEdicion.fechaFin
+        fecha_fin: formularioEdicion.fechaFin,
+        tareas_seguimiento: formularioEdicion.tareas,
+        puntos_control: formularioEdicion.puntosControl,
+        frecuencia_puntos_control: formularioEdicion.frecuenciaPuntosControl
       };
       
       console.log('✏️ [guardarEdicionActividad] Guardando:', payload);
@@ -4031,7 +4338,10 @@ function SeccionGestionYSeguimiento({
                         evaluacion: formularioEdicion.evaluacion,
                         seguimiento: formularioEdicion.seguimiento,
                         fechaInicio: formularioEdicion.fechaInicio,
-                        fechaFin: formularioEdicion.fechaFin
+                        fechaFin: formularioEdicion.fechaFin,
+                        tareasSeguimiento: formularioEdicion.tareas,
+                        puntosControl: formularioEdicion.puntosControl,
+                        frecuenciaPuntosControl: formularioEdicion.frecuenciaPuntosControl
                       } 
                     : act
                 )
@@ -4043,6 +4353,7 @@ function SeccionGestionYSeguimiento({
         onActualizar(planActualizado);
         toast.success('Actividad actualizada', { description: 'Los cambios se guardaron correctamente' });
         setModalEdicion(null);
+        setModoCardExpandida('seguimiento');
         onRefetchPlan?.();
       } else {
         toast.error('Error al guardar', { description: res.error || 'No se pudieron guardar los cambios' });
@@ -4392,6 +4703,29 @@ function SeccionGestionYSeguimiento({
       console.warn('[SeccionGestionYSeguimiento] Error al recargar plan tras guardar:', e);
     }
   };
+
+  const renderBotonToggleRoles = () => {
+    const todosColapsados = plan.roles.length > 0 && plan.roles.every(r => rolesColapsados[r.numero] === true);
+    return (
+      <button
+        onClick={() => toggleTodosRoles(!todosColapsados)}
+        className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-md font-semibold text-xs flex items-center gap-2 transition-all shadow-sm"
+      >
+        {todosColapsados ? (
+          <>
+            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            Expandir todos los roles
+          </>
+        ) : (
+          <>
+            <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+            Colapsar todos los roles
+          </>
+        )}
+      </button>
+    );
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -4437,47 +4771,56 @@ function SeccionGestionYSeguimiento({
         </div>
       </div>
 
-      {/* Alertas y recomendaciones */}
-      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 relative">
-        <div className="absolute top-4 right-4 text-xs font-mono text-blue-400 bg-white/50 px-2 py-1 rounded">
-          ID: {plan.id}
-        </div>
-        <div className="flex items-start gap-4">
-          <AlertCircle className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="pr-20">
-            <h3 className="font-semibold text-blue-900 mb-2">
-              {plan.estado === 'BORRADOR' ? 'Instrucciones: Modo Borrador' : 'Gestión del Plan'}
+      {/* Alertas y recomendaciones (Colapsable para ahorrar espacio) */}
+      <details className="bg-blue-50 border border-blue-200 rounded-lg overflow-hidden group mb-6 [&_summary::-webkit-details-marker]:hidden">
+        <summary className="flex items-center justify-between p-3 cursor-pointer hover:bg-blue-100/50 transition-colors select-none">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
+            <h3 className="font-semibold text-blue-900 text-sm m-0">
+              {plan.estado === 'BORRADOR' ? 'Instrucciones: Modo Borrador' : 'Información y Gestión del Plan'}
             </h3>
-            <p className="text-sm text-blue-800 mb-3">
-              {plan.estado === 'BORRADOR'
-                ? 'Tu plan está en Borrador. Asegúrate de desplegar los roles, asignar responsables y definir la periodicidad (fechas y cortes) antes de solicitar su aprobación para iniciar ejecución.'
-                : 'Estás visualizando un plan en ejecución. Este sistema permite gestionar el plan completo, asignar responsables, hacer seguimiento y aprobar actividades.'}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <div className="bg-blue-100/50 rounded p-2 inline-block">
-                <p className="text-xs text-blue-800">
-                  📌 <strong>Cumplimiento Normativo:</strong> Este diseño cumple con la estructura obligatoria del Decreto 648 de 2017 empleando 5 roles estratégicos fijos.
-                </p>
-              </div>
-              <div className="bg-blue-100/50 rounded p-2 inline-block">
-                <p className="text-xs text-blue-800">
-                   ⚙️ <strong>Sistema Automático:</strong> El porcentaje de avance se calcula automáticamente conforme a las evidencias de seguimiento y fechas de corte.
-                </p>
-              </div>
+          </div>
+          <div className="flex items-center gap-3">
+             <span className="text-[10px] font-mono text-blue-400 opacity-70">ID: {plan.id}</span>
+             <svg className="w-4 h-4 text-blue-600 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+          </div>
+        </summary>
+        
+        <div className="px-4 pb-4 pt-2 border-t border-blue-100 bg-white/40">
+          <p className="text-xs text-blue-800 mb-3 leading-relaxed">
+            {plan.estado === 'BORRADOR'
+              ? 'Tu plan está en Borrador. Asegúrate de desplegar los roles, asignar responsables y definir la periodicidad (fechas y cortes) antes de solicitar su aprobación para iniciar ejecución.'
+              : 'Estás visualizando un plan en ejecución. Este sistema permite gestionar el plan completo, asignar responsables, hacer seguimiento y aprobar actividades.'}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <div className="bg-white border border-blue-200 shadow-sm rounded-md p-2 inline-flex items-start gap-1.5 flex-1 min-w-[250px]">
+              <span className="text-sm leading-none">📌</span>
+              <p className="text-[10px] text-blue-800 leading-tight">
+                <strong>Cumplimiento Normativo:</strong> Estructura obligatoria del Decreto 648 de 2017 empleando 5 roles estratégicos fijos.
+              </p>
+            </div>
+            <div className="bg-white border border-blue-200 shadow-sm rounded-md p-2 inline-flex items-start gap-1.5 flex-1 min-w-[250px]">
+              <span className="text-sm leading-none">⚙️</span>
+              <p className="text-[10px] text-blue-800 leading-tight">
+                 <strong>Sistema Automático:</strong> El porcentaje de avance se calcula automáticamente conforme a las evidencias y cortes.
+              </p>
             </div>
           </div>
         </div>
-      </div>
+      </details>
 
       {/* Historial de Planes Anteriores */}
       {planesAnteriores.length > 0 && (
         <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between mb-4 gap-4">
             <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <FileText className="w-5 h-5 text-gray-600" />
               Historial de Planes Anteriores
             </h3>
-            <span className="text-sm text-gray-500">{planesAnteriores.length} plan(es) completado(s)</span>
+            <div className="flex items-center gap-4 flex-wrap">
+              <span className="text-sm text-gray-500 font-medium">{planesAnteriores.length} plan(es) completado(s)</span>
+              {renderBotonToggleRoles()}
+            </div>
           </div>
           
           <div className="space-y-3">
@@ -4512,16 +4855,6 @@ function SeccionGestionYSeguimiento({
                     <p>Aprobado: {planAnterior.fechaAprobacion || 'N/A'}</p>
                     <p>{planAnterior.roles.reduce((sum, rol) => sum + rol.actividades.length, 0)} actividades</p>
                   </div>
-                  {onCambiarPlan && (
-                    <button
-                      onClick={() => onCambiarPlan(planAnterior.id)}
-                      className="ml-4 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 hover:text-blue-600 transition-colors text-sm font-medium flex items-center gap-2"
-                      title="Abrir y gestionar este plan"
-                    >
-                      <Eye className="w-4 h-4" />
-                      Visualizar
-                    </button>
-                  )}
                 </div>
               </div>
             ))}
@@ -4534,32 +4867,12 @@ function SeccionGestionYSeguimiento({
           Vista unificada: estadísticas + seguimiento detallado
           ══════════════════════════════════════════════════════════════════════ */}
       
-      {/* ✅ NUEVO: Botones de control global reubicados */}
-      <div className="flex justify-end items-center pb-2">
-        <div className="flex bg-gray-50 border border-gray-200 rounded-lg p-1">
-          <button
-            onClick={() => toggleTodosRoles(false)}
-            className="px-3 py-1.5 hover:bg-white hover:text-green-700 hover:shadow-sm text-gray-600 rounded-md font-medium text-xs flex items-center gap-1.5 transition-all"
-            title="Expandir todos los roles"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-            Expandir todo
-          </button>
-          <div className="w-px bg-gray-200 mx-1 self-stretch"></div>
-          <button
-            onClick={() => toggleTodosRoles(true)}
-            className="px-3 py-1.5 hover:bg-white hover:text-gray-900 hover:shadow-sm text-gray-600 rounded-md font-medium text-xs flex items-center gap-1.5 transition-all"
-            title="Colapsar todos los roles"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-            </svg>
-            Colapsar todo
-          </button>
+      {/* ✅ NUEVO: Botones de control global reubicados en 1 solo botón para ahorrar espacio */}
+      {planesAnteriores.length === 0 && (
+        <div className="flex justify-end mb-2">
+          {renderBotonToggleRoles()}
         </div>
-      </div>
+      )}
 
       {/* Lista de roles y actividades con seguimiento */}
       {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => {
@@ -4597,1921 +4910,10 @@ function SeccionGestionYSeguimiento({
           ? Math.round(actividadesVisibles.reduce((s, a) => s + (a.porcentajeAvance || 0), 0) / totalActividades) 
           : 0;
         const estaColapsado = rolesColapsados[rol.numero] || false;
+        const isExpanded = rolExpandido === rol.numero;
         
         return (
           <div key={rol.numero} className="bg-white rounded-xl border-2 border-gray-200 p-6">
-            {/* HEADER DEL ROL CON ESTADÍSTICAS INTEGRADAS */}
-            <div className="mb-5">
-              {/* Título y semáforo */}
-              <div className="flex items-center gap-3 mb-4 pb-4 border-b-2 border-gray-200">
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ backgroundColor: rol.color + '20' }}>
-                  {rol.icono}
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-gray-900">Rol {rol.numero}: {rol.nombre}</h3>
-                  <p className="text-sm text-gray-600">{rol.descripcion}</p>
-                </div>
-                {/* Botón especial para Rol 4: Programa de Auditorías */}
-                {rol.numero === 4 && onAbrirRol4 && (
-                  <button
-                    onClick={() => {
-                      onAbrirRol4();
-                    }}
-                    className="px-4 py-2 bg-gradient-to-r from-purple-600 to-purple-700 hover:shadow-xl text-white rounded-lg font-semibold text-sm flex items-center gap-2 transition-all"
-                    title="Acceder al Programa de Auditoría"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                    </svg>
-                    Programa Integrado
-                  </button>
-                )}
-                {/* ✅ NUEVO: Botón de colapso/expansión individual */}
-                <button
-                  onClick={() => toggleRolColapsado(rol.numero)}
-                  className="w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-lg transition-all"
-                  title={estaColapsado ? 'Expandir rol' : 'Colapsar rol'}
-                >
-                  <motion.svg
-                    className="w-5 h-5 text-gray-700"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    animate={{ rotate: estaColapsado ? 0 : 180 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </motion.svg>
-                </button>
-                <SemaforoSeguimientoPAI 
-                  porcentaje={avance}
-                  variant="circular"
-                  size="lg"
-                  showIcon={false}
-                />
-              </div>
-
-              {/* ✅ CONTENIDO COLAPSABLE: Estadísticas, barra de progreso y actividades */}
-              <AnimatePresence>
-                {!estaColapsado && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.3, ease: 'easeInOut' }}
-                    className="overflow-hidden"
-                  >
-                    {/* ESTADÍSTICAS DEL ROL (Fusionado del Resumen) */}
-                    <div className="grid grid-cols-5 gap-3 mb-4">
-                      <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-200">
-                        <p className="text-xs text-gray-600 mb-1">Total</p>
-                        <p className="text-2xl font-bold text-gray-900">{totalActividades}</p>
-                        <p className="text-[10px] text-gray-500">actividades</p>
-                      </div>
-                      <div className="bg-purple-50 rounded-lg p-3 text-center border border-purple-200">
-                        <p className="text-xs text-purple-600 mb-1">Asignadas</p>
-                        <p className="text-2xl font-bold text-purple-700">{asignadas}</p>
-                        <p className="text-[10px] text-purple-600">{totalActividades > 0 ? Math.round(asignadas/totalActividades*100) : 0}%</p>
-                      </div>
-                      <div className="bg-orange-50 rounded-lg p-3 text-center border border-orange-200">
-                        <p className="text-xs text-orange-600 mb-1">En curso</p>
-                        <p className="text-2xl font-bold text-orange-700">{enProgreso}</p>
-                        <p className="text-[10px] text-orange-600">{totalActividades > 0 ? Math.round(enProgreso/totalActividades*100) : 0}%</p>
-                      </div>
-                      <div className="bg-green-50 rounded-lg p-3 text-center border border-green-200">
-                        <p className="text-xs text-green-600 mb-1">Completadas</p>
-                        <p className="text-2xl font-bold text-green-700">{completadas}</p>
-                        <p className="text-[10px] text-green-600">{totalActividades > 0 ? Math.round(completadas/totalActividades*100) : 0}%</p>
-                      </div>
-                      <div className="bg-blue-50 rounded-lg p-3 text-center border border-blue-200">
-                        <p className="text-xs text-blue-600 mb-1">Avance</p>
-                        <p className="text-2xl font-bold text-blue-700">{avance}%</p>
-                        <p className="text-[10px] text-blue-600">promedio</p>
-                      </div>
-                    </div>
-
-                    {/* ════════════════════════════════════════════════════════════════
-                        NUEVO: SECCIÓN ESPECIAL ROL 4 - CUMPLIMIENTO PROGRAMA AUDITORÍAS
-                        ════════════════════════════════════════════════════════════════ */}
-                    {rol.numero === 4 && (
-                      <div className="mt-4 p-4 bg-gradient-to-r from-[#F0F6FF] to-[#E6F0FF] rounded-xl border-2 border-[#003DA5]/30">
-                        <div className="flex items-center justify-between gap-2 mb-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-lg bg-[#003DA5] flex items-center justify-center">
-                              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                              </svg>
-                            </div>
-                            <div>
-                              <h4 className="font-bold text-[#003DA5]">📊 Cumplimiento Programa de Auditorías</h4>
-                              <p className="text-xs text-[#002B75]">Cálculo automático basado en auditorías finalizadas vs programadas (vigencia {vigenciaPlan})</p>
-                            </div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={handleRefrescarCumplimiento}
-                            disabled={cumplimientoAuditorias.cargando}
-                            className="px-3 py-1.5 bg-white border border-[#003DA5]/30 rounded-lg text-sm font-medium text-[#003DA5] hover:bg-[#F0F6FF] disabled:opacity-50 flex items-center gap-2"
-                          >
-                            {cumplimientoAuditorias.cargando ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <RefreshCw className="w-4 h-4" />
-                            )}
-                            Actualizar
-                          </button>
-                        </div>
-                        
-                        {/* Métricas principales */}
-                        <div className="grid grid-cols-3 gap-3 mb-3">
-                          <div className="bg-white rounded-lg p-3 text-center border border-[#003DA5]/20 shadow-sm">
-                            <p className="text-xs text-gray-600 mb-1">Programadas</p>
-                            <p className="text-3xl font-bold text-[#003DA5]">
-                              {cumplimientoAuditorias.cargando ? '...' : cumplimientoAuditorias.totalProgramadas}
-                            </p>
-                            <p className="text-[10px] text-gray-500">auditorías totales</p>
-                          </div>
-                          <div className="bg-white rounded-lg p-3 text-center border border-[#C89F3C]/30 shadow-sm">
-                            <p className="text-xs text-gray-600 mb-1">Finalizadas</p>
-                            <p className="text-3xl font-bold text-[#C89F3C]">
-                              {cumplimientoAuditorias.cargando ? '...' : cumplimientoAuditorias.totalFinalizadas}
-                            </p>
-                            <p className="text-[10px] text-gray-500">completadas</p>
-                          </div>
-                          <div className="bg-white rounded-lg p-3 text-center border border-[#003DA5]/20 shadow-sm">
-                            <p className="text-xs text-gray-600 mb-1">Cumplimiento</p>
-                            <p className={`text-3xl font-bold ${
-                              cumplimientoAuditorias.porcentajeCumplimiento >= 80 ? 'text-green-700' : 
-                              cumplimientoAuditorias.porcentajeCumplimiento >= 50 ? 'text-[#C89F3C]' : 'text-red-600'
-                            }`}>
-                              {cumplimientoAuditorias.cargando ? '...' : `${cumplimientoAuditorias.porcentajeCumplimiento}%`}
-                            </p>
-                            <p className="text-[10px] text-gray-500">del programa</p>
-                          </div>
-                        </div>
-
-                        {/* Barra de progreso visual */}
-                        <div className="bg-gray-200 rounded-full h-3 overflow-hidden mb-3">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              cumplimientoAuditorias.porcentajeCumplimiento >= 80 ? 'bg-green-500' : 
-                              cumplimientoAuditorias.porcentajeCumplimiento >= 50 ? 'bg-[#C89F3C]' : 'bg-red-500'
-                            }`}
-                            style={{ width: `${Math.min(cumplimientoAuditorias.porcentajeCumplimiento, 100)}%` }}
-                          />
-                        </div>
-
-                        {/* Desglose por tipo si hay datos */}
-                        {Object.keys(cumplimientoAuditorias.desglosePorTipo).length > 0 && (
-                          <div className="bg-white/70 rounded-lg p-3 border border-[#003DA5]/10">
-                            <p className="text-xs font-semibold text-[#003DA5] mb-2">Desglose por Tipo:</p>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                              {Object.entries(cumplimientoAuditorias.desglosePorTipo).map(([tipo, datos]) => (
-                                <div key={tipo} className="bg-[#F0F6FF] rounded p-2 text-center">
-                                  <p className="text-[10px] text-[#002B75] capitalize">{tipo}</p>
-                                  <p className="text-sm font-bold text-[#003DA5]">
-                                    {datos.finalizadas}/{datos.programadas}
-                                  </p>
-                                  <p className="text-[9px] text-[#002B75]/70">
-                                    {datos.en_proceso} en curso
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Barra de progreso */}
-                    <div>
-                      <SemaforoSeguimientoPAI 
-                        porcentaje={avance}
-                        variant="bar"
-                        size="md"
-                        showLabel={false}
-                        showIcon={false}
-                      />
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-          {/* ✅ Actividades también colapsables */}
-          <AnimatePresence>
-            {!estaColapsado && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.3, ease: 'easeInOut' }}
-                className="overflow-hidden"
-              >
-                <div className="space-y-3">
-            {actividadesVisibles.length === 0 ? (
-              <div className="bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl p-8 text-center mt-2">
-                <div className="w-16 h-16 mx-auto bg-gray-200 rounded-full flex items-center justify-center mb-4">
-                  <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-                  </svg>
-                </div>
-                <h4 className="text-gray-900 font-bold mb-2">Aún no hay actividades</h4>
-                <p className="text-gray-500 max-w-md mx-auto text-sm">
-                  {liderazgoVerTodos 
-                    ? "Este rol está vacío. Por favor, cambia a la pestaña superior 'Asignar responsables' para empezar a crear la planificación."
-                    : "No tienes actividades bajo tu responsabilidad en este rol."}
-                </p>
-              </div>
-            ) : (
-            actividadesVisibles.map((actividad, idx) => (
-              <div 
-                key={`${rol.numero}-${idx}-${actividad.id}`} 
-                style={{ contentVisibility: 'auto', containIntrinsicSize: '250px' }}
-                className={`border-2 rounded-lg overflow-hidden ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200'}`}
-              >
-                {/* Header */}
-                <div className={`p-4 ${actividad.activo === false ? 'bg-red-50' : 'bg-gray-50'}`}>
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2 flex-wrap">
-                        <span className="w-6 h-6 bg-gray-200 rounded-lg flex items-center justify-center text-xs font-bold">
-                          {idx + 1}
-                        </span>
-                        <p className={`font-semibold ${actividad.activo === false ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{actividad.nombre}</p>
-                        {actividad.activo === false && (
-                          <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
-                            Inactiva
-                          </span>
-                        )}
-                        {/* INDICADOR: Configuración de Evidencias */}
-                        {actividad.configuracionEvidencias ? (
-                          <span className="px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 bg-green-100 text-green-700 border border-green-300" title={`Adj: ${actividad.configuracionEvidencias.adjuntosRequeridos || 'N/A'} | Obs: ${actividad.configuracionEvidencias.observacionRequerida || 'N/A'}`}>
-                            <FileText className="w-3 h-3" />
-                            Evidencias: ✓
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 bg-gray-100 text-gray-500 border border-gray-300">
-                            <FileText className="w-3 h-3" />
-                            Evidencias: ✗
-                          </span>
-                        )}
-                        {actividad.requiereAutorizacionJefeOCI && (
-                          <span className={`px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 ${
-                            actividad.autorizadaPorJefeOCI
-                              ? 'bg-green-100 text-green-700 border border-green-300'
-                              : 'bg-orange-100 text-orange-700 border border-orange-300'
-                          }`}>
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                            </svg>
-                            {actividad.autorizadaPorJefeOCI ? 'Autorizada Jefe OCI' : 'Requiere Autorización OCI'}
-                          </span>
-                        )}
-                        {actividad.requiereVerificacionDirector && (
-                          <span className={`px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 ${
-                            actividad.verificadaPorDirector
-                              ? 'bg-green-100 text-green-700 border border-green-300'
-                              : 'bg-amber-100 text-amber-700 border border-amber-300'
-                          }`}>
-                            <Shield className="w-3 h-3" />
-                            {actividad.verificadaPorDirector ? 'Verificada Director' : 'Requiere Verificación'}
-                          </span>
-                        )}
-                        {(actividad.tareasSeguimiento?.length || 0) > 0 && (
-                          <span className="px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 bg-blue-100 text-blue-700 border border-blue-300">
-                            ✅ {actividad.tareasSeguimiento!.filter(t => t.completada).length}/{actividad.tareasSeguimiento!.length} tareas
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <p className="text-sm text-gray-900 flex items-center gap-1.5">
-                          <span className="font-semibold text-blue-700">👤 Principal:</span>
-                          <strong>{actividad.responsable?.nombre || 'Sin asignar'}</strong>
-                        </p>
-                        {actividad.responsablesApoyo && actividad.responsablesApoyo.length > 0 && (
-                          <p className="text-sm text-gray-600 flex items-center gap-1.5">
-                            <span className="font-semibold text-purple-700">🤝 Apoyo:</span>
-                            <span>{actividad.responsablesApoyo.map(r => r.nombre).join(', ')}</span>
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
-                      actividad.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
-                      actividad.estado === 'EN_EJECUCION' ? 'bg-orange-100 text-orange-700' :
-                      'bg-gray-100 text-gray-700'
-                    }`}>
-                      {actividad.estado === 'COMPLETADA' ? '✓ Completada' : 
-                       actividad.estado === 'EN_EJECUCION' ? '⏳ En ejecución' : '⏸ Pendiente'}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <SemaforoSeguimientoPAI 
-                        porcentaje={(actividad.estado === 'Completada' || actividad.estado === 'COMPLETADA') ? 100 : (actividad.entradasSeguimiento && actividad.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(actividad) : 0)}
-                        variant="bar"
-                        size="md"
-                        showLabel={true}
-                        showIcon={true}
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          if (actividadExpandida === actividad.id) {
-                            setActividadExpandida(null);
-                            setNuevaObservacion('');
-                            setMostrarSelectorApoyo(false);
-                          } else {
-                            abrirSeguimiento(actividad);
-                          }
-                        }}
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
-                      >
-                        {actividadExpandida === actividad.id ? '✕ Cerrar' : '📝 Seguimiento'}
-                      </button>
-                      {/* ✅ NUEVO: Botón Editar actividad - Solo visible si tiene permiso de edición */}
-                      {puedeEditarPlan && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            abrirModalEdicion(actividad, rol.numero);
-                          }}
-                          className="px-3 py-2 text-sm rounded-lg font-medium border-2 flex items-center gap-1 transition-all bg-amber-100 hover:bg-amber-200 text-amber-700 border-amber-300"
-                          title="Editar actividad"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          Editar
-                        </button>
-                      )}
-                      {/* Botón Desactivar/Activar actividad - Solo visible si tiene permiso de edición o eliminación */}
-                      {(puedeEditarPlan || puedeEliminarPlan) && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            console.log('🔘 Click en botón desactivar/activar:', {
-                              actividadId: actividad.id,
-                              actividadNombre: actividad.nombre,
-                              activo: actividad.activo,
-                              rolNumero: rol.numero
-                            });
-                            setModalConfirmacion({
-                              visible: true,
-                              tipo: actividad.activo === false ? 'activar' : 'desactivar',
-                              rolNumero: rol.numero,
-                              actividadId: actividad.id,
-                              actividadNombre: actividad.nombre
-                            });
-                          }}
-                          className={`px-3 py-2 text-sm rounded-lg font-medium border-2 flex items-center gap-1 transition-all ${
-                            actividad.activo === false 
-                              ? 'bg-green-100 hover:bg-green-200 text-green-700 border-green-300' 
-                              : 'bg-red-100 hover:bg-red-200 text-red-700 border-red-300'
-                          }`}
-                          title={actividad.activo === false ? 'Reactivar actividad' : 'Desactivar actividad'}
-                        >
-                        {actividad.activo === false ? (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                          </svg>
-                        )}
-                        {actividad.activo === false ? 'Reactivar' : 'Desactivar'}
-                      </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Info actual */}
-                <div className="p-4 border-t-2 border-gray-200 bg-white">
-                  <div className="grid grid-cols-3 gap-4 mb-3">
-                    <div>
-                      <p className="text-xs font-semibold text-gray-600 mb-1">🔍 CONTROL</p>
-                      <p className="text-sm text-gray-900">{actividad.control || 'Sin definir'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-gray-600 mb-1">📊 EVALUACIÓN</p>
-                      <p className="text-sm text-gray-900">{actividad.evaluacion || 'Sin evaluar'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-gray-600 mb-1">✅ SEGUIMIENTO (Tareas)</p>
-                      {actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 ? (
-                        <ul className="space-y-1.5 mt-1">
-                          {actividad.tareasSeguimiento.map((tarea) => (
-                            <li key={tarea.id} className="flex items-start gap-2 text-sm">
-                              <span className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${
-                                tarea.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white'
-                              }`}>
-                                {tarea.completada && (
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                )}
-                              </span>
-                              <span className={tarea.completada ? 'line-through text-gray-400' : 'text-gray-900'}>
-                                {tarea.descripcion}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-sm text-gray-900">{actividad.seguimiento || 'Sin registrar'}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Contador de observaciones y adjuntos */}
-                  <div className="flex items-center gap-3 pt-3 border-t border-gray-200">
-                    {tieneObservaciones(actividad.observacionesCumplimiento) && (
-                      <div className="flex items-center gap-1.5 text-blue-700 text-xs">
-                        <FileText className="w-3.5 h-3.5" />
-                        <span className="font-semibold">{contarObservaciones(actividad.observacionesCumplimiento)}</span>
-                        <span>observación{contarObservaciones(actividad.observacionesCumplimiento) !== 1 ? 'es' : ''}</span>
-                      </div>
-                    )}
-                    {actividad.adjuntos && actividad.adjuntos.length > 0 && (
-                      <div className="flex items-center gap-1.5 text-purple-700 text-xs">
-                        <Paperclip className="w-3.5 h-3.5" />
-                        <span className="font-semibold">{actividad.adjuntos.length}</span>
-                        <span>adjunto{actividad.adjuntos.length !== 1 ? 's' : ''}</span>
-                      </div>
-                    )}
-                    {!tieneObservaciones(actividad.observacionesCumplimiento) && 
-                     (!actividad.adjuntos || actividad.adjuntos.length === 0) && (
-                      <span className="text-xs text-gray-400 italic">Sin evidencias registradas</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Formulario expandible */}
-                <AnimatePresence>
-                  {actividadExpandida === actividad.id && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-50 border-t-2 border-blue-200">
-                        <h4 className="font-bold mb-4 flex items-center gap-2">
-                          <FileCheck className="w-5 h-5 text-blue-600" />
-                          Registro de seguimiento
-                        </h4>
-
-                        <div className="space-y-4">
-                          {/* ── CORTES DE SEGUIMIENTO (colapsable, todos juntos) ── */}
-                          {actividad.puntosControl && actividad.puntosControl.length > 0 ? (() => {
-                            const hoy = new Date().toISOString().split('T')[0];
-                            const cortes = actividad.puntosControl!;
-                            const entradas = actividad.entradasSeguimiento || [];
-
-                            const esCumplido = (corte: PuntoControl) =>
-                              entradas.some(e => e.puntoControlId === corte.id);
-
-                            const pasados = cortes.filter(c => c.fechaProgramada <= hoy);
-                            const cumplidos = pasados.filter(esCumplido).length;
-                            const pctActual = calcularPorcentajeCortes(actividad);
-                            const expandido = futuroExpandido[actividad.id] ?? false;
-                            // Activo = primer corte (por fecha) que todavía no tiene ninguna entrada
-                            const corteActivoId = [...cortes]
-                              .sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada))
-                              .find(c => !esCumplido(c))?.id;
-
-                            return (
-                              <div className="bg-white rounded-lg border-2 border-orange-200">
-                                {/* Header colapsable */}
-                                <button
-                                  onClick={() => setFuturoExpandido(prev => ({ ...prev, [actividad.id]: !expandido }))}
-                                  className="w-full flex items-center justify-between p-3 hover:bg-orange-50 rounded-t-lg"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    {expandido
-                                      ? <ChevronUp className="w-4 h-4 text-orange-600" />
-                                      : <ChevronDown className="w-4 h-4 text-orange-600" />}
-                                    <span className="text-xs font-bold text-orange-700 uppercase tracking-wide">Cortes de seguimiento</span>
-                                    <span className="text-xs text-gray-500">({cumplidos}/{cortes.length} cumplidos)</span>
-                                  </div>
-                                  <span className="text-xs font-bold text-orange-600">{pctActual}%</span>
-                                </button>
-
-                                {/* Dots siempre visibles */}
-                                <div className="px-3 pb-2 flex items-center gap-1 flex-wrap">
-                                  {cortes.map((c, i) => {
-                                    const pasado = c.fechaProgramada <= hoy;
-                                    const cumplido = esCumplido(c);
-                                    const entradasC = entradas.filter(e => e.puntoControlId === c.id);
-                                    const aTiempo = cumplido && entradasC.some(e => e.fechaRegistro <= c.fechaProgramada);
-                                    const conRetraso = cumplido && !aTiempo;
-                                    return (
-                                      <span key={c.id} className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold border-2 ${
-                                        aTiempo ? 'bg-green-500 border-green-600 text-white' :
-                                        conRetraso ? 'bg-orange-600 border-orange-700 text-white' :
-                                        c.id === corteActivoId ? 'bg-blue-500 border-blue-600 text-white' :
-                                        pasado ? 'bg-red-500 border-red-600 text-white' :
-                                        'bg-gray-300 border-gray-400 text-gray-700'
-                                      }`} title={`${c.nombre} · ${c.fechaProgramada}`}>
-                                        {i + 1}
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-
-                                {/* Lista completa colapsable */}
-                                {expandido && (
-                                  <div className="border-t border-orange-100 p-2 space-y-2">
-                                    {cortes.map((corte, index) => {
-                                      const pasado = corte.fechaProgramada <= hoy;
-                                      const cumplido = esCumplido(corte);
-                                      const entradasCorte = entradas.filter(e => e.puntoControlId === corte.id);
-                                      // Cumplido a tiempo = tiene al menos una entrada registrada antes o en la fecha del corte
-                                      const aTiempo = cumplido && entradasCorte.some(e => e.fechaRegistro <= corte.fechaProgramada);
-                                      const conRetraso = cumplido && !aTiempo;
-                                      
-                                      // Formatear fechas compacto
-                                      const formatFecha = (fecha: string) => {
-                                        const d = new Date(fecha + 'T00:00:00');
-                                        const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-                                        return `${d.getDate()} ${meses[d.getMonth()]} ${d.getFullYear()}`;
-                                      };
-
-                                      return (
-                                        <div key={corte.id} className={`rounded-lg border overflow-hidden ${
-                                          corte.id === corteActivoId ? 'border-blue-400 bg-blue-50/40' :
-                                          aTiempo ? 'border-green-300 bg-green-50/40' :
-                                          conRetraso ? 'border-orange-300 bg-orange-50/40' :
-                                          pasado ? 'border-red-300 bg-red-50/40' :
-                                          'border-gray-200 bg-gray-50/40 opacity-60'
-                                        }`}>
-                                          {/* Header compacto con estado */}
-                                          <div className={`px-3 py-2 flex items-center justify-between ${
-                                            corte.id === corteActivoId ? 'bg-blue-100/60' :
-                                            aTiempo ? 'bg-green-100/60' :
-                                            conRetraso ? 'bg-orange-100/60' :
-                                            pasado ? 'bg-red-100/60' :
-                                            'bg-gray-100/60'
-                                          }`}>
-                                            <div className="flex items-center gap-2">
-                                              <span className={`w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold ${
-                                                corte.id === corteActivoId ? 'bg-blue-600 text-white' :
-                                                aTiempo ? 'bg-green-600 text-white' :
-                                                conRetraso ? 'bg-orange-600 text-white' :
-                                                pasado ? 'bg-red-600 text-white' :
-                                                'bg-gray-400 text-white'
-                                              }`}>
-                                                {index + 1}
-                                              </span>
-                                              <span className={`text-sm font-bold ${
-                                                corte.id === corteActivoId || pasado ? 'text-gray-800' : 'text-gray-400'
-                                              }`}>
-                                                {corte.nombre}
-                                              </span>
-                                            </div>
-                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                              aTiempo ? 'bg-green-600 text-white' :
-                                              conRetraso ? 'bg-orange-600 text-white' :
-                                              corte.id === corteActivoId ? 'bg-blue-600 text-white' :
-                                              pasado ? 'bg-red-600 text-white' :
-                                              'bg-gray-400 text-white'
-                                            }`}>
-                                              {aTiempo ? '✓ OK' : conRetraso ? '⚠ Tarde' : corte.id === corteActivoId ? '📍 Activo' : pasado ? '✗ Pendiente' : '⏳ Futuro'}
-                                            </span>
-                                          </div>
-
-                                          <div className="p-3 space-y-2">
-                                            {/* Fechas compactas en grid */}
-                                            <div className="grid grid-cols-2 gap-2">
-                                              {/* Fecha de corte */}
-                                              <div className="bg-orange-50 border border-orange-200 rounded-md p-2">
-                                                <div className="flex items-center gap-1 mb-0.5">
-                                                  <Calendar className="w-3 h-3 text-orange-600" />
-                                                  <span className="text-[9px] font-bold text-orange-700 uppercase">Corte</span>
-                                                </div>
-                                                <p className="text-xs font-bold text-gray-800">{formatFecha(corte.fechaProgramada)}</p>
-                                              </div>
-
-                                              {/* Fecha de seguimiento */}
-                                              {corte.fechaSeguimiento && (
-                                                <div className="bg-purple-50 border border-purple-200 rounded-md p-2">
-                                                  <div className="flex items-center gap-1 mb-0.5">
-                                                    <Clock className="w-3 h-3 text-purple-600" />
-                                                    <span className="text-[9px] font-bold text-purple-700 uppercase">Seguimiento</span>
-                                                  </div>
-                                                  <p className="text-xs font-bold text-gray-800">{formatFecha(corte.fechaSeguimiento)}</p>
-                                                </div>
-                                              )}
-                                            </div>
-
-                                            {/* Sección de entradas registradas - MÁS COMPACTA */}
-                                            {entradasCorte.length > 0 && (
-                                              <div className="bg-white border border-blue-200 rounded-md p-2">
-                                                <div className="flex items-center justify-between mb-1.5">
-                                                  <div className="flex items-center gap-1">
-                                                    <FileText className="w-3 h-3 text-blue-600" />
-                                                    <span className="text-[9px] font-bold text-blue-700 uppercase">Documentación</span>
-                                                  </div>
-                                                  <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">
-                                                    {entradasCorte.length} registro{entradasCorte.length !== 1 ? 's' : ''}
-                                                  </span>
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                  {entradasCorte.map(ent => (
-                                                    <div key={ent.id} className={`rounded-md overflow-hidden border ${
-                                                      aTiempo 
-                                                        ? 'bg-green-50/80 border-green-200' 
-                                                        : 'bg-orange-50/80 border-orange-200'
-                                                    }`}>
-                                                      {/* Header con fecha y badge integrado */}
-                                                      <div className={`px-2 py-1 flex items-center justify-between ${
-                                                        aTiempo ? 'bg-green-100/80' : 'bg-orange-100/80'
-                                                      }`}>
-                                                        <span className={`text-[10px] font-bold ${
-                                                          aTiempo ? 'text-green-800' : 'text-orange-800'
-                                                        }`}>
-                                                          📅 {formatFecha(ent.fechaRegistro)}
-                                                        </span>
-                                                        {aTiempo && (
-                                                          <span className="text-[9px] bg-green-600 text-white px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5">
-                                                            ✓ A TIEMPO
-                                                          </span>
-                                                        )}
-                                                        {conRetraso && (
-                                                          <span className="text-[9px] bg-orange-600 text-white px-1.5 py-0.5 rounded-full font-bold flex items-center gap-0.5">
-                                                            ⚠ TARDE
-                                                          </span>
-                                                        )}
-                                                      </div>
-                                                      {/* Texto de la observación */}
-                                                      <div className="px-2 py-1.5">
-                                                        <p className="text-[11px] text-gray-700 leading-snug">{ent.texto}</p>
-                                                      </div>
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                              </div>
-                                            )}
-
-                                            {/* Botón agregar entrada - con restricción por fechas */}
-                                            {(() => {
-                                              // Lógica de ventana de tiempo:
-                                              // - Antes/en fechaProgramada: cualquiera con permiso puede subir (A TIEMPO)
-                                              // - Después de fechaProgramada y antes/en fechaSeguimiento: solo rol seguimiento (RETRASADO)
-                                              // - Después de fechaSeguimiento (o fechaProgramada si no hay seguimiento): BLOQUEADO
-                                              const fechaLimite = corte.fechaSeguimiento || corte.fechaProgramada;
-                                              const dentroDeCorte = hoy <= corte.fechaProgramada; // aún en plazo
-                                              const enVentanaSeguimiento = hoy > corte.fechaProgramada && hoy <= fechaLimite; // entre corte y seguimiento
-                                              const vencido = hoy > fechaLimite; // ya pasó todo
-
-                                              const puedeSubir = !vencido && (
-                                                (dentroDeCorte && puedeGestionarEvidencias) ||
-                                                (enVentanaSeguimiento && puedeSeguimiento)
-                                              );
-
-                                              if (!puedeSubir && (pasado || corte.id === corteActivoId)) {
-                                                return (
-                                                  <div className="w-full px-3 py-2 rounded-md text-xs text-center bg-gray-100 border border-gray-300 text-gray-500">
-                                                    🔒 Plazo vencido — no se pueden agregar documentos
-                                                  </div>
-                                                );
-                                              }
-
-                                              if (!puedeSubir) return null;
-
-                                              return (
-                                                <button
-                                                  onClick={() => {
-                                                    setModalCorteId(corte.id);
-                                                    setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero });
-                                                  }}
-                                                  className={`w-full px-3 py-2 rounded-md font-semibold text-xs flex items-center justify-center gap-1.5 transition-all ${
-                                                    enVentanaSeguimiento
-                                                      ? 'bg-orange-500 hover:bg-orange-600 text-white'
-                                                      : corte.id === corteActivoId
-                                                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                                                      : cumplido
-                                                      ? 'bg-green-600 hover:bg-green-700 text-white'
-                                                      : 'bg-orange-600 hover:bg-orange-700 text-white'
-                                                  }`}
-                                                >
-                                                  <Plus className="w-3.5 h-3.5" />
-                                                  {enVentanaSeguimiento
-                                                    ? '⚠ Registrar documentos (fuera de plazo)'
-                                                    : cumplido ? '+ Agregar más documentos' : 'Registrar documentos'}
-                                                </button>
-                                              );
-                                            })()}
-
-                                            {/* Mensaje si es futuro */}
-                                            {!pasado && corte.id !== corteActivoId && (
-                                              <div className="bg-gray-100 border border-gray-200 rounded-md p-2 text-center">
-                                                <p className="text-[10px] text-gray-500 flex items-center justify-center gap-1">
-                                                  <AlertCircle className="w-3 h-3" />
-                                                  Disponible desde {formatFecha(corte.fechaProgramada)}
-                                                </p>
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })() : null}
-
-                          {/* Evaluación */}
-                          <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
-                            <label className="block text-sm font-semibold mb-2">📊 Evaluación</label>
-                            <textarea
-                              value={formulario.evaluacion}
-                              onChange={(e) => setFormulario({ ...formulario, evaluacion: e.target.value })}
-                              className="w-full px-4 py-3 border-2 rounded-lg"
-                              placeholder="Estado actual y observaciones..."
-                              rows={3}
-                            />
-                          </div>
-
-                          {/* Seguimiento - Tareas interactivas (desde entradas_seguimiento BD) */}
-                          {(actividad.entradasSeguimiento || []).length > 0 && (
-                            <div className="bg-white rounded-lg border-2 border-green-200 p-4">
-                              <label className="text-sm font-semibold mb-3 flex items-center gap-2">
-                                ✅ Tareas de seguimiento
-                                <span className="text-xs text-gray-500 font-normal">
-                                  ({(actividad.entradasSeguimiento || []).filter((e: any) => e.completada).length}/{(actividad.entradasSeguimiento || []).length} completadas)
-                                </span>
-                              </label>
-
-                              {/* Lista de tareas */}
-                              <div className="space-y-3 mt-3">
-                                {(actividad.entradasSeguimiento || []).map((entrada: any) => {
-                                  const avance = entrada.avance ?? (entrada.completada ? 100 : 0);
-                                  const vencida = entrada.fechaEntrega && new Date(entrada.fechaEntrega) < new Date() && !entrada.completada;
-                                  return (
-                                  <div key={entrada.id} className={`rounded-lg border transition-all overflow-hidden ${
-                                    entrada.completada ? 'bg-green-50 border-green-200' : vencida ? 'bg-red-50 border-red-300' : 'bg-gray-50 border-gray-200 hover:border-blue-300'
-                                  }`}>
-                                    {/* Barra de progreso visual */}
-                                    <div className="h-1 bg-gray-200 relative">
-                                      <div className={`h-full transition-all ${avance >= 100 ? 'bg-green-500' : avance >= 50 ? 'bg-blue-500' : avance > 0 ? 'bg-amber-500' : 'bg-gray-300'}`} style={{ width: `${Math.min(avance, 100)}%` }} />
-                                    </div>
-
-                                    <div className="p-3 space-y-2">
-                                      {/* Fila 1: checkbox + descripción + badges */}
-                                      <div className="flex items-start gap-3">
-                                        <button
-                                          onClick={async () => {
-                                            const nuevasEntradas = (actividad.entradasSeguimiento || []).map((e: any) =>
-                                              e.id === entrada.id ? { ...e, completada: !e.completada, avance: !e.completada ? 100 : e.avance, fechaCompletado: !e.completada ? new Date().toISOString() : undefined } : e
-                                            );
-                                            try {
-                                              await actividadesApi.update(String(actividad.id), { entradas_seguimiento: nuevasEntradas });
-                                              const nuevoRoles = plan.roles.map(r => ({
-                                                ...r,
-                                                actividades: r.actividades.map(a =>
-                                                  a.id === actividad.id ? { ...a, entradasSeguimiento: nuevasEntradas } : a
-                                                )
-                                              }));
-                                              onActualizar({ ...plan, roles: nuevoRoles });
-                                              toast.success('Tarea actualizada');
-                                            } catch (error) {
-                                              console.error('Error al actualizar tarea:', error);
-                                              toast.error('Error al actualizar la tarea');
-                                            }
-                                          }}
-                                          className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                                            entrada.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white hover:border-blue-400'
-                                          }`}
-                                        >
-                                          {entrada.completada && (
-                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                            </svg>
-                                          )}
-                                        </button>
-                                        <div className="flex-1 min-w-0">
-                                          <p className={`text-sm font-medium ${entrada.completada ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                                            {entrada.texto}
-                                          </p>
-                                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                            {entrada.fechaCompletado && (
-                                              <span className="text-[10px] text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full">✓ {new Date(entrada.fechaCompletado).toLocaleDateString()}</span>
-                                            )}
-                                            {entrada.fechaEntrega && (
-                                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${vencida ? 'bg-red-100 text-red-700 font-semibold' : 'bg-gray-100 text-gray-600'}`}>
-                                                📅 {vencida ? '⚠ Vencida: ' : 'Entrega: '}{new Date(entrada.fechaEntrega).toLocaleDateString()}
-                                              </span>
-                                            )}
-                                            {entrada.requiereObservaciones && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">📝 Obs.</span>}
-                                            {entrada.requiereAdjuntos && <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">📎 Adj.</span>}
-                                            <span className="text-[10px] text-gray-500">Por: {entrada.registradoPor}</span>
-                                          </div>
-                                        </div>
-                                        {/* Badge de avance */}
-                                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
-                                          avance >= 100 ? 'bg-green-100 text-green-700' : avance >= 50 ? 'bg-blue-100 text-blue-700' : avance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-500'
-                                        }`}>
-                                          {avance}%
-                                        </span>
-                                      </div>
-
-                                      {/* Fila 2: Slider de avance */}
-                                      {!entrada.completada && (
-                                        <div className="flex items-center gap-2 pl-8">
-                                          <span className="text-[10px] text-gray-500 w-10">Avance:</span>
-                                          <input
-                                            type="range"
-                                            min={0}
-                                            max={100}
-                                            step={5}
-                                            value={avance}
-                                            onChange={async (e) => {
-                                              const nuevoAvance = Number(e.target.value);
-                                              const nuevasEntradas = (actividad.entradasSeguimiento || []).map((en: any) =>
-                                                en.id === entrada.id ? { ...en, avance: nuevoAvance, completada: nuevoAvance >= 100, fechaCompletado: nuevoAvance >= 100 ? new Date().toISOString() : en.fechaCompletado } : en
-                                              );
-                                              try {
-                                                await actividadesApi.update(String(actividad.id), { entradas_seguimiento: nuevasEntradas });
-                                                const nuevoRoles = plan.roles.map(r => ({
-                                                  ...r,
-                                                  actividades: r.actividades.map(a =>
-                                                    a.id === actividad.id ? { ...a, entradasSeguimiento: nuevasEntradas } : a
-                                                  )
-                                                }));
-                                                onActualizar({ ...plan, roles: nuevoRoles });
-                                              } catch (error) {
-                                                console.error('Error avance:', error);
-                                              }
-                                            }}
-                                            className="flex-1 h-1.5 accent-blue-600 cursor-pointer"
-                                          />
-                                          <span className="text-[10px] font-bold text-gray-700 w-8 text-right">{avance}%</span>
-                                        </div>
-                                      )}
-
-                                      {/* Fila 3: Observaciones si es requerido */}
-                                      {entrada.requiereObservaciones && !entrada.completada && (
-                                        <div className="pl-8">
-                                          <textarea
-                                            placeholder="Escribir observaciones de la tarea..."
-                                            value={entrada.observaciones || ''}
-                                            onChange={async (e) => {
-                                              const nuevasEntradas = (actividad.entradasSeguimiento || []).map((en: any) =>
-                                                en.id === entrada.id ? { ...en, observaciones: e.target.value } : en
-                                              );
-                                              const nuevoRoles = plan.roles.map(r => ({
-                                                ...r,
-                                                actividades: r.actividades.map(a =>
-                                                  a.id === actividad.id ? { ...a, entradasSeguimiento: nuevasEntradas } : a
-                                                )
-                                              }));
-                                              onActualizar({ ...plan, roles: nuevoRoles });
-                                            }}
-                                            onBlur={async () => {
-                                              try {
-                                                await actividadesApi.update(String(actividad.id), { entradas_seguimiento: actividad.entradasSeguimiento });
-                                              } catch (_) {}
-                                            }}
-                                            className="w-full text-xs border border-gray-300 rounded-lg px-2 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none resize-none"
-                                            rows={2}
-                                          />
-                                        </div>
-                                      )}
-
-                                      {/* Fila 4: Evidencias aceptadas / Evaluación del Jefe */}
-                                      {entrada.completada && (
-                                        <div className="pl-8 flex items-center gap-2 flex-wrap">
-                                          {entrada.evaluada ? (
-                                            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${entrada.aceptada ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                              {entrada.aceptada ? '✅ Evidencia aceptada' : '❌ Evidencia rechazada'}
-                                            </span>
-                                          ) : (
-                                            <>
-                                              <button
-                                                onClick={async () => {
-                                                  const nuevasEntradas = (actividad.entradasSeguimiento || []).map((en: any) =>
-                                                    en.id === entrada.id ? { ...en, evaluada: true, aceptada: true, fechaEvaluacion: new Date().toISOString() } : en
-                                                  );
-                                                  try {
-                                                    await actividadesApi.update(String(actividad.id), { entradas_seguimiento: nuevasEntradas });
-                                                    const nuevoRoles = plan.roles.map(r => ({
-                                                      ...r,
-                                                      actividades: r.actividades.map(a =>
-                                                        a.id === actividad.id ? { ...a, entradasSeguimiento: nuevasEntradas } : a
-                                                      )
-                                                    }));
-                                                    onActualizar({ ...plan, roles: nuevoRoles });
-                                                    toast.success('Tarea aceptada');
-                                                  } catch (error) {
-                                                    toast.error('Error al evaluar');
-                                                  }
-                                                }}
-                                                className="text-[10px] font-semibold px-2 py-1 rounded bg-green-600 hover:bg-green-700 text-white transition-colors"
-                                              >
-                                                ✓ Aceptar
-                                              </button>
-                                              <button
-                                                onClick={async () => {
-                                                  const nuevasEntradas = (actividad.entradasSeguimiento || []).map((en: any) =>
-                                                    en.id === entrada.id ? { ...en, evaluada: true, aceptada: false, completada: false, avance: 0, fechaEvaluacion: new Date().toISOString() } : en
-                                                  );
-                                                  try {
-                                                    await actividadesApi.update(String(actividad.id), { entradas_seguimiento: nuevasEntradas });
-                                                    const nuevoRoles = plan.roles.map(r => ({
-                                                      ...r,
-                                                      actividades: r.actividades.map(a =>
-                                                        a.id === actividad.id ? { ...a, entradasSeguimiento: nuevasEntradas } : a
-                                                      )
-                                                    }));
-                                                    onActualizar({ ...plan, roles: nuevoRoles });
-                                                    toast.info('Tarea devuelta para corrección');
-                                                  } catch (error) {
-                                                    toast.error('Error al evaluar');
-                                                  }
-                                                }}
-                                                className="text-[10px] font-semibold px-2 py-1 rounded bg-red-500 hover:bg-red-600 text-white transition-colors"
-                                              >
-                                                ✕ Rechazar
-                                              </button>
-                                              <span className="text-[10px] text-gray-400 italic">Pendiente de evaluación</span>
-                                            </>
-                                          )}
-                                          {entrada.fechaEvaluacion && (
-                                            <span className="text-[10px] text-gray-500">Evaluada: {new Date(entrada.fechaEvaluacion).toLocaleDateString()}</span>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Botón gestionar evidencias */}
-                          <div className={`bg-white rounded-lg border-2 p-4 ${
-                            actividad.configuracionEvidencias 
-                              ? 'border-green-300' 
-                              : 'border-gray-200'
-                          }`}>
-                            {actividad.configuracionEvidencias && (
-                              <div className="mb-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                                <p className="text-xs font-semibold text-green-800 mb-2 flex items-center gap-1">
-                                  <CheckCircle2 className="w-3.5 h-3.5" />
-                                  Configuración de evidencias
-                                </p>
-                                <div className="flex items-center gap-4 text-xs">
-                                  <span className={`px-2 py-0.5 rounded ${
-                                    actividad.configuracionEvidencias.adjuntosRequeridos === 'OBLIGATORIO' 
-                                      ? 'bg-red-100 text-red-700' 
-                                      : actividad.configuracionEvidencias.adjuntosRequeridos === 'OPCIONAL'
-                                      ? 'bg-blue-100 text-blue-700'
-                                      : 'bg-gray-100 text-gray-500'
-                                  }`}>
-                                    📎 Adjuntos: {actividad.configuracionEvidencias.adjuntosRequeridos}
-                                  </span>
-                                  <span className={`px-2 py-0.5 rounded ${
-                                    actividad.configuracionEvidencias.observacionRequerida === 'OBLIGATORIO' 
-                                      ? 'bg-red-100 text-red-700' 
-                                      : actividad.configuracionEvidencias.observacionRequerida === 'OPCIONAL'
-                                      ? 'bg-blue-100 text-blue-700'
-                                      : 'bg-gray-100 text-gray-500'
-                                  }`}>
-                                    📝 Observaciones: {actividad.configuracionEvidencias.observacionRequerida}
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-                            {!actividad.configuracionEvidencias && (
-                              <div className="mb-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                <p className="text-xs text-gray-500 flex items-center gap-1">
-                                  <AlertCircle className="w-3.5 h-3.5" />
-                                  Sin configuración de evidencias - Adjuntos y observaciones opcionales
-                                </p>
-                              </div>
-                            )}
-                            {(() => {
-                              const cortesAct = actividad.puntosControl || [];
-                              const entradasAct = actividad.entradasSeguimiento || [];
-                              const cortesOrdenados = [...cortesAct].sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada));
-                              const hoyStr = new Date().toISOString().split('T')[0];
-
-                              // Helper: verificar si un corte es elegible (no vencido y con permiso)
-                              const esElegible = (c: PuntoControl) => {
-                                const fechaLimite = c.fechaSeguimiento || c.fechaProgramada;
-                                if (hoyStr > fechaLimite) return false;
-                                if (hoyStr <= c.fechaProgramada) return true;
-                                return puedeSeguimiento;
-                              };
-
-                              // Preferir corte activo (sin entradas) que sea elegible
-                              const corteActivo = cortesOrdenados.find(c =>
-                                !entradasAct.some(e => e.puntoControlId === c.id) && esElegible(c)
-                              );
-                              // Fallback: primer corte elegible (aunque ya tenga entradas)
-                              const corteElegible = corteActivo || cortesOrdenados.find(esElegible);
-
-                              const hayCortes = cortesOrdenados.length > 0;
-                              const bloqueado = hayCortes && !corteElegible;
-                              const enVentanaSeguimiento = corteElegible && hoyStr > corteElegible.fechaProgramada;
-
-                              if (bloqueado) {
-                                return (
-                                  <div className="w-full px-4 py-3 rounded-lg font-semibold text-sm text-center bg-gray-100 border-2 border-gray-300 text-gray-500 flex items-center justify-center gap-2">
-                                    🔒 Todos los cortes han vencido — no se pueden agregar documentos
-                                  </div>
-                                );
-                              }
-
-                              if (!puedeGestionarEvidencias) return null;
-
-                              return (
-                                <button
-                                  onClick={() => {
-                                    setModalAdjuntos({ actividadId: actividad.id, rolNumero: rol.numero });
-                                    if (hayCortes) {
-                                      setModalCorteId(corteElegible?.id || cortesOrdenados[0].id);
-                                    }
-                                  }}
-                                  className={`w-full px-4 py-3 text-white rounded-lg font-semibold flex items-center justify-center gap-2 ${
-                                    enVentanaSeguimiento
-                                      ? 'bg-orange-500 hover:bg-orange-600'
-                                      : actividad.configuracionEvidencias 
-                                      ? 'bg-green-600 hover:bg-green-700' 
-                                      : 'bg-blue-600 hover:bg-blue-700'
-                                  }`}
-                                >
-                                  <Paperclip className="w-5 h-5" />
-                                  {enVentanaSeguimiento
-                                    ? '⚠ Gestionar evidencias (fuera de plazo)'
-                                    : 'Gestionar evidencias y observaciones'}
-                                </button>
-                              );
-                            })()}
-                            <div className="mt-3 text-sm text-center">
-                              {actividad.adjuntos && actividad.adjuntos.length > 0 && (
-                                <span className="text-green-700 font-semibold">
-                                  ✓ {actividad.adjuntos.length} archivo(s) adjunto(s)
-                                </span>
-                              )}
-                              {tieneObservaciones(actividad.observacionesCumplimiento) && (
-                                <span className="text-blue-700 font-semibold ml-4">
-                                  📝 {contarObservaciones(actividad.observacionesCumplimiento)} observación(es)
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Botones guardar/cancelar */}
-                          {puedeGestionarEvidencias && (
-                            <div className="flex gap-3">
-                              <button
-                                onClick={() => guardarSeguimiento(rol.numero, actividad.id)}
-                                disabled={guardando}
-                                className={`flex-1 px-6 py-3 text-white rounded-lg font-semibold flex items-center justify-center gap-2 ${
-                                  guardando 
-                                    ? 'bg-gray-400 cursor-not-allowed' 
-                                    : 'bg-green-600 hover:bg-green-700'
-                                }`}
-                              >
-                                {guardando ? (
-                                  <>
-                                    <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                                    </svg>
-                                    Guardando...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Check className="w-5 h-5" />
-                                    Guardar
-                                  </>
-                                )}
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setActividadExpandida(null);
-                                  setNuevaObservacion('');
-                                  setMostrarSelectorApoyo(false);
-                                }}
-                                className="px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg font-semibold"
-                              >
-                                Cancelar
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            ))
-            )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      );
-      })}
-
-      {/* Modal de Adjuntos */}
-      {modalAdjuntos && (() => {
-        const actividadModal = plan.roles
-          .find(r => r.numero === modalAdjuntos.rolNumero)
-          ?.actividades.find(a => a.id === modalAdjuntos.actividadId);
-        
-        // Obtener información del punto de control si hay un corte seleccionado
-        const puntoControlInfo = modalCorteId && actividadModal?.puntosControl
-          ? actividadModal.puntosControl.find(pc => pc.id === modalCorteId)
-          : undefined;
-
-        return (
-          <ModalGestionAdjuntos
-            actividad={actividadModal!}
-            modoEntradaCorte={!!modalCorteId}
-            autorNombre={currentUser?.nombre || currentUser?.nombre_completo || plan.jefeOCI?.nombre || 'Usuario'}
-            puntoControl={puntoControlInfo ? {
-              id: puntoControlInfo.id,
-              nombre: puntoControlInfo.nombre,
-              fechaProgramada: puntoControlInfo.fechaProgramada,
-              fechaSeguimiento: puntoControlInfo.fechaSeguimiento,
-              orden: puntoControlInfo.orden
-            } : undefined}
-            onCerrar={() => { setModalAdjuntos(null); setModalCorteId(null); }}
-          onActualizar={async (adjuntos, observaciones) => {
-            // Obtener actividad actual
-            const actividadActual = plan.roles
-              .find(r => r.numero === modalAdjuntos.rolNumero)
-              ?.actividades.find(a => a.id === modalAdjuntos.actividadId);
-
-            const adjuntosOriginales = actividadActual?.adjuntos || [];
-            const actividadIdStr = String(modalAdjuntos.actividadId);
-
-            // Determinar si estamos en modo corte:
-            // - modalCorteId explícito, O
-            // - la actividad tiene puntosControl (siempre usar flujo corte)
-            const tieneCortes = actividadActual?.puntosControl && actividadActual.puntosControl.length > 0;
-            const corteIdEfectivo = modalCorteId || (tieneCortes
-              ? [...actividadActual!.puntosControl!].sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada))[0]?.id
-              : null);
-
-            // ── CONTEXTO CORTE: crear EntradaSeguimiento (ÚNICA fuente de verdad) ──
-            if (corteIdEfectivo) {
-              const corteIdTarget = corteIdEfectivo;
-              // Usar el usuario logueado actual para trazabilidad
-              const nombreUsuarioActual = currentUser?.nombre || currentUser?.nombre_completo || plan.jefeOCI?.nombre || 'Usuario';
-
-              // Extraer solo las nuevas observaciones del modal (prefijo obs-)
-              let nuevasObs: Array<{ id: string; texto: string; fechaRegistro: string; puntoControlId?: string }> = [];
-              try {
-                const parsed = JSON.parse(observaciones);
-                if (Array.isArray(parsed)) {
-                  nuevasObs = parsed.filter(o => typeof o.id === 'string' && o.id.startsWith('obs-'));
-                }
-              } catch { /* no JSON */ }
-
-              // Solo adjuntos realmente nuevos (creados en esta sesión del modal con prefijo adj-)
-              // Excluir los que vienen de entradas (ent-adj-*) y los que ya existen en la tabla
-              const nuevosAdjuntos = adjuntos.filter(a =>
-                typeof a.id === 'string' && a.id.startsWith('adj-') &&
-                !adjuntosOriginales.find(o => o.id === a.id)
-              );
-
-              // Si no hay observaciones ni archivos nuevos, no hay nada que registrar
-              if (nuevasObs.length === 0 && nuevosAdjuntos.length === 0) {
-                toast.warning('Agrega al menos una observación o un archivo para registrar la entrada', { duration: 3000 });
-                return;
-              }
-
-              // Si solo hay archivos sin observación, generar entrada automática
-              if (nuevasObs.length === 0 && nuevosAdjuntos.length > 0) {
-                const hoy = new Date().toISOString().split('T')[0];
-                nuevasObs = [{
-                  id: `obs-${Date.now()}`,
-                  texto: `Evidencia adjuntada: ${nuevosAdjuntos.map(a => a.nombre).join(', ')}`,
-                  fechaRegistro: hoy,
-                }];
-              }
-
-              // Crear entradas de seguimiento (fuente de verdad para observaciones Y archivos por corte)
-              // Agrupar archivos por puntoControlId para embeber en la entrada correcta
-              const archivosPorCorte = nuevosAdjuntos.reduce((map, a) => {
-                const pcId = a.puntoControlId || corteIdTarget;
-                if (!map[pcId]) map[pcId] = [];
-                map[pcId].push({
-                  nombre: a.nombre,
-                  url: a.url || '',
-                  tipo: a.tipo || 'application/octet-stream',
-                  tamanio: a.tamaño || 0,
-                });
-                return map;
-              }, {} as Record<string, Array<{ nombre: string; url: string; tipo: string; tamanio: number }>>);
-
-              // Track qué cortes ya recibieron sus archivos
-              const cortesConArchivos = new Set<string>();
-
-              const nuevasEntradas: EntradaSeguimiento[] = nuevasObs.map((obs) => {
-                const pcId = obs.puntoControlId || corteIdTarget;
-                const archivosDeEsteCorte = !cortesConArchivos.has(pcId) && archivosPorCorte[pcId];
-                if (archivosDeEsteCorte) cortesConArchivos.add(pcId);
-                return {
-                  id: `ent-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                  puntoControlId: pcId,
-                  fechaRegistro: obs.fechaRegistro || new Date().toISOString().split('T')[0],
-                  registradoPor: nombreUsuarioActual,
-                  usuarioId: currentUser?.id || currentUser?.userId || plan.jefeOCI?.id,
-                  texto: obs.texto,
-                  tipo: 'seguimiento' as const,
-                  ...(archivosDeEsteCorte ? { archivos: archivosDeEsteCorte } : {}),
-                };
-              });
-
-              const entradasActualizadas = [...(actividadActual?.entradasSeguimiento || []), ...nuevasEntradas];
-              const actividadConEntradas = { ...(actividadActual || {}), entradasSeguimiento: entradasActualizadas } as Actividad;
-              const nuevoPct = calcularPorcentajeCortes(actividadConEntradas);
-              const nuevoEstado: EstadoActividad = nuevoPct === 100 ? 'COMPLETADA' : nuevoPct > 0 ? 'EN_EJECUCION' : 'PENDIENTE';
-              const estadoBackend = nuevoEstado === 'COMPLETADA' ? 'completada' : nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' : 'pendiente';
-
-              setGuardandoEntrada(true);
-              try {
-                // SOLO guardar en entradas_seguimiento — NO duplicar en observaciones
-                const response = await actividadesApi.update(actividadIdStr, {
-                  entradas_seguimiento: entradasActualizadas,
-                  porcentaje_avance: nuevoPct,
-                  estado: estadoBackend as any,
-                });
-                if (!response.success) {
-                  toast.error('Error al guardar entrada', { description: response.error });
-                } else {
-                  // Guardar adjuntos si los hay
-                  if (nuevosAdjuntos.length > 0) {
-                    await guardarEvidencias(
-                      actividadIdStr,
-                      adjuntos.map(a => ({ ...a, esNuevo: !adjuntosOriginales.find(o => o.id === a.id) })),
-                      adjuntosOriginales,
-                      '' // No pasar observaciones — ya están en entradas_seguimiento
-                    );
-                  }
-                  const planActualizado = {
-                    ...plan,
-                    roles: plan.roles.map(r => {
-                      if (r.numero === modalAdjuntos.rolNumero) {
-                        return {
-                          ...r,
-                          actividades: r.actividades.map(act => {
-                            if (act.id === modalAdjuntos.actividadId) {
-                              return {
-                                ...act,
-                                entradasSeguimiento: entradasActualizadas,
-                                porcentajeAvance: nuevoPct,
-                                estado: nuevoEstado,
-                              };
-                            }
-                            return act;
-                          })
-                        };
-                      }
-                      return r;
-                    })
-                  };
-                  onActualizar(planActualizado);
-                  toast.success('Entrada registrada correctamente');
-                  setModalAdjuntos(null);
-                  setModalCorteId(null);
-                  try { await onRefetchPlan?.(); } catch { /* ignore */ }
-                }
-              } finally {
-                setGuardandoEntrada(false);
-              }
-              return;
-            }
-
-            // ── FLUJO NORMAL: gestión de adjuntos y observaciones sin corte ──
-            const guardadoOk = await guardarEvidencias(
-              actividadIdStr,
-              adjuntos.map(a => ({ ...a, esNuevo: !adjuntosOriginales.find(o => o.id === a.id) })),
-              adjuntosOriginales,
-              observaciones
-            );
-
-            // Actualizar estado local
-            const planActualizado = {
-              ...plan,
-              roles: plan.roles.map(rol => {
-                if (rol.numero === modalAdjuntos.rolNumero) {
-                  return {
-                    ...rol,
-                    actividades: rol.actividades.map(act => {
-                      if (act.id === modalAdjuntos.actividadId) {
-                        return { ...act, adjuntos, observacionesCumplimiento: observaciones };
-                      }
-                      return act;
-                    })
-                  };
-                }
-                return rol;
-              })
-            };
-            onActualizar(planActualizado);
-            // Recargar plan desde backend para reflejar adjuntos guardados (IDs y lista actual)
-            if (guardadoOk) {
-              try {
-                await onRefetchPlan?.();
-              } catch (e) {
-                console.warn('[Modal adjuntos] Error al recargar plan:', e);
-              }
-            }
-          }}
-        />
-        );
-      })()}
-
-      {/* Modal de confirmación para desactivar/reactivar actividad */}
-      <AnimatePresence>
-        {modalConfirmacion && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
-            onClick={() => setModalConfirmacion(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden"
-            >
-              {/* Header del modal */}
-              <div className={`px-6 py-4 ${
-                modalConfirmacion.tipo === 'desactivar' 
-                  ? 'bg-gradient-to-r from-red-600 to-red-700' 
-                  : 'bg-gradient-to-r from-green-600 to-green-700'
-              }`}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                    {modalConfirmacion.tipo === 'desactivar' ? (
-                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                      </svg>
-                    ) : (
-                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    )}
-                  </div>
-                  <h3 className="text-xl font-bold text-white">
-                    {modalConfirmacion.tipo === 'desactivar' ? 'Desactivar Actividad' : 'Reactivar Actividad'}
-                  </h3>
-                </div>
-              </div>
-
-              {/* Contenido del modal */}
-              <div className="p-6">
-                <p className="text-gray-700 mb-4">
-                  {modalConfirmacion.tipo === 'desactivar' 
-                    ? '¿Estás seguro de desactivar esta actividad?' 
-                    : '¿Quieres reactivar esta actividad?'}
-                </p>
-                
-                <div className={`p-4 rounded-lg border-2 mb-4 ${
-                  modalConfirmacion.tipo === 'desactivar' 
-                    ? 'bg-red-50 border-red-200' 
-                    : 'bg-green-50 border-green-200'
-                }`}>
-                  <p className="font-semibold text-gray-800">
-                    {modalConfirmacion.actividadNombre}
-                  </p>
-                </div>
-
-                {modalConfirmacion.tipo === 'desactivar' ? (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
-                    <p className="text-sm text-amber-800 flex items-start gap-2">
-                      <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      <span>
-                        <strong>Importante:</strong> La actividad quedará marcada como inactiva y no contará para los cálculos de avance del plan. Podrás reactivarla en cualquier momento.
-                      </span>
-                    </p>
-                  </div>
-                ) : (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                    <p className="text-sm text-blue-800 flex items-start gap-2">
-                      <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span>
-                        La actividad volverá a contar en los cálculos de avance del plan.
-                      </span>
-                    </p>
-                  </div>
-                )}
-
-                {/* Botones de acción */}
-                <div className="flex gap-3 justify-end">
-                  <button
-                    onClick={() => setModalConfirmacion(null)}
-                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={confirmarAccionActividad}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
-                      modalConfirmacion.tipo === 'desactivar'
-                        ? 'bg-red-600 hover:bg-red-700 text-white'
-                        : 'bg-green-600 hover:bg-green-700 text-white'
-                    }`}
-                  >
-                    {modalConfirmacion.tipo === 'desactivar' ? (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                        </svg>
-                        Sí, Desactivar
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        Sí, Reactivar
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ✅ NUEVO: Modal de edición de actividad (Decreto 648/2017) */}
-      <AnimatePresence>
-        {modalEdicion && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
-            onClick={() => setModalEdicion(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden max-h-[90vh] flex flex-col"
-            >
-              {/* Header del modal */}
-              <div className="px-6 py-4 bg-gradient-to-r from-amber-500 to-amber-600 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">Editar Actividad</h3>
-                    <p className="text-amber-100 text-sm">Decreto 648 de 2017 - Control Interno</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Contenido del modal - scrollable */}
-              <div className="p-6 overflow-y-auto flex-1">
-                <div className="space-y-4">
-                  {/* Nombre de la actividad */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">
-                      Nombre de la actividad *
-                    </label>
-                    <textarea
-                      value={formularioEdicion.nombre}
-                      onChange={(e) => setFormularioEdicion(prev => ({ ...prev, nombre: e.target.value }))}
-                      rows={2}
-                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
-                      placeholder="Nombre de la actividad según Decreto 648/2017"
-                    />
-                  </div>
-
-                  {/* Descripción */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">
-                      Descripción
-                    </label>
-                    <textarea
-                      value={formularioEdicion.descripcion}
-                      onChange={(e) => setFormularioEdicion(prev => ({ ...prev, descripcion: e.target.value }))}
-                      rows={2}
-                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
-                      placeholder="Descripción detallada de la actividad"
-                    />
-                  </div>
-
-                  {/* Fechas */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">
-                        Fecha de inicio
-                      </label>
-                      <input
-                        type="date"
-                        value={formularioEdicion.fechaInicio}
-                        onChange={(e) => setFormularioEdicion(prev => ({ ...prev, fechaInicio: e.target.value }))}
-                        className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-1">
-                        Fecha de fin
-                      </label>
-                      <input
-                        type="date"
-                        value={formularioEdicion.fechaFin}
-                        onChange={(e) => setFormularioEdicion(prev => ({ ...prev, fechaFin: e.target.value }))}
-                        className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Control */}
-                 
-                  {/* Evaluación */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">
-                      📊 Evaluación
-                    </label>
-                    <textarea
-                      value={formularioEdicion.evaluacion}
-                      onChange={(e) => setFormularioEdicion(prev => ({ ...prev, evaluacion: e.target.value }))}
-                      rows={2}
-                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
-                      placeholder="Ej: 50% avance, 60% avance..."
-                    />
-                  </div>
-
-                  {/* Seguimiento */}
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1">
-                      ✅ Seguimiento (tareas)
-                    </label>
-                    <textarea
-                      value={formularioEdicion.seguimiento}
-                      onChange={(e) => setFormularioEdicion(prev => ({ ...prev, seguimiento: e.target.value }))}
-                      rows={3}
-                      className="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
-                      placeholder="Descripción de las tareas de seguimiento a realizar"
-                    />
-                  </div>
-                </div>
-
-                {/* Nota informativa */}
-                <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <p className="text-sm text-blue-800 flex items-start gap-2">
-                    <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>
-                      <strong>Nota:</strong> Las actividades del Plan Anual pueden editarse para ajustarlas a las necesidades específicas de la entidad, manteniendo el cumplimiento del Decreto 648 de 2017.
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Footer con botones de acción - fixed */}
-              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 shrink-0">
-                <div className="flex gap-3 justify-end">
-                  <button
-                    onClick={() => setModalEdicion(null)}
-                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
-                    disabled={guardandoEdicion}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={guardarEdicionActividad}
-                    disabled={guardandoEdicion || !formularioEdicion.nombre.trim()}
-                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {guardandoEdicion ? (
-                      <>
-                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Guardando...
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        Guardar Cambios
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// SECCIÓN 2: ASIGNAR RESPONSABLES
-// ════════════════════════════════════════════════════════════════════════════
-
-function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargandoAuditores, puedeAsignar = true }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; auditores: Auditor[]; cargandoAuditores: boolean; puedeAsignar?: boolean }) {
-  console.log('📋 [SeccionAsignar] Plan recibido:', plan);
-  console.log('📋 [SeccionAsignar] Roles con IDs:', plan.roles.map(r => ({ numero: r.numero, id: r.id, nombre: r.nombre, actividades: r.actividades.length })));
-  console.log('📋 [SeccionAsignar] Auditores disponibles:', auditores.length);
-  
-  const [rolExpandido, setRolExpandido] = useState<number | string | null>(null);
-  const [mostrarFormNuevaActividad, setMostrarFormNuevaActividad] = useState<number | string | null>(null);
-  const [asignandoId, setAsignandoId] = useState<string | number | null>(null);
-  const [nuevaActividad, setNuevaActividad] = useState({
-    nombre: '',
-    descripcion: '',
-    fechaInicio: new Date().toISOString().split('T')[0],
-    fechaFin: new Date().toISOString().split('T')[0]
-  });
-
-  const asignarResponsable = async (rolNumero: number, actividadId: number | string, auditor: Auditor) => {
-    console.log('👤 [asignarResponsable] Asignando:', { rolNumero, actividadId, auditor: auditor.nombre });
-
-    setAsignandoId(actividadId);
-
-    // Obtener la actividad actual para conocer sus responsables existentes
-    const actividadActual = plan.roles
-      .find(r => r.numero === rolNumero)
-      ?.actividades.find(a => a.id === actividadId);
-    const responsablesActuales: Auditor[] = actividadActual?.responsables?.length
-      ? actividadActual.responsables
-      : (actividadActual?.responsable ? [actividadActual.responsable] : []);
-
-    // Evitar duplicados
-    if (responsablesActuales.some(r => r.id === auditor.id)) {
-      toast.info('Ya asignado', { description: `${auditor.nombre} ya es responsable de esta actividad` });
-      setAsignandoId(null);
-      return;
-    }
-    const nuevosResponsables = [...responsablesActuales, auditor];
-
-    const planActualizado = {
-      ...plan,
-      roles: plan.roles.map(rol => {
-        if (rol.numero === rolNumero) {
-          return {
-            ...rol,
-            actividades: rol.actividades.map(act => {
-              if (act.id === actividadId) {
-                return { ...act, responsables: nuevosResponsables, responsable: nuevosResponsables[0] };
-              }
-              return act;
-            })
-          };
-        }
-        return rol;
-      })
-    };
-    onActualizar(planActualizado);
-    try {
-      console.log('👤 [asignarResponsable] Enviando al backend:', { actividadId, responsables: nuevosResponsables.map(r => r.nombre) });
-      const res = await actividadesApi.update(String(actividadId), {
-        responsable: nuevosResponsables[0].nombre,
-        responsables: nuevosResponsables,
-      });
-      console.log('👤 [asignarResponsable] Respuesta del backend:', res);
-
-      if (res.success) {
-        toast.success('Responsable agregado', { description: `${auditor.nombre} agregado a la actividad` });
-        onRefetchPlan?.();
-      } else {
-        toast.error('Error al guardar', { description: res.error });
-        onRefetchPlan?.();
-      }
-    } catch (e) {
-      toast.error('Error', { description: 'No se pudo guardar en el servidor' });
-      onRefetchPlan?.();
-    } finally {
-      setAsignandoId(null);
-    }
-  };
-
-  const quitarResponsable = async (rolNumero: number, actividadId: number | string, auditorId: string) => {
-    setAsignandoId(actividadId);
-
-    const actividadActual = plan.roles
-      .find(r => r.numero === rolNumero)
-      ?.actividades.find(a => a.id === actividadId);
-    const responsablesActuales: Auditor[] = actividadActual?.responsables?.length
-      ? actividadActual.responsables
-      : (actividadActual?.responsable ? [actividadActual.responsable] : []);
-    const nuevosResponsables = responsablesActuales.filter(r => r.id !== auditorId);
-
-    const planActualizado = {
-      ...plan,
-      roles: plan.roles.map(rol => {
-        if (rol.numero === rolNumero) {
-          return {
-            ...rol,
-            actividades: rol.actividades.map(act => {
-              if (act.id === actividadId) {
-                return { ...act, responsables: nuevosResponsables, responsable: nuevosResponsables[0] || null };
-              }
-              return act;
-            })
-          };
-        }
-        return rol;
-      })
-    };
-    onActualizar(planActualizado);
-    try {
-      const res = await actividadesApi.update(String(actividadId), {
-        responsable: nuevosResponsables[0]?.nombre || '',
-        responsables: nuevosResponsables,
-      });
-      if (res.success) {
-        toast.success('Responsable quitado', { description: 'Responsable eliminado de la actividad' });
-        onRefetchPlan?.();
-      } else {
-        toast.error('Error al guardar', { description: res.error });
-        onRefetchPlan?.();
-      }
-    } catch (e) {
-      toast.error('Error', { description: 'No se pudo guardar en el servidor' });
-      onRefetchPlan?.();
-    } finally {
-      setAsignandoId(null);
-    }
-  };
-
-  const agregarActividad = async (rolNumero: number) => {
-    if (!nuevaActividad.nombre.trim()) {
-      toast.error('Error', { description: 'El nombre de la actividad es obligatorio' });
-      return;
-    }
-
-    // Buscar el rol para obtener su ID del backend
-    const rol = plan.roles.find(r => r.numero === rolNumero);
-    console.log('➕ [agregarActividad] Rol encontrado:', { numero: rolNumero, rol: rol, id: rol?.id });
-    
-    if (!rol?.id) {
-      console.error('❌ [agregarActividad] Rol sin ID del backend');
-      toast.error('Error', { description: 'No se pudo identificar el rol en el backend' });
-      return;
-    }
-
-    try {
-      // Crear actividad en el backend
-      const dataParaBackend: CreateActividadDto = {
-        nombre: nuevaActividad.nombre,
-        descripcion: nuevaActividad.descripcion || '',
-        responsable: 'Por asignar',
-        fecha_inicio: nuevaActividad.fechaInicio,
-        fecha_fin: nuevaActividad.fechaFin,
-        prioridad: 'Media',
-        control: 'Seguimiento trimestral',
-        evaluacion: '0% avance',
-        seguimiento: 'Por definir',
-        requiereVerificacionDirector: false
-      };
-
-      console.log('➕ [agregarActividad] Enviando al backend:', { rolId: rol.id, data: dataParaBackend });
-      const res = await actividadesApi.create(rol.id, dataParaBackend);
-      console.log('➕ [agregarActividad] Respuesta del backend:', res);
-
-      if (res.success && res.data) {
-        // Actualizar estado local con la actividad del backend
-        const actividadDesdeBackend = res.data;
-        const actividadFront: Actividad = {
-          id: actividadDesdeBackend.id,
-          nombre: actividadDesdeBackend.nombre,
-          descripcion: actividadDesdeBackend.descripcion || '',
-          fechaInicio: actividadDesdeBackend.fecha_inicio.split('T')[0],
-          fechaFin: actividadDesdeBackend.fecha_fin.split('T')[0],
-          responsable: null,
-          porcentajeAvance: 0,
-          estado: 'PENDIENTE',
-          control: actividadDesdeBackend.control || 'Seguimiento trimestral',
-          evaluacion: actividadDesdeBackend.evaluacion || '0% avance',
-          seguimiento: actividadDesdeBackend.seguimiento || 'Por definir',
-          requiereVerificacionDirector: actividadDesdeBackend.requiereVerificacionDirector || false
-        };
-
-        const planActualizado = {
-          ...plan,
-          roles: plan.roles.map(r => {
-            if (r.numero === rolNumero) {
-              return {
-                ...r,
-                actividades: [...r.actividades, actividadFront]
-              };
-            }
-            return r;
-          })
-        };
-
-        onActualizar(planActualizado);
-        toast.success('Actividad creada', { description: 'Nueva actividad creada en el backend' });
-        
-        // Resetear formulario
-        setNuevaActividad({
-          nombre: '',
-          descripcion: '',
-          fechaInicio: new Date().toISOString().split('T')[0],
-          fechaFin: new Date().toISOString().split('T')[0]
-        });
-        setMostrarFormNuevaActividad(null);
-
-        // Refrescar plan completo desde el backend
-        onRefetchPlan?.();
-      } else {
-        toast.error('Error al crear actividad', { description: res.error || 'No se pudo guardar en el servidor' });
-      }
-    } catch (error) {
-      console.error('Error creando actividad:', error);
-      toast.error('Error', { description: 'No se pudo crear la actividad' });
-    }
-  };
-
-  const eliminarActividad = async (rolNumero: number, actividadId: number | string) => {
-    console.log('🗑️ [eliminarActividad] Desactivando actividad:', { rolNumero, actividadId });
-    
-    try {
-      // Soft delete en backend (marca activo = false)
-      const res = await actividadesApi.delete(String(actividadId));
-      console.log('🗑️ [eliminarActividad] Respuesta del backend:', res);
-
-      if (res.success) {
-        // Actualizar estado local - marcar como inactiva
-        const planActualizado = {
-          ...plan,
-          roles: plan.roles.map(rol => {
-            if (rol.numero === rolNumero) {
-              return {
-                ...rol,
-                actividades: rol.actividades.map(act => 
-                  act.id === actividadId ? { ...act, activo: false } : act
-                )
-              };
-            }
-            return rol;
-          })
-        };
-        onActualizar(planActualizado);
-        toast.success('Actividad desactivada', { description: 'La actividad ha sido marcada como inactiva' });
-        
-        // Refrescar plan completo desde el backend
-        onRefetchPlan?.();
-      } else {
-        toast.error('Error al desactivar', { description: res.error || 'No se pudo desactivar en el servidor' });
-      }
-    } catch (error) {
-      console.error('Error desactivando actividad:', error);
-      toast.error('Error', { description: 'No se pudo desactivar la actividad' });
-    }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-6"
-    >
-      {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => {
-        const isExpanded = rolExpandido === rol.numero;
-        const asignadas = rol.actividades.filter(a => (a.responsables?.length || 0) > 0 || a.responsable !== null).length;
-        // Unique responsibles across this role's activities (for role-level summary)
-        const responsablesDelRol = Array.from(
-          new Map(
-            rol.actividades
-              .flatMap(a => (a.responsables?.length ? a.responsables : a.responsable ? [a.responsable] : []) as Auditor[])
-              .map(r => [r.id, r])
-          ).values()
-        );
-
-        return (
-          <div key={rol.numero} className="bg-white rounded-xl border-2 border-gray-200">
             {/* Header del rol - Clickeable para expandir/colapsar */}
             <div 
               className="flex items-center justify-between p-6 cursor-pointer hover:bg-gray-50 transition-colors"
@@ -6529,30 +4931,6 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                       return totalTareas > 0 ? ` • ${totalTareas} tareas` : '';
                     })()} • {asignadas} asignadas • {rol.actividades.length - asignadas} pendientes
                   </p>
-                  {/* Responsables del rol: avatares de los auditores asignados a actividades de este rol */}
-                  {responsablesDelRol.length > 0 && (
-                    <div className="flex items-center gap-1.5 mt-1.5">
-                      <span className="text-xs text-gray-500">Equipo:</span>
-                      <div className="flex -space-x-1">
-                        {responsablesDelRol.slice(0, 4).map((r) => (
-                          <div
-                            key={r.id}
-                            title={r.nombre}
-                            className="w-6 h-6 rounded-full bg-indigo-600 border-2 border-white flex items-center justify-center text-white text-[10px] font-bold"
-                            style={{ backgroundColor: rol.color }}
-                          >
-                            {r.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                          </div>
-                        ))}
-                        {responsablesDelRol.length > 4 && (
-                          <div className="w-6 h-6 rounded-full bg-gray-400 border-2 border-white flex items-center justify-center text-white text-[10px] font-bold">
-                            +{responsablesDelRol.length - 4}
-                          </div>
-                        )}
-                      </div>
-                      <span className="text-xs text-gray-500">{responsablesDelRol.map(r => r.nombre.split(' ')[0]).join(', ')}</span>
-                    </div>
-                  )}
                 </div>
               </div>
               
@@ -6587,177 +4965,316 @@ function SeccionAsignar({ plan, onActualizar, onRefetchPlan, auditores, cargando
                   <div className="px-6 pb-6 pt-2 space-y-3 border-t-2 border-gray-200">
                     {rol.actividades.length === 0 ? (
                       <div className="text-center py-8 text-gray-500">
-                        No hay actividades en este rol. Haz clic en "Agregar actividad" para crear una.
+                        No hay actividades en este rol.{plan.estado === 'BORRADOR' ? ' Haz clic en "Agregar actividad" para crear una.' : ''}
                       </div>
                     ) : (
                       rol.actividades.map((actividad, index) => (
                         <div 
                           key={`${rol.numero}-${index}-${actividad.id}`} 
                           style={{ contentVisibility: 'auto', containIntrinsicSize: '150px' }}
-                          className={`flex items-start gap-3 p-4 border-2 rounded-lg transition-colors ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200 hover:border-gray-300'}`}
+                          className={`p-4 border-2 rounded-lg transition-colors ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200 hover:border-gray-300'}`}
                         >
-                          <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600">
-                            {index + 1}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className={`font-semibold ${actividad.activo === false ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{actividad.nombre}</p>
-                              {actividad.activo === false && (
-                                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
-                                  Inactiva
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600">
+                              {index + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className={`font-semibold ${actividad.activo === false ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{actividad.nombre}</p>
+                                {actividad.activo === false && (
+                                  <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
+                                    Inactiva
+                                  </span>
+                                )}
+                                {/* Badge de estado */}
+                                {actividad.estado && actividad.estado !== 'PENDIENTE' && (
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                    actividad.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
+                                    actividad.estado === 'EN_EJECUCION' ? 'bg-blue-100 text-blue-700' :
+                                    'bg-gray-100 text-gray-600'
+                                  }`}>
+                                    {actividad.estado === 'COMPLETADA' ? 'Completada' : actividad.estado === 'EN_EJECUCION' ? 'En ejecución' : actividad.estado}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-gray-600 mb-2">{actividad.descripcion}</p>
+                              <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap">
+                                <span>📅 Inicio: {new Date(actividad.fechaInicio).toLocaleDateString('es-CO')}</span>
+                                {actividad.fechaFin && (
+                                  <span>📅 Fin: {new Date(actividad.fechaFin).toLocaleDateString('es-CO')}</span>
+                                )}
+                                {actividad.fecha_corte && (
+                                  <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full font-medium">📅 Corte: {new Date(actividad.fecha_corte + 'T00:00:00').toLocaleDateString('es-CO')}</span>
+                                )}
+                                {typeof actividad.porcentajeAvance === 'number' && actividad.porcentajeAvance > 0 && (
+                                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">{actividad.porcentajeAvance}% avance</span>
+                                )}
+                              </div>
+                              {/* Indicadores de adjuntos y observaciones — SIEMPRE visibles */}
+                              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                {/* 📎 Adjuntos */}
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                                  actividad.adjuntos && actividad.adjuntos.length > 0 
+                                    ? 'bg-purple-50 text-purple-700 border border-purple-200' 
+                                    : 'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
+                                }`}>
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                  {actividad.adjuntos && actividad.adjuntos.length > 0 
+                                    ? `${actividad.adjuntos.length} adjunto${actividad.adjuntos.length !== 1 ? 's' : ''}` 
+                                    : 'Sin adjuntos'}
                                 </span>
-                              )}
+                                {/* 💬 Observaciones */}
+                                {(() => {
+                                  const obs = actividad.observacionesCumplimiento;
+                                  const count = Array.isArray(obs) ? obs.length : (typeof obs === 'string' && obs.trim() ? 1 : 0);
+                                  return (
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                                      count > 0 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
+                                    }`}>
+                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                                      {count > 0 ? `${count} observación${count !== 1 ? 'es' : ''}` : 'Sin observaciones'}
+                                    </span>
+                                  );
+                                })()}
+                                {/* ✅ Tareas */}
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                                  actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 
+                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' 
+                                    : 'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
+                                }`}>
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                                  {actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 
+                                    ? `${actividad.tareasSeguimiento.filter(t => t.completada).length}/${actividad.tareasSeguimiento.length} tareas`
+                                    : 'Sin tareas'}
+                                </span>
+                              </div>
                             </div>
-                            <p className="text-sm text-gray-600 mb-2">{actividad.descripcion}</p>
-                            <div className="flex items-center gap-4 text-xs text-gray-500">
-                              <span>📅 Inicio: {new Date(actividad.fechaInicio).toLocaleDateString('es-CO')}</span>
-                              {actividad.fecha_corte && (
-                                <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full font-medium">📅 Corte: {new Date(actividad.fecha_corte + 'T00:00:00').toLocaleDateString('es-CO')}</span>
-                              )}
-                            </div>
-                          </div>
-                          {/* Responsables: chips + selector múltiple */}
-                          {puedeAsignar ? (
-                            <div className="flex flex-col gap-1.5 min-w-[220px]" onClick={(e) => e.stopPropagation()}>
-                              {/* Chips de responsables asignados */}
-                              {((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).map((resp) => (
-                                <div key={resp.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
-                                  <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                                    {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                            {/* Responsables: editable SOLO en BORRADOR */}
+                            {puedeAsignarActividades && plan.estado === 'BORRADOR' ? (
+                              <div className="flex flex-col gap-1.5 min-w-[220px]" onClick={(e) => e.stopPropagation()}>
+                                {((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).map((resp) => (
+                                  <div key={resp.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
+                                    <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                      {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                                    </div>
+                                    <span className="text-sm font-medium text-gray-900 whitespace-nowrap flex-1">{resp.nombre}</span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => { e.stopPropagation(); quitarResponsableInline(rol.numero, actividad.id, resp.id); }}
+                                      className="text-blue-400 hover:text-red-600 leading-none ml-0.5 flex-shrink-0"
+                                      disabled={asignandoId === actividad.id}
+                                    >✕</button>
                                   </div>
-                                  <span className="text-sm font-medium text-gray-900 whitespace-nowrap flex-1">{resp.nombre}</span>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); quitarResponsable(rol.numero, actividad.id, resp.id); }}
-                                    className="text-blue-400 hover:text-red-600 leading-none ml-0.5 flex-shrink-0"
-                                    disabled={asignandoId === actividad.id}
-                                  >✕</button>
-                                </div>
-                              ))}
-                              {/* Select para añadir nuevo responsable */}
-                              <SelectorProfesional
-                                disabled={cargandoAuditores || asignandoId === actividad.id}
-                                auditores={auditores.filter(a => !((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).some(r => r.id === a.id))}
-                                onSelect={(id) => {
-                                  if (!id) return;
-                                  const auditor = auditores.find(a => a.id === id);
-                                  if (auditor) asignarResponsable(rol.numero, actividad.id, auditor);
-                                }}
-                              />
-                            </div>
-                          ) : (
-                            <div className="px-4 py-2 bg-gray-100 rounded-lg text-sm text-gray-600">
-                              {((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).map(r => r.nombre).join(', ') || 'Sin asignar'}
+                                ))}
+                                <SelectorProfesional
+                                  disabled={cargandoAuditores || asignandoId === actividad.id}
+                                  auditores={auditores.filter(a => !((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).some(r => r.id === a.id))}
+                                  onSelect={(id) => {
+                                    if (!id) return;
+                                    const auditor = auditores.find(a => a.id === id);
+                                    if (auditor) asignarResponsableInline(rol.numero, actividad.id, auditor);
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              <div className="flex flex-col gap-1.5 min-w-[180px]">
+                                {((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).map((resp) => (
+                                  <div key={resp.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
+                                    <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                      {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                                    </div>
+                                    <span className="text-sm font-medium text-gray-900 whitespace-nowrap">{resp.nombre}</span>
+                                  </div>
+                                ))}
+                                {((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).length === 0 && (
+                                  /* Fallback: mostrar responsable(s) del rol */
+                                  (rol as any).responsables && (rol as any).responsables.length > 0 ? (
+                                    <>
+                                      {(rol as any).responsables.map((resp: Auditor) => (
+                                        <div key={resp.id} className="flex items-center gap-1.5 bg-teal-50 border border-teal-200 rounded-full px-3 py-1">
+                                          <div className="w-5 h-5 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                            {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                                          </div>
+                                          <span className="text-sm font-medium text-gray-900 whitespace-nowrap">{resp.nombre}</span>
+                                          <span className="text-[9px] bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded font-bold uppercase">Resp. del Rol</span>
+                                        </div>
+                                      ))}
+                                    </>
+                                  ) : (
+                                    <span className="text-sm text-gray-400 italic">Sin asignar</span>
+                                  )
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* ══ TAREAS DE SEGUIMIENTO dentro de la actividad ══ */}
+                          {actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 && (
+                            <div className="mt-3 ml-11 border-t border-dashed border-gray-200 pt-3">
+                              <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                                Tareas ({actividad.tareasSeguimiento.filter(t => t.completada).length}/{actividad.tareasSeguimiento.length} completadas)
+                              </p>
+                              <div className="space-y-1.5">
+                                {actividad.tareasSeguimiento.map((tarea) => {
+                                  const fechaLimite = tarea.fechaEntrega ? new Date(tarea.fechaEntrega) : null;
+                                  const hoy = new Date();
+                                  const diasRestantes = fechaLimite ? Math.ceil((fechaLimite.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                                  const estaVencida = diasRestantes !== null && diasRestantes < 0 && !tarea.completada;
+                                  const estaProxima = diasRestantes !== null && diasRestantes >= 0 && diasRestantes <= 7 && !tarea.completada;
+                                  const cantAdjuntos = tarea.adjuntosTarea?.length || 0;
+                                  const tieneObservacion = tarea.observaciones && tarea.observaciones.trim();
+                                  
+                                  return (
+                                    <div key={tarea.id} className={`p-3 rounded-lg border transition-colors ${
+                                      tarea.completada ? 'bg-green-50/60 border-green-200' : 
+                                      estaVencida ? 'bg-red-50/60 border-red-200' :
+                                      estaProxima ? 'bg-amber-50/60 border-amber-200' :
+                                      'bg-white border-gray-200'
+                                    }`}>
+                                      {/* Fila 1: Checkbox + Descripción */}
+                                      <div className="flex items-start gap-2.5">
+                                        <span className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${
+                                          tarea.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white'
+                                        }`}>
+                                          {tarea.completada && (
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                          )}
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                          <p className={`text-sm font-medium leading-snug ${tarea.completada ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                                            {tarea.descripcion}
+                                          </p>
+                                        </div>
+                                      </div>
+
+                                      {/* Fila 2: Metadatos SIEMPRE visibles */}
+                                      <div className="ml-7 mt-2 flex items-center gap-2 flex-wrap">
+                                        {/* ⏰ Fecha límite — SIEMPRE visible */}
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${
+                                          !fechaLimite ? 'bg-gray-100 text-gray-400 border border-dashed border-gray-300' :
+                                          tarea.completada ? 'bg-gray-100 text-gray-400' :
+                                          estaVencida ? 'bg-red-100 text-red-700 border border-red-300' :
+                                          estaProxima ? 'bg-amber-100 text-amber-700 border border-amber-300' :
+                                          'bg-gray-100 text-gray-600'
+                                        }`}>
+                                          ⏰ {!fechaLimite ? 'Sin fecha límite' : estaVencida ? `Vencida (${Math.abs(diasRestantes!)} días)` : `Límite: ${fechaLimite.toLocaleDateString('es-CO')}`}
+                                        </span>
+
+                                        {/* 👤 Responsables — SIEMPRE visible (fallback: responsable del rol) */}
+                                        {(() => {
+                                          const tieneResp = tarea.responsables && tarea.responsables.length > 0;
+                                          const rolResps = (rol as any).responsables as Auditor[] | undefined;
+                                          const respNames = tieneResp ? tarea.responsables!.join(', ') : (rolResps && rolResps.length > 0 ? rolResps.map(r => r.nombre).join(', ') : null);
+                                          const esFallback = !tieneResp && respNames;
+                                          return (
+                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] ${
+                                              tieneResp ? 'bg-blue-50 text-blue-700 border border-blue-200 font-medium' :
+                                              esFallback ? 'bg-teal-50 text-teal-700 border border-teal-200 font-medium' :
+                                              'bg-gray-100 text-gray-400 border border-dashed border-gray-300'
+                                            }`}>
+                                              👤 {respNames || 'Sin responsable'}
+                                              {esFallback && <span className="text-[8px] bg-teal-100 text-teal-600 px-1 rounded font-bold ml-0.5">ROL</span>}
+                                            </span>
+                                          );
+                                        })()}
+
+                                        {/* 📎 Adjuntos — SIEMPRE visible */}
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] ${
+                                          cantAdjuntos > 0 ? 'bg-purple-50 text-purple-700 border border-purple-200 font-medium' : 'bg-gray-100 text-gray-400 border border-dashed border-gray-300'
+                                        }`}>
+                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                          {cantAdjuntos > 0 ? `${cantAdjuntos} archivo${cantAdjuntos !== 1 ? 's' : ''}` : 'Sin adjuntos'}
+                                        </span>
+
+                                        {/* 💬 Comentario — SIEMPRE visible */}
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] ${
+                                          tieneObservacion ? 'bg-amber-50 text-amber-700 border border-amber-200 font-medium' : 'bg-gray-100 text-gray-400 border border-dashed border-gray-300'
+                                        }`}>
+                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                                          {tieneObservacion ? 'Con comentario' : 'Sin comentarios'}
+                                        </span>
+
+                                        {/* ✅ Completada */}
+                                        {tarea.completada && (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded text-[11px] font-semibold border border-green-200">
+                                            ✅ {tarea.fechaCompletado ? new Date(tarea.fechaCompletado).toLocaleDateString('es-CO') : 'Completada'}
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {/* Fila 3: Texto del comentario si existe */}
+                                      {tieneObservacion && (
+                                        <div className="ml-7 mt-2 px-3 py-2 bg-white border border-gray-200 rounded-lg">
+                                          <p className="text-[11px] font-bold text-gray-500 mb-0.5 flex items-center gap-1 uppercase tracking-wider">
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                                            Comentario
+                                          </p>
+                                          <p className="text-xs text-gray-700 leading-relaxed">{tarea.observaciones}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           )}
                         </div>
                       ))
                     )}
 
-                    {/* Formulario para nueva actividad */}
-                    {mostrarFormNuevaActividad === rol.numero ? (
-                      <motion.div
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="p-4 border-2 border-blue-300 bg-blue-50 rounded-lg space-y-3"
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-semibold text-blue-900">Nueva actividad para Rol {rol.numero}</h4>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMostrarFormNuevaActividad(null);
-                            }}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-900 mb-1">Nombre de la actividad *</label>
-                          <input
-                            type="text"
-                            value={nuevaActividad.nombre}
-                            onChange={(e) => setNuevaActividad({ ...nuevaActividad, nombre: e.target.value })}
-                            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-                            placeholder="Ej: Auditoría al proceso de contratación"
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-900 mb-1">Descripción</label>
-                          <textarea
-                            value={nuevaActividad.descripcion}
-                            onChange={(e) => setNuevaActividad({ ...nuevaActividad, descripcion: e.target.value })}
-                            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-                            placeholder="Descripción detallada de la actividad"
-                            rows={2}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-900 mb-1">Fecha inicio</label>
-                            <input
-                              type="date"
-                              value={nuevaActividad.fechaInicio}
-                              onChange={(e) => setNuevaActividad({ ...nuevaActividad, fechaInicio: e.target.value })}
-                              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-900 mb-1">Fecha fin</label>
-                            <input
-                              type="date"
-                              value={nuevaActividad.fechaFin}
-                              onChange={(e) => setNuevaActividad({ ...nuevaActividad, fechaFin: e.target.value })}
-                              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex gap-2 pt-2">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              agregarActividad(rol.numero);
-                            }}
-                            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center gap-2"
-                          >
-                            <Check className="w-4 h-4" />
-                            Guardar actividad
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setMostrarFormNuevaActividad(null);
-                            }}
-                            className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium"
-                          >
-                            Cancelar
-                          </button>
-                        </div>
-                      </motion.div>
-                    ) : (
-                      /* Botón agregar actividad - Solo si tiene permiso de asignación */
-                      puedeAsignar && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMostrarFormNuevaActividad(rol.numero);
-                          }}
-                          className="w-full px-4 py-3 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 rounded-lg text-gray-600 hover:text-blue-600 font-medium flex items-center justify-center gap-2 transition-colors"
+                    {/* Formulario para nueva actividad — SOLO en BORRADOR */}
+                    {plan.estado === 'BORRADOR' && (
+                      mostrarFormNuevaActividad === rol.numero ? (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="p-4 border-2 border-blue-300 bg-blue-50 rounded-lg space-y-3"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          Agregar actividad adicional
-                        </button>
+                          <div className="flex items-center justify-between mb-3">
+                            <h4 className="font-semibold text-blue-900">Nueva actividad para Rol {rol.numero}</h4>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setMostrarFormNuevaActividad(null); }}
+                              className="text-blue-600 hover:text-blue-800"
+                            >✕</button>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-900 mb-1">Nombre de la actividad *</label>
+                            <input type="text" value={nuevaActividad.nombre} onChange={(e) => setNuevaActividad({ ...nuevaActividad, nombre: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Ej: Auditoría al proceso de contratación" onClick={(e) => e.stopPropagation()} />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-gray-900 mb-1">Descripción</label>
+                            <textarea value={nuevaActividad.descripcion} onChange={(e) => setNuevaActividad({ ...nuevaActividad, descripcion: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Descripción detallada" rows={2} onClick={(e) => e.stopPropagation()} />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-900 mb-1">Fecha inicio</label>
+                              <input type="date" value={nuevaActividad.fechaInicio} onChange={(e) => setNuevaActividad({ ...nuevaActividad, fechaInicio: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" onClick={(e) => e.stopPropagation()} />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-900 mb-1">Fecha fin</label>
+                              <input type="date" value={nuevaActividad.fechaFin} onChange={(e) => setNuevaActividad({ ...nuevaActividad, fechaFin: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" onClick={(e) => e.stopPropagation()} />
+                            </div>
+                          </div>
+                          <div className="flex gap-2 pt-2">
+                            <button onClick={(e) => { e.stopPropagation(); agregarActividadInline(rol.numero); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center gap-2">
+                              <Check className="w-4 h-4" /> Guardar actividad
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); setMostrarFormNuevaActividad(null); }} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium">
+                              Cancelar
+                            </button>
+                          </div>
+                        </motion.div>
+                      ) : (
+                        puedeAsignarActividades && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setMostrarFormNuevaActividad(rol.numero); }}
+                            className="w-full px-4 py-3 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 rounded-lg text-gray-600 hover:text-blue-600 font-medium flex items-center justify-center gap-2 transition-colors"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                            Agregar actividad adicional
+                          </button>
+                        )
                       )
                     )}
                   </div>
@@ -8086,177 +6603,980 @@ const ESTADO_PLAN_A_BACKEND: Record<EstadoPlan, string> = {
   APROBADO: 'aprobado',
   VIGENTE: 'en-ejecucion',
   CERRADO: 'completado',
+  DEVUELTO: 'borrador', // Backend doesn't have devuelto yet, fallback to borrador
 };
 
-function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan = false, puedeActivarPlan = false }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; puedeAprobarPlan?: boolean; puedeActivarPlan?: boolean }) {
+function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan = false, puedeActivarPlan = false, puedeEditarPlan = false, auditores = [] }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; puedeAprobarPlan?: boolean; puedeActivarPlan?: boolean; puedeEditarPlan?: boolean; auditores?: Auditor[] }) {
   const [guardando, setGuardando] = useState(false);
+  const currentUser = (() => {
+    try {
+      const userDataStr = localStorage.getItem('esap_user_data');
+      return userDataStr ? JSON.parse(userDataStr) : null;
+    } catch(e) { return null; }
+  })();
 
-  const cambiarEstado = async (nuevoEstado: EstadoPlan) => {
+  const [modalObservacion, setModalObservacion] = useState<{ isOpen: boolean, auditorId: string | null, texto: string }>({ isOpen: false, auditorId: null, texto: '' });
+  const [modalSubsanar, setModalSubsanar] = useState({ isOpen: false, texto: '' });
+
+  const [modalOTPConfig, setModalOTPConfig] = useState<{
+    isOpen: boolean;
+    accion: 'enviar_comite' | 'aprobar_auditor' | null;
+    auditorId: string | null;
+    userName: string;
+    userEmail: string;
+    detalle: string;
+  }>({
+    isOpen: false,
+    accion: null,
+    auditorId: null,
+    userName: '',
+    userEmail: '',
+    detalle: '',
+  });
+
+  const [isEditingCommittee, setIsEditingCommittee] = useState(false);
+  const [comiteDraft, setComiteDraft] = useState<Auditor[]>(plan.equipoAprobacion || []);
+  const [ordenDraft, setOrdenDraft] = useState<'secuencial' | 'paralelo'>(plan.ordenAprobacion || 'secuencial');
+  const [isTraceExpanded, setIsTraceExpanded] = useState(true);
+
+  // Aplicar el comité real o usar vacío
+  const equipo = plan.equipoAprobacion || [];
+  
+  const historial = (plan.equipoAprobacion || []).map(a => ({
+    ...a,
+    auditorId: a.id || a.auditorId,
+    auditorNombre: a.nombre || a.auditorNombre,
+    estado: (a.estado as any) || 'PENDIENTE'
+  }));
+
+  const fueDevuelto = plan.estado === 'DEVUELTO' || historial.some(h => h.estado === 'OBSERVADA');
+
+  const cambiarEstadoGeneral = async (nuevoEstado: EstadoPlan, historialPersonalizado?: any[]) => {
+    const arrHistorial = historialPersonalizado || plan.historialAprobaciones || historial;
     const planActualizado = {
       ...plan,
       estado: nuevoEstado,
+      historialAprobaciones: arrHistorial,
       fechaAprobacion: nuevoEstado === 'APROBADO' ? new Date().toISOString() : plan.fechaAprobacion
     };
     onActualizar(planActualizado);
     setGuardando(true);
     try {
       const estadoBackend = ESTADO_PLAN_A_BACKEND[nuevoEstado];
-      const res = await planAnualApi.update(plan.id, { estado: estadoBackend as 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' });
+      const payload: any = { 
+        estado: estadoBackend as any,
+        equipo_aprobacion: arrHistorial
+      };
+      
+      const res = await planAnualApi.update(plan.id, payload);
       if (res.success) {
-        toast.success('Estado actualizado', { description: `El plan ahora está en estado: ${nuevoEstado === 'EN_REVISION' ? 'En revisión' : nuevoEstado === 'APROBADO' ? 'Aprobado' : nuevoEstado === 'VIGENTE' ? 'Vigente' : nuevoEstado}` });
+        toast.success('Cambio Registrado', { description: `Trazabilidad guardada en la base de datos.` });
         onRefetchPlan?.();
       } else {
         toast.error('Error al guardar', { description: res.error });
         onRefetchPlan?.();
       }
-    } catch (e) {
-      toast.error('Error', { description: 'No se pudo guardar el estado en el servidor' });
+    } catch (e: any) {
+      console.error("Excepción en cambiarEstadoGeneral:", e);
+      let msg = 'No se pudo guardar el estado en el servidor. ';
+      if (e?.response?.data?.message) {
+        msg += typeof e.response.data.message === 'string' 
+          ? e.response.data.message 
+          : JSON.stringify(e.response.data.message);
+      } else if (e?.message) {
+        msg += e.message;
+      }
+      
+      const status = e?.response?.status;
+      if (status === 403) {
+        msg = `Operación denegada (403 Forbidden). Por favor repórtele al administrador del sistema que verifique sus permisos (ej. CIP.PLAN_ANUAL_APPROVE).`;
+      }
+
+      toast.error('Operación Fallida', { description: msg, duration: 10000 });
       onRefetchPlan?.();
     } finally {
       setGuardando(false);
     }
   };
 
+  const handleAprobarAuditor = (auditorId: string, nombre: string, email?: string) => {
+    const sessionUser = JSON.parse(localStorage.getItem('esap_user_data') || '{}');
+    setModalOTPConfig({
+      isOpen: true,
+      accion: 'aprobar_auditor',
+      auditorId,
+      userName: sessionUser.nombre || nombre,
+      userEmail: sessionUser.email || email || '',
+      detalle: 'Aprobación de Miembro de Comité PAI',
+    });
+  };
+
+  const handleEnviarComiteOTP = () => {
+    if (fueDevuelto) {
+      setModalSubsanar({ isOpen: true, texto: '' });
+    } else {
+      const sessionUser = JSON.parse(localStorage.getItem('esap_user_data') || '{}');
+      setModalOTPConfig({
+        isOpen: true,
+        accion: 'enviar_comite',
+        auditorId: null,
+        userName: sessionUser.nombre || plan.responsable || 'Responsable del Plan',
+        userEmail: sessionUser.email || '', 
+        detalle: 'Envío del Proyecto al Comité de Aprobación',
+      });
+    }
+  };
+
+  const procesarAccionOTP = (metadata: FirmaElectronicaMetadata) => {
+    if (modalOTPConfig.accion === 'aprobar_auditor' && modalOTPConfig.auditorId) {
+      ejecutarAprobacionReal(modalOTPConfig.auditorId, metadata);
+    } else if (modalOTPConfig.accion === 'enviar_comite') {
+      cambiarEstadoGeneral('EN_REVISION');
+    }
+  };
+
+  const handleConfirmarSubsanacion = () => {
+    if (!modalSubsanar.texto.trim()) return;
+    
+    // Convertir de OBSERVADA a PENDIENTE, guardando el comentario de subsanación
+    const nuevoHistorial = historial.map(h => 
+      h.estado === 'OBSERVADA' 
+        ? { ...h, estado: 'PENDIENTE' as const, respuestaSubsanacion: modalSubsanar.texto, fechaRespuesta: new Date().toISOString() } 
+        : h
+    );
+    
+    setModalSubsanar({ isOpen: false, texto: '' });
+    toast.success('Subsanación enviada exitosamente', { description: 'El plan regresó a fase de revisión de firmas.' });
+    
+    // Al re-enviarlo por subsanación no requiere firma OTP, va directo a revisión
+    cambiarEstadoGeneral('EN_REVISION', nuevoHistorial);
+  };
+
+  const ejecutarAprobacionReal = (auditorId: string, metadata: FirmaElectronicaMetadata) => {
+    const nuevoHistorial = historial.map(h => 
+      h.auditorId === auditorId ? { 
+        ...h, 
+        estado: 'APROBADA' as const, 
+        fecha: metadata.fechaFirma,
+        firmaElectronica: metadata
+      } : h
+    );
+    
+    if (nuevoHistorial.every(h => h.estado === 'APROBADA')) {
+      cambiarEstadoGeneral('APROBADO', nuevoHistorial);
+    } else {
+      // Guardar trazabilidad intermedia sin cambiar el estado general (sigue EN_REVISION)
+      cambiarEstadoGeneral('EN_REVISION', nuevoHistorial);
+    }
+  };
+
+  const handleRechazarObservacion = () => {
+    if (!modalObservacion.auditorId || !modalObservacion.texto.trim()) return;
+    
+    const nuevoHistorial = historial.map(h => 
+      h.auditorId === modalObservacion.auditorId 
+        ? { ...h, estado: 'OBSERVADA' as const, observacion: modalObservacion.texto, fecha: new Date().toISOString() } 
+        : h
+    );
+    
+    setModalObservacion({ isOpen: false, auditorId: null, texto: '' });
+    toast.error('Plan devuelto con observaciones', { description: 'El plan regresó a fase de ajustes.' });
+    
+    // Almacenar forzosamente la observación en el payload del equipo
+    cambiarEstadoGeneral('DEVUELTO', nuevoHistorial);
+  };
+
+  const exportarLogCSV = () => {
+    try {
+      const escapeCSV = (str?: string) => {
+        if (!str) return '""';
+        return `"${str.replace(/"/g, '""')}"`;
+      };
+
+      const cabeceras = [
+        'Fase',
+        'Nombre del Actor',
+        'Rol',
+        'Estado',
+        'Fecha de Accion',
+        'Observacion',
+        'Respuesta de Subsanacion',
+        'ID Firma Electronica',
+        'IP Origen'
+      ].join(';');
+
+      const fase1 = [
+        '"Fase 1: Creación y Formulación Inicial"',
+        escapeCSV(plan.jefeOCI?.nombre || 'Administrador OCI'),
+        '"Autor del Plan"',
+        '"COMPLETADO"',
+        escapeCSV(plan.fechaCreacion ? new Date(plan.fechaCreacion).toLocaleString('es-CO') : ''),
+        '""',
+        '""',
+        '""',
+        '""'
+      ].join(';');
+
+      const filasAprobadores = equipo.map(aprobador => {
+        const track = historial.find(h => h.auditorId === aprobador.id) || { estado: 'PENDIENTE' } as any;
+        return [
+          '"Fase 2: Aprobación PAI"',
+          escapeCSV(aprobador.nombre),
+          escapeCSV(aprobador.cargo || 'Comité'),
+          escapeCSV(track.estado),
+          escapeCSV(track.fecha ? new Date(track.fecha).toLocaleString('es-CO') : ''),
+          escapeCSV(track.observacion),
+          escapeCSV(track.respuestaSubsanacion),
+          escapeCSV(track.firmaElectronica?.hash || track.firmaElectronica?.id),
+          escapeCSV(track.firmaElectronica?.ip)
+        ].join(';');
+      });
+
+      const fase3 = [
+        '"Fase 3: Activación Oficial"',
+        '"Sistema"',
+        '"Plataforma"',
+        `"${plan.estado === 'VIGENTE' ? 'VIGENTE' : 'PENDIENTE'}"`,
+        escapeCSV(plan.fechaAprobacion ? new Date(plan.fechaAprobacion).toLocaleString('es-CO') : ''),
+        '""',
+        '""',
+        '""',
+        '""'
+      ].join(';');
+
+      const csvContent = ['sep=;', cabeceras, fase1, ...filasAprobadores, fase3].join('\n');
+      
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Trazabilidad_PAI_${plan.vigencia || new Date().getFullYear()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success('Log de aprobación exportado correctamente');
+    } catch (e) {
+      toast.error('Error al exportar el log CSV');
+      console.error(e);
+    }
+  };
+
   const totalActividades = plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0);
   const actividadesAsignadas = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.responsable !== null).length, 0);
-  const porcentajeAsignacion = Math.round((actividadesAsignadas / totalActividades) * 100);
+  const porcentajeAsignacion = totalActividades ? Math.round((actividadesAsignadas / totalActividades) * 100) : 0;
 
-  const puedeEnviarRevision = porcentajeAsignacion === 100;
-  const puedeAprobar = plan.estado === 'EN_REVISION';
-  const puedeActivar = plan.estado === 'APROBADO';
+  const puedeEnviarRevision = porcentajeAsignacion === 100 && equipo.length > 0;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className="space-y-6"
-    >
-      {/* Estado actual */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Estado del plan</h2>
-        <div className="flex items-center gap-6">
-          <div className={`w-16 h-16 rounded-xl flex items-center justify-center ${
-            plan.estado === 'VIGENTE' ? 'bg-green-100' :
-            plan.estado === 'APROBADO' ? 'bg-blue-100' :
-            plan.estado === 'EN_REVISION' ? 'bg-orange-100' :
-            'bg-gray-100'
-          }`}>
-            <FileCheck className={`w-8 h-8 ${
-              plan.estado === 'VIGENTE' ? 'text-green-600' :
-              plan.estado === 'APROBADO' ? 'text-blue-600' :
-              plan.estado === 'EN_REVISION' ? 'text-orange-600' :
-              'text-gray-600'
-            }`} />
-          </div>
-          <div className="flex-1">
-            <p className="text-sm text-gray-600 mb-1">Estado actual</p>
-            <p className="text-2xl font-bold text-gray-900">
-              {plan.estado === 'BORRADOR' ? 'Borrador' : 
-               plan.estado === 'EN_REVISION' ? 'En revisión' : 
-               plan.estado === 'APROBADO' ? 'Aprobado' : 
-               plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado'}
-            </p>
-            {plan.fechaAprobacion && (
-              <p className="text-sm text-gray-600 mt-1">
-                Aprobado el {new Date(plan.fechaAprobacion).toLocaleDateString('es-CO', { day: '2-digit', month: 'long', year: 'numeric' })}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Checklist de validación */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Validación del plan</h2>
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-green-600" />
-            <span className="text-gray-700">5 roles obligatorios del Decreto 648/2017</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-green-600" />
-            <span className="text-gray-700">22 actividades distribuidas correctamente</span>
-          </div>
-          <div className="flex items-center gap-3">
-            {porcentajeAsignacion === 100 ? (
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
-            ) : (
-              <AlertCircle className="w-5 h-5 text-orange-600" />
-            )}
-            <span className="text-gray-700">
-              Responsables asignados: <strong>{actividadesAsignadas}/{totalActividades}</strong> ({porcentajeAsignacion}%)
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Acciones de flujo */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Acciones disponibles</h2>
-        <div className="space-y-3">
-          <button
-            onClick={() => cambiarEstado('EN_REVISION')}
-            disabled={!puedeEnviarRevision || plan.estado !== 'BORRADOR' || guardando}
-            className="w-full px-6 py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6 relative">
+      
+      {/* Estado general y timeline */}
+      <div className="bg-white rounded-xl border-2 border-gray-200 p-6 shadow-sm relative z-0">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
+          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <FileCheck className="w-6 h-6 text-blue-600" />
+            Trazabilidad de Aprobación
+          </h2>
+          <button 
+            type="button"
+            onClick={exportarLogCSV}
+            className="flex items-center justify-center gap-2 px-4 py-2 text-sm bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 border border-emerald-200 hover:border-emerald-300 rounded-xl transition-all font-semibold shadow-sm w-fit active:scale-95"
+            title="Descargar Logs completos en formato .CSV"
           >
-            {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileCheck className="w-5 h-5" />}
-            Enviar a revisión
+            <Download className="w-4 h-4" />
+            Descargar Logs (CSV)
           </button>
-
-          {puedeAprobarPlan ? (
-            <button
-              onClick={() => cambiarEstado('APROBADO')}
-              disabled={!puedeAprobar || guardando}
-              className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Check className="w-5 h-5" />
-              Aprobar plan
-            </button>
-          ) : (
-            <div className="p-4 bg-gray-50 border-2 border-gray-200 rounded-lg flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-gray-700">Aprobación reservada para el Jefe OCI</p>
-                <p className="text-sm text-gray-500 mt-1">Necesitas el permiso <code>plan-anual.approve</code> para aprobar el plan.</p>
-              </div>
-            </div>
-          )}
-
-          {puedeActivarPlan ? (
-            <button
-              onClick={() => cambiarEstado('VIGENTE')}
-              disabled={!puedeActivar || guardando}
-              className="w-full px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <CheckCircle2 className="w-5 h-5" />
-              Activar plan (vigente)
-            </button>
-          ) : (
-            <div className="p-4 bg-gray-50 border-2 border-gray-200 rounded-lg flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-gray-400 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-gray-700">Activación reservada para el Jefe OCI</p>
-                <p className="text-sm text-gray-500 mt-1">Necesitas el permiso <code>plan-anual.activate</code> para activar el plan.</p>
-              </div>
-            </div>
-          )}
         </div>
 
-        {!puedeEnviarRevision && plan.estado === 'BORRADOR' && (
-          <div className="mt-4 p-4 bg-orange-50 border-2 border-orange-200 rounded-lg">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-orange-900 mb-1">Falta asignar responsables</p>
-                <p className="text-sm text-orange-700">
-                  Debes asignar un responsable a todas las {totalActividades} actividades antes de enviar el plan a revisión.
-                </p>
-              </div>
+        {/* Cintas de estado general */}
+        <div className="mb-8 flex gap-4 text-sm font-semibold text-center border-b border-gray-100 pb-6 overflow-x-auto">
+          <div className={`px-4 py-2 rounded-lg flex-1 whitespace-nowrap ${plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO' ? 'bg-orange-100 text-orange-700 border-2 border-orange-300' : 'bg-gray-50 text-gray-400'}`}>
+            1. Formulación 
+            {plan.estado === 'DEVUELTO' && <span className="ml-2 bg-red-100 text-red-600 px-2 py-0.5 rounded-full text-xs">DEVUELTO</span>}
+          </div>
+          <div className={`px-4 py-2 rounded-lg flex-1 whitespace-nowrap ${plan.estado === 'EN_REVISION' ? 'bg-blue-100 text-blue-700 border-2 border-blue-300' : 'bg-gray-50 text-gray-400'}`}>
+            2. Comité PAI (En Revisión)
+          </div>
+          <div className={`px-4 py-2 rounded-lg flex-1 whitespace-nowrap ${plan.estado === 'APROBADO' || plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-2 border-green-300' : 'bg-gray-50 text-gray-400'}`}>
+            3. Autorizado / Vigente
+          </div>
+        </div>
+
+        {/* Cartas de estado simples */}
+        {plan.estado === 'BORRADOR' && !fueDevuelto && (
+          <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg flex items-start gap-3 mb-6 shadow-sm">
+            <AlertCircle className="w-5 h-5 text-orange-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-orange-900 mb-1">Plan en fase de preparación</p>
+              <p className="text-sm text-orange-800">
+                Asegúrate de configurar todas las actividades y asignar todos los responsables antes de enviar el plan al comité de aprobación PAI.
+              </p>
             </div>
           </div>
         )}
+
+        {(plan.estado === 'DEVUELTO' || fueDevuelto) && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 mb-6 shadow-sm relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+            <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div className="w-full">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-1">
+                <p className="font-bold text-red-900">Plan Devuelto por Observaciones al Comité</p>
+                <div className="inline-flex items-center gap-1.5 bg-red-600 text-white text-[10px] uppercase font-black px-2 py-0.5 rounded-full shadow-sm w-max">
+                  <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                  Turno Actual: Jefe / Configuración OCI
+                </div>
+              </div>
+              <p className="text-sm text-red-800 leading-relaxed">
+                El comité ha revisado el plan y registrado observaciones. En este estado, <strong>solo el usuario responsable del plan o el Jefe OCI</strong> puede realizar las modificaciones pertinentes, contestar (subsanar) los comentarios de los evaluadores y re-enviar el plan al Comité para retomar el flujo de aprobación.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Comité UI */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between mb-3 border-b pb-2 border-gray-100">
+            <h3 className="font-bold text-gray-800 text-sm uppercase tracking-wider flex items-center gap-2">
+              <Users className="w-5 h-5 text-gray-400" />
+              Comité Aprobador PAI ({equipo.length})
+            </h3>
+            {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && !isEditingCommittee && (
+              <button 
+                onClick={() => {
+                  setComiteDraft(plan.equipoAprobacion || []);
+                  setOrdenDraft(plan.ordenAprobacion || 'secuencial');
+                  setIsEditingCommittee(true);
+                }}
+                className="text-blue-600 text-sm font-bold hover:text-blue-800 flex items-center gap-1 bg-blue-50 px-3 py-1.5 rounded-lg transition-colors border border-blue-100"
+              >
+                <Settings className="w-4 h-4" /> Editar Comité
+              </button>
+            )}
+          </div>
+
+          {isEditingCommittee ? (
+            <div className="bg-blue-50/50 p-5 rounded-xl border-2 border-blue-100 border-dashed animate-in fade-in slide-in-from-top-4 duration-300">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h4 className="font-bold text-gray-900">Configuración del Comité</h4>
+                  <p className="text-xs text-gray-500">Añade o remueve miembros y establece el orden de flujo.</p>
+                </div>
+                <div className="flex bg-gray-100 p-1 rounded-lg">
+                  <button onClick={() => setOrdenDraft('secuencial')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${ordenDraft === 'secuencial' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>Secuencial</button>
+                  <button onClick={() => setOrdenDraft('paralelo')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${ordenDraft === 'paralelo' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>Paralelo</button>
+                </div>
+              </div>
+
+              {/* Autocomplete para añadir (simplificado) */}
+              <div className="mb-4">
+                <SelectorProfesional
+                  auditores={auditores.filter((a: any) => {
+                    const esAprobador = /aprobador/i.test(a.cargo || '');
+                    const yaSeleccionado = comiteDraft.find(c => String(c.id) === String(a.id));
+                    return esAprobador && !yaSeleccionado;
+                  })}
+                  onSelect={(id) => {
+                    if (!id || comiteDraft.length >= 5) return;
+                    const auditor = auditores.find(a => String(a.id) === String(id));
+                    if (auditor) setComiteDraft([...comiteDraft, auditor]);
+                  }}
+                  placeholder={comiteDraft.length >= 5 ? "Límite de 5 miembros alcanzado" : "+ Agregar Aprobador PAI..."}
+                  disabled={comiteDraft.length >= 5}
+                />
+              </div>
+
+              {/* Lista Draft */}
+              <div className="space-y-2 mb-6">
+                {comiteDraft.length === 0 ? (
+                  <p className="text-center text-sm text-gray-400 italic py-4">No hay miembros seleccionados</p>
+                ) : (
+                  comiteDraft.map((miembro: any, index: number) => {
+                    const getInitials = (name: string) => name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
+                    return (
+                      <div key={miembro.id} className="relative flex items-center gap-3 p-2.5 bg-white border border-gray-200 rounded-xl shadow-sm z-10 group">
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${ordenDraft === 'secuencial' ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-700'}`}>
+                          {ordenDraft === 'secuencial' ? index + 1 : '•'}
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-[10px] font-black shrink-0">
+                          {getInitials(miembro.nombre)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{miembro.nombre}</p>
+                          <p className="text-[10px] text-gray-400 truncate">{miembro.email || 'aprobador@esap.edu.co'}</p>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 bg-orange-100 text-orange-700 mr-2">
+                          {miembro.cargo || 'Funcionario'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setComiteDraft(comiteDraft.filter(c => c.id !== miembro.id))}
+                          className="w-7 h-7 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg flex items-center justify-center transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 justify-end pt-4 border-t border-blue-100">
+                <button onClick={() => setIsEditingCommittee(false)} className="px-4 py-2 bg-white border-2 border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-sm font-bold transition-colors">
+                  Cancelar
+                </button>
+                <button 
+                  onClick={async () => {
+                    if (comiteDraft.length === 0) {
+                      toast.error('Debe seleccionar al menos un aprobador');
+                      return;
+                    }
+
+                    // ⚡ NUEVO: Persistencia REAL en Base de Datos
+                    const isSavingId = toast.loading('Guardando en base de datos...');
+                    try {
+                      const res = await planAnualApi.update(plan.id, { 
+                        equipo_aprobacion: comiteDraft, 
+                        orden_aprobacion: ordenDraft 
+                      });
+                      
+                      toast.dismiss(isSavingId);
+                      
+                      if (res.success) {
+                        onActualizar({ ...plan, equipoAprobacion: comiteDraft, ordenAprobacion: ordenDraft });
+                        setIsEditingCommittee(false);
+                        toast.success('Comité actualizado de forma permanente');
+                      } else {
+                        throw new Error(res.error || 'Error del backend al guardar el comité');
+                      }
+                    } catch (e: any) {
+                      toast.dismiss(isSavingId);
+                      toast.error(e.message || 'Error al persistir cambios en el comité');
+                      console.error('Error actualizando comité:', e);
+                    }
+                  }} 
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center gap-2"
+                >
+                  <Check className="w-4 h-4" /> Guardar Cambios
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {equipo.length === 0 ? (
+                <div className="col-span-full p-8 text-center bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl">
+                  <AlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                  <p className="text-gray-500 font-medium mb-4">No se ha designado un comité aprobador para este plan.</p>
+                  {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && (
+                    <button 
+                      onClick={() => { setComiteDraft([]); setOrdenDraft('secuencial'); setIsEditingCommittee(true); }}
+                      className="px-5 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold rounded-lg transition-colors border border-blue-200"
+                    >
+                      + Configurar Comité PAI
+                    </button>
+                  )}
+                </div>
+              ) : (
+                equipo.map((aprobador, idx) => {
+                  const track = historial.find(h => h.auditorId === aprobador.id) || { estado: 'PENDIENTE', auditorNombre: aprobador.nombre };
+                  const isPendiente = track.estado === 'PENDIENTE';
+                  const isAprobado = track.estado === 'APROBADA';
+                  const isObservado = track.estado === 'OBSERVADA';
+                  const isSecuencial = plan.ordenAprobacion === 'secuencial';
+                  
+                  // Calcular si el usuario está bloqueado por el flujo secuencial
+                  let isWaitingTurn = false;
+                  if (plan.ordenAprobacion === 'secuencial') {
+                    const firstPendingIdx = equipo.findIndex(a => {
+                      const t = historial.find(hi => hi.auditorId === a.id);
+                      return !t || t.estado === 'PENDIENTE';
+                    });
+                    if (firstPendingIdx !== -1 && idx > firstPendingIdx) isWaitingTurn = true;
+                  }
+                  
+                  const getInitials = (name: string) => name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
+
+                  const isActiveTurn = !isWaitingTurn && isPendiente && plan.estado === 'EN_REVISION';
+
+                  return (
+                    <div key={aprobador.id} className={`p-4 border-2 rounded-xl flex flex-col gap-3 relative transition-all duration-500 ${
+                      isAprobado ? 'border-green-200 bg-green-50' : 
+                      isObservado ? 'border-red-200 bg-red-50' : 
+                      isActiveTurn ? 'border-blue-400 bg-blue-50/60 shadow-lg shadow-blue-100/60 scale-[1.02] z-10' :
+                      'border-gray-200 bg-gray-50/40 opacity-70 grayscale-[15%]'
+                    }`}>
+                      
+                      {isActiveTurn && (
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-600 text-white text-[9px] font-black uppercase tracking-wider py-0.5 px-3 text-center rounded-full shadow border border-blue-400 z-20 flex items-center justify-center gap-1.5 whitespace-nowrap">
+                          <div className="w-1 h-1 rounded-full bg-white animate-pulse" />
+                          Turno Actual
+                        </div>
+                      )}
+
+                      {isObservado && plan.estado === 'DEVUELTO' && (
+                        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-red-600 text-white text-[9px] font-black uppercase tracking-wider py-0.5 px-3 text-center rounded-full shadow border border-red-400 z-20 flex items-center justify-center gap-1.5 whitespace-nowrap">
+                          <AlertTriangle className="w-2.5 h-2.5" />
+                          Requiere Subsanación
+                        </div>
+                      )}
+
+                      <div className={`flex items-center justify-between ${(isActiveTurn || (isObservado && plan.estado === 'DEVUELTO')) ? 'mt-1' : ''}`}>
+                        <div className="flex items-center gap-3 relative">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-sm shrink-0 ${
+                            isAprobado ? 'bg-green-600 text-white' : 
+                            isObservado ? 'bg-red-600 text-white' : 
+                            isActiveTurn ? 'bg-blue-600 text-white ring-4 ring-blue-100 shadow-md' :
+                            'bg-gray-400 text-white opacity-80'
+                          }`}>
+                            {isAprobado ? <Check className="w-4 h-4"/> : isObservado ? <X className="w-4 h-4"/> : (isSecuencial ? idx + 1 : '•')}
+                          </div>
+                          
+                          {track.firmaElectronica && (
+                            <div className="absolute -top-2 -right-2 text-yellow-500 bg-white rounded-full p-0.5 shadow-sm" title="Firmado Electrónicamente">
+                              <Shield className="w-4 h-4 fill-yellow-100" />
+                            </div>
+                          )}
+
+                          <div className={`w-9 h-9 rounded-full bg-white border ${isActiveTurn ? 'border-blue-300 text-blue-600' : 'border-gray-200 text-gray-500'} flex items-center justify-center text-[11px] font-black shrink-0 shadow-sm`}>
+                            {getInitials(aprobador.nombre)}
+                          </div>
+
+                          <div className="min-w-0 pr-2">
+                            <p className={`font-bold text-sm truncate ${isActiveTurn ? 'text-blue-950' : 'text-gray-900'}`}>{aprobador.nombre}</p>
+                            <p className="text-[11px] text-gray-500 truncate">{aprobador.email || 'aprobador@esap.edu.co'}</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className={`px-2 py-0.5 text-[10px] uppercase font-bold rounded-full border ${
+                            isAprobado ? 'bg-green-100 text-green-800 border-green-200' :
+                            isObservado ? 'bg-red-100 text-red-800 border-red-200' :
+                            isActiveTurn ? 'bg-blue-600 text-white border-blue-700 shadow-md' :
+                            'bg-gray-100 text-gray-500 border-gray-200'
+                          }`}>
+                            {isWaitingTurn ? 'ESPERANDO TURNO' : track.estado}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${isActiveTurn ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-700'}`}>
+                            {aprobador.cargo || 'Aprobador PAI'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {track?.observacion && (
+                        <div className="mt-1 p-3 bg-white border border-red-100 rounded-lg shadow-sm text-sm text-red-900">
+                          <span className="font-semibold block mb-1">Observación ({track.fecha ? new Date(track.fecha).toLocaleDateString() : ''}):</span>
+                          {track.observacion}
+                        </div>
+                      )}
+
+                      {track.respuestaSubsanacion && (
+                        <div className="mt-1 p-3 bg-white border border-green-100 rounded-lg shadow-sm text-sm text-green-900">
+                          <span className="font-semibold block mb-1">Respuesta de Subsanación ({track.fechaRespuesta ? new Date(track.fechaRespuesta).toLocaleDateString() : ''}):</span>
+                          {track.respuestaSubsanacion}
+                        </div>
+                      )}
+
+                      {/* Acciones del Aprobador */}
+                      {plan.estado === 'EN_REVISION' && isPendiente && (
+                        !isWaitingTurn ? (
+                          (currentUser && (currentUser.email || currentUser.person?.email || currentUser.usuario?.email)?.trim().toLowerCase() === aprobador.email?.trim().toLowerCase()) ? (
+                            <div className="flex gap-2 mt-2 pt-3 border-t border-gray-200">
+                              <button onClick={() => handleAprobarAuditor(aprobador.id, aprobador.nombre, aprobador.email)} className="flex-1 bg-white hover:bg-green-50 text-green-700 border border-green-200 text-sm font-medium py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 shadow-sm">
+                                <Shield className="w-4 h-4"/> Aprobar (Firma)
+                              </button>
+                              <button onClick={() => setModalObservacion({ isOpen: true, auditorId: aprobador.id, texto: '' })} className="flex-1 bg-white hover:bg-red-50 text-red-700 border border-red-200 text-sm font-medium py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 shadow-sm">
+                                <X className="w-4 h-4"/> Observar
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="mt-2 pt-3 border-t border-gray-200 text-center">
+                              <div className="bg-gray-50 text-gray-500 text-[11px] font-semibold py-2 px-3 rounded-lg flex items-center justify-center border border-gray-200">
+                                <Shield className="w-3 h-3 mr-2 opacity-60 text-blue-500"/> 
+                                {track?.respuestaSubsanacion 
+                                  ? `El usuario se encuentra verificando la respuesta de subsanación...` 
+                                  : `Esperando revisión de este usuario...`}
+                              </div>
+                            </div>
+                          )
+                        ) : (
+                          <div className="mt-2 pt-3 border-t border-gray-200">
+                            <div className="bg-gray-100 text-gray-500 text-[11px] font-semibold py-2 px-3 rounded-lg flex items-center gap-2 justify-center italic border border-gray-200/60">
+                              <Loader2 className="w-3 h-3 animate-spin"/> Esperando turno previo...
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Checklist de validación (Solo modo borrador/devuelto) */}
+      {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && (
+        <div className="bg-white rounded-xl border-2 border-gray-200 p-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Validación para envío a comité</h2>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              <CheckCircle2 className="w-5 h-5 text-green-600" />
+              <span className="text-gray-700">5 roles obligatorios del Decreto 648/2017</span>
+            </div>
+            <div className="flex items-center gap-3">
+              {porcentajeAsignacion === 100 ? <CheckCircle2 className="w-5 h-5 text-green-600" /> : <AlertCircle className="w-5 h-5 text-orange-600" />}
+              <span className="text-gray-700">Responsables asignados: <strong>{actividadesAsignadas}/{totalActividades}</strong> ({porcentajeAsignacion}%)</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Botoneras Generales */}
+      <div className="bg-white rounded-xl border-2 border-gray-200 p-6 relative z-0">
+        <h2 className="text-xl font-bold text-gray-900 mb-4">Acciones de Flujo</h2>
+        
+        <div className="space-y-3 relative z-0">
+          {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && (
+            <button onClick={handleEnviarComiteOTP} disabled={!puedeEnviarRevision || guardando} className="w-full px-6 py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
+              {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
+              {fueDevuelto ? 'Subsanar y Re-enviar a Comité de Aprobación (Firma)' : 'Enviar a Comité de Aprobación (Firma)'}
+            </button>
+          )}
+
+          {plan.estado === 'APROBADO' && puedeActivarPlan && (
+            <button onClick={() => cambiarEstadoGeneral('VIGENTE')} disabled={guardando} className="w-full px-6 py-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 shadow-md">
+              <CheckCircle2 className="w-5 h-5" />
+              Activar Plan (Hacer Vigente)
+            </button>
+          )}
+          
+          {plan.estado === 'APROBADO' && !puedeActivarPlan && (
+            <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg flex items-start gap-3 text-green-800">
+              <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold mb-1">Plan Aprobado</p>
+                <p className="text-sm">El comité ha autorizado este plan. Esperando Activación por el Jefe OCI.</p>
+              </div>
+            </div>
+          )}
+
+          {plan.estado === 'VIGENTE' && (
+            <div className="bg-white border text-left border-gray-200 rounded-2xl overflow-hidden transition-all duration-300 shadow-sm">
+              <button 
+                onClick={() => setIsTraceExpanded(!isTraceExpanded)}
+                className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600 shrink-0">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="font-bold text-gray-800 text-sm">Trazabilidad Final de Activación</h3>
+                    <p className="text-xs text-gray-500">Histórico del flujo de aprobación PAI</p>
+                  </div>
+                </div>
+                <div className={`w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500 transition-transform duration-300 shrink-0 ${isTraceExpanded ? 'rotate-180' : ''}`}>
+                  <ChevronDown className="w-4 h-4" />
+                </div>
+              </button>
+              
+              <AnimatePresence>
+                {isTraceExpanded && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="border-t border-gray-100 bg-white overflow-hidden"
+                  >
+                    <div className="px-4 md:px-8 py-8 bg-gray-50/50 rounded-b-2xl">
+                      <div className="relative border-l-2 border-indigo-200 ml-4 flex flex-col gap-10">
+                        
+                        {/* Paso 1: Creación */}
+                        <div className="relative pl-8">
+                          <div className="absolute -left-[13px] top-0 w-6 h-6 rounded-full bg-white border-4 border-indigo-300 shadow-sm flex items-center justify-center">
+                            <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                          </div>
+                          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow relative">
+                            <div className="absolute w-3 h-3 bg-white border-l border-t border-gray-200 rotate-[-45deg] -left-[6px] top-3"></div>
+                            <h4 className="font-bold text-gray-900 text-sm flex justify-between items-center">
+                              Creación y Formulación Inicial
+                              <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full border border-indigo-100">Fase 1</span>
+                            </h4>
+                            <div className="mt-2 text-xs text-gray-600 flex items-center gap-2">
+                              <div className="w-6 h-6 bg-indigo-100 text-indigo-700 rounded-full flex justify-center items-center font-bold text-[10px]">
+                                {plan.jefeOCI?.nombre ? plan.jefeOCI.nombre.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'AD'}
+                              </div>
+                              <span className="font-medium text-gray-800">{plan.jefeOCI?.nombre || 'Administrador OCI'}</span>
+                              <span className="mx-1 text-gray-300">|</span>
+                              <span className="text-gray-500">Autor del Plan</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Paso 2: Aprobaciones Comité */}
+                        {equipo.map((aprobador, idx) => {
+                          const track = historial.find(h => h.auditorId === aprobador.id) || { estado: 'PENDIENTE' } as any;
+                          const isAprobado = track.estado === 'APROBADA';
+                          const isObservado = track.estado === 'OBSERVADA';
+                          const isPendiente = track.estado === 'PENDIENTE';
+                          
+                          const dotColor = isAprobado ? 'border-green-400 bg-green-500' : isObservado ? 'border-red-400 bg-red-500' : 'border-blue-300 bg-white';
+                          const innerDot = isPendiente ? 'bg-blue-400' : '';
+                          
+                          return (
+                            <div key={`trace-${aprobador.id}`} className="relative pl-8">
+                              <div className={`absolute -left-[13px] top-2 w-6 h-6 rounded-full border-4 ${dotColor} shadow-md flex items-center justify-center z-10`}>
+                                {isAprobado && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                                {isObservado && <X className="w-3 h-3 text-white" strokeWidth={3} />}
+                                {isPendiente && <div className={`w-2 h-2 rounded-full ${innerDot}`} />}
+                              </div>
+                              <div className={`p-5 rounded-2xl border-2 transition-all shadow-sm ${
+                                isAprobado ? 'bg-white border-green-100 hover:border-green-300' : 
+                                isObservado ? 'bg-red-50/30 border-red-100 hover:border-red-300' : 
+                                'bg-white border-gray-100 hover:border-blue-100'
+                              } relative`}>
+                                <div className={`absolute w-3 h-3 rotate-[-45deg] -left-[7px] top-3 ${
+                                  isAprobado ? 'bg-white border-l-2 border-t-2 border-green-100' : 
+                                  isObservado ? 'bg-red-50/30 border-l-2 border-t-2 border-red-100' : 
+                                  'bg-white border-l-2 border-t-2 border-gray-100'
+                                }`}></div>
+                                
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 pb-3 border-b border-gray-100/60">
+                                  <div>
+                                    <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
+                                      Aprobación PAI: {aprobador.nombre}
+                                      {track.firmaElectronica && (
+                                        <div className="flex items-center gap-1 text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded shadow-sm" title="Firma Electrónica Válida">
+                                          <Shield className="w-3 h-3" /> F.E.
+                                        </div>
+                                      )}
+                                    </h4>
+                                    <p className="text-xs text-gray-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                      <span className="font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full">{aprobador.cargo || 'Comité'}</span>
+                                      <span className="text-gray-300">•</span>
+                                      <span className="flex items-center gap-1">
+                                        <Clock className="w-3 h-3 text-gray-400" />
+                                        {track.fecha ? new Date(track.fecha).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' }) : 'Esperando revisión...'}
+                                      </span>
+                                    </p>
+                                  </div>
+                                  <div className="shrink-0">
+                                    <span className={`px-3 py-1 text-[11px] font-bold uppercase tracking-wider rounded-lg border ${
+                                      isAprobado ? 'bg-green-100 text-green-800 border-green-200' :
+                                      isObservado ? 'bg-red-100 text-red-800 border-red-200' :
+                                      'bg-gray-100 text-gray-600 border-gray-200'
+                                    }`}>
+                                      {track.estado}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Observations & Answers */}
+                                {track.observacion && (
+                                  <div className="mt-3 bg-red-50/50 rounded-xl p-4 border border-red-100 shadow-inner">
+                                    <h5 className="text-[11px] font-bold text-red-800 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                                      <AlertCircle className="w-3.5 h-3.5" /> Observación Realizada
+                                    </h5>
+                                    <p className="text-sm text-red-900 leading-relaxed italic border-l-2 border-red-300 pl-3">
+                                      "{track.observacion}"
+                                    </p>
+                                  </div>
+                                )}
+
+                                {track.respuestaSubsanacion && (
+                                  <div className="mt-3 bg-emerald-50/50 rounded-xl p-4 border border-emerald-100 shadow-inner relative">
+                                    <div className="absolute -top-3 left-8 text-emerald-300">
+                                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 10 20 15 15 20"></polyline><path d="M4 4v7a4 4 0 0 0 4 4h12"></path></svg>
+                                    </div>
+                                    <h5 className="text-[11px] font-bold text-emerald-800 uppercase tracking-widest mb-1.5 flex items-center gap-1.5 mt-1">
+                                      <FileCheck className="w-3.5 h-3.5" /> Respuesta a Observación
+                                      {track.fechaRespuesta && <span className="text-[9px] text-emerald-600 font-normal ml-auto bg-emerald-100 px-2 py-0.5 rounded-full">{new Date(track.fechaRespuesta).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' })}</span>}
+                                    </h5>
+                                    <p className="text-sm text-emerald-900 leading-relaxed border-l-2 border-emerald-300 pl-3 bg-white p-2 border rounded shadow-sm">
+                                      {track.respuestaSubsanacion}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* Detalles de la firma */}
+                                {track.firmaElectronica && (
+                                  <div className="mt-4 pt-3 border-t border-dashed border-gray-200">
+                                    <div className="flex bg-gray-50 rounded-lg p-2.5 items-center justify-between border border-gray-100">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-6 h-6 bg-blue-100 rounded text-blue-700 flex items-center justify-center">
+                                          <FileText className="w-3.5 h-3.5" />
+                                        </div>
+                                        <div>
+                                          <p className="text-[10px] font-bold text-gray-700 uppercase">Detalle de Firma</p>
+                                          <p className="text-[10px] text-gray-500 font-mono tracking-tighter">ID: {track.firmaElectronica.hash || track.firmaElectronica.id || 'N/A'}</p>
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <p className="text-[9px] text-gray-400 uppercase font-bold">Dirección IP / Origen</p>
+                                        <p className="text-[10px] font-mono text-gray-600">{track.firmaElectronica.ip || 'Intranet (Local)'}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Paso 3: Activación Oficial */}
+                        <div className="relative pl-8">
+                          <div className="absolute -left-[17px] top-0 w-8 h-8 rounded-full bg-green-500 ring-4 ring-green-100 shadow-lg flex items-center justify-center z-10">
+                            <CheckCircle2 className="w-5 h-5 text-white" />
+                          </div>
+                          <div className="bg-gradient-to-br from-green-50 to-emerald-100/50 p-5 rounded-2xl border-2 border-green-200 shadow-md relative overflow-hidden">
+                            <div className="absolute w-4 h-4 rotate-[-45deg] -left-[9px] top-2 bg-green-50 border-l-2 border-t-2 border-green-200"></div>
+                            
+                            <div className="relative z-10">
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <h4 className="font-extrabold text-green-900 text-base">Activación Oficial</h4>
+                                  <p className="text-xs text-green-700 font-medium mt-1">El PAI se encuentra 100% aprobado y en fase de ejecución</p>
+                                </div>
+                                <Shield className="w-8 h-8 text-green-500/30" />
+                              </div>
+                              <div className="inline-flex flex-wrap items-stretch mt-4 bg-white rounded-xl border border-green-200 shadow-sm overflow-hidden group">
+                                <div className="px-3 py-2 bg-green-50/50 flex items-center border-r border-green-100">
+                                  <CalendarClock className="w-4 h-4 text-green-600" />
+                                  <span className="text-[12px] text-green-800 font-bold uppercase tracking-wider ml-2">
+                                    {plan.fechaAprobacion 
+                                      ? new Date(plan.fechaAprobacion).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }) 
+                                      : 'Confirmado'}
+                                  </span>
+                                </div>
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); exportarCertificadoAprobacionPDF(plan, equipo, historial); }}
+                                  className="px-4 py-2 flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white transition-colors focus:outline-none"
+                                  title="Generar Certificado Digital PDF"
+                                >
+                                  <FileText className="w-4 h-4" />
+                                  <span className="text-[11px] font-bold uppercase tracking-wider">Certificado PDF</span>
+                                </button>
+                              </div>
+                            </div>
+                            
+                            <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-green-500/10 rounded-full blur-2xl"></div>
+                          </div>
+                        </div>
+                        
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
+      </div>
+      
+      {/* Modal / Dialogo de Observación (Render Flotante Top-Level Z-Index) */}
+      <AnimatePresence>
+        {modalObservacion.isOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg border-2 border-red-100"
+            >
+              <h3 className="text-xl font-bold text-gray-900 mb-2 flex items-center gap-2 text-red-700">
+                <AlertCircle className="w-5 h-5"/> Registrar Observación
+              </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                El plan será devuelto al estado inicial (DEVUELTO) para que el responsable lo corrija y lo vuelva a enviar.
+              </p>
+              <textarea
+                className="w-full h-32 p-3 border-2 border-gray-200 rounded-xl focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none resize-none text-sm transition-all"
+                placeholder="Detalle exactamente los ajustes requeridos..."
+                value={modalObservacion.texto}
+                onChange={(e) => setModalObservacion(prev => ({ ...prev, texto: e.target.value }))}
+                autoFocus
+              />
+              <div className="flex gap-3 justify-end mt-6">
+                <button 
+                  onClick={() => setModalObservacion({ isOpen: false, auditorId: null, texto: '' })} 
+                  className="px-5 py-2.5 font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  disabled={!modalObservacion.texto.trim()} 
+                  onClick={handleRechazarObservacion} 
+                  className="px-5 py-2.5 font-medium bg-red-600 text-white hover:bg-red-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm"
+                >
+                  Confirmar y Devolver
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {modalSubsanar.isOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0 text-green-600">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Ajustes Realizados y Subsanación</h3>
+                  <p className="text-sm text-gray-500">Comunique los ajustes a los miembros del comité</p>
+                </div>
+              </div>
+              
+              <p className="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-100 italic">
+                Dado que el plan ya fue firmado por usted y las firmas previas aún son vinculantes, su re-envío de ajustes omitirá una doble validación de OTP y pasará de inmediato a la fase de revisión.
+              </p>
+              <textarea
+                className="w-full h-32 p-3 border-2 border-gray-200 rounded-xl focus:border-green-400 focus:ring-2 focus:ring-green-100 outline-none resize-none text-sm transition-all"
+                placeholder="Detalle exactamente los ajustes que ha realizado en respuesta a las observaciones planteadas..."
+                value={modalSubsanar.texto}
+                onChange={(e) => setModalSubsanar(prev => ({ ...prev, texto: e.target.value }))}
+                autoFocus
+              />
+              <div className="flex gap-3 justify-end mt-6">
+                <button 
+                  onClick={() => setModalSubsanar({ isOpen: false, texto: '' })} 
+                  className="px-5 py-2.5 font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  disabled={!modalSubsanar.texto.trim()} 
+                  onClick={handleConfirmarSubsanacion} 
+                  className="px-5 py-2.5 font-medium bg-green-600 text-white hover:bg-green-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm"
+                >
+                  Confirmar y Re-enviar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <ModalFirmaOTP
+        isOpen={modalOTPConfig.isOpen}
+        onClose={() => setModalOTPConfig(prev => ({ ...prev, isOpen: false }))}
+        onSuccess={procesarAccionOTP}
+        userName={modalOTPConfig.userName}
+        userEmail={modalOTPConfig.userEmail}
+        accionDetalle={modalOTPConfig.detalle}
+      />
     </motion.div>
   );
 }
