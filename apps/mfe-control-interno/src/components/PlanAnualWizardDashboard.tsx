@@ -5097,14 +5097,30 @@ function SeccionGestionYSeguimiento({
         // ✅ FILTRAR ACTIVIDADES PARA QUE EL AUDITOR SOLO VEA LAS PROPIAS
         const actividadesVisibles = actividadesActivas.filter(actividad => {
           if (liderazgoVerTodos) return true; // Líderes o planificadores ven todo
-          if (!currentUser) return false;
           
-          const currentName = currentUser.nombre || currentUser.nombres || currentUser.name || '';
-          const currentEmail = currentUser.email || currentUser.correo || '';
+          // Leer datos del usuario directamente (evita race condition con useEffect)
+          const user = currentUser || (() => {
+            try {
+              const raw = localStorage.getItem('esap_user_data') || localStorage.getItem('esap-sesion-activa');
+              if (!raw) return null;
+              const d = JSON.parse(raw);
+              const u = d?.user || d?.usuario || d;
+              return {
+                ...u,
+                nombre: u?.person?.first_name ? `${u.person.first_name} ${u.person.last_name || ''}`.trim() : u?.fullName || u?.name || u?.username || '',
+                email: u?.person?.email || u?.email || '',
+                idPerson: u?.person?.id || u?.idPerson,
+              };
+            } catch { return null; }
+          })();
+          if (!user) return false;
+          
+          const currentName = user.nombre || user.nombres || user.name || '';
+          const currentEmail = user.email || user.correo || '';
           // Recopilar todos los posibles IDs del usuario actual
           const possibleIds = [
-            currentUser.id, currentUser.idPerson, currentUser.idPersona, 
-            currentUser.documento, currentUser.sub, currentUser.userId
+            user.id, user.idPerson, user.idPersona, 
+            user.documento, user.sub, user.userId
           ].filter(Boolean).map(String);
 
           // Función helper para comparar identidad (acepta objeto O string)
