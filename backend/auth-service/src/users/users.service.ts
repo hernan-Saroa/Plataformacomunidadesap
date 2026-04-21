@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -197,7 +198,9 @@ export class UsersService {
     });
 
     if (!createdUser) {
-      throw new Error('User not found after creation');
+      throw new InternalServerErrorException(
+        'No fue posible completar la operación.',
+      );
     }
 
     return createdUser;
@@ -310,10 +313,14 @@ export class UsersService {
 
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id_user: userId } });
-    if (!user) throw new Error('User not found');
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
 
     const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
-    if (!isMatch) throw new Error('Invalid current password');
+    if (!isMatch) {
+      throw new BadRequestException('La contraseña actual es incorrecta');
+    }
 
     user.password_hash = await bcrypt.hash(newPassword, 10);
     await this.userRepo.save(user);
@@ -321,7 +328,9 @@ export class UsersService {
 
   async setPassword(userId: string, newPassword: string): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id_user: userId } });
-    if (!user) throw new Error('User not found');
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
 
     user.password_hash = await bcrypt.hash(newPassword, 10);
     await this.userRepo.save(user);
@@ -329,7 +338,9 @@ export class UsersService {
 
   async setResetToken(userId: string, token: string | null): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id_user: userId } });
-    if (!user) throw new Error('User not found');
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
 
     user.token = token;
     await this.userRepo.save(user);
@@ -413,14 +424,14 @@ export class UsersService {
     return { users, total, totalActive, totalBlocked };
   }
 
-  async findById(id: string): Promise<User | null> {
+  async findById(id: string): Promise<User> {
     const updatedUser = await this.userRepo.findOne({
       where: { id_user: id },
       relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'roles']
     });
 
     if (!updatedUser) {
-      throw new Error('User not found');
+      throw new NotFoundException('Usuario no encontrado');
     }
 
     return updatedUser;
@@ -491,7 +502,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new Error('User not found');
+      throw new NotFoundException('Usuario no encontrado');
     }
 
     // Construir SQL dinámico para actualizar todos los campos
@@ -572,7 +583,7 @@ export class UsersService {
     });
 
     if (!updatedUser) {
-      throw new Error('User not found');
+      throw new NotFoundException('Usuario no encontrado');
     }
 
     return updatedUser;
@@ -585,7 +596,7 @@ export class UsersService {
     });
 
     if (!existingUser) {
-      throw new Error('User not found');
+      throw new NotFoundException('Usuario no encontrado');
     }
 
     await this.userRepo.remove(existingUser);
@@ -599,7 +610,7 @@ export class UsersService {
     });
 
     if (!userToUpdate) {
-      throw new Error('User not found');
+      throw new NotFoundException('Usuario no encontrado');
     }
 
     userToUpdate.is_active = isActive;
