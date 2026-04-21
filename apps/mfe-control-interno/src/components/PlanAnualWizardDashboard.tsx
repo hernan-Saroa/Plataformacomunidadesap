@@ -5147,14 +5147,16 @@ function SeccionGestionYSeguimiento({
         // Diagnóstico de matching (solo primer rol, primera actividad)
         if (rol.numero === 1 && !liderazgoVerTodos && actividadesActivas.length > 0) {
           const a0 = actividadesActivas[0];
-          console.log('🔍 [Diagnóstico] Rol 1, Act 1:', {
-            responsable: a0.responsable,
-            responsableType: typeof a0.responsable,
-            responsables: a0.responsables?.slice(0, 2),
-            rolResponsables: (rol as any).responsables?.slice(0, 2),
-            currentUser: { nombre: currentUser?.nombre, email: currentUser?.email, ids: [currentUser?.id, currentUser?.idPerson, currentUser?.sub].filter(Boolean) },
-            actividadesVisibles: actividadesVisibles.length,
-          });
+          const r = a0.responsable;
+          console.log('🔍 [MATCH-DEBUG] responsable.id=' + (r?.id || 'null') + 
+            ' | responsable.nombre=' + (r?.nombre || r?.name || (typeof r === 'string' ? r : 'null')) +
+            ' | responsable.email=' + (r?.email || 'null') +
+            ' | responsables[0]=' + JSON.stringify(a0.responsables?.[0] || null) +
+            ' | rolResp=' + JSON.stringify((rol as any).responsables?.[0] || null) +
+            ' | currentUser.nombre=' + (currentUser?.nombre || 'null') +
+            ' | currentUser.email=' + (currentUser?.email || 'null') +
+            ' | currentUser.ids=' + JSON.stringify([currentUser?.id, currentUser?.idPerson, currentUser?.sub].filter(Boolean)) +
+            ' | visibles=' + actividadesVisibles.length + '/' + actividadesActivas.length);
         }
 
         // Si el usuario no tiene capacidad de gestión/análisis y no tiene actividades en este rol, lo ocultamos
