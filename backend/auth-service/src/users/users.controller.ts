@@ -94,9 +94,6 @@ export class UsersController {
   // @UseGuards(JwtAuthGuard)
   async findOne(@Param('id') id: string) {
     const user = await this.usersService.findById(id);
-    if (!user) {
-      throw new Error('User not found');
-    }
     const person = user.person;
     const seccional = person?.seccional as Seccional | undefined;
     const sede = person?.sede as Sede | undefined;
