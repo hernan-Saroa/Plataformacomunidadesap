@@ -24,11 +24,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Dialog, DialogContent, DialogTitle } from '@esap-mfe/shared-ui/dialog';
 import {
   CheckSquare, ChevronDown, ChevronRight, CheckCircle2, Circle,
   Paperclip, Download, ExternalLink, FileText, Upload, X,
-  AlertCircle, Calendar, User, Loader2, CheckCircle, ClipboardList, Trash2
+  AlertCircle, Calendar, User, Loader2, CheckCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { controlInternoService } from '../../../services/api/controlInternoService';
@@ -62,10 +61,6 @@ interface ItemChequeo {
   responsable?: string;
   fechaCompletado?: string;
   observaciones?: string;
-  documentoBibliotecaId?: string;
-  documentoNombre?: string;
-  archivoSubidoId?: string;
-  archivoSubidoNombre?: string;
 }
 
 interface DocumentoAdjunto {
@@ -126,11 +121,9 @@ function mapApiListaToExpediente(apiLista: any): ListaChequeo {
     id: item.id?.toString() || `item-${idx}`,
     texto: item.texto || item.nombre || '',
     completado: item.completado || item.checked || false,
-    responsable: item.responsable || item.completadoPor || item.usuario_completado || undefined,
+    responsable: item.responsable || item.usuario_completado || undefined,
     fechaCompletado: item.fecha_completado || item.fechaCompletado || undefined,
-    observaciones: item.observaciones || undefined,
-    documentoBibliotecaId: item.documentoBibliotecaId || undefined,
-    documentoNombre: item.documentoNombre || item.documentoNombre || undefined,
+    observaciones: item.observaciones || undefined
   }));
 
   const documentosAdjuntos: DocumentoAdjunto[] = (apiLista.documentos || []).map((doc: any) => ({
@@ -170,7 +163,7 @@ export function SeccionListasChequeoExpediente({
   const [listaExpandida, setListaExpandida] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [modalUpload, setModalUpload] = useState<{ listaId: string; doc: DocumentoAdjunto; itemId?: string } | null>(null);
+  const [modalUpload, setModalUpload] = useState<{ listaId: string; doc: DocumentoAdjunto } | null>(null);
 
   // ✅ CARGAR LISTAS DE CHEQUEO VINCULADAS A LA AUDITORÍA
   const cargarListasAuditoria = useCallback(async () => {
@@ -183,38 +176,8 @@ export function SeccionListasChequeoExpediente({
     setIsLoading(true);
     setLoadError(null);
     try {
-      // Cargar listas y documentos subidos en paralelo
-      const [listasApi, docsSubidos] = await Promise.all([
-        controlInternoService.getListasAplicadas(auditoriaId),
-        controlInternoService.getDocumentosByAuditoria(auditoriaId).catch(() => [] as any[]),
-      ]);
-
-      // Construir mapa: documentoBibliotecaId → documento subido
-      const docPorBibliotecaId = new Map<string, { id: string; nombre: string }>();
-      for (const d of (docsSubidos || [])) {
-        if (d.documentoBibliotecaId) {
-          docPorBibliotecaId.set(d.documentoBibliotecaId, {
-            id: d.id,
-            nombre: d.nombreArchivo || d.nombre || d.nombreDocumento || '',
-          });
-        }
-      }
-
-      const listasMapeadas = (listasApi || []).map((apiLista: any) => {
-        const lista = mapApiListaToExpediente(apiLista);
-        // Para cada ítem que tenga plantilla, buscar si ya fue subido
-        lista.items = lista.items.map(item => {
-          if (item.documentoBibliotecaId && !item.archivoSubidoId) {
-            const docSubido = docPorBibliotecaId.get(item.documentoBibliotecaId);
-            if (docSubido) {
-              return { ...item, archivoSubidoId: docSubido.id, archivoSubidoNombre: docSubido.nombre };
-            }
-          }
-          return item;
-        });
-        return lista;
-      });
-
+      const listasApi = await controlInternoService.getListasAplicadas(auditoriaId);
+      const listasMapeadas = (listasApi || []).map(mapApiListaToExpediente);
       setListas(listasMapeadas);
     } catch (error) {
       console.error('[ListasChequeo] ❌ Error cargando listas:', error);
@@ -228,7 +191,7 @@ export function SeccionListasChequeoExpediente({
     cargarListasAuditoria();
   }, [cargarListasAuditoria]);
 
-  const handleDescargarDoc = async (urlOrId: string, nombre?: string) => {
+  const handleDescargarDoc = async (urlOrId: string) => {
     const baseUrl = getDocumentosBaseUrl();
     const url = urlOrId.startsWith('http') || urlOrId.startsWith('/')
       ? urlOrId
@@ -241,7 +204,7 @@ export function SeccionListasChequeoExpediente({
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = nombre || 'documento';
+      link.download = 'documento';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -423,111 +386,90 @@ export function SeccionListasChequeoExpediente({
       </div>
 
       {/* Listas de Chequeo */}
-      <div className="space-y-3">
+      <div className="space-y-4">
         {listasEtapaActual.map((lista) => {
+          // ✅ VALIDACIÓN: Solo permitir completar items de la etapa actual
           const esEtapaActual = lista.etapaKanban === etapaActual;
-          const expanded = listaExpandida === lista.id;
-          const itemsTotal = lista.items.length;
-          const itemsDone = lista.items.filter(i => i.completado).length;
-          const docsTotal = lista.documentosAdjuntos.length;
-          const docsDone = lista.documentosAdjuntos.filter(d => d.diligenciado).length;
-          const pct = lista.completitud;
-
-          // Ring color by progress
-          const ringColor = pct === 100 ? 'text-emerald-500' : pct > 50 ? 'text-blue-500' : pct > 0 ? 'text-amber-500' : 'text-gray-300';
-
+          
           return (
             <div
               key={lista.id}
-              className={`rounded-2xl border-2 overflow-hidden transition-all duration-200 ${
-                expanded
-                  ? 'border-blue-300 shadow-md shadow-blue-100'
-                  : esEtapaActual
-                  ? 'border-gray-200 hover:border-blue-200 hover:shadow-sm'
-                  : 'border-gray-200 opacity-60'
+              className={`bg-white rounded-xl border-2 overflow-hidden hover:border-blue-300 transition-all ${
+                esEtapaActual ? 'border-gray-200' : 'border-gray-300 opacity-70'
               }`}
             >
-              {/* ── HEADER del acordeón ── */}
-              <button
-                type="button"
-                onClick={() => setListaExpandida(expanded ? null : lista.id)}
-                className={`w-full flex items-center gap-4 px-5 py-4 text-left transition-colors ${
-                  expanded ? 'bg-blue-50' : 'bg-white hover:bg-gray-50'
-                }`}
-              >
-                {/* Ring de progreso */}
-                <div className="relative flex-shrink-0 w-12 h-12">
-                  <svg className="w-12 h-12 -rotate-90" viewBox="0 0 36 36">
-                    <circle cx="18" cy="18" r="15" fill="none" stroke="#e5e7eb" strokeWidth="3" />
-                    <circle
-                      cx="18" cy="18" r="15" fill="none"
-                      stroke={pct === 100 ? '#10b981' : pct > 50 ? '#3b82f6' : pct > 0 ? '#f59e0b' : '#e5e7eb'}
-                      strokeWidth="3"
-                      strokeDasharray={`${(pct / 100) * 94.2} 94.2`}
-                      strokeLinecap="round"
-                      className="transition-all duration-500"
-                    />
-                  </svg>
-                  <span className={`absolute inset-0 flex items-center justify-center text-xs font-black ${ringColor}`}>
-                    {pct}%
-                  </span>
+              {/* Header de la lista */}
+              <div className={`px-5 py-4 border-b-2 border-gray-200 ${
+                esEtapaActual ? 'bg-gray-50' : 'bg-gray-100'
+              }`}>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <button
+                        onClick={() => setListaExpandida(listaExpandida === lista.id ? null : lista.id)}
+                        className="p-1 hover:bg-gray-200 rounded transition-colors"
+                      >
+                        {listaExpandida === lista.id ? (
+                          <ChevronDown className="w-5 h-5 text-gray-600" />
+                        ) : (
+                          <ChevronRight className="w-5 h-5 text-gray-600" />
+                        )}
+                      </button>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-base font-black text-gray-900">{lista.nombre}</h4>
+                          {!esEtapaActual && (
+                            <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-bold rounded-md border border-orange-300">
+                              🔒 Solo lectura
+                            </span>
+                          )}
+                        </div>
+                        {!esEtapaActual && (
+                          <p className="text-xs text-orange-600 mt-1 font-medium">
+                            ⚠️ Solo puedes completar listas de la etapa actual: {etapaActual}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-600 ml-9">{lista.descripcion}</p>
+                  </div>
+
+                  {/* Indicador de completitud */}
+                  <div className="text-center ml-4">
+                    <div className={`text-3xl font-black mb-1 ${
+                      esEtapaActual ? 'text-blue-600' : 'text-gray-400'
+                    }`}>
+                      {lista.completitud}%
+                    </div>
+                    <div className="text-xs text-gray-500">Completitud</div>
+                  </div>
                 </div>
 
-                {/* Título y meta */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h4 className="text-sm font-black text-gray-900 truncate">{lista.nombre}</h4>
-                    {pct === 100 && (
-                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full">
-                        ✓ Completa
-                      </span>
-                    )}
-                    {!esEtapaActual && (
-                      <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs font-bold rounded-full">
-                        🔒 Solo lectura
-                      </span>
-                    )}
-                  </div>
-                  {lista.descripcion && (
-                    <p className="text-xs text-gray-500 mt-0.5 truncate">{lista.descripcion}</p>
-                  )}
-                  <div className="flex items-center gap-3 mt-1.5">
-                    {itemsTotal > 0 && (
-                      <span className={`flex items-center gap-1 text-xs font-semibold ${
-                        itemsDone === itemsTotal ? 'text-emerald-600' : 'text-gray-500'
-                      }`}>
-                        <CheckSquare className="w-3 h-3" />
-                        {itemsDone}/{itemsTotal} ítems
-                      </span>
-                    )}
-                    {docsTotal > 0 && (
-                      <span className={`flex items-center gap-1 text-xs font-semibold ${
-                        docsDone === docsTotal ? 'text-emerald-600' : 'text-blue-500'
-                      }`}>
+                {/* Barra de progreso */}
+                <div className="mt-4 ml-9">
+                  <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+                    <span>
+                      {lista.items.filter(i => i.completado).length} / {lista.items.length} items completados
+                    </span>
+                    {lista.documentosAdjuntos.length > 0 && (
+                      <span className="flex items-center gap-1">
                         <Paperclip className="w-3 h-3" />
-                        {docsDone}/{docsTotal} plantillas
+                        {lista.documentosAdjuntos.length} documento(s)
                       </span>
                     )}
-                    {itemsTotal === 0 && docsTotal === 0 && (
-                      <span className="text-xs text-gray-400 italic">Sin ítems configurados</span>
-                    )}
+                  </div>
+                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-blue-600 to-blue-700 transition-all duration-500"
+                      style={{ width: `${lista.completitud}%` }}
+                    />
                   </div>
                 </div>
+              </div>
 
-                {/* Chevron */}
-                <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
-                  expanded ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'
-                }`}>
-                  {expanded
-                    ? <ChevronDown className="w-4 h-4" />
-                    : <ChevronRight className="w-4 h-4" />
-                  }
-                </div>
-              </button>
-
-              {/* ── CONTENIDO expandible ── */}
+              {/* Contenido expandible */}
               <AnimatePresence>
-                {expanded && (
+                {listaExpandida === lista.id && (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
@@ -535,253 +477,112 @@ export function SeccionListasChequeoExpediente({
                     transition={{ duration: 0.2 }}
                     className="overflow-hidden"
                   >
-                    <div className="px-4 pb-5 pt-3 space-y-3 bg-white border-t border-gray-100">
-
-                      {/* ÍTEMS DE CHEQUEO */}
-                      {itemsTotal > 0 ? (
-                        <div className="space-y-2.5">
-                          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest px-1">Ítems de verificación</p>
-                          {lista.items.map((item, idx) => {
-                            const tieneDoc = !!item.documentoBibliotecaId;
-                            const docSubido = !!item.archivoSubidoId;
-                            // Si tiene doc requerido y no está subido, no permite completar
-                            const bloqueado = tieneDoc && !docSubido && !item.completado;
-
-                            return (
-                            <div
-                              key={item.id}
-                              className={`group rounded-2xl border-2 transition-all duration-150 overflow-hidden ${
-                                item.completado
-                                  ? 'bg-emerald-50 border-emerald-200'
-                                  : bloqueado
-                                  ? 'bg-amber-50 border-amber-200'
-                                  : readOnly
-                                  ? 'bg-gray-50 border-gray-200'
-                                  : 'bg-white border-gray-200 hover:border-blue-300 hover:shadow-sm'
-                              }`}
+                    <div className="p-5 space-y-4">
+                      {/* Items de chequeo */}
+                      <div className="space-y-2">
+                        {lista.items.map((item) => (
+                          <div
+                            key={item.id}
+                            className={`flex items-start gap-3 p-3 rounded-lg border-2 transition-all ${
+                              item.completado
+                                ? 'bg-green-50 border-green-200'
+                                : 'bg-white border-gray-200 hover:border-blue-300'
+                            }`}
+                          >
+                            <button
+                              onClick={() => toggleItem(lista.id, item.id)}
+                              className={`flex-shrink-0 mt-0.5 ${readOnly ? 'cursor-default opacity-60' : 'cursor-pointer'}`}
+                              disabled={readOnly}
                             >
-                              {/* Fila principal */}
-                              <div
-                                className={`flex items-center gap-3 px-4 py-3 ${!readOnly && !bloqueado ? 'cursor-pointer' : bloqueado ? 'cursor-not-allowed' : ''}`}
-                                onClick={() => {
-                                  if (readOnly) return;
-                                  if (bloqueado) {
-                                    toast.warning('Sube el documento antes de completar este ítem', { duration: 3000 });
-                                    return;
-                                  }
-                                  toggleItem(lista.id, item.id);
-                                }}
-                              >
-                                {/* Badge número */}
-                                <div className="flex-shrink-0">
-                                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition-colors ${
-                                    item.completado
-                                      ? 'bg-emerald-500 text-white'
-                                      : bloqueado
-                                      ? 'bg-amber-400 text-white'
-                                      : 'bg-gray-100 text-gray-500 group-hover:bg-blue-100 group-hover:text-blue-700'
-                                  }`}>
-                                    {item.completado ? '✓' : bloqueado ? '!' : idx + 1}
-                                  </div>
-                                </div>
+                              {item.completado ? (
+                                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                              ) : (
+                                <Circle className="w-5 h-5 text-gray-400" />
+                              )}
+                            </button>
 
-                                {/* Texto */}
-                                <div className="flex-1 min-w-0">
-                                  <p className={`text-sm font-semibold leading-snug ${
-                                    item.completado ? 'text-gray-400 line-through' : 'text-gray-800'
-                                  }`}>
-                                    {item.texto}
-                                  </p>
-                                  {bloqueado && (
-                                    <p className="text-xs text-amber-600 font-medium mt-0.5">
-                                      Sube el documento requerido para completar
-                                    </p>
-                                  )}
-                                  {(item.responsable || item.fechaCompletado) && (
-                                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-400">
-                                      {item.responsable && (
-                                        <span className="flex items-center gap-1"><User className="w-3 h-3" /> {item.responsable}</span>
-                                      )}
-                                      {item.fechaCompletado && (
-                                        <span className="flex items-center gap-1">
-                                          <Calendar className="w-3 h-3" />
-                                          {new Date(item.fechaCompletado).toLocaleDateString('es-CO')}
-                                        </span>
-                                      )}
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm ${
+                                item.completado 
+                                  ? 'text-gray-600 line-through' 
+                                  : 'text-gray-900 font-medium'
+                              }`}>
+                                {item.texto}
+                              </p>
+
+                              {(item.responsable || item.fechaCompletado || item.observaciones) && (
+                                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                                  {item.responsable && (
+                                    <div className="flex items-center gap-1">
+                                      <User className="w-3 h-3" />
+                                      {item.responsable}
                                     </div>
                                   )}
-                                </div>
-
-                                {/* Checkbox visual */}
-                                {!readOnly && (
-                                  <div className="flex-shrink-0">
-                                    {item.completado
-                                      ? <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                                      : bloqueado
-                                      ? <AlertCircle className="w-5 h-5 text-amber-400" />
-                                      : <Circle className="w-5 h-5 text-gray-300 group-hover:text-blue-400 transition-colors" />
-                                    }
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Banda de plantilla */}
-                              {tieneDoc && (
-                                <div className={`mx-4 mb-3 rounded-xl border overflow-hidden transition-colors ${
-                                  docSubido ? 'border-emerald-200 bg-emerald-50' : 'border-blue-200 bg-blue-50'
-                                }`}>
-                                  {/* Fila info */}
-                                  <div className="flex items-center gap-2.5 px-3 pt-3 pb-2">
-                                    <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${
-                                      docSubido ? 'bg-emerald-100' : 'bg-blue-100'
-                                    }`}>
-                                      <FileText className={`w-4 h-4 ${docSubido ? 'text-emerald-600' : 'text-blue-600'}`} />
+                                  {item.fechaCompletado && (
+                                    <div className="flex items-center gap-1">
+                                      <Calendar className="w-3 h-3" />
+                                      {new Date(item.fechaCompletado).toLocaleDateString('es-CO')}
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                      <p className={`text-xs font-bold truncate ${docSubido ? 'text-emerald-800' : 'text-blue-800'}`}>
-                                        {item.archivoSubidoNombre || item.documentoNombre || 'Plantilla adjunta'}
-                                      </p>
-                                      <p className={`text-xs ${docSubido ? 'text-emerald-600' : 'text-blue-500'}`}>
-                                        {docSubido ? '✓ Documento diligenciado subido' : 'Descarga, diligencia y sube para completar el ítem'}
-                                      </p>
+                                  )}
+                                  {item.observaciones && (
+                                    <div className="flex items-center gap-1 text-blue-600">
+                                      <AlertCircle className="w-3 h-3" />
+                                      {item.observaciones}
                                     </div>
-                                  </div>
-                                  {/* Fila botones */}
-                                  <div className="flex items-center gap-2 px-3 pb-3">
-                                    <button
-                                      type="button"
-                                      onClick={(e) => { e.stopPropagation(); handleDescargarDoc(item.documentoBibliotecaId!, item.documentoNombre); }}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors shadow-sm"
-                                    >
-                                      <Download className="w-3.5 h-3.5" />
-                                      Descargar plantilla
-                                    </button>
-                                    {docSubido ? (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => { e.stopPropagation(); handleDescargarDoc(item.archivoSubidoId!, item.archivoSubidoNombre); }}
-                                          className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-emerald-200 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors shadow-sm"
-                                        >
-                                          <Download className="w-3.5 h-3.5" />
-                                          Ver diligenciado
-                                        </button>
-                                        {!readOnly && (
-                                          <button
-                                            type="button"
-                                            onClick={async (e) => {
-                                              e.stopPropagation();
-                                              if (!confirm('¿Eliminar el documento subido?')) return;
-                                              try {
-                                                await controlInternoService.deleteDocumento(item.archivoSubidoId!);
-                                                setListas(prev => prev.map(l => {
-                                                  if (l.id !== lista.id) return l;
-                                                  return { ...l, items: l.items.map(i =>
-                                                    i.id === item.id ? { ...i, archivoSubidoId: undefined, archivoSubidoNombre: undefined } : i
-                                                  )};
-                                                }));
-                                                toast.success('Documento eliminado');
-                                              } catch {
-                                                toast.error('No se pudo eliminar el documento');
-                                              }
-                                            }}
-                                            className="flex items-center gap-1.5 px-2 py-1.5 bg-white border border-red-200 hover:bg-red-50 text-red-500 rounded-lg text-xs font-bold transition-colors shadow-sm"
-                                            title="Eliminar documento subido"
-                                          >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                          </button>
-                                        )}
-                                      </>
-                                    ) : !readOnly ? (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setModalUpload({
-                                            listaId: lista.id,
-                                            itemId: item.id,
-                                            doc: {
-                                              documentoBibliotecaId: item.documentoBibliotecaId!,
-                                              nombreDocumento: item.documentoNombre || item.texto,
-                                              diligenciado: false,
-                                            }
-                                          });
-                                        }}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors shadow-sm"
-                                      >
-                                        <Upload className="w-3.5 h-3.5" />
-                                        Subir diligenciado
-                                      </button>
-                                    ) : null}
-                                  </div>
+                                  )}
                                 </div>
                               )}
                             </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-3 py-3 px-4 rounded-xl bg-gray-50 border border-dashed border-gray-300">
-                          <ClipboardList className="w-5 h-5 text-gray-300 flex-shrink-0" />
-                          <p className="text-sm text-gray-400 italic">Esta lista no tiene ítems de verificación configurados</p>
-                        </div>
-                      )}
+                          </div>
+                        ))}
+                      </div>
 
-                      {/* PLANTILLAS REQUERIDAS */}
-                      {docsTotal > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Plantillas requeridas</p>
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                              docsDone === docsTotal
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-blue-100 text-blue-700'
-                            }`}>
-                              {docsDone}/{docsTotal}
+                      {/* ── Plantillas requeridas de la lista ── */}
+                      {lista.documentosAdjuntos.length > 0 && (
+                        <div className="mt-1 pt-4 border-t-2 border-gray-100">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Paperclip className="w-4 h-4 text-indigo-500" />
+                            <span className="text-sm font-bold text-gray-800">Plantillas requeridas</span>
+                            <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                              {lista.documentosAdjuntos.filter(d => d.diligenciado).length}/{lista.documentosAdjuntos.length} completadas
                             </span>
                           </div>
-                          {lista.documentosAdjuntos.map((doc, idx) => (
-                            <div
-                              key={idx}
-                              className={`rounded-xl border-2 transition-all duration-150 overflow-hidden ${
-                                doc.diligenciado
-                                  ? 'border-emerald-200 bg-emerald-50'
-                                  : 'border-blue-100 bg-white hover:border-blue-200'
-                              }`}
-                            >
-                              <div className="flex items-center gap-3 p-3.5">
-                                {/* Icono */}
-                                <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center ${
-                                  doc.diligenciado ? 'bg-emerald-100' : 'bg-blue-50'
+                          <div className="space-y-2">
+                            {lista.documentosAdjuntos.map((doc, idx) => (
+                              <div
+                                key={idx}
+                                className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                                  doc.diligenciado
+                                    ? 'bg-emerald-50 border-emerald-200'
+                                    : 'bg-slate-50 border-slate-200 hover:border-indigo-200'
+                                }`}
+                              >
+                                {/* Icono estado */}
+                                <div className={`flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center ${
+                                  doc.diligenciado ? 'bg-emerald-100' : 'bg-slate-100'
                                 }`}>
                                   {doc.diligenciado
                                     ? <CheckCircle className="w-5 h-5 text-emerald-600" />
-                                    : <FileText className="w-5 h-5 text-blue-400" />
+                                    : <FileText className="w-5 h-5 text-slate-400" />
                                   }
                                 </div>
-
                                 {/* Info */}
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-bold text-gray-900 truncate">{doc.nombreDocumento}</p>
+                                  <p className="text-sm font-semibold text-gray-900 truncate">{doc.nombreDocumento}</p>
                                   {doc.diligenciado && doc.fechaSubida ? (
-                                    <p className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
-                                      <CheckCircle className="w-3 h-3" />
-                                      Subida el {new Date(doc.fechaSubida).toLocaleDateString('es-CO')}
+                                    <p className="text-xs text-emerald-700 mt-0.5">
+                                      ✓ Subida el {new Date(doc.fechaSubida).toLocaleDateString('es-CO')}
                                     </p>
                                   ) : (
-                                    <p className="text-xs text-gray-400 mt-0.5">
-                                      Descarga la plantilla, diligénciala y súbela
-                                    </p>
+                                    <p className="text-xs text-slate-400 mt-0.5">Descarga, diligencia y sube el documento</p>
                                   )}
                                 </div>
-
                                 {/* Acciones */}
                                 <div className="flex items-center gap-1.5 flex-shrink-0">
                                   <button
-                                    type="button"
-                                    onClick={() => doc.documentoBibliotecaId && handleDescargarDoc(doc.documentoBibliotecaId, doc.nombreDocumento)}
+                                    onClick={() => doc.documentoBibliotecaId && handleDescargarDoc(doc.documentoBibliotecaId)}
                                     disabled={!doc.documentoBibliotecaId}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold transition-colors disabled:opacity-40"
+                                    className="px-2.5 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-40"
                                     title="Descargar plantilla vacía"
                                   >
                                     <Download className="w-3.5 h-3.5" />
@@ -789,19 +590,17 @@ export function SeccionListasChequeoExpediente({
                                   </button>
                                   {doc.diligenciado && doc.archivoSubidoUrl ? (
                                     <button
-                                      type="button"
-                                      onClick={() => handleDescargarDoc(doc.archivoSubidoUrl!, doc.nombreDocumento)}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold transition-colors"
-                                      title="Descargar diligenciado"
+                                      onClick={() => handleDescargarDoc(doc.archivoSubidoUrl!)}
+                                      className="px-2.5 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                                      title="Descargar documento diligenciado"
                                     >
                                       <Download className="w-3.5 h-3.5" />
                                       Diligenciado
                                     </button>
                                   ) : !readOnly ? (
                                     <button
-                                      type="button"
                                       onClick={() => setModalUpload({ listaId: lista.id, doc })}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors"
+                                      className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
                                       title="Subir documento diligenciado"
                                     >
                                       <Upload className="w-3.5 h-3.5" />
@@ -810,8 +609,8 @@ export function SeccionListasChequeoExpediente({
                                   ) : null}
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -852,24 +651,9 @@ export function SeccionListasChequeoExpediente({
         auditoriaId={auditoriaId}
         doc={modalUpload.doc}
         onClose={() => setModalUpload(null)}
-        onSubido={(docId, nombre) => {
-          // Si viene de un ítem → actualizar el ítem localmente sin recargar
-          if (modalUpload.itemId && docId) {
-            setListas(prev => prev.map(lista => {
-              if (lista.id !== modalUpload.listaId) return lista;
-              return {
-                ...lista,
-                items: lista.items.map(item =>
-                  item.id === modalUpload.itemId
-                    ? { ...item, archivoSubidoId: docId, archivoSubidoNombre: nombre || item.documentoNombre }
-                    : item
-                )
-              };
-            }));
-          } else {
-            cargarListasAuditoria();
-          }
+        onSubido={() => {
           setModalUpload(null);
+          cargarListasAuditoria();
         }}
       />
     )}
@@ -890,7 +674,7 @@ function ModalSubirPlantilla({
   auditoriaId: string;
   doc: DocumentoAdjunto;
   onClose: () => void;
-  onSubido: (docId?: string, nombre?: string) => void;
+  onSubido: () => void;
 }) {
   const [archivo, setArchivo] = useState<File | null>(null);
   const [subiendo, setSubiendo] = useState(false);
@@ -908,7 +692,7 @@ function ModalSubirPlantilla({
     if (!archivo) { toast.error('Selecciona un archivo'); return; }
     setSubiendo(true);
     try {
-      const creado = await controlInternoService.createDocumento(archivo, {
+      await controlInternoService.createDocumento(archivo, {
         nombre: doc.nombreDocumento,
         descripcion: '',
         tipoDocumento: 'plantilla',
@@ -916,7 +700,7 @@ function ModalSubirPlantilla({
         documentoBibliotecaId: doc.documentoBibliotecaId,
       });
       toast.success('Documento subido correctamente');
-      onSubido(creado?.id, doc.nombreDocumento);
+      onSubido();
     } catch {
       toast.error('Error al subir el documento');
     } finally {
@@ -925,93 +709,95 @@ function ModalSubirPlantilla({
   };
 
   return (
-    <Dialog open={true} onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent
-        hideCloseButton
-        className="p-0 sm:p-0 gap-0 border-0 overflow-hidden rounded-2xl shadow-2xl"
-        style={{ width: '580px', maxWidth: 'calc(100vw - 32px)' }}
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, y: 16 }}
+        animate={{ scale: 1, y: 0 }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
       >
-        <DialogTitle className="sr-only">Subir documento diligenciado</DialogTitle>
-
         {/* Header */}
-        <div style={{ flexShrink: 0, backgroundColor: '#1d4ed8', color: 'white', padding: '20px 24px' }}>
+        <div className="flex-shrink-0 bg-indigo-600 text-white px-6 py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div style={{ width: 44, height: 44, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="w-11 h-11 bg-white/20 rounded-xl flex items-center justify-center">
                 <Upload className="w-5 h-5" />
               </div>
               <div>
-                <h2 style={{ fontSize: 16, fontWeight: 900, margin: 0 }}>Subir documento diligenciado</h2>
-                <p style={{ fontSize: 12, color: '#bfdbfe', marginTop: 2, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.nombreDocumento}</p>
+                <h2 className="text-lg font-black">Subir documento diligenciado</h2>
+                <p className="text-indigo-200 text-xs mt-0.5 truncate max-w-xs">{doc.nombreDocumento}</p>
               </div>
             </div>
-            <button type="button" onClick={onClose} style={{ padding: 8, borderRadius: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: 'white' }}>
+            <button type="button" onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
         {/* Body */}
-        <div style={{ padding: '24px', overflowY: 'auto', maxHeight: 'calc(90vh - 160px)' }}>
+        <div className="flex-1 p-6 space-y-4">
           <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            style={{
-              border: `2px dashed ${arrastrando ? '#2563eb' : archivo ? '#10b981' : '#d1d5db'}`,
-              borderRadius: 12,
-              padding: '32px 24px',
-              textAlign: 'center',
-              cursor: 'pointer',
-              backgroundColor: arrastrando ? '#eff6ff' : archivo ? '#f0fdf4' : '#f9fafb',
-              transition: 'all 0.15s',
-            }}
+            className={`border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer ${
+              arrastrando
+                ? 'border-indigo-400 bg-indigo-50'
+                : archivo
+                ? 'border-emerald-400 bg-emerald-50'
+                : 'border-gray-300 bg-gray-50 hover:border-indigo-300 hover:bg-indigo-50'
+            }`}
           >
             {archivo ? (
               <div className="space-y-3">
-                <div style={{ width: 56, height: 56, backgroundColor: '#d1fae5', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
-                  <FileText className="w-7 h-7" style={{ color: '#059669' }} />
+                <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mx-auto">
+                  <FileText className="w-7 h-7 text-emerald-600" />
                 </div>
-                <p style={{ fontWeight: 700, color: '#111827', margin: '8px 0 0' }}>{archivo.name}</p>
-                <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0' }}>{formatFileSize(archivo.size)} · {archivo.name.split('.').pop()?.toUpperCase()}</p>
+                <p className="font-bold text-gray-900">{archivo.name}</p>
+                <p className="text-sm text-gray-500">{formatFileSize(archivo.size)} · {archivo.name.split('.').pop()?.toUpperCase()}</p>
                 <button
                   type="button"
                   onClick={() => setArchivo(null)}
-                  style={{ marginTop: 12, padding: '6px 16px', backgroundColor: '#fee2e2', color: '#b91c1c', border: 'none', borderRadius: 8, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+                  className="px-4 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg font-semibold text-sm transition-colors"
                 >
                   Quitar archivo
                 </button>
               </div>
             ) : (
               <div className="space-y-3">
-                <div style={{ width: 56, height: 56, backgroundColor: '#f3f4f6', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
-                  <Upload className="w-7 h-7" style={{ color: '#9ca3af' }} />
+                <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
+                  <Upload className="w-7 h-7 text-gray-400" />
                 </div>
-                <p style={{ fontWeight: 700, color: '#374151', margin: '8px 0 0' }}>Arrastra el archivo aquí</p>
-                <p style={{ fontSize: 13, color: '#6b7280', margin: '4px 0 0' }}>o haz clic para seleccionar</p>
-                <label style={{ display: 'inline-block', marginTop: 8, padding: '8px 20px', backgroundColor: '#2563eb', color: 'white', borderRadius: 8, fontWeight: 700, cursor: 'pointer', fontSize: 14 }}>
+                <p className="font-bold text-gray-700">Arrastra el archivo aquí</p>
+                <p className="text-sm text-gray-500">o haz clic para seleccionar</p>
+                <label className="inline-block px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold cursor-pointer text-sm transition-colors">
                   Seleccionar archivo
                   <input
                     type="file"
                     onChange={(e) => { const f = e.target.files?.[0]; if (f) setArchivo(f); }}
-                    style={{ display: 'none' }}
+                    className="hidden"
                     accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
                   />
                 </label>
               </div>
             )}
           </div>
-          <p style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center', marginTop: 12 }}>
+          <p className="text-xs text-gray-400 text-center">
             Se asociará a la plantilla &ldquo;{doc.nombreDocumento}&rdquo; en esta auditoría.
           </p>
         </div>
 
         {/* Footer */}
-        <div style={{ flexShrink: 0, backgroundColor: '#f9fafb', borderTop: '1px solid #e5e7eb', padding: '16px 24px', display: 'flex', gap: 12 }}>
+        <div className="flex-shrink-0 bg-gray-50 border-t border-gray-200 px-6 py-4 flex gap-3">
           <button
             type="button"
             onClick={onClose}
-            style={{ flex: 1, padding: '10px', border: '2px solid #d1d5db', borderRadius: 12, fontWeight: 700, color: '#374151', backgroundColor: 'white', cursor: 'pointer', fontSize: 14 }}
+            className="flex-1 py-2.5 border-2 border-gray-300 rounded-xl font-bold text-gray-700 hover:bg-gray-100 transition-colors"
           >
             Cancelar
           </button>
@@ -1019,18 +805,13 @@ function ModalSubirPlantilla({
             type="button"
             onClick={submit}
             disabled={!archivo || subiendo}
-            style={{
-              flex: 1, padding: '10px', backgroundColor: !archivo || subiendo ? '#93c5fd' : '#2563eb',
-              color: 'white', border: 'none', borderRadius: 12, fontWeight: 700,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              cursor: !archivo || subiendo ? 'not-allowed' : 'pointer', fontSize: 14
-            }}
+            className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
           >
-            {subiendo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            <Upload className="w-4 h-4" />
             {subiendo ? 'Subiendo...' : 'Subir documento'}
           </button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </motion.div>
+    </motion.div>
   );
 }

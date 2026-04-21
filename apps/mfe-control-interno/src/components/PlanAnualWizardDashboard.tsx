@@ -735,9 +735,10 @@ interface WizardCreacionProps {
   onCancelar: () => void;
   onCrear: (vigencia: number, jefeOCI: Auditor, rolesConfig: RolConfig[], fechaInicio: string, fechaFin: string) => Promise<boolean>;
   onTerminado?: () => void;
+  planesExistentes?: PlanAnual[];
 }
 
-export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreacionProps) {
+export function WizardCreacion({ onCancelar, onCrear, onTerminado, planesExistentes = [] }: WizardCreacionProps) {
   const [paso, setPaso] = useState(1);
   const [vigencia, setVigencia] = useState(new Date().getFullYear());
   const [fechaInicio, setFechaInicio] = useState(`${new Date().getFullYear()}-01-01`);
@@ -807,6 +808,8 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
 
   // Actualizar fechas de puntos de control cuando cambie la vigencia
   useEffect(() => {
+    // Solo actualizar si el año es válido (evita fechas rotas al escribir valores intermedios)
+    if (!vigencia || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100) return;
     setRolesConfig(prev => prev.map(rol => ({
       ...rol,
       actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
@@ -1091,6 +1094,7 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
                 auditores={auditores}
                 cargandoAuditores={cargandoAuditores}
                 onRecargarAuditores={cargarAuditores}
+                vigenciasExistentes={planesExistentes.map(p => p.vigencia)}
               />
             )}
             {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={setRolesConfig} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} jefeOCI={jefeSeleccionado} />}
@@ -1113,9 +1117,9 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
           {paso < 3 ? (
             <button 
               onClick={avanzarPaso} 
-              disabled={paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia)}
+              disabled={paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)}
               className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${
-                paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia)
+                paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
                   : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
               }`}
@@ -1147,7 +1151,7 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado }: WizardCreac
 }
 
 // Paso 1: Configuración básica
-function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores }: any) {
+function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores, vigenciasExistentes = [] }: any) {
   // Validaciones de fechas - Extraer año directamente del string YYYY-MM-DD para evitar problemas de zona horaria
   const anioFechaInicio = fechaInicio ? parseInt(fechaInicio.split('-')[0], 10) : vigencia;
   const anioFechaFin = fechaFin ? parseInt(fechaFin.split('-')[0], 10) : vigencia;
@@ -1167,11 +1171,28 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
 
   // Handler para vigencia que ajusta las fechas automáticamente
   const handleVigenciaChange = (nuevaVigencia: number) => {
+    if (isNaN(nuevaVigencia)) return;
+    // Permitir valores intermedios mientras se escribe (sin clamping)
     onVigenciaChange(nuevaVigencia);
-    // Ajustar fechas al cambiar vigencia
-    onFechaInicioChange(`${nuevaVigencia}-01-01`);
-    onFechaFinChange(`${nuevaVigencia}-12-31`);
+    // Solo ajustar fechas si el año ya es válido
+    if (nuevaVigencia >= 2020 && nuevaVigencia <= 2100) {
+      onFechaInicioChange(`${nuevaVigencia}-01-01`);
+      onFechaFinChange(`${nuevaVigencia}-12-31`);
+    }
   };
+
+  // Al salir del campo, clampear al rango válido
+  const handleVigenciaBlur = () => {
+    const v = vigencia || new Date().getFullYear();
+    if (isNaN(v) || v < 2020 || v > 2100) {
+      const clamped = Math.min(Math.max(isNaN(v) ? 2020 : v, 2020), 2100);
+      onVigenciaChange(clamped);
+      onFechaInicioChange(`${clamped}-01-01`);
+      onFechaFinChange(`${clamped}-12-31`);
+    }
+  };
+
+  const vigenciaInvalida = !vigencia || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100;
 
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
@@ -1183,15 +1204,38 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
       <div className="bg-white rounded-xl border-2 border-gray-200 p-8 space-y-6">
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-2">Vigencia <span className="text-red-500">*</span></label>
-          <input 
-            type="number" 
-            value={vigencia} 
-            onChange={(e) => handleVigenciaChange(parseInt(e.target.value))} 
-            min={2020}
-            max={2100}
-            className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-lg font-bold focus:outline-none focus:border-blue-500" 
-          />
-          <p className="text-xs text-gray-500 mt-1">Al cambiar la vigencia, las fechas se ajustarán automáticamente</p>
+          <div className="relative">
+            <input 
+              type="number" 
+              value={vigencia} 
+              onChange={(e) => handleVigenciaChange(parseInt(e.target.value))} 
+              onBlur={handleVigenciaBlur}
+              min={2020}
+              max={2100}
+              className={`w-full px-4 py-3 border-2 rounded-lg text-lg font-bold focus:outline-none pr-28 ${
+                vigenciaInvalida || vigenciasExistentes.includes(vigencia)
+                  ? 'border-red-500 bg-red-50 focus:border-red-500'
+                  : 'border-gray-300 focus:border-blue-500'
+              }`}
+            />
+            {vigenciasExistentes.includes(vigencia) && !vigenciaInvalida && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded-full border border-red-300">
+                ⚠️ Ya existe
+              </span>
+            )}
+            {vigenciaInvalida && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded-full border border-red-300">
+                ⚠️ Año inválido
+              </span>
+            )}
+          </div>
+          {vigenciaInvalida ? (
+            <p className="text-xs text-red-600 mt-1 font-medium">Ingresa un año válido entre 2020 y 2100.</p>
+          ) : vigenciasExistentes.includes(vigencia) ? (
+            <p className="text-xs text-red-600 mt-1 font-medium">Ya existe un plan para la vigencia {vigencia}. Selecciona otro año.</p>
+          ) : (
+            <p className="text-xs text-gray-500 mt-1">Al cambiar la vigencia, las fechas se ajustarán automáticamente</p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -3769,6 +3813,8 @@ function SeccionGestionYSeguimiento({
   
   // ✅ NUEVO: Estado para controlar qué roles están colapsados/expandidos
   const [rolesColapsados, setRolesColapsados] = useState<Record<number, boolean>>({});
+  // Estado para colapsar el historial de planes anteriores
+  const [historialColapsado, setHistorialColapsado] = useState(false);
   const [formulario, setFormulario] = useState({
     control: '',
     evaluacion: '',
@@ -4472,60 +4518,87 @@ function SeccionGestionYSeguimiento({
       {/* Historial de Planes Anteriores */}
       {planesAnteriores.length > 0 && (
         <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={() => setHistorialColapsado(prev => !prev)}
+            className="w-full flex items-center justify-between mb-0 group"
+          >
             <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <FileText className="w-5 h-5 text-gray-600" />
               Historial de Planes Anteriores
             </h3>
-            <span className="text-sm text-gray-500">{planesAnteriores.length} plan(es) completado(s)</span>
-          </div>
-          
-          <div className="space-y-3">
-            {planesAnteriores.map((planAnterior) => (
-              <div 
-                key={planAnterior.id}
-                className="flex items-center justify-between p-4 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-500">{planesAnteriores.length} plan(es) completado(s)</span>
+              <motion.svg
+                className="w-5 h-5 text-gray-500 group-hover:text-gray-700 transition-colors"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                animate={{ rotate: historialColapsado ? 0 : 180 }}
+                transition={{ duration: 0.2 }}
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-gray-500 to-gray-600 flex items-center justify-center">
-                    <Shield className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-900">
-                      Plan Anual de Auditoría {planAnterior.vigencia}
-                    </h4>
-                    <p className="text-sm text-gray-600">
-                      {planAnterior.id} • Jefe OCI: {planAnterior.jefeOCI.nombre}
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-3">
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                    planAnterior.estado === 'BORRADOR' || planAnterior.estado === 'EN_REVISION'
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-green-100 text-green-700'
-                  }`}>
-                    {planAnterior.estado}
-                  </span>
-                  <div className="text-right text-xs text-gray-500">
-                    <p>Aprobado: {planAnterior.fechaAprobacion || 'N/A'}</p>
-                    <p>{planAnterior.roles.reduce((sum, rol) => sum + rol.actividades.length, 0)} actividades</p>
-                  </div>
-                  {onCambiarPlan && (
-                    <button
-                      onClick={() => onCambiarPlan(planAnterior.id)}
-                      className="ml-4 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 hover:text-blue-600 transition-colors text-sm font-medium flex items-center gap-2"
-                      title="Abrir y gestionar este plan"
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </motion.svg>
+            </div>
+          </button>
+
+          <AnimatePresence initial={false}>
+            {!historialColapsado && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.3, ease: 'easeInOut' }}
+                className="overflow-hidden"
+              >
+                <div className="space-y-3 mt-4">
+                  {planesAnteriores.map((planAnterior) => (
+                    <div 
+                      key={planAnterior.id}
+                      className="flex items-center justify-between p-4 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
                     >
-                      <Eye className="w-4 h-4" />
-                      Visualizar
-                    </button>
-                  )}
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-gray-500 to-gray-600 flex items-center justify-center">
+                          <Shield className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-gray-900">
+                            Plan Anual de Auditoría {planAnterior.vigencia}
+                          </h4>
+                          <p className="text-sm text-gray-600">
+                            {planAnterior.id} • Jefe OCI: {planAnterior.jefeOCI.nombre}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                          planAnterior.estado === 'BORRADOR' || planAnterior.estado === 'EN_REVISION'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-green-100 text-green-700'
+                        }`}>
+                          {planAnterior.estado}
+                        </span>
+                        <div className="text-right text-xs text-gray-500">
+                          <p>Aprobado: {planAnterior.fechaAprobacion || 'N/A'}</p>
+                          <p>{planAnterior.roles.reduce((sum, rol) => sum + rol.actividades.length, 0)} actividades</p>
+                        </div>
+                        {onCambiarPlan && (
+                          <button
+                            onClick={() => onCambiarPlan(planAnterior.id)}
+                            className="ml-4 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 hover:text-blue-600 transition-colors text-sm font-medium flex items-center gap-2"
+                            title="Abrir y gestionar este plan"
+                          >
+                            <Eye className="w-4 h-4" />
+                            Visualizar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ))}
-          </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 
