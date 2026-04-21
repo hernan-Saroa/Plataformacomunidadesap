@@ -79,8 +79,9 @@ interface ModalAsignarAuditorProps {
   onClose: () => void;
   auditoriaId: string;
   onAsignar: (auditorId: string) => void;
-  auditoresDisponibles?: AuditorDisponible[]; // ✅ NUEVO: Lista de auditores del backend
-  auditorActualId?: string | number | null; // ✅ NUEVO: ID del auditor actualmente asignado
+  auditoresDisponibles?: AuditorDisponible[];
+  auditorActualId?: string | number | null;
+  equipoAuditoresIds?: (string | number | null)[]; // IDs del equipo auditor ya asignado
 }
 
 export function ModalAsignarAuditor({ 
@@ -89,27 +90,39 @@ export function ModalAsignarAuditor({
   auditoriaId, 
   onAsignar,
   auditoresDisponibles,
-  auditorActualId 
+  auditorActualId,
+  equipoAuditoresIds = []
 }: ModalAsignarAuditorProps) {
   // Normalizar el ID del auditor actual a string para comparación
   const auditorActualIdStr = auditorActualId != null ? String(auditorActualId) : '';
+  // Normalizar IDs del equipo a strings para comparación
+  const equipoIds = equipoAuditoresIds
+    .filter(id => id != null)
+    .map(id => String(id));
+
   const [selectedAuditor, setSelectedAuditor] = useState(auditorActualIdStr);
 
   // Usar auditores del backend si están disponibles, sino usar fallback
   const auditores = (auditoresDisponibles && auditoresDisponibles.length > 0)
-    ? auditoresDisponibles.map(a => ({
-        ...a,
-        experiencia: a.experiencia || 'N/A',
-        disponibilidad: a.disponibilidad || 'Disponible',
-        auditorias: a.auditorias || 0
-      }))
+    ? auditoresDisponibles.map(a => {
+        const idStr = String(a.id);
+        const esLider = idStr === auditorActualIdStr;
+        const esEquipo = equipoIds.includes(idStr);
+        let disponibilidad = a.disponibilidad || 'Disponible';
+        if (esLider) disponibilidad = 'Líder actual';
+        else if (esEquipo) disponibilidad = 'En equipo';
+        return {
+          ...a,
+          experiencia: a.experiencia || 'N/A',
+          disponibilidad,
+          auditorias: a.auditorias || 0
+        };
+      })
     : AUDITORES_DEFAULT;
 
   // Sincronizar cuando cambia el auditor actual o se abre el modal
   React.useEffect(() => {
     const idStr = auditorActualId != null ? String(auditorActualId) : '';
-    console.log('📌 Modal Asignar Auditor - ID actual:', auditorActualId, '-> String:', idStr);
-    console.log('📌 Auditores disponibles:', auditores.map(a => ({ id: a.id, nombre: a.nombre })));
     setSelectedAuditor(idStr);
   }, [auditorActualId, isOpen]);
 
@@ -204,6 +217,10 @@ export function ModalAsignarAuditor({
                 <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                   auditor.disponibilidad === 'Disponible'
                     ? 'bg-green-100 text-green-700'
+                    : auditor.disponibilidad === 'Líder actual'
+                    ? 'bg-blue-100 text-blue-700'
+                    : auditor.disponibilidad === 'En equipo'
+                    ? 'bg-indigo-100 text-indigo-700'
                     : 'bg-red-100 text-red-700'
                 }`}>
                   {auditor.disponibilidad}

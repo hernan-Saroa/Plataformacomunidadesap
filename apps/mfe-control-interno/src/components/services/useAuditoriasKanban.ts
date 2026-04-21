@@ -353,13 +353,14 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
   };
 
   // Construir personas de auditores
+  // ✅ Usar auditorLiderId como fallback cuando auditorLider no viene como objeto del backend
   const auditorLider = resolverAuditor(
-    auditoriaBackend.auditorLider || auditoriaBackend.responsable,
+    auditoriaBackend.auditorLider || auditoriaBackend.auditorLiderId || auditoriaBackend.responsable,
     'Auditor Líder'
   );
   
   const auditorAsignado = resolverAuditor(
-    auditoriaBackend.auditorAsignado,
+    auditoriaBackend.auditorAsignado || auditoriaBackend.auditorAsignadoId,
     'Auditor'
   );
 

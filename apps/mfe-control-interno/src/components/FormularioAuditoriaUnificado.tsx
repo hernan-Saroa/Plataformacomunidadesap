@@ -40,7 +40,7 @@ import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Input } from '@esap-mfe/shared-ui/input';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { toast } from 'sonner';
-import { configuracionesProfesionalesOCIApi } from './services/api';
+import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/api';
 import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../../../services/api/controlInternoService';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -332,6 +332,10 @@ export function FormularioAuditoriaUnificado({
   // Estado para auditores cargados del backend
   const [auditoresDisponibles, setAuditoresDisponibles] = useState<AuditorOption[]>(AUDITORES_FALLBACK);
   const [cargandoAuditores, setCargandoAuditores] = useState(false);
+
+  // Estado para tipos de auditoría cargados del backend
+  const [tiposAuditoria, setTiposAuditoria] = useState<{ id: string; codigo: string; nombre: string; color?: string; descripcion?: string }[]>([]);
+  const [cargandoTipos, setCargandoTipos] = useState(false);
   
   // Estado para procesos auditables cargados del backend
   const [procesosAuditables, setProcesosAuditables] = useState<string[]>(PROCESOS_INSTITUCIONALES_FALLBACK);
@@ -379,6 +383,32 @@ export function FormularioAuditoriaUnificado({
     cargarAuditores();
   }, [open]);
   
+  // Cargar tipos de auditoría desde la API de configuración
+  useEffect(() => {
+    const cargarTipos = async () => {
+      if (!open) return;
+      setCargandoTipos(true);
+      try {
+        const response = await auditoriasApi.getTiposAuditoria(true);
+        if (response.success && Array.isArray(response.data) && response.data.length > 0) {
+          const activos = response.data.filter((t: any) => t.activo !== false && t.activa !== false);
+          setTiposAuditoria(activos.map((t: any) => ({
+            id: t.id,
+            codigo: t.codigo || t.id,
+            nombre: t.nombre,
+            color: t.color,
+            descripcion: t.descripcion
+          })));
+        }
+      } catch (error) {
+        console.error('[FormularioAuditoria] Error al cargar tipos de auditoría:', error);
+      } finally {
+        setCargandoTipos(false);
+      }
+    };
+    cargarTipos();
+  }, [open]);
+
   // Cargar procesos auditables desde el universo de auditorías
   useEffect(() => {
     const cargarProcesos = async () => {
@@ -741,6 +771,8 @@ export function FormularioAuditoriaUnificado({
             mostrarSugerenciasProcesos={mostrarSugerenciasProcesos}
             setMostrarSugerenciasProcesos={setMostrarSugerenciasProcesos}
             evaluaciones={evaluacionesDisponibles}
+            tiposAuditoria={tiposAuditoria}
+            cargandoTipos={cargandoTipos}
           />
         );
       case 2:
@@ -1022,6 +1054,8 @@ interface Paso1Props extends PasoProps {
   mostrarSugerenciasProcesos: boolean;
   setMostrarSugerenciasProcesos: (value: boolean) => void;
   evaluaciones: EvaluacionProceso[];
+  tiposAuditoria: { id: string; codigo: string; nombre: string; color?: string; descripcion?: string }[];
+  cargandoTipos: boolean;
 }
 
 function Paso1InformacionBasica({ 
@@ -1033,7 +1067,9 @@ function Paso1InformacionBasica({
   setBusquedaProceso,
   mostrarSugerenciasProcesos,
   setMostrarSugerenciasProcesos,
-  evaluaciones
+  evaluaciones,
+  tiposAuditoria,
+  cargandoTipos
 }: Paso1Props) {
   // Filtrar procesos según búsqueda
   const procesosFiltrados = procesos.filter(proceso =>
@@ -1169,32 +1205,41 @@ function Paso1InformacionBasica({
             required
             helpText="Seleccione el tipo de auditoría según su naturaleza"
           >
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { value: 'regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
-                { value: 'territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
-                { value: 'especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> },
-                { value: 'seguimiento', label: 'Seguimiento', icono: <Clock className="w-5 h-5" /> }
-              ].map(tipo => (
-                <button
-                  key={tipo.value}
-                  type="button"
-                  onClick={() => onChange('tipoAuditoria', tipo.value)}
-                  className={`
-                    px-4 py-3 rounded-lg border-2 transition-all duration-200
-                    flex flex-col items-center justify-center gap-2 font-medium
-                    ${
-                      formData.tipoAuditoria === tipo.value
-                        ? 'border-blue-600 bg-blue-50 text-blue-700'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                    }
-                  `}
-                >
-                  {tipo.icono}
-                  <span className="text-sm">{tipo.label}</span>
-                </button>
-              ))}
-            </div>
+            {cargandoTipos ? (
+              <div className="flex items-center gap-2 py-3 text-sm text-gray-500">
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full" />
+                Cargando tipos de auditoría...
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {(tiposAuditoria.length > 0 ? tiposAuditoria : [
+                  { id: 'regular', codigo: 'regular', nombre: 'Regular', color: undefined },
+                  { id: 'territorial', codigo: 'territorial', nombre: 'Territorial', color: undefined },
+                  { id: 'especial', codigo: 'especial', nombre: 'Especial', color: undefined },
+                  { id: 'seguimiento', codigo: 'seguimiento', nombre: 'Seguimiento', color: undefined }
+                ]).map(tipo => (
+                  <button
+                    key={tipo.id}
+                    type="button"
+                    onClick={() => onChange('tipoAuditoria', tipo.codigo.toLowerCase() as any)}
+                    className={`
+                      px-4 py-3 rounded-lg border-2 transition-all duration-200
+                      flex flex-col items-center justify-center gap-2 font-medium
+                      ${
+                        formData.tipoAuditoria === tipo.codigo.toLowerCase()
+                          ? 'border-blue-600 bg-blue-50 text-blue-700'
+                          : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                      }
+                    `}
+                  >
+                    {tipo.color && (
+                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tipo.color }} />
+                    )}
+                    <span className="text-sm">{tipo.nombre}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </FieldWrapper>
 
           {/* Información contextual según tipo */}

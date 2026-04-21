@@ -31,7 +31,7 @@ import {
   Sparkles, Info, ChevronRight, ChevronDown, Edit2, Trash2,
   Upload, Archive, ExternalLink, Filter, Search, Tag,
   BarChart3, PieChart, LineChart, CheckSquare, Paperclip, BookOpen,
-  Lightbulb, Flag, FileCheck
+  Lightbulb, Flag
 } from 'lucide-react';
 import { toast } from 'sonner';
 import jsPDF from 'jspdf';
@@ -2248,128 +2248,7 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
     };
   };
 
-  const generarYDescargarFinal = async () => {
-    try {
-      const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
-      const hallazgosParaPDF = (hallazgos || []).map((h: any) => ({
-        codigo: h.codigo,
-        titulo: h.titulo,
-        gravedad: h.gravedad,
-        descripcion: h.descripcion || '',
-        criterioIncumplido: h.criterioIncumplido,
-        causas: Array.isArray(h.causas) ? h.causas : [],
-        efectos: Array.isArray(h.efectos) ? h.efectos : [],
-        recomendaciones: Array.isArray(h.recomendaciones) ? h.recomendaciones : [],
-        estadoFinal: h.estado,
-        decisionAuditor: h.decisionAuditor,
-        fundamentacionTecnica: h.fundamentacionTecnica || (h as any).fundamentacion,
-      }));
-
-      const informeFinalData: any = {
-        fecha: new Date().toISOString(),
-        controversiasResueltas: hallazgos.filter(h => h.estado === 'ratificado' || h.estado === 'modificado' || h.estado === 'retirado').length,
-        hallazgosAjustados: hallazgos.filter(h => h.estado === 'modificado').length,
-        plazosPlanMejora: '15', 
-        observacionesFinales: resumen?.recomendacionesFuturasAuditorias || 'Auditoría finalizada satisfactoriamente.',
-        generado: true,
-      };
-
-      const baseData = construirAuditoriaPdfData();
-      await exportarPDFInformeAuditoria(
-        'final',
-        {
-          codigo: baseData.codigo,
-          nombre: baseData.nombre,
-          proceso: baseData.procesoNombre || baseData.nombre,
-          auditorLider: baseData.auditorLider,
-          tituloAuditoria: (auditoria as any).titulo || baseData.nombre,
-          responsableUnidadAuditada: baseData.responsableArea?.nombre || '—',
-          lugarEjecucion: baseData.territorial || '—',
-          fechaEjecucionInicio: baseData.cronograma?.fechaInicio,
-          fechaEjecucionFin: baseData.cronograma?.fechaFin,
-          periodoAuditoria: (auditoria as any).periodoAuditadoTexto || (auditoria as any).periodoAuditado || (auditoria as any).periodoAuditoria || 'Vigencia correspondiente',
-          equipoAuditor: baseData.equipoAuditores,
-          objetivo: (auditoria as any).objetivo,
-          alcance: (auditoria as any).alcance,
-          marcoNormativo: (auditoria as any).marcoNormativo,
-          contextoGeneral: (auditoria as any).contextoGeneral,
-          declaracion: (auditoria as any).declaracion,
-          jefeOCI: (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
-          elaboro: (auditoria as any).elaboro || baseData.auditorLider,
-          reviso: (auditoria as any).reviso || (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
-          aprobo: (auditoria as any).aprobo || (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
-        },
-        informeFinalData,
-        hallazgosParaPDF
-      );
-      toast.success('Informe final descargado');
-    } catch (e: any) {
-      toast.error(e?.message || 'Error al generar el PDF');
-    }
-  };
-
-  const generarYDescargarEjecutivoOCI = async () => {
-    try {
-      const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
-      const hallazgosParaPDF = (hallazgos || []).map((h: any) => ({
-        codigo: h.codigo,
-        titulo: h.titulo,
-        gravedad: h.gravedad,
-        descripcion: h.descripcion || '',
-        criterioIncumplido: h.criterioIncumplido,
-        causas: Array.isArray(h.causas) ? h.causas : [],
-        efectos: Array.isArray(h.efectos) ? h.efectos : [],
-        recomendaciones: Array.isArray(h.recomendaciones) ? h.recomendaciones : [],
-        estadoFinal: h.estado,
-        decisionAuditor: h.decisionAuditor,
-        fundamentacionTecnica: h.fundamentacionTecnica || (h as any).fundamentacion,
-      }));
-
-      const informeEjecutivoData: any = {
-        fecha: new Date().toISOString(),
-        hallazgos: hallazgos.length,
-        graves: hallazgos.filter(h => h.gravedad === 'GRAVE').length,
-        moderados: hallazgos.filter(h => h.gravedad === 'MODERADO').length,
-        leves: hallazgos.filter(h => h.gravedad === 'LEVE').length,
-        observaciones: resumen?.leccionesAprendidas || 'Resumen ejecutivo de la auditoría.',
-        generado: true,
-      };
-
-      const baseData = construirAuditoriaPdfData();
-      await exportarPDFInformeAuditoria(
-        'ejecutivo',
-        {
-          codigo: baseData.codigo,
-          nombre: baseData.nombre,
-          proceso: baseData.procesoNombre || baseData.nombre,
-          auditorLider: baseData.auditorLider,
-          tituloAuditoria: (auditoria as any).titulo || baseData.nombre,
-          responsableUnidadAuditada: baseData.responsableArea?.nombre || '—',
-          lugarEjecucion: baseData.territorial || '—',
-          fechaEjecucionInicio: baseData.cronograma?.fechaInicio,
-          fechaEjecucionFin: baseData.cronograma?.fechaFin,
-          periodoAuditoria: (auditoria as any).periodoAuditadoTexto || (auditoria as any).periodoAuditado || (auditoria as any).periodoAuditoria || 'Vigencia correspondiente',
-          equipoAuditor: baseData.equipoAuditores,
-          objetivo: (auditoria as any).objetivo,
-          alcance: (auditoria as any).alcance,
-          marcoNormativo: (auditoria as any).marcoNormativo,
-          contextoGeneral: (auditoria as any).contextoGeneral,
-          declaracion: (auditoria as any).declaracion,
-          jefeOCI: (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
-          elaboro: (auditoria as any).elaboro || baseData.auditorLider,
-          reviso: (auditoria as any).reviso || (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
-          aprobo: (auditoria as any).aprobo || (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
-        },
-        informeEjecutivoData,
-        hallazgosParaPDF
-      );
-      toast.success('Informe ejecutivo OCI descargado');
-    } catch (e: any) {
-      toast.error(e?.message || 'Error al generar el PDF');
-    }
-  };
-
-  const generarYDescargarEjecutivoCierre = async () => {
+  const generarYDescargarEjecutivo = async () => {
     try {
       const { exportarPDFInformeEjecutivo } = await import('./services/exportarPDFInformeCierreEjecutivo');
       const datos = {
@@ -2387,7 +2266,7 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
         })),
       };
       await exportarPDFInformeEjecutivo(datos);
-      toast.success('Resumen de cierre descargado');
+      toast.success('Informe ejecutivo descargado');
     } catch (e: any) {
       toast.error(e?.message || 'Error al generar el PDF');
     }
@@ -2539,14 +2418,59 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
 
       {/* Botones descarga — Preliminar, Final, Cierre y Ejecutivo se generan por la plataforma */}
       <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200">
-        <Button
-          variant="outline"
-          className="border-blue-600 text-blue-700 hover:bg-blue-50 font-bold"
-          onClick={generarYDescargarFinal}
-        >
-          <FileCheck className="w-4 h-4 mr-2" />
-          Descargar Informe Final OCI
-        </Button>
+        {docCierre ? (
+          <Button variant="outline" className="border-green-600 text-green-700 hover:bg-green-50" onClick={() => descargarDoc(docCierre)}>
+            <Download className="w-4 h-4 mr-2" />
+            Informe de Cierre
+          </Button>
+        ) : (
+          <>
+            <Button
+              variant="outline"
+              className="border-green-600 text-green-700 hover:bg-green-50"
+              onClick={async () => {
+                try {
+                  const { exportarPDFInformeCierre } = await import('./services/exportarPDFInformeCierreEjecutivo');
+                  const datos = {
+                    auditoria: construirAuditoriaPdfData(),
+                    resumen: resumen ? { ...resumen, leccionesAprendidas: resumen.leccionesAprendidas, recomendacionesFuturasAuditorias: resumen.recomendacionesFuturasAuditorias } : null,
+                    planes: planes,
+                    hallazgos: hallazgos.map((h: any) => ({
+                      id: h.id,
+                      codigo: h.codigo,
+                      titulo: h.titulo,
+                      descripcion: h.descripcion || '',
+                      gravedad: h.gravedad,
+                      decisionAuditor: h.decisionAuditor,
+                      estado: h.estado,
+                      fundamentacionTecnica: h.fundamentacionTecnica,
+                    })),
+                  };
+                  await exportarPDFInformeCierre(datos);
+                  toast.success('Informe de cierre descargado');
+                } catch (e: any) {
+                  toast.error(e?.message || 'Error al generar el PDF');
+                }
+              }}
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Generar / Descargar Informe de Cierre
+            </Button>
+          </>
+        )}
+        {docEjecutivo ? (
+          <Button variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50" onClick={() => descargarDoc(docEjecutivo)}>
+            <Download className="w-4 h-4 mr-2" />
+            Informe Ejecutivo
+          </Button>
+        ) : (
+          <>
+            <Button variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50" onClick={generarYDescargarEjecutivo}>
+              <FileText className="w-4 h-4 mr-2" />
+              Generar / Descargar Informe Ejecutivo
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );
