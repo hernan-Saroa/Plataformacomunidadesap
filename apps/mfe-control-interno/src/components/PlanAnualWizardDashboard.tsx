@@ -5107,20 +5107,29 @@ function SeccionGestionYSeguimiento({
             currentUser.documento, currentUser.sub, currentUser.userId
           ].filter(Boolean).map(String);
 
-          // Función helper para comparar identidad
+          // Función helper para comparar identidad (acepta objeto O string)
           const matchesUser = (r: any) => {
             if (!r) return false;
+            // Si r es un string directo (nombre), comparar por palabras
+            if (typeof r === 'string') {
+              if (!currentName) return false;
+              const rWords = r.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+              const cWords = currentName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+              const shorterWords = cWords.length <= rWords.length ? cWords : rWords;
+              const longerName = cWords.length <= rWords.length ? r.toLowerCase() : currentName.toLowerCase();
+              return shorterWords.length > 0 && shorterWords.every((w: string) => longerName.includes(w));
+            }
             // Comparar por ID
             if (r.id && possibleIds.includes(String(r.id))) return true;
             // Comparar por email
             if (r.email && currentEmail && r.email.toLowerCase() === currentEmail.toLowerCase()) return true;
-            // Comparar por nombre (basado en palabras - "Diana Martinez" matchea "Diana Patricia Martinez López")
-            if (r.nombre && currentName) {
-              const rWords = r.nombre.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+            // Comparar por nombre (basado en palabras)
+            const rName = r.nombre || r.name || r.fullName || '';
+            if (rName && currentName) {
+              const rWords = rName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
               const cWords = currentName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              // Si todas las palabras del nombre más corto están en el más largo
               const shorterWords = cWords.length <= rWords.length ? cWords : rWords;
-              const longerName = cWords.length <= rWords.length ? r.nombre.toLowerCase() : currentName.toLowerCase();
+              const longerName = cWords.length <= rWords.length ? rName.toLowerCase() : currentName.toLowerCase();
               if (shorterWords.length > 0 && shorterWords.every((w: string) => longerName.includes(w))) return true;
             }
             return false;
@@ -5134,6 +5143,19 @@ function SeccionGestionYSeguimiento({
 
           return isMainResp || isRespAdicional || isApoyo || isRolResp;
         });
+
+        // Diagnóstico de matching (solo primer rol, primera actividad)
+        if (rol.numero === 1 && !liderazgoVerTodos && actividadesActivas.length > 0) {
+          const a0 = actividadesActivas[0];
+          console.log('🔍 [Diagnóstico] Rol 1, Act 1:', {
+            responsable: a0.responsable,
+            responsableType: typeof a0.responsable,
+            responsables: a0.responsables?.slice(0, 2),
+            rolResponsables: (rol as any).responsables?.slice(0, 2),
+            currentUser: { nombre: currentUser?.nombre, email: currentUser?.email, ids: [currentUser?.id, currentUser?.idPerson, currentUser?.sub].filter(Boolean) },
+            actividadesVisibles: actividadesVisibles.length,
+          });
+        }
 
         // Si el usuario no tiene capacidad de gestión/análisis y no tiene actividades en este rol, lo ocultamos
         if (!liderazgoVerTodos && actividadesVisibles.length === 0) {
