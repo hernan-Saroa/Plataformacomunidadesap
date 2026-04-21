@@ -149,7 +149,7 @@ export function WizardCrearAutoWorldClass({
   onClose,
   onAutoCreado
 }: WizardCrearAutoWorldClassProps) {
-  const hasAccess = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_AUTOS_CREATE);
+  const hasAccess = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_CREATE);
 
   if (!hasAccess) {
     return (
