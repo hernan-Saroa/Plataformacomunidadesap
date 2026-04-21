@@ -800,9 +800,40 @@ export class CertificatesService {
 
   private normalizeDateOnly(value?: Date | string | null): Date | null {
     if (!value) return null;
+
+    if (typeof value === 'string') {
+      const raw = value.trim();
+      if (!raw) return null;
+
+      const ymdMatch = raw.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+.*)?$/);
+      if (ymdMatch) {
+        const [, year, month, day] = ymdMatch;
+        return this.dateOnlyFromParts(Number(year), Number(month), Number(day));
+      }
+
+      const dmyMatch = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s+.*)?$/);
+      if (dmyMatch) {
+        const [, day, month, year] = dmyMatch;
+        return this.dateOnlyFromParts(Number(year), Number(month), Number(day));
+      }
+    }
+
     const date = value instanceof Date ? value : new Date(value);
     if (isNaN(date.getTime())) return null;
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
+  }
+
+  private dateOnlyFromParts(year: number, month: number, day: number): Date | null {
+    const date = new Date(year, month - 1, day, 12, 0, 0);
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day
+    ) {
+      return null;
+    }
+
+    return date;
   }
 
   private resolveEmploymentStatusByDates(
