@@ -407,7 +407,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     return acts.reduce((s: number, a: any) => s + (a.horas || 0), 0);
   }, [pta, acadAdmin]);
 
-  const horasProg = pta.total_horas_programadas || 0;
+  const hProg = Number(pta.total_horas_programadas || 0);
+  const horasProg = hProg > 0 ? hProg : (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias + horasAcadAdmin);
   const pctCarga = horasDisp > 0 ? Math.round((horasProg / horasDisp) * 100) : 0;
 
   const [motivoDevolucion, setMotivoDevolucion] = useState('');
@@ -888,8 +889,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 16,
               }}>
                 {[
-                  { label: 'Programa', value: pta.programa || 'No especificado', icon: GraduationCap },
-                  { label: 'Territorial', value: pta.territorial || 'No especificada', icon: MapPin },
+                  { label: 'Programa', value: pta.programa_academico || pta.programa || pta.programa_nombre || pta.programaAcademico || 'No especificado', icon: GraduationCap },
+                  { label: 'Territorial', value: pta.territorial || pta.territorial_nombre || 'No especificada', icon: MapPin },
                   { label: 'Asignaturas', value: `${pta.num_asignaturas || asignaturas.length || 0}`, icon: BookOpen },
                   { label: 'Dedicación', value: pta.dedicacion || 'TC', icon: Clock },
                   { label: 'Vinculación', value: pta.tipo_vinculacion || 'Carrera Administrativa', icon: Award },
@@ -945,11 +946,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* ═══ TAB: Componentes ═══ */}
           {activeTab === 'componentes' && (
             <div>
-              {/* Edición completa — solo para revisores */}
-              {puedeAprobar && isPendiente && (
+              {/* Edición completa */}
+              {((puedeAprobar && isPendiente) || (rolLabel === 'Docente' && ['Borrador', 'Devuelto', 'REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'].includes(pta.estado))) && (
                 <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 10, background: '#EFF6FF', border: '1px solid #BFDBFE', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontSize: '0.72rem', color: '#1E40AF', fontWeight: 500 }}>
-                    Como revisor puede editar el PTA completo antes de aprobar
+                    {rolLabel === 'Docente' ? 'Puede editar su PTA' : 'Como revisor puede editar el PTA completo antes de aprobar'}
                   </span>
                   <button
                     onClick={() => setShowEditForm(true)}

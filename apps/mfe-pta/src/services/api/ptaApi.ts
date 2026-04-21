@@ -1219,11 +1219,7 @@ export async function calcularHorasProgramablesTipoVinculacion(data: {
   semanas_vinculacion?: number;
 }) {
   try {
-    const res = await fetch(`${BASE_URL}/catalogos/calcular-horas-programables`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
+    const raw = await apiClient.post<any>(`${PTA_BASE}/catalogos/calcular-horas-programables`, data);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -1267,11 +1263,7 @@ export async function editarComponentesPorRevisor(ptaId: string, data: {
   };
 }) {
   try {
-    const res = await fetch(`${BASE_URL}/${ptaId}/componentes`, {
-      method: 'PATCH',
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
+    const raw = await apiClient.patch<any>(`${PTA_BASE}/${ptaId}/componentes`, data);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -1292,11 +1284,7 @@ export async function sendPTAEmailNotification(data: {
   mensaje?: string;
 }) {
   try {
-    const res = await fetch(`${BASE_URL}/notifications/email`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
+    const raw = await apiClient.post<any>(`${PTA_BASE}/notifications/email`, data);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -1321,11 +1309,7 @@ export async function getPTABellNotifications(docenteId?: string, unreadOnly = f
 
 export async function markPTABellNotificationsRead(notificationIds: string[]) {
   try {
-    const res = await fetch(`${BASE_URL}/notifications/bell/mark-read`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ notification_ids: notificationIds }),
-    });
+    const raw = await apiClient.post<any>(`${PTA_BASE}/notifications/bell/mark-read`, { notification_ids: notificationIds });
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -1362,9 +1346,7 @@ export async function verificarFirmaDigitalPTA(certificadoId: string) {
 
 export async function webhookProgramaChange(data: { event: string; programa_id?: string; programa_nombre?: string; actor?: string; periodo?: string }) {
   try {
-    const res = await fetch(`${BASE_URL}/sync/webhook/programa-change`, {
-      method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
-    });
+    const raw = await apiClient.post<any>(`${PTA_BASE}/sync/webhook/programa-change`, data);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -1375,11 +1357,7 @@ export async function webhookProgramaChange(data: { event: string; programa_id?:
 
 export async function cargaMasivaDocentes(data: { registros: any[]; periodo: string }) {
   try {
-    const res = await fetch(`${BASE_URL}/carga-masiva/docentes`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify(data),
-    });
+    const raw = await apiClient.post<any>(`${PTA_BASE}/carga-masiva/docentes`, data);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -1407,9 +1385,7 @@ export async function solicitarAprobacionSNI(ptaId: string, data: {
   solicitado_por?: string;
 }) {
   try {
-    const res = await fetch(`${BASE_URL}/${ptaId}/solicitud-sni`, {
-      method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
-    });
+    const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/solicitud-sni`, data);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -1423,9 +1399,7 @@ export async function solicitarAprobacionSNPI(ptaId: string, data: {
   justificacion?: string; solicitado_por?: string;
 }) {
   try {
-    const res = await fetch(`${BASE_URL}/${ptaId}/solicitud-snpi`, {
-      method: 'POST', headers: getHeaders(), body: JSON.stringify(data),
-    });
+    const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/solicitud-snpi`, data);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -1464,11 +1438,7 @@ export async function getReferenciasNormativas(seccion?: string) {
 
 export async function enviarPropuestaDocente(ptaId: string, observaciones: string) {
   try {
-    const res = await fetch(`${BASE_URL}/pta/${ptaId}/enviar-propuesta`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ observaciones })
-    });
+    const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/enviar-propuesta`, { observaciones });
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error: any) {
@@ -1478,11 +1448,7 @@ export async function enviarPropuestaDocente(ptaId: string, observaciones: strin
 
 export async function respuestaConcertacionDocente(ptaId: string, aceptaPropuesta: boolean, observaciones: string) {
   try {
-    const res = await fetch(`${BASE_URL}/pta/${ptaId}/respuesta-docente`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ aceptaPropuesta, observaciones })
-    });
+    const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/respuesta-docente`, { aceptaPropuesta, observaciones });
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error: any) {

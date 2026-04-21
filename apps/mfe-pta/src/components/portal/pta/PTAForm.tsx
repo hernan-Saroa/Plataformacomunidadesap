@@ -1206,39 +1206,24 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       return;
     }
 
-    const currentEstadoLower = (estado || '').toLowerCase();
-    const originalEstadoLower = (originalEstado || '').toLowerCase();
-
-    let nuevoEstado = estado;
-    if (!isAdminEdit && enviar) {
-      if (currentEstadoLower === 'borrador' || originalEstadoLower === 'devuelto') {
-        nuevoEstado = 'Pendiente Jefatura';
-      } else if (currentEstadoLower === 'revision_docente_n1') {
-        nuevoEstado = 'Pendiente Decanatura';
-      } else if (currentEstadoLower === 'revision_docente_n2') {
-        nuevoEstado = 'Pendiente Gestión Profesoral';
-      } else {
-        nuevoEstado = estado; // Fallback to current
-      }
-    } else if (!isAdminEdit && !enviar) {
-      nuevoEstado = 'Borrador';
-    }
+    const isReenvio = originalEstado === 'Devuelto' && enviar;
 
     const payload = {
       id: currentPtaId || undefined,
       docente_id: userPersonId,
-      docente_nombre: docenteName || userName, // Enforce identity
+      docente_nombre: docenteName || undefined,
       periodo,
       dedicacion,
       tipo_vinculacion: tipoVinculacion,
       semanas_vinculacion: esNoVinculado ? semanasVinculacion : undefined,
       semanas_prorrateo: semanasProrrateo,
       horas_a_programar: horasAProgramar,
-      estado: isAdminEdit ? estado : nuevoEstado,
+      // Admin: preserva estado actual. Docente: si envía usa estado actual, si guarda → Borrador
+      estado: isAdminEdit ? estado : (enviar ? estado : 'Borrador'),
       _adminEdit: isAdminEdit || undefined,
       asignaturas: asignaturas.filter(a => a.asignatura_id && a.asignatura_id !== ''),
-      investigacion_proyecto: (invProyecto.nombre || invProyecto.codigo || invProyecto.rol || invProyecto.grupo)
-        ? { ...invProyecto, horas_solicitadas: invProyecto.rol ? hInvestigacion : (invProyecto.horas_solicitadas || 0) }
+      investigacion_proyecto: invProyecto.nombre
+        ? { ...invProyecto, horas_solicitadas: invProyecto.rol ? hInvestigacion : 0 }
         : undefined,
       investigacion_actividades: invActividades.filter(a => (a.actividad_id && a.actividad_id !== '') || (a.nombre && a.horas_total > 0)),
       extension_actividades: extActividades.filter(e => e.actividad_id && e.actividad_id !== ''),

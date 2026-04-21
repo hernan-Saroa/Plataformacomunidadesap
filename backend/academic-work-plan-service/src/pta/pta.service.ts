@@ -103,10 +103,10 @@ export class PtaService {
         ${personasHasIdPerson ? 'p.id_person::text' : 'NULL'} as person_id,
         ${personasHasIdTercero ? 'p.id_tercero::text' : 'NULL'} as tercero_id,
         p.dir_email as email,
-        p.primer_nombre, 
-        p.segundo_nombre, 
-        p.primer_apellido, 
-        p.segundo_apellido
+        p.nom_tercero as primer_nombre, 
+        p.seg_nombre as segundo_nombre, 
+        p.pri_apellido as primer_apellido, 
+        p.seg_apellido as segundo_apellido
       FROM auth.personas p
       JOIN auth."user" u ON ${joinUserPersonas}
       JOIN auth.user_roles ur ON ur.id_user = u.id_user AND COALESCE(ur.is_active, true) = true
@@ -156,18 +156,11 @@ export class PtaService {
       console.warn(`[PTA] Auto-aprovisionando Docente ${personId} en academic_work_plan."Docente" para evitar error de FK.`);
       try {
         const usuarioRepo = this.ptaRepo.manager.getRepository(UsuarioEntity);
-        let user = await usuarioRepo.findOne({ where: { id: personId } });
-        if (!user) {
-          user = usuarioRepo.create({ id: personId, email: email || 'docente@esap.edu.co', password: 'N/A' });
-          await usuarioRepo.save(user);
-        }
+        // Usar upsert para evitar QueryFailedError por duplicidad de llaves en condiciones de carrera
+        await usuarioRepo.upsert({ id: personId, email: email || 'docente@esap.edu.co', password: 'N/A' }, ['id']);
 
         const personaRepoLocal = this.ptaRepo.manager.getRepository(PersonaEntity);
-        let persona = await personaRepoLocal.findOne({ where: { id: personId } });
-        if (!persona) {
-          persona = personaRepoLocal.create({ id: personId, usuarioId: personId });
-          await personaRepoLocal.save(persona);
-        }
+        await personaRepoLocal.upsert({ id: personId, usuarioId: personId }, ['id']);
 
         const nuevoDocente = this.docenteRepo.create({
           id: personId,
@@ -179,7 +172,7 @@ export class PtaService {
           horasAsignables: 800,
           correoInstitucional: email
         });
-        await this.docenteRepo.save(nuevoDocente);
+        await this.docenteRepo.upsert(nuevoDocente, ['id']);
         return { personId, email, fullName };
       } catch (err) {
         console.error('[PTA] Error aprovisionando docente dummy:', err);
@@ -473,8 +466,20 @@ export class PtaService {
       const a = accion.toLowerCase();
       if (a.includes('devol')) nuevoEstado = 'Devuelto';
       else if (a.includes('rechaz')) nuevoEstado = 'Rechazado';
+      else if (a === 'reenviar_corregido') {
+        // Re-envío desde revisión docente: avanza al nivel del aprobador que lo devolvió
+        if (existing.estado === 'REVISION_DOCENTE_N1') nuevoEstado = 'Pendiente Jefatura';
+        else if (existing.estado === 'REVISION_DOCENTE_N2') nuevoEstado = 'Pendiente Decanatura';
+        else if (existing.estado === 'REVISION_DOCENTE_N3') nuevoEstado = 'Pendiente Gestión Profesoral';
+        else nuevoEstado = 'Pendiente Jefatura'; // fallback
+      }
       else if (a.includes('reenviar')) nuevoEstado = 'Pendiente Jefatura';
       else if (a.includes('apro')) nuevoEstado = 'Aprobado';
+      else if (a === 'avanzar_sin_cambios') {
+        if (existing.estado === 'REVISION_DOCENTE_N1') nuevoEstado = 'Pendiente Decanatura';
+        else if (existing.estado === 'REVISION_DOCENTE_N2') nuevoEstado = 'Pendiente Gestión Profesoral';
+        else if (existing.estado === 'REVISION_DOCENTE_N3') nuevoEstado = 'Aprobado';
+      }
     }
 
     if (!nuevoEstado) {
