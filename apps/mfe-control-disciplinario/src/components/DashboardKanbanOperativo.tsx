@@ -319,12 +319,12 @@ interface TarjetaNoticiaProps {
 
 function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa, currentUserId }: TarjetaNoticiaProps) {
   const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
-  const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR);
+  const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR);
   const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
   const canViewDetail = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL);
   const canDevolve = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER);
   const canRedimir = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR);
-  const canArchive = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR);
+  const canArchive = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVAR);
   const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
 
   const [hoverReenviar, setHoverReenviar] = useState(false);
@@ -3704,7 +3704,7 @@ export function DashboardKanbanOperativo({
   };
 
   const handleConvertirNoticia = (noticia: Noticia) => {
-    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR)) {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR)) {
       toast.error('No tiene permisos para convertir noticias a procesos');
       return;
     }
@@ -3967,7 +3967,7 @@ export function DashboardKanbanOperativo({
   };
 
   const handleDevolverNoticia = (noticia: Noticia) => {
-    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_DEVOLVER)) {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_DEVOLVER)) {
       toast.error('No tiene permisos para devolver noticias');
       return;
     }
@@ -4087,7 +4087,7 @@ export function DashboardKanbanOperativo({
   };
 
   const handleArchivarNoticia = (noticia: Noticia) => {
-    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR)) {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVAR)) {
       toast.error('No tiene permisos para archivar noticias');
       return;
     }
@@ -5282,7 +5282,7 @@ export function DashboardKanbanOperativo({
                 onChange={(id) => setTipoVista(id as any)}
               />
 
-              {authService.hasPermission(Permissions.NOTICIAS_DISCIPLINARIAS_CREATE || Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CREATE) && (
+              {authService.hasPermission(Permissions.NOTICIAS_DISCIPLINARIAS_CREATE || Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE) && (
                 <KanbanToolbarCTA
                   onClick={() => setModalActivo('crear-noticia')}
                   icon={<Plus style={{ width: 16, height: 16 }} />}
@@ -5911,7 +5911,7 @@ export function DashboardKanbanOperativo({
                             {/* Grid 2×2 de tipos de archivo */}
                             <div className="grid grid-cols-2 gap-px bg-gray-200">
                               {/* ── Autos ── */}
-                              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_CREATE) && (
+                              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_AUTOS_CREATE) && (
                                 <button
                                   onClick={() => setModalActivo('gestion-autos')}
                                   className="group flex flex-col items-center gap-2 p-4 bg-white hover:bg-purple-50 transition-colors"

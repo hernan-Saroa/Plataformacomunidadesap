@@ -1410,7 +1410,7 @@ export function GestionNoticias() {
             RF001 - Sistema de Radicación | RF002 - Revisión y Asignación
           </p>
         </div>
-        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CREATE || Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_CREATE) && (
+        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE || Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_CREATE) && (
         <Button
           onClick={() => setShowCreateModal(true)}
           className="flex items-center gap-2 w-full sm:w-auto"
@@ -1699,7 +1699,7 @@ export function GestionNoticias() {
                   )}
 
                   {/* Botón Archivar */}
-                  {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR) && (
+                  {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVAR) && (
                     <button
                       onClick={() => {
                         setNoticiaSeleccionada(noticia);
