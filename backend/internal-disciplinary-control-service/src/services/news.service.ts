@@ -4,8 +4,8 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
+import { InjectRepository, InjectConnection } from '@nestjs/typeorm';
+import { Repository, Not, Connection } from 'typeorm';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { DisciplinaryNews, NewsStatus, NewsOrigin } from '../entities/disciplinary-news.entity';
@@ -34,6 +34,8 @@ export class NewsService {
     private newsProcessRepository: Repository<DisciplinaryNewsProcess>,
     @InjectRepository(StageConfiguration)
     private stageConfigurationRepository: Repository<StageConfiguration>,
+    @InjectConnection()
+    private connection: Connection,
     private sequenceService: SequenceService,
     private storageService: StorageService,
     private notificationClient: NotificationClientService,
@@ -149,46 +151,44 @@ export class NewsService {
     console.log('[NewsService] Iniciando fetch de usuarios para', radicadorIds.length, 'IDs únicos');
     if (radicadorIds.length > 0) {
       try {
-        const authServiceUrl = process.env.AUTH_SERVICE_URL || process.env.API_AUTH_SERVICE_URL || 'http://auth-service:3001';
-        const base = authServiceUrl.replace(/\/+$/, '');
-        console.log('[NewsService] Llamando a auth service:', `${base}/users?limit=1000`);
-        const response = await firstValueFrom(
-          this.httpService.get(`${base}/users?limit=1000`, { timeout: 3000 })
-        );
-        console.log('[NewsService] Respuesta del auth service:', response.status, response.data ? 'OK' : 'SIN DATA');
+        // Consulta directa a la base de datos del esquema auth
+        const query = `
+          SELECT
+            u.id_user,
+            u.id_person,
+            p.nom_largo,
+            u.username
+          FROM auth.user u
+          LEFT JOIN auth.personas p ON p.id_person = u.id_person
+          WHERE u.id_user = ANY($1)
+        `;
+        const users = await this.connection.query(query, [radicadorIds]);
 
-        if (response.data && response.data.data && Array.isArray(response.data.data.data)) {
-          const users = response.data.data.data;
-          console.log('[NewsService] Usuarios obtenidos del auth service:', users.length);
-          users.forEach((user: any) => {
-            console.log('[NewsService] Usuario:', {
-              id: user.id,
-              user_id_user: user.user?.id_user,
-              full_name: user.full_name,
-              first_name: user.first_name,
-              last_name: user.last_name,
-              email: user.email
-            });
-            const userId = user.user?.id_user || user.id;
-            if (userId) {
-              const userData = {
-                nombre: user.full_name || `${user.first_name || ''} ${user.last_name || ''}`.trim(),
-                email: user.email,
-              };
-              userMap.set(String(userId), userData);
-              // Also try with the original format
-              userMap.set(userId, userData);
-              console.log('[NewsService] Mapeado usuario ID:', userId, '->', userData);
-            }
+        console.log('[NewsService] Usuarios obtenidos de la BD auth:', users.length);
+        users.forEach((user: any) => {
+          console.log('[NewsService] Usuario:', {
+            id_user: user.id_user,
+            id_person: user.id_person,
+            nom_largo: user.nom_largo,
+            username: user.username
           });
-          console.log('[NewsService] Total usuarios mapeados:', userMap.size);
-        } else {
-          console.error('[NewsService] Estructura de respuesta inesperada del auth service:', JSON.stringify(response.data, null, 2));
-        }
+          const userId = user.id_user;
+          if (userId) {
+            const userData = {
+              nombre: user.nom_largo,
+              email: user.username,
+            };
+            userMap.set(String(userId), userData);
+            // Also try with the original format
+            userMap.set(userId, userData);
+            console.log('[NewsService] Mapeado usuario ID:', userId, '->', userData);
+          }
+        });
+        console.log('[NewsService] Total usuarios mapeados:', userMap.size);
       } catch (error) {
-        console.error('[NewsService] Error fetching users from auth service:', error.message, error.response?.status, error.response?.data);
+        console.error('[NewsService] Error fetching users from auth database:', error.message);
         console.log('[NewsService] Continuando sin información de usuarios - se mostrará ID en lugar de nombre');
-        // If auth service fails, we'll just not have user names
+        // If database query fails, we'll just not have user names
       }
     } else {
       console.log('[NewsService] No hay radicadorIds para buscar usuarios');
