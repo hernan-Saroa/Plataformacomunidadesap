@@ -328,6 +328,8 @@ export function FormularioAuditoriaUnificado({
   const [riesgoTemporal, setRiesgoTemporal] = useState('');
   const [procesoRiesgoTemporal, setProcesoRiesgoTemporal] = useState('');
   const [controlTemporal, setControlTemporal] = useState('');
+  const [editandoRiesgoIndex, setEditandoRiesgoIndex] = useState<number | null>(null);
+  const [textoEditadoRiesgo, setTextoEditadoRiesgo] = useState('');
   
   // Estado para auditores cargados del backend
   const [auditoresDisponibles, setAuditoresDisponibles] = useState<AuditorOption[]>(AUDITORES_FALLBACK);
@@ -524,7 +526,7 @@ export function FormularioAuditoriaUnificado({
     const prefijo = procesoRiesgoTemporal.trim() ? `${procesoRiesgoTemporal.trim()}: ` : '';
     const riesgoCompleto = `${prefijo}${textoRiesgo}`;
 
-    onChange('riesgosIdentificados', [...formData.riesgosIdentificados, riesgoCompleto]);
+    handleChange('riesgosIdentificados', [...formData.riesgosIdentificados, riesgoCompleto]);
     setRiesgoTemporal('');
     setProcesoRiesgoTemporal('');
   };
@@ -546,13 +548,13 @@ export function FormularioAuditoriaUnificado({
     }
     const nuevos = [...formData.riesgosIdentificados];
     nuevos[index] = textoEditadoRiesgo.trim();
-    onChange('riesgosIdentificados', nuevos);
+    handleChange('riesgosIdentificados', nuevos);
     setEditandoRiesgoIndex(null);
   };
 
   const handleEliminarRiesgo = (index: number) => {
     const nuevos = formData.riesgosIdentificados.filter((_, i) => i !== index);
-    onChange('riesgosIdentificados', nuevos);
+    handleChange('riesgosIdentificados', nuevos);
   };
 
   const handleAgregarControl = () => {
@@ -1170,12 +1172,12 @@ function Paso1InformacionBasica({
       
       console.log('✅ Riesgos y controles cargados automáticamente desde evaluación del proceso');
       console.log(`   - Nivel de riesgo: ${nivelRiesgoForm}`);
-      console.log(`   - Riesgos identificados: ${riesgosIdentificados.length}`);
+      console.log(`   - Riesgos identificados: ${riesgosIdentificadosArr.length}`);
       console.log(`   - Controles a aplicar: ${controles.length}`);
       
       // Notificar al usuario
       toast.success('Riesgos y controles cargados automáticamente', {
-        description: `Nivel: ${nivelRiesgoForm} | ${riesgosIdentificados.length} riesgos | ${controles.length} controles`
+        description: `Nivel: ${nivelRiesgoForm} | ${riesgosIdentificadosArr.length} riesgos | ${controles.length} controles`
       });
     }
   };
