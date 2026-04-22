@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import {
   CreateDisciplinaryProcessTaskDto,
@@ -6,9 +6,15 @@ import {
 } from '../dtos/disciplinary-process-task.dto';
 import { DisciplinaryProcessTask } from '../entities/disciplinary-process-task.entity';
 import { DisciplinaryProcessTasksService } from '../services/disciplinary-process-tasks.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Tareas Proceso Disciplinario')
 @Controller('disciplinary-processes/:id/tasks')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class DisciplinaryProcessTasksController {
   constructor(
     private readonly tasksService: DisciplinaryProcessTasksService,

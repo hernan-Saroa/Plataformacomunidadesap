@@ -20,6 +20,14 @@ export class CreateDocumentoDto {
 
   @IsOptional()
   @IsUUID()
+  etapaKanbanId?: string;
+
+  @IsOptional()
+  @IsString()
+  etapaNombreKanban?: string;
+
+  @IsOptional()
+  @IsUUID()
   auditoriaId?: string;
 
   @IsOptional()

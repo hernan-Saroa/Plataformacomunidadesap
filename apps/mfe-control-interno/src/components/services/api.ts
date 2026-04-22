@@ -237,6 +237,13 @@ export const auditoriasApi = {
       body: JSON.stringify(data),
     });
   },
+
+  /**
+   * Obtener tipos de auditoría configurados
+   */
+  getTiposAuditoria: async (includeInactive = false): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/tipos-auditoria${includeInactive ? '?includeInactive=true' : ''}`);
+  },
 };
 
 // ==================== UNIVERSO DE AUDITORÍAS ====================

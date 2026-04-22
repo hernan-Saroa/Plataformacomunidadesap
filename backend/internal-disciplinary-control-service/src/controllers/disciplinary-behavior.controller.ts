@@ -8,6 +8,7 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -21,9 +22,15 @@ import {
   CreateDisciplinaryBehaviorDto,
   UpdateDisciplinaryBehaviorDto,
 } from '../dtos/disciplinary-behavior.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Conductas Disciplinarias')
 @Controller('disciplinary-behaviors')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class DisciplinaryBehaviorController {
   constructor(
     private readonly behaviorService: DisciplinaryBehaviorService,

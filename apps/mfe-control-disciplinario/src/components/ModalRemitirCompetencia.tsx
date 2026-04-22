@@ -14,6 +14,8 @@ import {
   WCInfoBox, WCWarningBox, WCBotonPrimario, WCBotonSecundario, WCInput,
 } from './WorldClassModalBase';
 import { tiposRemisionService, TipoRemision } from '../../../services/api/tiposRemisionService';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 interface NoticiaRemitirProps {
   id: string;
@@ -114,6 +116,10 @@ export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClos
     && justificacion.trim().length >= 20;
 
   const handleRemitir = async () => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REMITIR_COMPETENCIA)) {
+      toast.error('No tiene permisos para remitir noticias por competencia');
+      return;
+    }
     if (!entidadId) { toast.error('Validacion', { description: 'Selecciona la entidad de destino' }); return; }
     if (!tipoRemision) { toast.error('Validacion', { description: 'Selecciona el tipo de remision' }); return; }
     if (justificacion.trim().length < 20) { toast.error('Validacion', { description: 'La justificacion debe tener al menos 20 caracteres' }); return; }

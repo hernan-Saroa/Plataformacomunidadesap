@@ -27,6 +27,7 @@ import { DisciplinaryProcessNote } from '../entities/disciplinary-process-note.e
 import { StageConfiguration } from '../entities/stage-configuration.entity';
 import { AlertasService } from './alertas.service';
 import { TipoAlerta } from '../entities/alerta-enviada.entity';
+import { NotificationClientService } from './notification-client.service';
 
 @Injectable()
 export class ProcessService {
@@ -51,6 +52,7 @@ export class ProcessService {
     private terminosService: TerminosCalculatorService,
     private newsService: NewsService,
     private alertasService: AlertasService,
+    private notificationClient: NotificationClientService,
   ) { }
 
   private async buildActuacionesResumen(processIds: string[]): Promise<Map<string, {
@@ -361,6 +363,23 @@ export class ProcessService {
           mensaje,
           resultado.abogadoAsignadoId,
         );
+
+        if (resultado.abogadoAsignadoId) {
+          this.notificationClient.send({
+            id_usuario_destinatario: resultado.abogadoAsignadoId,
+            tipo_notificacion: 'PROCESO_ASIGNADO',
+            titulo: 'Nuevo proceso disciplinario asignado',
+            mensaje,
+            descripcion_corta: `Proceso ${resultado.radicadoProceso} asignado`,
+            icono: 'Briefcase',
+            color: '#2563EB',
+            prioridad: 'Alta',
+            categoria: 'DISCIPLINARIO',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver proceso',
+            datos_adicionales: { procesoId: resultado.id, radicado: resultado.radicadoProceso },
+          }).catch(() => {});
+        }
       } catch (notifError) {
         console.error('Error creando notificación de asignación:', notifError);
         // No fallamos la transacción principal si falla la notificación
@@ -1390,7 +1409,66 @@ export class ProcessService {
       await this.processRepository.save(procesoDestino);
     }
 
+    const profesionalesANotificar: Array<{ id: string; radicado: string }> = [];
+    if (procesoOrigen.abogadoAsignadoId) {
+      profesionalesANotificar.push({ id: procesoOrigen.abogadoAsignadoId, radicado: procesoOrigen.radicadoProceso });
+    }
+    if (procesoDestino.abogadoAsignadoId && procesoDestino.abogadoAsignadoId !== procesoOrigen.abogadoAsignadoId) {
+      profesionalesANotificar.push({ id: procesoDestino.abogadoAsignadoId, radicado: procesoDestino.radicadoProceso });
+    }
+
+    for (const prof of profesionalesANotificar) {
+      this.notificationClient.send({
+        id_usuario_destinatario: prof.id,
+        tipo_notificacion: 'PROCESOS_ASOCIADOS',
+        titulo: 'Procesos disciplinarios asociados',
+        mensaje: `El proceso ${procesoOrigen.radicadoProceso} ha sido asociado con el proceso ${procesoDestino.radicadoProceso} (tipo: ${tipoAsociacion}). Justificación: ${justificacion}`,
+        descripcion_corta: `Proceso ${procesoOrigen.radicadoProceso} asociado con ${procesoDestino.radicadoProceso}`,
+        icono: 'GitMerge',
+        color: '#0891B2',
+        prioridad: 'Media',
+        categoria: 'DISCIPLINARIO',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver proceso',
+        datos_adicionales: { procesoOrigenId, procesoDestinoId, tipoAsociacion },
+      }).catch(() => {});
+    }
+
     return procesoOrigenActualizado;
+  }
+
+  /**
+   * Restaura un proceso archivado al flujo activo
+   */
+  async restore(id: string): Promise<DisciplinaryProcess> {
+    const proceso = await this.processRepository.findOne({
+      where: { id },
+      relations: ['news'],
+    });
+
+    if (!proceso) {
+      throw new HttpException(
+        `Proceso con ID ${id} no encontrado. No se puede restaurar un proceso que no existe. Verifique que el ID sea correcto y que el proceso haya sido creado previamente.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // Verificar que el proceso esté archivado
+    if (proceso.estado !== ProcessStatus.ARCHIVADO) {
+      throw new HttpException(
+        `El proceso ${proceso.radicadoProceso} no está archivado (estado actual: ${proceso.estado}). Solo los procesos archivados pueden ser restaurados.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Cambiar estado a ACTIVO y marcar como restaurado
+    proceso.estado = ProcessStatus.ACTIVO;
+    proceso.restaurado = true;
+
+    // Nota: El historial de auditoría se maneja en el frontend o podría agregarse como campo JSON en el futuro
+    console.log(`Proceso ${proceso.radicadoProceso} restaurado al flujo activo desde estado archivado`);
+
+    return await this.processRepository.save(proceso);
   }
 }
 

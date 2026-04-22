@@ -155,4 +155,7 @@ export class DisciplinaryProcess {
     hechos: string;
     disciplinable: any;
   } | null;
+
+  @Column({ name: 'restaurado', type: 'boolean', default: false })
+  restaurado: boolean;
 }

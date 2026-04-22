@@ -18,25 +18,31 @@ COPY . .
 RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps
 
 # Argumento para la URL del API (se pasa en build time)
-ARG VITE_API_URL=http://172.16.202.169/services
+ARG VITE_API_URL=https://comunidadesap.esap.edu.co/services
+ARG VITE_ONLYOFFICE_URL=https://comunidadesap.esap.edu.co
 ARG VITE_MICROSOFT_TENANT_ID=
 ARG VITE_MICROSOFT_CLIENT_ID=
+ARG VITE_LOGIN_OPTIONS=both
 
 # Exportar como variable de entorno Y crear .env.production
 # Vite necesita ambas cosas para inyectar la variable correctamente
 ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_ONLYOFFICE_URL=${VITE_ONLYOFFICE_URL}
 ENV VITE_MICROSOFT_TENANT_ID=${VITE_MICROSOFT_TENANT_ID}
 ENV VITE_MICROSOFT_CLIENT_ID=${VITE_MICROSOFT_CLIENT_ID}
+ENV VITE_LOGIN_OPTIONS=${VITE_LOGIN_OPTIONS}
 RUN test -n "${VITE_MICROSOFT_TENANT_ID}" && test -n "${VITE_MICROSOFT_CLIENT_ID}"
 RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
+    echo "VITE_ONLYOFFICE_URL=${VITE_ONLYOFFICE_URL}" >> .env.production && \
     echo "VITE_MICROSOFT_TENANT_ID=${VITE_MICROSOFT_TENANT_ID}" >> .env.production && \
     echo "VITE_MICROSOFT_CLIENT_ID=${VITE_MICROSOFT_CLIENT_ID}" >> .env.production && \
+    echo "VITE_LOGIN_OPTIONS=${VITE_LOGIN_OPTIONS}" >> .env.production && \
     echo "Contenido de .env.production:" && cat .env.production
 
 # Build de producción (Vite lee .env.production automáticamente)
 RUN npm run build && \
     echo "Verificando build..." && \
-    grep -r "172.16.202.169" /app/build/assets/*.js | head -1 || echo "URL no encontrada en build"
+    grep -r "${VITE_API_URL}" /app/build/assets/*.js | head -1 || echo "URL no encontrada en build"
 
 # ============ STAGE 2: Serve con Nginx ============
 FROM nginx:alpine AS production

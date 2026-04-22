@@ -25,6 +25,7 @@ import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
 import { ModalReasignarProfesional } from './ModalReasignarProfesional';
 import { ModalPliegoCargos } from './ModalPliegoCargos';
 import { authService } from '../../../services/api';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import {
   disciplinaryService,
   type CreateDisciplinaryProcessActuacionDto,
@@ -2108,6 +2109,8 @@ export function ModalDetallesProceso({
   const [actualizandoTareaId, setActualizandoTareaId] = useState<string | null>(null);
   const [mostrarModalReasignar, setMostrarModalReasignar] = useState(false);
   const [mostrarModalPliego, setMostrarModalPliego] = useState(false);
+  const [mostrarModalEnvioJuridica, setMostrarModalEnvioJuridica] = useState(false);
+  const [enviandoJuridica, setEnviandoJuridica] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [autoEnviarRevision, setAutoEnviarRevision] = useState<Archivo | null>(null);
   const [autoRecargar, setAutoRecargar] = useState<Archivo | null>(null);
@@ -3204,12 +3207,12 @@ export function ModalDetallesProceso({
   const bgTareas = bgActivo ? tareasFiltradas.length : tareas.length;
   const bgNotas = bgActivo ? notasFiltradas.length : notas.length;
 
-  const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
+  const TABS: { id: Tab; label: string; icon: React.ReactNode; badge?: number; permission?: string }[] = [
     { id: 'general',     label: 'General',     icon: <FileText     className="w-3.5 h-3.5" /> },
     { id: 'archivos',    label: 'Archivos',    icon: <FolderOpen   className="w-3.5 h-3.5" />, badge: bgArchivos },
-    { id: 'actuaciones', label: 'Actuaciones', icon: <Zap          className="w-3.5 h-3.5" />, badge: bgActuaciones },
-    { id: 'tareas',      label: 'Tareas',      icon: <CheckSquare  className="w-3.5 h-3.5" />, badge: bgTareas },
-    { id: 'notas',       label: 'Notas',       icon: <FileEdit     className="w-3.5 h-3.5" />, badge: bgNotas || undefined },
+    { id: 'actuaciones', label: 'Actuaciones', icon: <Zap          className="w-3.5 h-3.5" />, badge: bgActuaciones, permission: Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTUACIONES_VIEW },
+    { id: 'tareas',      label: 'Tareas',      icon: <CheckSquare  className="w-3.5 h-3.5" />, badge: bgTareas,      permission: Permissions.CONTROL_DISCIPLINARIO_PROCESOS_TASKS_VIEW },
+    { id: 'notas',       label: 'Notas',       icon: <FileEdit     className="w-3.5 h-3.5" />, badge: bgNotas || undefined, permission: Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTES_VIEW },
   ];
 
   const TIPO_ARCHIVO = [
@@ -3678,7 +3681,7 @@ export function ModalDetallesProceso({
                 <Shield className="w-3 h-3" /><span className="hidden sm:inline">Revisión</span>
               </button>
             )} */}
-            {puedeEnviarRevision && (
+            {puedeEnviarRevision && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleEnviarARevision(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all text-white"
                 style={{ background: '#003DA5' }}
@@ -3688,7 +3691,7 @@ export function ModalDetallesProceso({
                 <Send className="w-3 h-3" /><span className="hidden sm:inline">Enviar a Revisión</span>
               </button>
             )}
-            {puedeRecargar && (
+            {puedeRecargar && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_UPLOAD) && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleRecargarArchivo(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all"
                 style={{ borderColor: '#D97706', color: '#92400E', background: '#FFFBEB' }}
@@ -3835,6 +3838,9 @@ export function ModalDetallesProceso({
           {/* ══ PESTAÑAS ══ */}
           <div className="flex items-center gap-0.5 px-4 pt-2 border-b border-gray-200 flex-shrink-0 overflow-x-auto">
             {TABS.map(tab => {
+              // Validar permiso de pestaña
+              if (tab.permission && !authService.hasPermission(tab.permission)) return null;
+
               const active = tabActiva === tab.id;
               return (
                 <button key={tab.id} onClick={() => setTabActiva(tab.id)}
@@ -4091,16 +4097,18 @@ export function ModalDetallesProceso({
                             <Briefcase className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />
                             <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Profesional Asignado</span>
                           </div>
-                          <button
-                            onClick={() => setMostrarModalReasignar(true)}
-                            className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold rounded-lg border transition-all"
-                            style={{ borderColor: '#2962FF', color: '#2962FF', background: '#EFF6FF' }}
-                            onMouseEnter={e => { e.currentTarget.style.background = '#DBEAFE'; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = '#EFF6FF'; }}
-                            title="Solicitar reasignación del profesional">
-                            <Users className="w-2.5 h-2.5" />
-                            Reasignar
-                          </button>
+                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASSIGN) && (
+                            <button
+                              onClick={() => setMostrarModalReasignar(true)}
+                              className="flex items-center gap-1 px-2 py-1 text-[9px] font-bold rounded-lg border transition-all"
+                              style={{ borderColor: '#2962FF', color: '#2962FF', background: '#EFF6FF' }}
+                              onMouseEnter={e => { e.currentTarget.style.background = '#DBEAFE'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = '#EFF6FF'; }}
+                              title="Solicitar reasignación del profesional">
+                              <Users className="w-2.5 h-2.5" />
+                              Reasignar
+                            </button>
+                          )}
                         </div>
                         <p className="text-sm font-bold text-gray-900">{getNombre(proceso.profesionalAsignado)}</p>
                         {getId(proceso.profesionalAsignado as any) && (
@@ -4120,22 +4128,88 @@ export function ModalDetallesProceso({
                       </div>
                     </div>
 
-                    {/* Acciones del Proceso */}
-                    {proceso.estadoActual === 'ACTIVO' && !archivosBackend.some(a => a.nombre?.includes('PLIEGO_CARGOS') || a.nombre?.includes('Pliego')) && (
-                      <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
-                        <button
-                          onClick={() => setMostrarModalPliego(true)}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
-                          style={{ background: '#D97706', color: 'white' }}
-                        >
-                          <FileText className="w-4 h-4" />
-                          Auto Pliego de Cargos
-                        </button>
-                        <p className="text-[10px] text-center mt-1.5" style={{ color: '#92400E' }}>
-                          Cierra el proceso y traslada a Oficina Jurídica
-                        </p>
-                      </div>
-                    )}
+                    {/* Acciones del Proceso — botón dinámico según estado del auto de pliego */}
+                    {proceso.estadoActual === 'ACTIVO' && (() => {
+                      const autoPliego = archivosBackend.find(a =>
+                        a.nombre?.includes('AUTO_FORMULACION_PLIEGO') ||
+                        a.nombre?.includes('PLIEGO_CARGOS') ||
+                        a.nombre?.toLowerCase().includes('pliego')
+                      );
+
+                      if (!autoPliego) {
+                        return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE_PLIEGO) ? (
+                            <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
+                              <button
+                                onClick={() => setMostrarModalPliego(true)}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                                style={{ background: '#D97706', color: 'white' }}
+                              >
+                                <FileText className="w-4 h-4" />
+                                Auto Pliego de Cargos
+                              </button>
+                              <p className="text-[10px] text-center mt-1.5" style={{ color: '#92400E' }}>
+                                Cierra el proceso y traslada a Oficina Jurídica
+                              </p>
+                            </div>
+                        ) : null;
+                      }
+
+                      if (autoPliego.estado === 'borrador') {
+                        return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) ? (
+                            <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#7C3AED', background: '#F5F3FF' }}>
+                              <button
+                                onClick={() => handleEnviarARevision(autoPliego)}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                                style={{ background: '#7C3AED', color: 'white' }}
+                              >
+                                <Send className="w-4 h-4" />
+                                Enviar a Revisión
+                              </button>
+                              <p className="text-[10px] text-center mt-1.5" style={{ color: '#5B21B6' }}>
+                                Auto creado — envíalo al Jefe para aprobación
+                              </p>
+                            </div>
+                        ) : null;
+                      }
+
+                      if (autoPliego.estado === 'en_revision') {
+                        return (
+                          <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#9CA3AF', background: '#F9FAFB' }}>
+                            <button
+                              disabled
+                              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm cursor-not-allowed"
+                              style={{ background: '#9CA3AF', color: 'white' }}
+                            >
+                              <Clock className="w-4 h-4" />
+                              En Revisión
+                            </button>
+                            <p className="text-[10px] text-center mt-1.5 text-gray-500">
+                              Auto enviado al Jefe para aprobación
+                            </p>
+                          </div>
+                        );
+                      }
+
+                      if (autoPliego.estado === 'aprobado') {
+                        return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ? (
+                            <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#2563EB', background: '#EFF6FF' }}>
+                              <button
+                                onClick={() => setMostrarModalEnvioJuridica(true)}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                                style={{ background: '#2563EB', color: 'white' }}
+                              >
+                                <Send className="w-4 h-4" />
+                                Enviar a Jurídica
+                              </button>
+                              <p className="text-[10px] text-center mt-1.5" style={{ color: '#1E40AF' }}>
+                                Auto aprobado — listo para enviar a Oficina Jurídica
+                              </p>
+                            </div>
+                        ) : null;
+                      }
+
+                      return null;
+                    })()}
 
                     {/* Badge CERRADO */}
                     {proceso.estadoActual === 'CERRADO' && (
@@ -5086,11 +5160,13 @@ export function ModalDetallesProceso({
                       <span className="text-xs font-black text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
                         <Zap className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />Historial
                       </span>
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTUACIONES_CREATE) && (
                       <button onClick={() => setMostrarModalNuevaActuacion(true)}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white"
                         style={{ background: '#003DA5' }}>
                         <Plus className="w-3 h-3" />Nueva
                       </button>
+                      )}
                     </div>
 
                     {/* Filtro por etapa + toggle agrupado */}
@@ -5216,7 +5292,7 @@ export function ModalDetallesProceso({
                         <div className="flex items-start gap-3 p-3">
                           <button
                             type="button"
-                            disabled={actualizando}
+                            disabled={actualizando || !authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_TASKS_EDIT)}
                             onClick={() => handleToggleTarea(tarea)}
                             className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${tarea.completada ? 'border-green-500 bg-green-500' : 'border-slate-300 hover:border-green-400'} disabled:opacity-60`}
                             title={tarea.completada ? 'Marcar como pendiente' : 'Marcar como completada'}
@@ -5344,11 +5420,13 @@ export function ModalDetallesProceso({
                       <span className="text-xs font-black text-gray-700 uppercase tracking-wide flex items-center gap-1.5">
                         <CheckSquare className="w-3.5 h-3.5" style={{ color: '#2962FF' }} />Tareas
                       </span>
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_TAREAS_CREATE) && (
                       <button onClick={() => setMostrarModalNuevaTarea(true)}
                         className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-lg text-white"
                         style={{ background: '#003DA5' }}>
                         <Plus className="w-3 h-3" />Nueva
                       </button>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-1.5 flex-wrap mb-2">
@@ -5488,19 +5566,21 @@ export function ModalDetallesProceso({
                           <div className="flex-1 min-w-0 pt-0.5">
                             <p className="text-[12px] font-semibold text-slate-800 leading-6 break-words">{nota.texto}</p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setNotaPendienteEliminarId((current) => current === nota.id ? null : nota.id)}
-                            disabled={eliminandoNotaId === nota.id}
-                            className="flex items-center justify-center w-9 h-9 rounded-2xl border border-red-200/80 text-red-500 bg-white hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 shadow-sm"
-                            title="Eliminar nota"
-                          >
-                            {eliminandoNotaId === nota.id ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-3.5 h-3.5" />
-                            )}
-                          </button>
+                          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTES_DELETE) && (
+                            <button
+                              type="button"
+                              onClick={() => setNotaPendienteEliminarId((current) => current === nota.id ? null : nota.id)}
+                              disabled={eliminandoNotaId === nota.id}
+                              className="flex items-center justify-center w-9 h-9 rounded-2xl border border-red-200/80 text-red-500 bg-white hover:bg-red-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 shadow-sm"
+                              title="Eliminar nota"
+                            >
+                              {eliminandoNotaId === nota.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          )}
                         </div>
                         <div className="mt-3 flex items-center gap-2 flex-wrap pl-12">
                           <span className="px-2.5 py-1 text-[10px] font-semibold rounded-full inline-flex items-center gap-1 bg-slate-50 text-slate-500 border border-slate-200">
@@ -5605,12 +5685,14 @@ export function ModalDetallesProceso({
                           <MessageSquare className="w-3.5 h-3.5 text-blue-500" />
                           Visible solo dentro del expediente
                         </div>
+                        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_NOTAS_CREATE) && (
                         <button onClick={guardarNota} disabled={!notaTexto.trim() || creandoNota}
                           className="inline-flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold rounded-full text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-[1.01] shadow-[0_14px_30px_rgba(37,99,235,0.28)]"
                           style={{ background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)' }}>
                           {creandoNota ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                           {creandoNota ? 'Guardando...' : 'Guardar Nota'}
                         </button>
+                        )}
                       </div>
                     </motion.div>
 
@@ -5895,6 +5977,98 @@ export function ModalDetallesProceso({
       </AnimatePresence>
 
       <AnimatePresence>
+        {/* Modal confirmación envío a jurídica */}
+        {mostrarModalEnvioJuridica && (() => {
+          const autoPliego = archivosBackend.find(a =>
+            a.nombre?.includes('AUTO_FORMULACION_PLIEGO') ||
+            a.nombre?.includes('PLIEGO_CARGOS') ||
+            a.nombre?.toLowerCase().includes('pliego')
+          );
+          return (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 flex items-center justify-center z-[300]"
+              onClick={(e) => e.target === e.currentTarget && setMostrarModalEnvioJuridica(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-xl shadow-xl w-full max-w-md"
+              >
+                <div className="flex items-center gap-3 p-4 border-b border-gray-200">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: '#DBEAFE' }}>
+                    <Scale style={{ width: 20, height: 20, color: '#2563EB' }} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Envío a Oficina Jurídica</h3>
+                    <p className="text-xs text-gray-500">Confirmar envío del auto a jurídica</p>
+                  </div>
+                </div>
+                <div className="p-4 space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <FileText style={{ width: 14, height: 14, color: '#2563EB' }} />
+                      <span className="text-sm font-bold text-gray-900">Auto Pliego de Cargos</span>
+                    </div>
+                    <p className="text-xs text-gray-600">Proceso: {proceso.numeroProceso}</p>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle style={{ width: 16, height: 16, color: '#D97706', marginTop: 1, flexShrink: 0 }} />
+                      <div className="text-sm text-amber-800">
+                        <p className="font-medium mb-1">Esta acción cerrará permanentemente el proceso</p>
+                        <p className="text-xs leading-relaxed">Al enviar a la Oficina Jurídica, el proceso disciplinario será archivado y ya no podrá ser modificado.</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setMostrarModalEnvioJuridica(false)}
+                      disabled={enviandoJuridica}
+                      className="flex-1 px-4 py-2 text-sm font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      disabled={enviandoJuridica}
+                      onClick={async () => {
+                        if (!autoPliego?.id) {
+                          toast.error('Error: No se pudo identificar el auto');
+                          return;
+                        }
+                        try {
+                          setEnviandoJuridica(true);
+                          const userId = authService.getCurrentUser()?.id || '';
+                          await disciplinaryService.sendJuridica(autoPliego.id, userId);
+                          toast.success('Auto enviado a jurídica exitosamente', {
+                            description: `El proceso ${proceso.numeroProceso} ha sido cerrado y archivado`,
+                            duration: 5000,
+                          });
+                          setMostrarModalEnvioJuridica(false);
+                          onClose();
+                        } catch (error: any) {
+                          toast.error('Error al enviar a jurídica', {
+                            description: error?.message || 'No se pudo conectar con el servidor.',
+                          });
+                        } finally {
+                          setEnviandoJuridica(false);
+                        }
+                      }}
+                      className="flex-1 px-4 py-2 text-sm font-bold text-white rounded-lg transition-colors"
+                      style={{ background: enviandoJuridica ? '#93C5FD' : '#2563EB' }}
+                    >
+                      {enviandoJuridica ? 'Enviando...' : 'Confirmar Envío'}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          );
+        })()}
+
         {mostrarModalPliego && (
           <ModalPliegoCargos
             proceso={{
@@ -5920,6 +6094,5 @@ export function ModalDetallesProceso({
     document.body
   );
 }
-
 
 

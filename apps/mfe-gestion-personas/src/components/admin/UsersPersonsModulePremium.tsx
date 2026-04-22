@@ -46,7 +46,7 @@ import {
   QrCode
 } from 'lucide-react';
 import { Card, Badge, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, Avatar, AvatarFallback, AvatarImage, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CreatePersonModal } from './CreatePersonModal';
 import { AssignAccessModal } from './AssignAccessModal';  
@@ -888,6 +888,8 @@ export function UsersPersonsModulePremium() {
   }
 
   return (
+    <>
+    <Toaster position="top-right" richColors />
     <Container4K className="space-y-6">
       {/* Header - DÍA 5: ResponsiveHeader */}
       <ResponsiveHeader
@@ -2205,5 +2207,6 @@ export function UsersPersonsModulePremium() {
         />
       )}
     </Container4K>
+    </>
   );
 }

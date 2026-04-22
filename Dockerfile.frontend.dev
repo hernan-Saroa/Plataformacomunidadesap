@@ -19,10 +19,11 @@ COPY . .
 RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps
 
 # Argumentos para las URLs (se pasan en build time)
-ARG VITE_API_URL=http://4.156.71.181/services
-ARG VITE_ONLYOFFICE_URL=http://4.156.71.181:9000
+ARG VITE_API_URL=/services
+ARG VITE_ONLYOFFICE_URL=/onlyoffice
 ARG VITE_MICROSOFT_TENANT_ID=
 ARG VITE_MICROSOFT_CLIENT_ID=
+ARG VITE_LOGIN_OPTIONS=both
 
 # Exportar como variables de entorno Y crear .env.production
 # Vite necesita ambas cosas para inyectar las variables correctamente
@@ -30,15 +31,19 @@ ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_ONLYOFFICE_URL=${VITE_ONLYOFFICE_URL}
 ENV VITE_MICROSOFT_TENANT_ID=${VITE_MICROSOFT_TENANT_ID}
 ENV VITE_MICROSOFT_CLIENT_ID=${VITE_MICROSOFT_CLIENT_ID}
+ENV VITE_LOGIN_OPTIONS=${VITE_LOGIN_OPTIONS}
 RUN test -n "${VITE_MICROSOFT_TENANT_ID}" && test -n "${VITE_MICROSOFT_CLIENT_ID}"
 RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
     echo "VITE_ONLYOFFICE_URL=${VITE_ONLYOFFICE_URL}" >> .env.production && \
     echo "VITE_MICROSOFT_TENANT_ID=${VITE_MICROSOFT_TENANT_ID}" >> .env.production && \
     echo "VITE_MICROSOFT_CLIENT_ID=${VITE_MICROSOFT_CLIENT_ID}" >> .env.production && \
+    echo "VITE_LOGIN_OPTIONS=${VITE_LOGIN_OPTIONS}" >> .env.production && \
     echo "Contenido de .env.production:" && cat .env.production
 
 # Build de producción (Vite lee .env.production automáticamente)
-RUN npm run build
+RUN npm run build && \
+    echo "Verificando que el bundle no exponga hosts sensibles..." && \
+    if grep -r -E "4\\.156\\.71\\.181|135\\.237\\.81\\.133|172\\.16\\.202\\.169|172\\.16\\.202\\.222|outlook\\.office\\.com|humanosoft\\.esap\\.edu\\.co|arca\\.esap\\.edu\\.co|onlyoffice:80" /app/build/assets/*.js; then exit 1; fi
 
 # ============ STAGE 2: Serve con Nginx ============
 FROM nginx:alpine AS production

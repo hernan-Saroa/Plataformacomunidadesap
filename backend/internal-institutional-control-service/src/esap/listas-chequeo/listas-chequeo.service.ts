@@ -148,6 +148,9 @@ export class ListasChequeoService {
       faseEjecucion: createDto.faseEjecucion || false,
       faseComunicacion: createDto.faseComunicacion || false,
       faseSeguimiento: createDto.faseSeguimiento || false,
+      // ✅ VINCULACIÓN CON ETAPA KANBAN DINÁMICA
+      etapaKanbanId: createDto.etapaKanbanId,
+      etapaNombreKanban: createDto.etapaNombreKanban,
     });
 
     const listaGuardada = await this.listaChequeoRepository.save(lista);
@@ -161,6 +164,8 @@ export class ListasChequeoService {
           categoria: itemDto.categoria || 'General', // Valor por defecto 'General' si no viene
           obligatorio: itemDto.obligatorio !== undefined ? itemDto.obligatorio : false,
           orden: itemDto.orden !== undefined ? itemDto.orden : index,
+          documentoBibliotecaId: itemDto.documentoBibliotecaId || null,
+          documentoNombre: itemDto.documentoNombre || null,
         }),
       );
       await this.itemRepository.save(items);
@@ -202,6 +207,9 @@ export class ListasChequeoService {
     if (updateDto.faseEjecucion !== undefined) lista.faseEjecucion = updateDto.faseEjecucion;
     if (updateDto.faseComunicacion !== undefined) lista.faseComunicacion = updateDto.faseComunicacion;
     if (updateDto.faseSeguimiento !== undefined) lista.faseSeguimiento = updateDto.faseSeguimiento;
+    // ✅ VINCULACIÓN CON ETAPA KANBAN DINÁMICA
+    if (updateDto.etapaKanbanId !== undefined) lista.etapaKanbanId = updateDto.etapaKanbanId;
+    if (updateDto.etapaNombreKanban !== undefined) lista.etapaNombreKanban = updateDto.etapaNombreKanban;
 
     await this.listaChequeoRepository.save(lista);
 
@@ -224,6 +232,8 @@ export class ListasChequeoService {
             categoria: itemDto.categoria || 'General', // Valor por defecto 'General' si no viene
             obligatorio: itemDto.obligatorio !== undefined ? itemDto.obligatorio : false,
             orden: itemDto.orden !== undefined ? itemDto.orden : index,
+            documentoBibliotecaId: itemDto.documentoBibliotecaId || null,
+            documentoNombre: itemDto.documentoNombre || null,
           }),
         );
         await this.itemRepository.save(items);
@@ -459,7 +469,9 @@ export class ListasChequeoService {
       const items = await this.itemRepository.query(
         `SELECT id, lista_chequeo_id as "listaChequeoId", texto, categoria, obligatorio, orden, 
                 completado, fecha_completado as "fechaCompletado", completado_por as "completadoPor", 
-                observaciones, created_at as "createdAt", updated_at as "updatedAt"
+                observaciones, documento_biblioteca_id as "documentoBibliotecaId",
+                documento_nombre as "documentoNombre",
+                created_at as "createdAt", updated_at as "updatedAt"
          FROM control_interno.item_lista_chequeo 
          WHERE lista_chequeo_id = $1 
          ORDER BY orden ASC`,

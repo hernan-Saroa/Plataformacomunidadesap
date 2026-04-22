@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { Toaster } from 'sonner';
 import {
   Shield,
   LayoutDashboard,
@@ -255,6 +256,8 @@ function ControlInternoContent({
   };
 
   return (
+    <>
+    <Toaster position="top-right" richColors />
     <ModuleLayout
       moduleName="CONTROL INTERNO DE GESTIÓN"
       moduleDescription="Sistema de Gestión"
@@ -279,6 +282,7 @@ function ControlInternoContent({
       {/* Contenido de la sección */}
       {renderSeccion()}
     </ModuleLayout>
+    </>
   );
 }
 

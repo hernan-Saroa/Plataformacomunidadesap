@@ -248,7 +248,7 @@ export function ControlDisciplinarioFull() {
   }, [currentSection]);
 
   const hasPermissionBySection: Record<Section, boolean> = {
-    dashboard: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_MANAGE),
+    dashboard: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_MANAGE),
     aprobacion: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_MANAGE),
     expediente: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE),
     terminos: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_MANAGE),

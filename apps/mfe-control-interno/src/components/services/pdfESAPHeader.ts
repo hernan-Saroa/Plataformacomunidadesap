@@ -65,6 +65,8 @@ export interface ConfiguracionDocumento {
   proceso?: string;         // Default: 'EVALUACIÓN CONTROL Y MEJORA'
   titulo?: string;          // Default: 'PROCEDIMIENTO AUDITORÍAS INTERNAS'
   logoImg?: string;         // Logo ESAP (opcional, para incluir en encabezado)
+  /** Fila extra debajo de proceso: "Documento de referencia: ..." */
+  documentoReferencia?: string;
 }
 
 /**
@@ -194,8 +196,23 @@ export function dibujarEncabezadoInstitucional(
     doc.setFont('helvetica', 'normal');
     doc.text(proceso, logoX + 20, yPos + 4);
 
-    yPos += alturaProceso + 3;
+    yPos += alturaProceso;
 
+    // ============================================
+    // DOCUMENTO DE REFERENCIA (fila opcional)
+    // ============================================
+    if (config.documentoReferencia) {
+      const alturaRef = 6;
+      doc.rect(logoX, yPos, logoWidth + tituloWidth + infoWidth, alturaRef);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Documento de referencia:', logoX + 2, yPos + 4);
+      doc.setFont('helvetica', 'normal');
+      doc.text(config.documentoReferencia, logoX + 42, yPos + 4);
+      yPos += alturaRef;
+    }
+
+    yPos += 3;
     return yPos;
 
   } catch (error) {
@@ -283,6 +300,21 @@ export const DOCUMENTOS_PREDEFINIDOS = {
     version: 3,
     fecha: '24/Oct/2025',
     titulo: 'PLAN ANUAL DE AUDITORÍA INTERNA',
+    proceso: 'EVALUACIÓN CONTROL Y MEJORA'
+  },
+  INFORME_AUDITORIA_OCI: {
+    codigo: 'EM-FO-003',
+    version: 2,
+    fecha: '24/02/2025',
+    titulo: 'INFORME DE AUDITORIA INTERNA OCI',
+    proceso: 'EVALUACIÓN CONTROL Y MEJORA',
+    documentoReferencia: 'Procedimiento Auditorías Internas basadas en riesgos EM-PT-004'
+  },
+  INFORME_EJECUTIVO_OCI: {
+    codigo: 'EM-FO-011',
+    version: 3,
+    fecha: '24/Oct/2025',
+    titulo: 'INFORME EJECUTIVO DE AUDITORÍA INTERNA',
     proceso: 'EVALUACIÓN CONTROL Y MEJORA'
   }
 };

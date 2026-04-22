@@ -25,6 +25,8 @@ import { disciplinaryService } from '../../../services/api/disciplinary.service'
 import { buildApiUrl, API_MODE } from '../../../config/environment';
 import { toast } from 'sonner';
 import * as mammoth from 'mammoth';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ============ INTERFACES ============
 
@@ -346,6 +348,23 @@ const DOCUMENTOS_CRONOLOGICOS: Documento[] = [
 // ============ COMPONENTE PRINCIPAL ============
 
 export function ExpedientesElectronicosWorldClass() {
+  const hasAccess = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE);
+
+  if (!hasAccess) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center bg-white rounded-2xl shadow-sm border m-8">
+        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+          <Lock className="w-8 h-8 text-red-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Acceso Denegado</h2>
+        <p className="text-gray-600 max-w-md">
+          No tiene los permisos necesarios para acceder al módulo de expedientes electrónicos.
+          Por favor, contacte al administrador del sistema si cree que esto es un error.
+        </p>
+      </div>
+    );
+  }
+
   // ✅ Estados para datos del backend
   const [expedientes, setExpedientes] = useState<ExpedienteElectronico[]>([]);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
@@ -420,7 +439,12 @@ export function ExpedientesElectronicosWorldClass() {
         try {
           const docsResponse = await disciplinaryService.getDocumentosExpediente(proceso.id);
           if (docsResponse?.documentos) {
-            docsResponse.documentos.forEach((doc: any) => {
+            const documentosFiltrados = docsResponse.documentos.filter((doc: any) => {
+              const estadoAuto = doc.metadatos?.estado;
+              if (!estadoAuto) return true; // No es un auto digital, mostrar siempre
+              return ['APROBADO', 'FIRMADO', 'NOTIFICADO'].includes(estadoAuto);
+            });
+            documentosFiltrados.forEach((doc: any) => {
               // Mapear tipo de documento del backend
               const tipoMap: Record<string, string> = {
                 'auto': 'apertura',
@@ -611,6 +635,10 @@ export function ExpedientesElectronicosWorldClass() {
   };
 
   const handleSubirDocumento = (tipoId: string) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_UPLOAD)) {
+      toast.error('No tiene permisos para subir documentos');
+      return;
+    }
     setTipoDocumentoSeleccionado(tipoId);
     setShowModalSubirDocumento(true);
   };
@@ -624,6 +652,10 @@ export function ExpedientesElectronicosWorldClass() {
   };
 
   const handleVerHojaControl = (doc: Documento) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_VIEW_HOJA_CONTROL)) {
+      toast.error('No tiene permisos para ver la hoja de control');
+      return;
+    }
     setDocumentoHojaControl(doc);
     setShowModalHojaControl(true);
   };
@@ -632,6 +664,10 @@ export function ExpedientesElectronicosWorldClass() {
    * ✅ GENERAR PDF DE HOJA DE CONTROL CON DISEÑO CORPORATIVO ESAP
    */
   const generarPDFHojaControl = (doc: Documento) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_DOWNLOAD_HOJA_CONTROL)) {
+      toast.error('No tiene permisos para descargar la hoja de control');
+      return;
+    }
     const pdf = new jsPDF();
     const expediente = expedientes.find(e => e.id === doc.expedienteId);
     
@@ -754,6 +790,10 @@ export function ExpedientesElectronicosWorldClass() {
    * ✅ EXPORTAR ÍNDICE COMPLETO DEL EXPEDIENTE
    */
   const exportarIndiceExpediente = (expedienteId: string) => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_DOWNLOAD_DOC)) {
+      toast.error('No tiene permisos para descargar el índice del expediente');
+      return;
+    }
     const expediente = expedientes.find(e => e.id === expedienteId);
     if (!expediente) return;
     
@@ -1436,8 +1476,9 @@ export function ExpedientesElectronicosWorldClass() {
                                   e.stopPropagation();
                                   exportarIndiceExpedienteExcel(grupo.expedienteId);
                                 }}
-                                className="px-2.5 py-1.5 rounded-md border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition text-xs font-bold flex items-center gap-1.5"
+                                className="px-2.5 py-1.5 rounded-md border border-green-300 bg-green-50 text-green-700 hover:bg-green-100 transition text-xs font-bold flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Exportar Índice del Expediente (Excel)"
+                                disabled={!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_DOWNLOAD_DOC)}
                               >
                                 <FileSpreadsheet className="w-3.5 h-3.5" />
                                 Exportar Índice
@@ -1651,7 +1692,9 @@ export function ExpedientesElectronicosWorldClass() {
                                     </div>
                                     <div className="flex items-center gap-1.5">
                                       <span className="px-2 py-1 rounded-full text-xs font-bold" style={{ color: tipo.color, backgroundColor: tipo.colorBg }}>{cantidad}</span>
-                                      <button onClick={() => handleSubirDocumento(tipo.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Upload className="w-3.5 h-3.5 text-gray-600" /></button>
+                                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_UPLOAD) && (
+                                        <button onClick={() => handleSubirDocumento(tipo.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Upload className="w-3.5 h-3.5 text-gray-600" /></button>
+                                      )}
                                       <button className="p-1.5 rounded-md hover:bg-gray-100"><ChevronRight className="w-3.5 h-3.5 text-gray-600" /></button>
                                     </div>
                                   </div>

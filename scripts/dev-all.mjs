@@ -80,11 +80,26 @@ console.log(
 console.log(
   '[dev:all] Modo liviano: remotos servidos con servidor estático embebido en vez de `vite preview`.',
 );
+console.log(
+  `[dev:all] Watch de remotos: ${options.remoteWatch ? 'ACTIVO' : 'DESACTIVADO'} (${options.remoteWatch ? 'rebuild continuo' : 'usa cache/build inicial'})`,
+);
+if (options.remoteWatch) {
+  console.log(
+    `[dev:all] Watch-apps: ${options.watchApps.size > 0 ? [...options.watchApps].join(', ') : 'all'}`,
+  );
+}
 
 function parseArgs(args) {
   const parsed = {
     apps: process.env.DEV_ALL_APPS || '',
     forceInitialBuild: process.env.DEV_ALL_FORCE_INITIAL_BUILD === '1',
+    remoteWatch: process.env.DEV_ALL_REMOTE_WATCH !== '0',
+    watchApps: new Set(
+      (process.env.DEV_ALL_WATCH_APPS || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
     help: false,
     listApps: false,
   };
@@ -105,8 +120,30 @@ function parseArgs(args) {
       continue;
     }
 
+    if (arg.startsWith('--watch-apps=')) {
+      parsed.watchApps = new Set(
+        arg
+          .slice('--watch-apps='.length)
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean),
+      );
+      continue;
+    }
+
     if (arg === '--force-initial-build') {
       parsed.forceInitialBuild = true;
+      continue;
+    }
+
+    if (arg === '--no-remote-watch') {
+      parsed.remoteWatch = false;
+      continue;
+    }
+
+    if (arg === '--remote-watch') {
+      parsed.remoteWatch = true;
+      continue;
     }
   }
 
@@ -120,13 +157,24 @@ Uso:
   npm run dev:all -- --apps=shell,mfe-control-interno,mfe-control-disciplinario
   npm run dev:all -- --list-apps
   npm run dev:all -- --force-initial-build
+  npm run dev:all -- --no-remote-watch
+  npm run dev:all -- --watch-apps=mfe-control-disciplinario,mfe-reportes
 
 Opciones:
   --apps=lista     Lista separada por comas de apps a iniciar.
                    Si no se envía, inicia shell + todos los remotos.
                    También se puede definir con DEV_ALL_APPS.
+  --watch-apps=lista
+                   Lista de remotos (appDir) a los que se les deja watch activo.
+                   Si se omite, se vigilan todos los remotos.
+                   También se puede definir con DEV_ALL_WATCH_APPS.
   --force-initial-build
                    Obliga build inicial bloqueante de los remotos aunque exista cache previa.
+  --no-remote-watch
+                   No deja procesos 'build --watch' corriendo para los remotos.
+                   Útil para portátiles (menos CPU/RAM). Los remotos quedan servidos desde el build/cache.
+                   También se puede desactivar con DEV_ALL_REMOTE_WATCH=0.
+  --remote-watch   Fuerza activar el watch de remotos (override).
   --list-apps      Muestra los nombres válidos para --apps.
   --help           Muestra esta ayuda.
 `);
@@ -381,32 +429,42 @@ for (const app of remoteAppProcesses) {
   }
 
   startStaticPreviewServer(app);
-  // Usamos el runner script (API programática de vite) en vez del CLI
-  // porque --watch.ignored no se puede pasar como CLI arg (vite parsea --watch como boolean).
-  const buildRootDir = path.resolve(repoRoot, 'build');
-  const child = spawn(process.execPath, [watchRunnerScript, app.cwd, buildRootDir], {
-    env,
-    stdio: 'inherit',
-  });
-  child.appName = `${app.name}:watch`;
-  children.add(child);
-  child.on('exit', (code, signal) => {
-    children.delete(child);
-    if (shuttingDown) {
-      if (children.size === 0) process.exit(code ?? 0);
-      return;
-    }
-    if (code !== 0) {
-      console.error(`\n[dev:all] ${child.appName} terminó con código ${code}. Cerrando los demás procesos.`);
-      shutdown();
-      process.exit(code ?? 1);
-    }
-    if (signal) {
-      console.error(`\n[dev:all] ${child.appName} terminó por señal ${signal}. Cerrando los demás procesos.`);
-      shutdown();
-      process.exit(1);
-    }
-  });
+
+  const shouldWatchRemote =
+    options.remoteWatch && (options.watchApps.size === 0 || options.watchApps.has(app.name));
+
+  if (shouldWatchRemote) {
+    // Usamos el runner script (API programática de vite) en vez del CLI
+    // porque --watch.ignored no se puede pasar como CLI arg (vite parsea --watch como boolean).
+    const buildRootDir = path.resolve(repoRoot, 'build');
+    const child = spawn(process.execPath, [watchRunnerScript, app.cwd, buildRootDir], {
+      env,
+      stdio: 'inherit',
+    });
+    child.appName = `${app.name}:watch`;
+    children.add(child);
+    child.on('exit', (code, signal) => {
+      children.delete(child);
+      if (shuttingDown) {
+        if (children.size === 0) process.exit(code ?? 0);
+        return;
+      }
+      if (code !== 0) {
+        console.error(`\n[dev:all] ${child.appName} terminó con código ${code}. Cerrando los demás procesos.`);
+        shutdown();
+        process.exit(code ?? 1);
+      }
+      if (signal) {
+        console.error(`\n[dev:all] ${child.appName} terminó por señal ${signal}. Cerrando los demás procesos.`);
+        shutdown();
+        process.exit(1);
+      }
+    });
+  } else {
+    console.log(
+      `[dev:all] ${app.name}: watch desactivado (servido desde build/cache).`,
+    );
+  }
 }
 
 if (hostApp) {

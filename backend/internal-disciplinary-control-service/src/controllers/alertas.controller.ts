@@ -5,6 +5,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -15,10 +16,16 @@ import {
 import { AlertasService } from '../services/alertas.service';
 import { ListarAlertasDto } from '../dtos/alertas.dto';
 import { AlertaEnviada } from '../entities/alerta-enviada.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Alertas Enviadas')
 @Controller('alertas')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class AlertasController {
   constructor(
     private alertasService: AlertasService,

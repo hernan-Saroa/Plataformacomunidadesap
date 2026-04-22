@@ -50,6 +50,9 @@ export interface DisciplinaryNews {
     };
     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
     kanbanStage?: string;
+    radicadorId?: string;
+    radicadorNombre?: string;
+    radicadorEmail?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -388,6 +391,7 @@ export interface CreateNewsDto {
     adjuntos?: string[];
     denunciante: any;
     disciplinable: any;
+    radicadorId?: string;
 }
 
 export interface AssignProcessDto {
@@ -428,6 +432,8 @@ class DisciplinaryService {
     // --- NOTICIAS ---
 
     async radicarNoticia(data: CreateNewsDto, files?: File[]): Promise<DisciplinaryNews> {
+        console.log('[DEBUG] radicarNoticia - data.radicadorId:', data.radicadorId);
+
         const formData = new FormData();
         // Solo enviar campos que acepta el DTO del backend
         formData.append('origen', data.origen);
@@ -442,12 +448,19 @@ class DisciplinaryService {
         if (data.adjuntos && data.adjuntos.length > 0) {
             formData.append('adjuntos', JSON.stringify(data.adjuntos));
         }
+        formData.append('radicadorId', data.radicadorId || '');
+        console.log('[DEBUG] radicarNoticia - appending radicadorId:', data.radicadorId || '');
 
         // Archivos con el campo correcto que espera el backend
         if (files && files.length > 0) {
             files.forEach((file) => {
                 formData.append('files', file); // Backend usa 'files', no 'adjuntos'
             });
+        }
+
+        console.log('[DEBUG] radicarNoticia - formData entries:');
+        for (const [key, value] of formData.entries()) {
+            console.log(`  ${key}:`, typeof value === 'string' ? value : 'File');
         }
 
         return apiClient.upload<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
@@ -491,8 +504,8 @@ class DisciplinaryService {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news/my-news`, { profesionalId });
     }
 
-    async returnNews(id: string, observaciones: string): Promise<DisciplinaryNews> {
-        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones });
+    async returnNews(id: string, observaciones: string, radicadorId?: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones, radicadorId });
     }
 
     async updateNewsKanban(id: string, kanbanStage: string): Promise<DisciplinaryNews> {
@@ -1666,6 +1679,11 @@ class DisciplinaryService {
     async getReassignmentRequestsByProcess(processId: string): Promise<DisciplinaryProcessReassignmentRequest[]> {
         return apiClient.get<DisciplinaryProcessReassignmentRequest[]>(`${SERVICE_PREFIX}/disciplinary-process-reassignment/process/${processId}`);
     }
+
+    // Ensure restoreProcess is available
+    restoreProcess = async (id: string): Promise<any> => {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/restore`, {});
+    };
 
 }
 

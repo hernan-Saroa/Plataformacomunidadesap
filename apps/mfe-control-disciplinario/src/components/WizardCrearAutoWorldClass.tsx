@@ -30,6 +30,8 @@ import { Button } from '@esap-mfe/shared-ui/button';
 import { ETAPAS_PROCESO, type EtapaProcesoId, type TipoAuto, type PlantillaArchivo } from './configuracion/SeccionPlantillasAutosUnificada';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl } from '../../../config/environment';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // Tipos de auto que disparan acciones automáticas al aprobarse
 const TIPOS_CON_ACCION = [
@@ -147,6 +149,41 @@ export function WizardCrearAutoWorldClass({
   onClose,
   onAutoCreado
 }: WizardCrearAutoWorldClassProps) {
+  const hasAccess = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_AUTOS_CREATE);
+
+  if (!hasAccess) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 flex items-center justify-center z-[100000] bg-black/50 backdrop-blur-sm"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0, y: 40 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          className="bg-white rounded-3xl shadow-2xl p-12 text-center max-w-lg"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Shield className="w-10 h-10 text-red-600" />
+          </div>
+          <h2 className="text-2xl font-black text-gray-900 mb-4">Acceso Denegado</h2>
+          <p className="text-gray-600 mb-8">
+            No tiene los permisos necesarios para generar autos o providencias disciplinarias.
+          </p>
+          <button
+            onClick={onClose}
+            className="w-full py-4 bg-gray-900 text-white rounded-2xl font-bold hover:bg-gray-800 transition-colors"
+          >
+            Entendido
+          </button>
+        </motion.div>
+      </motion.div>
+    );
+  }
+
   // Estados del Wizard
   const [paso, setPaso] = useState(1);
   const [vistaActual, setVistaActual] = useState<'wizard' | 'lista'>('lista');
@@ -384,6 +421,10 @@ export function WizardCrearAutoWorldClass({
   };
 
   const handleCrearAuto = async () => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_AUTOS_CREATE)) {
+      toast.error('No tiene permisos para crear autos');
+      return;
+    }
     if (!tipoSeleccionado) {
       toast.error('Debes seleccionar un tipo de auto');
       return;

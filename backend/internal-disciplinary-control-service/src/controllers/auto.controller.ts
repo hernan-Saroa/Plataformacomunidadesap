@@ -14,6 +14,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -33,9 +34,16 @@ import {
 import { ReviewAutoDto } from '../dtos/review-auto.dto';
 import { RegisterNotificationDto } from '../dtos/register-notification.dto';
 import { LegalAuto } from '../entities/legal-auto.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Public } from '../auth/public.decorator';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Autos Legales')
 @Controller('disciplinary-autos')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class AutoController {
   constructor(
     private autoService: AutoService,
@@ -195,7 +203,7 @@ export class AutoController {
   })
   async sendPliegoToJuridica(
     @Param('id') id: string,
-    @Query('enviadoPorId') enviadoPorId: string,
+    @Body('enviadoPorId') enviadoPorId: string,
   ): Promise<void> {
     if (!enviadoPorId) {
       throw new Error('enviadoPorId es requerido');
@@ -466,6 +474,7 @@ export class AutoController {
   /**
    * Callback de OnlyOffice cuando se guarda el documento
    */
+  @Public()
   @Post('onlyoffice/callback')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

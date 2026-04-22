@@ -165,12 +165,20 @@ export class DocumentosController {
       throw new BadRequestException('No se proporcionó ningún archivo');
     }
 
+    // 🔍 DEBUG: Ver qué llega del frontend
+    console.log('🔍 [BACKEND CREATE DOC] ===== BODY RECIBIDO =====');
+    console.log('🔍 [BACKEND CREATE DOC] body completo:', JSON.stringify(body, null, 2));
+    console.log('🔍 [BACKEND CREATE DOC] etapaKanbanId RAW:', body.etapaKanbanId, 'tipo:', typeof body.etapaKanbanId);
+    console.log('🔍 [BACKEND CREATE DOC] etapaNombreKanban RAW:', body.etapaNombreKanban, 'tipo:', typeof body.etapaNombreKanban);
+
     // Parsear campos del body (vienen como strings en multipart/form-data)
     const createDto: CreateDocumentoDto = {
       nombre: body.nombre || file.originalname,
       descripcion: body.descripcion,
       tipoDocumento: body.tipoDocumento as any,
       etapa: body.etapa as any,
+      etapaKanbanId: body.etapaKanbanId || undefined,
+      etapaNombreKanban: body.etapaNombreKanban || undefined,
       auditoriaId: body.auditoriaId || undefined,
       hallazgoId: body.hallazgoId || undefined,
       planMejoramientoId: body.planMejoramientoId || undefined,
@@ -182,6 +190,11 @@ export class DocumentosController {
       subidoPor: body.subidoPor || 'Sistema',
       hashArchivo: undefined, // Se calculará en el servicio
     };
+
+    console.log('🔍 [BACKEND CREATE DOC] CreateDTO construido:', {
+      etapaKanbanId: createDto.etapaKanbanId,
+      etapaNombreKanban: createDto.etapaNombreKanban
+    });
 
     // Generar ruta final del archivo
     const rutaFinal = this.documentosService.generarRutaArchivo(

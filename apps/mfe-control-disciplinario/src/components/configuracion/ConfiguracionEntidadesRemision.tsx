@@ -10,6 +10,8 @@ import { useState, useEffect } from 'react';
 import { Plus, AlertCircle, Trash2, Save, RotateCcw, Mail, Edit3, X, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { entidadesRemisionService, EntidadRemision } from '../../../../services/api/entidadesRemisionService';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 const ENTIDADES_REMISION_DEFECTO: EntidadRemision[] = [
   { id: 'procuraduria', nombre: 'Procuraduría General de la Nación', correo: 'contacto@procuraduria.gov.co', activo: true },
@@ -212,6 +214,7 @@ export function ConfiguracionEntidadesRemision() {
               Sin guardar
             </span>
           )}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_RESET) && (
           <button
             onClick={restablecerDefecto}
             className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
@@ -219,6 +222,8 @@ export function ConfiguracionEntidadesRemision() {
             <RotateCcw className="w-4 h-4" />
             Restablecer
           </button>
+          )}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_ENTIDADES_EDIT) && (
           <button
             onClick={guardarConfiguraciones}
             disabled={!cambiosPendientes || saving}
@@ -230,11 +235,13 @@ export function ConfiguracionEntidadesRemision() {
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Guardar Cambios
           </button>
+          )}
         </div>
       </div>
 
       {/* Botón agregar */}
       <div className="flex justify-end">
+        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_ENTIDADES_CREATE) && (
         <button
           onClick={abrirModalNuevaEntidad}
           className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
@@ -246,6 +253,7 @@ export function ConfiguracionEntidadesRemision() {
           <Plus className="w-4 h-4" />
           Nueva Entidad
         </button>
+        )}
       </div>
 
       {/* Lista de entidades */}
@@ -261,6 +269,7 @@ export function ConfiguracionEntidadesRemision() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_ENTIDADES_EDIT) && (
                 <button
                   onClick={() => abrirModalEditarEntidad(entidad)}
                   className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -268,6 +277,8 @@ export function ConfiguracionEntidadesRemision() {
                 >
                   <Edit3 className="w-4 h-4" />
                 </button>
+                )}
+                {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_ENTIDADES_DELETE) && (
                 <button
                   onClick={() => eliminarEntidad(entidad)}
                   className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -275,6 +286,7 @@ export function ConfiguracionEntidadesRemision() {
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
+                )}
               </div>
             </div>
             
@@ -283,8 +295,9 @@ export function ConfiguracionEntidadesRemision() {
                 <input
                   type="checkbox"
                   checked={entidad.activo}
+                  disabled={!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_ENTIDADES_EDIT)}
                   onChange={(e) => actualizarEntidad(entidad.id, e.target.checked)}
-                  className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500 disabled:opacity-50"
                 />
                 <span className="text-xs font-semibold text-gray-700">
                   {entidad.activo ? '✓ Activa (visible en modal)' : 'Inactiva (oculta en modal)'}
