@@ -13,6 +13,7 @@ import {
   UploadedFile,
   Res,
   HttpException,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -44,6 +45,10 @@ import * as path from 'path';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { diskStorage, MulterError } from 'multer';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 const MAX_EVIDENCE_FILE_SIZE = 10 * 1024 * 1024 * 1024;
 const MAX_STANDARD_DOCUMENT_SIZE = 50 * 1024 * 1024;
@@ -68,6 +73,8 @@ const PROCESS_DOCUMENT_UPLOAD_OPTIONS = {
 
 @ApiTags('Procesos Disciplinarios')
 @Controller('disciplinary-processes')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class ProcessController {
   constructor(
     private processService: ProcessService,

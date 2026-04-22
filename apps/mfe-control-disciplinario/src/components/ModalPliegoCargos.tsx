@@ -17,7 +17,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { disciplinaryService } from '../services/api/disciplinary.service';
-import { buildApiUrl } from '../../../config/environment';
 
 interface Proceso {
   id: string;
@@ -79,13 +78,8 @@ export function ModalPliegoCargos({ proceso, onClose, onSuccess }: Props) {
 
       // Subir archivo si existe
       if (archivo) {
-        const formData = new FormData();
-        formData.append('file', archivo);
-        const uploadUrl = buildApiUrl('control-disciplinario', '/files/upload');
-        const res = await fetch(uploadUrl, { method: 'POST', body: formData });
-        if (!res.ok) throw new Error('Error al subir archivo');
-        const data = await res.json();
-        documentUrl = data.url || data.path;
+        const data = await disciplinaryService.uploadFile(archivo);
+        documentUrl = data.url;
         documentName = archivo.name;
         documentType = archivo.type;
         documentSize = archivo.size;

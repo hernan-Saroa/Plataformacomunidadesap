@@ -31,6 +31,9 @@ import { UpdateNewsKanbanDto } from '../dtos/update-news-kanban.dto';
 import { DisciplinaryNews } from '../entities/disciplinary-news.entity';
 import { DisciplinaryNewsProcess } from '../entities/disciplinary-news-process.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 import * as path from 'path';
 
 interface FileData {
@@ -40,7 +43,8 @@ interface FileData {
 
 @ApiTags('Noticias Disciplinarias')
 @Controller('disciplinary-news')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class NewsController {
   constructor(private newsService: NewsService) { }
 
