@@ -114,6 +114,10 @@ compose_env_mfe_prebuilt() {
     FRONTEND_APP_DOCKERFILE="Dockerfile.frontend.app.prebuilt" compose_env_mfe "$@"
 }
 
+compose_env_mfe_gateway_prebuilt() {
+    FRONTEND_GATEWAY_DOCKERFILE="Dockerfile.frontend.gateway.prebuilt" compose_env_mfe "$@"
+}
+
 cleanup_build_artifacts() {
     echo -e "${YELLOW}Limpiando artefactos locales del backend para reducir el contexto de build...${NC}"
     find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
@@ -444,12 +448,15 @@ cmd_rebuild_all_mfe() {
         compose_env_mfe build
         compose_env_mfe up -d
     elif build_frontend_assets_once; then
-        echo -e "${YELLOW}Reconstruyendo backend y gateway...${NC}"
-        compose_env_mfe build "${BACKEND_ENV_SERVICES[@]}" frontend
+        echo -e "${YELLOW}Reconstruyendo backend...${NC}"
+        compose_env_mfe build "${BACKEND_ENV_SERVICES[@]}"
 
         echo -e "${YELLOW}Empaquetando shell + MFEs desde artefactos ya compilados...${NC}"
-        compose_env_mfe_prebuilt build "${FRONTEND_MFE_APP_SERVICES[@]}"
-        compose_env_mfe_prebuilt up -d
+        compose_env_mfe_prebuilt build --no-cache "${FRONTEND_MFE_APP_SERVICES[@]}"
+        compose_env_mfe_prebuilt up -d --force-recreate "${FRONTEND_MFE_APP_SERVICES[@]}"
+        echo -e "${YELLOW}Empaquetando gateway frontend con artefactos estáticos completos...${NC}"
+        compose_env_mfe_gateway_prebuilt build --no-cache frontend
+        compose_env_mfe_gateway_prebuilt up -d --no-deps --force-recreate frontend
     else
         echo -e "${YELLOW}Fallback: usando build Docker tradicional para todo el stack MFE...${NC}"
         compose_env_mfe build

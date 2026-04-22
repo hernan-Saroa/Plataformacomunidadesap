@@ -187,6 +187,7 @@ export class NewsService {
         }
       } catch (error) {
         console.error('[NewsService] Error fetching users from auth service:', error.message, error.response?.status, error.response?.data);
+        console.log('[NewsService] Continuando sin información de usuarios - se mostrará ID en lugar de nombre');
         // If auth service fails, we'll just not have user names
       }
     } else {
@@ -199,12 +200,12 @@ export class NewsService {
       const userInfo = n.radicadorId ? userMap.get(n.radicadorId) || userMap.get(String(n.radicadorId)) : null;
       const result = {
         ...n,
-        radicadorNombre: userInfo?.nombre || null,
+        radicador: userInfo?.nombre || null,
         radicadorEmail: userInfo?.email || null,
       };
 
       console.log(`[NewsService] Noticia ${n.id}: radicadorId=${n.radicadorId} (tipo: ${typeof n.radicadorId}), buscando en mapa...`);
-      console.log(`[NewsService] Noticia ${n.id}: userInfo encontrado=${!!userInfo}, nombre=${result.radicadorNombre}, email=${result.radicadorEmail}`);
+      console.log(`[NewsService] Noticia ${n.id}: userInfo encontrado=${!!userInfo}, nombre=${result.radicador}, email=${result.radicadorEmail}`);
 
       return result;
     });

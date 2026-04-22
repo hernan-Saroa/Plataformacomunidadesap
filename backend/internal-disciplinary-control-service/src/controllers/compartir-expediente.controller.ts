@@ -15,6 +15,9 @@ import { CompartirExpedienteService } from '../services/compartir-expediente.ser
 import { CrearCompartidoDto, AccederCompartidoDto } from '../dtos/compartir-expediente.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Public } from '../auth/public.decorator';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 import { EstadoCompartido } from '../entities/expediente-compartido.entity';
 import type { Request as ExpressRequest, Response } from 'express';
 import { HttpService } from '@nestjs/axios';
@@ -56,7 +59,8 @@ export class CompartirExpedienteController {
   /**
    * Crear un nuevo enlace compartido
    */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
   @Post(':procesoId')
   async crearCompartido(
     @Param('procesoId') procesoId: string,
@@ -140,7 +144,8 @@ export class CompartirExpedienteController {
   /**
    * Listar todos los enlaces compartidos de un proceso
    */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
   @Get('proceso/:procesoId')
   async listarPorProceso(@Param('procesoId') procesoId: string) {
     const enlaces = await this.compartirService.listarPorProceso(procesoId);
@@ -161,7 +166,8 @@ export class CompartirExpedienteController {
   /**
    * Desactivar un enlace compartido
    */
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
   @Post(':id/desactivar')
   async desactivar(@Param('id') id: string) {
     const enlace = await this.compartirService.desactivar(id);

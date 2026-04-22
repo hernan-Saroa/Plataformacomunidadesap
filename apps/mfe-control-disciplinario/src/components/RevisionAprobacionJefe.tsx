@@ -13,6 +13,7 @@ import { Badge } from '@esap-mfe/shared-ui/badge';
 import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
 import { disciplinaryService } from '../../services/api/disciplinary.service';
 import { authService } from '../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { toast } from 'sonner';
 
 // ==================== UTILIDADES ====================

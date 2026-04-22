@@ -11,15 +11,22 @@ import {
   HttpException,
   HttpStatus,
   Body,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @Controller('files')
 export class FilesController {
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
   @Post('upload')
   @UseInterceptors(
     FileInterceptor('file', {

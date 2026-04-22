@@ -2,7 +2,7 @@
 
 # =====================================================
 # Script de Despliegue para ESAP SuperApp - ENTORNO PROD
-# Servidor: http://172.16.202.169
+# Servidor: https://comunidadesap.esap.edu.co
 # Uso: ./deploy.prod.sh [comando]
 # =====================================================
 
@@ -47,10 +47,11 @@ fi
 
 COMPOSE_FILE_ENV="docker-compose.prod.yml"
 COMPOSE_FILE_MFE="docker-compose.frontend-mfe.yml"
-SERVER_URL_ENV="http://172.16.202.169"
+SERVER_URL_ENV="https://comunidadesap.esap.edu.co"
 ENV_FILE=".env.prod"
 ENV_NETWORK_KEY="superapp-net-prod"
 ENV_CONTAINER_SUFFIX="-prod"
+SSL_PROXY_CONTAINER="${SSL_PROXY_CONTAINER:-nginx-ss-proxy}"
 FRONTEND_MFE_SERVICES=(
     frontend
     frontend-shell
@@ -105,13 +106,38 @@ compose_env_mfe() {
     FRONTEND_APP_DOCKERFILE="${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}" \
     FRONTEND_NETWORK_KEY="$ENV_NETWORK_KEY" \
     FRONTEND_CONTAINER_SUFFIX="$ENV_CONTAINER_SUFFIX" \
+    FRONTEND_GATEWAY_BIND="${FRONTEND_GATEWAY_BIND:-127.0.0.1}" \
+    FRONTEND_GATEWAY_PORT="${FRONTEND_GATEWAY_PORT:-8080}" \
     FRONTEND_VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_ENV/services}" \
-    FRONTEND_VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV:9000}" \
+    FRONTEND_VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV}" \
     docker compose -f "$COMPOSE_FILE_ENV" -f "$COMPOSE_FILE_MFE" --env-file "$ENV_FILE" "$@"
 }
 
 compose_env_mfe_prebuilt() {
     FRONTEND_APP_DOCKERFILE="Dockerfile.frontend.app.prebuilt" compose_env_mfe "$@"
+}
+
+compose_env_mfe_gateway_prebuilt() {
+    FRONTEND_GATEWAY_DOCKERFILE="Dockerfile.frontend.gateway.prebuilt" compose_env_mfe "$@"
+}
+
+restart_ssl_proxy() {
+    if ! docker inspect "$SSL_PROXY_CONTAINER" >/dev/null 2>&1; then
+        echo -e "${YELLOW}Proxy SSL ${SSL_PROXY_CONTAINER} no encontrado. Omitiendo reinicio.${NC}"
+        return 0
+    fi
+
+    if [ "$(docker inspect -f '{{.State.Running}}' "$SSL_PROXY_CONTAINER" 2>/dev/null)" != "true" ]; then
+        echo -e "${YELLOW}Proxy SSL ${SSL_PROXY_CONTAINER} no está en ejecución. Omitiendo reinicio.${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}Validando configuración Nginx SSL en ${SSL_PROXY_CONTAINER}...${NC}"
+    docker exec "$SSL_PROXY_CONTAINER" nginx -t
+
+    echo -e "${YELLOW}Reiniciando proxy SSL ${SSL_PROXY_CONTAINER} para tomar cambios...${NC}"
+    docker restart "$SSL_PROXY_CONTAINER" >/dev/null
+    echo -e "${GREEN}Proxy SSL ${SSL_PROXY_CONTAINER} reiniciado${NC}"
 }
 
 cleanup_build_artifacts() {
@@ -152,7 +178,7 @@ build_frontend_assets_once() {
     PUPPETEER_SKIP_DOWNLOAD=1 \
     PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     VITE_API_URL="${FRONTEND_VITE_API_URL:-$SERVER_URL_ENV/services}" \
-    VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV:9000}" \
+    VITE_ONLYOFFICE_URL="${FRONTEND_VITE_ONLYOFFICE_URL:-$SERVER_URL_ENV}" \
     VITE_LOGIN_OPTIONS="${VITE_LOGIN_OPTIONS:-both}" \
     FRONTEND_BUILD_PARALLELISM="${FRONTEND_BUILD_PARALLELISM:-2}" \
     npm run build
@@ -312,6 +338,7 @@ cmd_rebuild_changed() {
         echo -e "${YELLOW}Reconstruyendo frontend afectado:${NC} ${frontend_services[*]}"
         compose_env_mfe build "${frontend_services[@]}"
         compose_env_mfe up -d --no-deps "${frontend_services[@]}"
+        restart_ssl_proxy
     fi
 
     if [ $run_migrations -eq 1 ] || [ ${#backend_services[@]} -gt 0 ]; then
@@ -377,6 +404,7 @@ usage() {
 cmd_up() {
     echo -e "${GREEN}Iniciando servicios PROD...${NC}"
     compose_env up -d
+    restart_ssl_proxy
     echo -e "${GREEN}Servicios PROD iniciados exitosamente${NC}"
 
     # Esperar a que la base de datos esté lista
@@ -389,8 +417,8 @@ cmd_up() {
 
     echo ""
     echo -e "${YELLOW}URLs de acceso (PROD):${NC}"
-    echo "  Frontend:    http://172.16.202.169"
-    echo "  API Gateway: http://172.16.202.169/services"
+    echo "  Frontend:    https://comunidadesap.esap.edu.co"
+    echo "  API Gateway: https://comunidadesap.esap.edu.co/services"
     echo ""
 }
 
@@ -405,6 +433,7 @@ cmd_down() {
 cmd_restart() {
     echo -e "${YELLOW}Reiniciando servicios PROD...${NC}"
     compose_env restart
+    restart_ssl_proxy
     echo -e "${GREEN}Servicios PROD reiniciados${NC}"
 }
 
@@ -420,6 +449,7 @@ cmd_rebuild() {
 
     # Publicar nueva versión una vez terminado el build.
     compose_env up -d
+    restart_ssl_proxy
     # Ejecutar migraciones automáticamente
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
@@ -444,12 +474,15 @@ cmd_rebuild_all_mfe() {
         compose_env_mfe build
         compose_env_mfe up -d
     elif build_frontend_assets_once; then
-        echo -e "${YELLOW}Reconstruyendo backend y gateway...${NC}"
-        compose_env_mfe build "${BACKEND_ENV_SERVICES[@]}" frontend
+        echo -e "${YELLOW}Reconstruyendo backend...${NC}"
+        compose_env_mfe build "${BACKEND_ENV_SERVICES[@]}"
 
         echo -e "${YELLOW}Empaquetando shell + MFEs desde artefactos ya compilados...${NC}"
-        compose_env_mfe_prebuilt build "${FRONTEND_MFE_APP_SERVICES[@]}"
-        compose_env_mfe_prebuilt up -d
+        compose_env_mfe_prebuilt build --no-cache "${FRONTEND_MFE_APP_SERVICES[@]}"
+        compose_env_mfe_prebuilt up -d --force-recreate "${FRONTEND_MFE_APP_SERVICES[@]}"
+        echo -e "${YELLOW}Empaquetando gateway frontend con artefactos estáticos completos...${NC}"
+        compose_env_mfe_gateway_prebuilt build --no-cache frontend
+        compose_env_mfe_gateway_prebuilt up -d --no-deps --force-recreate frontend
     else
         echo -e "${YELLOW}Fallback: usando build Docker tradicional para todo el stack MFE...${NC}"
         compose_env_mfe build
@@ -458,6 +491,7 @@ cmd_rebuild_all_mfe() {
 
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+    restart_ssl_proxy
     echo -e "${GREEN}App completa PROD publicada: microservicios + microfrontends.${NC}"
 }
 
@@ -466,6 +500,7 @@ cmd_rebuild_frontend() {
     echo -e "${YELLOW}Reconstruyendo solo frontend PROD...${NC}"
     compose_env build frontend
     compose_env up -d --no-deps frontend
+    restart_ssl_proxy
     echo -e "${GREEN}Frontend PROD reconstruido y reiniciado${NC}"
 }
 
@@ -515,6 +550,7 @@ cmd_up_mfe() {
     fi
     echo -e "${GREEN}Iniciando frontend desacoplado PROD...${NC}"
     compose_env_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    restart_ssl_proxy
     echo -e "${GREEN}Frontend MFE PROD iniciado exitosamente${NC}"
 }
 
@@ -527,6 +563,7 @@ cmd_down_mfe() {
 cmd_restart_mfe() {
     echo -e "${YELLOW}Reiniciando frontend desacoplado PROD...${NC}"
     compose_env_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    restart_ssl_proxy
     echo -e "${GREEN}Frontend MFE PROD reiniciado${NC}"
 }
 
@@ -563,6 +600,7 @@ cmd_rebuild_mfe() {
     echo -e "${YELLOW}Reconstruyendo servicio frontend MFE PROD: ${resolved_service}${NC}"
     compose_env_mfe build "$resolved_service"
     compose_env_mfe up -d --no-deps "$resolved_service"
+    restart_ssl_proxy
     echo -e "${GREEN}Servicio ${resolved_service} reconstruido y reiniciado${NC}"
 }
 

@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   Request,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -23,10 +24,16 @@ import {
   UpdateReglaAlertaDto,
 } from '../dtos/reglas-alerta.dto';
 import { ReglaAlerta } from '../entities/regla-alerta.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Reglas de Alerta')
 @Controller('reglas-alerta')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class ReglasAlertaController {
   constructor(
     private reglasService: ReglasAlertaService,

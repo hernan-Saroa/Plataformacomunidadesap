@@ -1,0 +1,12 @@
+export const AUTH_READ_ROLES = [
+  'SUPER_ADMIN',
+  'ADMIN',
+  'CONTROL_INTERNO',
+  'JEFE_OCI',
+  'JEFE_CONTROL_INTERNO',
+  'AUDITOR_LIDER',
+  'GESTION_LEGAL',
+  'COORDINADOR_CERT_LABORAL',
+] as const;
+
+export const AUTH_MANAGE_ROLES = ['SUPER_ADMIN', 'ADMIN'] as const;

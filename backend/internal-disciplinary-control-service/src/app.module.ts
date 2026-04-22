@@ -100,6 +100,7 @@ import { DisciplinaryProcessReassignmentService } from './services/disciplinary-
 import { JuridicaEmailService } from './services/juridica-email.service';
 import { DisciplinaryBehaviorService } from './services/disciplinary-behavior.service';
 import { NotificationClientService } from './services/notification-client.service';
+import { RolesGuard } from './auth/roles.guard';
 
 @Module({
   imports: [
@@ -201,6 +202,7 @@ import { NotificationClientService } from './services/notification-client.servic
     JuridicaEmailService,
     DisciplinaryBehaviorService,
     NotificationClientService,
+    RolesGuard,
   ],
 })
 export class AppModule { }
