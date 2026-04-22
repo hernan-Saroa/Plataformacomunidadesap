@@ -3882,6 +3882,10 @@ function PtaBackofficeModuleInner() {
               onClose={() => { setSelectedPTA(null); setShowReporteR01(false); setShowApproval(false); setShowDevolucion(false); }}
               onAprobar={() => { setSelectedPTA(null); loadData(); }}
               onDevolver={() => { setSelectedPTA(null); loadData(); }}
+              onUpdated={(updatedPta) => {
+                setPtas(prev => prev.map(p => (p.id === updatedPta.id ? { ...p, ...updatedPta } : p)));
+                setSelectedPTA((prev: any) => prev ? { ...prev, ...updatedPta } : prev);
+              }}
               onConcertar={() => { setConcertacionPtaId(selectedPTA.id); setSelectedPTA(null); }}
               onVerReporte={() => setShowReporteR01(true)}
               puedeAprobar={permisos.puedeAprobar}

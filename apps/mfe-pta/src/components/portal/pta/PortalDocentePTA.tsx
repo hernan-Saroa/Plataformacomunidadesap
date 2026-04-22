@@ -609,7 +609,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                                  </span>
                                  <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
                                  <span className="flex items-center gap-1.5 text-gray-600">
-                                   <Target className="w-3.5 h-3.5 text-indigo-500" /> <strong className="text-gray-900">{pta.total_horas_programadas || 0}</strong> de {pta.horas_a_programar || 800}h asignadas
+                                   <Target className="w-3.5 h-3.5 text-indigo-500" /> <strong className="text-gray-900">{pta.horas_totales ?? pta.total_horas_programadas ?? 0}</strong> de {pta.horas_asignables ?? pta.horas_a_programar ?? 800}h asignadas
                                  </span>
                               </div>
                            </div>
@@ -718,9 +718,9 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 {/* Métricas */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8 }}>
                   {[
-                    { label: 'Horas programadas', value: selectedPta.total_horas_programadas || 0 },
-                    { label: 'Horas disponibles', value: selectedPta.horas_a_programar || 800 },
-                    { label: '% Carga', value: `${selectedPta.horas_a_programar ? Math.round(((selectedPta.total_horas_programadas || 0) / selectedPta.horas_a_programar) * 100) : 0}%` },
+                    { label: 'Horas programadas', value: selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? 0 },
+                    { label: 'Horas disponibles', value: selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 800 },
+                    { label: '% Carga', value: `${(selectedPta.horas_asignables ?? selectedPta.horas_a_programar) ? Math.round(((selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? 0) / (selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 800)) * 100) : 0}%` },
                     { label: 'Asignaturas', value: selectedPta.asignaturas?.length || selectedPta.num_asignaturas || 0 },
                   ].map(m => (
                     <div key={m.label} style={{ padding: '10px 14px', borderRadius: 8, background: '#F9FAFB', border: '1px solid #F3F4F6' }}>
@@ -739,8 +739,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
                 const horasExt = selectedPta.horas_extension ?? 0;
                 const horasComp = selectedPta.horas_complementarias ?? 0;
                 const horasAA = selectedPta.horas_acad_admin ?? 0;
-                const horasTotal = selectedPta.total_horas_programadas || (horasDoc + horasInv + horasExt + horasComp + horasAA);
-                const horasMax = selectedPta.horas_a_programar || 800;
+                const horasTotal = selectedPta.horas_totales ?? selectedPta.total_horas_programadas ?? (horasDoc + horasInv + horasExt + horasComp + horasAA);
+                const horasMax = selectedPta.horas_asignables ?? selectedPta.horas_a_programar ?? 800;
                 const comps = [
                   { label: 'Docencia', value: horasDoc, color: PTA_COLORS.DOCENCIA, icon: BookOpen },
                   { label: 'Investigación', value: horasInv, color: PTA_COLORS.INVESTIGACION, icon: FlaskConical },

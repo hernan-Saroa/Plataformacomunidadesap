@@ -387,6 +387,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   // ID interno que se actualiza tras el primer guardado (evita duplicados al guardar múltiples veces)
   const [currentPtaId, setCurrentPtaId] = useState<string | undefined>(ptaId || undefined);
+  // En modo admin, preserva el docente_id real del PTA (no el del admin logueado)
+  const [docenteIdFromPta, setDocenteIdFromPta] = useState<string>('');
 
   // Firma digital del docente — requerida antes de cada envío
   const [showFirmaDocente, setShowFirmaDocente] = useState(false);
@@ -502,6 +504,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         setAcademicoAdmin(d.academico_admin || []);
         setObservacionesDocente(d.observaciones_docente || '');
         if (d.camposModificadosPorRevisor) setCamposModificados(d.camposModificadosPorRevisor);
+        // Guardar docente_id del PTA para usarlo en modo admin
+        if (d.docente_id) setDocenteIdFromPta(d.docente_id);
       }
       setLoadingPta(false);
     });
@@ -1210,7 +1214,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
     const payload = {
       id: currentPtaId || undefined,
-      docente_id: userPersonId,
+      docente_id: isAdminEdit ? (docenteIdFromPta || userPersonId) : userPersonId,
       docente_nombre: docenteName || undefined,
       periodo,
       dedicacion,
@@ -1246,7 +1250,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
     savingRef.current = false;
 
     if (res.success) {
-      if (res.data?.id) setCurrentPtaId(res.data.id);
+      const savedId = res.data?.id || res.id || currentPtaId;
+      if (savedId) setCurrentPtaId(savedId);
 
       // Modo admin: solo guardar y volver al panel
       if (isAdminEdit) {
@@ -1256,32 +1261,30 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       }
 
       if (enviar || isReenvio) {
+        if (!savedId) {
+          toast.error('No se pudo obtener el ID del PTA guardado. Intenta de nuevo.');
+          return;
+        }
+        const { updatePTAStatus } = await import('../../../services/api/ptaApi');
         if (isEnRevisionDocente) {
-          // Revisión docente: re-enviar corregido directamente (sin firma, ya estaba firmado)
-          const { updatePTAStatus } = await import('../../../services/api/ptaApi');
-          const reenvio = await updatePTAStatus(res.data.id, { accion: 'reenviar_corregido' });
+          // Revisión docente: re-enviar corregido al nivel que lo devolvió
+          const reenvio = await updatePTAStatus(savedId, { accion: 'reenviar_corregido' });
           if (reenvio.success) {
-            toast.success(`PTA re-enviado a revisión (v${reenvio.version}) — ${reenvio.nuevoEstado}`);
+            toast.success(`PTA re-enviado (v${reenvio.version}) → ${reenvio.nuevoEstado}`);
             addNotification({ type: 'success', title: 'Re-envío exitoso', message: `Tu PTA versión ${reenvio.version} fue enviado a ${reenvio.nuevoEstado}` });
             onBack();
           } else {
             toast.error(reenvio.message || 'Error al re-enviar el PTA');
           }
         } else {
-          // Flujo normal: enviar directamente a Pendiente Jefatura sin firma
-          const { updatePTAStatus } = await import('../../../services/api/ptaApi');
-          const envio = await updatePTAStatus(res.data.id, {
-            estado: 'Pendiente Jefatura',
-          });
+          // Flujo normal Borrador → Pendiente Jefatura
+          const envio = await updatePTAStatus(savedId, { estado: 'Pendiente Jefatura' });
           if (envio.success) {
             toast.success('PTA enviado a revisión de Jefatura');
             addNotification({ type: 'success', title: 'PTA enviado', message: 'Tu PTA fue enviado exitosamente a Pendiente Jefatura' });
-
-            // Notification if there's a bottleneck
             if (envio.faltaRevisor) {
-              toast.warning('Aviso: Actualmente no hay evaluadores asignados para tu territorial. La revisión podría demorar.', { duration: 8000 });
+              toast.warning('Aviso: no hay evaluadores asignados para tu territorial. La revisión podría demorar.', { duration: 8000 });
             }
-
             onBack();
           } else {
             toast.error(envio.message || 'Error al enviar el PTA');
@@ -1307,7 +1310,14 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const handleFirmaDocenteCompleta = async (firmaData: FirmaData) => {
     setShowFirmaDocente(false);
-    if (currentPtaId) guardarFirmaDigitalPTA(currentPtaId, firmaData).catch(() => { });
+    if (currentPtaId) guardarFirmaDigitalPTA(currentPtaId, {
+      hash: firmaData.hash,
+      firmado_por: firmaData.firmante || userPersonId,
+      firmado_por_nombre: firmaData.firmante || docenteName,
+      firmado_por_rol: firmaData.cargo || 'Docente',
+      certificado: firmaData.certificado_id,
+      metadata: { timestamp: firmaData.timestamp, pin_verificado: firmaData.pin_verificado },
+    }).catch(() => { });
 
     if (pendingDocenteAccion === 'avanzar_sin_cambios') {
       if (!currentPtaId) return;
@@ -1403,7 +1413,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   };
 
   return (
-    <div className="max-w-7xl mx-auto w-full">
+    <div className={`max-w-7xl mx-auto w-full${isAdminEdit ? ' px-6 pt-2' : ''}`}>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-6">
         <div>
@@ -1531,7 +1541,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       </div>
 
       {/* Firma digital del docente — requerida antes de cada envío */}
-      {showFirmaDocente && createPortal(
+      {showFirmaDocente && (
         <FirmaDigitalPTA
           ptaId={currentPtaId || ''}
           docenteNombre={docenteName}
@@ -1546,8 +1556,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           }
           onFirmaCompleta={handleFirmaDocenteCompleta}
           onCancelar={() => { setShowFirmaDocente(false); setPendingDocenteAccion(null); }}
-        />,
-        document.body
+        />
       )}
 
       {/* Banner: Revisión docente post-aprobación parcial */}

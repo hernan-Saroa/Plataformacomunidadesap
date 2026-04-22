@@ -14,6 +14,7 @@ import { SedeEntity } from './entities/sede.entity';
 import { DocenteEntity } from './entities/docente.entity';
 import { PersonaEntity } from './entities/persona.entity';
 import { UsuarioEntity } from './entities/usuario.entity';
+import { AprobacionJefaturaEntity } from './entities/aprobacion-jefatura.entity';
 
 type SavePtaInput = Record<string, any>;
 
@@ -51,6 +52,8 @@ export class PtaService {
     private readonly sedeRepo: Repository<SedeEntity>,
     @InjectRepository(DocenteEntity)
     private readonly docenteRepo: Repository<DocenteEntity>,
+    @InjectRepository(AprobacionJefaturaEntity)
+    private readonly aprobacionJefaturaRepo: Repository<AprobacionJefaturaEntity>,
   ) {}
 
   private safeUsuario(usuario: any) {
@@ -161,7 +164,11 @@ export class PtaService {
         await usuarioRepo.upsert({ id: personId, email: email || 'docente@esap.edu.co', password: 'N/A', updatedAt: now, createdAt: now }, ['id']);
 
         const personaRepoLocal = this.ptaRepo.manager.getRepository(PersonaEntity);
-        await personaRepoLocal.upsert({ id: personId, usuarioId: personId, updatedAt: now, createdAt: now }, ['id']);
+        // Buscar primero por usuarioId para evitar violación del constraint UNIQUE(usuarioId)
+        const personaExistente = await personaRepoLocal.findOne({ where: { usuarioId: personId } as any });
+        if (!personaExistente) {
+          await personaRepoLocal.upsert({ id: personId, usuarioId: personId, updatedAt: now, createdAt: now }, ['id']);
+        }
 
         const nuevoDocente = this.docenteRepo.create({
           id: personId,
@@ -248,9 +255,6 @@ export class PtaService {
   }
 
   private toPtaDto(entity: PlanTrabajoAcademicoEntity) {
-    // Exclude canonical entity fields from the JSON blob so they can't override DB values.
-    // datosEstructurados is the raw form payload which includes estado, id, etc. from the
-    // time of the last savePTA call — but those fields may be stale after updatePTAStatus.
     const {
       id: _id, pta_id: _ptaId, ptaId: _ptaId2,
       estado: _estado, periodo: _periodo, version: _version,
@@ -259,18 +263,46 @@ export class PtaService {
     } = (entity.datosEstructurados && typeof entity.datosEstructurados === 'object'
       ? entity.datosEstructurados
       : {}) as Record<string, any>;
+
+    // Calcular horas por componente desde datosEstructurados para la tabla del backoffice
+    const ds = entity.datosEstructurados as any || {};
+    const asignaturas: any[] = Array.isArray(ds.asignaturas) ? ds.asignaturas : [];
+    const invActs: any[] = Array.isArray(ds.investigacion_actividades) ? ds.investigacion_actividades : [];
+    const extActs: any[] = Array.isArray(ds.extension_actividades) ? ds.extension_actividades : [];
+    const comp: any[] = Array.isArray(ds.complementarias) ? ds.complementarias : [];
+    const acadAdmin: any[] = Array.isArray(ds.academico_admin) ? ds.academico_admin : [];
+
+    const hDocencia = asignaturas.reduce((s: number, a: any) => s + (Number(a?.total_horas ?? a?.horas) || 0), 0);
+    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) ||
+      invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
+    const hExt = extActs.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    const hComp = comp.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    const hAcad = acadAdmin.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
+    const horasTotal = entity.horasTotales || (hDocencia + hInv + hExt + hComp + hAcad);
+    const horasAsignables = (entity as any).horasAsignables || Number(ds.horas_a_programar) || 800;
+
     return {
       id: entity.id,
       docente_id: entity.docenteId,
       periodo: entity.periodo,
       estado: entity.estado,
       version: entity.version,
-      horas_totales: entity.horasTotales,
+      horas_totales: horasTotal,
+      // Aliases usados por la tabla del backoffice
+      total_horas_programadas: horasTotal,
+      horas_a_programar: horasAsignables,
+      horas_asignables: horasAsignables,
+      // Horas por componente para barras de color
+      horas_docencia: hDocencia,
+      horas_investigacion: hInv,
+      horas_extension: hExt,
+      horas_complementarias: hComp,
+      horas_acad_admin: hAcad,
+      num_asignaturas: asignaturas.length,
       motivo_devolucion: entity.motivoDevolucion,
       created_at: entity.createdAt,
       updated_at: entity.updatedAt,
       dedicacion: (entity as any).dedicacion,
-      horas_asignables: (entity as any).horasAsignables,
       tipo_vinculacion: (entity as any).tipoVinculacion,
       semanas_vinculacion: (entity as any).semanasVinculacion,
       ...extra,
@@ -446,17 +478,37 @@ export class PtaService {
     };
 
     let saved: PlanTrabajoAcademicoEntity;
+    let estadoAnteriorSave: string | null = null;
 
     if (id) {
       const existing = await this.ptaRepo.findOne({ where: { id } });
       if (!existing) {
-        // Si llega un id desconocido, lo creamos con ese id para no romper el frontend.
         saved = await this.ptaRepo.save(this.ptaRepo.create({ ...patch, id, version: 1 }));
       } else {
+        estadoAnteriorSave = existing.estado;
         saved = await this.ptaRepo.save({ ...existing, ...patch });
       }
     } else {
       saved = await this.ptaRepo.save(this.ptaRepo.create({ ...patch, version: 1 }));
+    }
+
+    // Registrar en historial cuando hay cambio de estado o creación inicial
+    const tipoAccionSave = !estadoAnteriorSave ? 'CREACION'
+      : estado !== estadoAnteriorSave ? 'CAMBIO_ESTADO'
+      : isAdminEdit ? 'EDICION_ADMIN'
+      : 'GUARDADO';
+    if (!estadoAnteriorSave || estado !== estadoAnteriorSave || !id) {
+      await this.historialRepo.save(this.historialRepo.create({
+        ptaId: saved.id,
+        estadoAnterior: estadoAnteriorSave,
+        estadoNuevo: saved.estado,
+        actorId: coalesceString(input?.docente_id, input?.docenteId),
+        actorRol: isAdminEdit ? 'Administrador' : 'Docente',
+        tipoAccion: tipoAccionSave,
+        comentarios: input?.observaciones_docente || null,
+        snapshotPta: input,
+        version: saved.version,
+      }));
     }
 
     return this.toPtaDto(saved);
@@ -472,29 +524,146 @@ export class PtaService {
     const accion = coalesceString(body?.accion, body?.tipoAccion);
     let nuevoEstado = coalesceString(body?.estado);
 
-    // Fallbacks razonables para el flujo del frontend.
+    // Máquina de estados: calcula el siguiente estado según el actual y la acción.
     if (!nuevoEstado && accion) {
       const a = accion.toLowerCase();
-      if (a.includes('devol')) nuevoEstado = 'Devuelto';
-      else if (a.includes('rechaz')) nuevoEstado = 'Rechazado';
-      else if (a === 'reenviar_corregido') {
-        // Re-envío desde revisión docente: avanza al nivel del aprobador que lo devolvió
-        if (existing.estado === 'REVISION_DOCENTE_N1') nuevoEstado = 'Pendiente Jefatura';
-        else if (existing.estado === 'REVISION_DOCENTE_N2') nuevoEstado = 'Pendiente Decanatura';
-        else if (existing.estado === 'REVISION_DOCENTE_N3') nuevoEstado = 'Pendiente Gestión Profesoral';
-        else nuevoEstado = 'Pendiente Jefatura'; // fallback
-      }
-      else if (a.includes('reenviar')) nuevoEstado = 'Pendiente Jefatura';
-      else if (a.includes('apro')) nuevoEstado = 'Aprobado';
-      else if (a === 'avanzar_sin_cambios') {
-        if (existing.estado === 'REVISION_DOCENTE_N1') nuevoEstado = 'Pendiente Decanatura';
-        else if (existing.estado === 'REVISION_DOCENTE_N2') nuevoEstado = 'Pendiente Gestión Profesoral';
-        else if (existing.estado === 'REVISION_DOCENTE_N3') nuevoEstado = 'Aprobado';
+      const estadoActual = existing.estado;
+
+      if (a === 'aprobar') {
+        // Cada aprobador avanza al siguiente nivel. Si hay cambios que el docente
+        // debe revisar, pone REVISION_DOCENTE_Nx en vez de avanzar directo.
+        const hayCambios = body?.camposModificados &&
+          typeof body.camposModificados === 'object' &&
+          Object.keys(body.camposModificados).length > 0;
+
+        if (estadoActual === 'Pendiente Jefatura') {
+          nuevoEstado = hayCambios ? 'REVISION_DOCENTE_N1' : 'Pendiente Decanatura';
+        } else if (estadoActual === 'Pendiente Decanatura') {
+          nuevoEstado = hayCambios ? 'REVISION_DOCENTE_N2' : 'Pendiente Gestión Profesoral';
+        } else if (estadoActual === 'Pendiente Gestión Profesoral') {
+          nuevoEstado = 'Aprobado';
+        } else {
+          // fallback para estados legacy
+          nuevoEstado = 'Aprobado';
+        }
+      } else if (a === 'devolver') {
+        // Devolver desde cada nivel pone al docente en el nivel de revisión correspondiente
+        if (estadoActual === 'Pendiente Jefatura') {
+          nuevoEstado = 'REVISION_DOCENTE_N1';
+        } else if (estadoActual === 'Pendiente Decanatura') {
+          nuevoEstado = 'REVISION_DOCENTE_N2';
+        } else if (estadoActual === 'Pendiente Gestión Profesoral') {
+          // G.Profesoral devuelve al N2 (Decanatura fue quien aprobó antes)
+          nuevoEstado = 'REVISION_DOCENTE_N2';
+        } else {
+          nuevoEstado = 'Devuelto';
+        }
+      } else if (a.includes('rechaz')) {
+        nuevoEstado = 'Rechazado';
+      } else if (a === 'reenviar_corregido') {
+        // Docente reenvía tras revisión: vuelve al nivel que lo devolvió
+        if (estadoActual === 'REVISION_DOCENTE_N1') nuevoEstado = 'Pendiente Jefatura';
+        else if (estadoActual === 'REVISION_DOCENTE_N2') nuevoEstado = 'Pendiente Decanatura';
+        else if (estadoActual === 'REVISION_DOCENTE_N3') nuevoEstado = 'Pendiente Gestión Profesoral';
+        else nuevoEstado = 'Pendiente Jefatura';
+      } else if (a.includes('reenviar')) {
+        nuevoEstado = 'Pendiente Jefatura';
+      } else if (a === 'avanzar_sin_cambios') {
+        // Docente acepta los cambios del revisor sin modificar nada
+        if (estadoActual === 'REVISION_DOCENTE_N1') nuevoEstado = 'Pendiente Decanatura';
+        else if (estadoActual === 'REVISION_DOCENTE_N2') nuevoEstado = 'Pendiente Gestión Profesoral';
+        else if (estadoActual === 'REVISION_DOCENTE_N3') nuevoEstado = 'Aprobado';
       }
     }
 
     if (!nuevoEstado) {
       nuevoEstado = existing.estado;
+    }
+
+    // ── Lógica multi-jefatura territorial ──────────────────────────────────────
+    const a = accion?.toLowerCase() || '';
+    if (existing.estado === 'Pendiente Jefatura' && (a === 'aprobar' || a === 'devolver')) {
+      const aprobaciones = await this.aprobacionJefaturaRepo.find({ where: { ptaId } });
+
+      if (aprobaciones.length > 0) {
+        const actorId = coalesceString(body?.actorId, body?.actor_id);
+        const isSuperUser = !!body?.isSuperUser;
+        const observaciones = coalesceString(body?.observaciones, body?.comentarios);
+        const hayCambios = body?.camposModificados && Object.keys(body.camposModificados).length > 0;
+
+        // Resolver territorialId del actor (buscar en Docente)
+        let actorTerritorialId: string | null = null;
+        if (body?.actorTerritorialId && !String(body.actorTerritorialId).startsWith('ter-')) {
+          actorTerritorialId = body.actorTerritorialId;
+        }
+        if (!actorTerritorialId && actorId) {
+          const docenteRow = await this.docenteRepo.findOne({ where: { id: actorId } as any });
+          if ((docenteRow as any)?.territorialId) actorTerritorialId = (docenteRow as any).territorialId;
+        }
+        if (!actorTerritorialId && actorId) {
+          const prevAprobacion = aprobaciones.find(ap => ap.jefaturaUserId === actorId);
+          if (prevAprobacion) actorTerritorialId = prevAprobacion.territorialId;
+        }
+
+        if (a === 'devolver') {
+          // Una devolución devuelve todas las aprobaciones
+          const toUpdate = actorTerritorialId
+            ? aprobaciones.filter(ap => ap.territorialId === actorTerritorialId)
+            : aprobaciones;
+          for (const ap of toUpdate) {
+            await this.aprobacionJefaturaRepo.save({ ...ap, decision: 'devuelto', jefaturaUserId: actorId || '', comentarios: observaciones });
+          }
+          nuevoEstado = 'REVISION_DOCENTE_N1';
+        } else {
+          // aprobar
+          const decision = hayCambios ? 'aprobado_con_cambios' : 'aprobado';
+          if (isSuperUser && !actorTerritorialId) {
+            // Super admin sin territorial → aprueba todas las pendientes
+            for (const ap of aprobaciones.filter(x => x.decision === 'pendiente')) {
+              await this.aprobacionJefaturaRepo.save({ ...ap, decision, jefaturaUserId: actorId || '', comentarios: observaciones || 'Aprobado por Super Admin' });
+            }
+          } else if (actorTerritorialId) {
+            const apRow = aprobaciones.find(ap => ap.territorialId === actorTerritorialId && ap.decision === 'pendiente');
+            if (apRow) await this.aprobacionJefaturaRepo.save({ ...apRow, decision, jefaturaUserId: actorId || '', comentarios: observaciones });
+          } else {
+            // Fallback: aprobar el primero pendiente sin jefatura asignada
+            const primero = aprobaciones.find(ap => ap.decision === 'pendiente' && !ap.jefaturaUserId);
+            if (primero) await this.aprobacionJefaturaRepo.save({ ...primero, decision, jefaturaUserId: actorId || '', comentarios: observaciones });
+          }
+
+          // Verificar si quedan pendientes
+          const pendientes = await this.aprobacionJefaturaRepo.find({ where: { ptaId } });
+          const aunPendientes = pendientes.filter(ap => ap.decision !== 'aprobado' && ap.decision !== 'aprobado_con_cambios');
+
+          if (aunPendientes.length > 0) {
+            // Aprobación parcial — registrar historial y retornar sin cambiar estado
+            await this.historialRepo.save(this.historialRepo.create({
+              ptaId, estadoAnterior: existing.estado, estadoNuevo: existing.estado,
+              actorId, actorRol: coalesceString(body?.actorRol) || 'Jefatura de Zona',
+              tipoAccion: 'APROBACION_PARCIAL_JEFATURA',
+              comentarios: observaciones,
+              snapshotPta: existing.datosEstructurados ?? null,
+              version: existing.version,
+            }));
+            return {
+              parcial: true,
+              message: 'Tu aprobación fue registrada. Esperando aprobación de otras jefaturas.',
+              nuevoEstado: existing.estado,
+              aprobaciones: pendientes,
+              pta: this.toPtaDto(existing),
+            };
+          }
+
+          // Todas aprobaron → determinar siguiente estado
+          const algunaConCambios = pendientes.some(ap => ap.decision === 'aprobado_con_cambios');
+          nuevoEstado = algunaConCambios ? 'REVISION_DOCENTE_N1' : 'Pendiente Decanatura';
+        }
+      }
+    }
+
+    // ── Cuando el PTA llega a Pendiente Jefatura, inicializar aprobaciones ──────
+    if (nuevoEstado === 'Pendiente Jefatura' && existing.estado !== 'Pendiente Jefatura') {
+      await this.initAprobacionesJefatura(ptaId, existing.datosEstructurados);
     }
 
     const estadoAnterior = existing.estado;
@@ -528,6 +697,37 @@ export class PtaService {
       nuevoEstado,
       pta: this.toPtaDto(updated),
     };
+  }
+
+  async getAprobacionesJefatura(ptaId: string) {
+    return this.aprobacionJefaturaRepo.find({ where: { ptaId }, order: { createdAt: 'ASC' } });
+  }
+
+  private async initAprobacionesJefatura(ptaId: string, datosEstructurados: any) {
+    // Extraer territoriales únicas de las asignaturas del PTA
+    const asignaturas: any[] = datosEstructurados?.asignaturas || [];
+    const territorialesIds = [...new Set(
+      asignaturas.map((a: any) => a.territorial_id).filter(Boolean) as string[]
+    )];
+
+    if (territorialesIds.length <= 1) return; // Solo multi-territorial requiere registros
+
+    for (const tId of territorialesIds) {
+      const territorial = await this.territorialRepo.findOne({ where: { id: tId } as any });
+      await this.aprobacionJefaturaRepo
+        .createQueryBuilder()
+        .insert()
+        .values({
+          ptaId,
+          territorialId: tId,
+          territorialNombre: (territorial as any)?.nombre || null,
+          decision: 'pendiente',
+          jefaturaUserId: '',
+        })
+        .orIgnore() // ON CONFLICT DO NOTHING (unique ptaId+territorialId)
+        .execute()
+        .catch(() => {});
+    }
   }
 
   async getEvidenciasPTA(ptaId: string) {

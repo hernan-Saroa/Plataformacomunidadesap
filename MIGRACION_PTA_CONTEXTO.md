@@ -54,5 +54,3 @@ Para evitar llenar la consola del navegador del cliente con errores y hacer debu
 3. **Mantenimiento DB Migrations**: Dado que seguramente necesites aplicar cambios al esquema de la máquina de estados, el usuario pide rigurosamente que crees una instrucción SQL en el archivo `db/migrations/migration_N.sql`. Recuerda que el usuario prefiere ejecutar `.sql` manualmente por su cuenta. 
 
 ---
-**Nota Final de Comportamiento:**  
-Al conversar con el Usuario, sé sumamente técnico, prioriza herramientas granulares (`grep_search`, `multi_replace_file_content`), y ten presente que su ambiente local puede frustrarle debido a lentitudes de compilación en MFE. Resuelve de a un problema a la vez, evita proponer planes burocráticos y provee soluciones y reemplazos de código al instante.

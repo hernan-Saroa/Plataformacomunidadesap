@@ -15,6 +15,7 @@ import { SedeEntity } from './entities/sede.entity';
 import { DocenteEntity } from './entities/docente.entity';
 import { PersonaEntity } from './entities/persona.entity';
 import { UsuarioEntity } from './entities/usuario.entity';
+import { AprobacionJefaturaEntity } from './entities/aprobacion-jefatura.entity';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { UsuarioEntity } from './entities/usuario.entity';
       DocenteEntity,
       PersonaEntity,
       UsuarioEntity,
+      AprobacionJefaturaEntity,
     ]),
   ],
   controllers: [PtaController],

@@ -20,6 +20,7 @@ import { SedeEntity } from './pta/entities/sede.entity';
 import { UsuarioEntity } from './pta/entities/usuario.entity';
 import { PersonaEntity } from './pta/entities/persona.entity';
 import { DocenteEntity } from './pta/entities/docente.entity';
+import { AprobacionJefaturaEntity } from './pta/entities/aprobacion-jefatura.entity';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { DocenteEntity } from './pta/entities/docente.entity';
         UsuarioEntity,
         PersonaEntity,
         DocenteEntity,
+        AprobacionJefaturaEntity,
       ],
       synchronize: process.env.TYPEORM_SYNC === 'true',
     }),

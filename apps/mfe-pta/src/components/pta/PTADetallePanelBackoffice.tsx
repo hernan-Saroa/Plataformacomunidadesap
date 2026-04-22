@@ -45,10 +45,11 @@ interface PTADetallePanelProps {
   onDevolver: () => void;
   onConcertar: () => void;
   onVerReporte: () => void;
+  onUpdated?: (updatedPta: any) => void; // Notifica al padre cuando el PTA cambia
   puedeAprobar: boolean;
   nivelAprobacion: number;
   rolLabel: string;
-  jefaturaTerritorialId?: string; // Para bloqueo de edición multi-territorial
+  jefaturaTerritorialId?: string;
   isSuperUser?: boolean;
   actorId?: string;
 }
@@ -296,7 +297,7 @@ function SectionCollapsible({ title, icon: Icon, color, count, children, default
 // ═══ MAIN COMPONENT ═══════════════════════════════════════════════════
 
 export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADetallePanelProps>(({
-  pta: initialPta, onClose, onAprobar, onDevolver, onConcertar, onVerReporte,
+  pta: initialPta, onClose, onAprobar, onDevolver, onConcertar, onVerReporte, onUpdated,
   puedeAprobar, nivelAprobacion, rolLabel, jefaturaTerritorialId, isSuperUser, actorId,
 }, ref) => {
   const [activeTab, setActiveTab] = useState<'resumen' | 'componentes' | 'historial' | 'concertacion'>('resumen');
@@ -446,9 +447,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const handleFirmaCompleta = async (firmaData: FirmaData) => {
     setShowFirmaDigital(false);
 
+    const hayCambios = pta.camposModificadosPorRevisor &&
+      Object.keys(pta.camposModificadosPorRevisor).length > 0;
+
     setProcesandoAprobacion(true);
     const res = await updatePTAStatus(pta.id, {
       accion: 'aprobar',
+      camposModificados: hayCambios ? pta.camposModificadosPorRevisor : undefined,
       observaciones: `Aprobado con firma digital por ${rolLabel} — Certificado: ${firmaData.certificado_id}`,
       actorRol: rolLabel,
       actorId,
@@ -494,7 +499,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     toast.success('PTA devuelto al docente');
     setShowDevolucionModal(false);
     setMotivoDevolucion('');
-    setPta((prev: any) => ({ ...prev, estado: 'Devuelto', motivoDevolucion }));
+    setPta((prev: any) => ({ ...prev, estado: res.nuevoEstado || res.data?.estado || prev.estado, motivoDevolucion }));
     onDevolver();
   };
 
@@ -1883,9 +1888,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             maxHeight: 'calc(100vh - 40px)',
             background: 'white',
             borderRadius: 16,
-            boxShadow: '0 25px 60px rgba(0,0,0,0.3)',
+            border: '1.5px solid rgba(0,61,165,0.15)',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.3), 0 0 0 1px rgba(0,61,165,0.08)',
             overflowY: 'auto',
             display: 'flex', flexDirection: 'column',
+            padding: '0 0 24px 0',
           }}>
             {/* Botón cerrar modal */}
             <button
@@ -1912,6 +1919,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 const res = await getPTAById(pta.id);
                 if (res.success && res.data) {
                   setPta((prev: any) => ({ ...prev, ...res.data }));
+                  // Notificar al módulo padre para que actualice la fila en la lista
+                  onUpdated?.(res.data);
                 }
               }}
             />

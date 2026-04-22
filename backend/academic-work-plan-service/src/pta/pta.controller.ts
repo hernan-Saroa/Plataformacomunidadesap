@@ -188,6 +188,12 @@ export class PtaController {
     return { success: true, ...result };
   }
 
+  @Get(':ptaId/aprobaciones-jefatura')
+  async getAprobacionesJefatura(@Param('ptaId') ptaId: string) {
+    const data = await this.ptaService.getAprobacionesJefatura(ptaId);
+    return { success: true, data };
+  }
+
   @Delete(':ptaId')
   async delete(@Param('ptaId') ptaId: string) {
     const data = await this.ptaService.deletePTA(ptaId);
@@ -260,10 +266,7 @@ export class PtaController {
     return { success: true, data: { ptaId, ...body } };
   }
 
-  @Get(':ptaId/aprobaciones-jefatura')
-  getAprobacionesJefatura(@Param('ptaId') ptaId: string) {
-    return { success: true, data: { ptaId, aprobaciones: [] } };
-  }
+  // (implementación real arriba, este stub fue reemplazado)
 
   @Post(':ptaId/firma-digital')
   firmaDigital(@Param('ptaId') ptaId: string, @Body() body: any) {
