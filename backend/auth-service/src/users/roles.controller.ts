@@ -1,7 +1,24 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Put,
+  Patch,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { RolesService } from './roles.service';
-import { Public } from '../auth/decorators/public.decorator';
 import type { CreateRoleDto, UpdateRoleDto, RoleFilters, RoleStats } from './roles.service';
+import { InternalServiceAccess } from '../auth/decorators/internal-service.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import {
+  AUTH_MANAGE_ROLES,
+  AUTH_READ_ROLES,
+} from '../auth/authorization.constants';
 
 export interface RoleResponse {
   id: string;
@@ -22,14 +39,13 @@ export interface RoleResponse {
 }
 
 @Controller('roles')
-// TODO: Agregar guards de autenticación y roles
-// @UseGuards(JwtAuthGuard, RolesGuard)
-// @Roles('super_admin', 'admin') // Solo super admin y admin pueden gestionar roles
+@UseGuards(RolesGuard)
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 
   @Get()
-  @Public()
+  @InternalServiceAccess()
+  @Roles(...AUTH_READ_ROLES)
   async findAll(@Query() filters: RoleFilters): Promise<{ roles: RoleResponse[], total: number }> {
     const result = await this.rolesService.findAll(filters);
     return {
@@ -55,11 +71,15 @@ export class RolesController {
   }
 
   @Get('stats')
+  @InternalServiceAccess()
+  @Roles(...AUTH_READ_ROLES)
   async getStats(): Promise<RoleStats> {
     return this.rolesService.getStats();
   }
 
   @Get(':id')
+  @InternalServiceAccess()
+  @Roles(...AUTH_READ_ROLES)
   async findOne(@Param('id') id: string): Promise<RoleResponse> {
     const role = await this.rolesService.findOne(id) as any;
     return {
@@ -82,6 +102,7 @@ export class RolesController {
   }
 
   @Post()
+  @Roles(...AUTH_MANAGE_ROLES)
   async create(@Body() createRoleDto: CreateRoleDto): Promise<RoleResponse> {
     const role = await this.rolesService.create(createRoleDto, 'current_user'); // TODO: obtener usuario actual
     return {
@@ -104,6 +125,7 @@ export class RolesController {
   }
 
   @Put(':id')
+  @Roles(...AUTH_MANAGE_ROLES)
   async update(@Param('id') id: string, @Body() updateRoleDto: UpdateRoleDto): Promise<RoleResponse> {
     const role = await this.rolesService.update(id, updateRoleDto, 'current_user') as any; // TODO: obtener usuario actual
     return {
@@ -126,12 +148,14 @@ export class RolesController {
   }
 
   @Delete(':id')
+  @Roles(...AUTH_MANAGE_ROLES)
   async delete(@Param('id') id: string): Promise<{ message: string }> {
     await this.rolesService.delete(id);
     return { message: 'Rol eliminado exitosamente' };
   }
 
   @Post(':id/duplicate')
+  @Roles(...AUTH_MANAGE_ROLES)
   async duplicate(@Param('id') id: string): Promise<RoleResponse> {
     const role = await this.rolesService.duplicate(id, 'current_user'); // TODO: obtener usuario actual
     return {
@@ -154,6 +178,7 @@ export class RolesController {
   }
 
   @Patch(':id/toggle-active')
+  @Roles(...AUTH_MANAGE_ROLES)
   async toggleActive(@Param('id') id: string): Promise<RoleResponse> {
     const role = await this.rolesService.toggleActive(id, 'current_user') as any; // TODO: obtener usuario actual
     return {
@@ -176,6 +201,7 @@ export class RolesController {
   }
 
   @Patch(':id/toggle-2fa')
+  @Roles(...AUTH_MANAGE_ROLES)
   async toggle2FA(@Param('id') id: string): Promise<RoleResponse> {
     const role = await this.rolesService.toggle2FA(id, 'current_user') as any; // TODO: obtener usuario actual
     return {
@@ -198,6 +224,8 @@ export class RolesController {
   }
 
   @Get(':id/permissions')
+  @InternalServiceAccess()
+  @Roles(...AUTH_READ_ROLES)
   async getPermissions(@Param('id') id: string) {
     const permissions = await this.rolesService.getPermissions(id);
     // Mapear campos para consistencia con frontend
@@ -210,6 +238,7 @@ export class RolesController {
   }
 
   @Put(':id/permissions')
+  @Roles(...AUTH_MANAGE_ROLES)
   async updatePermissions(
     @Param('id') id: string,
     @Body() body: { permissionIds: string[] }
@@ -235,6 +264,8 @@ export class RolesController {
   }
 
   @Get('permissions/all')
+  @InternalServiceAccess()
+  @Roles(...AUTH_READ_ROLES)
   async getAllPermissions() {
     return this.rolesService.getAllPermissions();
   }

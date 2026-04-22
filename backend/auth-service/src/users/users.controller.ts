@@ -10,20 +10,27 @@ import {
   Query,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { Public } from '../auth/decorators/public.decorator';
 import { CreatePersonDto } from './dto/create-person.dto';
 import { PersonResponseDto } from './dto/person-response.dto';
 import { plainToClass } from 'class-transformer';
 import { Seccional } from './seccional.entity';
 import { Sede } from './sede.entity';
+import { InternalServiceAccess } from '../auth/decorators/internal-service.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import {
+  AUTH_MANAGE_ROLES,
+  AUTH_READ_ROLES,
+} from '../auth/authorization.constants';
 
 @Controller('users')
+@UseGuards(RolesGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
-  @Public()
+  @InternalServiceAccess()
+  @Roles(...AUTH_READ_ROLES)
   async findAll(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
@@ -92,7 +99,8 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Public()
+  @InternalServiceAccess()
+  @Roles(...AUTH_READ_ROLES)
   async findOne(@Param('id') id: string) {
     const user = await this.usersService.findById(id);
     const person = user.person;
@@ -130,7 +138,7 @@ export class UsersController {
   }
 
   @Post()
-  // @UseGuards(JwtAuthGuard)
+  @Roles(...AUTH_MANAGE_ROLES)
   async create(@Body() createPersonDto: CreatePersonDto) {
     const user = await this.usersService.createPerson(createPersonDto);
     const person = user.person;
@@ -168,7 +176,7 @@ export class UsersController {
   }
 
   @Put(':id')
-  // @UseGuards(JwtAuthGuard)
+  @Roles(...AUTH_MANAGE_ROLES)
   async update(
     @Param('id') id: string,
     @Body() updatePersonDto: Partial<CreatePersonDto>,
@@ -209,14 +217,14 @@ export class UsersController {
   }
 
   @Delete(':id')
-  // @UseGuards(JwtAuthGuard)
+  @Roles(...AUTH_MANAGE_ROLES)
   async remove(@Param('id') id: string) {
     await this.usersService.deletePerson(id);
     return { message: 'User deleted successfully' };
   }
 
   @Put(':id/status')
-  // @UseGuards(JwtAuthGuard)
+  @Roles(...AUTH_MANAGE_ROLES)
   async updateStatus(
     @Param('id') id: string,
     @Body('is_active') isActive: boolean,

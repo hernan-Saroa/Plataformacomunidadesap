@@ -13,10 +13,16 @@ import {
 } from '@nestjs/swagger';
 import { TerminosProcesalesService } from '../services/terminos-procesales.service';
 import { AlertasAutomaticasService } from '../services/alertas-automaticas.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Jobs Automáticos')
 @Controller('jobs')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class JobsController {
   constructor(
     private terminosService: TerminosProcesalesService,
