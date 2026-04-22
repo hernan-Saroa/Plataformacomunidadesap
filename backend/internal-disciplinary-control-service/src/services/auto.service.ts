@@ -800,7 +800,7 @@ export class AutoService {
   async sendPliegoToJuridica(id: string, enviadoPorId: string): Promise<void> {
     const auto = await this.findById(id, ['process']);
 
-    if (auto.tipo !== AutoType.PLIEGO_CARGOS) {
+    if (auto.tipo !== AutoType.PLIEGO_CARGOS && auto.tipo !== AutoType.AUTO_FORMULACION_PLIEGO) {
       throw new HttpException(
         'Esta operación solo aplica para autos de pliego de cargos',
         HttpStatus.BAD_REQUEST,
@@ -819,6 +819,9 @@ export class AutoService {
       auto.processId,
       enviadoPorId,
     );
+
+    // Marcar el auto como NOTIFICADO para que no reaparezca en la lista de borradores
+    await this.autoRepository.save({ ...auto, estado: AutoStatus.NOTIFICADO });
 
     // Registrar actuación de envío a jurídica
     await this.actuacionesRepository.save({

@@ -161,6 +161,14 @@ const enmascararCorreo = (correo: string): string => {
   return `${inicio}${asteriscos}${final}`;
 };
 
+const EMAIL_FORMAT_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const tieneFormatoCorreoValido = (correo: string): boolean => {
+  const correoNormalizado = typeof correo === 'string' ? correo.trim() : '';
+  if (!correoNormalizado || correoNormalizado.toLowerCase() === 'n/a') return false;
+  return EMAIL_FORMAT_REGEX.test(correoNormalizado);
+};
+
 // Mock de base de datos de empleados (Administrativos y Docentes)
 const BASE_DATOS_EMPLEADOS: EmpleadoData[] = [
   {
@@ -872,6 +880,15 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         return;
       }
 
+      if (!tieneFormatoCorreoValido(emailDestino)) {
+        setBuscandoEmpleado(false);
+        toast.error('El correo registrado no tiene un formato valido.', {
+          description: 'No fue enviado el codigo de validacion. Comunicate con Talento Humano para actualizarlo.',
+          duration: 7000,
+        });
+        return;
+      }
+
       // Si ya tiene certificado, el backend lanzará un error
       // Guardar el código enviado
       const codigo = response.codigoTest || '470547';
@@ -921,10 +938,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         description: `Por seguridad, revisa tu bandeja de entrada`,
         duration: 5000
       });
-
-      // Mostrar el código en consola para pruebas
-      console.log('🔐 CÓDIGO DE VALIDACIÓN:', codigo);
-      console.log('📧 Enviado a:', emailDestino);
 
       // Avanzar al siguiente paso
       setCodigoExpirado(false);
@@ -1126,6 +1139,15 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         toast.error('El usuario no cuenta con correo registrado.', {
           description: 'Es necesario comunicarte con un administrador para validar la identidad.',
           duration: 7000
+        });
+        return;
+      }
+
+      if (!tieneFormatoCorreoValido(emailDestino)) {
+        setReenviandoCodigo(false);
+        toast.error('El correo registrado no tiene un formato valido.', {
+          description: 'No fue enviado el codigo de validacion. Comunicate con Talento Humano para actualizarlo.',
+          duration: 7000,
         });
         return;
       }

@@ -23,7 +23,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Card, Badge, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import { PaginationPremium } from './shared/PaginationPremium';
 import { CreateProgramaModal } from './CreateProgramaModal';
 import { PROGRAMAS_ESAP, SEDES_ESAP } from '../data/oferta-academica-esap';
@@ -526,6 +526,8 @@ export function ProgramasAcademicosModule() {
   };
 
   return (
+    <>
+    <Toaster position="top-right" richColors />
     <Container4K className="space-y-6">
       {/* Header - DÍA 5: ResponsiveHeader */}
       <ResponsiveHeader
@@ -949,5 +951,6 @@ export function ProgramasAcademicosModule() {
         />
       )}
     </Container4K>
+    </>
   );
 }

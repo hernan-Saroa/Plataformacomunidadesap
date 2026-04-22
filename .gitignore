@@ -171,6 +171,9 @@ playwright/.cache/
 .local
 .dev
 
+#Arquivos SSL .pem y .key
+ssl/
+
 #Data produccion
 db/prod/
 

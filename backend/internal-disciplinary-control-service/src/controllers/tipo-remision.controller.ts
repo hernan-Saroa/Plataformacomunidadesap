@@ -8,6 +8,7 @@ import {
   Param,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { TipoRemisionService } from '../services/tipo-remision.service';
@@ -15,9 +16,15 @@ import {
   CreateTipoRemisionDto,
   UpdateTipoRemisionDto,
 } from '../dtos/tipo-remision.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Tipos de Remisión')
 @Controller('tipos-remision')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class TipoRemisionController {
   constructor(private readonly service: TipoRemisionService) {}
 

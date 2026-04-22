@@ -250,6 +250,7 @@ export function mapBackendToUI(auditoria: AuditoriaResponse): AuditoriaUI {
     alcance: auditoria.alcance || '',
     horasReales: 0,
     hallazgosCount: 0,
+    riesgosAsociados: (auditoria as any).riesgosAsociados || [],
   };
 }
 
@@ -278,9 +279,9 @@ export interface AuditoriaUI {
   alcance?: string;
   horasReales?: number;
   hallazgosCount?: number;
-  auditoriaOCIId?: string;
   planMejoramientoId?: string;
   procesoId?: string;
+  riesgosAsociados?: Array<{ id: string; proceso: string; riesgo: string }>;
 }
 
 // ════════════════════════════════════════════════════════════════════════════

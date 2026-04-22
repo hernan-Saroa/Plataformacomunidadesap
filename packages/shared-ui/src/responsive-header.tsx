@@ -304,20 +304,21 @@ export function ResponsiveHeader({
                   {/* Dropdown Menu */}
                   <AnimatePresence>
                     {isMenuOpen && (
-                      <>
-                        {/* Overlay */}
-                        <div
-                          className="fixed inset-0 z-40"
-                          onClick={() => setIsMenuOpen(false)}
-                        />
-                        
-                        <motion.div
-                          initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                          transition={{ duration: 0.2 }}
-                          className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-2xl border-2 border-gray-200 overflow-hidden z-50"
-                        >
+                      <div
+                        key="dropdown-overlay"
+                        className="fixed inset-0 z-40"
+                        onClick={() => setIsMenuOpen(false)}
+                      />
+                    )}
+                    {isMenuOpen && (
+                      <motion.div
+                        key="dropdown-menu"
+                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                        transition={{ duration: 0.2 }}
+                        className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-2xl border-2 border-gray-200 overflow-hidden z-50"
+                      >
                           {/* Header del menú */}
                           <div className="bg-gradient-to-r from-[#003DA5] to-[#0052cc] px-4 py-2.5">
                             <p className="text-xs font-bold text-white">Más Opciones</p>
@@ -346,8 +347,7 @@ export function ResponsiveHeader({
                             })}
                           </div>
                         </motion.div>
-                      </>
-                    )}
+                      )}
                   </AnimatePresence>
                 </div>
               )}

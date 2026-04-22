@@ -8,6 +8,8 @@ import { useState, useEffect } from 'react';
 import { Plus, AlertCircle, Trash2, GripVertical, Save, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { disciplinaryService } from '../../../../services/api/disciplinary.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import {
   DndContext,
   closestCenter,
@@ -245,6 +247,7 @@ export function ConfiguracionEstadosKanban() {
               Sin guardar
             </span>
           )}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_RESET) && (
           <button
             onClick={restablecerDefecto}
             className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
@@ -252,6 +255,8 @@ export function ConfiguracionEstadosKanban() {
             <RotateCcw className="w-4 h-4" />
             Restablecer
           </button>
+          )}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_KANBAN_GUARDAR) && (
           <button
             onClick={guardarConfiguraciones}
             disabled={!cambiosPendientes}
@@ -263,11 +268,13 @@ export function ConfiguracionEstadosKanban() {
             <Save className="w-4 h-4" />
             Guardar Cambios
           </button>
+          )}
         </div>
       </div>
 
       {/* Botón agregar */}
       <div className="flex justify-end">
+        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_CREATE) && (
         <button
           onClick={agregarEstado}
           className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
@@ -279,6 +286,7 @@ export function ConfiguracionEstadosKanban() {
           <Plus className="w-4 h-4" />
           Agregar Estado
         </button>
+        )}
       </div>
 
       {/* Lista de estados con drag and drop */}
@@ -397,6 +405,7 @@ function EstadoSortable({ estado, onUpdate, onDelete }: any) {
         </label>
 
         {/* Eliminar */}
+        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_DELETE) && (
         <button
           onClick={() => onDelete(estado.id)}
           className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -404,6 +413,7 @@ function EstadoSortable({ estado, onUpdate, onDelete }: any) {
         >
           <Trash2 className="w-5 h-5" />
         </button>
+        )}
       </div>
     </div>
   );

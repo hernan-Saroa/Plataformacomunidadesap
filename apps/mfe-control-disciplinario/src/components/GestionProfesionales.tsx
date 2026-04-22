@@ -1054,6 +1054,7 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
             </p>
           </div>
           {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_CREATE) && (
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_CREATE) && (
           <button
             onClick={() => {
               setProfesionalEditar(undefined);
@@ -1065,6 +1066,7 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
             <Plus className="w-4 h-4" />
             Asignar Profesional
           </button>
+          )}
           )}
         </div>
 
@@ -1141,6 +1143,7 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
 
           {/* Acciones */}
           <div className="flex items-center gap-2">
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_MANAGE) && (
             <button
               onClick={() => setShowModalAsignacion(true)}
               className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all text-xs sm:text-sm font-bold flex items-center gap-2"
@@ -1148,6 +1151,8 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
               <ArrowRightLeft className="w-4 h-4" />
               <span className="hidden sm:inline">Asignar</span>
             </button>
+            )}
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROFESIONALES_MANAGE) && (
             <button
               onClick={() => setShowModalRedistribucion(true)}
               className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all text-xs sm:text-sm font-bold flex items-center gap-2"
@@ -1155,6 +1160,8 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
               <RefreshCw className="w-4 h-4" />
               <span className="hidden sm:inline">Redistribuir</span>
             </button>
+            )}
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE) && (
             <button
               onClick={() => toast.info('Exportando reporte...')}
               className="px-3 py-2 rounded-lg text-white font-bold hover:shadow-lg transition-all text-xs sm:text-sm flex items-center gap-2"
@@ -1163,6 +1170,7 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
               <Download className="w-4 h-4" />
               <span className="hidden sm:inline">Reporte</span>
             </button>
+            )}
           </div>
         </div>
       </div>
@@ -1272,7 +1280,7 @@ export function GestionProfesionales({ onVerProcesos }: { onVerProcesos?: (profe
                     <div className="col-span-2 flex flex-col justify-center gap-2">
                       <div className="flex items-center justify-between p-2 rounded-lg" style={{ background: '#F9FAFB' }}>
                         <div className="flex items-center gap-2">
-                          <TrendingUp className="w-4 h-4" style={{ color: '#10B981' }} />
+                          <TrendingUp className="w-4 h-4" style={{ color: '#10B981' }}>
                           <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
                             Efectividad
                           </span>

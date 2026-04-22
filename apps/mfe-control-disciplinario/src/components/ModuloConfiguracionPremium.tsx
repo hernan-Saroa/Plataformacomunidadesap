@@ -8,7 +8,9 @@
 import { useState } from 'react';
 import { useResponsive } from './hooks/useResponsive';
 import { motion, AnimatePresence } from 'motion/react';
-import { LayoutGrid, Users, Shield, FileText, Mail, Bell, ClipboardList, Clock, ArrowRightLeft } from 'lucide-react';
+import { LayoutGrid, Users, Shield, FileText, Mail, Bell, ClipboardList, Clock, ArrowRightLeft, Lock } from 'lucide-react';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // Importar secciones individuales
 import { ConfiguracionEstadosKanban } from './configuracion/ConfiguracionEstadosKanban';
@@ -27,6 +29,23 @@ type TabActiva = 'ESTADOS_KANBAN' | 'CARGOS' | 'CONDUCTAS_DISCIPLINARIAS' | 'PLA
 export function ModuloConfiguracionPremium() {
   const [tabActiva, setTabActiva] = useState<TabActiva>('CONDUCTAS_DISCIPLINARIAS'); // Por defecto en Conductas Disciplinarias
   const { isMobile } = useResponsive();
+
+  const hasAccess = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_MANAGE);
+
+  if (!hasAccess) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center bg-white rounded-2xl shadow-sm border m-8">
+        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
+          <Lock className="w-8 h-8 text-red-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Acceso Denegado</h2>
+        <p className="text-gray-600 max-w-md">
+          No tiene los permisos necesarios para acceder al módulo de configuraciones disciplinarias.
+          Por favor, contacte al administrador del sistema si cree que esto es un error.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

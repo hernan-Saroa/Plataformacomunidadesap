@@ -794,17 +794,19 @@ export function ModuloConfiguracion() {
                     Define las columnas que aparecerán en el tablero Kanban del módulo disciplinario
                   </p>
                 </div>
-                <button
-                  onClick={agregarEstado}
-                  className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                  style={{ 
-                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                  }}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Agregar Estado</span>
-                </button>
+                {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
+                  <button
+                    onClick={agregarEstado}
+                    className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                    style={{ 
+                      background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                      boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                    }}
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Agregar Estado</span>
+                  </button>
+                )}
               </div>
 
               <DndContext
@@ -845,17 +847,19 @@ export function ModuloConfiguracion() {
                     Define las etapas oficiales del proceso disciplinario (configuración avanzada)
                   </p>
                 </div>
-                <button
-                  onClick={handleAgregarEtapa}
-                  className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                  style={{ 
-                    background: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
-                    boxShadow: '0 2px 4px rgba(139, 92, 246, 0.2)'
-                  }}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Agregar Etapa</span>
-                </button>
+                {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_CREATE) && (
+                  <button
+                    onClick={handleAgregarEtapa}
+                    className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                    style={{ 
+                      background: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
+                      boxShadow: '0 2px 4px rgba(139, 92, 246, 0.2)'
+                    }}
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Agregar Etapa</span>
+                  </button>
+                )}
               </div>
 
               {etapas.length === 0 ? (
@@ -931,20 +935,24 @@ export function ModuloConfiguracion() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleEditarEtapa(etapa.id)}
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                              title="Editar etapa"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleEliminarEtapa(etapa.id)}
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Eliminar etapa"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_EDIT) && (
+                              <button
+                                onClick={() => handleEditarEtapa(etapa.id)}
+                                className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Editar etapa"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                            )}
+                            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_ETAPA_DELETE) && (
+                              <button
+                                onClick={() => handleEliminarEtapa(etapa.id)}
+                                className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Eliminar etapa"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -975,17 +983,19 @@ export function ModuloConfiguracion() {
                     Catálogo parametrizable de conductas indisciplinarias para noticias disciplinarias
                   </p>
                 </div>
-                <button
-                  onClick={() => {/* TODO: Implementar agregar conducta */}}
-                  className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                  style={{
-                    background: 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)',
-                    boxShadow: '0 2px 4px rgba(220, 38, 38, 0.2)'
-                  }}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Agregar Conducta</span>
-                </button>
+                {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) && (
+                  <button
+                    onClick={() => {/* TODO: Implementar agregar conducta */}}
+                    className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                    style={{
+                      background: 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)',
+                      boxShadow: '0 2px 4px rgba(220, 38, 38, 0.2)'
+                    }}
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Agregar Conducta</span>
+                  </button>
+                )}
               </div>
 
               <div className="space-y-3">
@@ -1022,17 +1032,19 @@ export function ModuloConfiguracion() {
                     Número máximo de procesos que puede gestionar cada tipo de profesional
                   </p>
                 </div>
-                <button
-                  onClick={agregarCargo}
-                  className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                  style={{ 
-                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                  }}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Agregar Cargo</span>
-                </button>
+                {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_CREATE) && (
+                  <button
+                    onClick={agregarCargo}
+                    className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-lg font-semibold text-xs sm:text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                    style={{ 
+                      background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                      boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                    }}
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Agregar Cargo</span>
+                  </button>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1067,9 +1079,10 @@ export function ModuloConfiguracion() {
                     </div>
 
                     <div className="flex items-center justify-between pt-3 border-t border-gray-200">
-                      <label className="flex items-center gap-2 cursor-pointer">
+                      <label className={`flex items-center gap-2 ${authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_EDIT) ? 'cursor-pointer' : 'opacity-50 pointer-events-none'}`}>
                         <input
                           type="checkbox"
+                          disabled={!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_EDIT)}
                           checked={cargo.activo}
                           onChange={(e) => actualizarCargo(cargo.id, { activo: e.target.checked })}
                           className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -1077,12 +1090,14 @@ export function ModuloConfiguracion() {
                         <span className="text-xs font-semibold text-gray-700">Activo</span>
                       </label>
                       
-                      <button
-                        onClick={() => eliminarCargo(cargo.id)}
-                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_DELETE) && (
+                        <button
+                          onClick={() => eliminarCargo(cargo.id)}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1128,9 +1143,10 @@ export function ModuloConfiguracion() {
                       { key: 'vencimiento1dia', label: '1 día antes del vencimiento' },
                       { key: 'procesoVencido', label: 'Proceso vencido (inmediato)' }
                     ].map((item) => (
-                      <label key={item.key} className="flex items-center gap-3 cursor-pointer">
+                      <label key={item.key} className={`flex items-center gap-3 ${authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT) ? 'cursor-pointer' : 'opacity-50 pointer-events-none'}`}>
                         <input
                           type="checkbox"
+                          disabled={!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_EDIT)}
                           checked={notificaciones[item.key as keyof ConfiguracionNotificaciones] as boolean}
                           onChange={(e) => {
                             setNotificaciones({

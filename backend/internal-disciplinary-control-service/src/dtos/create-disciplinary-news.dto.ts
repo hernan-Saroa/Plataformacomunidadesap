@@ -90,6 +90,10 @@ export class CreateDisciplinaryNewsDto {
   @IsString()
   territorial: string;
 
+  @IsOptional()
+  @IsUUID()
+  radicadorId?: string;
+
   @IsString()
   dependenciaDenunciado: string;
 
@@ -160,5 +164,6 @@ export class DisciplinaryNewsResponseDto {
   conductas?: string[];
   estado: string;
   adjuntos: string[];
+  radicadorId?: string;
   updatedAt: Date;
 }

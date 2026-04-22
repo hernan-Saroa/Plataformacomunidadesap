@@ -13,6 +13,7 @@ import {
   UploadedFile,
   Res,
   HttpException,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -44,6 +45,10 @@ import * as path from 'path';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { diskStorage, MulterError } from 'multer';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles } from '../auth/roles.decorator';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 const MAX_EVIDENCE_FILE_SIZE = 10 * 1024 * 1024 * 1024;
 const MAX_STANDARD_DOCUMENT_SIZE = 50 * 1024 * 1024;
@@ -68,6 +73,8 @@ const PROCESS_DOCUMENT_UPLOAD_OPTIONS = {
 
 @ApiTags('Procesos Disciplinarios')
 @Controller('disciplinary-processes')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class ProcessController {
   constructor(
     private processService: ProcessService,
@@ -1211,6 +1218,40 @@ export class ProcessController {
       throw new HttpException(
         `Error al asociar proceso: ${error.message}`,
         error.status || HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  /**
+   * Restaurar proceso archivado al flujo activo
+   */
+  @Patch(':id/restore')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Restaurar Proceso Archivado',
+    description: 'Restaura un proceso disciplinario archivado al flujo activo',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Proceso restaurado exitosamente',
+    type: DisciplinaryProcess,
+  })
+  @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
+  @ApiResponse({ status: 500, description: 'Error interno del servidor' })
+  async restore(@Param('id') id: string): Promise<DisciplinaryProcess> {
+    try {
+      console.log(`[ProcessController] Restaurando proceso con ID: ${id}`);
+      const result = await this.processService.restore(id);
+      console.log(`[ProcessController] Proceso restaurado exitosamente: ${result.id}`);
+      return result;
+    } catch (error) {
+      console.error(`[ProcessController] Error al restaurar proceso ${id}:`, error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException(
+        `Error al restaurar proceso: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
   }

@@ -380,6 +380,9 @@ export const ComunicacionAuditoriaModule: React.FC<{
               ? `${audData.territorialInfo.ciudad}${audData.territorialInfo.departamento ? ' – ' + audData.territorialInfo.departamento : ''}`
               : audData.territorial,
           }),
+          ...(audData.riesgosIdentificados && { riesgosIdentificados: audData.riesgosIdentificados }),
+          ...(audData.fortalezas && { fortalezas: audData.fortalezas }),
+          ...(audData.recomendacionesPorCategoria && { recomendacionesPorCategoria: audData.recomendacionesPorCategoria }),
         }));
       }
     } catch (err: any) {
@@ -611,57 +614,67 @@ export const ComunicacionAuditoriaModule: React.FC<{
   // ====================================
 
   const duracionDias = auditoria.esTerritoriales ? 2 : 10; // SEDE: 10-15d, TERRITORIAL: 2d
-
   return (
-    <div className={embedded ? 'space-y-4' : 'min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-slate-50 p-6'}>
-      <div className={embedded ? 'space-y-4' : 'max-w-7xl mx-auto space-y-6'}>
+    <div className={embedded ? 'space-y-4' : 'min-h-screen bg-[#F8FAFC] pb-20'}>
+      <div className={embedded ? 'space-y-4' : 'max-w-7xl mx-auto px-4 md:px-8 space-y-8 pt-6'}>
         
         {/* HEADER - oculto en modo embebido (el expediente ya tiene Card de fase) */}
         {!embedded && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-xl shadow-lg p-6"
+          className="bg-gradient-to-br from-[#003DA5] via-[#002B7A] to-[#001D52] text-white rounded-2xl shadow-2xl p-8 relative overflow-hidden"
         >
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                  <FileText className="w-6 h-6 text-white" />
+          {/* Elementos decorativos premium */}
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl animate-pulse" />
+          <div className="absolute bottom-0 left-0 w-48 h-48 bg-blue-400/10 rounded-full -ml-24 -mb-24 blur-2xl" />
+
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8 relative z-10">
+            <div className="flex flex-col xl:flex-row items-center gap-6 text-center md:text-left">
+              <div className="flex flex-col md:flex-row items-center gap-6">
+                <div className="w-16 h-16 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center shadow-inner border border-white/20 shrink-0">
+                  <FileText className="w-8 h-8 text-blue-200" />
                 </div>
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Fase de Comunicación</h1>
-                  <p className="text-sm text-gray-500">{auditoria.codigo} - {auditoria.nombre}</p>
+                  <BadgeSIGL variant="info" className="bg-white/20 text-white border-white/30 backdrop-blur-sm mb-2 uppercase tracking-widest text-[10px] font-black">
+                    PROCESO DE AUDITORÍA
+                  </BadgeSIGL>
+                  <h1 className="text-3xl md:text-4xl font-black tracking-tight leading-tight">Fase de Comunicación</h1>
+                  <p className="text-blue-100/80 text-lg font-medium mt-1">
+                    {auditoria.codigo} <span className="mx-2 opacity-30">|</span> {auditoria.nombre}
+                  </p>
                 </div>
               </div>
               
-              <div className="flex items-center gap-4 mt-4">
-                <BadgeSIGL variant="info">
-                  <Users className="w-3 h-3" />
+              <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mt-2 md:mt-0">
+                <BadgeSIGL variant="info" className="bg-white/10 text-white border-white/10">
+                  <Users className="w-3 h-3 mr-1" />
                   {typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : auditoria.auditorLider?.nombre || 'No asignado'}
                 </BadgeSIGL>
-                <BadgeSIGL variant="default">
-                  <Calendar className="w-3 h-3" />
+                <BadgeSIGL variant="default" className="bg-white/10 text-white border-white/10">
+                  <Calendar className="w-3 h-3 mr-1" />
                   Duración: {duracionDias} días
                 </BadgeSIGL>
-                <BadgeSIGL variant="warning">
-                  <AlertCircle className="w-3 h-3" />
+                <BadgeSIGL variant="warning" className="bg-amber-400/20 text-amber-200 border-amber-400/30">
+                  <AlertCircle className="w-3 h-3 mr-1" />
                   {auditoria.hallazgos.length} Hallazgos
                 </BadgeSIGL>
               </div>
             </div>
 
-            <div className="text-right">
-              <div className="text-sm text-gray-500 mb-2">Progreso General</div>
-              <div className="flex items-center gap-3">
-                <div className="text-3xl font-bold text-[#003DA5]">{progreso}%</div>
-                <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${progreso}%` }}
-                    transition={{ duration: 0.5 }}
-                    className="h-full bg-gradient-to-r from-purple-500 to-purple-600"
-                  />
+            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 min-w-[200px]">
+              <div className="text-xs text-blue-100/60 uppercase tracking-widest font-bold mb-2">Progreso General</div>
+              <div className="flex items-center gap-4">
+                <div className="text-4xl font-black text-white">{progreso}%</div>
+                <div className="flex-1">
+                  <div className="h-2 bg-white/10 rounded-full overflow-hidden shadow-inner">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${progreso}%` }}
+                      transition={{ duration: 0.8, ease: "easeOut" }}
+                      className="h-full bg-gradient-to-r from-blue-400 to-indigo-400 shadow-[0_0_10px_rgba(96,165,250,0.5)]"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -670,8 +683,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
         )}
 
         {/* NAVEGACIÓN DE SECCIONES: Comunicación (1-4) o Seguimiento (5-6). Solo el tab Seguimiento del expediente muestra 5-6 (soloSeguimiento). */}
-        <div className={embedded ? 'bg-white border-2 border-green-200 rounded-lg p-4' : 'bg-white rounded-xl shadow-lg p-4'}>
-          <div className="flex items-center gap-2 overflow-x-auto">
+        <div className={embedded ? 'bg-white border-2 border-green-200 rounded-lg p-4' : 'bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-2 ring-1 ring-black/5 sticky top-6 z-40'}>
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth p-1">
             {soloSeguimiento ? (
               // Strip Seguimiento: Verificación | Informe de Cierre
               [
@@ -759,6 +772,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 onDescargarPDF={async () => {
                   if (!informePreliminar.generado) return;
                   const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+                  const { generarContenidoInformeIA, aplicarContenidoIA } = await import('./services/generarContenidoInformeIA');
                   const hallazgosParaPDF = (auditoria.hallazgos || []).map((h) => ({
                     codigo: h.codigo,
                     titulo: h.titulo,
@@ -769,40 +783,92 @@ export const ComunicacionAuditoriaModule: React.FC<{
                     efectos: h.efectos,
                     recomendaciones: h.recomendaciones,
                   }));
-                  await exportarPDFInformeAuditoria(
-                    'preliminar',
-                    {
-                      codigo: auditoria.codigo,
-                      nombre: auditoria.nombre,
-                      proceso: auditoria.proceso,
-                      auditorLider:
-                        typeof auditoria.auditorLider === 'string'
-                          ? auditoria.auditorLider
-                          : (auditoria as any).auditorLider?.nombre || 'No asignado',
-                      // Variables adicionales (opcionales)
-                      radicado: (auditoria as any).radicado,
-                      fechaOficio: informePreliminar.fecha,
-                      destinatarioNombre: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
-                      destinatarioCargo: (auditoria as any).cargo || 'Director(a) Territorial',
-                      unidadAuditable: (auditoria as any).territorial || (auditoria as any).areaResponsable || auditoria.nombre,
-                      fechaLimitePronunciamiento: (auditoria as any).fechaLimitePronunciamiento,
-                      jefeOCI: (auditoria as any).jefeOCI,
-                      elaboro: typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre,
-                      tituloAuditoria: (auditoria as any).tituloAuditoria,
-                      responsableUnidadAuditada: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
-                      lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).territorial,
-                      fechaEjecucionInicio: auditoria.fechaInicio,
-                      fechaEjecucionFin: auditoria.fechaFin,
-                      periodoAuditoria: auditoria.fechaInicio && auditoria.fechaFin ? `${auditoria.fechaInicio} al ${auditoria.fechaFin}` : undefined,
-                      equipoAuditor: (auditoria as any).equipoAuditores?.map((a: any) => ({ nombre: a.nombre || a, rol: a.rol })),
-                      objetivo: (auditoria as any).objetivo,
-                      alcance: (auditoria as any).alcance,
-                      marcoNormativo: (auditoria as any).marcoNormativo,
-                      contextoGeneral: (auditoria as any).contextoGeneral,
-                    },
-                    { ...informePreliminar, foliosAnexos: informePreliminar.hallazgos ? Math.max(10, informePreliminar.hallazgos * 3) : undefined },
-                    hallazgosParaPDF
-                  );
+
+                    // Datos base de la auditoría
+                  const auditoriaBase = {
+                    codigo: auditoria.codigo,
+                    nombre: auditoria.nombre,
+                    proceso: auditoria.proceso,
+                    auditorLider:
+                      typeof auditoria.auditorLider === 'string'
+                        ? auditoria.auditorLider
+                        : (auditoria as any).auditorLider?.nombre || 'No asignado',
+                    radicado: (auditoria as any).radicado,
+                    fechaOficio: informePreliminar.fecha,
+                    destinatarioNombre: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
+                    destinatarioCargo: (auditoria as any).cargo || (auditoria as any).responsableAreaCargo || 'Director(a) Territorial',
+                    unidadAuditable: (auditoria as any).territorial || (auditoria as any).areaResponsable || auditoria.nombre,
+                    fechaLimitePronunciamiento: (auditoria as any).fechaLimitePronunciamiento,
+                    jefeOCI: (auditoria as any).jefeOCI,
+                    // Elaboró: líder + resto del equipo
+                    elaboro: [
+                      typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre,
+                      ...((auditoria as any).equipoAuditores?.slice?.(1) || []).map((a: any) => typeof a === 'string' ? a : a?.nombre).filter(Boolean),
+                    ].filter(Boolean).join(' / '),
+                    tituloAuditoria: (auditoria as any).tituloAuditoria,
+                    responsableUnidadAuditada: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
+                    // Lugar de ejecución: campo explícito > sede > territorial
+                    lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).sede || (auditoria as any).territorial,
+                    // Fechas de ejecución de la auditoría (cuándo se realizó)
+                    fechaEjecucionInicio: (auditoria as any).fechaInicioEjecucion || auditoria.fechaInicio,
+                    fechaEjecucionFin: (auditoria as any).fechaFinEjecucion || auditoria.fechaFin,
+                    // Período auditado (qué vigencia se evaluó) — distinto a fechas de ejecución
+                    periodoAuditoria: (auditoria as any).periodoAuditoria
+                      || (auditoria as any).programaAnualMetadata?.periodoAuditado
+                      || (auditoria.fechaInicio && auditoria.fechaFin
+                          ? `${auditoria.fechaInicio} al ${auditoria.fechaFin}`
+                          : undefined),
+                    periodoAuditadoTexto: (auditoria as any).periodoAuditadoTexto
+                      || (auditoria as any).programaAnualMetadata?.periodoAuditado
+                      || (auditoria as any).periodoAuditoria,
+                    // Año del Plan Anual (para texto “Plan Anual de Auditoría del año XXXX”)
+                    planAnualAño: (auditoria as any).planAnualAño
+                      || (auditoria as any).programaAnualMetadata?.año
+                      || (auditoria.fechaInicio
+                          ? new Date(auditoria.fechaInicio).getFullYear()
+                          : new Date().getFullYear()),
+                    equipoAuditor: (auditoria as any).equipoAuditores?.map((a: any) => ({ nombre: a.nombre || a, rol: a.rol })),
+                    // Campos opcionales del API (prioridad sobre generación IA)
+                    objetivo: (auditoria as any).objetivo,
+                    alcance: (auditoria as any).alcance,
+                    marcoNormativo: (auditoria as any).marcoNormativo,
+                    contextoGeneral: (auditoria as any).contextoGeneral,
+                    descripcionUnidad: (auditoria as any).descripcionUnidad,
+                    reuniones: (auditoria as any).reuniones,
+                    cartaRepresentacionFecha: (auditoria as any).cartaRepresentacionFecha,
+                    procesosAuditados: (auditoria as any).procesosAuditados,
+                    planesMejoramiento: (auditoria as any).planesMejoramiento,
+                    aspectosRelevantes: (auditoria as any).aspectosRelevantes,
+                    evaluacionControlInterno: (auditoria as any).evaluacionControlInterno,
+                    fortalezas: (auditoria as any).fortalezas,
+                    recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
+                    riesgosIdentificados: (auditoria as any).riesgosIdentificados,
+                    riesgosAsociados: (auditoria as any).riesgosAsociados,
+                    declaracion: (auditoria as any).declaracion,
+                  };
+
+                  // Generar contenido IA y aplicarlo (enriquece los campos vacíos)
+                  toast.loading('Generando contenido del informe...', { id: 'pdf-gen' });
+                  let auditoriaFinal = auditoriaBase;
+                  let informeFinal = { ...informePreliminar, foliosAnexos: informePreliminar.hallazgos ? Math.max(10, informePreliminar.hallazgos * 3) : undefined };
+                  try {
+                    const contenidoIA = await generarContenidoInformeIA(
+                      auditoriaBase,
+                      hallazgosParaPDF,
+                      (msg) => toast.loading(msg, { id: 'pdf-gen' })
+                    );
+                    auditoriaFinal = aplicarContenidoIA(auditoriaBase, contenidoIA);
+                    // Usar conclusiones generadas si no hay observaciones propias
+                    if (!informePreliminar.observaciones && contenidoIA.conclusiones) {
+                      informeFinal = { ...informeFinal, observaciones: contenidoIA.conclusiones };
+                    }
+                    toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen' });
+                  } catch {
+                    toast.dismiss('pdf-gen');
+                  }
+
+                  await exportarPDFInformeAuditoria('preliminar', auditoriaFinal, informeFinal, hallazgosParaPDF);
+                  toast.dismiss('pdf-gen');
                 }}
                 loading={loading}
                 puedeGenerar={!informePreliminar.generado}
@@ -1135,6 +1201,81 @@ const SeccionInformePreliminar: React.FC<{
         </div>
       </CardSIGL>
 
+      {/* Riesgos Identificados del Proceso */}
+      {((auditoria as any).riesgosIdentificados?.length > 0 || (auditoria as any).objetivo) && (
+        <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
+          <div className={embedded ? 'p-4' : 'p-6'}>
+            <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Target className="w-5 h-5 text-purple-600" />
+              Riesgos y Objetivos de la Auditoría
+            </h3>
+
+            {(auditoria as any).objetivo && (
+              <div className="mb-4">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Objetivo Técnico</span>
+                <p className="text-[13px] text-gray-700 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100 italic">{(auditoria as any).objetivo}</p>
+              </div>
+            )}
+
+            {(auditoria as any).alcance && (
+              <div className="mb-4">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">Alcance de la Auditoría</span>
+                <p className="text-[13px] text-gray-700 leading-relaxed">{(auditoria as any).alcance}</p>
+              </div>
+            )}
+
+            {(auditoria as any).riesgosIdentificados?.length > 0 && (
+              <div className="mb-4">
+                <span className="text-xs font-bold text-red-400 uppercase tracking-wider block mb-2">Riesgos Específicos Identificados</span>
+                <div className="grid grid-cols-1 gap-2">
+                  {(auditoria as any).riesgosIdentificados.map((riesgo: string, idx: number) => (
+                    <div key={idx} className="flex items-start gap-2 p-2.5 bg-red-50/50 border border-red-100 rounded-lg text-[13px] text-red-900 leading-relaxed">
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5" />
+                      {riesgo}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(auditoria as any).fortalezas?.length > 0 && (
+              <div className="mb-4">
+                <span className="text-xs font-bold text-green-500 uppercase tracking-wider block mb-2">Fortalezas Identificadas</span>
+                <div className="grid grid-cols-1 gap-2">
+                  {(auditoria as any).fortalezas.map((f: string, idx: number) => (
+                    <div key={idx} className="flex items-start gap-2 p-2.5 bg-green-50/50 border border-green-100 rounded-lg text-[13px] text-green-900">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-green-600 shrink-0 mt-0.5" />
+                      {f}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(auditoria as any).recomendacionesPorCategoria?.length > 0 && (
+              <div>
+                <span className="text-xs font-bold text-blue-500 uppercase tracking-wider block mb-2">Recomendaciones por Categoría</span>
+                <div className="space-y-3">
+                  {(auditoria as any).recomendacionesPorCategoria.map((cat: any, idx: number) => (
+                    <div key={idx} className="bg-blue-50/30 border border-blue-100 rounded-lg p-3">
+                      <h4 className="text-[13px] font-bold text-blue-900 mb-2 uppercase">{cat.categoria}</h4>
+                      <ul className="space-y-1">
+                        {cat.items?.map((item: string, i: number) => (
+                          <li key={i} className="text-[12px] text-blue-800 flex items-start gap-2">
+                            <span className="shrink-0 mt-1.5 w-1 h-1 bg-blue-400 rounded-full" />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </CardSIGL>
+      )}
+
       {/* Lista de Hallazgos */}
       <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
         <div className={embedded ? 'p-4' : 'p-6'}>
@@ -1303,7 +1444,7 @@ const SeccionGestionHallazgos: React.FC<{
         </div>
       </CardSIGL>
 
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {hallazgos.map((hallazgo) => {
           const estado = hallazgo.estado || 'notificado';
           const pendiente = estado === 'notificado';
@@ -1331,7 +1472,7 @@ const SeccionGestionHallazgos: React.FC<{
                 )}
 
                 {pendiente && (
-                  <div className="flex gap-2 mt-4">
+                  <div className="flex flex-wrap gap-3 mt-4">
                     <Button variant="outline" size="sm" className="border-green-600 text-green-700 hover:bg-green-50" onClick={() => onAceptar(hallazgo.id)} disabled={loading}>
                       <CheckCircle2 className="w-4 h-4 mr-2" />
                       Aceptar hallazgo
@@ -1774,6 +1915,47 @@ const SeccionInformeFinal: React.FC<{
           variant="outline"
           size="sm"
           disabled={!informe.generado}
+          className="font-medium text-blue-600 border-blue-200 hover:bg-blue-50"
+          title="Informe Ejecutivo de Auditoría Interna (EM-FO-011)"
+          onClick={async () => {
+            if (!informe.generado) return;
+            const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+            const hallazgosParaPDF = (hallazgos || []).map((h) => ({
+              codigo: h.codigo,
+              titulo: h.titulo,
+              gravedad: h.gravedad,
+              descripcion: h.descripcion || '',
+              criterioIncumplido: h.criterioIncumplido,
+              causas: h.causas,
+              efectos: h.efectos,
+              recomendaciones: h.recomendaciones,
+              estadoFinal: h.estado,
+              decisionAuditor: h.decisionAuditor,
+              fundamentacionTecnica: (h as any).fundamentacionTecnica,
+            }));
+            await exportarPDFInformeAuditoria(
+              'ejecutivo',
+              {
+                codigo: auditoria.codigo,
+                nombre: auditoria.nombre,
+                proceso: auditoria.proceso,
+                auditorLider:
+                  typeof auditoria.auditorLider === 'string'
+                    ? auditoria.auditorLider
+                    : (auditoria as any).auditorLider?.nombre || 'No asignado',
+              },
+              informe,
+              hallazgosParaPDF
+            );
+          }}
+        >
+          <FileText className="w-4 h-4 mr-2" />
+          Descargar Informe Ejecutivo OCI
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!informe.generado}
           className="font-medium"
           onClick={async () => {
             if (!informe.generado) return;
@@ -1801,6 +1983,22 @@ const SeccionInformeFinal: React.FC<{
                   typeof auditoria.auditorLider === 'string'
                     ? auditoria.auditorLider
                     : (auditoria as any).auditorLider?.nombre || 'No asignado',
+                tituloAuditoria: (auditoria as any).titulo || auditoria.nombre,
+                responsableUnidadAuditada: (auditoria as any).responsableUnidad || (auditoria as any).areaResponsable || '—',
+                lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).territorial || '—',
+                fechaEjecucionInicio: auditoria.fechaInicio,
+                fechaEjecucionFin: auditoria.fechaFin,
+                periodoAuditoria: (auditoria as any).periodoAuditadoTexto || (auditoria as any).periodoAuditado || (auditoria as any).periodoAuditoria || 'Vigencia correspondiente',
+                equipoAuditor: (auditoria as any).equipoAuditores,
+                objetivo: (auditoria as any).objetivo,
+                alcance: (auditoria as any).alcance,
+                marcoNormativo: (auditoria as any).marcoNormativo,
+                contextoGeneral: (auditoria as any).contextoGeneral,
+                declaracion: (auditoria as any).declaracion,
+                jefeOCI: (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
+                elaboro: (auditoria as any).elaboro || (typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre),
+                reviso: (auditoria as any).reviso || (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
+                aprobo: (auditoria as any).aprobo || (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
               },
               informe,
               hallazgosParaPDF
@@ -1808,7 +2006,7 @@ const SeccionInformeFinal: React.FC<{
           }}
         >
           <Download className="w-4 h-4 mr-2" />
-          Descargar PDF
+          Descargar Informe Final (PDF)
         </Button>
         {!informe.generado && (
           <Button
@@ -2535,11 +2733,13 @@ const ModalPreviewInforme: React.FC<{
   tipo: string;
   auditoria: Auditoria;
   informe: any;
+  hallazgos?: Hallazgo[];
   onClose: () => void;
 }> = ({ tipo, auditoria, informe, onClose }) => {
   const titulo = tipo === 'preliminar' ? 'Informe Preliminar' : tipo === 'final' ? 'Informe Final' : 'Informe Ejecutivo';
-  const handleDescargarPDF = async () => {
-    const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+
+  const prepararDatosPDF = () => {
     const hallazgosParaPDF =
       tipo === 'preliminar' && auditoria.hallazgos?.length
         ? auditoria.hallazgos.map((h: Hallazgo) => ({
@@ -2563,9 +2763,10 @@ const ModalPreviewInforme: React.FC<{
               recomendaciones: h.recomendaciones,
               estadoFinal: h.estado,
               decisionAuditor: h.decisionAuditor,
-              fundamentacionTecnica: h.fundamentacionTecnica,
+              fundamentacionTecnica: (h as any).fundamentacionTecnica,
             }))
           : undefined;
+
     const auditoriaBase = {
       codigo: auditoria.codigo,
       nombre: auditoria.nombre,
@@ -2587,111 +2788,102 @@ const ModalPreviewInforme: React.FC<{
         alcance: (auditoria as any).alcance,
         marcoNormativo: (auditoria as any).marcoNormativo,
         contextoGeneral: (auditoria as any).contextoGeneral,
+        descripcionUnidad: (auditoria as any).descripcionUnidad,
+        reuniones: (auditoria as any).reuniones,
+        cartaRepresentacionFecha: (auditoria as any).cartaRepresentacionFecha,
+        procesosAuditados: (auditoria as any).procesosAuditados,
+        planesMejoramiento: (auditoria as any).planesMejoramiento,
+        aspectosRelevantes: (auditoria as any).aspectosRelevantes,
+        evaluacionControlInterno: (auditoria as any).evaluacionControlInterno,
+        fortalezas: (auditoria as any).fortalezas,
+        recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
+        riesgosIdentificados: (auditoria as any).riesgosIdentificados,
+        procesoAuditado: (auditoria as any).procesoAuditado || (auditoria as any).proceso,
+        declaracion: (auditoria as any).declaracion,
       }),
     };
+
     const informeParaPDF = tipo === 'preliminar' && informe?.hallazgos
       ? { ...informe, foliosAnexos: Math.max(10, informe.hallazgos * 3) }
       : informe;
+
+    return { auditoriaBase, informeParaPDF, hallazgosParaPDF };
+  };
+
+  useEffect(() => {
+    let active = true;
+    const generatePreview = async () => {
+      try {
+        const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+        const { auditoriaBase, informeParaPDF, hallazgosParaPDF } = prepararDatosPDF();
+        const url = await exportarPDFInformeAuditoria(
+          tipo === 'preliminar' ? 'preliminar' : 'final',
+          auditoriaBase,
+          informeParaPDF,
+          hallazgosParaPDF,
+          true
+        );
+        if (active && typeof url === 'string') {
+          setPdfUrl(url);
+        }
+      } catch (err) {
+        console.error('Error generando vista previa PDF:', err);
+      }
+    };
+    generatePreview();
+    return () => { active = false; };
+  }, [tipo, auditoria, informe]);
+
+  const handleDescargarPDF = async () => {
+    const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+    const { auditoriaBase, informeParaPDF, hallazgosParaPDF } = prepararDatosPDF();
     await exportarPDFInformeAuditoria(
       tipo === 'preliminar' ? 'preliminar' : 'final',
       auditoriaBase,
       informeParaPDF,
-      hallazgosParaPDF
+      hallazgosParaPDF,
+      false
     );
   };
+
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" size="lg">
-        <DialogHeader className="border-b pb-3">
-          <DialogTitle className="text-lg font-semibold flex items-center gap-2">
-            <Eye className="w-5 h-5 text-green-600" />
-            Vista Previa - {titulo}
-          </DialogTitle>
-        </DialogHeader>
-      <div className="prose max-w-none pt-2">
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-lg mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP
-          </h2>
-          <h3 className="text-xl font-semibold text-purple-700">
-            Oficina de Control Interno
-          </h3>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <p className="font-semibold text-gray-700">Código Auditoría:</p>
-            <p className="text-gray-900">{auditoria.codigo}</p>
-          </div>
-          <div>
-            <p className="font-semibold text-gray-700">Proceso Auditado:</p>
-            <p className="text-gray-900">{auditoria.nombre}</p>
-          </div>
-          <div>
-            <p className="font-semibold text-gray-700">Auditor Líder:</p>
-            <p className="text-gray-900">{typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : auditoria.auditorLider?.nombre || 'No asignado'}</p>
-          </div>
-          <div>
-            <p className="font-semibold text-gray-700">Fecha de Generación:</p>
-            <p className="text-gray-900">{new Date(informe.fecha).toLocaleDateString()}</p>
+      <DialogContent className="max-w-[95vw] w-[95vw] sm:max-w-[95%] h-[95vh] flex flex-col p-0 overflow-hidden bg-gray-100 border-0 shadow-2xl" size="xl">
+        <div className="flex-none bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
+          <DialogHeader className="p-0 border-0">
+            <DialogTitle className="text-xl font-bold flex items-center gap-2 text-gray-900 m-0">
+              <Eye className="w-6 h-6 text-blue-700" />
+              Vista Previa — {titulo}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-3">
+            <Button size="sm" className="bg-blue-700 hover:bg-blue-800 text-white font-medium" onClick={handleDescargarPDF} disabled={!pdfUrl}>
+              <Download className="w-4 h-4 mr-1.5" /> Descargar PDF
+            </Button>
+            <Button size="sm" variant="outline" className="border-gray-300 text-gray-700 hover:bg-gray-50 font-medium" onClick={onClose}>
+              Cerrar
+            </Button>
           </div>
         </div>
 
-        <hr className="my-6" />
-
-        {tipo === 'preliminar' && (
-          <>
-            <h4 className="text-lg font-bold text-gray-900 mb-3">Hallazgos Identificados</h4>
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              <div className="bg-red-50 p-3 rounded border border-red-200">
-                <div className="text-2xl font-bold text-red-700">{informe.graves}</div>
-                <div className="text-sm text-red-600">Graves</div>
-              </div>
-              <div className="bg-yellow-50 p-3 rounded border border-yellow-200">
-                <div className="text-2xl font-bold text-yellow-700">{informe.moderados}</div>
-                <div className="text-sm text-yellow-600">Moderados</div>
-              </div>
-              <div className="bg-blue-50 p-3 rounded border border-blue-200">
-                <div className="text-2xl font-bold text-blue-700">{informe.leves}</div>
-                <div className="text-sm text-blue-600">Leves</div>
-              </div>
+        <div className="flex-1 overflow-hidden relative">
+          {!pdfUrl ? (
+            <div className="flex flex-col items-center justify-center gap-4 h-full text-gray-400 bg-gray-50">
+              <div className="w-10 h-10 rounded-full border-4 border-gray-200 border-t-blue-600 animate-spin flex-shrink-0" />
+              <p className="font-medium text-sm">Generando documento interactivo...</p>
             </div>
-
-            <h4 className="text-lg font-bold text-gray-900 mb-3 mt-6">Observaciones Generales</h4>
-            <p className="text-gray-700 whitespace-pre-wrap">{informe.observaciones}</p>
-          </>
-        )}
-
-        {tipo === 'final' && (
-          <>
-            <h4 className="text-lg font-bold text-gray-900 mb-3">Resultado de Controversias</h4>
-            <p className="text-gray-700">
-              Total controversias resueltas: {informe.controversiasResueltas}<br />
-              Hallazgos ajustados: {informe.hallazgosAjustados}
-            </p>
-
-            <h4 className="text-lg font-bold text-gray-900 mb-3 mt-6">Plazo Plan de Mejoramiento</h4>
-            <p className="text-gray-700">
-              El área auditada cuenta con {informe.plazosPlanMejora} días calendario para presentar el Plan de Mejoramiento.
-            </p>
-
-            <h4 className="text-lg font-bold text-gray-900 mb-3 mt-6">Observaciones Finales</h4>
-            <p className="text-gray-700 whitespace-pre-wrap">{informe.observacionesFinales}</p>
-          </>
-        )}
-
-      </div>
-
-      <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-        <Button variant="outline" size="sm" onClick={onClose}>Cerrar</Button>
-        <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleDescargarPDF}>
-          <Download className="w-4 h-4 mr-2" />
-          Descargar PDF
-        </Button>
-      </div>
-    </DialogContent>
+          ) : (
+             <iframe 
+               src={pdfUrl + '#toolbar=0&navpanes=0'} 
+               title="Vista Previa PDF"
+               className="w-full h-full border-none shadow-inner bg-gray-500 block m-auto"
+            />
+          )}
+        </div>
+      </DialogContent>
     </Dialog>
   );
 };
 
 export default ComunicacionAuditoriaModule;
+

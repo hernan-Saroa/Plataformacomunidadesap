@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { Toaster } from 'sonner';
 import {
   Shield,
   LayoutDashboard,
@@ -201,15 +202,7 @@ function ControlInternoContent({
     });
   }, [esSuperUsuario, puedeAcceder, loadingPlanes, planesBackend.length]);
 
-  // Log de depuración de permisos
-  useEffect(() => {
-    console.log('🔐 [ControlInternoFull] Permisos:', {
-      esSuperUsuario,
-      menuItemsCount: menuItems.length,
-      menuIds: menuItems.map(m => m.id),
-      seccionActiva
-    });
-  }, [menuItems, esSuperUsuario, seccionActiva]);
+
 
   // Si la sección activa no está en los menús disponibles, navegar a la primera disponible
   useEffect(() => {
@@ -263,6 +256,8 @@ function ControlInternoContent({
   };
 
   return (
+    <>
+    <Toaster position="top-right" richColors />
     <ModuleLayout
       moduleName="CONTROL INTERNO DE GESTIÓN"
       moduleDescription="Sistema de Gestión"
@@ -287,6 +282,7 @@ function ControlInternoContent({
       {/* Contenido de la sección */}
       {renderSeccion()}
     </ModuleLayout>
+    </>
   );
 }
 

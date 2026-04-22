@@ -7,7 +7,7 @@ Esta guía documenta el despliegue en producción usando [deploy.prod.sh](/Users
 - Docker instalado
 - `docker compose` disponible
 - Archivo `.env.prod`
-- Acceso al servidor `http://172.16.202.169`
+- Acceso al servidor `https://comunidadesap.esap.edu.co`
 
 ## Comandos base
 
@@ -77,10 +77,31 @@ Resumen práctico:
 - `rebuild-all-mfe` publica backend + gateway + shell + todos los microfrontends
 - `rebuild-mfe <app>` publica sólo el shell, gateway o el microfrontend indicado
 
+## Producción con SSL
+
+En producción, Nginx del servidor debe ser el único proceso escuchando `80` y `443`. El gateway MFE de Docker se publica por defecto en `127.0.0.1:8080` desde [deploy.prod.sh](/Users/henrryrojas/Documents/SAROA/ESAP/Plataformacomunidadesap/deploy.prod.sh), y [nginx-ssl-proxy.conf](/Users/henrryrojas/Documents/SAROA/ESAP/Plataformacomunidadesap/nginx-ssl-proxy.conf) proxya el dominio hacia ese puerto.
+
+Variables opcionales para `.env.prod`:
+
+```bash
+FRONTEND_GATEWAY_BIND=127.0.0.1
+FRONTEND_GATEWAY_PORT=8080
+FRONTEND_VITE_API_URL=https://comunidadesap.esap.edu.co/services
+FRONTEND_VITE_ONLYOFFICE_URL=https://comunidadesap.esap.edu.co
+```
+
+Después de cambiar la configuración SSL del servidor:
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+./deploy.prod.sh rebuild-all-mfe
+```
+
 ## URLs útiles
 
-- Frontend: `http://172.16.202.169`
-- API Gateway: `http://172.16.202.169/services`
+- Frontend: `https://comunidadesap.esap.edu.co`
+- API Gateway: `https://comunidadesap.esap.edu.co/services`
 
 ## Referencia adicional
 

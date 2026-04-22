@@ -48,7 +48,7 @@ export function TopBar({
   hasBothSystemsAccess,
   userName = 'Héctor Admin',
   userEmail = 'hadmin@esap.edu.co',
-  userRole = 'Super Administrador',
+  userRole = '',
   userInitials = 'HA',
   userId = '1',
   currentRole = 'Administrativo',

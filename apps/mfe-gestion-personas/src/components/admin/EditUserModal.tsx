@@ -45,15 +45,8 @@ interface UserDataEdit {
   idSeccional?: string | number;
 }
 
-const roles = [
-  { id: 'super-admin', name: 'Super Administrador' },
-  { id: 'director', name: 'Director' },
-  { id: 'coordinator', name: 'Coordinador Académico' },
-  { id: 'teacher', name: 'Docente' },
-  { id: 'assistant', name: 'Auxiliar Administrativo' },
-  { id: 'student', name: 'Estudiante' },
-  { id: 'graduate', name: 'Graduado' },
-];
+// Los roles se cargan desde la BD vía el componente padre
+// Anteriormente había una lista hardcodeada aquí que fue eliminada
 
 const buildInitialEditData = (user: UserToEdit): UserDataEdit => {
   const currentDate = new Date().toISOString().split('T')[0];

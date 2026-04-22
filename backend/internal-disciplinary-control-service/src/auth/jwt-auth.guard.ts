@@ -12,6 +12,12 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/health/i,
     /^\/docs/i,
     /^\/swagger/i,
+    // Compartir expediente - público
+    /^\/compartir-expediente\/verificar/i,
+    /^\/compartir-expediente\/publico\/.+/i,
+    /^\/compartir-expediente\/documentos\/.+/i,
+    /^\/compartir-expediente\/vista\/.+/i,
+    /^\/compartir-expediente\/documento\/.+\/download/i,
   ];
 
   constructor(private readonly reflector: Reflector) {

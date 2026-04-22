@@ -25,8 +25,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { HeaderModulOCIG } from './HeaderModuloCIG';
+import { ModuleHeaderBar } from './ModuleHeaderBar';
 import { controlInternoService, ListaChequeo as ListaChequeoService } from '../../../services/api/controlInternoService';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
+import { useConfiguracionKanban } from './services/useConfiguracionKanban';
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN DE URLs PARA DOCUMENTOS
@@ -93,7 +95,12 @@ interface DocumentoBiblioteca {
   nombre: string;
   descripcion: string;
   categoria: CategoriaDocumento;
-  etapaKanban?: EtapaKanban; // Etapa del Kanban asociada
+  /** ✅ Nombre dinámico de la etapa (puede ser cualquier nombre personalizado) */
+  etapaKanban?: string;
+  /** ID de etapa_kanban - estable aunque cambie el nombre */
+  etapaKanbanId?: string;
+  /** Nombre de la etapa al momento de guardar (snapshot) */
+  etapaNombreKanban?: string;
   auditoriaId?: string | null; // Auditoría asociada (opcional)
   archivoUrl: string;
   urlPreview: string;  // URL del endpoint /documentos/{id}/preview
@@ -134,7 +141,12 @@ interface ListaChequeo {
   id: string;
   nombre: string;
   descripcion: string;
-  etapaKanban: EtapaKanban;
+  /** ✅ Nombre dinámico de la etapa (puede ser cualquier nombre personalizado) */
+  etapaKanban: string;
+  /** ✅ ID de la etapa (UUID) - Estable aunque cambie el nombre */
+  etapaKanbanId?: string;
+  /** ✅ Nombre de la etapa al momento de guardar (snapshot) */
+  etapaNombreKanban?: string;
   items: ItemChequeo[];
   documentosAdjuntos: DocumentoAdjunto[]; // Plantillas necesarias (opcional)
   creadoPor: string;
@@ -151,16 +163,23 @@ interface ListaChequeo {
     comunicacion: boolean; // Impacta fase de Comunicación
     seguimiento: boolean; // Impacta fase de Seguimiento
   };
+  // ✅ COMPATIBILIDAD BACKEND: Campos booleanos para fases
+  fasePlaneacion?: boolean;
+  faseEjecucion?: boolean;
+  faseComunicacion?: boolean;
+  faseSeguimiento?: boolean;
   // ✅ CAMPOS PARA GESTIÓN DOCUMENTAL (LEGACY - mantener compatibilidad)
   etapaProceso?: string; // Etapa del proceso donde se usa esta lista
   auditoriaAsignada?: string; // Auditoría específica asignada
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// CONSTANTES - ETAPAS DEL KANBAN DE AUDITORÍAS OCID
+// CONSTANTES - ETAPAS DEL KANBAN DE AUDITORÍAS OCID (DEPRECATED - usar hook)
 // ════════════════════════════════════════════════════════════════════════════
 
-const ETAPAS_KANBAN_AUDITORIA = [
+// ✅ NOTA: Esta constante se mantiene como fallback, pero se recomienda usar
+// las etapas cargadas dinámicamente desde el hook useConfiguracionKanban
+const ETAPAS_KANBAN_AUDITORIA_FALLBACK = [
   { value: 'Planeación', label: 'Planeación' },
   { value: 'Ejecución', label: 'Ejecución' },
   { value: 'Comunicación', label: 'Comunicación' }
@@ -228,22 +247,10 @@ const mapApiDocumentoToBiblioteca = (doc: any): DocumentoBiblioteca => {
     ? formatFileSize(doc.tamanioBytes)
     : doc?.tamano || doc?.fileSizeFormatted || 'N/A';
   
-  // Mapear etapa del backend a etapaKanban del frontend
-  const etapaToKanban: Record<string, EtapaKanban> = {
-    'planeacion': 'PLANEACION',
-    'planificacion': 'PLANEACION',
-    'PLANEACION': 'PLANEACION',
-    'ejecucion': 'EJECUCION',
-    'EJECUCION': 'EJECUCION',
-    'comunicacion': 'COMUNICACION',
-    'comunicacion_resultados': 'COMUNICACION',
-    'COMUNICACION': 'COMUNICACION',
-    'seguimiento': 'SEGUIMIENTO',
-    'SEGUIMIENTO': 'SEGUIMIENTO',
-    'cierre': 'CIERRE',
-    'CIERRE': 'CIERRE',
-  };
-  const etapaKanban = doc?.etapa ? etapaToKanban[doc.etapa] : undefined;
+  // ✅ NO MAPEAR NADA - Las etapas son dinámicas y vienen del backend
+  // Solo tomar los valores que vienen del backend directamente
+  const etapaKanban = doc?.etapaNombreKanban || doc?.etapa_kanban_nombre || undefined;
+  const etapaNombreKanban = doc?.etapaNombreKanban || doc?.etapa_kanban_nombre || undefined;
   
   return {
     id: docId,
@@ -251,6 +258,8 @@ const mapApiDocumentoToBiblioteca = (doc: any): DocumentoBiblioteca => {
     descripcion,
     categoria: mapApiTipoToCategoria(tipo),
     etapaKanban,
+    etapaKanbanId: doc?.etapaKanbanId || doc?.etapa_kanban_id || undefined,
+    etapaNombreKanban,
     auditoriaId: doc?.auditoriaId ?? doc?.auditoria_id ?? doc?.visibleAuditoriaId ?? doc?.visible_auditoria_id ?? null,
     archivoUrl: doc?.archivoUrl || doc?.url || doc?.fileUrl || doc?.rutaArchivo || '#',
     urlPreview,
@@ -270,24 +279,22 @@ const mapApiListaToUI = (lista: any): ListaChequeo => {
     ? lista.items.map((it: any) => ({
         id: it?.id || `item-${Date.now()}`,
         texto: it?.texto || it?.pregunta || '',
-        completado: it?.completado || false
+        completado: it?.completado || false,
+        responsable: it?.responsable || undefined,
+        fechaCompletado: it?.fechaCompletado || undefined,
+        observaciones: it?.observaciones || undefined,
+        plantillaAsociada: (it?.documentoBibliotecaId || it?.plantillaAsociadaId)
+          ? {
+              documentoBibliotecaId: it.documentoBibliotecaId || it.plantillaAsociadaId,
+              nombreDocumento: it.documentoNombre || it.nombreDocumento || it.plantillaNombre || ''
+            }
+          : undefined
       }))
     : [];
   
-  // Mapear tipo del backend a etapaKanban del frontend
-  const tipoToEtapa: Record<string, EtapaKanban> = {
-    'planeacion': 'PLANEACION',
-    'PLANEACION': 'PLANEACION',
-    'ejecucion': 'EJECUCION',
-    'EJECUCION': 'EJECUCION',
-    'comunicacion': 'COMUNICACION', // ✅ Comunicación tiene su propia etapa
-    'COMUNICACION': 'COMUNICACION',
-    'seguimiento': 'SEGUIMIENTO',
-    'SEGUIMIENTO': 'SEGUIMIENTO',
-    'cierre': 'CIERRE',
-    'CIERRE': 'CIERRE',
-  };
-  const etapa = tipoToEtapa[lista?.tipo] || tipoToEtapa[lista?.etapaKanban] || 'PLANEACION';
+  // ✅ NO MAPEAR - Usar directamente el nombre de la etapa que viene del backend
+  // PRIORIDAD: etapaNombreKanban (nombre real guardado) > tipo (para compatibilidad legacy)
+  const etapa = lista?.etapaNombreKanban || lista?.tipo || 'Sin etapa';
 
   // ✅ Reconstruir fasesImpactadas desde los campos del backend
   // Si el backend tiene los campos específicos de fase, usarlos; si no, inferir del tipo
@@ -313,7 +320,15 @@ const mapApiListaToUI = (lista: any): ListaChequeo => {
     activa: lista?.activa !== false,
     auditoriaId: lista?.auditoriaId,
     auditoriaCodigoNombre: lista?.nombreAuditoria || lista?.auditoriaCodigoNombre,
-    fasesImpactadas
+    fasesImpactadas,
+    // ✅ PRESERVAR ID y nombre de etapa kanban del backend
+    etapaKanbanId: lista?.etapaKanbanId,
+    etapaNombreKanban: lista?.etapaNombreKanban,
+    // ✅ PRESERVAR campos booleanos de fases (para compatibilidad backend)
+    fasePlaneacion: lista?.fasePlaneacion,
+    faseEjecucion: lista?.faseEjecucion,
+    faseComunicacion: lista?.faseComunicacion,
+    faseSeguimiento: lista?.faseSeguimiento,
   };
 };
 
@@ -348,6 +363,16 @@ export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tab
   const [auditorias, setAuditorias] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // ✅ CARGAR ETAPAS DINÁMICAS DESDE CONFIGURACIÓN
+  const { etapas: etapasKanban, loading: loadingEtapas } = useConfiguracionKanban();
+  
+  // ✅ Todas las etapas disponibles para listas de chequeo
+  // value = ID de la etapa (UUID, estable aunque cambie el nombre)
+  const etapasParaListas = etapasKanban.map(etapa => ({
+    value: etapa.id,       // ID estable
+    label: etapa.nombre,  // Nombre para mostrar
+  }));
 
   useEffect(() => {
     let cancelled = false;
@@ -398,31 +423,43 @@ export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tab
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <HeaderModulOCIG 
-        titulo="Biblioteca" 
-        subtitulo="Control Interno de Gestión" 
+      <ModuleHeaderBar
+        title="Biblioteca"
+        subtitle="Plantillas, requisitos y documentos oficiales"
+        icon={<FileText className="w-5 h-5 text-white" />}
+        color="#6366F1"
       />
 
-      <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
-        <div className="w-full px-8">
-          <div className="flex gap-1">
-            <TabButton
-              active={tabActiva === 'BIBLIOTECA'}
+      <div className="p-3">
+        {/* Tabs - en el área de contenido */}
+        <div className="mb-3">
+          <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
+            <button
               onClick={() => setTabActiva('BIBLIOTECA')}
-              icon={<FolderOpen className="w-4 h-4" />}
-              label="Biblioteca de Plantillas"
-              badge={documentosBiblioteca.length}
-            />
-            <TabButton
-              active={tabActiva === 'LISTAS_CHEQUEO'}
+              className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
+                tabActiva === 'BIBLIOTECA' ? 'bg-[#1e5da8] text-white shadow-sm' : 'text-gray-600 hover:bg-white'
+              }`}
+            >
+              <FolderOpen className="w-4 h-4" />
+              Biblioteca de Plantillas
+              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                tabActiva === 'BIBLIOTECA' ? 'bg-white/20' : 'bg-gray-200'
+              }`}>{documentosBiblioteca.length}</span>
+            </button>
+            <button
               onClick={() => setTabActiva('LISTAS_CHEQUEO')}
-              icon={<CheckSquare className="w-4 h-4" />}
-              label="Listas de Chequeo"
-              badge={listasBackend.length}
-            />
+              className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
+                tabActiva === 'LISTAS_CHEQUEO' ? 'bg-[#1e5da8] text-white shadow-sm' : 'text-gray-600 hover:bg-white'
+              }`}
+            >
+              <CheckSquare className="w-4 h-4" />
+              Listas de Chequeo
+              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                tabActiva === 'LISTAS_CHEQUEO' ? 'bg-white/20' : 'bg-gray-200'
+              }`}>{listasBackend.length}</span>
+            </button>
           </div>
         </div>
-      </div>
 
       <AnimatePresence mode="wait">
         <motion.div
@@ -439,11 +476,13 @@ export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tab
               auditorias={auditorias}
               isLoading={isLoading}
               loadError={loadError}
+              etapasDisponibles={etapasParaListas}
             />
           )}
           {tabActiva === 'LISTAS_CHEQUEO' && (
             <GestionListasChequeo 
               documentosBiblioteca={documentosBiblioteca}
+              etapasDisponibles={etapasParaListas}
               auditorias={auditorias}
               listasIniciales={listasBackend}
               isLoading={isLoading}
@@ -453,6 +492,7 @@ export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tab
           )}
         </motion.div>
       </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -467,6 +507,8 @@ interface BibliotecaDocumentosProps {
   auditorias?: any[];
   isLoading: boolean;
   loadError: string | null;
+  /** Etapas dinámicas desde configuración Kanban */
+  etapasDisponibles?: { value: string; label: string }[];
 }
 
 const ETAPAS_ORDEN: EtapaKanban[] = ['PLANEACION', 'EJECUCION', 'COMUNICACION', 'SEGUIMIENTO', 'CIERRE'];
@@ -478,7 +520,7 @@ const ETAPA_LABEL: Record<string, string> = {
   CIERRE: 'Cierre',
 };
 
-function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLoading, loadError }: BibliotecaDocumentosProps) {
+function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLoading, loadError, etapasDisponibles }: BibliotecaDocumentosProps) {
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState<string>('TODOS');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODOS');
@@ -488,20 +530,50 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
   const [documentoAEditar, setDocumentoAEditar] = useState<DocumentoBiblioteca | null>(null);
   const sinDatosBackend = documentos.length === 0 && busqueda.trim() === '' && filtroCategoria === 'TODOS' && filtroEtapa === 'TODOS';
 
+  // ✅ ETAPAS DINÁMICAS: No usar mapeos hardcodeados
+  const etapasActivas: { value: string; label: string }[] = (etapasDisponibles && etapasDisponibles.length > 0) ? etapasDisponibles : [...ETAPAS_KANBAN_AUDITORIA_FALLBACK];
+
   const documentosFiltrados = documentos.filter(doc => {
     const cumpleBusqueda = doc.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
                           doc.descripcion.toLowerCase().includes(busqueda.toLowerCase());
     const cumpleCategoria = filtroCategoria === 'TODOS' || doc.categoria === filtroCategoria;
-    const cumpleEtapa = filtroEtapa === 'TODOS' || doc.etapaKanban === filtroEtapa;
+    
+    // ✅ FILTRAR POR UUID DE ETAPA O POR NOMBRE (para compatibilidad)
+    const cumpleEtapa = filtroEtapa === 'TODOS' ||
+      doc.etapaKanbanId === filtroEtapa ||
+      doc.etapaNombreKanban === etapasActivas.find(e => e.value === filtroEtapa)?.label ||
+      doc.etapaKanban === etapasActivas.find(e => e.value === filtroEtapa)?.label;
+    
     return cumpleBusqueda && cumpleCategoria && cumpleEtapa;
   });
 
-  const documentosPorEtapa = ETAPAS_ORDEN.reduce((acc, etapa) => {
-    const docs = documentosFiltrados.filter(d => d.etapaKanban === etapa);
-    if (docs.length > 0) acc.push({ etapa, label: ETAPA_LABEL[etapa], docs });
+  // ✅ AGRUPAR POR ETAPAS DINÁMICAS USANDO UUID
+  const documentosPorEtapa = etapasActivas.reduce((acc, etapa) => {
+    const etapaId = etapa.value; // UUID
+    const etapaLabel = etapa.label; // Nombre actual
+    
+    // Buscar documentos que pertenecen a esta etapa (por ID o por nombre)
+    const docs = documentosFiltrados.filter(d =>
+      d.etapaKanbanId === etapaId ||
+      d.etapaNombreKanban === etapaLabel ||
+      d.etapaKanban === etapaLabel
+    );
+    
+    if (docs.length > 0) {
+      acc.push({ etapa: etapaId, label: etapaLabel, docs });
+    }
     return acc;
   }, [] as { etapa: string; label: string; docs: DocumentoBiblioteca[] }[]);
-  const docsSinEtapa = documentosFiltrados.filter(d => !d.etapaKanban || !ETAPAS_ORDEN.includes(d.etapaKanban as EtapaKanban));
+  
+  // ✅ DOCUMENTOS SIN ETAPA O CON ETAPA NO RECONOCIDA
+  const etapasIdsSet = new Set(etapasActivas.map(e => e.value));
+  const etapasNombresSet = new Set(etapasActivas.map(e => e.label));
+  const docsSinEtapa = documentosFiltrados.filter(d => 
+    !d.etapaKanbanId || 
+    (!etapasIdsSet.has(d.etapaKanbanId) && 
+     !etapasNombresSet.has(d.etapaNombreKanban || '') &&
+     !etapasNombresSet.has(d.etapaKanban || ''))
+  );
   if (docsSinEtapa.length > 0) documentosPorEtapa.push({ etapa: 'OTROS', label: 'Otros', docs: docsSinEtapa });
 
   // ═══════════════════════════════════════════════════════════════════
@@ -573,22 +645,37 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
     nombre: string;
     descripcion: string;
     categoria?: CategoriaDocumento;
-    etapaKanban?: EtapaKanban;
+    etapaKanban?: string;
+    etapaKanbanId?: string;
+    etapaNombreKanban?: string;
     auditoriaId?: string | null;
   }) => {
     if (!documentoAEditar) return;
     try {
-      const updatePayload: Record<string, any> = { nombre: data.nombre, descripcion: data.descripcion };
+      const updatePayload: Record<string, any> = { 
+        nombre: data.nombre, 
+        descripcion: data.descripcion 
+      };
+      
       if (data.categoria) updatePayload.tipoDocumento = mapCategoriaToApiTipo(data.categoria);
-      if (data.etapaKanban) {
-        const etapaMap: Record<string, string> = {
-          'PLANEACION': 'planeacion', 'EJECUCION': 'ejecucion', 'COMUNICACION': 'comunicacion',
-          'SEGUIMIENTO': 'seguimiento', 'CIERRE': 'cierre',
-        };
-        updatePayload.etapa = etapaMap[data.etapaKanban];
+      
+      // ✅ ETAPA LEGACY: Ignorar (el backend moderno usa etapaKanbanId)
+      updatePayload.etapa = undefined;
+      
+      // ✅ ETAPA DINÁMICA: Enviar UUID y snapshot del nombre
+      if (data.etapaKanbanId) {
+        updatePayload.etapaKanbanId = data.etapaKanbanId;
+        updatePayload.etapaNombreKanban = data.etapaNombreKanban || data.etapaKanban;
       }
+      
+      console.log('🔍 [DEBUG EDIT DOC] ===== EDITAR DOCUMENTO =====');
+      console.log('🔍 [DEBUG EDIT DOC] Etapa:', data.etapaNombreKanban || data.etapaKanban);
+      console.log('🔍 [DEBUG EDIT DOC] UUID etapa:', data.etapaKanbanId);
+      console.log('🔍 [DEBUG EDIT DOC] Payload:', updatePayload);
+      
       // Plantillas: visibleAuditoriaId indica para qué auditoría se muestra (null=todas)
       if (data.auditoriaId !== undefined) updatePayload.visibleAuditoriaId = data.auditoriaId || null;
+      
       await controlInternoService.updateDocumento(documentoAEditar.id, updatePayload);
       setDocumentos(prev => prev.map(d => d.id === documentoAEditar.id ? { ...d, ...data } : d));
       toast.success('✅ Documento actualizado', { description: `"${data.nombre}" actualizado correctamente`, duration: 4000 });
@@ -599,18 +686,33 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
     }
   };
 
-  const handleSubirDocumento = async (nuevoDocumento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File; auditoriaId?: string }) => {
+  const handleSubirDocumento = async (nuevoDocumento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File; auditoriaId?: string; etapaKanbanId?: string; etapaNombreKanban?: string }) => {
     try {
-      const etapaKanbanToBackend: Record<string, string> = {
-        'PLANEACION': 'planeacion', 'EJECUCION': 'ejecucion', 'COMUNICACION': 'comunicacion', 'SEGUIMIENTO': 'seguimiento', 'CIERRE': 'cierre',
-      };
-      const etapaBackend = nuevoDocumento.etapaKanban ? etapaKanbanToBackend[nuevoDocumento.etapaKanban] : undefined;
+      // ✅ ETAPA LEGACY: Enviar undefined (el backend moderno usa etapaKanbanId)
+      // No usar mapeo hardcodeado porque no funciona con etapas personalizadas
+      const etapaBackend = undefined;
+      
+      console.log('🔍 [DEBUG UPLOAD] ===== SUBIR DOCUMENTO =====');
+      console.log('🔍 [DEBUG UPLOAD] Documento recibido del modal:', nuevoDocumento);
+      console.log('🔍 [DEBUG UPLOAD] Etapa:', nuevoDocumento.etapaNombreKanban || nuevoDocumento.etapaKanban);
+      console.log('🔍 [DEBUG UPLOAD] UUID etapa:', nuevoDocumento.etapaKanbanId);
+      console.log('🔍 [DEBUG UPLOAD] Payload completo:', {
+        nombre: nuevoDocumento.nombre,
+        etapa: etapaBackend,
+        etapaKanbanId: nuevoDocumento.etapaKanbanId,
+        etapaNombreKanban: nuevoDocumento.etapaNombreKanban,
+        tipoDocumento: mapCategoriaToApiTipo(nuevoDocumento.categoria),
+        subidoPor: nuevoDocumento.subidoPor
+      });
+      
       // Plantillas: auditoriaId=null, visibleAuditoriaId=para qué auditoría se muestra (null=todas)
       const creado = await controlInternoService.createDocumento(nuevoDocumento.file, {
         nombre: nuevoDocumento.nombre,
         descripcion: nuevoDocumento.descripcion,
         tipoDocumento: mapCategoriaToApiTipo(nuevoDocumento.categoria),
-        etapa: etapaBackend,
+        etapa: etapaBackend, // ⚠️ LEGACY - El backend DEBE ignorar esto
+        etapaKanbanId: nuevoDocumento.etapaKanbanId, // ✅ REFERENCIA PRINCIPAL (UUID)
+        etapaNombreKanban: nuevoDocumento.etapaNombreKanban, // ✅ SNAPSHOT del nombre
         subidoPor: nuevoDocumento.subidoPor,
         ...(nuevoDocumento.auditoriaId && { visibleAuditoriaId: nuevoDocumento.auditoriaId }),
       });
@@ -625,77 +727,75 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-6 sm:mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex-1">
-            <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mb-2">
-              Biblioteca de Plantillas
-            </h1>
-            <p className="text-sm sm:text-base text-gray-600">
-              Repositorio centralizado de plantillas, oficios y documentos oficiales para auditoría
-            </p>
+    <div className="p-3 w-full">
+      {/* Header - Alineado con Auditorías OCI */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-3">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h2 className="text-sm font-bold text-gray-900">Biblioteca de Plantillas</h2>
+            <p className="text-[11px] text-gray-500">Repositorio centralizado de plantillas, oficios y documentos oficiales para auditoría</p>
           </div>
           <button
             onClick={() => setMostrarModalSubir(true)}
-            className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-bold flex items-center justify-center gap-2 hover:shadow-lg transition-all text-sm sm:text-base"
+            className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-all flex items-center gap-2 text-sm font-semibold"
           >
-            <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
+            <Upload className="w-4 h-4" />
             Subir Documento
           </button>
         </div>
-      </div>
 
-      {/* Estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
-        <div className="bg-white rounded-xl border-2 border-blue-200 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-blue-700">Total Documentos</span>
-            <FileText className="w-4 h-4 text-blue-600" />
+        {/* Estadísticas - Patrón Kanban referencia */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+              <FileText className="w-3.5 h-3.5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-lg font-black text-gray-900 leading-none">{documentos.length}</p>
+              <p className="text-[10px] text-gray-500">Total Documentos</p>
+            </div>
           </div>
-          <p className="text-2xl font-black text-blue-700">{documentos.length}</p>
-        </div>
-        <div className="bg-white rounded-xl border-2 border-green-200 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-green-700">Plantillas</span>
-            <File className="w-4 h-4 text-green-600" />
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+              <File className="w-3.5 h-3.5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-lg font-black text-green-700 leading-none">{documentos.filter(d => d.categoria === 'PLANTILLA').length}</p>
+              <p className="text-[10px] text-gray-500">Plantillas</p>
+            </div>
           </div>
-          <p className="text-2xl font-black text-green-700">
-            {documentos.filter(d => d.categoria === 'PLANTILLA').length}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl border-2 border-purple-200 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-purple-700">Oficios</span>
-            <FileText className="w-4 h-4 text-purple-600" />
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
+              <FileText className="w-3.5 h-3.5 text-purple-600" />
+            </div>
+            <div>
+              <p className="text-lg font-black text-purple-700 leading-none">{documentos.filter(d => d.categoria === 'OFICIO').length}</p>
+              <p className="text-[10px] text-gray-500">Oficios</p>
+            </div>
           </div>
-          <p className="text-2xl font-black text-purple-700">
-            {documentos.filter(d => d.categoria === 'OFICIO').length}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl border-2 border-yellow-200 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-yellow-700">Formatos</span>
-            <CheckSquare className="w-4 h-4 text-yellow-600" />
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+              <CheckSquare className="w-3.5 h-3.5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-lg font-black text-amber-700 leading-none">{documentos.filter(d => d.categoria === 'FORMATO').length}</p>
+              <p className="text-[10px] text-gray-500">Formatos</p>
+            </div>
           </div>
-          <p className="text-2xl font-black text-yellow-700">
-            {documentos.filter(d => d.categoria === 'FORMATO').length}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl border-2 border-red-200 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-red-700">Descargas Totales</span>
-            <Download className="w-4 h-4 text-red-600" />
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
+              <Download className="w-3.5 h-3.5 text-red-600" />
+            </div>
+            <div>
+              <p className="text-lg font-black text-red-700 leading-none">{documentos.reduce((sum, d) => sum + d.descargas, 0)}</p>
+              <p className="text-[10px] text-gray-500">Descargas Totales</p>
+            </div>
           </div>
-          <p className="text-2xl font-black text-red-700">
-            {documentos.reduce((sum, d) => sum + d.descargas, 0)}
-          </p>
         </div>
       </div>
 
       {/* Filtros y Búsqueda */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-6 mb-6">
+      <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex-1 min-w-[200px] relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -704,25 +804,25 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
               placeholder="Buscar plantilla..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-sm"
             />
           </div>
           <select
             value={filtroEtapa}
             onChange={(e) => setFiltroEtapa(e.target.value)}
-            className="px-4 py-3 border-2 border-gray-300 rounded-lg font-semibold focus:border-blue-500 focus:outline-none"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:border-blue-500 focus:outline-none"
           >
             <option value="TODOS">Todas las etapas</option>
-            <option value="PLANEACION">Planeación</option>
-            <option value="EJECUCION">Ejecución</option>
-            <option value="COMUNICACION">Comunicación</option>
-            <option value="SEGUIMIENTO">Seguimiento</option>
-            <option value="CIERRE">Cierre</option>
+            {etapasActivas.map(etapa => (
+              <option key={etapa.value} value={etapa.value}>
+                {etapa.label}
+              </option>
+            ))}
           </select>
           <select
             value={filtroCategoria}
             onChange={(e) => setFiltroCategoria(e.target.value)}
-            className="px-4 py-3 border-2 border-gray-300 rounded-lg font-semibold focus:border-blue-500 focus:outline-none"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:border-blue-500 focus:outline-none"
           >
             <option value="TODOS">Todas las categorías</option>
             <option value="OFICIO">Oficios</option>
@@ -741,8 +841,8 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
 
       {/* Lista de Documentos agrupada por etapa */}
       <div className="bg-white rounded-xl border-2 border-gray-200 overflow-hidden">
-        <div className="p-6 border-b-2 border-gray-200 bg-gray-50">
-          <h2 className="text-xl font-black text-gray-900">
+        <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
+          <h2 className="text-sm font-bold text-gray-900">
             Documentos Disponibles ({documentosFiltrados.length})
           </h2>
         </div>
@@ -816,6 +916,7 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
           onEditar={documentoAEditar ? confirmarEdicion : undefined}
           documentoEditar={documentoAEditar ?? undefined}
           auditorias={auditorias}
+          etapasDisponibles={etapasActivas}
         />
       )}
     </div>
@@ -865,14 +966,8 @@ function TarjetaDocumentoBiblioteca({
               {documento.categoria}
             </span>
             {documento.etapaKanban && (
-              <span className={`px-3 py-1 rounded-lg font-bold ${
-                documento.etapaKanban === 'PLANEACION' ? 'bg-indigo-100 text-indigo-700' :
-                documento.etapaKanban === 'EJECUCION' ? 'bg-amber-100 text-amber-700' :
-                'bg-emerald-100 text-emerald-700'
-              }`}>
-                {documento.etapaKanban === 'PLANEACION' ? '📋 Planeación' :
-                 documento.etapaKanban === 'EJECUCION' ? '⚙️ Ejecución' :
-                 '📢 Comunicación'}
+              <span className="px-3 py-1 rounded-lg font-bold bg-purple-100 text-purple-700">
+                📎 {documento.etapaNombreKanban || documento.etapaKanban}
               </span>
             )}
             <span className="text-gray-600"><strong>Tamaño:</strong> {documento.tamano}</span>
@@ -936,14 +1031,8 @@ function TarjetaDocumento({ documento, onEliminar, onDescargar, onVistaPrevia, o
               {documento.categoria}
             </span>
             {documento.etapaKanban && (
-              <span className={`px-3 py-1 rounded-lg font-bold ${
-                documento.etapaKanban === 'PLANEACION' ? 'bg-indigo-100 text-indigo-700' :
-                documento.etapaKanban === 'EJECUCION' ? 'bg-amber-100 text-amber-700' :
-                'bg-emerald-100 text-emerald-700'
-              }`}>
-                {documento.etapaKanban === 'PLANEACION' ? '📋 Planeación' :
-                 documento.etapaKanban === 'EJECUCION' ? '⚙️ Ejecución' :
-                 '📢 Comunicación'}
+              <span className="px-3 py-1 rounded-lg font-bold bg-purple-100 text-purple-700">
+                📎 {documento.etapaNombreKanban || documento.etapaKanban}
               </span>
             )}
             <span className="text-gray-600">
@@ -1014,9 +1103,11 @@ interface GestionListasChequeoProps {
   loadError: string | null;
   /** Al filtrar desde expediente/Comunicación, mostrar solo listas de esta auditoría */
   auditoriaIdFoco?: string;
+  /** ✅ Etapas dinámicas desde configuración de Kanban */
+  etapasDisponibles?: { value: string; label: string }[];
 }
 
-function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciales, isLoading, loadError, auditoriaIdFoco }: GestionListasChequeoProps) {
+function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciales, isLoading, loadError, auditoriaIdFoco, etapasDisponibles }: GestionListasChequeoProps) {
   const [listas, setListas] = useState<ListaChequeo[]>(listasIniciales || []);
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODOS');
   const [mostrarModalCrear, setMostrarModalCrear] = useState(false);
@@ -1034,24 +1125,26 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
 
   // ✅ AUTO-FILTRAR POR FASE ACTUAL DE LA AUDITORÍA
   useEffect(() => {
-    if (auditoriaFoco) {
-      // Mapear el estado de la auditoría a una etapa Kanban
-      const estadoToEtapa: Record<string, string> = {
-        'Planeación': 'PLANEACION',
-        'PLANEACION': 'PLANEACION',
-        'Ejecución': 'EJECUCION',
-        'EJECUCION': 'EJECUCION',
-        'Comunicación': 'COMUNICACION',
-        'COMUNICACION': 'COMUNICACION',
-        'Seguimiento': 'SEGUIMIENTO',
-        'SEGUIMIENTO': 'SEGUIMIENTO',
-      };
+    if (auditoriaFoco && etapasDisponibles) {
+      // ✅ BUSCAR LA ETAPA POR NOMBRE DINÁMICO (sin mapeos hardcodeados)
+      const estadoAuditoria = auditoriaFoco.estado || '';
+      
+      // Buscar en etapas configuradas por nombre (case-insensitive)
+      const etapaEncontrada = etapasDisponibles.find(e => 
+        e.label.toLowerCase() === estadoAuditoria.toLowerCase() ||
+        e.label === estadoAuditoria
+      );
 
-      const faseActual = estadoToEtapa[auditoriaFoco.estado] || 'TODOS';
-      setFiltroEtapa(faseActual);
-      console.log('🔍 [AUTO-FILTRO] Auditoría:', auditoriaFoco.codigo, '| Estado:', auditoriaFoco.estado, '| Filtro aplicado:', faseActual);
+      if (etapaEncontrada) {
+        setFiltroEtapa(etapaEncontrada.value); // ✅ Usar UUID de la etapa
+        console.log('🔍 [AUTO-FILTRO] Auditoría:', auditoriaFoco.codigo, '| Estado:', auditoriaFoco.estado, '| Etapa UUID:', etapaEncontrada.value, '| Filtro aplicado:', etapaEncontrada.label);
+      } else {
+        // Si no se encuentra la etapa, mostrar todas
+        setFiltroEtapa('TODOS');
+        console.warn('⚠️ [AUTO-FILTRO] No se encontró etapa para estado:', auditoriaFoco.estado, '| Mostrando todas');
+      }
     }
-  }, [auditoriaFoco]);
+  }, [auditoriaFoco, etapasDisponibles]);
 
   // ✅ ELIMINAR LISTA DE CHEQUEO (Backend conectado)
   const handleEliminarLista = async () => {
@@ -1078,37 +1171,57 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
   const handleGuardarEdicion = async (listaEditada: Partial<ListaChequeo>) => {
     if (!listaAEditar) return;
     try {
-      const tipo: ListaChequeoService['tipo'] =
-        (listaEditada.etapaKanban === 'EJECUCION'
-          ? 'ejecucion'
-          : listaEditada.etapaKanban === 'COMUNICACION'
-          ? 'comunicacion'
-          : listaEditada.etapaKanban === 'SEGUIMIENTO'
-          ? 'seguimiento'
-          : 'planeacion') as ListaChequeoService['tipo'];
+      // ✅ TIPO LEGACY: Mantener 'planeacion' por defecto (el backend moderno usa etapaKanbanId)
+      const tipo: ListaChequeoService['tipo'] = 'planeacion';
 
       // ✅ VALIDAR Y SANITIZAR auditoriaId (debe ser UUID válido o undefined)
       const auditoriaIdSanitized = listaEditada.auditoriaId && typeof listaEditada.auditoriaId === 'string'
         ? listaEditada.auditoriaId
         : undefined;
 
-      // ✅ FASES DINÁMICAS: Asignar según la etapa seleccionada
+      // ✅ FASES LEGACY: Usar directamente los campos booleanos (deprecated - el backend usa etapaKanbanId)
       const fases = {
-        fasePlaneacion: listaEditada.etapaKanban === 'PLANEACION',
-        faseEjecucion: listaEditada.etapaKanban === 'EJECUCION',
-        faseComunicacion: listaEditada.etapaKanban === 'COMUNICACION',
-        faseSeguimiento: listaEditada.etapaKanban === 'SEGUIMIENTO'
+        fasePlaneacion: listaEditada.fasePlaneacion || false,
+        faseEjecucion: listaEditada.faseEjecucion || false,
+        faseComunicacion: listaEditada.faseComunicacion || false,
+        faseSeguimiento: listaEditada.faseSeguimiento || false,
       };
+
+      console.log('🔍 [DEBUG EDIT] ===== EDITAR LISTA CHEQUEO =====');
+      console.log('🔍 [DEBUG EDIT] Etapa seleccionada:', listaEditada.etapaNombreKanban || listaEditada.etapaKanban);
+      console.log('🔍 [DEBUG EDIT] UUID etapa:', listaEditada.etapaKanbanId);
+      console.log('🔍 [DEBUG EDIT] Payload:', {
+        nombre: listaEditada.nombre,
+        tipo,
+        etapaKanbanId: listaEditada.etapaKanbanId,
+        etapaNombreKanban: listaEditada.etapaNombreKanban || listaEditada.etapaKanban,
+        ...fases
+      });
 
       const actualizada = await controlInternoService.updateListaChequeo(listaAEditar.id, {
         nombre: listaEditada.nombre,
         descripcion: listaEditada.descripcion,
         tipo,
         activa: listaEditada.activa ?? true,
+        // ✅ ITEMS ACTUALIZADOS
+        items: (listaEditada.items || []).map((item, idx) => ({
+          texto: String(item.texto || ''),
+          categoria: 'General',
+          obligatorio: true,
+          orden: Number(idx) + 1,
+          ...(item.plantillaAsociada ? {
+            documentoBibliotecaId: item.plantillaAsociada.documentoBibliotecaId,
+            documentoNombre: item.plantillaAsociada.nombreDocumento
+          } : {})
+        })),
         // ✅ VINCULACIÓN CON AUDITORÍA
         auditoriaId: auditoriaIdSanitized,
         nombreAuditoria: listaEditada.auditoriaCodigoNombre || undefined,
-        // ✅ FASES DINÁMICAS según la etapa seleccionada
+        // ✅ ETAPA KANBAN DINÁMICA (UUID estable) - ESTO ES LO IMPORTANTE
+        etapaKanbanId: listaEditada.etapaKanbanId,
+        // ✅ NOMBRE DE ETAPA (snapshot para display)
+        etapaNombreKanban: listaEditada.etapaNombreKanban || listaEditada.etapaKanban,
+        // ✅ FASES LEGACY (el backend moderno NO debería usar estos campos)
         ...fases,
       });
 
@@ -1129,7 +1242,11 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
 
   // ✅ FILTRO COMBINADO: Etapa + Auditoría específica
   const listasFiltradas = listas.filter(lista => {
-    const cumpleFiltroEtapa = filtroEtapa === 'TODOS' || lista.etapaKanban === filtroEtapa;
+    // ✅ FILTRAR POR UUID DE ETAPA O POR NOMBRE (para compatibilidad con datos legacy)
+    const cumpleFiltroEtapa = filtroEtapa === 'TODOS' ||
+      lista.etapaKanbanId === filtroEtapa ||
+      lista.etapaNombreKanban === etapasDisponibles?.find(e => e.value === filtroEtapa)?.label ||
+      lista.etapaKanban === etapasDisponibles?.find(e => e.value === filtroEtapa)?.label;
     
     // Si hay auditoriaIdFoco, filtrar solo listas de esa auditoría
     const cumpleFiltroAuditoria = auditoriaIdFoco 
@@ -1141,9 +1258,11 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
 
   const estadisticas = {
     totalListas: listas.length,
-    planeacion: listas.filter(l => l.etapaKanban === 'PLANEACION').length,
-    ejecucion: listas.filter(l => l.etapaKanban === 'EJECUCION').length,
-    comunicacion: listas.filter(l => l.etapaKanban === 'COMUNICACION').length,
+    // ⚠️ LEGACY: Estas estadísticas usan nombres hardcodeados
+    // TODO: Calcular dinámicamente por etapa configurada
+    planeacion: listas.filter(l => l.etapaKanban === 'PLANEACION' || l.etapaKanban === 'Planeación').length,
+    ejecucion: listas.filter(l => l.etapaKanban === 'EJECUCION' || l.etapaKanban === 'Ejecución').length,
+    comunicacion: listas.filter(l => l.etapaKanban === 'COMUNICACION' || l.etapaKanban === 'Comunicación').length,
     completitudPromedio: listas.length > 0
       ? Math.round(listas.reduce((sum, l) => sum + l.completitud, 0) / listas.length)
       : 0
@@ -1167,41 +1286,59 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
       auditoriaId: nuevaLista.auditoriaId,
       auditoriaCodigoNombre: nuevaLista.auditoriaCodigoNombre,
       fasesImpactadas: nuevaLista.fasesImpactadas,
+      // ✅ ETAPA KANBAN DINÁMICA
+      etapaKanbanId: nuevaLista.etapaKanbanId,
+      etapaNombreKanban: nuevaLista.etapaNombreKanban,
+      // ✅ FASES BOOLEANAS
+      fasePlaneacion: nuevaLista.fasePlaneacion,
+      faseEjecucion: nuevaLista.faseEjecucion,
+      faseComunicacion: nuevaLista.faseComunicacion,
+      faseSeguimiento: nuevaLista.faseSeguimiento,
       // ✅ LEGACY: GESTIÓN DOCUMENTAL (mantener compatibilidad)
       etapaProceso: nuevaLista.etapaProceso,
       auditoriaAsignada: nuevaLista.auditoriaAsignada
     };
 
     try {
-      // ✅ Usar listaCompleta.etapaKanban que ya tiene el valor garantizado
-      const tipo: ListaChequeoService['tipo'] =
-        (listaCompleta.etapaKanban === 'EJECUCION'
-          ? 'ejecucion'
-          : listaCompleta.etapaKanban === 'COMUNICACION'
-          ? 'comunicacion'
-          : listaCompleta.etapaKanban === 'SEGUIMIENTO'
-          ? 'seguimiento'
-          : 'planeacion') as ListaChequeoService['tipo'];
+      // ✅ TIPO LEGACY: Usar 'planeacion' por defecto (el backend moderno usa etapaKanbanId)
+      const tipo: ListaChequeoService['tipo'] = 'planeacion';
 
-      // Generar código único para la lista (fuera del try para el catch)
-      const codigoLista = `LC-${tipo.toUpperCase().substring(0, 4)}-${Date.now().toString().slice(-6)}`;
+      // ✅ CÓDIGO: Usar el nombre de la etapa para el código (si no hay ID, usar tipo legacy)
+      const etapaParaCodigo = listaCompleta.etapaNombreKanban || listaCompleta.etapaKanban || 'ETAPA';
+      const codigoLista = `LC-${etapaParaCodigo.substring(0, 4).toUpperCase()}-${Date.now().toString().slice(-6)}`;
 
       // ✅ VALIDAR Y SANITIZAR auditoriaId (debe ser UUID válido o undefined)
       const auditoriaIdSanitized = listaCompleta.auditoriaId && typeof listaCompleta.auditoriaId === 'string'
         ? listaCompleta.auditoriaId
         : undefined;
 
-      // ✅ FASES DINÁMICAS: Asignar según la etapa seleccionada
+      // ✅ FASES: Usar directamente los campos booleanos que vienen del modal
       const fases = {
-        fasePlaneacion: listaCompleta.etapaKanban === 'PLANEACION',
-        faseEjecucion: listaCompleta.etapaKanban === 'EJECUCION',
-        faseComunicacion: listaCompleta.etapaKanban === 'COMUNICACION',
-        faseSeguimiento: listaCompleta.etapaKanban === 'SEGUIMIENTO'
+        fasePlaneacion: listaCompleta.fasePlaneacion || false,
+        faseEjecucion: listaCompleta.faseEjecucion || false,
+        faseComunicacion: listaCompleta.faseComunicacion || false,
+        faseSeguimiento: listaCompleta.faseSeguimiento || false,
       };
 
-      console.log('🔍 [DEBUG CREATE] Etapa seleccionada:', listaCompleta.etapaKanban);
-      console.log('🔍 [DEBUG CREATE] Tipo mapeado:', tipo);
-      console.log('🔍 [DEBUG CREATE] Fases asignadas:', fases);
+      console.log('🔍 [DEBUG CREATE] ===== CREAR LISTA CHEQUEO =====');
+      console.log('🔍 [DEBUG CREATE] Etapa seleccionada:', listaCompleta.etapaNombreKanban || listaCompleta.etapaKanban);
+      console.log('🔍 [DEBUG CREATE] UUID etapa:', listaCompleta.etapaKanbanId);
+      console.log('🔍 [DEBUG CREATE] Tipo legacy (deprecado):', tipo);
+      console.log('🔍 [DEBUG CREATE] Lista completa recibida:', {
+        fasePlaneacion: listaCompleta.fasePlaneacion,
+        faseEjecucion: listaCompleta.faseEjecucion,
+        faseComunicacion: listaCompleta.faseComunicacion,
+        faseSeguimiento: listaCompleta.faseSeguimiento,
+      });
+      console.log('🔍 [DEBUG CREATE] Fases a enviar al backend:', fases);
+      console.log('🔍 [DEBUG CREATE] Payload completo:', {
+        codigo: codigoLista,
+        nombre: listaCompleta.nombre,
+        tipo,
+        etapaKanbanId: listaCompleta.etapaKanbanId,
+        etapaNombreKanban: listaCompleta.etapaNombreKanban,
+        ...fases
+      });
 
       const creadaApi = await controlInternoService.createListaChequeo({
         codigo: codigoLista,
@@ -1214,11 +1351,19 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
           texto: String(item.texto || ''),
           categoria: 'General',
           obligatorio: true,
-          orden: Number(idx) + 1
+          orden: Number(idx) + 1,
+          ...(item.plantillaAsociada ? {
+            documentoBibliotecaId: item.plantillaAsociada.documentoBibliotecaId,
+            documentoNombre: item.plantillaAsociada.nombreDocumento
+          } : {})
         })),
         // ✅ VINCULACIÓN CON AUDITORÍA
         auditoriaId: auditoriaIdSanitized,
         nombreAuditoria: listaCompleta.auditoriaCodigoNombre || undefined,
+        // ✅ ID DE ETAPA (UUID estable) - ESTO ES LO IMPORTANTE
+        etapaKanbanId: listaCompleta.etapaKanbanId,
+        // ✅ NOMBRE DE ETAPA (snapshot para display)
+        etapaNombreKanban: listaCompleta.etapaNombreKanban || listaCompleta.etapaKanban,
         // ✅ FASES DINÁMICAS según la etapa seleccionada
         ...fases,
       });
@@ -1243,7 +1388,7 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="p-3 w-full">
       {/* Banner: contexto de auditoría cuando se navega desde expediente/Comunicación */}
       {auditoriaIdFoco && (
         <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl">
@@ -1332,13 +1477,14 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
       </div>
 
       {/* Filtro por Etapa */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-4 sm:p-6 mb-6">
+      <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-2">
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
             <span className="text-xs sm:text-sm font-bold text-gray-700">Filtrar por Etapa:</span>
           </div>
           <div className="flex flex-wrap gap-2">
+            {/* ✅ BOTÓN "TODAS" */}
             <button
               onClick={() => setFiltroEtapa('TODOS')}
               className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
@@ -1349,36 +1495,71 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
             >
               Todas
             </button>
-            <button
-              onClick={() => setFiltroEtapa('PLANEACION')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
-                filtroEtapa === 'PLANEACION'
-                  ? 'bg-green-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Planeación
-            </button>
-            <button
-              onClick={() => setFiltroEtapa('EJECUCION')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
-                filtroEtapa === 'EJECUCION'
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Ejecución
-            </button>
-            <button
-              onClick={() => setFiltroEtapa('COMUNICACION')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
-                filtroEtapa === 'COMUNICACION'
-                  ? 'bg-orange-600 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              Comunicación
-            </button>
+            {/* ✅ BOTONES DINÁMICOS DESDE CONFIGURACIÓN KANBAN */}
+            {etapasDisponibles && etapasDisponibles.length > 0 ? (
+              etapasDisponibles.map((etapa, index) => {
+                // Colores dinámicos basados en el índice
+                const colores = [
+                  'bg-green-600',    // 0: Primera etapa (ej: Planeación)
+                  'bg-purple-600',   // 1: Segunda etapa (ej: Ejecución)
+                  'bg-orange-600',   // 2: Tercera etapa (ej: Comunicación)
+                  'bg-blue-600',     // 3: Cuarta etapa (ej: Seguimiento)
+                  'bg-red-600',      // 4: Quinta etapa (ej: Cierre)
+                  'bg-pink-600',     // 5+
+                  'bg-indigo-600',
+                  'bg-yellow-600',
+                ];
+                const colorActivo = colores[index % colores.length];
+                
+                return (
+                  <button
+                    key={etapa.value}
+                    onClick={() => setFiltroEtapa(etapa.value)}
+                    className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
+                      filtroEtapa === etapa.value
+                        ? `${colorActivo} text-white`
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {etapa.label}
+                  </button>
+                );
+              })
+            ) : (
+              // Fallback si no hay etapas configuradas
+              <>
+                <button
+                  onClick={() => setFiltroEtapa('PLANEACION')}
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
+                    filtroEtapa === 'PLANEACION'
+                      ? 'bg-green-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Planeación
+                </button>
+                <button
+                  onClick={() => setFiltroEtapa('EJECUCION')}
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
+                    filtroEtapa === 'EJECUCION'
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Ejecución
+                </button>
+                <button
+                  onClick={() => setFiltroEtapa('COMUNICACION')}
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
+                    filtroEtapa === 'COMUNICACION'
+                      ? 'bg-orange-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Comunicación
+                </button>
+              </>
+            )}
           </div>
         </div>
         {auditoriaIdFoco && (
@@ -1391,7 +1572,7 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
       </div>
 
       {/* Lista de Listas de Chequeo */}
-      <div className="space-y-6">
+      <div className="space-y-3">
         {!isLoading && !loadError && listasFiltradas.map((lista) => (
           <TarjetaListaChequeo
             key={lista.id}
@@ -1435,6 +1616,7 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
           onCrear={handleCrearLista}
           documentosBiblioteca={documentosBiblioteca}
           auditorias={auditorias}
+          etapasDisponibles={etapasDisponibles}
         />
       )}
 
@@ -1454,6 +1636,7 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
           documentosBiblioteca={documentosBiblioteca}
           auditorias={auditorias}
           listaEditar={listaAEditar}
+          etapasDisponibles={etapasDisponibles}
         />
       )}
 
@@ -1685,7 +1868,7 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
   return (
     <button
       onClick={onClick}
-      className={`relative px-6 py-4 flex items-center gap-2 text-sm font-medium border-b-2 transition-all ${
+      className={`relative px-4 py-2.5 flex items-center gap-1.5 text-sm font-medium border-b-2 transition-all ${
         active
           ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50/50'
           : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -1716,17 +1899,49 @@ interface ModalCrearListaChequeoProps {
   documentosBiblioteca: DocumentoBiblioteca[];
   auditorias: any[]; // Auditorías del Plan Anual
   listaEditar?: ListaChequeo; // ✅ Para modo edición
+  /** ✅ Etapas dinámicas desde configuración de Kanban */
+  etapasDisponibles?: { value: string; label: string }[];
 }
 
-function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, auditorias, listaEditar }: ModalCrearListaChequeoProps) {
+function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, auditorias, listaEditar, etapasDisponibles }: ModalCrearListaChequeoProps) {
   const modoEdicion = !!listaEditar;
   const [nombre, setNombre] = useState(listaEditar?.nombre || '');
   const [descripcion, setDescripcion] = useState(listaEditar?.descripcion || '');
-  // ✅ ETAPA KANBAN: Seleccionable por el usuario
-  const [etapaKanban, setEtapaKanban] = useState<EtapaKanban>(listaEditar?.etapaKanban || 'PLANEACION');
+  
+  // ✅ ETAPA KANBAN: Usar ID (UUID) en lugar de enum hardcoded
+  // Si no hay etapas disponibles, usar la primera del fallback
+  const etapasPorDefecto = etapasDisponibles && etapasDisponibles.length > 0 
+    ? etapasDisponibles 
+    : ETAPAS_KANBAN_AUDITORIA_FALLBACK;
+  
+  const [etapaKanbanId, setEtapaKanbanId] = useState<string>(() => {
+    if (listaEditar) {
+      // ✅ PRIORIDAD 1: Usar el ID guardado en el backend (más confiable)
+      if (listaEditar.etapaKanbanId) {
+        return listaEditar.etapaKanbanId;
+      }
+      // ✅ PRIORIDAD 2: Buscar por nombre de la etapa
+      if (listaEditar.etapaNombreKanban) {
+        const etapaEncontrada = etapasPorDefecto.find(e => e.label === listaEditar.etapaNombreKanban);
+        if (etapaEncontrada) return etapaEncontrada.value;
+      }
+      // ✅ PRIORIDAD 3: Buscar por el enum etapaKanban
+      if (listaEditar.etapaKanban) {
+        const etapaEncontrada = etapasPorDefecto.find(e => 
+          e.label === listaEditar.etapaKanban || 
+          e.value === listaEditar.etapaKanban
+        );
+        if (etapaEncontrada) return etapaEncontrada.value;
+      }
+    }
+    // Por defecto, la primera etapa disponible
+    return etapasPorDefecto[0]?.value || '';
+  });
+  
   const [items, setItems] = useState<ItemChequeo[]>(listaEditar?.items || []);
   const [nuevoItemTexto, setNuevoItemTexto] = useState('');
   const [plantillaItemActual, setPlantillaItemActual] = useState<string>(''); // Plantilla para el ítem que se está creando
+  const [filtroEtapaModal, setFiltroEtapaModal] = useState<string>(''); // Filtro de etapa para las plantillas
   
   // ✅ VINCULACIÓN CON AUDITORÍAS OCI
   const [auditoriaSeleccionada, setAuditoriaSeleccionada] = useState(listaEditar?.auditoriaId || '');
@@ -1806,26 +2021,39 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
       return;
     }
 
-    // ✅ FASES DINÁMICAS: Asignar según la etapa seleccionada
-    const fasesSeleccionadas = {
-      planeacion: etapaKanban === 'PLANEACION',
-      ejecucion: etapaKanban === 'EJECUCION',
-      comunicacion: etapaKanban === 'COMUNICACION',
-      seguimiento: etapaKanban === 'SEGUIMIENTO'
+    // ✅ OBTENER INFO DE LA ETAPA SELECCIONADA
+    const etapaSeleccionada = etapasPorDefecto.find(e => e.value === etapaKanbanId);
+    const nombreEtapa = etapaSeleccionada?.label || 'Sin etapa';
+    
+    // ✅ CAMPOS BOOLEANOS LEGACY: El backend moderno debería usar etapaKanbanId
+    // Por compatibilidad, enviamos estos campos pero todos en false
+    // (el backend ya no debería depender de ellos si tiene etapaKanbanId)
+    const fases = {
+      fasePlaneacion: false,
+      faseEjecucion: false,
+      faseComunicacion: false,
+      faseSeguimiento: false,
     };
 
-    console.log('🔍 [DEBUG MODAL] Etapa Kanban al enviar:', etapaKanban);
-    console.log('🔍 [DEBUG MODAL] Fases seleccionadas:', fasesSeleccionadas);
+    console.log('🔍 [DEBUG MODAL] ===== SUBMIT handleSubmit =====');
+    console.log('🔍 [DEBUG MODAL] Etapa seleccionada:', nombreEtapa, '(ID:', etapaKanbanId, ')');
+    console.log('🔍 [DEBUG MODAL] Usando etapaKanbanId (dinámico), NO campos booleanos hardcoded');
 
     // Buscar info completa de la auditoría seleccionada
     let auditoriaInfo = undefined;
     if (auditoriaSeleccionada) {
-      const auditoria = auditorias.find(a => a.id === auditoriaSeleccionada);
+      const auditoria =auditorias.find(a => a.id === auditoriaSeleccionada);
       if (auditoria) {
         auditoriaInfo = {
           auditoriaId: auditoria.id,
           auditoriaCodigoNombre: `${auditoria.codigo} - ${auditoria.titulo || auditoria.nombre || 'Sin título'}`,
-          fasesImpactadas: fasesSeleccionadas
+          // ✅ Fases como estructura legible para UI (ahora todos en false)
+          fasesImpactadas: {
+            planeacion: fases.fasePlaneacion,
+            ejecucion: fases.faseEjecucion,
+            comunicacion: fases.faseComunicacion,
+            seguimiento: fases.faseSeguimiento,
+          }
         };
       }
     }
@@ -1833,15 +2061,22 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
     const listaACrear = {
       nombre,
       descripcion,
-      etapaKanban,
+      etapaKanban: nombreEtapa, // Guardar nombre legible para UI
+      etapaKanbanId, // ✅ ID estable de la etapa (UUID)
+      etapaNombreKanban: nombreEtapa, // ✅ Snapshot del nombre para el backend
       items, // Items ya tienen sus plantillas asociadas
       documentosAdjuntos: [], // Ya no se usan documentos separados
       // ✅ VINCULACIÓN CON AUDITORÍAS OCI
       ...auditoriaInfo,
+      // ✅ FASES BOOLEANAS (compatibilidad backend) - pasarlas directamente  
+      ...fases,
       // ✅ LEGACY: GESTIÓN DOCUMENTAL (mantener compatibilidad)
       etapaProceso: etapaProceso || undefined,
       auditoriaAsignada: auditoriaAsignada || undefined
     };
+
+    console.log('🔍 [DEBUG MODAL] Lista a crear FINAL:', listaACrear);
+    console.log('🔍 [DEBUG MODAL] ===================================');
 
     console.log('🔍 [DEBUG MODAL] Objeto enviado a onCrear:', listaACrear);
 
@@ -1916,47 +2151,25 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
             />
           </div>
 
-          {/* ✅ SELECTOR DE ETAPA KANBAN - VISIBLE Y FUNCIONAL */}
+          {/* ✅ SELECTOR DE ETAPA KANBAN - TODAS LAS ETAPAS DINÁMICAS */}
           <div>
             <label className="block text-xs sm:text-sm font-bold text-gray-900 mb-2">
               Etapa del Kanban <span className="text-red-600">*</span>
             </label>
-            <p className="text-xs text-gray-600 mb-3">
-              Selecciona en qué etapa del proceso de auditoría se utilizará esta lista de chequeo
+            <select
+              value={etapaKanbanId}
+              onChange={(e) => setEtapaKanbanId(e.target.value)}
+              className="w-full px-4 py-3 text-sm border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none bg-white font-semibold text-gray-800"
+            >
+              {etapasPorDefecto.map((etapa) => (
+                <option key={etapa.value} value={etapa.value}>
+                  {etapa.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              💡 Selecciona la etapa del ciclo de auditoría para esta lista de chequeo
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {ETAPAS_KANBAN_AUDITORIA.map((etapa) => {
-                // ✅ Mapeo correcto sin tildes para el backend
-                const etapaValue: EtapaKanban = 
-                  etapa.value === 'Planeación' ? 'PLANEACION' :
-                  etapa.value === 'Ejecución' ? 'EJECUCION' :
-                  etapa.value === 'Comunicación' ? 'COMUNICACION' : 'PLANEACION';
-                
-                return (
-                  <button
-                    key={etapa.value}
-                    type="button"
-                    onClick={() => setEtapaKanban(etapaValue)}
-                    className={`
-                      px-4 py-3 rounded-lg font-bold text-sm transition-all border-2
-                      ${etapaKanban === etapaValue
-                        ? 'bg-blue-600 text-white border-blue-700 shadow-lg scale-105'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400 hover:bg-blue-50'
-                      }
-                    `}
-                  >
-                    {etapa.label}
-                  </button>
-                );
-              })}
-            </div>
-            {etapaKanban && (
-              <div className="mt-3 bg-blue-50 border-2 border-blue-200 rounded-lg p-3">
-                <p className="text-xs text-blue-700">
-                  ✅ <strong>Etapa seleccionada:</strong> {ETAPA_LABEL[etapaKanban]}
-                </p>
-              </div>
-            )}
           </div>
 
           {/* ═══════════════════════════════════════════════════════════════ */}
@@ -2036,20 +2249,56 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
               />
               
               {/* Selector de plantilla para el ítem */}
-              <div className="flex items-center gap-2">
-                <Paperclip className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                <select
-                  value={plantillaItemActual}
-                  onChange={(e) => setPlantillaItemActual(e.target.value)}
-                  className="flex-1 px-3 py-2 text-xs border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none bg-white"
-                >
-                  <option value="">Sin plantilla asociada</option>
-                  {documentosBiblioteca.map((doc) => (
-                    <option key={doc.id} value={doc.id}>
-                      📄 {doc.nombre} ({doc.categoria})
-                    </option>
-                  ))}
-                </select>
+              <div className="space-y-2">
+                {/* Filtro por etapa */}
+                {etapasDisponibles && etapasDisponibles.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                    <select
+                      value={filtroEtapaModal}
+                      onChange={(e) => { setFiltroEtapaModal(e.target.value); setPlantillaItemActual(''); }}
+                      className="flex-1 px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none bg-white text-gray-600"
+                    >
+                      <option value="">Todas las etapas</option>
+                      {etapasDisponibles.map((etapa) => (
+                        <option key={etapa.value} value={etapa.value}>{etapa.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {/* Selector de plantilla filtrada */}
+                <div className="flex items-center gap-2">
+                  <Paperclip className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                  <select
+                    value={plantillaItemActual}
+                    onChange={(e) => setPlantillaItemActual(e.target.value)}
+                    className="flex-1 px-3 py-2 text-xs border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none bg-white"
+                  >
+                    <option value="">Sin plantilla asociada</option>
+                    {documentosBiblioteca
+                      .filter((doc) => {
+                        if (!filtroEtapaModal) return true;
+                        // Buscar nombre de la etapa seleccionada
+                        const etapaSelec = etapasPorDefecto.find(e => e.value === filtroEtapaModal);
+                        const nombreEtapaFiltro = etapaSelec?.label;
+                        
+                        // ✅ COMPARAR POR MÚLTIPLES CRITERIOS
+                        // 1. Por ID de etapa (más confiable)
+                        if (doc.etapaKanbanId === filtroEtapaModal) return true;
+                        
+                        // 2. Por nombre de etapa guardado o etapaKanban directamente
+                        if (doc.etapaNombreKanban === nombreEtapaFiltro) return true;
+                        if (doc.etapaKanban === nombreEtapaFiltro) return true;
+                        
+                        return false;
+                      })
+                      .map((doc) => (
+                        <option key={doc.id} value={doc.id}>
+                          📄 {doc.nombre} ({doc.categoria})
+                        </option>
+                      ))}
+                  </select>
+                </div>
               </div>
 
               <button
@@ -2090,7 +2339,7 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
                               <option value="">Sin plantilla</option>
                               {documentosBiblioteca.map((doc) => (
                                 <option key={doc.id} value={doc.id}>
-                                  📄 {doc.nombre}
+                                  📄 {doc.nombre} {doc.etapaNombreKanban || doc.etapaKanban ? `• ${doc.etapaNombreKanban || doc.etapaKanban}` : ''} ({doc.categoria})
                                 </option>
                               ))}
                             </select>
@@ -2615,10 +2864,12 @@ function ModalEliminar({ documento, onClose, onConfirmar }: ModalEliminarProps) 
 
 interface ModalSubirDocumentoProps {
   onClose: () => void;
-  onSubir: (documento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File; auditoriaId?: string }) => void;
-  onEditar?: (data: { nombre: string; descripcion: string; categoria?: CategoriaDocumento; etapaKanban?: EtapaKanban; auditoriaId?: string | null }) => void;
+  onSubir: (documento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File; auditoriaId?: string; etapaKanbanId?: string; etapaNombreKanban?: string }) => void;
+  onEditar?: (data: { nombre: string; descripcion: string; categoria?: CategoriaDocumento; etapaKanban?: string; etapaKanbanId?: string; etapaNombreKanban?: string; auditoriaId?: string | null }) => void;
   documentoEditar?: DocumentoBiblioteca;
   auditorias?: any[];
+  /** Etapas dinámicas desde configuración Kanban (value = UUID, label = nombre) */
+  etapasDisponibles?: { value: string; label: string }[];
 }
 
 function parseVersionNormativa(desc: string): { version: string; normativa: string } {
@@ -2631,13 +2882,39 @@ function parseVersionNormativa(desc: string): { version: string; normativa: stri
   return { version, normativa };
 }
 
-function ModalSubirDocumento({ onClose, onSubir, onEditar, documentoEditar, auditorias = [] }: ModalSubirDocumentoProps) {
+function ModalSubirDocumento({ onClose, onSubir, onEditar, documentoEditar, auditorias = [], etapasDisponibles }: ModalSubirDocumentoProps) {
   const esEdicion = !!documentoEditar && !!onEditar;
   const { version: v0, normativa: n0 } = documentoEditar?.descripcion ? parseVersionNormativa(documentoEditar.descripcion) : { version: 'v1.0', normativa: '' };
   const [nombre, setNombre] = useState(documentoEditar?.nombre ?? '');
   const [descripcion, setDescripcion] = useState(documentoEditar?.descripcion ?? '');
   const [categoria, setCategoria] = useState<CategoriaDocumento>(documentoEditar?.categoria ?? 'PLANTILLA');
-  const [etapaKanban, setEtapaKanban] = useState<EtapaKanban>(documentoEditar?.etapaKanban ?? 'PLANEACION');
+  // etapaKanbanId guarda el UUID de la etapa (estable aunque cambie el nombre)
+  // Para edición: inicializar con el ID guardado o buscar por enum
+  const _NOMBRE_A_ETAPA_INIT: Record<string, EtapaKanban> = { 'Planeación': 'PLANEACION', 'Ejecución': 'EJECUCION', 'Comunicación': 'COMUNICACION', 'Seguimiento': 'SEGUIMIENTO', 'Cierre': 'CIERRE' };
+  const initialEtapaId = documentoEditar?.etapaKanbanId ||
+    (() => {
+      const etapasInit = (etapasDisponibles && etapasDisponibles.length > 0) ? etapasDisponibles : [...ETAPAS_KANBAN_AUDITORIA_FALLBACK];
+      console.log('🔍 [DEBUG MODAL INIT] etapasDisponibles recibidas:', etapasDisponibles);
+      console.log('🔍 [DEBUG MODAL INIT] etapasInit:', etapasInit);
+      const firstValue = etapasInit[0]?.value || '';
+      console.log('🔍 [DEBUG MODAL INIT] initialEtapaId calculado:', firstValue);
+      return etapasInit.find(e => _NOMBRE_A_ETAPA_INIT[e.label] === documentoEditar?.etapaKanban)?.value ||
+             firstValue;
+    })();
+  const [etapaKanbanId, setEtapaKanbanId] = useState<string>(initialEtapaId);
+  console.log('🔍 [DEBUG MODAL INIT] Estado inicial etapaKanbanId:', etapaKanbanId);
+
+  // ✅ Si las etapas reales (UUID) cargan después de que el modal ya abrió,
+  // sincronizar el valor seleccionado para no quedar con el string del fallback ('Planeación').
+  useEffect(() => {
+    if (!etapasDisponibles || etapasDisponibles.length === 0) return;
+    const estaEnLista = etapasDisponibles.some(e => e.value === etapaKanbanId);
+    if (!estaEnLista) {
+      // El valor actual no es un UUID válido de la lista cargada → resetear al primero
+      setEtapaKanbanId(etapasDisponibles[0].value);
+    }
+  }, [etapasDisponibles]);
+
   const [archivo, setArchivo] = useState<File | null>(null);
   const [arrastrando, setArrastrando] = useState(false);
   const [version, setVersion] = useState(v0 || 'v1.0');
@@ -2696,11 +2973,24 @@ function ModalSubirDocumento({ onClose, onSubir, onEditar, documentoEditar, audi
         if (normativa) partes.push(`Normativa: ${normativa}`);
         if (partes.length) descFinal = (descFinal ? descFinal + '\n\n' : '') + partes.join(' | ');
       }
+      // ✅ OBTENER NOMBRE DE LA ETAPA SELECCIONADA (dinámico, sin mapeos)
+      const etapasEd = (etapasDisponibles && etapasDisponibles.length > 0) ? etapasDisponibles : [...ETAPAS_KANBAN_AUDITORIA_FALLBACK];
+      const etapaSeleccionada = etapasEd.find(e => e.value === etapaKanbanId);
+      const nombreEtapaEdicion = etapaSeleccionada?.label || documentoEditar!.etapaKanban;
+
+      console.log('🔍 [DEBUG MODAL EDIT] Enviando a confirmarEdicion:', {
+        etapaKanban: nombreEtapaEdicion,
+        etapaKanbanId: etapaKanbanId,
+        etapaNombreKanban: nombreEtapaEdicion
+      });
+
       onEditar?.({
         nombre: nombre.trim() || documentoEditar!.nombre,
         descripcion: descFinal,
         categoria,
-        etapaKanban,
+        etapaKanban: nombreEtapaEdicion, // ✅ Nombre dinámico de la etapa (para UI)
+        etapaKanbanId: etapaKanbanId, // ✅ UUID estable (para backend)
+        etapaNombreKanban: nombreEtapaEdicion, // ✅ Snapshot del nombre (para backend)
         auditoriaId: auditoriaAsociada || null
       });
       onClose();
@@ -2723,23 +3013,37 @@ function ModalSubirDocumento({ onClose, onSubir, onEditar, documentoEditar, audi
       if (partes.length) descFinal = (descFinal ? descFinal + '\n\n' : '') + partes.join(' | ');
     }
 
-    const nuevoDocumento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File; auditoriaId?: string } = {
-      nombre: nombreDocumento,
-      descripcion: descFinal,
-      categoria,
-      etapaKanban: etapaKanban,
-      archivoUrl,
-      urlPreview: archivoUrl,
-      urlDownload: archivoUrl,
-      fechaSubida: new Date().toISOString(),
-      subidoPor: 'Usuario Actual',
-      tamano: formatFileSize(archivo.size),
-      extension: getMimeTypeLabel(tipoMime),
-      tipoMime,
-      nombreArchivo: archivo.name,
-      file: archivo,
-      ...(auditoriaAsociada && { auditoriaId: auditoriaAsociada })
-    };
+    const nuevoDocumento: Omit<DocumentoBiblioteca, 'id' | 'descargas'> & { file: File; auditoriaId?: string; etapaKanbanId?: string; etapaNombreKanban?: string } = (() => {
+      const etapasSubmit = (etapasDisponibles && etapasDisponibles.length > 0) ? etapasDisponibles : [...ETAPAS_KANBAN_AUDITORIA_FALLBACK];
+      const etapaObj = etapasSubmit.find(e => e.value === etapaKanbanId);
+      // Si no se encuentra por UUID, puede que sea el fallback con el nombre como value
+      const etapaNombreKanban = etapaObj?.label || etapaKanbanId || undefined;
+      const etapaIdFinal = etapaObj ? etapaObj.value : undefined;
+
+      console.log('🔍 [DEBUG MODAL SUBMIT] etapaKanbanId actual:', etapaKanbanId);
+      console.log('🔍 [DEBUG MODAL SUBMIT] etapaNombreKanban:', etapaNombreKanban);
+      console.log('🔍 [DEBUG MODAL SUBMIT] etapaIdFinal:', etapaIdFinal);
+
+      return {
+        nombre: nombreDocumento,
+        descripcion: descFinal,
+        categoria,
+        etapaKanban: etapaKanbanId as any, // campo legacy ignorado por backend
+        etapaKanbanId: etapaIdFinal,
+        etapaNombreKanban,
+        archivoUrl,
+        urlPreview: archivoUrl,
+        urlDownload: archivoUrl,
+        fechaSubida: new Date().toISOString(),
+        subidoPor: 'Usuario Actual',
+        tamano: formatFileSize(archivo!.size),
+        extension: getMimeTypeLabel(tipoMime),
+        tipoMime,
+        nombreArchivo: archivo!.name,
+        file: archivo!,
+        ...(auditoriaAsociada && { auditoriaId: auditoriaAsociada })
+      };
+    })();
 
     onSubir(nuevoDocumento);
   };
@@ -2904,22 +3208,31 @@ function ModalSubirDocumento({ onClose, onSubir, onEditar, documentoEditar, audi
           {/* Etapa del Kanban */}
           <div>
             <label className="block text-sm font-bold text-gray-900 mb-2">
-              Etapa P-E-C <span className="text-red-600">*</span>
+              Etapa <span className="text-red-600">*</span>
             </label>
+            {(() => {
+              const etapasModal = (etapasDisponibles && etapasDisponibles.length > 0)
+                ? etapasDisponibles
+                : [...ETAPAS_KANBAN_AUDITORIA_FALLBACK];
+              return (
             <div className="flex gap-3">
               <select
-                value={etapaKanban}
-                onChange={(e) => setEtapaKanban(e.target.value as EtapaKanban)}
+                value={etapaKanbanId}
+                onChange={(e) => setEtapaKanbanId(e.target.value)}
                 className="flex-1 px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-semibold"
               >
-                <option value="PLANEACION">📋 Planeación</option>
-                <option value="EJECUCION">⚙️ Ejecución</option>
-                <option value="COMUNICACION">📢 Comunicación</option>
+                {etapasModal.map(etapa => (
+                  <option key={etapa.value} value={etapa.value}>
+                    {etapa.label}
+                  </option>
+                ))}
               </select>
               <div className="px-4 py-3 border-2 border-gray-200 rounded-lg bg-gray-50 font-semibold text-gray-600 min-w-[100px] flex items-center justify-center" title="Formato (del archivo)">
                 {archivo ? getFileExtension(archivo.name) : '—'}
               </div>
             </div>
+              );
+            })()}
           </div>
 
           {/* Campos adicionales (Versión, Normativa, Auditoría) - disponibles para todas las etapas P-E-C */}

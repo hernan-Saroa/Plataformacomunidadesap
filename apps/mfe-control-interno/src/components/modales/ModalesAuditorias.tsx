@@ -33,6 +33,8 @@ import { toast } from 'sonner';
 import { ModalBaseWorldClass } from '../ModalBaseWorldClass';
 import { motion } from 'motion/react';
 import { auditoriasApi, configuracionesProfesionalesOCIApi } from '../services/api';
+import { controlInternoService, type EvaluacionProceso } from '../../../services/api/controlInternoService';
+import { cargarTiposAuditoria } from '../services/tiposAuditoriaService';
 
 // ═════════════════════════════════════════════════════════════════════════
 // TIPOS COMPARTIDOS
@@ -54,7 +56,8 @@ const AUDITORES_FALLBACK: AuditorOption[] = [
   { id: 'aud-006', nombre: 'Fernando Ávila García', cargo: 'Jefe OCI' }
 ];
 
-const PROCESOS_INSTITUCIONALES = [
+// Fallback de procesos si la API no responde
+const PROCESOS_FALLBACK = [
   'Gestión Administrativa',
   'Gestión Financiera',
   'Gestión Talento Humano',
@@ -120,11 +123,20 @@ interface ModalFormularioAuditoriaProps {
 function formatDateForInput(dateStr: string | undefined): string {
   if (!dateStr) return '';
   try {
-    // Si ya está en formato YYYY-MM-DD, devolverlo
+    // Si ya está en formato YYYY-MM-DD, devolverlo directamente
     if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       return dateStr;
     }
-    // Intentar parsear como fecha ISO
+    // Soporte para formato DD/MM/YYYY (que devuelve el hook formatearFecha)
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+      const [dia, mes, anio] = dateStr.split('/');
+      return `${anio}-${mes}-${dia}`;
+    }
+    // Intentar parsear como fecha ISO (con hora)
+    const fechaLimpia = dateStr.split('T')[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fechaLimpia)) {
+      return fechaLimpia;
+    }
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) return '';
     return date.toISOString().split('T')[0];
@@ -180,6 +192,10 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
   const [paso, setPaso] = useState(1);
   const [auditoresDisponibles, setAuditoresDisponibles] = useState<AuditorOption[]>(AUDITORES_FALLBACK);
   const [cargandoAuditores, setCargandoAuditores] = useState(false);
+  const [procesosDisponibles, setProcesosDisponibles] = useState<string[]>(PROCESOS_FALLBACK);
+  const [cargandoProcesos, setCargandoProcesos] = useState(false);
+  const [tiposDisponibles, setTiposDisponibles] = useState<{ codigo: string; nombre: string }[]>([]);
+  const [cargandoTipos, setCargandoTipos] = useState(false);
   
   // Estados para las listas dinámicas
   const [objetivosList, setObjetivosList] = useState<string[]>([]);
@@ -190,6 +206,7 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
   // Cargar datos cuando cambia la auditoría o se abre el modal
   useEffect(() => {
     if (isOpen && auditoria) {
+
       // Formatear todas las fechas de las etapas
       const fechaInicioPlaneacionFormatted = formatDateForInput(auditoria.fechaInicioPlaneacion || auditoria.fechaInicio);
       const fechaFinPlaneacionFormatted = formatDateForInput(auditoria.fechaFinPlaneacion);
@@ -215,6 +232,7 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
         fechaFin: fechaFinFormatted,
       });
       
+
       const objParsed = parseObjetivos(auditoria.objetivos);
       const critParsed = parseCriterios(auditoria.criterios);
       setObjetivosList(objParsed);
@@ -249,6 +267,62 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
     }
   }, [isOpen, auditoria]);
 
+  // Cargar procesos auditables desde el universo de auditorías (evaluaciones)
+  useEffect(() => {
+    const cargarProcesos = async () => {
+      if (!isOpen) return;
+      setCargandoProcesos(true);
+      try {
+        const evaluaciones = await controlInternoService.getEvaluaciones();
+
+        if (evaluaciones && evaluaciones.length > 0) {
+          const procesosUnicos = new Set<string>();
+          evaluaciones.forEach((ev: EvaluacionProceso) => {
+            if (ev.proceso && ev.proceso.nombre) {
+              procesosUnicos.add(ev.proceso.nombre);
+            }
+          });
+          const procesosArray = Array.from(procesosUnicos).sort();
+          if (procesosArray.length > 0) {
+            setProcesosDisponibles(procesosArray);
+
+          } else {
+            console.warn('[ModalesAuditorias] Sin procesos en evaluaciones, usando fallback');
+          }
+        } else {
+          console.warn('[ModalesAuditorias] Sin evaluaciones, usando procesos fallback');
+        }
+      } catch (error) {
+        console.error('[ModalesAuditorias] Error al cargar procesos:', error);
+      } finally {
+        setCargandoProcesos(false);
+      }
+    };
+
+    cargarProcesos();
+  }, [isOpen]);
+
+  // Cargar tipos de auditoría desde configuración
+  useEffect(() => {
+    const cargarTipos = async () => {
+      if (!isOpen) return;
+      setCargandoTipos(true);
+      try {
+        const tipos = await cargarTiposAuditoria(false);
+
+        if (tipos && tipos.length > 0) {
+          setTiposDisponibles(tipos.map(t => ({ codigo: t.codigo, nombre: t.nombre })));
+        }
+      } catch (error) {
+        console.error('[ModalesAuditorias] Error al cargar tipos:', error);
+      } finally {
+        setCargandoTipos(false);
+      }
+    };
+
+    cargarTipos();
+  }, [isOpen]);
+
   // Cargar auditores desde configuraciones OCI (profesionales configurados)
   useEffect(() => {
     const cargarAuditores = async () => {
@@ -258,7 +332,6 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
       try {
         // Usar profesionales configurados en OCI en lugar de personas disponibles
         const response = await configuracionesProfesionalesOCIApi.getAll();
-        console.log('[ModalEdicion] Profesionales OCI response:', response);
         
         if (response.success && response.data && response.data.length > 0) {
           const auditores = response.data
@@ -269,14 +342,13 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
               cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor'
             }));
           setAuditoresDisponibles(auditores);
-          console.log('[ModalEdicion] Auditores OCI cargados:', auditores.length);
+
         } else {
-          // Si no hay profesionales OCI configurados, usar fallback
-          console.warn('[ModalEdicion] No hay profesionales OCI configurados, usando fallback');
+          console.warn('[ModalesAuditorias] Sin profesionales OCI configurados, usando fallback');
           setAuditoresDisponibles(AUDITORES_FALLBACK);
         }
       } catch (error) {
-        console.error('[ModalEdicion] Error al cargar auditores:', error);
+        console.error('[ModalesAuditorias] Error al cargar auditores:', error);
       } finally {
         setCargandoAuditores(false);
       }
@@ -314,6 +386,7 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
     
     // Validaciones
     if (!formData.nombre.trim()) {
@@ -361,32 +434,42 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
         return;
       }
     }
-    
-    // Auto-calcular fechas de inicio de cada etapa si no están definidas
-    // Etapa 1: fechaInicioPlaneacion = fechaInicio (siempre igual)
-    // Etapa 2: fechaInicioEjecucion = fechaFinPlaneacion (empieza donde termina planeación)
-    // Etapa 3: fechaInicioComunicacion = fechaFinEjecucion (empieza donde termina ejecución)
-    // Etapa 3: fechaFinComunicacion = fechaFin (siempre igual)
-    const fechaInicioFinal = formData.fechaInicioPlaneacion || formData.fechaInicio;
-    const fechaFinFinal = formData.fechaFinComunicacion || formData.fechaFin;
-    
-    const fechasCalculadas = {
-      // Etapa 1: Planeación - sincronizar ambos campos
-      fechaInicio: fechaInicioFinal,
-      fechaInicioPlaneacion: fechaInicioFinal,
-      // Etapa 2: Ejecución - inicia donde termina planeación si no se especifica
-      fechaInicioEjecucion: formData.fechaInicioEjecucion || formData.fechaFinPlaneacion,
-      // Etapa 3: Comunicación - inicia donde termina ejecución si no se especifica
-      fechaInicioComunicacion: formData.fechaInicioComunicacion || formData.fechaFinEjecucion,
-      // Sincronizar fechaFin con fechaFinComunicacion
-      fechaFin: fechaFinFinal,
-      fechaFinComunicacion: fechaFinFinal,
-    };
-    
-    // Incluir objetivos y criterios como arrays
+
+    // Validar que TODAS las fechas de las 3 etapas estén diligenciadas (sin auto-rellenar)
+    if (!formData.fechaFinPlaneacion) {
+      toast.error('Debe especificar la fecha de fin de Planeación');
+      return;
+    }
+    if (!formData.fechaInicioEjecucion) {
+      toast.error('Debe especificar la fecha de inicio de Ejecución');
+      return;
+    }
+    if (!formData.fechaFinEjecucion) {
+      toast.error('Debe especificar la fecha de fin de Ejecución');
+      return;
+    }
+    if (!formData.fechaInicioComunicacion) {
+      toast.error('Debe especificar la fecha de inicio de Comunicación');
+      return;
+    }
+
+    // Validar coherencia de fechas de inicio de etapas (deben ser >= al fin de la etapa anterior)
+    const finPlaneacionDate = new Date(formData.fechaFinPlaneacion);
+    const inicioEjecucionDate = new Date(formData.fechaInicioEjecucion);
+    if (inicioEjecucionDate < finPlaneacionDate) {
+      toast.error('La fecha de inicio de Ejecución debe ser igual o posterior al fin de Planeación');
+      return;
+    }
+    const finEjecucionDate = new Date(formData.fechaFinEjecucion);
+    const inicioComunicacionDate = new Date(formData.fechaInicioComunicacion);
+    if (inicioComunicacionDate < finEjecucionDate) {
+      toast.error('La fecha de inicio de Comunicación debe ser igual o posterior al fin de Ejecución');
+      return;
+    }
+
+    // Enviar exactamente lo que el usuario ingresó (sin auto-rellenar fechas)
     const dataToSave = {
       ...formData,
-      ...fechasCalculadas,
       objetivos: objetivosList,
       criterios: criteriosList
     };
@@ -426,7 +509,12 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
         {paso < 2 ? (
           <button
             type="button"
-            onClick={() => setPaso(paso + 1)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+
+              setPaso(paso + 1);
+            }}
             className="px-5 py-2.5 bg-gradient-to-r from-[#003DA5] to-[#2962FF] text-white rounded-lg hover:shadow-lg transition-all text-base font-medium flex items-center gap-2"
           >
             Siguiente
@@ -491,11 +579,22 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                   value={formData.tipo}
                   onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] transition-all text-base bg-white"
+                  disabled={cargandoTipos}
                 >
-                  <option value="SEDE">SEDE CENTRAL</option>
-                  <option value="TERRITORIAL">TERRITORIAL</option>
-                  <option value="ESPECIAL">ESPECIAL</option>
-                  <option value="SEGUIMIENTO">SEGUIMIENTO</option>
+                  <option value="">{cargandoTipos ? 'Cargando tipos...' : 'Seleccione un tipo...'}</option>
+                  {tiposDisponibles.length > 0 ? (
+                    tiposDisponibles.map(t => (
+                      <option key={t.codigo} value={t.codigo}>{t.nombre}</option>
+                    ))
+                  ) : (
+                    // Fallback si no se cargaron tipos del backend
+                    <>
+                      <option value="SEDE">SEDE CENTRAL</option>
+                      <option value="TERRITORIAL">TERRITORIAL</option>
+                      <option value="ESPECIAL">ESPECIAL</option>
+                      <option value="SEGUIMIENTO">SEGUIMIENTO</option>
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -508,9 +607,10 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                   value={formData.proceso || ''}
                   onChange={(e) => setFormData({ ...formData, proceso: e.target.value })}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] transition-all text-base bg-white"
+                  disabled={cargandoProcesos}
                 >
-                  <option value="">Seleccione un proceso...</option>
-                  {PROCESOS_INSTITUCIONALES.map((proceso) => (
+                  <option value="">{cargandoProcesos ? 'Cargando procesos...' : 'Seleccione un proceso...'}</option>
+                  {procesosDisponibles.map((proceso) => (
                     <option key={proceso} value={proceso}>
                       {proceso}
                     </option>
@@ -1500,7 +1600,6 @@ export function ModalHistorial({ isOpen, onClose, auditoriaId, onLoadHistorial }
       }));
       setEventos(eventosMapeados);
     } catch (err) {
-      console.error('Error cargando historial:', err);
       setError('Error al cargar el historial');
       setEventos([]);
     } finally {

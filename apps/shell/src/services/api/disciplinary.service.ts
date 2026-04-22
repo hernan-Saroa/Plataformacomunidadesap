@@ -50,6 +50,7 @@ export interface DisciplinaryNews {
     };
     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
     kanbanStage?: string;
+    radicadorId?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -425,6 +426,7 @@ export interface CreateNewsDto {
     adjuntos?: string[];
     denunciante: any;
     disciplinable: any;
+    radicadorId?: string;
 }
 
 export interface AssignProcessDto {
@@ -530,6 +532,9 @@ class DisciplinaryService {
         if (data.adjuntos && data.adjuntos.length > 0) {
             formData.append('adjuntos', JSON.stringify(data.adjuntos));
         }
+        if (data.radicadorId) {
+            formData.append('radicadorId', data.radicadorId);
+        }
 
         // Archivos con el campo correcto que espera el backend
         if (files && files.length > 0) {
@@ -579,8 +584,8 @@ class DisciplinaryService {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news/my-news`, { profesionalId });
     }
 
-    async returnNews(id: string, observaciones: string): Promise<DisciplinaryNews> {
-        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones });
+    async returnNews(id: string, observaciones: string, radicadorId?: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones, radicadorId });
     }
 
     async updateNewsKanban(id: string, kanbanStage: string): Promise<DisciplinaryNews> {
@@ -1703,9 +1708,19 @@ class DisciplinaryService {
         return apiClient.get<any>(`${SERVICE_PREFIX}/compartir-expediente/publico/${token}`, undefined, { skipAuth: true });
     }
 
-    // --- ASOCIACIONES ---
+  /**
+   * Obtener documentos públicos de expediente compartido (público)
+   */
+  async obtenerDocumentosExpedienteCompartido(token: string): Promise<{
+    proceso: { id: string; radicadoProceso: string };
+    documentos: any[];
+  }> {
+    return apiClient.get<any>(`${SERVICE_PREFIX}/compartir-expediente/documentos/${token}`, undefined, { skipAuth: true });
+  }
 
-    async asociarNoticiaAProceso(noticiaId: string, procesoId: string, justificacion: string): Promise<{ message: string; association?: any }> {
+  // --- ASOCIACIONES ---
+
+  async asociarNoticiaAProceso(noticiaId: string, procesoId: string, justificacion: string): Promise<{ message: string; association?: any }> {
         return apiClient.patch<{ message: string; association?: any }>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/associate-process`, {
             procesoDestinoId: procesoId,
             justificacion,

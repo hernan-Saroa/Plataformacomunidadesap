@@ -4,6 +4,8 @@ import { ModalButtonPrimary, ModalButtonCancel, ModalButtonGroup } from '@esap-m
 import { Search, FileText, AlertCircle, CheckCircle2, Link2 } from 'lucide-react';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
+import { authService } from '../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 interface Persona {
   nombre: string;
@@ -74,6 +76,10 @@ export function ModalAsociarNoticiaANoticia({
   };
 
   const handleAsociar = async () => {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_ASOCIAR)) {
+      toast.error('No tiene permisos para asociar noticias');
+      return;
+    }
     if (!noticiaDestinoSeleccionada) {
       toast.error('Debe seleccionar una noticia de destino');
       return;

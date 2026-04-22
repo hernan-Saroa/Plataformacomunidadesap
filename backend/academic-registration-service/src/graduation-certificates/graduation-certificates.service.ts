@@ -31,6 +31,10 @@ import {
   parseGraduationCertificateTemplateTexts,
   serializeGraduationCertificateTemplateTexts,
 } from './certificate-template-texts';
+import {
+  GraduateOracleIntegrationService,
+  type OracleGraduateRecord,
+} from './graduate-oracle-integration.service';
 import * as nodemailer from 'nodemailer';
 import * as geoip from 'geoip-lite';
 import * as fs from 'fs';
@@ -68,6 +72,15 @@ type GraduateSuggestion = {
   exactGraduationDateMatch: boolean;
 };
 
+type OracleGraduateSyncResult = {
+  enabled: boolean;
+  found: boolean;
+  synced: boolean;
+  created: number;
+  updated: number;
+  unchanged: number;
+};
+
 @Injectable()
 export class GraduationCertificatesService {
   constructor(
@@ -90,6 +103,7 @@ export class GraduationCertificatesService {
     @InjectRepository(GraduateFile)
     private graduateFileRepository: Repository<GraduateFile>,
     private pdfGeneratorService: PdfGeneratorService,
+    private graduateOracleIntegrationService: GraduateOracleIntegrationService,
   ) {}
 
   private readonly logger = new Logger(GraduationCertificatesService.name);
@@ -106,6 +120,268 @@ export class GraduationCertificatesService {
       return 'http://localhost:3009';
     }
     return 'http://notifications-service:3009';
+  }
+
+  private toNullableText(value: unknown): string | null {
+    if (value === null || value === undefined) return null;
+    const text = String(value).trim();
+    return text || null;
+  }
+
+  private compareGraduateValue(
+    key: keyof Graduate,
+    current: unknown,
+    next: unknown,
+  ): boolean {
+    if (
+      key === 'idIssueDate' ||
+      key === 'enrollmentDate' ||
+      key === 'graduationDate' ||
+      key === 'ceremonyDate'
+    ) {
+      return (
+        this.normalizeDateString(current as Date | string | undefined) ===
+        this.normalizeDateString(next as Date | string | undefined)
+      );
+    }
+
+    return String(current ?? '').trim() === String(next ?? '').trim();
+  }
+
+  private hasGraduateChanges(
+    graduate: Graduate,
+    payload: Partial<Graduate>,
+  ): boolean {
+    return (Object.keys(payload) as Array<keyof Graduate>).some((key) => {
+      if (payload[key] === undefined) return false;
+      return !this.compareGraduateValue(key, graduate[key], payload[key]);
+    });
+  }
+
+  private findMatchingGraduateForOracleRecord(
+    record: OracleGraduateRecord,
+    graduates: Graduate[],
+    usedGraduateIds: Set<string>,
+  ): Graduate | null {
+    const candidates = graduates.filter(
+      (graduate) => !usedGraduateIds.has(graduate.id),
+    );
+    if (!candidates.length) return null;
+
+    const diplomaNumber = this.toNullableText(record.diplomaNumber);
+    if (diplomaNumber) {
+      const byDiploma = candidates.find(
+        (graduate) =>
+          this.normalizeName(graduate.diplomaNumber || '') ===
+          this.normalizeName(diplomaNumber),
+      );
+      if (byDiploma) return byDiploma;
+    }
+
+    const numRegistro = this.toNullableText(record.numRegistro);
+    const numFolio = this.toNullableText(record.numFolio);
+    const numLibro = this.toNullableText(record.numLibro);
+    if (numRegistro || numFolio || numLibro) {
+      const byRegistration = candidates.find(
+        (graduate) =>
+          (!numRegistro ||
+            String(graduate.numRegistro || '').trim() === numRegistro) &&
+          (!numFolio || String(graduate.numFolio || '').trim() === numFolio) &&
+          (!numLibro || String(graduate.numLibro || '').trim() === numLibro),
+      );
+      if (byRegistration) return byRegistration;
+    }
+
+    const graduationDate = this.normalizeDateString(
+      record.graduationDate || '',
+    );
+    const programName = this.normalizeName(record.programName || '');
+    if (graduationDate && programName) {
+      const byProgramAndDate = candidates.find(
+        (graduate) =>
+          this.normalizeDateString(graduate.graduationDate) ===
+            graduationDate &&
+          this.normalizeName(graduate.programName || '') === programName,
+      );
+      if (byProgramAndDate) return byProgramAndDate;
+    }
+
+    return candidates.length === 1 ? candidates[0] : null;
+  }
+
+  private buildGraduatePayloadFromOracle(
+    record: OracleGraduateRecord,
+    existing?: Graduate | null,
+  ): Partial<Graduate> | null {
+    const idNumber = this.toNullableText(record.idNumber);
+    const fullName =
+      this.toNullableText(record.fullName) ||
+      this.toNullableText(existing?.fullName);
+    const programName =
+      this.toNullableText(record.programName) ||
+      this.toNullableText(existing?.programName);
+    const graduationDate =
+      this.parseDate(record.graduationDate || undefined) ||
+      existing?.graduationDate;
+
+    if (!idNumber || !fullName || !programName || !graduationDate) {
+      this.logger.warn(
+        `Registro Oracle SINU incompleto para sincronizar graduado: documento=${idNumber || 'N/A'}`,
+      );
+      return null;
+    }
+
+    const firstName = this.toNullableText(record.firstName);
+    const lastName = this.toNullableText(record.lastName);
+    const programType =
+      this.toNullableText(record.programType) ||
+      this.toNullableText(existing?.programType) ||
+      'Pregrado';
+    const degreeTitle =
+      this.toNullableText(record.degreeTitle) ||
+      this.toNullableText(existing?.degreeTitle) ||
+      programName;
+
+    const payload: Partial<Graduate> = {
+      fullName,
+      firstName: firstName ?? existing?.firstName,
+      lastName: lastName ?? existing?.lastName,
+      idNumber,
+      email: this.toNullableText(record.email) ?? existing?.email,
+      phone: this.toNullableText(record.phone) ?? existing?.phone,
+      programName,
+      programType,
+      graduationDate,
+      degreeTitle,
+      diplomaNumber:
+        this.toNullableText(record.diplomaNumber) ?? existing?.diplomaNumber,
+      actaNumber: this.toNullableText(record.numActa) ?? existing?.actaNumber,
+      numActa: this.toNullableText(record.numActa) ?? existing?.numActa,
+      numFolio: this.toNullableText(record.numFolio) ?? existing?.numFolio,
+      numLibro: this.toNullableText(record.numLibro) ?? existing?.numLibro,
+      numRegistro:
+        this.toNullableText(record.numRegistro) ?? existing?.numRegistro,
+      campus: this.toNullableText(record.campus) ?? existing?.campus,
+      seccionalName:
+        this.toNullableText(record.territorial) ?? existing?.seccionalName,
+      status: 'ACTIVE',
+      isVerified: true,
+      updatedBy: 'oracle:sinu',
+    };
+
+    if (!existing) {
+      payload.personId = randomUUID();
+      payload.programId = randomUUID();
+      payload.enrollmentDate = graduationDate;
+      payload.createdBy = 'oracle:sinu';
+    }
+
+    return payload;
+  }
+
+  private async upsertGraduateFromOracle(
+    record: OracleGraduateRecord,
+    existing?: Graduate | null,
+  ): Promise<{
+    graduate: Graduate | null;
+    action: 'created' | 'updated' | 'unchanged' | 'skipped';
+  }> {
+    const payload = this.buildGraduatePayloadFromOracle(record, existing);
+    if (!payload) {
+      return { graduate: null, action: 'skipped' };
+    }
+
+    if (!existing) {
+      const graduate = this.graduateRepository.create(payload);
+      return {
+        graduate: await this.graduateRepository.save(graduate),
+        action: 'created',
+      };
+    }
+
+    const {
+      personId: _personId,
+      programId: _programId,
+      createdBy: _createdBy,
+      ...updatePayload
+    } = payload;
+    if (!this.hasGraduateChanges(existing, updatePayload)) {
+      return { graduate: existing, action: 'unchanged' };
+    }
+
+    Object.assign(existing, updatePayload);
+    return {
+      graduate: await this.graduateRepository.save(existing),
+      action: 'updated',
+    };
+  }
+
+  private async syncGraduatesFromOracleByIdNumber(
+    idNumber: string,
+  ): Promise<OracleGraduateSyncResult> {
+    if (!this.graduateOracleIntegrationService.isEnabled()) {
+      return {
+        enabled: false,
+        found: false,
+        synced: false,
+        created: 0,
+        updated: 0,
+        unchanged: 0,
+      };
+    }
+
+    const oracleGraduates =
+      await this.graduateOracleIntegrationService.findGraduatesByDocument(
+        idNumber,
+        100,
+      );
+    if (!oracleGraduates.length) {
+      return {
+        enabled: true,
+        found: false,
+        synced: false,
+        created: 0,
+        updated: 0,
+        unchanged: 0,
+      };
+    }
+
+    const localGraduates = await this.findActiveGraduatesByIdNumber(idNumber);
+    const usedGraduateIds = new Set<string>();
+    const result: OracleGraduateSyncResult = {
+      enabled: true,
+      found: true,
+      synced: false,
+      created: 0,
+      updated: 0,
+      unchanged: 0,
+    };
+
+    for (const record of oracleGraduates) {
+      const existing = this.findMatchingGraduateForOracleRecord(
+        record,
+        localGraduates,
+        usedGraduateIds,
+      );
+      if (existing) {
+        usedGraduateIds.add(existing.id);
+      }
+
+      const sync = await this.upsertGraduateFromOracle(record, existing);
+      if (sync.action === 'created') {
+        result.created += 1;
+        if (sync.graduate) {
+          localGraduates.push(sync.graduate);
+        }
+      } else if (sync.action === 'updated') {
+        result.updated += 1;
+      } else if (sync.action === 'unchanged') {
+        result.unchanged += 1;
+      }
+    }
+
+    result.synced = result.created > 0 || result.updated > 0;
+    return result;
   }
 
   /**
@@ -129,6 +405,17 @@ export class GraduationCertificatesService {
     }
     if (graduationDate && !gradDate) {
       throw new BadRequestException('Fecha de graduación inválida');
+    }
+
+    const oracleSync = await this.syncGraduatesFromOracleByIdNumber(idNumber);
+
+    if (oracleSync.enabled && !oracleSync.found) {
+      return {
+        existe: false,
+        fuente: 'oracle-sinu',
+        oracleSync,
+        mensaje: 'No se encontró un graduado con esos datos en Oracle SINU',
+      };
     }
 
     const where: any = {
@@ -155,6 +442,8 @@ export class GraduationCertificatesService {
     if (!graduate) {
       return {
         existe: false,
+        fuente: oracleSync.enabled ? 'oracle-sinu' : 'postgres',
+        oracleSync,
         mensaje: 'No se encontró un graduado con esos datos',
       };
     }
@@ -162,6 +451,8 @@ export class GraduationCertificatesService {
     return {
       existe: true,
       graduado: graduate,
+      fuente: oracleSync.enabled ? 'oracle-sinu' : 'postgres',
+      oracleSync,
       mensaje: 'Graduado encontrado',
     };
   }
@@ -255,14 +546,31 @@ export class GraduationCertificatesService {
       throw new BadRequestException('Fecha de graduación inválida');
     }
 
+    const oracleSync = await this.syncGraduatesFromOracleByIdNumber(idNumber);
+    if (oracleSync.enabled && !oracleSync.found) {
+      return {
+        hasMatches: false,
+        totalMatches: 0,
+        suggestions: [],
+        fuente: 'oracle-sinu',
+        oracleSync,
+        message:
+          'No encontramos graduados con ese número de documento en Oracle SINU.',
+      };
+    }
+
     const graduates = await this.findActiveGraduatesByIdNumber(idNumber);
     if (!graduates.length) {
       return {
         hasMatches: false,
         totalMatches: 0,
         suggestions: [],
+        fuente: oracleSync.enabled ? 'oracle-sinu' : 'postgres',
+        oracleSync,
         message:
-          'No encontramos graduados activos con ese número de documento.',
+          oracleSync.enabled && !oracleSync.found
+            ? 'No encontramos graduados con ese número de documento en Oracle SINU.'
+            : 'No encontramos graduados activos con ese número de documento.',
       };
     }
 
@@ -276,6 +584,8 @@ export class GraduationCertificatesService {
       hasMatches: suggestions.length > 0,
       totalMatches: graduates.length,
       suggestions,
+      fuente: oracleSync.enabled ? 'oracle-sinu' : 'postgres',
+      oracleSync,
       message:
         'Selecciona la persona correcta para continuar con la generación del certificado.',
     };
@@ -350,6 +660,8 @@ export class GraduationCertificatesService {
         );
       }
     } else {
+      await this.syncGraduatesFromOracleByIdNumber(dto.idNumber);
+
       const where: any = {
         status: 'ACTIVE',
       };
@@ -406,9 +718,7 @@ export class GraduationCertificatesService {
       graduatePhone: graduate?.phone,
       programName: graduate?.programName || dto.programName || 'No disponible',
       graduationDate:
-        graduate?.graduationDate ||
-        this.parseDate(dto.graduationDate) ||
-        null,
+        graduate?.graduationDate || this.parseDate(dto.graduationDate) || null,
       requesterName: requesterName || dto.requesterName,
       requesterEmail: requesterEmail || dto.requesterEmail,
       requesterPhone: dto.requesterPhone,
@@ -1083,7 +1393,9 @@ export class GraduationCertificatesService {
         { idNumber: normalizedIdNumber },
       );
     } else {
-      query.andWhere('request.idNumber = :idNumber', { idNumber: trimmedIdNumber });
+      query.andWhere('request.idNumber = :idNumber', {
+        idNumber: trimmedIdNumber,
+      });
     }
 
     return query.orderBy('request.requestDate', 'DESC').getOne();
@@ -1244,7 +1556,7 @@ export class GraduationCertificatesService {
         );
         const exactGraduationDateMatch = Boolean(
           gradDate &&
-          this.normalizeDateString(graduate.graduationDate) === gradDate,
+            this.normalizeDateString(graduate.graduationDate) === gradDate,
         );
         const shorterLength =
           providedTokens.length && graduateTokens.length
@@ -1576,9 +1888,7 @@ export class GraduationCertificatesService {
         await this.certificateRepository.save(certificate);
       }
     } catch (err) {
-      this.logger.warn(
-        `No se pudo guardar el PDF regenerado en disco: ${err}`,
-      );
+      this.logger.warn(`No se pudo guardar el PDF regenerado en disco: ${err}`);
     }
 
     return {
@@ -1965,8 +2275,7 @@ export class GraduationCertificatesService {
       id: config.id,
       version: config.version,
       updatedAt: config.updatedAt,
-      validationBaseUrl:
-        this.resolveCertificatePublicBaseUrl(frontendBaseUrl),
+      validationBaseUrl: this.resolveCertificatePublicBaseUrl(frontendBaseUrl),
       typographyFont: config.typographyFont,
       signerId: config.signerId,
       institutionLogoUrl: config.institutionLogoUrl,
@@ -1988,7 +2297,11 @@ export class GraduationCertificatesService {
     if (existing) {
       let changed = false;
 
-      if (!parseGraduationCertificateTemplateTexts(existing.certificateContentHtml)) {
+      if (
+        !parseGraduationCertificateTemplateTexts(
+          existing.certificateContentHtml,
+        )
+      ) {
         existing.certificateContentHtml =
           serializeGraduationCertificateTemplateTexts(
             DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS,
@@ -2524,8 +2837,7 @@ export class GraduationCertificatesService {
       updatedBy: config.updatedBy,
       texts: normalizeGraduationCertificateTemplateTexts({
         ...parsedTexts,
-        signerTitle:
-          config.signerTitleOverride || parsedTexts.signerTitle,
+        signerTitle: config.signerTitleOverride || parsedTexts.signerTitle,
       }),
     };
   }
@@ -2544,11 +2856,11 @@ export class GraduationCertificatesService {
     const previousSerialized = serializeGraduationCertificateTemplateTexts(
       normalizeGraduationCertificateTemplateTexts({
         ...currentTexts,
-        signerTitle:
-          config.signerTitleOverride || currentTexts.signerTitle,
+        signerTitle: config.signerTitleOverride || currentTexts.signerTitle,
       }),
     );
-    const nextSerialized = serializeGraduationCertificateTemplateTexts(nextTexts);
+    const nextSerialized =
+      serializeGraduationCertificateTemplateTexts(nextTexts);
 
     config.certificateContentHtml = nextSerialized;
     config.signerTitleOverride = nextTexts.signerTitle;
@@ -2595,8 +2907,7 @@ export class GraduationCertificatesService {
     const previousSerialized = serializeGraduationCertificateTemplateTexts(
       normalizeGraduationCertificateTemplateTexts({
         ...currentTexts,
-        signerTitle:
-          config.signerTitleOverride || currentTexts.signerTitle,
+        signerTitle: config.signerTitleOverride || currentTexts.signerTitle,
       }),
     );
     const nextSerialized = serializeGraduationCertificateTemplateTexts(
@@ -2828,7 +3139,8 @@ export class GraduationCertificatesService {
 
       request.graduate = graduate;
       request.graduateId = graduate.id;
-      request.graduationDate = request.graduationDate ?? graduate.graduationDate;
+      request.graduationDate =
+        request.graduationDate ?? graduate.graduationDate;
     } else {
       const fullName = (payload?.fullName || request.fullName || '').trim();
       const { firstName, lastName } = this.splitFullName(fullName);
@@ -2843,8 +3155,7 @@ export class GraduationCertificatesService {
         (request as { degreeTitle?: string }).degreeTitle ||
         programName;
       const graduationDate =
-        this.parseDate(payload?.graduationDate) ??
-        request.graduationDate;
+        this.parseDate(payload?.graduationDate) ?? request.graduationDate;
 
       if (!graduationDate) {
         throw new BadRequestException(
@@ -2911,7 +3222,10 @@ export class GraduationCertificatesService {
 
     await this.requestRepository.save(request);
 
-    const certificate = await this.generateCertificate(request, frontendBaseUrl);
+    const certificate = await this.generateCertificate(
+      request,
+      frontendBaseUrl,
+    );
 
     const deliveryEmail = request.requesterEmail || payload?.email;
     if (deliveryEmail && !request.requesterEmail) {

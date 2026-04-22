@@ -8,6 +8,8 @@ import { useState, useEffect } from 'react';
 import { Plus, AlertCircle, Trash2, Save, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { disciplinaryService } from '../../../../services/api/disciplinary.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 interface Cargo {
   id: string;
@@ -208,6 +210,7 @@ export function ConfiguracionCargos() {
               Sin guardar
             </span>
           )}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_RESET) && (
           <button
             onClick={restablecerDefecto}
             className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
@@ -215,6 +218,8 @@ export function ConfiguracionCargos() {
             <RotateCcw className="w-4 h-4" />
             Restablecer
           </button>
+          )}
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIG_CARGO_GUARDAR) && (
           <button
             onClick={guardarConfiguraciones}
             disabled={!cambiosPendientes}
@@ -226,11 +231,13 @@ export function ConfiguracionCargos() {
             <Save className="w-4 h-4" />
             Guardar Cambios
           </button>
+          )}
         </div>
       </div>
 
       {/* Botón agregar */}
       <div className="flex justify-end">
+        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_CREATE) && (
         <button
           onClick={agregarCargo}
           className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg"
@@ -242,6 +249,7 @@ export function ConfiguracionCargos() {
           <Plus className="w-4 h-4" />
           Agregar Cargo
         </button>
+        )}
       </div>
 
       {/* Grid de cargos */}
@@ -287,12 +295,14 @@ export function ConfiguracionCargos() {
                 <span className="text-xs font-semibold text-gray-700">Activo</span>
               </label>
               
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_CARGO_DELETE) && (
               <button
                 onClick={() => eliminarCargo(cargo.id)}
                 className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
+              )}
             </div>
           </div>
         ))}

@@ -12,7 +12,8 @@
   "dependencies": {
     "clsx": "*",
     "tailwind-merge": "*",
-    "lucide-react": "*"
+    "lucide-react": "*",
+    "sonner": "*"
   },
   "peerDependencies": {
     "react": "^18.3.1",

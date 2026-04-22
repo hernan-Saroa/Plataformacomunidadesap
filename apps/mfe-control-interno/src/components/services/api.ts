@@ -237,6 +237,13 @@ export const auditoriasApi = {
       body: JSON.stringify(data),
     });
   },
+
+  /**
+   * Obtener tipos de auditoría configurados
+   */
+  getTiposAuditoria: async (includeInactive = false): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/tipos-auditoria${includeInactive ? '?includeInactive=true' : ''}`);
+  },
 };
 
 // ==================== UNIVERSO DE AUDITORÍAS ====================
@@ -722,6 +729,20 @@ export const configuracionesProfesionalesOCIApi = {
   buscarCandidatos: async (busqueda?: string): Promise<ApiResponse<any[]>> => {
     const params = busqueda ? `?busqueda=${encodeURIComponent(busqueda)}` : '';
     return apiRequest<any[]>(`/configuraciones/profesionales-ocig/candidatos${params}`);
+  },
+
+  /**
+   * Obtener roles OCIG disponibles desde la BD (no hardcodeados)
+   */
+  getRolesOCIG: async (): Promise<ApiResponse<Array<{ name: string; description: string }>>> => {
+    return apiRequest<Array<{ name: string; description: string }>>('/configuraciones/profesionales-ocig/roles-ocig');
+  },
+
+  /**
+   * Obtener especialidades OCIG desde la BD (no hardcodeadas)
+   */
+  getEspecialidades: async (): Promise<ApiResponse<Array<{ id: number; nombre: string; descripcion: string }>>> => {
+    return apiRequest<Array<{ id: number; nombre: string; descripcion: string }>>('/configuraciones/profesionales-ocig/especialidades');
   },
 
   /**

@@ -105,7 +105,7 @@ BEGIN
     (gen_random_uuid(), 'control-interno.listas-chequeo.delete',        'Eliminar Lista de Chequeo',             'Permite eliminar una lista de chequeo',                          v_module_id, true, NOW(), NOW()),
     (gen_random_uuid(), 'control-interno.listas-chequeo.apply',         'Aplicar Lista de Chequeo',              'Permite aplicar una lista de chequeo a una auditoría',           v_module_id, true, NOW(), NOW()),
     (gen_random_uuid(), 'control-interno.listas-chequeo.export',        'Exportar Lista de Chequeo',             'Permite exportar una lista de chequeo',                          v_module_id, true, NOW(), NOW())
-  ON CONFLICT (code) DO NOTHING;
+  ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
   RAISE NOTICE 'Se insertaron correctamente los permisos para el módulo control-interno (ID: %)', v_module_id;
 END $$;

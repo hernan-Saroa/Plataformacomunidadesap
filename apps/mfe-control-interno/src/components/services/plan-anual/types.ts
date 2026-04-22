@@ -97,6 +97,8 @@ export interface PlanAnual {
   total_actividades: number;
   actividades_completadas: number;
   actividades_en_progreso: number;
+  equipoAprobacion?: Auditor[];
+  ordenAprobacion?: 'secuencial' | 'paralelo';
   roles: Rol[];
   createdAt?: string;
   updatedAt?: string;
@@ -112,6 +114,8 @@ export interface CreatePlanAnualDto {
   responsable_id?: string;
   fecha_inicio?: string;
   fecha_fin?: string;
+  equipo_aprobacion?: Auditor[];
+  orden_aprobacion?: string;
 }
 
 export interface UpdatePlanAnualDto {
@@ -120,6 +124,8 @@ export interface UpdatePlanAnualDto {
   responsable_id?: string;
   fecha_inicio?: string;
   fecha_fin?: string;
+  equipo_aprobacion?: Auditor[];
+  orden_aprobacion?: string;
 }
 
 export interface CreateActividadDto {

@@ -12,7 +12,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LayoutDashboard, CheckCircle, Archive, Clock, Users, Settings, Scale } from 'lucide-react';
 import { ModuleLayout, type MenuItem } from '../shared/ModuleLayout';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 
 // ✅ Importar todos los módulos especializados
 import { GestionProfesionalesWorldClass } from './GestionProfesionalesWorldClass'; // ✅ RF007 WORLD CLASS - Diseño actualizado
@@ -113,8 +113,13 @@ export function ControlDisciplinarioFull() {
       try {
         const todos = await disciplinaryService.getAllAutos();
         const enRevision = todos.filter((a: any) => a.estado === 'REVISION_JEFE');
-        if (enRevision.length > 0) {
-          const borradoresReales: BorradorPendiente[] = enRevision.map((auto: any) => ({
+        const pliegosAprobados = todos.filter((a: any) =>
+          a.estado === 'APROBADO' &&
+          (a.tipo === 'PLIEGO_CARGOS' || a.tipo === 'AUTO_FORMULACION_PLIEGO')
+        );
+        const autosAMostrar = [...enRevision, ...pliegosAprobados];
+        if (autosAMostrar.length > 0) {
+          const borradoresReales: BorradorPendiente[] = autosAMostrar.map((auto: any) => ({
             id: `auto-${auto.id}`,
             autoId: auto.id,
             numeroProceso: auto.process?.radicadoProceso || auto.processId,
@@ -131,13 +136,15 @@ export function ControlDisciplinarioFull() {
             denunciado: auto.process?.news?.disciplinable?.nombre || 'Sin información',
             etapa: (auto.process?.etapaActual || '').replace(/_/g, ' '),
             prioridad: 'media' as const,
-            estado: 'en_revision' as const,
+            estado: auto.estado === 'APROBADO' ? 'aprobado' as const : 'en_revision' as const,
             historial: [{
               id: `h-${auto.id}`,
-              tipo: 'revision_iniciada' as const,
+              tipo: auto.estado === 'APROBADO' ? 'aprobado' as const : 'revision_iniciada' as const,
               usuario: auto.process?.abogadoAsignadoNombre || 'Profesional',
               fecha: auto.createdAt,
-              descripcion: 'Auto enviado a revisión del Jefe OCID',
+              descripcion: auto.estado === 'APROBADO'
+                ? 'Auto aprobado por Jefe OCID — pendiente envío a Jurídica'
+                : 'Auto enviado a revisión del Jefe OCID',
             }],
             tiempoEspera: '',
           }));
@@ -207,7 +214,7 @@ export function ControlDisciplinarioFull() {
   }, []);
 
   const hasPermissionBySection: Record<Section, boolean> = {
-    dashboard: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_MANAGE),
+    dashboard: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_MANAGE),
     aprobacion: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_MANAGE),
     expediente: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_EXPIDENTE_ELECTRONICO_MANAGE),
     terminos: authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_MANAGE),
@@ -498,6 +505,8 @@ export function ControlDisciplinarioFull() {
   }, []);
 
   return (
+    <>
+    <Toaster position="top-right" richColors />
     <ModuleLayout
       moduleName="CONTROL INTERNO DISCIPLINARIO"
       moduleDescription="Sistema de Gestión"
@@ -540,5 +549,6 @@ export function ControlDisciplinarioFull() {
       {currentSection === 'profesionales' && <GestionProfesionalesWorldClass onVerProcesos={handleVerProcesosProfesional} />}
       {currentSection === 'config' && <ModuloConfiguracionPremium />}
     </ModuleLayout>
+    </>
   );
 }

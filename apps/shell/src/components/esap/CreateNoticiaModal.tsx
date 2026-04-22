@@ -22,6 +22,7 @@ import {
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import { disciplinaryService, DisciplinaryBehavior } from '../../services/api/disciplinary.service';
+import { authService } from '../../services/api/authService';
 
 // ✅ NUEVO: Interface para Apoderado
 interface Apoderado {
@@ -610,6 +611,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     const valid = validateStep4();
     if (!valid) return;
 
+    const currentUser = authService.getCurrentUser();
     const dataToSave = {
       ...formData,
       denunciados, // ✅ Incluir múltiples denunciados
@@ -617,7 +619,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       denunciantes, // ✅ Incluir múltiples denunciantes
       archivosAdjuntos,
       fechaRegistro: new Date().toISOString(),
-      radicador: 'Usuario Actual', // En producción vendría del contexto
+      radicadorId: currentUser?.id, // ✅ ID del usuario que radica
       porDeterminar, // ✅ Incluir flags de campos "Por determinar"
       // ✅ NUEVO: Incluir conducta seleccionada
       conductaSeleccionada: conductaSeleccionada === 'Otro' ? conductaPersonalizada : conductaSeleccionada,

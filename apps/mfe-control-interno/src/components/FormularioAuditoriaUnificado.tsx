@@ -40,7 +40,7 @@ import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Input } from '@esap-mfe/shared-ui/input';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { toast } from 'sonner';
-import { configuracionesProfesionalesOCIApi } from './services/api';
+import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/api';
 import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../../../services/api/controlInternoService';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -310,6 +310,7 @@ export function FormularioAuditoriaUnificado({
     productosEsperados: initialData?.productosEsperados || [],
     nivelRiesgo: initialData?.nivelRiesgo || 'Medio',
     riesgosIdentificados: initialData?.riesgosIdentificados || [],
+    riesgosAsociados: initialData?.riesgosAsociados || [],
     controlesAplicar: initialData?.controlesAplicar || [],
     hallazgos: initialData?.hallazgos || [],
     incluirHallazgosPreliminares: initialData?.incluirHallazgosPreliminares || false,
@@ -325,11 +326,18 @@ export function FormularioAuditoriaUnificado({
   const [criterioTemporal, setCriterioTemporal] = useState('');
   const [normaTemporal, setNormaTemporal] = useState('');
   const [riesgoTemporal, setRiesgoTemporal] = useState('');
+  const [procesoRiesgoTemporal, setProcesoRiesgoTemporal] = useState('');
   const [controlTemporal, setControlTemporal] = useState('');
+  const [editandoRiesgoIndex, setEditandoRiesgoIndex] = useState<number | null>(null);
+  const [textoEditadoRiesgo, setTextoEditadoRiesgo] = useState('');
   
   // Estado para auditores cargados del backend
   const [auditoresDisponibles, setAuditoresDisponibles] = useState<AuditorOption[]>(AUDITORES_FALLBACK);
   const [cargandoAuditores, setCargandoAuditores] = useState(false);
+
+  // Estado para tipos de auditoría cargados del backend
+  const [tiposAuditoria, setTiposAuditoria] = useState<{ id: string; codigo: string; nombre: string; color?: string; descripcion?: string }[]>([]);
+  const [cargandoTipos, setCargandoTipos] = useState(false);
   
   // Estado para procesos auditables cargados del backend
   const [procesosAuditables, setProcesosAuditables] = useState<string[]>(PROCESOS_INSTITUCIONALES_FALLBACK);
@@ -377,6 +385,32 @@ export function FormularioAuditoriaUnificado({
     cargarAuditores();
   }, [open]);
   
+  // Cargar tipos de auditoría desde la API de configuración
+  useEffect(() => {
+    const cargarTipos = async () => {
+      if (!open) return;
+      setCargandoTipos(true);
+      try {
+        const response = await auditoriasApi.getTiposAuditoria(true);
+        if (response.success && Array.isArray(response.data) && response.data.length > 0) {
+          const activos = response.data.filter((t: any) => t.activo !== false && t.activa !== false);
+          setTiposAuditoria(activos.map((t: any) => ({
+            id: t.id,
+            codigo: t.codigo || t.id,
+            nombre: t.nombre,
+            color: t.color,
+            descripcion: t.descripcion
+          })));
+        }
+      } catch (error) {
+        console.error('[FormularioAuditoria] Error al cargar tipos de auditoría:', error);
+      } finally {
+        setCargandoTipos(false);
+      }
+    };
+    cargarTipos();
+  }, [open]);
+
   // Cargar procesos auditables desde el universo de auditorías
   useEffect(() => {
     const cargarProcesos = async () => {
@@ -482,15 +516,45 @@ export function FormularioAuditoriaUnificado({
   };
 
   const handleAgregarRiesgo = () => {
-    if (riesgoTemporal.trim().length < 10) {
-      toast.error('El riesgo debe tener al menos 10 caracteres');
+    const textoRiesgo = riesgoTemporal.trim();
+    if (textoRiesgo.length < 5) {
+      toast.error('El riesgo debe tener al menos 5 caracteres');
       return;
     }
-    setFormData(prev => ({
-      ...prev,
-      riesgosIdentificados: [...prev.riesgosIdentificados, riesgoTemporal.trim()]
-    }));
+    
+    // Si hay un proceso en el campo temporal, lo concatenamos
+    const prefijo = procesoRiesgoTemporal.trim() ? `${procesoRiesgoTemporal.trim()}: ` : '';
+    const riesgoCompleto = `${prefijo}${textoRiesgo}`;
+
+    handleChange('riesgosIdentificados', [...formData.riesgosIdentificados, riesgoCompleto]);
     setRiesgoTemporal('');
+    setProcesoRiesgoTemporal('');
+  };
+
+  const handleEditarRiesgo = (index: number) => {
+    if (index < 0) {
+      setEditandoRiesgoIndex(null);
+      setTextoEditadoRiesgo('');
+      return;
+    }
+    setEditandoRiesgoIndex(index);
+    setTextoEditadoRiesgo(formData.riesgosIdentificados[index]);
+  };
+
+  const handleGuardarRiesgoEditado = (index: number) => {
+    if (textoEditadoRiesgo.trim().length < 5) {
+      toast.error('El riesgo debe tener al menos 5 caracteres');
+      return;
+    }
+    const nuevos = [...formData.riesgosIdentificados];
+    nuevos[index] = textoEditadoRiesgo.trim();
+    handleChange('riesgosIdentificados', nuevos);
+    setEditandoRiesgoIndex(null);
+  };
+
+  const handleEliminarRiesgo = (index: number) => {
+    const nuevos = formData.riesgosIdentificados.filter((_, i) => i !== index);
+    handleChange('riesgosIdentificados', nuevos);
   };
 
   const handleAgregarControl = () => {
@@ -709,6 +773,8 @@ export function FormularioAuditoriaUnificado({
             mostrarSugerenciasProcesos={mostrarSugerenciasProcesos}
             setMostrarSugerenciasProcesos={setMostrarSugerenciasProcesos}
             evaluaciones={evaluacionesDisponibles}
+            tiposAuditoria={tiposAuditoria}
+            cargandoTipos={cargandoTipos}
           />
         );
       case 2:
@@ -743,7 +809,15 @@ export function FormularioAuditoriaUnificado({
             onChange={handleChange}
             riesgoTemporal={riesgoTemporal}
             setRiesgoTemporal={setRiesgoTemporal}
+            procesoRiesgoTemporal={procesoRiesgoTemporal}
+            setProcesoRiesgoTemporal={setProcesoRiesgoTemporal}
             onAgregarRiesgo={handleAgregarRiesgo}
+            onEditarRiesgo={handleEditarRiesgo}
+            onGuardarRiesgo={handleGuardarRiesgoEditado}
+            onEliminarRiesgo={handleEliminarRiesgo}
+            editandoRiesgoIndex={editandoRiesgoIndex}
+            textoEditadoRiesgo={textoEditadoRiesgo}
+            setTextoEditadoRiesgo={setTextoEditadoRiesgo}
             controlTemporal={controlTemporal}
             setControlTemporal={setControlTemporal}
             onAgregarControl={handleAgregarControl}
@@ -982,6 +1056,8 @@ interface Paso1Props extends PasoProps {
   mostrarSugerenciasProcesos: boolean;
   setMostrarSugerenciasProcesos: (value: boolean) => void;
   evaluaciones: EvaluacionProceso[];
+  tiposAuditoria: { id: string; codigo: string; nombre: string; color?: string; descripcion?: string }[];
+  cargandoTipos: boolean;
 }
 
 function Paso1InformacionBasica({ 
@@ -993,7 +1069,9 @@ function Paso1InformacionBasica({
   setBusquedaProceso,
   mostrarSugerenciasProcesos,
   setMostrarSugerenciasProcesos,
-  evaluaciones
+  evaluaciones,
+  tiposAuditoria,
+  cargandoTipos
 }: Paso1Props) {
   // Filtrar procesos según búsqueda
   const procesosFiltrados = procesos.filter(proceso =>
@@ -1029,36 +1107,40 @@ function Paso1InformacionBasica({
       onChange('nivelRiesgo', nivelRiesgoForm);
       
       // Construir lista de riesgos identificados basados en la evaluación
-      const riesgosIdentificados: string[] = [];
+      const riesgosIdentificadosArr: string[] = [];
       
+      if (riesgo.totalRiesgos > 0) {
+        riesgosIdentificadosArr.push(`Evaluación DAFP: ${riesgo.totalRiesgos} riesgos totales (${riesgo.riesgosExtremos || 0} Extremos, ${riesgo.riesgosAltos || 0} Altos, ${riesgo.riesgosModerados || 0} Moderados, ${riesgo.riesgosBajos || 0} Bajos)`);
+      }
+
       if (riesgo.riesgoInherente > 6) {
-        riesgosIdentificados.push(`Riesgo inherente ALTO (${riesgo.riesgoInherente}/9) - Requiere controles reforzados`);
+        riesgosIdentificadosArr.push(`Riesgo inherente ALTO (${riesgo.riesgoInherente}/9) - Requiere controles reforzados`);
       }
       
       if (riesgo.riesgoResidual > 4) {
-        riesgosIdentificados.push(`Riesgo residual ELEVADO (${riesgo.riesgoResidual}/9) - Los controles actuales son insuficientes`);
+        riesgosIdentificadosArr.push(`Riesgo residual ELEVADO (${riesgo.riesgoResidual}/9) - Los controles actuales son insuficientes`);
       }
       
       if (riesgo.nivelControl < 2) {
-        riesgosIdentificados.push(`Controles actuales DÉBILES (nivel ${riesgo.nivelControl}/3) - Se requiere fortalecer el ambiente de control`);
+        riesgosIdentificadosArr.push(`Controles actuales DÉBILES (nivel ${riesgo.nivelControl}/3) - Se requiere fortalecer el ambiente de control`);
       }
       
       if (riesgo.probabilidad >= 3) {
-        riesgosIdentificados.push(`Probabilidad de materialización ALTA (${riesgo.probabilidad}/3) - Se requiere monitoreo continuo`);
+        riesgosIdentificadosArr.push(`Probabilidad de materialización ALTA (${riesgo.probabilidad}/3) - Se requiere monitoreo continuo`);
       }
       
       if (riesgo.impacto >= 3) {
-        riesgosIdentificados.push(`Impacto potencial ALTO (${riesgo.impacto}/3) - Puede afectar significativamente los objetivos institucionales`);
+        riesgosIdentificadosArr.push(`Impacto potencial ALTO (${riesgo.impacto}/3) - Puede afectar significativamente los objetivos institucionales`);
       }
       
       // Agregar información de decisión si existe
       if (riesgo.decisionFinal && riesgo.motivoDecision) {
-        riesgosIdentificados.push(`Decisión DAFP: ${riesgo.decisionFinal} - ${riesgo.motivoDecision}`);
+        riesgosIdentificadosArr.push(`Decisión DAFP: ${riesgo.decisionFinal} - ${riesgo.motivoDecision}`);
       }
       
       // Actualizar riesgos identificados
-      if (riesgosIdentificados.length > 0) {
-        onChange('riesgosIdentificados', riesgosIdentificados);
+      if (riesgosIdentificadosArr.length > 0) {
+        onChange('riesgosIdentificados', riesgosIdentificadosArr);
       }
       
       // Construir controles a aplicar basados en la evaluación
@@ -1090,12 +1172,12 @@ function Paso1InformacionBasica({
       
       console.log('✅ Riesgos y controles cargados automáticamente desde evaluación del proceso');
       console.log(`   - Nivel de riesgo: ${nivelRiesgoForm}`);
-      console.log(`   - Riesgos identificados: ${riesgosIdentificados.length}`);
+      console.log(`   - Riesgos identificados: ${riesgosIdentificadosArr.length}`);
       console.log(`   - Controles a aplicar: ${controles.length}`);
       
       // Notificar al usuario
       toast.success('Riesgos y controles cargados automáticamente', {
-        description: `Nivel: ${nivelRiesgoForm} | ${riesgosIdentificados.length} riesgos | ${controles.length} controles`
+        description: `Nivel: ${nivelRiesgoForm} | ${riesgosIdentificadosArr.length} riesgos | ${controles.length} controles`
       });
     }
   };
@@ -1125,32 +1207,41 @@ function Paso1InformacionBasica({
             required
             helpText="Seleccione el tipo de auditoría según su naturaleza"
           >
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                { value: 'regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
-                { value: 'territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
-                { value: 'especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> },
-                { value: 'seguimiento', label: 'Seguimiento', icono: <Clock className="w-5 h-5" /> }
-              ].map(tipo => (
-                <button
-                  key={tipo.value}
-                  type="button"
-                  onClick={() => onChange('tipoAuditoria', tipo.value)}
-                  className={`
-                    px-4 py-3 rounded-lg border-2 transition-all duration-200
-                    flex flex-col items-center justify-center gap-2 font-medium
-                    ${
-                      formData.tipoAuditoria === tipo.value
-                        ? 'border-blue-600 bg-blue-50 text-blue-700'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                    }
-                  `}
-                >
-                  {tipo.icono}
-                  <span className="text-sm">{tipo.label}</span>
-                </button>
-              ))}
-            </div>
+            {cargandoTipos ? (
+              <div className="flex items-center gap-2 py-3 text-sm text-gray-500">
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full" />
+                Cargando tipos de auditoría...
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {(tiposAuditoria.length > 0 ? tiposAuditoria : [
+                  { id: 'regular', codigo: 'regular', nombre: 'Regular', color: undefined },
+                  { id: 'territorial', codigo: 'territorial', nombre: 'Territorial', color: undefined },
+                  { id: 'especial', codigo: 'especial', nombre: 'Especial', color: undefined },
+                  { id: 'seguimiento', codigo: 'seguimiento', nombre: 'Seguimiento', color: undefined }
+                ]).map(tipo => (
+                  <button
+                    key={tipo.id}
+                    type="button"
+                    onClick={() => onChange('tipoAuditoria', tipo.codigo.toLowerCase() as any)}
+                    className={`
+                      px-4 py-3 rounded-lg border-2 transition-all duration-200
+                      flex flex-col items-center justify-center gap-2 font-medium
+                      ${
+                        formData.tipoAuditoria === tipo.codigo.toLowerCase()
+                          ? 'border-blue-600 bg-blue-50 text-blue-700'
+                          : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                      }
+                    `}
+                  >
+                    {tipo.color && (
+                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tipo.color }} />
+                    )}
+                    <span className="text-sm">{tipo.nombre}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </FieldWrapper>
 
           {/* Información contextual según tipo */}
@@ -2155,7 +2246,15 @@ function Paso6RecursosProductos({ formData, onChange }: PasoProps) {
 interface Paso7Props extends PasoProps {
   riesgoTemporal: string;
   setRiesgoTemporal: (value: string) => void;
+  procesoRiesgoTemporal: string;
+  setProcesoRiesgoTemporal: (value: string) => void;
   onAgregarRiesgo: () => void;
+  onEditarRiesgo: (index: number) => void;
+  onGuardarRiesgo: (index: number) => void;
+  onEliminarRiesgo: (index: number) => void;
+  editandoRiesgoIndex: number | null;
+  textoEditadoRiesgo: string;
+  setTextoEditadoRiesgo: (value: string) => void;
   controlTemporal: string;
   setControlTemporal: (value: string) => void;
   onAgregarControl: () => void;
@@ -2166,35 +2265,21 @@ function Paso7RiesgosControles({
   onChange,
   riesgoTemporal,
   setRiesgoTemporal,
+  procesoRiesgoTemporal,
+  setProcesoRiesgoTemporal,
   onAgregarRiesgo,
+  onEditarRiesgo,
+  onGuardarRiesgo,
+  onEliminarRiesgo,
+  editandoRiesgoIndex,
+  textoEditadoRiesgo,
+  setTextoEditadoRiesgo,
   controlTemporal,
   setControlTemporal,
   onAgregarControl
 }: Paso7Props) {
-  const [editandoRiesgo, setEditandoRiesgo] = useState<number | null>(null);
-  const [textoEditadoRiesgo, setTextoEditadoRiesgo] = useState('');
   const [editandoControl, setEditandoControl] = useState<number | null>(null);
   const [textoEditadoControl, setTextoEditadoControl] = useState('');
-
-  const handleEditarRiesgo = (index: number) => {
-    setEditandoRiesgo(index);
-    setTextoEditadoRiesgo(formData.riesgosIdentificados[index]);
-  };
-
-  const handleGuardarRiesgo = (index: number) => {
-    if (textoEditadoRiesgo.trim().length >= 10) {
-      const nuevosRiesgos = [...formData.riesgosIdentificados];
-      nuevosRiesgos[index] = textoEditadoRiesgo.trim();
-      onChange('riesgosIdentificados', nuevosRiesgos);
-      setEditandoRiesgo(null);
-      setTextoEditadoRiesgo('');
-    }
-  };
-
-  const handleCancelarRiesgo = () => {
-    setEditandoRiesgo(null);
-    setTextoEditadoRiesgo('');
-  };
 
   const handleEditarControl = (index: number) => {
     setEditandoControl(index);
@@ -2271,113 +2356,124 @@ function Paso7RiesgosControles({
             </div>
           </FieldWrapper>
 
-          {/* Riesgos Identificados */}
+          {/* Riesgos Identificados Asociados al Proceso */}
           <div>
-            <h4 className="font-bold text-gray-900 mb-3">Riesgos Identificados</h4>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-bold text-gray-900">Riesgos Asociados al Proceso *</h4>
+              <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
+                Mandatorio para Informe Preliminar
+              </Badge>
+            </div>
             
             {formData.riesgosIdentificados.length > 0 && (
-              <div className="space-y-2 mb-3">
+              <div className="space-y-2 mb-4">
                 {formData.riesgosIdentificados.map((riesgo, index) => (
                   <div
                     key={index}
-                    className="flex items-start gap-2 p-3 bg-red-50 rounded-lg border border-red-200"
+                    className="flex flex-col gap-2 p-3 bg-red-50 rounded-lg border border-red-200"
                   >
-                    <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
-                    
-                    {editandoRiesgo === index ? (
-                      // MODO EDICIÓN
-                      <div className="flex-1 space-y-2">
-                        <textarea
-                          value={textoEditadoRiesgo}
-                          onChange={(e) => setTextoEditadoRiesgo(e.target.value)}
-                          className="w-full px-3 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 text-sm"
-                          rows={3}
-                          autoFocus
-                        />
-                        <div className="flex gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => handleGuardarRiesgo(index)}
-                            disabled={textoEditadoRiesgo.trim().length < 10}
-                            className="bg-green-600 hover:bg-green-700 text-white"
-                          >
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                            Guardar
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            onClick={handleCancelarRiesgo}
-                            className="text-gray-600"
-                          >
-                            <X className="w-3 h-3 mr-1" />
-                            Cancelar
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      // MODO VISTA
-                      <>
-                        <p className="text-sm text-gray-700 flex-1">{riesgo}</p>
-                        <div className="flex gap-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEditarRiesgo(index)}
-                            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                            title="Editar riesgo"
-                          >
-                            <Settings className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              onChange(
-                                'riesgosIdentificados',
-                                formData.riesgosIdentificados.filter((_, i) => i !== index)
-                              );
-                            }}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                            title="Eliminar riesgo"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </>
-                    )}
+                    <div className="flex items-start gap-2">
+                       <AlertTriangle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                       
+                       {editandoRiesgoIndex === index ? (
+                         <div className="flex-1 space-y-3">
+                            <textarea
+                              value={textoEditadoRiesgo}
+                              onChange={e => setTextoEditadoRiesgo(e.target.value)}
+                              className="w-full px-3 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 text-sm"
+                              rows={3}
+                              placeholder="Descripción del riesgo"
+                              autoFocus
+                            />
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => onGuardarRiesgo(index)}
+                                disabled={textoEditadoRiesgo.trim().length < 5}
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                              >
+                                Guardar
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => onEditarRiesgo(-1)}
+                              >
+                                Cancelar
+                              </Button>
+                            </div>
+                         </div>
+                       ) : (
+                         <>
+                            <div className="flex-1">
+                               <p className="text-sm text-gray-700 leading-relaxed font-medium">
+                                 {riesgo}
+                               </p>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => onEditarRiesgo(index)}
+                                className="text-blue-600 hover:bg-blue-100"
+                              >
+                                <Settings className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => onEliminarRiesgo(index)}
+                                className="text-red-600 hover:bg-red-100"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                         </>
+                       )}
+                    </div>
                   </div>
                 ))}
               </div>
             )}
 
-            <div className="flex gap-2">
-              <Input
-                value={riesgoTemporal}
-                onChange={(e) => setRiesgoTemporal(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    onAgregarRiesgo();
-                  }
-                }}
-                placeholder="Ej: Riesgo de pérdida de información por falta de respaldo"
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                onClick={onAgregarRiesgo}
-                disabled={riesgoTemporal.trim().length < 10}
-                style={{ backgroundColor: '#DC2626' }}
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Agregar
-              </Button>
+            <div className="bg-gray-50 p-4 rounded-xl border-2 border-dashed border-gray-300 space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="md:col-span-1">
+                  <Input
+                    value={procesoRiesgoTemporal}
+                    onChange={(e) => setProcesoRiesgoTemporal(e.target.value)}
+                    placeholder="Proceso/Momento (Ej: Contratación)"
+                    className="border-gray-300 bg-white"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Input
+                    value={riesgoTemporal}
+                    onChange={(e) => setRiesgoTemporal(e.target.value)}
+                    placeholder="Descripción del riesgo (mín. 5 caracteres)"
+                    className="border-gray-300 bg-white"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  onClick={onAgregarRiesgo}
+                  disabled={riesgoTemporal.trim().length < 5}
+                  className="bg-red-600 hover:bg-red-700 text-white shadow-md"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Agregar Riesgo
+                </Button>
+              </div>
             </div>
+            <p className="text-[10px] text-gray-500 mt-2 italic px-1">
+              * Estos riesgos se verán reflejados en el Informe Preliminar de Auditoría.
+            </p>
           </div>
 
           {/* Controles a Aplicar */}

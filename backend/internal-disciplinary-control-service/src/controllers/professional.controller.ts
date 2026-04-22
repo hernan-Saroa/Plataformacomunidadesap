@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, HttpException, HttpStatus, Delete, Param, Patch, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Get, Post, Body, HttpException, HttpStatus, Delete, Param, Patch, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DisciplinaryProfessional } from '../entities/disciplinary-professional.entity';
@@ -10,9 +10,17 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { StorageService } from '../services/storage.service';
 
 import { SystemConfiguration } from '../entities/system-configuration.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
+
+const DEFAULT_INTERNAL_SERVICE_TOKEN = 'esap-super-secret-jwt-key-2024';
 
 @ApiTags('Professionals')
 @Controller('professionals')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class ProfessionalController {
     constructor(
         @InjectRepository(DisciplinaryProfessional)
@@ -24,6 +32,21 @@ export class ProfessionalController {
         private readonly httpService: HttpService,
         private readonly storageService: StorageService,
     ) { }
+
+    private buildAuthHeaders(): Record<string, string> | undefined {
+        const internalServiceToken =
+            process.env.INTERNAL_SERVICE_TOKEN ||
+            process.env.JWT_SECRET ||
+            DEFAULT_INTERNAL_SERVICE_TOKEN;
+
+        if (!internalServiceToken) {
+            return undefined;
+        }
+
+        return {
+            'x-internal-service-token': internalServiceToken,
+        };
+    }
 
     @Get('workload')
     @ApiOperation({ summary: 'Obtener carga de trabajo por profesional' })
@@ -65,7 +88,10 @@ export class ProfessionalController {
             const authServiceUrl = process.env.AUTH_SERVICE_URL || process.env.API_AUTH_SERVICE_URL || 'http://auth-service:3001';
             const base = authServiceUrl.replace(/\/+$/, '');
             const response = await firstValueFrom(
-                this.httpService.get(`${base}/users?limit=1000`, { timeout: 3000 })
+                this.httpService.get(`${base}/users?limit=1000`, {
+                    headers: this.buildAuthHeaders(),
+                    timeout: 3000
+                })
             );
 
             if (response.data && response.data.data && Array.isArray(response.data.data.data)) {
@@ -287,7 +313,10 @@ export class ProfessionalController {
 
                 const base = authServiceUrl.replace(/\/+$/, '');
                 const response = await firstValueFrom(
-                    this.httpService.get(`${base}/users?limit=1000`, { timeout: 5000 })
+                    this.httpService.get(`${base}/users?limit=1000`, {
+                        headers: this.buildAuthHeaders(),
+                        timeout: 5000
+                    })
                 );
 
                 console.log('Auth service response status:', response.status);

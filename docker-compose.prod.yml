@@ -1,7 +1,7 @@
 version: "3.9"
 
 # Docker Compose para entorno PROD (Producción)
-# Servidor: http://172.16.202.169
+# Servidor: https://comunidadesap.esap.edu.co
 # Uso: docker-compose -f docker-compose.prod.yml up -d --build
 
 services:
@@ -13,13 +13,12 @@ services:
       args:
         # Nueva estructura de URLs: /{service}/api/v{version}/{path}
         # Ejemplo: /auth/api/v1/users
-        VITE_API_URL: "http://172.16.202.169/services"
-        VITE_ONLYOFFICE_URL: "http://172.16.202.169:9000"
+        VITE_API_URL: ${FRONTEND_VITE_API_URL:-https://comunidadesap.esap.edu.co/services}
+        VITE_ONLYOFFICE_URL: ${FRONTEND_VITE_ONLYOFFICE_URL:-https://comunidadesap.esap.edu.co}
         VITE_MICROSOFT_TENANT_ID: ${VITE_MICROSOFT_TENANT_ID}
         VITE_MICROSOFT_CLIENT_ID: ${VITE_MICROSOFT_CLIENT_ID}
+        VITE_LOGIN_OPTIONS: ${VITE_LOGIN_OPTIONS:-both}
     container_name: superapp-frontend-prod
-    ports:
-      - "80:80"
     depends_on:
       - api-gateway
       - onlyoffice
@@ -34,7 +33,7 @@ services:
     image: onlyoffice/documentserver:latest
     container_name: onlyoffice-server-prod
     ports:
-      - "9000:80"
+      - "127.0.0.1:9000:80"
     environment:
       - JWT_ENABLED=false
     volumes:
@@ -58,7 +57,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_prod_2024}
 
       # CORS - Permitir acceso desde el frontend
-      CORS_ORIGIN: "http://172.16.202.169"
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://comunidadesap.esap.edu.co}
 
       # Rutas internas a otros microservicios (DNS de Docker)
       AUTH_SERVICE_URL: http://auth-service-prod:3001
@@ -157,6 +156,14 @@ services:
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway-prod:3000
       NOTIFICATION_SERVICE_URL: http://notifications-service-prod:3009
+      ORACLE_GRAD_ENABLED: ${ORACLE_GRAD_ENABLED:-false}
+      ORACLE_GRAD_USER: ${ORACLE_GRAD_USER:-}
+      ORACLE_GRAD_PASSWORD: ${ORACLE_GRAD_PASSWORD:-}
+      ORACLE_GRAD_CONNECT_STRING: ${ORACLE_GRAD_CONNECT_STRING:-}
+      ORACLE_GRAD_SCHEMA: ${ORACLE_GRAD_SCHEMA:-USRINTEGRACION}
+      ORACLE_GRAD_VIEW: ${ORACLE_GRAD_VIEW:-VW_INTEGRACIONCERTIFICADO}
+      ORACLE_GRAD_CLIENT_LIB_DIR: ${ORACLE_GRAD_CLIENT_LIB_DIR:-}
+      ORACLE_CLIENT_LIB_DIR: ${ORACLE_CLIENT_LIB_DIR:-}
     ports:
       - "3002:3002"
     depends_on:
@@ -229,6 +236,7 @@ services:
       ORACLE_FNC_CONNECT_STRING: ${ORACLE_FNC_CONNECT_STRING:-}
       ORACLE_FNC_SCHEMA: ${ORACLE_FNC_SCHEMA:-USRINTEGRACION}
       ORACLE_FNC_VIEW: ${ORACLE_FNC_VIEW:-VW_INTEGRACIONFNC}
+      ORACLE_CLIENT_LIB_DIR: ${ORACLE_CLIENT_LIB_DIR:-}
     ports:
       - "3004:3004"
     volumes:

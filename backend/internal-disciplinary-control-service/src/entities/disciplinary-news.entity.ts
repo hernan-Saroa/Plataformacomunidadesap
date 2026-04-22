@@ -55,6 +55,7 @@ export class DisciplinaryNews {
   @Column({ unique: true })
   radicado: string; // ND-2025-001
 
+
   @CreateDateColumn()
   fechaRecepcion: Date;
 
@@ -90,6 +91,9 @@ export class DisciplinaryNews {
 
   @Column({ type: 'text', nullable: true })
   observaciones: string;
+
+  @Column({ type: 'uuid', nullable: true, name: 'radicador_id' })
+  radicadorId: string | null;
 
   @Column({ type: 'uuid', nullable: true })
   kanbanStage: string | null;

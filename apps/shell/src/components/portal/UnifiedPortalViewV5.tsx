@@ -64,6 +64,7 @@ import { NotificacionesArquitectura } from './NotificacionesArquitectura';
 import { PerfilUsuarioEditable } from './PerfilUsuarioEditable';
 import { FooterWorldClass } from '../FooterWorldClass';
 import { PortalTransaccionalFirmaCompleto } from '../esap/firma-electronica/PortalTransaccionalFirmaCompleto';
+import { PORTAL_EXTERNAL_URLS } from '../../config/environment';
 
 interface UnifiedPortalViewV5Props {
   userName: string;
@@ -127,6 +128,9 @@ export function UnifiedPortalViewV5({
   activeRole, 
   roleData 
 }: UnifiedPortalViewV5Props) {
+  const outlookUrl = PORTAL_EXTERNAL_URLS.outlook;
+  const humanosoftUrl = PORTAL_EXTERNAL_URLS.humanosoft;
+  const arcaUrl = PORTAL_EXTERNAL_URLS.arca;
   const [vistaActual, setVistaActual] = useState<string>('dashboard');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
@@ -1411,27 +1415,31 @@ export function UnifiedPortalViewV5({
                   <Button
                     variant="ghost"
                     className="w-full justify-start gap-2 text-sm hover:bg-blue-50 hover:text-[#1e5da8]"
-                    onClick={() => window.open('https://outlook.office.com', '_blank')}
+                    onClick={() => window.open(outlookUrl, '_blank', 'noopener,noreferrer')}
                   >
                     <Mail className="w-4 h-4" />
                     Correo Institucional
                   </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start gap-2 text-sm hover:bg-blue-50 hover:text-[#1e5da8]"
-                    onClick={() => window.open('https://humanosoft.esap.edu.co', '_blank')}
-                  >
-                    <Users className="w-4 h-4" />
-                    Humano Soft
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start gap-2 text-sm hover:bg-blue-50 hover:text-[#1e5da8]"
-                    onClick={() => window.open('https://arca.esap.edu.co', '_blank')}
-                  >
-                    <GraduationCap className="w-4 h-4" />
-                    ARCA ESAP
-                  </Button>
+                  {humanosoftUrl ? (
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-2 text-sm hover:bg-blue-50 hover:text-[#1e5da8]"
+                      onClick={() => window.open(humanosoftUrl, '_blank', 'noopener,noreferrer')}
+                    >
+                      <Users className="w-4 h-4" />
+                      Humano Soft
+                    </Button>
+                  ) : null}
+                  {arcaUrl ? (
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-2 text-sm hover:bg-blue-50 hover:text-[#1e5da8]"
+                      onClick={() => window.open(arcaUrl, '_blank', 'noopener,noreferrer')}
+                    >
+                      <GraduationCap className="w-4 h-4" />
+                      ARCA ESAP
+                    </Button>
+                  ) : null}
                   <Separator className="my-2" />
                   <Button
                     variant="ghost"

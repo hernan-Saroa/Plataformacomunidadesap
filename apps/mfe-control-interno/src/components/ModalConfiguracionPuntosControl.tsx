@@ -18,6 +18,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Calendar, Clock, Plus, Trash2, Save, AlertCircle,
@@ -380,7 +381,9 @@ export function ModalConfiguracionPuntosControl({
 
   if (!isOpen) return null;
 
-  return (
+  if (!isOpen && typeof document !== 'undefined') return null;
+
+  const modalContent = (
     <AnimatePresence>
       {isOpen && (
         <div 
@@ -782,4 +785,6 @@ export function ModalConfiguracionPuntosControl({
       )}
     </AnimatePresence>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

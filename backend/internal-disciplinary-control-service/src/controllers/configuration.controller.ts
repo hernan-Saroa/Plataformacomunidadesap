@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Delete, Body, Param } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StageConfiguration } from '../entities/stage-configuration.entity';
@@ -6,8 +6,14 @@ import { SystemConfiguration } from '../entities/system-configuration.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { ReglaAlerta } from '../entities/regla-alerta.entity';
 import { DisciplinaryProfessional } from '../entities/disciplinary-professional.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @Controller('configuration')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class ConfigurationController {
     constructor(
         @InjectRepository(StageConfiguration)

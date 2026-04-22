@@ -54,7 +54,6 @@ import { PlaneacionAuditoriaModule } from './PlaneacionAuditoriaModule';
 import { ModalCargarDocumento } from './ModalCargarDocumento';
 import { ActividadesIntegradas } from './ActividadesAuditoriaIntegradas';
 import { ComunicacionAuditoriaModule } from './ComunicacionAuditoriaModule';
-import { SeccionDocumentosPorEtapa } from './SeccionDocumentosPorEtapa';
 import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
 import { ModalReunionApertura, ModalReunionCierre } from './ModalReunionAperturaCierre';
 import { SeccionTareasExpediente } from './SeccionTareasExpediente';
@@ -1597,14 +1596,11 @@ function TabPlaneacion({ auditoria, readOnly }: TabFaseProps) {
           </div>
         </div>
       </Card>
-      <div className="bg-white border-2 border-blue-200 rounded-lg p-4">
-        <SeccionListasChequeoExpediente 
-          auditoriaId={auditoria.id} 
-          etapaActual="Planeación" 
-          readOnly={readOnly}
-        />
-      </div>
-      <SeccionDocumentosPorEtapa auditoriaId={auditoria.id} etapa="planeacion" />
+      <SeccionListasChequeoExpediente 
+        auditoriaId={auditoria.id} 
+        etapaActual="Planeación" 
+        readOnly={readOnly}
+      />
     </div>
   );
 }
@@ -1685,13 +1681,11 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist, read
       </div>
 
       {/* 2. LISTAS DE CHEQUEO DE EJECUCIÓN */}
-      <div className="bg-white border-2 border-amber-200 rounded-lg p-4">
-        <SeccionListasChequeoExpediente 
-          auditoriaId={auditoria.id} 
-          etapaActual="Ejecución" 
-          readOnly={readOnly}
-        />
-      </div>
+      <SeccionListasChequeoExpediente 
+        auditoriaId={auditoria.id} 
+        etapaActual="Ejecución" 
+        readOnly={readOnly}
+      />
 
       {/* 3. REUNIÓN DE CIERRE */}
       <div className="bg-white border-2 border-emerald-200 rounded-lg p-4">
@@ -1738,7 +1732,6 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist, read
       </div>
 
       {/* DOCUMENTOS DE EJECUCIÓN (al final) */}
-      <SeccionDocumentosPorEtapa auditoriaId={auditoria.id} etapa="ejecucion" />
 
       <ModalReunionApertura
         isOpen={modalAperturaOpen}
@@ -1775,13 +1768,11 @@ function TabComunicacion({ auditoria, onComunicacionCompletada, readOnly }: TabF
       </Card>
       
       {/* LISTAS DE CHEQUEO DE COMUNICACIÓN */}
-      <div className="bg-white border-2 border-green-200 rounded-lg p-4">
-        <SeccionListasChequeoExpediente 
-          auditoriaId={auditoria.id} 
-          etapaActual="Comunicación" 
-          readOnly={readOnly}
-        />
-      </div>
+      <SeccionListasChequeoExpediente 
+        auditoriaId={auditoria.id} 
+        etapaActual="Comunicación" 
+        readOnly={readOnly}
+      />
 
       {/* MÓDULO DE COMUNICACIÓN */}
       <div className="bg-white border-2 border-green-200 rounded-lg p-4">
@@ -1795,7 +1786,6 @@ function TabComunicacion({ auditoria, onComunicacionCompletada, readOnly }: TabF
         />
       </div>
       {/* DOCUMENTOS DE COMUNICACIÓN (al final) */}
-      <SeccionDocumentosPorEtapa auditoriaId={auditoria.id} etapa="comunicacion" />
     </div>
   );
 }
