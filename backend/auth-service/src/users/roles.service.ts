@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
-import { isUUID } from 'class-validator';
 import { v4 as uuidv4 } from 'uuid';
 import { Role } from './role.entity';
 import { Permission } from './permission.entity';
@@ -48,6 +47,9 @@ export interface RoleStats {
   permisos_disponibles: number;
 }
 
+const POSTGRES_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class RolesService {
   constructor(
@@ -58,6 +60,10 @@ export class RolesService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
   ) {}
+
+  private isPostgresUuid(value?: string | null): value is string {
+    return typeof value === 'string' && POSTGRES_UUID_PATTERN.test(value.trim());
+  }
 
   async findAll(filters: RoleFilters = {}): Promise<{ roles: Role[], total: number }> {
     const query = this.roleRepo.createQueryBuilder('role');
@@ -169,7 +175,7 @@ export class RolesService {
       throw new BadRequestException('Ya existe un rol con este nombre o código');
     }
 
-    const roleId = createRoleDto.id && isUUID(createRoleDto.id) ? createRoleDto.id : uuidv4();
+    const roleId = this.isPostgresUuid(createRoleDto.id) ? createRoleDto.id.trim() : uuidv4();
 
     const role = this.roleRepo.create({
       id: roleId,
@@ -187,8 +193,8 @@ export class RolesService {
 
     // Asignar permisos si se proporcionan
     if (createRoleDto.permissionIds && createRoleDto.permissionIds.length > 0) {
-      const uuidIds = createRoleDto.permissionIds.filter(id => isUUID(id));
-      const codeIds = createRoleDto.permissionIds.filter(id => !isUUID(id));
+      const uuidIds = createRoleDto.permissionIds.filter(id => this.isPostgresUuid(id));
+      const codeIds = createRoleDto.permissionIds.filter(id => !this.isPostgresUuid(id));
       
       const whereConditions: any[] = [];
       if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
@@ -236,8 +242,8 @@ export class RolesService {
       if (updateRoleDto.permissionIds.length === 0) {
         role.permissions = [];
       } else {
-        const uuidIds = updateRoleDto.permissionIds.filter(id => isUUID(id));
-        const codeIds = updateRoleDto.permissionIds.filter(id => !isUUID(id));
+        const uuidIds = updateRoleDto.permissionIds.filter(id => this.isPostgresUuid(id));
+        const codeIds = updateRoleDto.permissionIds.filter(id => !this.isPostgresUuid(id));
         
         const whereConditions: any[] = [];
         if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
@@ -329,7 +335,10 @@ export class RolesService {
     }
 
     // Obtener el rol con sus permisos usando la relación de TypeORM
-    const whereCondition = isUUID(roleId) ? { id: roleId } : { code: roleId };
+    const normalizedRoleId = roleId.trim();
+    const whereCondition = this.isPostgresUuid(normalizedRoleId)
+      ? { id: normalizedRoleId }
+      : { code: normalizedRoleId };
     
     const role = await this.roleRepo.findOne({
       where: whereCondition,
@@ -344,7 +353,10 @@ export class RolesService {
   }
 
   async updatePermissions(roleId: string, permissionIds: string[], updatedBy?: string): Promise<Role> {
-    const whereCondition = isUUID(roleId) ? { id: roleId } : { code: roleId };
+    const normalizedRoleId = roleId.trim();
+    const whereCondition = this.isPostgresUuid(normalizedRoleId)
+      ? { id: normalizedRoleId }
+      : { code: normalizedRoleId };
     
     // Obtener el rol con sus permisos actuales
     const role = await this.roleRepo.findOne({
@@ -359,8 +371,8 @@ export class RolesService {
     if (permissionIds.length === 0) {
       role.permissions = [];
     } else {
-      const uuidIds = permissionIds.filter(id => isUUID(id));
-      const codeIds = permissionIds.filter(id => !isUUID(id));
+      const uuidIds = permissionIds.filter(id => this.isPostgresUuid(id));
+      const codeIds = permissionIds.filter(id => !this.isPostgresUuid(id));
       
       const whereConditions: any[] = [];
       if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
