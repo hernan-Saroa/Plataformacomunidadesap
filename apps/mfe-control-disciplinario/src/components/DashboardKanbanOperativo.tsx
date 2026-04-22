@@ -188,6 +188,8 @@ interface Noticia {
   hechosSeparados?: { id: string; descripcion: string; fecha?: string }[];
   archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string; url: string }[];
   radicador?: string;
+  radicadorId?: string;
+  radicadorEmail?: string;
   fechaRegistro?: string;
 }
 
@@ -312,16 +314,17 @@ interface TarjetaNoticiaProps {
   colapsada?: boolean; // NUEVO: Indica si la tarjeta está colapsada
   onToggleColapso?: () => void; // NUEVO: Toggle para colapsar/expandir
   etapa?: string; // ✅ NUEVO: Etapa actual para condicionales
+  currentUserId?: string; // ✅ NUEVO: ID del usuario actual
 }
 
-function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa }: TarjetaNoticiaProps) {
+function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa, currentUserId }: TarjetaNoticiaProps) {
   const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
-  const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR);
+  const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR);
   const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
   const canViewDetail = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL);
   const canDevolve = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER);
   const canRedimir = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR);
-  const canArchive = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR);
+  const canArchive = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVAR);
   const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
 
   const [hoverReenviar, setHoverReenviar] = useState(false);
@@ -411,6 +414,32 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                 )}
               </div>
             </div>
+            {/* Radicador */}
+            {(noticia.radicador || noticia.radicadorId) && (
+              <div className="flex items-start gap-2.5">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">RAD</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                    {noticia.radicador || (noticia.radicadorId ? 'Usuario no encontrado' : 'Sin información')}
+                  </p>
+                  {noticia.radicadorEmail && (
+                    <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                      {noticia.radicadorEmail}
+                    </p>
+                  )}
+                  {!noticia.radicador && noticia.radicadorId && (
+                    <p className="text-[10px] text-gray-400 truncate mt-0.5">
+                      ID: {noticia.radicadorId}
+                    </p>
+                  )}
+                  {noticia.radicadorId && currentUserId && noticia.radicadorId === currentUserId && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-blue-100 text-blue-800 mt-1">
+                      Radicada por ti
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </KanbanCardInfoSection>
 
           {/* Proceso Asociado — compacto */}
@@ -953,17 +982,32 @@ function VistaLista({
   onArchivarNoticia,
   onVerDetallesNoticia,
   onDevolverNoticia,
-  onDevolverCompetencia,
-  onAsociarNoticiaProceso,
-  onAsociarNoticiaNoticia,
-  onVerProcesoAsociado,
-  onVerNoticiaAsociada,
-  onEditarNoticia,
-  onEditarProceso, // ✅ NUEVO: Editar proceso
+  onDevolverCompetencia, // ✅ AGREGADO: Coherencia con Kanban
+  onAsociarNoticiaProceso, // ✅ AGREGADO: Coherencia con Kanban
+  onAsociarNoticiaNoticia, // ✅ NUEVO: Asociar noticia a noticia
+  onVerProcesoAsociado, // ✅ AGREGADO: Coherencia con Kanban
+  onVerNoticiaAsociada, // ✅ AGREGADO: Coherencia con Kanban
+  onEditarNoticia, // ✅ AGREGADO: Coherencia con Kanban
+  onEditarProceso, // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
   onCambiarEtapa, // ✅ NUEVO: Handler para cambiar etapa
   etapasConfig,
   isMobile
 }: VistaListaProps) {
+  // Permission and role checks for list view (same as kanban)
+  const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+  const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR);
+  const canEditNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
+  const canViewDetailNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL);
+  const canDevolve = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER);
+  const canRedimir = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR);
+  const canArchive = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVAR);
+  const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
+  const canViewDetailProceso = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_DETAIL);
+  const canViewExpediente = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EXPIDIENTE);
+  const canEditProceso = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EDIT);
+  const canReassign = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION);
+  const canAssociateProcesos = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR_PROCESOS);
+  const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
   const [filtroEtapa, setFiltroEtapa] = useState<string>('todos');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -1159,7 +1203,7 @@ function VistaLista({
                     {isNoticia ? (
                       <>
                         <KanbanActionRowPrimary>
-                          {onVerDetallesNoticia && (
+                          {onVerDetallesNoticia && canViewDetailNoticia && (
                             <KanbanButtonSecondary
                               onClick={() => onVerDetallesNoticia(noticia!)}
                               icon={<Eye className="w-3 h-3" />}
@@ -1168,55 +1212,69 @@ function VistaLista({
                               Detalles
                             </KanbanButtonSecondary>
                           )}
-                          <KanbanButtonPrimary
-                            onClick={() => onConvertirNoticia(noticia!)}
-                            icon={<PlusCircle className="w-3 h-3" />}
-                          >
-                            Convertir
-                          </KanbanButtonPrimary>
+                          {canConvert && esJefe && (
+                            <KanbanButtonPrimary
+                              onClick={() => onConvertirNoticia(noticia!)}
+                              icon={<PlusCircle className="w-3 h-3" />}
+                            >
+                              Convertir
+                            </KanbanButtonPrimary>
+                          )}
                         </KanbanActionRowPrimary>
                         <KanbanActionRowTertiary>
-                          {onEditarNoticia && (
+                          {onEditarNoticia && canEditNoticia && esJefe && (
                             <KanbanButtonTertiary compact onClick={() => onEditarNoticia(noticia!)} icon={<Edit className="w-3 h-3" />} title="Editar noticia" />
                           )}
-                          {onDevolverNoticia && (
+                          {!noticia!.procesoAsociado && onAsociarNoticiaNoticia && canAssociate && esJefe && (
+                            <KanbanButtonTertiary compact onClick={() => onAsociarNoticiaNoticia!(noticia!)} icon={<Link2 className="w-3 h-3" />} title="Asociar a otra noticia" />
+                          )}
+                          {!noticia!.procesoAsociado && onAsociarNoticiaProceso && canAssociate && esJefe && (
+                            <KanbanButtonTertiary compact onClick={() => onAsociarNoticiaProceso!(noticia!)} icon={<Link2 className="w-3 h-3" />} title="Asociar a proceso" />
+                          )}
+                          {onDevolverNoticia && canDevolve && esJefe && (
                             <KanbanButtonTertiary compact onClick={() => onDevolverNoticia(noticia!)} icon={<ArrowLeft className="w-3 h-3" />} title="Devolver" />
                           )}
-                          {onDevolverCompetencia && (
+                          {onDevolverCompetencia && canRedimir && esJefe && (
                             <KanbanButtonTertiary compact onClick={() => onDevolverCompetencia(noticia!)} icon={<Send className="w-3 h-3" />} title="Remitir por competencia" />
                           )}
-                          <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3 h-3" />} title="Archivar" />
+                          {canArchive && esJefe && (
+                            <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3 h-3" />} title="Archivar" />
+                          )}
                         </KanbanActionRowTertiary>
                       </>
                     ) : (
                       <>
                         <KanbanActionRowPrimary>
-                          <KanbanButtonSecondary
-                            onClick={() => onVerDetalles(proceso!)}
-                            icon={<FileText className="w-3 h-3" />}
-                            title="Ver detalles"
-                          >
-                            Detalles
-                          </KanbanButtonSecondary>
-                          <KanbanButtonPrimary
-                            onClick={() => onVerExpediente(proceso!)}
-                            icon={<FolderOpen className="w-3 h-3" />}
-                          >
-                            Exp.
-                          </KanbanButtonPrimary>
+                          {canViewDetailProceso && (
+                            <KanbanButtonSecondary
+                              onClick={() => onVerDetalles(proceso!)}
+                              icon={<FileText className="w-3 h-3" />}
+                              title="Ver detalles"
+                            >
+                              Detalles
+                            </KanbanButtonSecondary>
+                          )}
+                          {canViewExpediente && (
+                            <KanbanButtonPrimary
+                              onClick={() => onVerExpediente(proceso!)}
+                              icon={<FolderOpen className="w-3 h-3" />}
+                            >
+                              Exp.
+                            </KanbanButtonPrimary>
+                          )}
                         </KanbanActionRowPrimary>
                         <KanbanActionRowTertiary>
-                          {onEditarProceso && (
+                          {onEditarProceso && canEditProceso && (
                             <KanbanButtonTertiary compact onClick={() => onEditarProceso(proceso!)} icon={<Edit className="w-3 h-3" />} title="Editar proceso" />
                           )}
-                          {onSolicitarReasignacion && (
+                          {proceso!.etapaActual !== 'Recepción' && onSolicitarReasignacion && canReassign && (
                             <KanbanButtonTertiary compact onClick={() => onSolicitarReasignacion(proceso!)} icon={<UserCheck className="w-3 h-3" />} title="Reasignar profesional" />
                           )}
-                          {onAsociarProcesoProceso && (
+                          {proceso!.etapaActual !== 'Recepción' && onAsociarProcesoProceso && canAssociateProcesos && (
                             <KanbanButtonTertiary compact onClick={() => onAsociarProcesoProceso(proceso!)} icon={<Link2 className="w-3 h-3" />} title="Asociar a otro proceso" />
                           )}
                         </KanbanActionRowTertiary>
-                        {proceso!.pendienteAprobacion && (
+                        {proceso!.pendienteAprobacion && canApprove && (
                           <KanbanButtonSemantic variant="success" onClick={() => onAprobarBorrador(proceso!)} icon={<CheckCircle className="w-3 h-3" />}>
                             Aprobar Documento
                           </KanbanButtonSemantic>
@@ -1432,50 +1490,64 @@ function VistaLista({
                           {isNoticia ? (
                             <>
                               <KanbanActionRowPrimary>
-                                {onVerDetallesNoticia && (
+                                {onVerDetallesNoticia && canViewDetailNoticia && (
                                   <KanbanButtonSecondary onClick={() => onVerDetallesNoticia(noticia!)} icon={<Eye className="w-3 h-3" />} title="Ver detalles">
                                     Detalles
                                   </KanbanButtonSecondary>
                                 )}
-                                <KanbanButtonPrimary onClick={() => onConvertirNoticia(noticia!)} icon={<PlusCircle className="w-3 h-3" />} title="Convertir a proceso">
-                                  Convertir
-                                </KanbanButtonPrimary>
+                                {canConvert && esJefe && (
+                                  <KanbanButtonPrimary onClick={() => onConvertirNoticia(noticia!)} icon={<PlusCircle className="w-3 h-3" />} title="Convertir a proceso">
+                                    Convertir
+                                  </KanbanButtonPrimary>
+                                )}
                               </KanbanActionRowPrimary>
                               <KanbanActionRowTertiary>
-                                {onEditarNoticia && (
+                                {onEditarNoticia && canEditNoticia && esJefe && (
                                   <KanbanButtonTertiary compact onClick={() => onEditarNoticia(noticia!)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar noticia" />
                                 )}
-                                {onDevolverNoticia && (
+                                {!noticia!.procesoAsociado && onAsociarNoticiaNoticia && canAssociate && esJefe && (
+                                  <KanbanButtonTertiary compact onClick={() => onAsociarNoticiaNoticia!(noticia!)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a otra noticia" />
+                                )}
+                                {!noticia!.procesoAsociado && onAsociarNoticiaProceso && canAssociate && esJefe && (
+                                  <KanbanButtonTertiary compact onClick={() => onAsociarNoticiaProceso!(noticia!)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a proceso" />
+                                )}
+                                {onDevolverNoticia && canDevolve && esJefe && (
                                   <KanbanButtonTertiary compact onClick={() => onDevolverNoticia(noticia!)} icon={<ArrowLeft className="w-3.5 h-3.5" />} title="Devolver" />
                                 )}
-                                {onDevolverCompetencia && (
+                                {onDevolverCompetencia && canRedimir && esJefe && (
                                   <KanbanButtonTertiary compact onClick={() => onDevolverCompetencia(noticia!)} icon={<Send className="w-3.5 h-3.5" />} title="Remitir por competencia" />
                                 )}
-                                <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3.5 h-3.5" />} title="Archivar" />
+                                {canArchive && esJefe && (
+                                  <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3.5 h-3.5" />} title="Archivar" />
+                                )}
                               </KanbanActionRowTertiary>
                             </>
                           ) : (
                             <>
                               <KanbanActionRowPrimary>
-                                <KanbanButtonSecondary onClick={() => onVerDetalles(proceso!)} icon={<FileText className="w-3 h-3" />} title="Ver detalles">
-                                  Detalles
-                                </KanbanButtonSecondary>
-                                <KanbanButtonPrimary onClick={() => onVerExpediente(proceso!)} icon={<FolderOpen className="w-3 h-3" />} title="Expediente">
-                                  Exp.
-                                </KanbanButtonPrimary>
+                                {canViewDetailProceso && (
+                                  <KanbanButtonSecondary onClick={() => onVerDetalles(proceso!)} icon={<FileText className="w-3 h-3" />} title="Ver detalles">
+                                    Detalles
+                                  </KanbanButtonSecondary>
+                                )}
+                                {canViewExpediente && (
+                                  <KanbanButtonPrimary onClick={() => onVerExpediente(proceso!)} icon={<FolderOpen className="w-3 h-3" />} title="Expediente">
+                                    Exp.
+                                  </KanbanButtonPrimary>
+                                )}
                               </KanbanActionRowPrimary>
                               <KanbanActionRowTertiary>
-                                {onEditarProceso && (
+                                {onEditarProceso && canEditProceso && (
                                   <KanbanButtonTertiary compact onClick={() => onEditarProceso(proceso!)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar proceso" />
                                 )}
-                                {onSolicitarReasignacion && (
+                                {proceso!.etapaActual !== 'Recepción' && onSolicitarReasignacion && canReassign && (
                                   <KanbanButtonTertiary compact onClick={() => onSolicitarReasignacion(proceso!)} icon={<UserCheck className="w-3.5 h-3.5" />} title="Reasignar" />
                                 )}
-                                {onAsociarProcesoProceso && (
+                                {proceso!.etapaActual !== 'Recepción' && onAsociarProcesoProceso && canAssociateProcesos && (
                                   <KanbanButtonTertiary compact onClick={() => onAsociarProcesoProceso(proceso!)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a otro proceso" />
                                 )}
                               </KanbanActionRowTertiary>
-                              {proceso!.pendienteAprobacion && (
+                              {proceso!.pendienteAprobacion && canApprove && (
                                 <KanbanButtonSemantic variant="success" onClick={() => onAprobarBorrador(proceso!)} icon={<CheckCircle className="w-3 h-3" />} title="Aprobar documento pendiente">
                                   Aprobar Documento
                                 </KanbanButtonSemantic>
@@ -1546,6 +1618,7 @@ interface ColumnaKanbanProps {
   onToggleColapso?: () => void;
   tarjetasColapsadas?: Set<string>; // NUEVO: Set de IDs de tarjetas colapsadas
   onToggleColapsoTarjeta?: (id: string) => void; // NUEVO: Toggle para tarjetas individuales
+  currentUserId?: string; // ✅ NUEVO: ID del usuario actual
 }
 
 function ColumnaKanban({
@@ -1584,7 +1657,8 @@ function ColumnaKanban({
   colapsada = false,
   onToggleColapso,
   tarjetasColapsadas,
-  onToggleColapsoTarjeta
+  onToggleColapsoTarjeta,
+  currentUserId
 }: ColumnaKanbanProps) {
   const [expandTimeout, setExpandTimeout] = useState<NodeJS.Timeout | null>(null);
 
@@ -1919,6 +1993,7 @@ function ColumnaKanban({
               colapsada={tarjetasColapsadas?.has(noticia.id)}
               onToggleColapso={() => onToggleColapsoTarjeta?.(noticia.id)}
               etapa={etapa} // ✅ NUEVO: Pasar etapa para condicionales
+              currentUserId={currentUserId} // ✅ NUEVO: ID del usuario actual
             />
           ))}
 
@@ -2500,7 +2575,9 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     tipo: 'noticia',
     kanbanStage: (noticia as any).kanbanStage,
     etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion',
-    radicador: (noticia as any).radicadorId,
+    radicador: (noticia as any).radicadorNombre || (noticia as any).radicador,
+    radicadorId: (noticia as any).radicadorId,
+    radicadorEmail: (noticia as any).radicadorEmail,
     procesoAsociado: (noticia as any).procesoAsociadoId ? {
       id: (noticia as any).procesoAsociadoId,
       numeroProceso: (noticia as any).procesoAsociadoNumero || '',
@@ -2554,7 +2631,10 @@ export const normalizeNoticia = (raw: any): Noticia => {
     diasPendientes: raw.diasPendientes || 0,
     etapaActual: raw.kanbanStage || raw.etapaActual || 'Recepcion',
     estado: raw.estado || 'pendiente',
-    adjuntos: raw.adjuntos || []
+    adjuntos: raw.adjuntos || [],
+    radicador: raw.radicadorNombre || raw.radicador,
+    radicadorId: raw.radicadorId,
+    radicadorEmail: raw.radicadorEmail
   };
 };
 
@@ -2682,6 +2762,10 @@ export function DashboardKanbanOperativo({
 
   // ✅ ESTADO PARA MODALES
   const [modalActivo, setModalActivo] = useState<ModalType>(null);
+
+  // ✅ USUARIO ACTUAL
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.id;
 
   // ✅ BÚSQUEDA GLOBAL COLAPSABLE — ícono → campo expandido
   const [busquedaGlobal, setBusquedaGlobal] = useState('');
@@ -2898,8 +2982,6 @@ export function DashboardKanbanOperativo({
       console.log('canViewAll', canViewAll);
       console.log('canViewMine', canViewMine);
       
-      const user = authService.getCurrentUser();
-      const currentUserId = user?.id;
       const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
 
       console.log('esJefe', esJefe);
@@ -3105,7 +3187,9 @@ export function DashboardKanbanOperativo({
       diasPendientes: (noticia as any).diasPendientes ?? dias,
       tipo: 'noticia' as const,
       etapaActual: etapaNormalizada,
-      radicador: (noticia as any).radicadorId,
+    radicador: (noticia as any).radicadorNombre || (noticia as any).radicador,
+    radicadorId: (noticia as any).radicadorId,
+    radicadorEmail: (noticia as any).radicadorEmail,
       // ✅ NUEVO: Mapear campos de remisión por competencia
       numeroRC: (noticia as any).numeroRC || (noticia as any).radicadoRemision || undefined,
       entidadRemision: (noticia as any).entidadRemision || (noticia as any).entidadDestino || undefined,
@@ -3663,7 +3747,7 @@ export function DashboardKanbanOperativo({
   };
 
   const handleConvertirNoticia = (noticia: Noticia) => {
-    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR)) {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR)) {
       toast.error('No tiene permisos para convertir noticias a procesos');
       return;
     }
@@ -3926,7 +4010,7 @@ export function DashboardKanbanOperativo({
   };
 
   const handleDevolverNoticia = (noticia: Noticia) => {
-    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_DEVOLVER)) {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_DEVOLVER)) {
       toast.error('No tiene permisos para devolver noticias');
       return;
     }
@@ -4046,7 +4130,7 @@ export function DashboardKanbanOperativo({
   };
 
   const handleArchivarNoticia = (noticia: Noticia) => {
-    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ARCHIVAR)) {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVAR)) {
       toast.error('No tiene permisos para archivar noticias');
       return;
     }
@@ -5241,7 +5325,7 @@ export function DashboardKanbanOperativo({
                 onChange={(id) => setTipoVista(id as any)}
               />
 
-              {authService.hasPermission(Permissions.NOTICIAS_DISCIPLINARIAS_CREATE || Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CREATE) && (
+              {authService.hasPermission(Permissions.NOTICIAS_DISCIPLINARIAS_CREATE || Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE) && (
                 <KanbanToolbarCTA
                   onClick={() => setModalActivo('crear-noticia')}
                   icon={<Plus style={{ width: 16, height: 16 }} />}
@@ -5421,6 +5505,7 @@ export function DashboardKanbanOperativo({
                           etapasConfig={etapasConfig}
                           tarjetasColapsadas={tarjetasColapsadas}
                           onToggleColapsoTarjeta={toggleTarjetaColapsada}
+                          currentUserId={currentUserId}
                         />
                       </div>
                     );
@@ -5869,7 +5954,7 @@ export function DashboardKanbanOperativo({
                             {/* Grid 2×2 de tipos de archivo */}
                             <div className="grid grid-cols-2 gap-px bg-gray-200">
                               {/* ── Autos ── */}
-                              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_CREATE) && (
+                              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_AUTOS_CREATE) && (
                                 <button
                                   onClick={() => setModalActivo('gestion-autos')}
                                   className="group flex flex-col items-center gap-2 p-4 bg-white hover:bg-purple-50 transition-colors"

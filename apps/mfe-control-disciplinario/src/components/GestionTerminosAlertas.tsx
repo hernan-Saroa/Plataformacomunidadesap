@@ -701,7 +701,7 @@ export function GestionTerminosAlertas() {
           </div>
 
           <div className="flex items-center gap-2">
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_TERMS_EDIT) && (
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_MANAGE) && (
             <button
               onClick={handleRecalcular}
               className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all text-xs sm:text-sm font-bold flex items-center gap-2"
@@ -710,7 +710,7 @@ export function GestionTerminosAlertas() {
               <span className="hidden sm:inline">Recalcular</span>
             </button>
             )}
-            {vistaActual === 'terminos' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_TERMS_EDIT) && (
+            {vistaActual === 'terminos' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_FESTIVO_CREATE) && (
               <button
                 onClick={() => setShowModalNuevoTermino(true)}
                 className="px-3 py-2 rounded-lg text-white font-bold hover:shadow-lg transition-all text-xs sm:text-sm flex items-center gap-2"
@@ -921,7 +921,7 @@ export function GestionTerminosAlertas() {
                           {/* Acciones */}
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-end gap-2">
-                              {termino.estado !== 'cumplido' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_CONFIGURACIONES_TERMS_EDIT) && (
+                              {termino.estado !== 'cumplido' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_MANAGE) && (
                                 <button
                                   onClick={() => handleMarcarCompleto(termino.id)}
                                   className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-green-600 hover:bg-green-700 flex items-center gap-1"

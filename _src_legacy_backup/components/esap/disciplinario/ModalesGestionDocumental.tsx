@@ -1176,7 +1176,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
           <Button onClick={onClose} variant="outline">
             Cerrar
           </Button>
-          {vistaActual === 'lista' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_AUTOS_CREATE) ? (
+          {vistaActual === 'lista' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_AUTOS_CREATE) ? (
             <Button
               onClick={() => setVistaActual('crear')}
               style={{ background: '#8B5CF6', color: '#FFFFFF' }}
@@ -2201,7 +2201,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
             ))}
           </div> */}
           {/* Botón de Subir */}
-          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_CREATE) && (
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EVIDENCIA_CREATE) && (
             <div className="relative">
               <div className='mt-4'>
                 <label className="text-xs font-semibold text-gray-600">Tipo de Evidencia</label>
@@ -2277,7 +2277,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
               </Button>
             )}
           </div>
-          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_EVIDENCIA_CREATE) && (
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EVIDENCIA_CREATE) && (
             <Button
               onClick={handleSubirEvidencia}
               style={{ background: '#F59E0B', color: '#FFFFFF' }}
@@ -2616,7 +2616,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
                       >
                         <Download className="w-3.5 h-3.5" />
                       </Button>
-                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_OFICIO_DELETE) && (
+                      {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_OFICIO_DELETE) && (
                         <Button
                           type="button"
                           size="sm"
@@ -2662,7 +2662,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
                 />
               </div>
             </div>
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_OFICIO_CREATE) && (
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_OFICIO_CREATE) && (
               <div>
                 <input
                   type="file"
@@ -2702,7 +2702,7 @@ export function ModalGestionOficios({ proceso, onClose, onCrearOficio }: ModalOf
           <Button onClick={onClose} variant="outline">
             Cerrar
           </Button>
-          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_OFICIO_CREATE) && (
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_OFICIO_CREATE) && (
             <Button
               onClick={handleCrearOficio}
               style={{ background: '#06B6D4', color: '#FFFFFF' }}
@@ -3205,7 +3205,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
                             >
                               <Download className="w-4 h-4" />
                             </Button>
-                            {/* {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ACTA_DELETE) && (
+                            {/* {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTA_DELETE) && (
                             <Button
                               size="sm" variant="outline"
                               className="text-red-600 hover:bg-red-50 border-red-200"
@@ -3235,7 +3235,7 @@ export function ModalGestionActas({ proceso, onClose }: ModalActasProps) {
           </div>
 
           {/* Create Buttons */}
-          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_ACTA_CREATE) && (
+          {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTA_CREATE) && (
             <div className="mt-4">
               <p className="text-sm font-bold text-gray-700 mb-3">Crear Nueva Acta:</p>
               <div className="grid grid-cols-2 gap-3">

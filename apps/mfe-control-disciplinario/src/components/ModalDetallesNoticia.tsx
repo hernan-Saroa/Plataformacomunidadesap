@@ -520,7 +520,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
                 Editar
               </button>
             )}
-            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESSOS_CONVERTIR) && (
+            {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR) && (
               <button
                 onClick={() => { onClose(); onConvertir(n); }}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold rounded-lg text-white transition-all hover:opacity-90"
