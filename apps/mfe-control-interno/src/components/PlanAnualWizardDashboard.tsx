@@ -5115,7 +5115,7 @@ function SeccionGestionYSeguimiento({
                   </div>
                 </div>
               </div>
-            )}
+            ))}
           </div>
         </div>
       )}
