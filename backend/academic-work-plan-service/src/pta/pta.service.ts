@@ -157,10 +157,11 @@ export class PtaService {
       try {
         const usuarioRepo = this.ptaRepo.manager.getRepository(UsuarioEntity);
         // Usar upsert para evitar QueryFailedError por duplicidad de llaves en condiciones de carrera
-        await usuarioRepo.upsert({ id: personId, email: email || 'docente@esap.edu.co', password: 'N/A' }, ['id']);
+        const now = new Date();
+        await usuarioRepo.upsert({ id: personId, email: email || 'docente@esap.edu.co', password: 'N/A', updatedAt: now, createdAt: now }, ['id']);
 
         const personaRepoLocal = this.ptaRepo.manager.getRepository(PersonaEntity);
-        await personaRepoLocal.upsert({ id: personId, usuarioId: personId }, ['id']);
+        await personaRepoLocal.upsert({ id: personId, usuarioId: personId, updatedAt: now, createdAt: now }, ['id']);
 
         const nuevoDocente = this.docenteRepo.create({
           id: personId,
@@ -170,7 +171,9 @@ export class PtaService {
           dedicacion: 'Tiempo Completo',
           estado: 'ACTIVO',
           horasAsignables: 800,
-          correoInstitucional: email
+          correoInstitucional: email,
+          updatedAt: now,
+          createdAt: now,
         });
         await this.docenteRepo.upsert(nuevoDocente, ['id']);
         return { personId, email, fullName };
@@ -245,9 +248,17 @@ export class PtaService {
   }
 
   private toPtaDto(entity: PlanTrabajoAcademicoEntity) {
-    const extra = entity.datosEstructurados && typeof entity.datosEstructurados === 'object'
+    // Exclude canonical entity fields from the JSON blob so they can't override DB values.
+    // datosEstructurados is the raw form payload which includes estado, id, etc. from the
+    // time of the last savePTA call — but those fields may be stale after updatePTAStatus.
+    const {
+      id: _id, pta_id: _ptaId, ptaId: _ptaId2,
+      estado: _estado, periodo: _periodo, version: _version,
+      docente_id: _docId,
+      ...extra
+    } = (entity.datosEstructurados && typeof entity.datosEstructurados === 'object'
       ? entity.datosEstructurados
-      : {};
+      : {}) as Record<string, any>;
     return {
       id: entity.id,
       docente_id: entity.docenteId,
