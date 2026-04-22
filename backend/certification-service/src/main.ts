@@ -40,7 +40,8 @@ async function bootstrap() {
       'Access-Control-Request-Headers',
       'X-Client-Version',
       'X-Client-Platform',
-    ],
+      'x-client-platform',
+      'X-Client-Platform'],
     credentials: true,
     maxAge: 86400,
   });

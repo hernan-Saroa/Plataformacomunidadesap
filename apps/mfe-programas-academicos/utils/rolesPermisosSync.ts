@@ -3,12 +3,16 @@
  * SINCRONIZACIÓN DE ROLES Y PERMISOS
  * ============================================
  * 
- * Este módulo actúa como fuente única de verdad para:
- * - Roles del sistema completo
- * - Permisos granulares por módulo
- * - Sincronización entre módulo general (Gestión Personas) y módulos específicos (Control Interno)
+ * Este módulo actúa como adaptador entre la BD (auth-service) y los módulos del sistema.
+ * TODOS los datos se leen desde la base de datos — nada hardcodeado.
  * 
- * ÚLTIMA ACTUALIZACIÓN: 22 Diciembre 2025
+ * Endpoints consumidos del auth-service:
+ * - GET /auth/api/v1/roles → Todos los roles con conteos
+ * - GET /auth/api/v1/roles/:id/permissions → Permisos de un rol
+ * - GET /auth/api/v1/roles/permissions/all → Todos los permisos disponibles
+ * - GET /auth/api/v1/roles/stats → Estadísticas
+ * 
+ * ÚLTIMA ACTUALIZACIÓN: 17 Abril 2026 — Migración desde datos hardcodeados a BD
  */
 
 // ============ TIPOS ============
@@ -51,513 +55,181 @@ export interface Rol {
   categoriaRol: CategoriaModulo;
 }
 
-// ============ MÓDULOS DEL SISTEMA ============
+// ============ CONFIGURACIÓN API ============
 
-export const MODULOS_SISTEMA: { nombre: string; categoria: CategoriaModulo }[] = [
-  // General
-  { nombre: 'Dashboard Ejecutivo', categoria: 'General' },
-  { nombre: 'Gestión de Personas', categoria: 'General' },
-  { nombre: 'Roles y Permisos', categoria: 'General' },
-  { nombre: 'Auditoría del Sistema', categoria: 'General' },
-  { nombre: 'Reportes y Análisis', categoria: 'General' },
-  
-  // Estructura
-  { nombre: 'Estructura Organizacional', categoria: 'Estructura' },
-  { nombre: 'Arquitectura Empresarial', categoria: 'Estructura' },
-  
-  // Académica
-  { nombre: 'Programas Académicos', categoria: 'Académica' },
-  { nombre: 'Gestión Profesoral', categoria: 'Académica' },
-  { nombre: 'Aspirantes', categoria: 'Académica' },
-  { nombre: 'Verificación de Graduados', categoria: 'Académica' },
-  { nombre: 'Certificados Académicos', categoria: 'Académica' },
-  { nombre: 'Solicitudes de Revisión', categoria: 'Académica' },
-  
-  // Control Interno de Gestión
-  { nombre: 'Control Interno - Plan Anual', categoria: 'Control Interno' },
-  { nombre: 'Control Interno - Universo Auditorías', categoria: 'Control Interno' },
-  { nombre: 'Control Interno - Programa Anual', categoria: 'Control Interno' },
-  { nombre: 'Control Interno - Auditorías', categoria: 'Control Interno' },
-  { nombre: 'Control Interno - Hallazgos', categoria: 'Control Interno' },
-  { nombre: 'Control Interno - Planes de Mejoramiento', categoria: 'Control Interno' },
-  { nombre: 'Control Interno - Seguimiento', categoria: 'Control Interno' },
-  { nombre: 'Control Interno - Informes de Ley', categoria: 'Control Interno' },
-  { nombre: 'Control Interno - Gestión Documental', categoria: 'Control Interno' },
-  
-  // Control Disciplinario
-  { nombre: 'Control Disciplinario - Quejas', categoria: 'Control Disciplinario' },
-  { nombre: 'Control Disciplinario - Procesos', categoria: 'Control Disciplinario' },
-  { nombre: 'Control Disciplinario - Investigaciones', categoria: 'Control Disciplinario' },
-  { nombre: 'Control Disciplinario - Sanciones', categoria: 'Control Disciplinario' },
-  
-  // Gestión Legal
-  { nombre: 'Gestión Legal - Juzgamiento', categoria: 'Gestión Legal' },
-  { nombre: 'Gestión Legal - Expedientes', categoria: 'Gestión Legal' },
-  { nombre: 'Gestión Legal - Sentencias', categoria: 'Gestión Legal' },
-  
-  // Comunidad
-  { nombre: 'Comunidad - Publicaciones', categoria: 'Comunidad' },
-  { nombre: 'Comunidad - Eventos', categoria: 'Comunidad' },
-  { nombre: 'Comunidad - Anuncios', categoria: 'Comunidad' },
-  { nombre: 'Bolsa de Empleo', categoria: 'Comunidad' },
-  { nombre: 'Certificados Laborales', categoria: 'Comunidad' },
-  { nombre: 'Carpeta Digital', categoria: 'Comunidad' }
-];
-
-// ============ ROLES DEL SISTEMA ============
-
-export const ROLES_SISTEMA: Rol[] = [
-  // ━━━━━━━━━━━ ROLES GENERALES ━━━━━━━━━━━
-  
-  {
-    id: 'rol-super-admin',
-    nombre: 'Super Administrador',
-    descripcion: 'Acceso total al sistema con todos los permisos administrativos',
-    tipo: 'Sistema',
-    estado: 'Activo',
-    usuariosAsignados: 2,
-    color: '#DC2626',
-    icono: '👑',
-    categoriaRol: 'General',
-    permisos: MODULOS_SISTEMA.map(({ nombre, categoria }) => ({
-      id: `perm-super-${nombre}`,
-      modulo: nombre,
-      categoria,
-      acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'],
-      descripcion: 'Acceso total al módulo'
-    })),
-    creadoPor: 'Sistema',
-    fechaCreacion: '2025-01-01'
-  },
-
-  // ━━━━━━━━━━━ ROLES DE CONTROL INTERNO DE GESTIÓN ━━━━━━━━━━━
-  
-  {
-    id: 'rol-jefe-oci',
-    nombre: 'Jefe OCI',
-    descripcion: 'Jefe de Oficina de Control Interno - Control total del sistema de Control Interno de Gestión',
-    tipo: 'Sistema',
-    estado: 'Activo',
-    usuariosAsignados: 1,
-    color: '#EF4444',
-    icono: '🛡️',
-    categoriaRol: 'Control Interno',
-    permisos: [
-      // Dashboard
-      { 
-        id: 'perm-jefe-dash', 
-        modulo: 'Dashboard Ejecutivo', 
-        categoria: 'General',
-        acciones: ['leer', 'exportar'], 
-        descripcion: 'Visualización y exportación de métricas ejecutivas' 
-      },
-      { 
-        id: 'perm-jefe-rep', 
-        modulo: 'Reportes y Análisis', 
-        categoria: 'General',
-        acciones: ['leer', 'exportar'], 
-        descripcion: 'Generación de reportes analíticos' 
-      },
-      // Control Interno - ACCESO TOTAL
-      { 
-        id: 'perm-jefe-plan', 
-        modulo: 'Control Interno - Plan Anual', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], 
-        descripcion: 'Gestión completa del Plan Anual' 
-      },
-      { 
-        id: 'perm-jefe-universo', 
-        modulo: 'Control Interno - Universo Auditorías', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], 
-        descripcion: 'Gestión completa del Programa de Auditoría' 
-      },
-      { 
-        id: 'perm-jefe-programa', 
-        modulo: 'Control Interno - Programa Anual', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], 
-        descripcion: 'Gestión completa del Programa Anual' 
-      },
-      { 
-        id: 'perm-jefe-audit', 
-        modulo: 'Control Interno - Auditorías', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], 
-        descripcion: 'Gestión completa de Auditorías' 
-      },
-      { 
-        id: 'perm-jefe-hallazgos', 
-        modulo: 'Control Interno - Hallazgos', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], 
-        descripcion: 'Gestión completa de Hallazgos' 
-      },
-      { 
-        id: 'perm-jefe-mejora', 
-        modulo: 'Control Interno - Planes de Mejoramiento', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], 
-        descripcion: 'Gestión completa de Planes de Mejoramiento' 
-      },
-      { 
-        id: 'perm-jefe-seg', 
-        modulo: 'Control Interno - Seguimiento', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], 
-        descripcion: 'Gestión completa de Seguimiento' 
-      },
-      { 
-        id: 'perm-jefe-informes', 
-        modulo: 'Control Interno - Informes de Ley', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], 
-        descripcion: 'Gestión completa de Informes de Ley' 
-      },
-      { 
-        id: 'perm-jefe-doc', 
-        modulo: 'Control Interno - Gestión Documental', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'eliminar', 'aprobar', 'exportar'], 
-        descripcion: 'Gestión completa de Documentos' 
-      },
-      // Acceso consulta a Gestión Personas
-      { 
-        id: 'perm-jefe-personas', 
-        modulo: 'Gestión de Personas', 
-        categoria: 'General',
-        acciones: ['leer'], 
-        descripcion: 'Consulta de personas del sistema' 
-      },
-      { 
-        id: 'perm-jefe-roles', 
-        modulo: 'Roles y Permisos', 
-        categoria: 'General',
-        acciones: ['leer'], 
-        descripcion: 'Consulta de roles y permisos' 
-      }
-    ],
-    creadoPor: 'Sistema',
-    fechaCreacion: '2025-01-01'
-  },
-
-  {
-    id: 'rol-auditor-lider',
-    nombre: 'Auditor Líder',
-    descripcion: 'Líder de equipos de auditoría, gestiona auditorías y supervisa hallazgos',
-    tipo: 'Sistema',
-    estado: 'Activo',
-    usuariosAsignados: 6,
-    color: '#3B82F6',
-    icono: '📋',
-    categoriaRol: 'Control Interno',
-    permisos: [
-      { 
-        id: 'perm-lider-dash', 
-        modulo: 'Dashboard Ejecutivo', 
-        categoria: 'General',
-        acciones: ['leer'], 
-        descripcion: 'Visualización de dashboard' 
-      },
-      { 
-        id: 'perm-lider-plan', 
-        modulo: 'Control Interno - Plan Anual', 
-        categoria: 'Control Interno',
-        acciones: ['leer', 'exportar'], 
-        descripcion: 'Consulta del Plan Anual' 
-      },
-      { 
-        id: 'perm-lider-programa', 
-        modulo: 'Control Interno - Programa Anual', 
-        categoria: 'Control Interno',
-        acciones: ['leer', 'exportar'], 
-        descripcion: 'Consulta del Programa' 
-      },
-      { 
-        id: 'perm-lider-audit', 
-        modulo: 'Control Interno - Auditorías', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'exportar'], 
-        descripcion: 'Gestión de auditorías asignadas' 
-      },
-      { 
-        id: 'perm-lider-hallazgos', 
-        modulo: 'Control Interno - Hallazgos', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'exportar'], 
-        descripcion: 'Registro y seguimiento de hallazgos' 
-      },
-      { 
-        id: 'perm-lider-mejora', 
-        modulo: 'Control Interno - Planes de Mejoramiento', 
-        categoria: 'Control Interno',
-        acciones: ['leer', 'actualizar', 'exportar'], 
-        descripcion: 'Seguimiento de planes de mejoramiento' 
-      },
-      { 
-        id: 'perm-lider-seg', 
-        modulo: 'Control Interno - Seguimiento', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'exportar'], 
-        descripcion: 'Seguimiento de compromisos' 
-      },
-      { 
-        id: 'perm-lider-doc', 
-        modulo: 'Control Interno - Gestión Documental', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'exportar'], 
-        descripcion: 'Gestión de documentos de auditoría' 
-      }
-    ],
-    creadoPor: 'Sistema',
-    fechaCreacion: '2025-01-01'
-  },
-
-  {
-    id: 'rol-auditor-operativo',
-    nombre: 'Auditor Operativo',
-    descripcion: 'Ejecuta actividades de auditoría, registra evidencias y documenta hallazgos',
-    tipo: 'Sistema',
-    estado: 'Activo',
-    usuariosAsignados: 12,
-    color: '#10B981',
-    icono: '🔍',
-    categoriaRol: 'Control Interno',
-    permisos: [
-      { 
-        id: 'perm-oper-dash', 
-        modulo: 'Dashboard Ejecutivo', 
-        categoria: 'General',
-        acciones: ['leer'], 
-        descripcion: 'Visualización básica de dashboard' 
-      },
-      { 
-        id: 'perm-oper-programa', 
-        modulo: 'Control Interno - Programa Anual', 
-        categoria: 'Control Interno',
-        acciones: ['leer'], 
-        descripcion: 'Consulta de auditorías asignadas' 
-      },
-      { 
-        id: 'perm-oper-audit', 
-        modulo: 'Control Interno - Auditorías', 
-        categoria: 'Control Interno',
-        acciones: ['leer', 'actualizar', 'exportar'], 
-        descripcion: 'Ejecución de auditorías asignadas' 
-      },
-      { 
-        id: 'perm-oper-hallazgos', 
-        modulo: 'Control Interno - Hallazgos', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar'], 
-        descripcion: 'Registro de hallazgos' 
-      },
-      { 
-        id: 'perm-oper-seg', 
-        modulo: 'Control Interno - Seguimiento', 
-        categoria: 'Control Interno',
-        acciones: ['leer', 'actualizar'], 
-        descripcion: 'Actualización de seguimientos' 
-      },
-      { 
-        id: 'perm-oper-doc', 
-        modulo: 'Control Interno - Gestión Documental', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar'], 
-        descripcion: 'Carga de documentos y evidencias' 
-      }
-    ],
-    creadoPor: 'Sistema',
-    fechaCreacion: '2025-01-01'
-  },
-
-  {
-    id: 'rol-area-auditada',
-    nombre: 'Área Auditada',
-    descripcion: 'Personal de áreas auditadas que responde a hallazgos y gestiona planes de mejoramiento',
-    tipo: 'Sistema',
-    estado: 'Activo',
-    usuariosAsignados: 45,
-    color: '#F59E0B',
-    icono: '📝',
-    categoriaRol: 'Control Interno',
-    permisos: [
-      { 
-        id: 'perm-area-programa', 
-        modulo: 'Control Interno - Programa Anual', 
-        categoria: 'Control Interno',
-        acciones: ['leer'], 
-        descripcion: 'Consulta de auditorías programadas' 
-      },
-      { 
-        id: 'perm-area-audit', 
-        modulo: 'Control Interno - Auditorías', 
-        categoria: 'Control Interno',
-        acciones: ['leer'], 
-        descripcion: 'Consulta de auditorías a su área' 
-      },
-      { 
-        id: 'perm-area-hallazgos', 
-        modulo: 'Control Interno - Hallazgos', 
-        categoria: 'Control Interno',
-        acciones: ['leer', 'actualizar'], 
-        descripcion: 'Consulta y respuesta a hallazgos' 
-      },
-      { 
-        id: 'perm-area-mejora', 
-        modulo: 'Control Interno - Planes de Mejoramiento', 
-        categoria: 'Control Interno',
-        acciones: ['crear', 'leer', 'actualizar', 'exportar'], 
-        descripcion: 'Gestión de planes de mejoramiento' 
-      },
-      { 
-        id: 'perm-area-seg', 
-        modulo: 'Control Interno - Seguimiento', 
-        categoria: 'Control Interno',
-        acciones: ['leer', 'actualizar'], 
-        descripcion: 'Actualización de compromisos' 
-      },
-      { 
-        id: 'perm-area-doc', 
-        modulo: 'Control Interno - Gestión Documental', 
-        categoria: 'Control Interno',
-        acciones: ['leer', 'actualizar'], 
-        descripcion: 'Consulta y carga de documentos' 
-      }
-    ],
-    creadoPor: 'Sistema',
-    fechaCreacion: '2025-01-01'
-  },
-
-  // ━━━━━━━━━━━ ROLES ACADÉMICOS ━━━━━━━━━━━
-  
-  {
-    id: 'rol-estudiante',
-    nombre: 'Estudiante',
-    descripcion: 'Acceso limitado activo de la institución',
-    tipo: 'Sistema',
-    estado: 'Activo',
-    usuariosAsignados: 1247,
-    color: '#10B981',
-    icono: '🎓',
-    categoriaRol: 'Académica',
-    permisos: [
-      { 
-        id: 'perm-est-cert', 
-        modulo: 'Certificados Académicos', 
-        categoria: 'Académica',
-        acciones: ['leer', 'exportar'], 
-        descripcion: 'Consulta de certificados' 
-      },
-      { 
-        id: 'perm-est-carpeta', 
-        modulo: 'Carpeta Digital', 
-        categoria: 'Comunidad',
-        acciones: ['leer'], 
-        descripcion: 'Acceso a carpeta personal' 
-      },
-      { 
-        id: 'perm-est-comunidad', 
-        modulo: 'Comunidad - Publicaciones', 
-        categoria: 'Comunidad',
-        acciones: ['leer'], 
-        descripcion: 'Visualización de publicaciones' 
-      }
-    ],
-    creadoPor: 'Sistema',
-    fechaCreacion: '2025-01-01'
-  },
-
-  {
-    id: 'rol-docente',
-    nombre: 'Docente',
-    descripcion: 'Acceso profesores con permisos de gestión académica',
-    tipo: 'Sistema',
-    estado: 'Activo',
-    usuariosAsignados: 89,
-    color: '#8B5CF6',
-    icono: '👨‍🏫',
-    categoriaRol: 'Académica',
-    permisos: [
-      { 
-        id: 'perm-doc-prog', 
-        modulo: 'Programas Académicos', 
-        categoria: 'Académica',
-        acciones: ['leer'], 
-        descripcion: 'Consulta de programas' 
-      },
-      { 
-        id: 'perm-doc-cert', 
-        modulo: 'Certificados Académicos', 
-        categoria: 'Académica',
-        acciones: ['leer', 'exportar'], 
-        descripcion: 'Consulta de certificados' 
-      },
-      { 
-        id: 'perm-doc-comunidad', 
-        modulo: 'Comunidad - Publicaciones', 
-        categoria: 'Comunidad',
-        acciones: ['crear', 'leer', 'actualizar'], 
-        descripcion: 'Gestión de publicaciones' 
-      }
-    ],
-    creadoPor: 'Sistema',
-    fechaCreacion: '2025-01-01'
-  },
-
-  {
-    id: 'rol-administrativo',
-    nombre: 'Administrativo',
-    descripcion: 'Personal administrativo con permisos de gestión operativa',
-    tipo: 'Sistema',
-    estado: 'Activo',
-    usuariosAsignados: 45,
-    color: '#F59E0B',
-    icono: '💼',
-    categoriaRol: 'General',
-    permisos: [
-      { 
-        id: 'perm-admin-personas', 
-        modulo: 'Gestión de Personas', 
-        categoria: 'General',
-        acciones: ['leer', 'actualizar'], 
-        descripcion: 'Gestión de información de personal' 
-      },
-      { 
-        id: 'perm-admin-cert-lab', 
-        modulo: 'Certificados Laborales', 
-        categoria: 'Comunidad',
-        acciones: ['crear', 'leer', 'exportar'], 
-        descripcion: 'Emisión de certificados laborales' 
-      }
-    ],
-    creadoPor: 'Sistema',
-    fechaCreacion: '2025-01-01'
+function getAuthApiBaseUrl(): string {
+  // Detectar si estamos en un navegador
+  if (typeof window !== 'undefined') {
+    // En el navegador, usar la URL del gateway
+    const origin = window.location.origin;
+    return `${origin}/auth/api/v1`;
   }
-];
+  return 'http://localhost:3000/auth/api/v1';
+}
 
-// ============ FUNCIONES DE SINCRONIZACIÓN ============
+async function fetchFromAuthService<T>(endpoint: string): Promise<T | null> {
+  try {
+    const baseUrl = getAuthApiBaseUrl();
+    const token = typeof localStorage !== 'undefined' 
+      ? localStorage.getItem('esap_auth_token') 
+      : null;
+    
+    const response = await fetch(`${baseUrl}${endpoint}`, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { 'Authorization': `Bearer ${token}` }),
+      },
+    });
+    
+    if (!response.ok) {
+      console.warn(`[rolesPermisosSync] Error fetching ${endpoint}: ${response.status}`);
+      return null;
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.warn(`[rolesPermisosSync] Error fetching ${endpoint}:`, error);
+    return null;
+  }
+}
+
+// ============ INTERFAZ DEL BACKEND ============
+
+interface RoleFromBackend {
+  id: string;
+  code?: string;
+  name: string;
+  description?: string;
+  icon: string;
+  color: string;
+  type: 'sistema' | 'personalizado';
+  category?: string;
+  is_active: boolean;
+  requires_2fa: boolean;
+  usuarios_count: number;
+  permisos_count: number;
+  created_by?: string;
+  updated_by?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface PermissionFromBackend {
+  id: string;
+  code?: string;
+  name: string;
+  description?: string;
+}
+
+// ============ CACHÉ LOCAL ============
+
+let _rolesCache: Rol[] | null = null;
+let _cacheTimestamp: number = 0;
+const CACHE_DURATION_MS = 60000; // 1 minuto
+
+function isCacheValid(): boolean {
+  return _rolesCache !== null && (Date.now() - _cacheTimestamp) < CACHE_DURATION_MS;
+}
+
+// ============ MAPEO DE CATEGORÍAS ============
+
+function mapCategoryToCategoria(category?: string): CategoriaModulo {
+  if (!category) return 'General';
+  const map: Record<string, CategoriaModulo> = {
+    'sistema': 'General',
+    'backoffice': 'Control Interno',
+    'Control Interno': 'Control Interno',
+    'control_interno': 'Control Interno',
+    'academica': 'Académica',
+    'control_disciplinario': 'Control Disciplinario',
+    'gestion_legal': 'Gestión Legal',
+    'comunidad': 'Comunidad',
+    'estructura': 'Estructura',
+  };
+  return map[category] || 'General';
+}
+
+function mapBackendRoleToRol(role: RoleFromBackend): Rol {
+  return {
+    id: role.id,
+    nombre: role.name,
+    descripcion: role.description || '',
+    tipo: role.type === 'sistema' ? 'Sistema' : 'Personalizado',
+    estado: role.is_active ? 'Activo' : 'Inactivo',
+    usuariosAsignados: role.usuarios_count || 0,
+    permisos: [], // Se cargan bajo demanda
+    color: role.color || '#6B7280',
+    icono: role.icon || '📋',
+    categoriaRol: mapCategoryToCategoria(role.category),
+    creadoPor: role.created_by,
+    fechaCreacion: role.created_at,
+    modificadoPor: role.updated_by,
+    fechaModificacion: role.updated_at,
+  };
+}
+
+// ============ FUNCIONES PRINCIPALES ============
 
 /**
- * Obtener todos los roles del sistema
+ * Obtener todos los roles del sistema DESDE LA BD
+ */
+export async function obtenerRolesAsync(): Promise<Rol[]> {
+  if (isCacheValid()) {
+    return _rolesCache!;
+  }
+
+  const result = await fetchFromAuthService<{ roles: RoleFromBackend[], total: number }>('/roles');
+  
+  if (result && result.roles) {
+    _rolesCache = result.roles.map(mapBackendRoleToRol);
+    _cacheTimestamp = Date.now();
+    return _rolesCache;
+  }
+  
+  // Si falla, retornar caché anterior o array vacío
+  return _rolesCache || [];
+}
+
+/**
+ * Obtener roles sincrónicamente (usa caché, devuelve vacío si no hay)
+ * NOTA: Preferir obtenerRolesAsync() cuando sea posible
  */
 export function obtenerRoles(): Rol[] {
-  return ROLES_SISTEMA;
+  // Trigger async refresh en background
+  obtenerRolesAsync().catch(() => {});
+  return _rolesCache || [];
 }
 
 /**
  * Obtener roles por categoría
  */
+export async function obtenerRolesPorCategoriaAsync(categoria: CategoriaModulo): Promise<Rol[]> {
+  const roles = await obtenerRolesAsync();
+  return roles.filter(rol => rol.categoriaRol === categoria);
+}
+
 export function obtenerRolesPorCategoria(categoria: CategoriaModulo): Rol[] {
-  return ROLES_SISTEMA.filter(rol => rol.categoriaRol === categoria);
+  return (_rolesCache || []).filter(rol => rol.categoriaRol === categoria);
 }
 
 /**
  * Obtener un rol por ID
  */
+export async function obtenerRolPorIdAsync(id: string): Promise<Rol | undefined> {
+  const roles = await obtenerRolesAsync();
+  return roles.find(rol => rol.id === id);
+}
+
 export function obtenerRolPorId(id: string): Rol | undefined {
-  return ROLES_SISTEMA.find(rol => rol.id === id);
+  return (_rolesCache || []).find(rol => rol.id === id);
+}
+
+/**
+ * Obtener permisos de un rol específico DESDE LA BD
+ */
+export async function obtenerPermisosRolAsync(rolId: string): Promise<PermissionFromBackend[]> {
+  const result = await fetchFromAuthService<PermissionFromBackend[]>(`/roles/${rolId}/permissions`);
+  return result || [];
 }
 
 /**
@@ -581,34 +253,111 @@ export function tienePermiso(
 }
 
 /**
- * Obtener todos los módulos del sistema
+ * Obtener todos los permisos disponibles del sistema
  */
-export function obtenerModulos(): typeof MODULOS_SISTEMA {
-  return MODULOS_SISTEMA;
+export async function obtenerTodosLosPermisosAsync(): Promise<PermissionFromBackend[]> {
+  const result = await fetchFromAuthService<PermissionFromBackend[]>('/roles/permissions/all');
+  return result || [];
+}
+
+/**
+ * Obtener módulos del sistema
+ * Los módulos se derivan de los permisos registrados en la BD
+ */
+export async function obtenerModulosAsync(): Promise<{ nombre: string; categoria: CategoriaModulo }[]> {
+  const permisos = await obtenerTodosLosPermisosAsync();
+  const modulosSet = new Map<string, CategoriaModulo>();
+  
+  for (const p of permisos) {
+    const nombre = p.name || '';
+    // Derivar categoría del nombre del permiso
+    let categoria: CategoriaModulo = 'General';
+    if (nombre.includes('Control Interno') || nombre.includes('Plan Anual') || nombre.includes('Auditor')) {
+      categoria = 'Control Interno';
+    } else if (nombre.includes('Disciplinario')) {
+      categoria = 'Control Disciplinario';
+    } else if (nombre.includes('Legal')) {
+      categoria = 'Gestión Legal';
+    } else if (nombre.includes('Académic') || nombre.includes('Programa')) {
+      categoria = 'Académica';
+    }
+    
+    if (!modulosSet.has(nombre)) {
+      modulosSet.set(nombre, categoria);
+    }
+  }
+  
+  return Array.from(modulosSet.entries()).map(([nombre, categoria]) => ({
+    nombre,
+    categoria,
+  }));
+}
+
+export function obtenerModulos(): { nombre: string; categoria: CategoriaModulo }[] {
+  // Retorna array vacío sincrónicamente — preferir obtenerModulosAsync()
+  return [];
 }
 
 /**
  * Obtener módulos por categoría
  */
 export function obtenerModulosPorCategoria(categoria: CategoriaModulo) {
-  return MODULOS_SISTEMA.filter(m => m.categoria === categoria);
+  return [];
 }
 
 /**
- * Estadísticas de roles
+ * Estadísticas de roles DESDE LA BD
  */
-export function obtenerEstadisticasRoles() {
+export async function obtenerEstadisticasRolesAsync() {
+  const result = await fetchFromAuthService<{
+    total_roles: number;
+    roles_sistema: number;
+    usuarios_asignados: number;
+    permisos_disponibles: number;
+  }>('/roles/stats');
+  
+  if (result) {
+    return {
+      totalRoles: result.total_roles,
+      rolesActivos: result.total_roles, // Se puede refinar
+      rolesInactivos: 0,
+      usuariosConRol: result.usuarios_asignados,
+      rolesPorCategoria: {} as Record<string, number>,
+    };
+  }
+  
   return {
-    totalRoles: ROLES_SISTEMA.length,
-    rolesActivos: ROLES_SISTEMA.filter(r => r.estado === 'Activo').length,
-    rolesInactivos: ROLES_SISTEMA.filter(r => r.estado === 'Inactivo').length,
-    usuariosConRol: ROLES_SISTEMA.reduce((sum, r) => sum + r.usuariosAsignados, 0),
-    rolesPorCategoria: {
-      'General': ROLES_SISTEMA.filter(r => r.categoriaRol === 'General').length,
-      'Control Interno': ROLES_SISTEMA.filter(r => r.categoriaRol === 'Control Interno').length,
-      'Académica': ROLES_SISTEMA.filter(r => r.categoriaRol === 'Académica').length,
-      'Control Disciplinario': ROLES_SISTEMA.filter(r => r.categoriaRol === 'Control Disciplinario').length,
-      'Gestión Legal': ROLES_SISTEMA.filter(r => r.categoriaRol === 'Gestión Legal').length
-    }
+    totalRoles: 0,
+    rolesActivos: 0,
+    rolesInactivos: 0,
+    usuariosConRol: 0,
+    rolesPorCategoria: {},
   };
+}
+
+export function obtenerEstadisticasRoles() {
+  // Versión sincrónica — retorna valores del caché
+  const roles = _rolesCache || [];
+  return {
+    totalRoles: roles.length,
+    rolesActivos: roles.filter(r => r.estado === 'Activo').length,
+    rolesInactivos: roles.filter(r => r.estado === 'Inactivo').length,
+    usuariosConRol: roles.reduce((sum, r) => sum + r.usuariosAsignados, 0),
+    rolesPorCategoria: {} as Record<string, number>,
+  };
+}
+
+/**
+ * Forzar recarga de datos desde la BD
+ */
+export function invalidarCache(): void {
+  _rolesCache = null;
+  _cacheTimestamp = 0;
+}
+
+/**
+ * Pre-cargar roles en el caché (llamar al inicio de la aplicación)
+ */
+export async function precargarRoles(): Promise<void> {
+  await obtenerRolesAsync();
 }

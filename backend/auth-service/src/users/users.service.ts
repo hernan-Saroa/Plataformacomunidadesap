@@ -265,6 +265,7 @@ export class UsersService {
   }
 
   private rethrowCreateUserError(error: unknown): never {
+    console.error('🔥 [rethrowCreateUserError] Raw Exception details:', error);
     if (
       error instanceof ConflictException ||
       error instanceof BadRequestException

@@ -82,16 +82,36 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.año = :year', { year })
       .andWhere("plan.estado != 'eliminado'")
-      .orderBy('roles.rol_numero', 'ASC')
+      .orderBy('plan.fecha_creacion', 'DESC') // El más reciente primero
+      .addOrderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC')
       .getOne();
   }
 
   async create(createDto: CreatePlanAnual5RolesDto, usuarioId?: string): Promise<PlanAnual5Roles> {
-    // Verificar si ya existe un plan para ese año
-    const existing = await this.findByYear(createDto.año);
-    if (existing) {
-      throw new BadRequestException(`Ya existe un plan anual para el año ${createDto.año}`);
+    // Verificar solapamiento de fechas con planes existentes
+    const fechaInicio = createDto.fecha_inicio || `${createDto.año}-01-01`;
+    const fechaFin = createDto.fecha_fin || `${createDto.año}-12-31`;
+    
+    const overlapping = await this.planRepository
+      .createQueryBuilder('plan')
+      .where("plan.estado != 'eliminado'")
+      .andWhere(
+        `(plan.fecha_inicio <= :fechaFin AND plan.fecha_fin >= :fechaInicio)`,
+        { fechaInicio, fechaFin }
+      )
+      .getOne();
+    
+    if (overlapping) {
+      const overlapInicio = overlapping.fecha_inicio instanceof Date 
+        ? overlapping.fecha_inicio.toISOString().split('T')[0] 
+        : overlapping.fecha_inicio;
+      const overlapFin = overlapping.fecha_fin instanceof Date 
+        ? overlapping.fecha_fin.toISOString().split('T')[0] 
+        : overlapping.fecha_fin;
+      throw new BadRequestException(
+        `Ya existe un plan anual (${overlapInicio} a ${overlapFin}) que se solapa con el rango de fechas seleccionado (${fechaInicio} a ${fechaFin}).`
+      );
     }
 
     // Crear el plan
@@ -103,6 +123,8 @@ export class PlanAnual5RolesService {
       fecha_fin: createDto.fecha_fin ? new Date(createDto.fecha_fin) : undefined,
       estado: createDto.estado || 'borrador',
       fecha_creacion: new Date(),
+      equipo_aprobacion: createDto.equipo_aprobacion || [],
+      orden_aprobacion: createDto.orden_aprobacion || 'secuencial',
     });
 
     const savedPlan: PlanAnual5Roles = await this.planRepository.save(plan);
@@ -180,6 +202,17 @@ export class PlanAnual5RolesService {
     if (updateDto.estado !== undefined && updateDto.estado !== plan.estado) {
       cambios.push({ campo: 'estado', valorAnterior: plan.estado, valorNuevo: updateDto.estado });
       plan.estado = updateDto.estado as 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' | 'activo';
+    }
+
+    if (updateDto.equipo_aprobacion !== undefined) {
+      // Comparación profunda simple para historial es compleja, marcamos como actualizado
+      cambios.push({ campo: 'equipo_aprobacion', valorAnterior: 'previo', valorNuevo: 'actualizado' });
+      plan.equipo_aprobacion = updateDto.equipo_aprobacion;
+    }
+
+    if (updateDto.orden_aprobacion !== undefined && updateDto.orden_aprobacion !== plan.orden_aprobacion) {
+      cambios.push({ campo: 'orden_aprobacion', valorAnterior: plan.orden_aprobacion || 'secuencial', valorNuevo: updateDto.orden_aprobacion });
+      plan.orden_aprobacion = updateDto.orden_aprobacion;
     }
 
     const savedPlan: PlanAnual5Roles = await this.planRepository.save(plan);

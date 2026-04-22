@@ -179,7 +179,7 @@ export function ConfiguracionProfesionalesModule() {
   }
 
   return (
-    <div className="w-full h-full p-4 sm:p-6 lg:p-8">
+    <div className="w-full h-full p-3">
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* HEADER */}
       {/* ═══════════════════════════════════════════════════════════════ */}
@@ -506,17 +506,18 @@ function TarjetaProfesional({
               </h3>
               <p className="text-sm text-gray-600 mb-2">{profesional.usuario.email}</p>
               <div className="flex flex-wrap items-center gap-2">
-                {(profesional.usuario.roles && profesional.usuario.roles.length > 0)
-                  ? profesional.usuario.roles.map(rol => (
-                    <span key={rol} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-xs font-bold">
-                      {rol}
-                    </span>
-                  ))
-                  : (
-                    <span className="px-3 py-1 bg-gray-100 text-gray-500 rounded-lg text-xs font-bold">
-                      Sin roles asignados
-                    </span>
-                  )}
+                {/* Rol OCIG (principal en este módulo) */}
+                <span className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                  profesional.configuracion.rolOCIG === 'Jefe OCI' ? 'bg-red-100 text-red-700' :
+                  profesional.configuracion.rolOCIG === 'Auditor Sénior' ? 'bg-blue-100 text-blue-700' :
+                  profesional.configuracion.rolOCIG === 'Auditor' ? 'bg-cyan-100 text-cyan-700' :
+                  profesional.configuracion.rolOCIG === 'Auditor Júnior' ? 'bg-green-100 text-green-700' :
+                  profesional.configuracion.rolOCIG === 'Apoyo Técnico' ? 'bg-purple-100 text-purple-700' :
+                  profesional.configuracion.rolOCIG === 'Aprobador PAI' ? 'bg-amber-100 text-amber-700' :
+                  'bg-gray-100 text-gray-700'
+                }`}>
+                  {profesional.configuracion.rolOCIG || 'Sin rol OCIG'}
+                </span>
                 <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-semibold">
                   CC: {profesional.usuario.identificacion}
                 </span>
@@ -651,15 +652,14 @@ interface ModalAgregarProfesionalProps {
 }
 
 function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: ModalAgregarProfesionalProps) {
-  const ROLES_OCIG = ['Jefe OCI', 'Auditor Sénior', 'Auditor', 'Auditor Júnior', 'Apoyo Técnico', 'Profesional OCI'];
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<string>('');
   const [openCombobox, setOpenCombobox] = useState(false);
   const [openEspecialidades, setOpenEspecialidades] = useState(false);
   const [especialidades, setEspecialidades] = useState<string[]>([]);
   const { getCapacidadPorRol } = useConfiguracionCapacidadesGlobales();
-  const [rolOCIG, setRolOCIG] = useState('Auditor');
-  const [capacidad, setCapacidad] = useState(() => getCapacidadPorRol('Auditor').capacidadMaximaAuditorias);
-  const [horas, setHoras] = useState(() => getCapacidadPorRol('Auditor').horasMensualesDisponibles);
+  const [rolOCIG, setRolOCIG] = useState(ROLES_OCIG[0]);
+  const [capacidad, setCapacidad] = useState(() => getCapacidadPorRol(ROLES_OCIG[0]).capacidadMaximaAuditorias);
+  const [horas, setHoras] = useState(() => getCapacidadPorRol(ROLES_OCIG[0]).horasMensualesDisponibles);
 
   const handleRolCambio = (nuevoRol: string) => {
     setRolOCIG(nuevoRol);

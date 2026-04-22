@@ -162,7 +162,7 @@ export function ConfiguracionKanbanModule() {
 
   if (loading) {
     return (
-      <div className="w-full h-full p-4 sm:p-6 lg:p-8 flex items-center justify-center min-h-[400px]">
+      <div className="w-full h-full p-3 flex items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
           <p className="text-gray-600">Cargando configuración del Kanban...</p>
@@ -173,7 +173,7 @@ export function ConfiguracionKanbanModule() {
 
   if (error) {
     return (
-      <div className="w-full h-full p-4 sm:p-6 lg:p-8 flex items-center justify-center min-h-[400px]">
+      <div className="w-full h-full p-3 flex items-center justify-center min-h-[400px]">
         <div className="flex flex-col items-center gap-4 text-center">
           <AlertTriangle className="w-12 h-12 text-red-500" />
           <div>
@@ -192,7 +192,7 @@ export function ConfiguracionKanbanModule() {
   }
 
   return (
-    <div className="w-full h-full p-4 sm:p-6 lg:p-8">
+    <div className="w-full h-full p-3">
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* HEADER */}
       {/* ═══════════════════════════════════════════════════════════════ */}

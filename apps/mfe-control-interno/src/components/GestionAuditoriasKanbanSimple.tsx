@@ -48,6 +48,7 @@ import { EmptyState } from '@esap-mfe/shared-ui/empty-state';
 import type { AuditoriaFormData } from '../../../utils/validation';
 import { TooltipGuia } from './TooltipGuia';
 import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
+import { ModuleHeaderBar } from './ModuleHeaderBar';
 
 // ✅ FASE 1 DÍA 2: Componentes responsive
 import { useResponsive } from '@/hooks/useResponsive';
@@ -773,42 +774,48 @@ const COLUMNAS_KANBAN = [
     titulo: 'Programa Anual',
     count: 0,
     icono: <Calendar className="w-4 h-4" style={{ color: '#003DA5' }} />,
-    diasEstimados: 15
+    diasEstimados: 15,
+    accentColor: '#003DA5'
   },
   {
     id: 'Planeación',
     titulo: 'Planeación',
     count: 3,
-    icono: <ClipboardCheck className="w-4 h-4" style={{ color: '#003DA5' }} />,
-    diasEstimados: 30
+    icono: <ClipboardCheck className="w-4 h-4" style={{ color: '#7C3AED' }} />,
+    diasEstimados: 30,
+    accentColor: '#7C3AED'
   },
   {
     id: 'Ejecución',
     titulo: 'Ejecución',
     count: 3,
-    icono: <Target className="w-4 h-4" style={{ color: '#003DA5' }} />,
-    diasEstimados: 60
+    icono: <Target className="w-4 h-4" style={{ color: '#0891B2' }} />,
+    diasEstimados: 60,
+    accentColor: '#0891B2'
   },
   {
     id: 'Comunicación',
     titulo: 'Comunicación',
     count: 2,
-    icono: <MessageSquare className="w-4 h-4" style={{ color: '#003DA5' }} />,
-    diasEstimados: 15
+    icono: <MessageSquare className="w-4 h-4" style={{ color: '#F97316' }} />,
+    diasEstimados: 15,
+    accentColor: '#F97316'
   },
   {
     id: 'Seguimiento',
     titulo: 'Seguimiento',
     count: 2,
-    icono: <History className="w-4 h-4" style={{ color: '#003DA5' }} />,
-    diasEstimados: 30
+    icono: <History className="w-4 h-4" style={{ color: '#EAB308' }} />,
+    diasEstimados: 30,
+    accentColor: '#EAB308'
   },
   {
     id: 'Finalizada',
     titulo: 'Finalizada',
     count: 3,
-    icono: <CheckCircle className="w-4 h-4" style={{ color: '#003DA5' }} />,
-    diasEstimados: 0
+    icono: <CheckCircle className="w-4 h-4" style={{ color: '#16A34A' }} />,
+    diasEstimados: 0,
+    accentColor: '#16A34A'
   }
 ];
 
@@ -1722,31 +1729,40 @@ function ColumnaKanban({
   // Cada columna ocupa ~20% del espacio disponible (flex-1 con 5 columnas)
   // Se adapta PROPORCIONALMENTE al ancho de la pantalla
   
+  // Color de acento de la columna
+  const accent = (columna as any).accentColor || '#003DA5';
+
   return (
     <div 
-      className="bg-white rounded-lg md:rounded-xl shadow-md md:shadow-lg border border-gray-200 md:border-2 mb-3 md:mb-0 flex flex-col w-full md:flex-1 md:min-w-[264px] md:max-w-[528px]"
+      className="bg-white rounded-lg md:rounded-xl shadow-md md:shadow-lg border border-gray-200 mb-3 md:mb-0 flex flex-col w-full md:flex-1 md:min-w-[264px] md:max-w-[528px] overflow-hidden"
       style={{
         height: 'calc(100vh - 280px)',
         maxHeight: 'calc(100vh - 280px)'
       }}
     >
-      {/* 🎨 HEADER COLUMNA - RESPONSIVE OPTIMIZADO */}
-      <div className="p-2 md:p-3 lg:p-4 border-b border-gray-200 md:border-b-2 bg-gradient-to-r from-gray-50 to-gray-100 z-10 rounded-t-lg md:rounded-t-xl flex-shrink-0">
-        <div className="flex items-center justify-between mb-1.5 md:mb-2">
+      {/* 🎨 HEADER COLUMNA - WORLD CLASS */}
+      {/* Barra de color superior como acento visual */}
+      <div style={{ height: 3, background: accent, flexShrink: 0 }} />
+
+      <div className="px-2.5 md:px-3 lg:px-4 py-2 md:py-2.5 bg-white z-10 flex-shrink-0">
+        <div className="flex items-center justify-between">
           {/* Título + Ícono */}
-          <div className="flex items-center gap-1.5 md:gap-2 flex-1 min-w-0">
-            <div className="p-1 md:p-1.5 lg:p-2 rounded-md md:rounded-lg bg-white border md:border-2 border-gray-200 flex-shrink-0">
-              <div className="w-4 h-4 md:w-5 md:h-5 lg:w-6 lg:h-6">
+          <div className="flex items-center gap-2 md:gap-2.5 flex-1 min-w-0">
+            <div
+              className="w-7 h-7 md:w-8 md:h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: accent + '14' }}
+            >
+              <div className="w-4 h-4 md:w-4.5 md:h-4.5" style={{ color: accent }}>
                 {columna.icono}
               </div>
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-black text-[11px] md:text-xs lg:text-sm xl:text-base text-gray-800 leading-tight">
+              <h3 className="font-bold text-xs md:text-[13px] lg:text-sm text-gray-900 leading-tight truncate">
                 {columna.titulo}
               </h3>
-              {columna.diasEstimados && kanbanConfig.config.mostrarTiempos && (
-                <p className="hidden md:flex text-[10px] lg:text-xs text-gray-500 items-center gap-1 mt-0.5">
-                  <Clock className="w-2.5 h-2.5 lg:w-3 lg:h-3 flex-shrink-0" />
+              {columna.diasEstimados > 0 && kanbanConfig.config.mostrarTiempos && (
+                <p className="hidden md:flex text-[10px] text-gray-400 items-center gap-1 mt-0.5">
+                  <Clock className="w-2.5 h-2.5 flex-shrink-0" />
                   <span className="truncate">{columna.diasEstimados} días SLA</span>
                 </p>
               )}
@@ -1754,26 +1770,31 @@ function ColumnaKanban({
           </div>
 
           {/* Badge + WIP + Botón Colapsar */}
-          <div className="flex items-center gap-1 md:gap-1.5 lg:gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1 md:gap-1.5 flex-shrink-0">
             {kanbanConfig.config.mostrarContadores && (
-              <Badge className={`font-semibold text-[10px] md:text-xs lg:text-sm px-1.5 md:px-2 py-0.5 md:py-1 ${
-                wipInfo.excede
-                  ? 'bg-red-100 border md:border-2 border-red-300 text-red-700'
-                  : 'bg-white border md:border-2 border-gray-200 text-gray-700'
-              }`}>
+              <span
+                className={`inline-flex items-center justify-center font-bold text-[10px] md:text-xs min-w-[22px] h-[22px] md:h-6 px-1.5 rounded-md ${
+                  wipInfo.excede
+                    ? 'text-white'
+                    : 'text-white'
+                }`}
+                style={{
+                  backgroundColor: wipInfo.excede ? '#EF4444' : accent
+                }}
+              >
                 {auditorias.length}{wipInfo.limite < 999 ? `/${wipInfo.limite}` : ''}
-              </Badge>
+              </span>
             )}
             {onToggleColapso && (
               <button
                 onClick={onToggleColapso}
-                className="p-1 sm:p-1.5 rounded-lg hover:bg-white hover:shadow-md transition-all duration-200 group"
+                className="p-1 sm:p-1.5 rounded-lg hover:bg-gray-100 transition-all duration-200 group"
                 title={colapsada ? `Expandir ${columna.titulo}` : `Colapsar ${columna.titulo}`}
               >
                 {colapsada ? (
-                  <Maximize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-600 group-hover:text-[#2962FF] transition-colors" />
+                  <Maximize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 group-hover:text-gray-700 transition-colors" />
                 ) : (
-                  <Minimize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-600 group-hover:text-[#F57C00] transition-colors" />
+                  <Minimize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400 group-hover:text-gray-700 transition-colors" />
                 )}
               </button>
             )}
@@ -1781,14 +1802,17 @@ function ColumnaKanban({
         </div>
       </div>
 
+      {/* Separador sutil */}
+      <div className="h-px bg-gray-100 flex-shrink-0" />
+
       {/* 📋 LISTA DE TARJETAS - SCROLL VERTICAL UNIFICADO */}
       <div
         ref={drop}
-        className={`flex-1 p-3 sm:p-4 space-y-2 sm:space-y-3 overflow-y-auto rounded-b-xl ${isOver ? 'bg-blue-50' : 'bg-white'}`}
+        className={`flex-1 p-2.5 sm:p-3 space-y-2 sm:space-y-2.5 overflow-y-auto ${isOver ? 'bg-blue-50/50' : 'bg-gray-50/40'}`}
         style={{ 
           minHeight: '180px',
           scrollbarWidth: 'thin',
-          scrollbarColor: '#F97316 #F9FAFB'
+          scrollbarColor: `${accent} #F3F4F6`
         }}
       >
         <AnimatePresence>
@@ -1818,14 +1842,20 @@ function ColumnaKanban({
         </AnimatePresence>
 
         {auditorias.length === 0 && (
-          <div className="p-6 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center text-center" style={{ minHeight: '80px' }}>
-            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center mb-2">
-              <ClipboardCheck className="w-4 h-4 text-gray-300" />
+          <div
+            className="py-10 px-4 rounded-xl flex flex-col items-center justify-center text-center"
+            style={{ background: accent + '06' }}
+          >
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+              style={{ backgroundColor: accent + '12' }}
+            >
+              <ClipboardCheck className="w-5 h-5" style={{ color: accent, opacity: 0.5 }} />
             </div>
-            <p className="text-xs text-gray-400 font-medium">
+            <p className="text-xs text-gray-400 font-semibold">
               Sin auditorías en esta etapa
             </p>
-            <p className="text-[10px] text-gray-300 mt-0.5">Arrastra tarjetas aquí</p>
+            <p className="text-[10px] text-gray-300 mt-1">Arrastra tarjetas aquí</p>
           </div>
         )}
       </div>
@@ -2019,8 +2049,14 @@ export function GestionAuditoriasKanbanSimple() {
         });
 
         setAuditoriasConPlan(idsConPlan);
-      } catch (error) {
-        console.warn('No se pudieron cargar planes de mejoramiento para validar auditorías:', error);
+      } catch (error: any) {
+        // Silenciar warn estridente si es por falta de permisos cruzados (403).
+        const errMsg = error?.response?.data?.message || error?.message || String(error);
+        if (String(errMsg).includes('No tienes permisos') || error?.response?.status === 403) {
+           console.info('[Kanban] Precarga omitida: planes de mejoramiento no habilitados para el rol de este usuario.');
+        } else {
+           console.warn('Omitiendo carga suplementaria de planes de mejoramiento:', error);
+        }
       }
     };
 
@@ -3264,198 +3300,59 @@ export function GestionAuditoriasKanbanSimple() {
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="space-y-3 sm:space-y-4 lg:space-y-5 w-full">
-        <Card className="p-4 sm:p-5 border border-gray-200 shadow-sm">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="text-base sm:text-lg font-black leading-tight" style={{ color: '#F97316' }}>
-                  Auditorías OCI
-                </h2>
-                <p className="text-[11px] sm:text-xs text-gray-600 mt-0.5">{auditoriasFiltradas.length} auditorías</p>
-              </div>
-              <TooltipGuia {...TOOLTIPS_CONTROL_INTERNO['auditorias-kanban']} />
+      <div className="space-y-3 w-full">
+        <ModuleHeaderBar
+          title="Auditorías OCI"
+          subtitle={`${auditoriasFiltradas.length} auditorías · Sistema de Gestión`}
+          icon={<ClipboardCheck className="w-5 h-5 text-white" />}
+          color="#F97316"
+          rightContent={<TooltipGuia {...TOOLTIPS_CONTROL_INTERNO['auditorias-kanban']} />}
+        />
+
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        {/* TOOLBAR — Controles de vista, búsqueda, filtros               */}
+        {/* ═══════════════════════════════════════════════════════════════ */}
+        <Card className="p-2.5 border border-gray-200 shadow-sm">
+          <div className="flex flex-col lg:flex-row gap-2.5 lg:items-center">
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
+              <button
+                onClick={() => setVistaActiva('kanban')}
+                className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
+                  vistaActiva === 'kanban' ? 'bg-[#1e5da8] text-white shadow-sm' : 'text-gray-600 hover:bg-white'
+                }`}
+              >
+                <Columns3 className="w-4 h-4" />
+                Kanban
+              </button>
+              <button
+                onClick={() => setVistaActiva('lista')}
+                className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
+                  vistaActiva === 'lista' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-600 hover:bg-white'
+                }`}
+              >
+                <List className="w-4 h-4" />
+                Lista
+              </button>
             </div>
 
-            <div className="flex flex-col lg:flex-row gap-3 lg:items-center">
-              <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
-                <button
-                  onClick={() => setVistaActiva('kanban')}
-                  className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
-                    vistaActiva === 'kanban' ? 'bg-[#1e5da8] text-white shadow-sm' : 'text-gray-600 hover:bg-white'
-                  }`}
-                >
-                  <Columns3 className="w-4 h-4" />
-                  Kanban
-                </button>
-                <button
-                  onClick={() => setVistaActiva('lista')}
-                  className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
-                    vistaActiva === 'lista' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-600 hover:bg-white'
-                  }`}
-                >
-                  <List className="w-4 h-4" />
-                  Lista
-                </button>
-              </div>
-
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                <Input
-                  type="text"
-                  placeholder="Buscar auditoría..."
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  className="pl-10 bg-gray-100 border-gray-200 focus:bg-white"
-                />
-              </div>
-
-              <div className="relative min-w-[130px]">
-                <select
-                  value={filtroTerritorial}
-                  onChange={(e) => setFiltroTerritorial(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none font-medium text-sm appearance-none bg-white cursor-pointer"
-                >
-                  <option value="Todas las Territoriales">Todas</option>
-                  <option value="Nacional">Nacional</option>
-                  <option value="Antioquia">Antioquia</option>
-                  <option value="Atlántico">Atlántico</option>
-                  <option value="Bogotá">Bogotá</option>
-                  <option value="Valle del Cauca">Valle del Cauca</option>
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              </div>
-
-              {vistaActiva === 'kanban' && (
-                <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
-                  <button
-                    onClick={() => setModoVista('ajustado')}
-                    className={`px-3 py-2 rounded-md text-sm font-semibold transition-all ${
-                      modoVista === 'ajustado' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-500 hover:bg-white'
-                    }`}
-                  >
-                    Compacto
-                  </button>
-                  <button
-                    onClick={() => setModoVista('confortable')}
-                    className={`px-3 py-2 rounded-md text-sm font-semibold transition-all ${
-                      modoVista === 'confortable' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-500 hover:bg-white'
-                    }`}
-                  >
-                    Confortable
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        {/* ═══════════════════════════════════════════════════════════════ */}
-        {/* KPIs EJECUTIVOS COMPACTOS                                    */}
-        {/* ═══════════════════════════════════════════════════════════════ */}
-        {(() => {
-          const total = auditoriasFiltradas.length;
-          const enProgreso = auditoriasFiltradas.filter(a => 
-            ['Planeación', 'Ejecución', 'Comunicación', 'Seguimiento'].includes(a.estado)
-          ).length;
-          const finalizadas = auditoriasFiltradas.filter(a => a.estado === 'Finalizada').length;
-          const pctCumplimiento = total > 0 ? Math.round((finalizadas / total) * 100) : 0;
-          const conSLA = auditoriasFiltradas.filter(a => {
-            if (!a.fechaInicio || a.estado === 'Finalizada' || a.estado === 'Plan Anual') return false;
-            const dias = Math.floor((Date.now() - new Date(a.fechaInicio).getTime()) / 86400000);
-            const col = COLUMNAS_KANBAN.find(c => c.id === a.estado);
-            return col && dias > col.diasEstimados;
-          }).length;
-          
-          return (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
-                  <ClipboardCheck className="w-3.5 h-3.5 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-lg font-black text-gray-900 leading-none">{total}</p>
-                  <p className="text-[10px] text-gray-500">Total auditorías</p>
-                </div>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
-                  <Activity className="w-3.5 h-3.5 text-amber-600" />
-                </div>
-                <div>
-                  <p className="text-lg font-black text-amber-700 leading-none">{enProgreso}</p>
-                  <p className="text-[10px] text-gray-500">En progreso</p>
-                </div>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
-                  <CheckCircle className="w-3.5 h-3.5 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-lg font-black text-green-700 leading-none">{pctCumplimiento}%</p>
-                  <p className="text-[10px] text-gray-500">Cumplimiento</p>
-                </div>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${conSLA > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
-                  <AlertCircle className={`w-3.5 h-3.5 ${conSLA > 0 ? 'text-red-600' : 'text-gray-400'}`} />
-                </div>
-                <div>
-                  <p className={`text-lg font-black leading-none ${conSLA > 0 ? 'text-red-700' : 'text-gray-400'}`}>{conSLA}</p>
-                  <p className="text-[10px] text-gray-500">Fuera de SLA</p>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ACCIONES PRINCIPALES */}
-        <div className="flex flex-wrap items-center justify-end gap-2" style={{ display: 'none' }}>
-          <Button
-            variant={vistaActiva === 'kanban' ? 'default' : 'outline'}
-            onClick={() => setVistaActiva('kanban')}
-            className="gap-2"
-          >
-            <Columns3 className="w-4 h-4" />
-            Kanban
-          </Button>
-          <Button
-            variant={vistaActiva === 'lista' ? 'default' : 'outline'}
-            onClick={() => setVistaActiva('lista')}
-            className="gap-2"
-          >
-            <List className="w-4 h-4" />
-            Lista
-          </Button>
-          {/* Botón "Nueva Auditoría" eliminado según requerimiento */}
-        </div>
-
-        {/* ═══════════════════════════════════════════════════════════════ */}
-        {/* FILTROS - MOBILE FIRST RESPONSIVE                             */}
-        {/* ═══════════════════════════════════════════════════════════════ */}
-        <Card className="p-3 sm:p-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-            {/* Búsqueda - SPAN 2 COLUMNAS EN DESKTOP */}
-            <div className="relative md:col-span-2 lg:col-span-2">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <Input
                 type="text"
-                placeholder="Buscar por código o título..."
+                placeholder="Buscar auditoría..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                className="pl-10 pr-4 py-2 text-sm sm:text-base border-2 border-gray-300 focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/20"
+                className="pl-10 bg-gray-100 border-gray-200 focus:bg-white"
               />
             </div>
 
-            {/* Filtro Territorial */}
-            <div className="relative">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
+            <div className="relative min-w-[130px]">
               <select
                 value={filtroTerritorial}
                 onChange={(e) => setFiltroTerritorial(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/20 outline-none font-semibold text-sm sm:text-base appearance-none bg-white cursor-pointer"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg outline-none font-medium text-sm appearance-none bg-white cursor-pointer"
               >
-                <option value="Todas las Territoriales">Todas las Territoriales</option>
+                <option value="Todas las Territoriales">Todas</option>
                 <option value="Nacional">Nacional</option>
                 <option value="Antioquia">Antioquia</option>
                 <option value="Atlántico">Atlántico</option>
@@ -3465,18 +3362,41 @@ export function GestionAuditoriasKanbanSimple() {
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
             </div>
 
-            {/* Botón Exportar */}
             <Button 
               variant="outline" 
-              className="gap-2 border-2 border-[#F57C00] text-[#F57C00] hover:bg-[#F57C00] hover:text-white font-bold transition-all"
+              className="gap-1.5 border-2 border-[#F57C00] text-[#F57C00] hover:bg-[#F57C00] hover:text-white font-bold transition-all text-sm px-3 py-2"
               onClick={handleExportarTodo}
             >
               <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">Exportar</span>
-              <span className="sm:hidden">Export</span>
+              Exportar
             </Button>
+
+            {vistaActiva === 'kanban' && (
+              <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
+                <button
+                  onClick={() => setModoVista('ajustado')}
+                  className={`px-3 py-2 rounded-md text-sm font-semibold transition-all ${
+                    modoVista === 'ajustado' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-500 hover:bg-white'
+                  }`}
+                >
+                  Compacto
+                </button>
+                <button
+                  onClick={() => setModoVista('confortable')}
+                  className={`px-3 py-2 rounded-md text-sm font-semibold transition-all ${
+                    modoVista === 'confortable' ? 'bg-white text-[#1e5da8] shadow-sm' : 'text-gray-500 hover:bg-white'
+                  }`}
+                >
+                  Confortable
+                </button>
+              </div>
+            )}
           </div>
         </Card>
+
+        {/* KPIs eliminados según requerimiento */}
+
+        {/* Filtros y acciones duplicados eliminados — ya están en el header */}
 
         {/* ═══════════════════════════════════════════════════════════════ */}
         {/* VISTA KANBAN - RESPONSIVE WORLD CLASS                         */}
@@ -3533,7 +3453,7 @@ export function GestionAuditoriasKanbanSimple() {
               
               <div 
                 ref={scrollContainerRef}
-                className="overflow-x-auto overflow-y-hidden pb-3 md:pb-4 px-2 md:px-3 lg:px-6 scroll-smooth"
+                className="overflow-x-auto overflow-y-hidden pb-3 px-2 md:px-3 scroll-smooth"
                 style={{
                   scrollbarWidth: 'thin',
                   scrollbarColor: '#2962FF #E5E7EB',
@@ -3846,33 +3766,33 @@ export function GestionAuditoriasKanbanSimple() {
               {/* ═══════════════════════════════════════════════════════════════ */}
               {showScrollIndicator && (
                 <>
-                  {/* Botones de navegación - Tablets (768px+) y Desktop */}
+                  {/* Botones de navegación discretos — aparecen sutilmente al costado */}
                   <motion.button
                     onClick={() => navegarColumna('prev')}
-                    className="hidden md:flex absolute left-2 md:left-4 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-full shadow-lg hover:shadow-xl"
+                    className="hidden md:flex absolute left-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-6 h-12 rounded-r-lg opacity-30 hover:opacity-80 transition-opacity"
                     style={{
-                      background: 'linear-gradient(135deg, #2962FF, #003DA5)',
-                      color: '#FFFFFF'
+                      background: 'rgba(0,0,0,0.15)',
+                      color: '#374151'
                     }}
-                    whileHover={{ scale: 1.1 }}
+                    whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    title="Columna anterior (← Flecha izquierda)"
+                    title="Columna anterior"
                   >
-                    <ChevronLeft className="w-4 h-4 md:w-6 md:h-6" />
+                    <ChevronLeft className="w-4 h-4" />
                   </motion.button>
 
                   <motion.button
                     onClick={() => navegarColumna('next')}
-                    className="hidden md:flex absolute right-2 md:right-4 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-8 h-8 md:w-10 md:h-10 rounded-full shadow-lg hover:shadow-xl"
+                    className="hidden md:flex absolute right-0 top-1/2 transform -translate-y-1/2 z-30 items-center justify-center w-6 h-12 rounded-l-lg opacity-30 hover:opacity-80 transition-opacity"
                     style={{
-                      background: 'linear-gradient(135deg, #2962FF, #003DA5)',
-                      color: '#FFFFFF'
+                      background: 'rgba(0,0,0,0.15)',
+                      color: '#374151'
                     }}
-                    whileHover={{ scale: 1.1 }}
+                    whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    title="Columna siguiente (→ Flecha derecha)"
+                    title="Columna siguiente"
                   >
-                    <ChevronRight className="w-4 h-4 md:w-6 md:h-6" />
+                    <ChevronRight className="w-4 h-4" />
                   </motion.button>
 
                 </>

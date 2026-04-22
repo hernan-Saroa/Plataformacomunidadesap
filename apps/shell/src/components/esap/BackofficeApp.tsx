@@ -187,10 +187,20 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
                 : userData?.module === 'carpeta-digital' ? 'carpeta-digital'
                   : userData?.module === 'estructura-organizacional' ? 'estructura-organizacional'
                     : userData?.module === 'firma-electronica' ? 'firma-electronica'
-                      : 'users-persons';
-  console.log('📋 Inicial module:', initialModule);
+                      : userData?.roles?.some((r: string) => r.toLowerCase().includes('jefe') || r.toLowerCase().includes('auditor')) ? 'control-interno'
+                        : 'dashboard'; // Si no tiene módulo específico, enviarlo al dashboard principal
 
-  const [currentModule, setCurrentModule] = useState<ModuleView>(initialModule);
+  // Asegurarnos de que el Jefe OCI o Auditores NUNCA aterricen en users-persons
+  const userRoleString = ((userData?.roles || []) as string[]).join(',').toLowerCase();
+  const esRolAuditOTipoJefe = userRoleString.includes('jefe') || userRoleString.includes('auditor') || userRoleString.includes('aprobador');
+  
+  const finalInitialModule = esRolAuditOTipoJefe && initialModule === 'dashboard' 
+    ? 'control-interno' 
+    : initialModule;
+
+  console.log('📋 Inicial module:', finalInitialModule);
+
+  const [currentModule, setCurrentModule] = useState<ModuleView>(finalInitialModule as ModuleView);
   const [currentSidebarModule, setCurrentSidebarModule] = useState<string>('');
 
   // 🚀 AUTO-COLAPSO INTELIGENTE: Detectar tamaño de pantalla
@@ -250,7 +260,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
   const mockUser = {
     name: userName,
-    role: 'super-admin' as const,
+    role: (userData?.roles?.[0] || usuario?.rol || 'Administrador') as string,
     email: currentUser.email,
     avatar: undefined,
     initials: userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
@@ -566,7 +576,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               onClose={() => setShowProfile(false)}
               userName={mockUser.name}
               userEmail={mockUser.email}
-              userRole="Super Administrador"
+              userRole={mockUser.role}
               userInitials={mockUser.initials}
               onLogout={handleLogout}
             />
