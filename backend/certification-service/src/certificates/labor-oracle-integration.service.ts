@@ -340,6 +340,19 @@ export class LaborOracleIntegrationService {
     return Number.isFinite(parsed) ? parsed : null;
   }
 
+  private formatDateParts(year: number, month: number, day: number): string | null {
+    const parsed = new Date(year, month - 1, day);
+    if (
+      parsed.getFullYear() !== year ||
+      parsed.getMonth() !== month - 1 ||
+      parsed.getDate() !== day
+    ) {
+      return null;
+    }
+
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
   private toDateOnly(value: unknown): string | null {
     if (!value) return null;
     if (value instanceof Date) {
@@ -353,6 +366,18 @@ export class LaborOracleIntegrationService {
     if (!raw) return null;
     if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
       return raw;
+    }
+
+    const dmyMatch = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s+.*)?$/);
+    if (dmyMatch) {
+      const [, day, month, year] = dmyMatch;
+      return this.formatDateParts(Number(year), Number(month), Number(day));
+    }
+
+    const ymdMatch = raw.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+.*)?$/);
+    if (ymdMatch) {
+      const [, year, month, day] = ymdMatch;
+      return this.formatDateParts(Number(year), Number(month), Number(day));
     }
 
     const parsed = new Date(raw);

@@ -1762,6 +1762,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               await recargarPlan();
               setVista('dashboard');
             }}
+            planesExistentes={planesAnteriores}
           />
         )}
 

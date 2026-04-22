@@ -7,6 +7,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { authService } from '../../../services/api/authService';
 import { buildApiUrl, API_MODE } from '../../../config/environment';
 import { motion, AnimatePresence } from 'motion/react';
 import * as mammoth from 'mammoth';
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
+import { Permissions } from '../../../../packages/shared-types/src/permissions';
 
 // ==================== INTERFACES ====================
 

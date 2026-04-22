@@ -50,6 +50,9 @@ export interface DisciplinaryNews {
     };
     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
     kanbanStage?: string;
+    radicadorId?: string;
+    radicadorNombre?: string;
+    radicadorEmail?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -501,8 +504,8 @@ class DisciplinaryService {
         return apiClient.get<DisciplinaryNews[]>(`${SERVICE_PREFIX}/disciplinary-news/my-news`, { profesionalId });
     }
 
-    async returnNews(id: string, observaciones: string): Promise<DisciplinaryNews> {
-        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones });
+    async returnNews(id: string, observaciones: string, radicadorId?: string): Promise<DisciplinaryNews> {
+        return apiClient.patch<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}/return`, { observaciones, radicadorId });
     }
 
     async updateNewsKanban(id: string, kanbanStage: string): Promise<DisciplinaryNews> {
