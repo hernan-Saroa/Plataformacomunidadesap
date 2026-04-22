@@ -451,8 +451,9 @@ export class PtaController {
   }
 
   @Get('reportes/seguimiento')
-  getReporteSeguimiento(@Query() _query: any) {
-    return { success: true, data: null };
+  async getReporteSeguimiento(@Query() query: any) {
+    const data = await this.ptaService.getReporteSeguimiento(query);
+    return { success: true, data };
   }
 
   @Get('dashboard/kpis')
@@ -488,8 +489,9 @@ export class PtaController {
   }
 
   @Get('sync/status')
-  getSyncStatus() {
-    return { success: true, data: { connected: true, last_sync: new Date().toISOString(), pending: 0 } };
+  async getSyncStatus() {
+    const data = await this.ptaService.getSyncStatus();
+    return { success: true, data };
   }
 
   @Get('sync/mappings')
@@ -604,12 +606,14 @@ export class PtaController {
   }
 
   @Get('events/recent')
-  getRecentEvents(@Query() _query: any) {
-    return { success: true, data: [] };
+  async getRecentEvents(@Query() query: any) {
+    const data = await this.ptaService.getRecentEvents(query);
+    return { success: true, data };
   }
 
   @Post('events/mark-read')
-  markEventsRead(@Body() _body: any) {
+  async markEventsRead(@Body() body: any) {
+    await this.ptaService.markEventsRead(body?.event_ids || [], body?.sistema || 'backoffice');
     return { success: true };
   }
 

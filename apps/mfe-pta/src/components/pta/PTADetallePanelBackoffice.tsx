@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { usePTARules } from './ConfiguracionReglasPTA';
 import { toast } from 'sonner';
-import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura } from '../../services/api/ptaApi';
+import { getPTAById, updatePTAStatus, guardarFirmaDigitalPTA, getAprobacionesJefatura, getEvidenciasPTA, revisarEvidenciaPTA } from '../../services/api/ptaApi';
 import { PTAForm } from '../portal/pta/PTAForm';
 import { FirmaDigitalPTA } from './FirmaDigitalPTA';
 import type { FirmaData } from './FirmaDigitalPTA';
@@ -300,11 +300,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   pta: initialPta, onClose, onAprobar, onDevolver, onConcertar, onVerReporte, onUpdated,
   puedeAprobar, nivelAprobacion, rolLabel, jefaturaTerritorialId, isSuperUser, actorId,
 }, ref) => {
-  const [activeTab, setActiveTab] = useState<'resumen' | 'componentes' | 'historial' | 'concertacion'>('resumen');
+  const [activeTab, setActiveTab] = useState<'resumen' | 'componentes' | 'historial' | 'concertacion' | 'evidencias'>('resumen');
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 640);
   const [aprobacionesJefatura, setAprobacionesJefatura] = useState<any[]>([]);
   const [pta, setPta] = useState<any>(initialPta);
   const [loadingExtras, setLoadingExtras] = useState(false);
+  const [evidencias, setEvidencias] = useState<any[]>([]);
+  const [loadingEvidencias, setLoadingEvidencias] = useState(false);
 
   // ═══ FEATURE 3: MODO EDICIÓN ═══
   const { rules } = usePTARules();
@@ -315,6 +317,17 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
+
+  // Cargar evidencias al activar el tab
+  useEffect(() => {
+    if (activeTab === 'evidencias' && pta?.id) {
+      setLoadingEvidencias(true);
+      getEvidenciasPTA(pta.id).then(res => {
+        if (res.success) setEvidencias(res.data || []);
+        setLoadingEvidencias(false);
+      }).catch(() => setLoadingEvidencias(false));
+    }
+  }, [activeTab, pta?.id]);
 
   // Cargar aprobaciones de jefatura si el PTA está en Pendiente Jefatura
   useEffect(() => {
@@ -514,6 +527,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     { key: 'resumen', label: 'Resumen', icon: BarChart3 },
     { key: 'componentes', label: 'Componentes', icon: Layers },
     { key: 'historial', label: 'Traza del Proceso', icon: Activity, badge: historialEstados.length },
+    { key: 'evidencias', label: 'Seguimiento', icon: FileText, badge: evidencias.length || undefined },
     ...(isConcertacion || concertacion.mensajes?.length > 0
       ? [{ key: 'concertacion', label: 'Concertación', icon: MessageSquare, badge: concertacion.mensajes?.length || 0 }]
       : []),
@@ -1398,6 +1412,79 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 </div>
               )}
 
+            </div>
+          )}
+
+          {/* ═══ TAB: Seguimiento / Evidencias ═══ */}
+          {activeTab === 'evidencias' && (
+            <div>
+              <h4 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <FileText style={{ width: 15, height: 15, color: '#059669' }} />
+                Evidencias de Seguimiento ({evidencias.length})
+              </h4>
+              {loadingEvidencias ? (
+                <div style={{ textAlign: 'center', padding: '32px 0', color: '#9CA3AF', fontSize: '0.82rem' }}>Cargando evidencias...</div>
+              ) : evidencias.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <FileText style={{ width: 36, height: 36, color: '#D1D5DB', margin: '0 auto 10px' }} />
+                  <p style={{ fontSize: '0.85rem', fontWeight: 600, color: '#6B7280' }}>Sin evidencias registradas</p>
+                  <p style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 4 }}>Las evidencias son subidas por el docente durante la ejecución del PTA.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {evidencias.map((ev: any) => {
+                    const estadoColor = ev.estadoRevision === 'aprobado' ? '#059669' : ev.estadoRevision === 'rechazado' ? '#DC2626' : '#D97706';
+                    const estadoBg = ev.estadoRevision === 'aprobado' ? '#D1FAE5' : ev.estadoRevision === 'rechazado' ? '#FEE2E2' : '#FEF3C7';
+                    return (
+                      <div key={ev.id} style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid #E5E7EB', background: '#FAFAFA' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: '0.8rem', fontWeight: 700, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.nombre}</p>
+                            <p style={{ fontSize: '0.7rem', color: '#6B7280', margin: '2px 0 0', display: 'flex', gap: 8 }}>
+                              {ev.componentePta && <span style={{ fontWeight: 600, color: '#4F46E5' }}>{ev.componentePta}</span>}
+                              {ev.horasAvance > 0 && <span>{ev.horasAvance}h avance</span>}
+                              {ev.subidoPor && <span>Por: {ev.subidoPor}</span>}
+                            </p>
+                            {ev.descripcion && <p style={{ fontSize: '0.7rem', color: '#6B7280', margin: '4px 0 0' }}>{ev.descripcion}</p>}
+                            {ev.comentarioRevision && <p style={{ fontSize: '0.7rem', color: '#374151', margin: '4px 0 0', fontStyle: 'italic' }}>Obs: {ev.comentarioRevision}</p>}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+                            <span style={{ padding: '2px 8px', borderRadius: 6, fontSize: '0.65rem', fontWeight: 700, background: estadoBg, color: estadoColor }}>
+                              {ev.estadoRevision || 'pendiente'}
+                            </span>
+                            {ev.estadoRevision === 'pendiente' && puedeAprobar && (
+                              <div style={{ display: 'flex', gap: 4 }}>
+                                <button
+                                  onClick={async () => {
+                                    await revisarEvidenciaPTA(pta.id, ev.id, { decision: 'aprobado', revisado_por: actorId });
+                                    setEvidencias(prev => prev.map(e => e.id === ev.id ? { ...e, estadoRevision: 'aprobado' } : e));
+                                  }}
+                                  style={{ padding: '2px 8px', borderRadius: 6, border: 'none', background: '#D1FAE5', color: '#059669', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer' }}
+                                >✓ Aprobar</button>
+                                <button
+                                  onClick={async () => {
+                                    const obs = prompt('Motivo de rechazo:');
+                                    if (obs === null) return;
+                                    await revisarEvidenciaPTA(pta.id, ev.id, { decision: 'rechazado', revisado_por: actorId, observaciones: obs });
+                                    setEvidencias(prev => prev.map(e => e.id === ev.id ? { ...e, estadoRevision: 'rechazado', comentarioRevision: obs } : e));
+                                  }}
+                                  style={{ padding: '2px 8px', borderRadius: 6, border: 'none', background: '#FEE2E2', color: '#DC2626', fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer' }}
+                                >✗ Rechazar</button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {ev.storageUrl && (
+                          <a href={ev.storageUrl} target="_blank" rel="noopener noreferrer"
+                            style={{ display: 'inline-block', marginTop: 6, fontSize: '0.68rem', color: '#2563EB', textDecoration: 'underline' }}>
+                            Ver archivo
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 

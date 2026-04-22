@@ -15,6 +15,7 @@ import { DocenteEntity } from './entities/docente.entity';
 import { PersonaEntity } from './entities/persona.entity';
 import { UsuarioEntity } from './entities/usuario.entity';
 import { AprobacionJefaturaEntity } from './entities/aprobacion-jefatura.entity';
+import { PtaEventoEntity } from './entities/pta-evento.entity';
 
 type SavePtaInput = Record<string, any>;
 
@@ -54,6 +55,8 @@ export class PtaService {
     private readonly docenteRepo: Repository<DocenteEntity>,
     @InjectRepository(AprobacionJefaturaEntity)
     private readonly aprobacionJefaturaRepo: Repository<AprobacionJefaturaEntity>,
+    @InjectRepository(PtaEventoEntity)
+    private readonly eventoRepo: Repository<PtaEventoEntity>,
   ) {}
 
   private safeUsuario(usuario: any) {
@@ -511,6 +514,20 @@ export class PtaService {
       }));
     }
 
+    // Evento para realtime sync
+    await this.logEvento({
+      ptaId: saved.id,
+      tipo: tipoAccionSave === 'CREACION' ? 'notificacion' : tipoAccionSave === 'CAMBIO_ESTADO' ? 'cambio_estado' : 'guardado',
+      docenteId: coalesceString(input?.docente_id, input?.docenteId),
+      docenteNombre: coalesceString(input?.docente_nombre),
+      estadoAnterior: estadoAnteriorSave,
+      estadoNuevo: saved.estado,
+      actor: coalesceString(input?.docente_id, input?.docenteId),
+      actorRol: isAdminEdit ? 'Administrador' : 'Docente',
+      sistemaOrigen: isAdminEdit ? 'backoffice' : 'portal',
+      mensaje: tipoAccionSave === 'CREACION' ? 'PTA creado' : tipoAccionSave === 'CAMBIO_ESTADO' ? `Estado: ${estadoAnteriorSave} → ${saved.estado}` : 'PTA guardado',
+    });
+
     return this.toPtaDto(saved);
   }
 
@@ -692,6 +709,21 @@ export class PtaService {
       }),
     );
 
+    const ds = existing.datosEstructurados as any;
+    await this.logEvento({
+      ptaId,
+      tipo: 'cambio_estado',
+      docenteId: existing.docenteId,
+      docenteNombre: coalesceString(ds?.docente_nombre),
+      estadoAnterior,
+      estadoNuevo: nuevoEstado,
+      actor: coalesceString(body?.actorId, body?.actor_id),
+      actorRol: coalesceString(body?.actorRol, body?.actor_rol),
+      sistemaOrigen: body?.sistemaOrigen ?? 'backoffice',
+      mensaje: `${estadoAnterior} → ${nuevoEstado}`,
+      metadata: { accion, observaciones: coalesceString(body?.observaciones, body?.comentarios) },
+    });
+
     return {
       version: updated.version,
       nuevoEstado,
@@ -728,6 +760,103 @@ export class PtaService {
         .execute()
         .catch(() => {});
     }
+  }
+
+  // ── Eventos / Realtime sync ────────────────────────────────────────────────
+
+  private async logEvento(opts: {
+    ptaId: string; tipo: string; docenteId?: string | null; docenteNombre?: string | null;
+    estadoAnterior?: string | null; estadoNuevo?: string | null;
+    actor?: string | null; actorRol?: string | null;
+    sistemaOrigen?: string; mensaje?: string | null; metadata?: any;
+  }) {
+    try {
+      await this.eventoRepo.save(this.eventoRepo.create({
+        ptaId: opts.ptaId,
+        tipo: opts.tipo,
+        docenteId: opts.docenteId ?? null,
+        docenteNombre: opts.docenteNombre ?? null,
+        estadoAnterior: opts.estadoAnterior ?? null,
+        estadoNuevo: opts.estadoNuevo ?? null,
+        actor: opts.actor ?? null,
+        actorRol: opts.actorRol ?? null,
+        sistemaOrigen: opts.sistemaOrigen ?? 'sistema',
+        mensaje: opts.mensaje ?? null,
+        leidoBackoffice: false,
+        leidoPortal: false,
+        metadata: opts.metadata ?? null,
+      }));
+    } catch { /* non-critical */ }
+  }
+
+  async getSyncStatus() {
+    const total = await this.eventoRepo.count();
+    const unread = await this.eventoRepo.count({ where: { leidoBackoffice: false } as any });
+    return { connected: true, counter: total, pending: unread, last_sync: new Date().toISOString() };
+  }
+
+  async getRecentEvents(query: any) {
+    const qb = this.eventoRepo.createQueryBuilder('ev')
+      .orderBy('ev.createdAt', 'DESC')
+      .take(50);
+
+    if (query?.docente_id) qb.andWhere('ev.docenteId = :did', { did: query.docente_id });
+    if (query?.sistema_origen) qb.andWhere('ev.sistemaOrigen = :so', { so: query.sistema_origen });
+    if (query?.since) qb.andWhere('ev.createdAt > :since', { since: new Date(query.since) });
+
+    const rows = await qb.getMany();
+    return rows.map(e => ({
+      id: e.id,
+      tipo: e.tipo,
+      pta_id: e.ptaId,
+      docente_id: e.docenteId,
+      docente_nombre: e.docenteNombre,
+      estado_anterior: e.estadoAnterior,
+      estado_nuevo: e.estadoNuevo,
+      actor: e.actor,
+      actor_rol: e.actorRol,
+      sistema_origen: e.sistemaOrigen,
+      mensaje: e.mensaje,
+      leido_backoffice: e.leidoBackoffice,
+      leido_portal: e.leidoPortal,
+      timestamp: e.createdAt,
+      metadata: e.metadata,
+    }));
+  }
+
+  async markEventsRead(eventIds: string[], sistema: string) {
+    if (!eventIds?.length) return;
+    const field = sistema === 'portal' ? 'leidoPortal' : 'leidoBackoffice';
+    await this.eventoRepo
+      .createQueryBuilder()
+      .update()
+      .set({ [field]: true } as any)
+      .where('id IN (:...ids)', { ids: eventIds })
+      .execute();
+  }
+
+  async getReporteSeguimiento(filters: any) {
+    const qb = this.ptaRepo.createQueryBuilder('pta').orderBy('pta.updatedAt', 'DESC').take(500);
+    if (filters?.periodo) qb.andWhere('pta.periodo = :periodo', { periodo: String(filters.periodo) });
+    if (filters?.estado) qb.andWhere('pta.estado = :estado', { estado: String(filters.estado) });
+
+    const ptas = await qb.getMany();
+    const now = Date.now();
+
+    const detalle = ptas.map(p => {
+      const dto = this.toPtaDto(p);
+      const diasSinMovimiento = p.updatedAt ? Math.floor((now - new Date(p.updatedAt).getTime()) / 86400000) : 0;
+      return { ...dto, diasSinMovimiento };
+    });
+
+    const alertas = {
+      sinMovimiento7d: detalle.filter(p => p.diasSinMovimiento >= 7 && !['Aprobado','Rechazado','Borrador'].includes(p.estado)).length,
+      sobrecarga: detalle.filter(p => (p.total_horas_programadas || 0) > (p.horas_a_programar || 800)).length,
+      sinHoras: detalle.filter(p => (p.total_horas_programadas || 0) === 0 && p.estado !== 'Borrador').length,
+      escaladosSNA: detalle.filter(p => p.estado === 'ESCALADO_SNA').length,
+    };
+
+    return { alertas, detalle, total: detalle.length, generadoEn: new Date().toISOString() };
   }
 
   async getEvidenciasPTA(ptaId: string) {
