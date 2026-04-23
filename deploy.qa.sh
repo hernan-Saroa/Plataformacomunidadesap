@@ -152,6 +152,55 @@ cleanup_build_artifacts() {
     find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
 }
 
+get_docker_free_mb() {
+    local docker_root
+    docker_root=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || true)
+
+    if [ -z "$docker_root" ] || [ ! -d "$docker_root" ]; then
+        return 1
+    fi
+
+    df -Pm "$docker_root" | awk 'NR==2 {print $4}'
+}
+
+ensure_docker_disk_space() {
+    local min_free_mb="${MIN_DOCKER_FREE_MB:-10240}"
+    local free_mb
+
+    if ! free_mb=$(get_docker_free_mb); then
+        echo -e "${YELLOW}No fue posible validar espacio libre de Docker. Continuando...${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}Espacio libre Docker: ${free_mb} MB (mínimo recomendado: ${min_free_mb} MB)${NC}"
+
+    if [ "$free_mb" -ge "$min_free_mb" ]; then
+        return 0
+    fi
+
+    echo -e "${RED}Espacio insuficiente para construir imágenes Docker.${NC}"
+
+    if [ "${AUTO_CLEAN_DOCKER:-false}" = "true" ]; then
+        echo -e "${YELLOW}AUTO_CLEAN_DOCKER=true: ejecutando limpieza segura antes del build...${NC}"
+        cmd_clean_safe
+
+        if ! free_mb=$(get_docker_free_mb); then
+            return 0
+        fi
+
+        echo -e "${YELLOW}Espacio libre Docker después de limpiar: ${free_mb} MB${NC}"
+        if [ "$free_mb" -ge "$min_free_mb" ]; then
+            return 0
+        fi
+    fi
+
+    echo -e "${YELLOW}Ejecuta en el server QA:${NC}"
+    echo -e "${YELLOW}  ./deploy.qa.sh clean-safe${NC}"
+    echo -e "${YELLOW}Luego repite el deploy, o usa:${NC}"
+    echo -e "${YELLOW}  AUTO_CLEAN_DOCKER=true ./deploy.qa.sh rebuild${NC}"
+    exit 1
+}
+
 ensure_frontend_dependencies() {
     if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
         echo -e "${YELLOW}Node/npm no están disponibles en el host. Se usará el build Docker tradicional.${NC}"
@@ -333,6 +382,7 @@ cmd_rebuild_changed() {
         exit 0
     fi
 
+    ensure_docker_disk_space
     cleanup_build_artifacts
 
     if [ ${#backend_services[@]} -gt 0 ]; then
@@ -449,6 +499,7 @@ cmd_rebuild() {
     echo -e "${YELLOW}Reconstruyendo servicios QA (sin detener la versión actual)...${NC}"
     echo -e "${YELLOW}La aplicación seguirá disponible mientras termina el build.${NC}"
 
+    ensure_docker_disk_space
     cleanup_build_artifacts
 
     # Construir imágenes con los contenedores actuales activos.
@@ -474,6 +525,7 @@ cmd_rebuild_all_mfe() {
     echo -e "${YELLOW}Modo rápido QA: build frontend en host + empaquetado Nginx liviano.${NC}"
     echo -e "${YELLOW}Para forzar el flujo Docker anterior usa: MFE_DOCKER_BUILD_ONLY=true $0 rebuild-all-mfe${NC}"
 
+    ensure_docker_disk_space
     cleanup_build_artifacts
 
     if [ "${MFE_DOCKER_BUILD_ONLY:-false}" = "true" ]; then
@@ -505,6 +557,7 @@ cmd_rebuild_all_mfe() {
 # Comando: rebuild-frontend (rápido)
 cmd_rebuild_frontend() {
     echo -e "${YELLOW}Reconstruyendo solo frontend QA...${NC}"
+    ensure_docker_disk_space
     compose_env build frontend
     compose_env up -d --no-deps frontend
     restart_frontend_nginx
@@ -521,6 +574,7 @@ cmd_rebuild_service() {
     fi
 
     echo -e "${YELLOW}Reconstruyendo servicio QA: ${service}${NC}"
+    ensure_docker_disk_space
     compose_env build "$service"
     compose_env up -d --no-deps "$service"
     echo -e "${GREEN}Servicio QA ${service} reconstruido y reiniciado${NC}"
@@ -605,6 +659,7 @@ cmd_rebuild_mfe() {
         exit 1
     fi
     echo -e "${YELLOW}Reconstruyendo servicio frontend MFE QA: ${resolved_service}${NC}"
+    ensure_docker_disk_space
     compose_env_mfe build "$resolved_service"
     compose_env_mfe up -d --no-deps "$resolved_service"
     restart_frontend_nginx
@@ -668,7 +723,7 @@ cmd_clean_safe() {
     # Elimina imágenes NO usadas (aunque estén "taggeadas").
     # No borra imágenes en uso por contenedores en ejecución.
     docker image prune -a -f
-    docker builder prune -f --filter "until=168h"
+    docker builder prune -a -f
     docker network prune -f
 
     # Eliminar solo volúmenes huérfanos, excepto los protegidos de BD QA
