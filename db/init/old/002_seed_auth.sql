@@ -560,12 +560,12 @@ ON CONFLICT (code) DO NOTHING;
 -- ============================================
 INSERT INTO auth."user" (id_user, username, password_hash, id_tercero)
 VALUES
-  ('770e8400-e29b-41d4-a716-446655440001', 'superuser@esap.edu.co',  '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 1),
-  ('770e8400-e29b-41d4-a716-446655440002', 'admin@esap.edu.co',      '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 2),
-  ('770e8400-e29b-41d4-a716-446655440003', 'estudiante@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 3),
-  ('770e8400-e29b-41d4-a716-446655440004', 'planta@esap.edu.co',     '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 4),
-  ('770e8400-e29b-41d4-a716-446655440005', 'catedra@esap.edu.co',    '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 5),
-  ('770e8400-e29b-41d4-a716-446655440006', 'cerlaboral@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 6),
+  ('d68b5cf7-2f23-4fc8-9589-f3b9bb4f5f62', 'superuser@esap.edu.co',  '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 1),
+  ('8e0b5a7e-70e9-4f84-b4eb-64e2d8e1d1b4', 'admin@esap.edu.co',      '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 2),
+  ('b2adf667-93af-4413-8d3c-9f4a6ea2dfd8', 'estudiante@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 3),
+  ('d30b15a8-6be9-4f60-8ab4-3bb9dcb5a1c7', 'planta@esap.edu.co',     '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 4),
+  ('f9a2d151-0c0b-44c9-8b2e-18c8627d8dd4', 'catedra@esap.edu.co',    '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 5),
+  ('7d0ed4fe-7d15-4d7a-bcb8-5ddf1c6c8d90', 'cerlaboral@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 6),
   ('bad814a8-909b-4ff4-94a1-ecf1d29a3495', 'maria.rodriguez@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 7),
   ('5afc9552-2818-4886-b1f1-831166d58208', 'carlos.martinez@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 8),
   ('e577a80c-6506-4572-8dbd-68a7ac022be1', 'ana.gomez@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 9),
@@ -582,9 +582,9 @@ VALUES
   ('c4cd6c30-e096-4d55-ac83-5bcda4b145f7', 'hector.mejia@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 20),
   ('1d069f45-aae1-4176-ab03-55476e950a19', 'carolina.jimenez@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 21),
   -- Usuarios de Control Interno
-  ('770e8400-e29b-41d4-a716-446655440007', 'jefe.control@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 22),
-  ('770e8400-e29b-41d4-a716-446655440008', 'auditor.lider@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 23),
-  ('770e8400-e29b-41d4-a716-446655440009', 'ocig@esap.edu.co', '$2b$10$0hAnE/dXPJvVpIFJ48W0yOHy/s1EdCEb1IT/AScUsKmVuYY7BFfJS', 24)
+  ('e05ba5f4-a9e1-4b34-8a10-e4f75d7931de', 'jefe.control@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 22),
+  ('4ff058c2-b8a5-41d4-b1c3-f3c8ecce019d', 'auditor.lider@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 23),
+  ('2ca0b55a-bbca-4203-bf35-a0f55ecf753f', 'ocig@esap.edu.co', '$2b$10$0hAnE/dXPJvVpIFJ48W0yOHy/s1EdCEb1IT/AScUsKmVuYY7BFfJS', 24)
 ON CONFLICT (id_user) DO NOTHING;
 
 -- ============================================

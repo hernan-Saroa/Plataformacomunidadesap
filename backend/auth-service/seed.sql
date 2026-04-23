@@ -31,11 +31,11 @@ ON CONFLICT ("NAME") DO NOTHING;
 -- Insertar usuarios de prueba (password: 123456)
 -- Hash generado con bcrypt (salt rounds: 10)
 INSERT INTO "auth"."USER" ("ID_USER", "USERNAME", "PASSWORD", "ID_TERCERO") VALUES
-('770e8400-e29b-41d4-a716-446655440001', 'admin@esap.edu.co', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1),
-('770e8400-e29b-41d4-a716-446655440002', 'estudiante@esap.edu.co', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 2),
-('770e8400-e29b-41d4-a716-446655440003', 'planta@esap.edu.co', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 3),
-('770e8400-e29b-41d4-a716-446655440004', 'catedra@esap.edu.co', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 4),
-('770e8400-e29b-41d4-a716-446655440005', 'cerlaboral@esap.edu.co', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 5);
+('8e0b5a7e-70e9-4f84-b4eb-64e2d8e1d1b4', 'admin@esap.edu.co', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 1),
+('b2adf667-93af-4413-8d3c-9f4a6ea2dfd8', 'estudiante@esap.edu.co', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 2),
+('d30b15a8-6be9-4f60-8ab4-3bb9dcb5a1c7', 'planta@esap.edu.co', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 3),
+('f9a2d151-0c0b-44c9-8b2e-18c8627d8dd4', 'catedra@esap.edu.co', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 4),
+('7d0ed4fe-7d15-4d7a-bcb8-5ddf1c6c8d90', 'cerlaboral@esap.edu.co', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 5);
 
 -- Asignar permisos al rol ADMIN
 INSERT INTO "auth"."ROLE_PERMISSIONS" ("ID_ROL", "ID_PERMISSION")
