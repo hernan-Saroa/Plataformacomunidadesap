@@ -882,6 +882,10 @@ class DisciplinaryService {
             // La URL es para archivos estáticos, construir correctamente
             // /files/filename -> /files/filename
             fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        } else if (url.startsWith('/uploads/')) {
+            // La URL es para archivos subidos (plantillas), construir correctamente
+            // /uploads/filename -> /uploads/filename
+            fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
         } else {
             // URL relativa, construir URL completa
             fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
