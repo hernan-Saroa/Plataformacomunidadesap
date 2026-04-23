@@ -229,9 +229,22 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
     } catch (error: any) {
       console.error('❌ Error de autenticación:', error);
+      const statusCode =
+        error?.statusCode ??
+        error?.response?.data?.statusCode ??
+        error?.response?.status;
+      const errorMessage =
+        typeof error?.message === 'string' && error.message.trim()
+          ? error.message
+          : 'Ocurrió un error inesperado. Intenta nuevamente.';
 
       // Manejar diferentes tipos de errores
-      if (error.response?.status === 401) {
+      if (statusCode === 429) {
+        toast.error('Demasiados intentos', {
+          description: errorMessage,
+          duration: 7000,
+        });
+      } else if (statusCode === 401) {
         toast.error('Credenciales incorrectas', {
           description: 'El correo electrónico o contraseña son incorrectos.',
           duration: 5000,
@@ -240,14 +253,14 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           email: 'Verifica tu correo electrónico',
           password: 'Verifica tu contraseña'
         });
-      } else if (error.response?.status === 400) {
+      } else if (statusCode === 400) {
         toast.error('Datos inválidos', {
           description: 'Por favor verifica la información ingresada.',
           duration: 5000,
         });
       } else {
         toast.error('Error de conexión', {
-          description: `Error: ${error.message || 'Desconocido'}`,
+          description: `Error: ${errorMessage}`,
           duration: 5000,
         });
       }

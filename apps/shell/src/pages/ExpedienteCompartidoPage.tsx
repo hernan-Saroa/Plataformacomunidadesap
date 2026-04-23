@@ -104,7 +104,7 @@ export function ExpedienteCompartidoPage() {
         
         // Si no requiere clave, cargar los documentos directamente
         if (!data.requiereClave) {
-          await cargarDocumentos(data.proceso.id);
+          await cargarDocumentos(token);
         }
       } catch (error: any) {
         console.error('Error al cargar expediente:', error);
@@ -123,12 +123,12 @@ export function ExpedienteCompartidoPage() {
     cargarExpediente();
   }, [token]);
 
-  // Cargar documentos del expediente
-  const cargarDocumentos = async (procesoId: string) => {
+  // Cargar documentos del expediente compartido
+  const cargarDocumentos = async (token: string) => {
     try {
       setCargandoDocumentos(true);
-      const respuesta = await disciplinaryService.getDocumentosExpediente(procesoId);
-      
+      const respuesta = await disciplinaryService.obtenerDocumentosExpedienteCompartido(token);
+
       if (respuesta && respuesta.documentos) {
         setDocumentos(respuesta.documentos as Documento[]);
       }
@@ -157,7 +157,7 @@ export function ExpedienteCompartidoPage() {
         // Volver a cargar los datos del expediente
         const data = await disciplinaryService.obtenerExpedientePublico(token);
         setExpedienteData(data);
-        await cargarDocumentos(data.proceso.id);
+        await cargarDocumentos(token);
         setErrorAcceso(null);
       } else {
         setErrorAcceso('Clave de acceso incorrecta');

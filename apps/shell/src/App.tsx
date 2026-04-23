@@ -30,6 +30,28 @@ import { ExpedienteCompartidoPage } from './pages/ExpedienteCompartidoPage';
 import { EnrollmentQRLandingUnified } from './components/portal/EnrollmentQRLandingUnified';
 import { VinculacionForm } from './components/portal/VinculacionForm';
 import { PublicTitleVerification } from './components/portal/PublicTitleVerification';
+
+const LEGACY_DISCIPLINARY_ROLES = new Set([
+  'CONTROL_DISCIPLINARIO',
+  'RADICADOR_DISCIPLINARIO',
+  'SECRETARIO_DISCIPLINARIO',
+  'SECRETARIA_RADICADOR',
+  'OPERADOR_DISCIPLINARIO',
+  'ABOGADO_DISCIPLINARIO',
+  'JEFE_OCID',
+  'JEFE_DE_LA_OCID',
+  'PROFESIONAL_SUSTANCIADOR',
+  'PROFESIONAL_ASIGNADO',
+  'PROFESIONAL',
+]);
+
+function hasDisciplinaryAccess(roles: string[]): boolean {
+  return roles.some(role =>
+    LEGACY_DISCIPLINARY_ROLES.has(role) ||
+    role.includes('DISCIPLINARIO') ||
+    role.includes('OCID')
+  );
+}
 import { SolicitarCertificadoLaboral } from './components/portal/SolicitarCertificadoLaboral';
 import { VerificarCertificadoPublico } from './components/portal/VerificarCertificadoPublico';
 import ValidarCertificadoGraduado from './components/portal/ValidarCertificadoGraduado';
@@ -305,12 +327,12 @@ export default function App() {
 
         module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
           : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
-            : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
+            : hasDisciplinaryAccess(roles) ? 'control-disciplinario'
               : hasControlInterno ? 'control-interno'
                 : 'users-persons';
         const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
           : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
-            : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
+            : hasDisciplinaryAccess(roles) ? 'Control Disciplinario'
               : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
                 : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
                   : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
@@ -620,16 +642,16 @@ export default function App() {
               : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
                 : user.modules.length > 0 ? user.modules[0]
                   : 'control-interno';
-          const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
-            : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
-              : roles.includes('CONTROL_DISCIPLINARIO') ? 'Control Disciplinario'
-                : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
-                  : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
-                    : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
-                      : roles.includes('CONSULTA') ? 'Consulta Control Interno'
-                        : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
-                          : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
-                            : 'Control Interno';
+        const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
+          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+            : hasDisciplinaryAccess(roles) ? 'Control Disciplinario'
+              : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
+                : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
+                  : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
+                    : roles.includes('CONSULTA') ? 'Consulta Control Interno'
+                      : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
+                        : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
+                          : 'Control Interno';
           const userDataToSave = {
             name: userName,
             email: userEmail,

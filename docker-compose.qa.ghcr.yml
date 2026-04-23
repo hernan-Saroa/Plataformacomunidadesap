@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  # FRONTEND
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-frontend:qa-latest
+
+  # BACKEND MICROSERVICES
+  api-gateway:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-api-gateway:qa-latest
+  auth-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-auth-service:qa-latest
+  academic-registration-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-academic-registration-service:qa-latest
+  academic-work-plan-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-academic-work-plan-service:qa-latest
+  certification-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-certification-service:qa-latest
+  internal-disciplinary-control-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-internal-disciplinary-control-service:qa-latest
+  interoperability-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-interoperability-service:qa-latest
+  internal-institutional-control-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-internal-institutional-control-service:qa-latest
+  legal-management-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-legal-management-service:qa-latest
+  notifications-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-notifications-service:qa-latest
+  travel-expenses-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-travel-expenses-service:qa-latest
+  audit-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-audit-service:qa-latest

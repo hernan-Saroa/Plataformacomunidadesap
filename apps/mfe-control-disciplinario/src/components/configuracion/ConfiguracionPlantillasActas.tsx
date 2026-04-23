@@ -18,6 +18,7 @@ import { useActasConfiguration } from '../../../../hooks/useActasConfiguration';
 import { SeccionPlantillasActasUnificada, type TipoActa, type PlantillaArchivo } from './SeccionPlantillasActasUnificada';
 import { ModalNuevoTipoActa } from './ModalNuevoTipoActa';
 import { ModalGestionarPlantillasActa } from './ModalGestionarPlantillasActa';
+import { ModalConfirmacion } from './ModalConfirmacion';
 
 // Función para convertir ActaConfiguration del backend al formato TipoActa del frontend
 const mapBackendToFrontend = (config: ActaConfiguration): TipoActa => {
@@ -73,6 +74,8 @@ export function ConfiguracionPlantillasActas() {
   const [tipoActaEdicion, setTipoActaEdicion] = useState<TipoActa | null>(null);
   const [tipoActaGestionando, setTipoActaGestionando] = useState<TipoActa | null>(null);
   const [mostrarModalGestionarPlantillas, setMostrarModalGestionarPlantillas] = useState(false);
+  const [mostrarModalConfirmacion, setMostrarModalConfirmacion] = useState(false);
+  const [tipoActaAEliminar, setTipoActaAEliminar] = useState<TipoActa | null>(null);
 
   // Hook para usar el API de actas configuration
   const {
@@ -201,19 +204,30 @@ export function ConfiguracionPlantillasActas() {
   };
 
   const eliminarTipoActa = async (tipoId: string) => {
-    if (window.confirm('¿Está seguro de eliminar este tipo de acta y todas sus plantillas?')) {
-      if (datosDesdeBackend && !tipoId.startsWith('tipo-acta-')) {
-        try {
-          await deleteConfiguration(tipoId);
-          toast.success('Tipo de acta eliminado correctamente');
-        } catch (err) {
-          console.error('Error eliminando en backend:', err);
-          toast.error('Error al eliminar en el servidor');
-        }
-      }
-      setTiposActas(tiposActas.filter(t => t.id !== tipoId));
-      setCambiosPendientes(true);
+    const tipo = tiposActas.find(t => t.id === tipoId);
+    if (tipo) {
+      setTipoActaAEliminar(tipo);
+      setMostrarModalConfirmacion(true);
     }
+  };
+
+  const confirmarEliminacionTipoActa = async () => {
+    if (!tipoActaAEliminar) return;
+
+    if (datosDesdeBackend && !tipoActaAEliminar.id.startsWith('tipo-acta-')) {
+      try {
+        await deleteConfiguration(tipoActaAEliminar.id);
+        toast.success('Tipo de acta eliminado correctamente');
+      } catch (err) {
+        console.error('Error eliminando en backend:', err);
+        toast.error('Error al eliminar en el servidor');
+        return;
+      }
+    }
+    setTiposActas(tiposActas.filter(t => t.id !== tipoActaAEliminar.id));
+    setCambiosPendientes(true);
+    setMostrarModalConfirmacion(false);
+    setTipoActaAEliminar(null);
   };
 
   const toggleActivoTipoActa = async (tipoId: string, activo: boolean) => {
@@ -409,6 +423,23 @@ export function ConfiguracionPlantillasActas() {
             setMostrarModalGestionarPlantillas(false);
             setTipoActaGestionando(null);
           }}
+        />
+      )}
+
+      {/* Modal de confirmación para eliminar tipo de acta */}
+      {mostrarModalConfirmacion && tipoActaAEliminar && (
+        <ModalConfirmacion
+          titulo="Eliminar Tipo de Acta"
+          mensaje={`¿Está seguro de eliminar "${tipoActaAEliminar.nombre}"?`}
+          detalle="Se eliminará el tipo de acta y todas sus plantillas asociadas. Esta acción no se puede deshacer."
+          textoConfirmar="Eliminar"
+          textoCancelar="Cancelar"
+          onConfirmar={confirmarEliminacionTipoActa}
+          onCancelar={() => {
+            setMostrarModalConfirmacion(false);
+            setTipoActaAEliminar(null);
+          }}
+          tipo="peligro"
         />
       )}
     </div>

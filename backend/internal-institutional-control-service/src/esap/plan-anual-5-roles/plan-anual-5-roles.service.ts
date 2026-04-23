@@ -43,7 +43,7 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('plan.roles', 'roles')
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
-      .where("plan.estado != 'eliminado'")
+      .where('plan.año > 0')
       .orderBy('plan.año', 'DESC')
       .addOrderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC');
@@ -62,7 +62,7 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.id = :id', { id })
-      .andWhere("plan.estado != 'eliminado'")
+      .andWhere('plan.año > 0')
       .orderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC')
       .getOne();
@@ -81,7 +81,7 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.año = :year', { year })
-      .andWhere("plan.estado != 'eliminado'")
+      .andWhere('plan.año > 0')
       .orderBy('plan.fecha_creacion', 'DESC') // El más reciente primero
       .addOrderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC')
@@ -770,8 +770,9 @@ export class PlanAnual5RolesService {
 
     const vigenciaOriginal = plan.año;
 
-    // Soft delete release pattern
-    plan.estado = 'eliminado' as any;
+    // Soft delete release pattern: usar estado válido para no violar CHECK.
+    // El "eliminado lógico" se determina por año negativo.
+    plan.estado = 'completado';
     // Liberar la vigencia para que el usuario pueda crear otro plan en el mismo año,
     // garantizando que no choque con la restricción @Unique(['año']) de TypeORM
     plan.año = -(Date.now() % 1000000000); 
@@ -786,7 +787,7 @@ export class PlanAnual5RolesService {
       `El Plan Anual de Auditoría de la vigencia ${vigenciaOriginal} fue eliminado por el usuario. Eliminación lógica registrada por control de trazabilidad.`,
       usuarioId || 1, 
       JSON.stringify({ accion: 'SOFT_DELETE', vigenciaOriginal }),
-      'eliminado'
+      'completado'
     );
   }
 
