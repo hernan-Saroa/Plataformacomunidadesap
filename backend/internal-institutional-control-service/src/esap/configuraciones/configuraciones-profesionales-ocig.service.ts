@@ -90,9 +90,27 @@ export class ConfiguracionesProfesionalesOCIGService {
     });
 
     if (existe) {
-      throw new ConflictException(
-        `Ya existe una configuración para el profesional con ID ${createDto.idTercero}`,
-      );
+      if (existe.activo) {
+        throw new ConflictException(
+          `Ya existe una configuración para el profesional con ID ${createDto.idTercero}`,
+        );
+      } else {
+        // Reactivar y actualizar la configuración existente
+        existe.activo = true;
+        existe.rolOcig = createDto.rolOcig;
+        if (createDto.especialidades) {
+          existe.especialidades = createDto.especialidades;
+        }
+        existe.capacidadMaximaAuditorias = createDto.capacidadMaximaAuditorias ?? 4;
+        existe.horasMensualesDisponibles = createDto.horasMensualesDisponibles ?? 150;
+        existe.puedeSerLider = createDto.puedeSerLider ?? true;
+        existe.observaciones = createDto.observaciones;
+        existe.updatedBy = userId;
+        
+        const saved = await this.configRepository.save(existe);
+        const enriched = await this.enrichWithPersonaData([saved]);
+        return enriched[0];
+      }
     }
 
     // Validar especialidades
@@ -254,7 +272,7 @@ export class ConfiguracionesProfesionalesOCIGService {
       const roles: Array<{ name: string; description: string | null }> =
         await this.configRepository.query(
           `SELECT name, description FROM auth.role
-           WHERE (category = 'control_interno' OR name LIKE '%Aprobador PAI%')
+           WHERE (category = 'backoffice' OR name LIKE '%Aprobador PAI%')
              AND is_active = true
            ORDER BY name ASC`,
         );
@@ -306,9 +324,10 @@ export class ConfiguracionesProfesionalesOCIGService {
     }>
   > {
     try {
-      // Obtener UUIDs de personas que ya están configuradas como profesionales OCIG
+      // Obtener UUIDs de personas que ya están configuradas como profesionales OCIG y están ACTIVAS
       const configurados = await this.configRepository.find({
         select: ['idTercero'],
+        where: { activo: true },
       });
       const idsConfigurados: string[] = configurados.map((c) => c.idTercero);
 
@@ -331,7 +350,17 @@ export class ConfiguracionesProfesionalesOCIGService {
         INNER JOIN auth.role r ON r.id = ur.id_rol
         WHERE p.nom_largo IS NOT NULL
           AND u.is_active = true
-          AND r.category IN ('control_interno', 'sistema', 'backoffice', 'Control Interno')
+          AND (
+            r.category IN ('control_interno', 'sistema', 'backoffice', 'Control Interno') 
+            OR r.name LIKE '%Aprobador PAI%'
+            OR r.id IN (
+              SELECT rp.id_rol 
+              FROM auth.role_permissions rp
+              INNER JOIN auth.permission perm ON perm.id_permission = rp.id_permission
+              INNER JOIN auth.module m ON m.id_module = perm.id_module
+              WHERE m.name ILIKE '%Control Interno%' OR m.category IN ('control_interno', 'backoffice', 'Control Interno')
+            )
+          )
       `;
 
       const params: string[] = [];

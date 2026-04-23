@@ -10,7 +10,7 @@ import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
   TrendingUp, FileCheck, AlertCircle, AlertTriangle, BookOpen, Download, FileText,
   Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, FileSpreadsheet, RefreshCw, Settings,
-  ChevronDown, ChevronUp, Calendar, Clock, Search
+  ChevronDown, ChevronUp, Calendar, Clock, Search, Edit3, GripVertical, Lock, Save
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModalGestionAdjuntos } from './ModalGestionAdjuntosActividades';
@@ -40,7 +40,7 @@ import {
   LOGO_ESAP_URL
 } from './services/pdfESAPHeader';
 // ✅ NUEVO: Exportación Excel con logo
-import { exportarPlanAnualExcel } from './services/exportarPlanAnualExcel';
+import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 
 // Tipos re-exportados (deben coincidir con el archivo principal)
@@ -787,28 +787,88 @@ function SelectorProfesional({
 // ════════════════════════════════════════════════════════════════════════════
 
 interface WizardCreacionProps {
+  planAEditar?: PlanAnual;
   onCancelar: () => void;
   onCrear: (vigencia: number, jefeOCI: Auditor, rolesConfig: RolConfig[], fechaInicio: string, fechaFin: string) => Promise<boolean>;
   onTerminado?: () => void;
   planesExistentes?: PlanAnual[];
 }
 
-export function WizardCreacion({ onCancelar, onCrear, onTerminado, planesExistentes = [] }: WizardCreacionProps) {
-  const [paso, setPaso] = useState(1);
-  const [vigencia, setVigencia] = useState(new Date().getFullYear());
-  const [fechaInicio, setFechaInicio] = useState(`${new Date().getFullYear()}-01-01`);
-  const [fechaFin, setFechaFin] = useState(`${new Date().getFullYear()}-12-31`);
-  const [comiteAprobacion, setComiteAprobacion] = useState<Auditor[]>([]);
-  const [ordenAprobacion, setOrdenAprobacion] = useState<'secuencial' | 'paralelo'>('secuencial');
+export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, planesExistentes = [] }: WizardCreacionProps) {
+  // 💾 Cargar borrador de localStorage
+  const draftKey = planAEditar ? `esap:wizard_plan_anual_edit_${planAEditar.id}` : 'esap:wizard_plan_anual_draft';
+  const draftStr = typeof window !== 'undefined' ? localStorage.getItem(draftKey) : null;
+  let draft = null;
+  try {
+    draft = draftStr ? JSON.parse(draftStr) : null;
+  } catch(e) {}
+
+  const [paso, setPaso] = useState(draft?.paso || 1);
+  const [lastSaved, setLastSaved] = useState<Date | null>(draft ? new Date() : null);
+  const [vigencia, setVigencia] = useState(planAEditar?.vigencia || draft?.vigencia || new Date().getFullYear());
+  
+  // Extraer fechas del plan a editar si existen, asegurando formato YYYY-MM-DD
+  const getInitialFecha = (fechaStr: string | undefined, defaultDate: string) => {
+    if (!fechaStr) return defaultDate;
+    try {
+      // Si la fecha viene en formato ISO, cortamos la parte de la hora
+      if (fechaStr.includes('T')) return fechaStr.split('T')[0];
+      // Si viene como Date string parseable, formateamos
+      const d = new Date(fechaStr);
+      if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+    } catch (e) {}
+    return defaultDate;
+  };
+  
+  // Buscar fecha inicio mínima y fin máxima en las actividades, o usar defaults
+  const [fechaInicio, setFechaInicio] = useState(() => {
+    return draft?.fechaInicio || planAEditar?.fecha_inicio || planAEditar?.fechaInicio || `${planAEditar?.vigencia || new Date().getFullYear()}-01-01`;
+  });
+  
+  const [fechaFin, setFechaFin] = useState(() => {
+    return draft?.fechaFin || planAEditar?.fecha_fin || planAEditar?.fechaFin || `${planAEditar?.vigencia || new Date().getFullYear()}-12-31`;
+  });
+
+  const [comiteAprobacion, setComiteAprobacion] = useState<Auditor[]>(() => {
+    if (planAEditar && planAEditar.equipoAprobacion) {
+      return planAEditar.equipoAprobacion;
+    }
+    return draft?.comiteAprobacion || [];
+  });
+  const [ordenAprobacion, setOrdenAprobacion] = useState<'secuencial' | 'paralelo'>(planAEditar?.ordenAprobacion || draft?.ordenAprobacion || 'secuencial');
   
   // Estado para auditores cargados desde backend (profesionales OCI configurados)
   const [auditores, setAuditores] = useState<Auditor[]>(AUDITORES_DEFAULT);
   const [jefesOCI, setJefesOCI] = useState<Auditor[]>([]);
   const [cargandoAuditores, setCargandoAuditores] = useState(true);
-  const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor | null>(null);
+  const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor | null>(draft?.jefeSeleccionado || null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   
+  const [draggedAprobadorIndex, setDraggedAprobadorIndex] = useState<number | null>(null);
+  
+  const handleDragStartAprobador = (e: React.DragEvent, index: number) => {
+    setDraggedAprobadorIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOverAprobador = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDropAprobador = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedAprobadorIndex === null || draggedAprobadorIndex === dropIndex) return;
+    
+    const newComite = [...comiteAprobacion];
+    const [draggedItem] = newComite.splice(draggedAprobadorIndex, 1);
+    newComite.splice(dropIndex, 0, draggedItem);
+    
+    setComiteAprobacion(newComite);
+    setDraggedAprobadorIndex(null);
+  };
+
   // Función para cargar profesionales OCI (reutilizable)
   const cargarAuditores = async () => {
     setCargandoAuditores(true);
@@ -860,19 +920,36 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado, planesExisten
   
   // Cargar profesionales OCI configurados al montar el componente
   useEffect(() => {
-    cargarAuditores();
-  }, []);
+    cargarAuditores().then((profesionales) => {
+      // Priorizar el jefe guardado en el borrador local
+      if (draft && draft.jefeSeleccionado) {
+        const jefeDraft = profesionales.find(p => p.id === draft.jefeSeleccionado.id) || draft.jefeSeleccionado;
+        setJefeSeleccionado(jefeDraft);
+      } else if (planAEditar && planAEditar.jefeOCI) {
+        const jefeEncontrado = profesionales.find(p => p.id === planAEditar.jefeOCI.id) || planAEditar.jefeOCI;
+        setJefeSeleccionado(jefeEncontrado);
+      }
+    });
+  }, [planAEditar]); // draft no está como dependencia para que evalúe el closure inicial
 
-  // Actualizar fechas de puntos de control cuando cambie la vigencia
+  // Actualizar fechas de puntos de control Y actividades cuando cambie la vigencia
   useEffect(() => {
     // Solo actualizar si el año es válido (evita fechas rotas al escribir valores intermedios)
     if (!vigencia || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100) return;
+    
+    // Propagar fechaInicio y fechaFin del plan a la vigencia actual
+    setFechaInicio(`${vigencia}-01-01`);
+    setFechaFin(`${vigencia}-12-31`);
+    
     setRolesConfig(prev => prev.map(rol => ({
       ...rol,
       actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
         const año = vigencia;
         return {
           ...act,
+          // ═══ FECHAS DINÁMICAS: siempre reflejan la vigencia del plan ═══
+          fechaInicio: `${año}-01-01`,
+          fechaFin: `${año}-12-31`,
           fechaCorte: `${año}-09-30`,
           puntosControl: [
             { ...act.puntosControl[0], fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31` },
@@ -880,11 +957,81 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado, planesExisten
             { ...act.puntosControl[2], fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30` },
           ]
         };
-      })
+      }),
+      actividadesCustom: (rol.actividadesCustom || []).map(act => ({
+        ...act,
+        fechaInicio: `${vigencia}-01-01`,
+        fechaFin: `${vigencia}-12-31`,
+        fechaCorte: `${vigencia}-09-30`,
+      }))
     })));
   }, [vigencia]);
-  const [rolesConfig, setRolesConfig] = useState<RolConfig[]>(() => 
-    ROLES_DECRETO_648.map(rol => {
+  const [rolesConfig, setRolesConfig] = useState<RolConfig[]>(() => {
+    // 1. Si existe un borrador, recuperar configuracion de roles (PRIORIDAD: progreso más reciente)
+    if (draft && draft.rolesConfig) {
+      return draft.rolesConfig;
+    }
+
+    // 2. Si no hay borrador pero hay un plan para editar, mapearlo desde el backend
+    if (planAEditar && planAEditar.roles) {
+      return ROLES_DECRETO_648.map(rolDef => {
+        const rolEdit = planAEditar.roles.find(r => r.numero === rolDef.numero);
+        if (!rolEdit) {
+          // Si por alguna razón no existe el rol en el plan a editar, lo inicializamos por defecto
+          const actividades = getActividadesPorRol(rolDef.numero);
+          return {
+            ...rolDef,
+            actividadesSeleccionadas: actividades.map((act, idx) => ({
+              ...act,
+              id: `rol-${rolDef.numero}-act-${idx}`,
+              tipoEvidencia: 'SOLO_CHECK' as const,
+              fechaCorte: `${planAEditar.vigencia}-09-30`,
+              puntosControl: [],
+              frecuenciaPuntosControl: 'trimestral' as const,
+            })),
+            actividadesCustom: [],
+            responsables: []
+          };
+        }
+
+        // Mapear actividades del plan existente
+        const actividadesConfiguradas = rolEdit.actividades.map((act) => ({
+          ...act,
+          // Mantener compatibilidad con el wizard
+          tipoEvidencia: act.configuracionEvidencias?.documentos && act.configuracionEvidencias?.observaciones ? 'COMPLETO' :
+                         act.configuracionEvidencias?.documentos ? 'ADJUNTOS' :
+                         act.configuracionEvidencias?.observaciones ? 'OBSERVACIONES' : 'SOLO_CHECK',
+        }));
+
+        // Separar entre seleccionadas (del template) y custom (creadas manualmente)
+        const actividadesTemplate = getActividadesPorRol(rolDef.numero);
+        const nombresTemplate = actividadesTemplate.map(a => a.nombre);
+        
+        const actividadesSeleccionadas = actividadesConfiguradas.filter(a => nombresTemplate.includes(a.nombre));
+        const actividadesCustom = actividadesConfiguradas.filter(a => !nombresTemplate.includes(a.nombre));
+
+        // Determinar responsables del rol basándonos en las actividades (podemos dejar vacío y que se derive)
+        const responsablesMap = new Map();
+        actividadesConfiguradas.forEach(act => {
+          if (act.responsables) {
+            act.responsables.forEach(resp => responsablesMap.set(resp.id, resp));
+          } else if (act.responsable && typeof act.responsable === 'object') {
+            responsablesMap.set(act.responsable.id, act.responsable);
+          }
+        });
+        const responsablesRol = Array.from(responsablesMap.values());
+
+        return {
+          ...rolDef,
+          actividadesSeleccionadas: actividadesSeleccionadas as any,
+          actividadesCustom: actividadesCustom as any,
+          responsables: responsablesRol
+        };
+      });
+    }
+
+    // Comportamiento por defecto (nuevo plan sin borrador)
+    return ROLES_DECRETO_648.map(rol => {
       const actividades = getActividadesPorRol(rol.numero);
       
       // ⚡ Auto-generar 3 puntos de control trimestrales por actividad (Mar, Jun, Sep)
@@ -913,10 +1060,40 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado, planesExisten
         responsables: []
       };
     })
-  );
+  });
+
+  // Autoguardado de borradores en localStorage.
+  useEffect(() => {
+    // Autoguardado silencioso de borradores (tanto para crear como para editar)
+    if (!isSubmitting && !showSuccessModal) {
+      const borrador = {
+        paso,
+        vigencia,
+        fechaInicio,
+        fechaFin,
+        ordenAprobacion,
+        jefeSeleccionado,
+        rolesConfig
+      };
+      localStorage.setItem(draftKey, JSON.stringify(borrador));
+      setLastSaved(new Date());
+    }
+  }, [paso, vigencia, fechaInicio, fechaFin, ordenAprobacion, jefeSeleccionado, rolesConfig, planAEditar, isSubmitting, showSuccessModal, draftKey]);
 
   // Validación del Paso 1: Fechas y vigencia
   const validarPaso1 = () => {
+    // Validar que la vigencia no exista ya (excepto si estamos editando ese mismo plan)
+    const vigenciasExistentes = (planesExistentes || [])
+      .filter((p: any) => !planAEditar || p.id !== planAEditar.id)
+      .map((p: any) => p.vigencia);
+      
+    if (vigenciasExistentes.includes(vigencia)) {
+      toast.error(`Ya existe un plan para la vigencia ${vigencia}`, {
+        description: 'Seleccione otra vigencia o elimine el plan existente desde la pantalla de inicio.'
+      });
+      return false;
+    }
+    
     // Extraer año directamente del string YYYY-MM-DD para evitar problemas de zona horaria
     const anioFechaInicio = fechaInicio ? parseInt(fechaInicio.split('-')[0], 10) : 0;
     const anioFechaFin = fechaFin ? parseInt(fechaFin.split('-')[0], 10) : 0;
@@ -1068,6 +1245,8 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado, planesExisten
       setIsSubmitting(false);
       
       if (exito) {
+        // Limpiar el borrador local al guardar con éxito
+        localStorage.removeItem(draftKey);
         setShowSuccessModal(true);
       }
     } catch (e: any) {
@@ -1098,7 +1277,9 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado, planesExisten
             <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <Check className="w-10 h-10 text-green-600" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">¡Plan Creado con Éxito!</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              {planAEditar ? '¡Plan Actualizado con Éxito!' : '¡Plan Creado con Éxito!'}
+            </h2>
             <p className="text-gray-600 mb-8 border-b pb-8">
               El Plan Anual de Auditoría {vigencia} ha sido guardado correctamente. Ahora puedes revisarlo desde el Dashboard.
             </p>
@@ -1116,13 +1297,59 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado, planesExisten
       <div className="border-b-2 border-gray-200 px-8 py-6">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <button onClick={onCancelar} className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center">
-              <ArrowLeft className="w-5 h-5" />
+            <button onClick={onCancelar} className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors">
+              <ArrowLeft className="w-5 h-5 text-gray-700" />
             </button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Crear Plan Anual</h1>
+              <h1 className="text-2xl font-bold text-gray-900">
+                {planAEditar ? 'Editar Plan Anual' : 'Crear Plan Anual'}
+              </h1>
               <p className="text-sm text-gray-600">Paso {paso} de 3</p>
             </div>
+          </div>
+          
+          {/* Zona de guardado (Borrador) */}
+          <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg p-1.5">
+            <AnimatePresence>
+              {lastSaved && (
+                <motion.div 
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 rounded-md border border-green-200"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Guardado ({lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <button 
+              onClick={() => {
+                const borradorActual = {
+                  idPlan: planAEditar?.id,
+                  vigencia,
+                  jefeSeleccionado,
+                  fechaInicio,
+                  fechaFin,
+                  rolesConfig,
+                  paso,
+                  comiteAprobacion,
+                  ordenAprobacion,
+                  timestamp: new Date().getTime()
+                };
+                
+                const draftKey = planAEditar ? `esap:wizard_plan_anual_edit_${planAEditar.id}` : 'esap:wizard_plan_anual_draft';
+                localStorage.setItem(draftKey, JSON.stringify(borradorActual));
+                setLastSaved(new Date());
+                
+                toast.success('Borrador guardado manualmente', {
+                  description: 'Tu progreso está seguro.'
+                });
+              }}
+              title="Guardar borrador"
+              className="p-2 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+            >
+              <Save className="w-5 h-5" />
+            </button>
           </div>
         </div>
 
@@ -1152,7 +1379,7 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado, planesExisten
                 auditores={auditores}
                 cargandoAuditores={cargandoAuditores}
                 onRecargarAuditores={cargarAuditores}
-                vigenciasExistentes={planesExistentes.map(p => p.vigencia)}
+                vigenciasExistentes={planesExistentes.filter(p => !planAEditar || p.id !== planAEditar.id).map(p => p.vigencia)}
               />
             )}
             {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={setRolesConfig} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} jefeOCI={jefeSeleccionado} />}
@@ -1167,6 +1394,11 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado, planesExisten
                 setComiteAprobacion={setComiteAprobacion}
                 ordenAprobacion={ordenAprobacion}
                 setOrdenAprobacion={setOrdenAprobacion}
+                handleDragStartAprobador={handleDragStartAprobador}
+                handleDragOverAprobador={handleDragOverAprobador}
+                handleDropAprobador={handleDropAprobador}
+                draggedAprobadorIndex={draggedAprobadorIndex}
+                setDraggedAprobadorIndex={setDraggedAprobadorIndex}
               />
             )}
           </AnimatePresence>
@@ -1174,10 +1406,13 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado, planesExisten
       </div>
 
       {/* Footer */}
-      <div className="border-t-2 border-gray-200 px-8 py-4 flex justify-between bg-white">
-        <button onClick={onCancelar} className="px-6 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium">
-          Cancelar
-        </button>
+      <div className="border-t-2 border-gray-200 px-8 py-4 flex justify-between items-center bg-white">
+        <div className="flex items-center gap-4">
+          <button onClick={onCancelar} className="px-6 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium">
+            Cancelar
+          </button>
+        </div>
+        
         <div className="flex gap-3">
           {paso > 1 && (
             <button onClick={() => setPaso(paso - 1)} className="px-6 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
@@ -1187,9 +1422,13 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado, planesExisten
           {paso < 3 ? (
             <button 
               onClick={avanzarPaso} 
-              disabled={paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)}
+              disabled={
+                (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
+                (paso === 2 && rolesConfig.some(r => ((r.actividadesSeleccionadas?.length || 0) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
+              }
               className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${
-                paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)
+                (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
+                (paso === 2 && rolesConfig.some(r => ((r.actividadesSeleccionadas?.length || 0) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
                   : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
               }`}
@@ -1205,11 +1444,11 @@ export function WizardCreacion({ onCancelar, onCrear, onTerminado, planesExisten
               {isSubmitting ? (
                 <>
                   <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                  Creando...
+                  {planAEditar ? 'Guardando...' : 'Creando...'}
                 </>
               ) : (
                 <>
-                  <Check className="w-4 h-4" /> Crear
+                  <Check className="w-4 h-4" /> {planAEditar ? 'Guardar Cambios' : 'Crear'}
                 </>
               )}
             </button>
@@ -1454,39 +1693,48 @@ function Paso2({
     indexCustom?: number;
   } | null>(null);
 
-  const toggleActividad = (numeroRol: number, actId: string, actividadBase: ActividadBase) => {
+  // Permisos para editar configuraciones
+  const { puedeRealizar } = useControlInternoPermissions();
+  const puedeEditarActividadesBase = puedeRealizar('configuraciones', 'edit');
+
+  const [editandoActividadBase, setEditandoActividadBase] = useState<{rolNumero: number, actId: string} | null>(null);
+
+  const toggleActividad = (numeroRol: number, actId: string, nombreActividad: string) => {
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero === numeroRol) {
-        const yaSeleccionada = rol.actividadesSeleccionadas.some(a => a.id === actId);
+        const yaSeleccionada = rol.actividadesSeleccionadas.some(a => a.id === actId || a.nombre === nombreActividad);
         if (yaSeleccionada) {
           // Deseleccionar
           return {
             ...rol,
-            actividadesSeleccionadas: rol.actividadesSeleccionadas.filter(a => a.id !== actId)
+            actividadesSeleccionadas: rol.actividadesSeleccionadas.filter(a => a.id !== actId && a.nombre !== nombreActividad)
           };
         } else {
           // Seleccionar
-          // Auto-asignar primer responsable del rol si existe
-          const primerResponsable = rol.responsables?.[0];
-          // Auto-generar 3 puntos de control trimestrales (31 Mar, 30 Jun, 30 Sep)
-          const año = parseInt((fechaInicio || new Date().toISOString().split('T')[0]).split('-')[0], 10) || new Date().getFullYear();
-          const puntosDefault: PuntoControl[] = [
-            { id: `pc-${actId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-            { id: `pc-${actId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-            { id: `pc-${actId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-          ];
-          return {
-            ...rol,
-            actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
-              ...actividadBase,
-              id: actId,
-              tipoEvidencia: 'SOLO_CHECK' as const,
-              fechaCorte: `${año}-09-30`,
-              responsables: primerResponsable ? [primerResponsable] : [],
-              puntosControl: puntosDefault,
-              frecuenciaPuntosControl: 'trimestral' as const,
-            }]
-          };
+          const actividadBase = getActividadesPorRol(numeroRol)?.find(a => a.nombre === nombreActividad);
+          if (actividadBase) {
+            // Auto-asignar primer responsable del rol si existe
+            const primerResponsable = rol.responsables?.[0];
+            // Auto-generar 3 puntos de control trimestrales (31 Mar, 30 Jun, 30 Sep)
+            const año = fechaInicio ? fechaInicio.split('-')[0] : new Date().getFullYear().toString();
+            const puntosDefault: PuntoControl[] = [
+              { id: `pc-${actId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+              { id: `pc-${actId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+              { id: `pc-${actId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+            ];
+            return {
+              ...rol,
+              actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
+                ...actividadBase,
+                id: actId,
+                tipoEvidencia: 'SOLO_CHECK' as const,
+                fechaCorte: `${año}-09-30`,
+                responsables: primerResponsable ? [primerResponsable] : [],
+                puntosControl: puntosDefault,
+                frecuenciaPuntosControl: 'trimestral' as const,
+              }]
+            };
+          }
         }
       }
       return rol;
@@ -1494,8 +1742,8 @@ function Paso2({
     onRolesChange(nuevaConfig);
   };
 
-  const estaSeleccionada = (actId: string) => {
-    return rolesConfig.some(rol => rol.actividadesSeleccionadas.some(a => a.id === actId));
+  const estaSeleccionada = (actId: string, nombreActividad?: string) => {
+    return rolesConfig.some(rol => rol.actividadesSeleccionadas.some(a => a.id === actId || (nombreActividad && a.nombre === nombreActividad)));
   };
 
   const toggleAutorizacionJefeOCI = (actId: string) => {
@@ -1896,38 +2144,40 @@ function Paso2({
                               </button>
                             </div>
                           ))}
-                          {/* Dropdown para agregar — mismo estilo que SeccionAsignar */}
-                          <SelectorProfesional
-                            auditores={auditores.filter(a => !rol.responsables.some((r: any) => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
-                            onSelect={(id) => {
-                              if (!id) return;
-                              const auditor = auditores.find(a => a.id === id);
-                              if (auditor) {
-                                const nuevaConfig = rolesConfig.map(r => {
-                                  if (r.numero === rol.numero) {
-                                    const nuevosResponsables = [...(r.responsables || []), auditor];
-                                    return {
-                                      ...r,
-                                      responsables: nuevosResponsables,
-                                      actividadesSeleccionadas: r.actividadesSeleccionadas.map(act => (
-                                        (!act.responsables || act.responsables.length === 0)
-                                          ? { ...act, responsables: [auditor] }
-                                          : act
-                                      )),
-                                      actividadesCustom: r.actividadesCustom.map(act => (
-                                        (!act.responsables || act.responsables.length === 0)
-                                          ? { ...act, responsables: [auditor] }
-                                          : act
-                                      ))
-                                    };
-                                  }
-                                  return r;
-                                });
-                                onRolesChange(nuevaConfig);
-                                toast.success(`${auditor.nombre} asignado al rol`);
-                              }
-                            }}
-                          />
+                          {/* Dropdown para agregar — solo si no hay responsables */}
+                          {rol.responsables.length === 0 && (
+                            <SelectorProfesional
+                              auditores={auditores.filter(a => !rol.responsables.some((r: any) => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
+                              onSelect={(id) => {
+                                if (!id) return;
+                                const auditor = auditores.find(a => a.id === id);
+                                if (auditor) {
+                                  const nuevaConfig = rolesConfig.map(r => {
+                                    if (r.numero === rol.numero) {
+                                      const nuevosResponsables = [...(r.responsables || []), auditor];
+                                      return {
+                                        ...r,
+                                        responsables: nuevosResponsables,
+                                        actividadesSeleccionadas: r.actividadesSeleccionadas.map(act => (
+                                          (!act.responsables || act.responsables.length === 0)
+                                            ? { ...act, responsables: [auditor] }
+                                            : act
+                                        )),
+                                        actividadesCustom: r.actividadesCustom.map(act => (
+                                          (!act.responsables || act.responsables.length === 0)
+                                            ? { ...act, responsables: [auditor] }
+                                            : act
+                                        ))
+                                      };
+                                    }
+                                    return r;
+                                  });
+                                  onRolesChange(nuevaConfig);
+                                  toast.success(`${auditor.nombre} asignado al rol`);
+                                }
+                              }}
+                            />
+                          )}
                         </div>
                       </div>
 
@@ -1941,8 +2191,8 @@ function Paso2({
                           {actividadesBase.map((actividad, index) => {
                             // ⚡ Generar ID único para esta actividad
                             const actId = `rol-${rol.numero}-act-${index}`;
-                            const seleccionada = estaSeleccionada(actId);
-                            const actividadData = rol.actividadesSeleccionadas.find(a => a.id === actId);
+                            const seleccionada = estaSeleccionada(actId, actividad.nombre);
+                            const actividadData = rol.actividadesSeleccionadas.find(a => a.id === actId || a.nombre === actividad.nombre);
                             return (
                               <div
                                 key={actId}
@@ -1958,12 +2208,79 @@ function Paso2({
                                   <input
                                     type="checkbox"
                                     checked={seleccionada}
-                                    onChange={() => toggleActividad(rol.numero, actId, actividad)}
-                                    className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500 mt-0.5"
+                                    onChange={() => toggleActividad(rol.numero, actId, actividad.nombre)}
+                                    className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500 mt-0.5 flex-shrink-0"
                                   />
                                   <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-gray-900 text-sm">{actividad.nombre}</p>
-                                    <p className="text-xs text-gray-600 mt-1">{actividad.descripcion}</p>
+                                    {editandoActividadBase?.rolNumero === rol.numero && editandoActividadBase?.actId === actId ? (
+                                      <div className="space-y-2 mb-2 bg-white p-3 rounded-lg border border-blue-200 shadow-sm" onClick={e => e.stopPropagation()}>
+                                        <input 
+                                          type="text" 
+                                          className="w-full font-semibold text-gray-900 text-sm border-b-2 border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-gray-50 focus:bg-white px-2 py-1 rounded-t transition-colors"
+                                          defaultValue={actividadData?.nombre || actividad.nombre}
+                                          placeholder="Nombre de la actividad"
+                                          onBlur={(e) => {
+                                            const nuevoNombre = e.target.value.trim();
+                                            if (nuevoNombre && actividadData) {
+                                              const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
+                                                ...r,
+                                                actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => 
+                                                  a.id === actId ? { ...a, nombre: nuevoNombre } : a
+                                                )
+                                              } : r);
+                                              onRolesChange(nuevaConfig);
+                                            }
+                                          }}
+                                        />
+                                        <textarea 
+                                          className="w-full text-xs text-gray-600 border border-gray-300 rounded p-2 focus:border-blue-500 focus:outline-none bg-gray-50 focus:bg-white transition-colors"
+                                          defaultValue={actividadData?.descripcion || actividad.descripcion}
+                                          placeholder="Descripción de la actividad"
+                                          rows={2}
+                                          onBlur={(e) => {
+                                            const nuevaDesc = e.target.value.trim();
+                                            if (actividadData) {
+                                              const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
+                                                ...r,
+                                                actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => 
+                                                  a.id === actId ? { ...a, descripcion: nuevaDesc } : a
+                                                )
+                                              } : r);
+                                              onRolesChange(nuevaConfig);
+                                            }
+                                          }}
+                                        />
+                                        <div className="flex justify-end mt-2">
+                                          <button 
+                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md font-medium transition-colors" 
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setEditandoActividadBase(null);
+                                            }}
+                                          >
+                                            Guardar
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="group relative pr-8">
+                                        <p className="font-semibold text-gray-900 text-sm">{actividadData?.nombre || actividad.nombre}</p>
+                                        <p className="text-xs text-gray-600 mt-1">{actividadData?.descripcion || actividad.descripcion}</p>
+                                        
+                                        {puedeEditarActividadesBase && seleccionada && (
+                                          <button 
+                                            className="absolute top-0 right-0 p-1.5 text-gray-400 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 rounded-md opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-transparent hover:border-blue-200"
+                                            title="Editar texto de actividad"
+                                            onClick={(e) => { 
+                                              e.stopPropagation(); 
+                                              setEditandoActividadBase({rolNumero: rol.numero, actId}); 
+                                            }}
+                                          >
+                                            <Edit3 className="w-4 h-4" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
                                     {seleccionada && actividadData && (
                                       <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                         {/* Responsable inline */}
@@ -3040,7 +3357,12 @@ function Paso3({
   comiteAprobacion = [],
   setComiteAprobacion,
   ordenAprobacion,
-  setOrdenAprobacion
+  setOrdenAprobacion,
+  handleDragStartAprobador,
+  handleDragOverAprobador,
+  handleDropAprobador,
+  draggedAprobadorIndex,
+  setDraggedAprobadorIndex
 }: any) {
   const totalActividades = rolesConfig.reduce((total: number, rol: any) => {
     return total + (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0);
@@ -3137,7 +3459,8 @@ function Paso3({
                 <div className="relative">
                   <SelectorProfesional
                     auditores={auditores.filter((a: any) => {
-                      const esAprobador = /aprobador/i.test(a.cargo || '');
+                      // Filtrar exclusivamente para mostrar el perfil OCID Aprobador PAI
+                      const esAprobador = /aprobador pai/i.test(a.cargo || '');
                       const yaSeleccionado = comiteAprobacion.find((c: any) => String(c.id) === String(a.id));
                       return esAprobador && !yaSeleccionado;
                     })}
@@ -3192,7 +3515,15 @@ function Paso3({
                       };
 
                       return (
-                        <div key={miembro.id} className="relative flex items-center gap-3 p-2.5 bg-white border border-gray-200 rounded-xl shadow-sm group hover:border-blue-300 transition-all z-10">
+                        <div 
+                          key={miembro.id} 
+                          draggable
+                          onDragStart={(e) => handleDragStartAprobador(e, index)}
+                          onDragOver={handleDragOverAprobador}
+                          onDrop={(e) => handleDropAprobador(e, index)}
+                          onDragEnd={() => setDraggedAprobadorIndex(null)}
+                          className={`relative flex items-center gap-3 p-2.5 bg-white border rounded-xl shadow-sm group transition-all z-10 cursor-grab active:cursor-grabbing ${draggedAprobadorIndex === index ? 'opacity-50 border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}`}
+                        >
                           <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${ordenAprobacion === 'secuencial' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-100 text-blue-700'}`}>
                             {ordenAprobacion === 'secuencial' ? index + 1 : '•'}
                           </div>
@@ -3217,6 +3548,10 @@ function Paso3({
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                           </button>
+                          
+                          <div className="text-gray-300 cursor-grab active:cursor-grabbing hover:text-blue-500">
+                            <GripVertical className="w-5 h-5" />
+                          </div>
                         </div>
                       );
                     })}
@@ -3245,14 +3580,18 @@ interface DashboardPlanProps {
   planesAnteriores?: PlanAnual[]; // Historial de planes anteriores
   planesDisponibles?: PlanAnual[]; // Lista de todos los planes para selector
   onCambiarPlan?: (planId: string) => void; // Callback para cambiar de plan activo
+  onEditarPlan?: (plan: PlanAnual) => void; // Callback para editar el plan actual
 }
 
 const PLAN_ANUAL_STORAGE_KEY = 'esap:plan_anual_activo';
 
-export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan }: DashboardPlanProps) {
+export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan, onEditarPlan }: DashboardPlanProps) {
   const [seccion, setSeccion] = useState<'gestion' | 'asignar' | 'aprobar'>('gestion');
   const [mostrarModalExportacion, setMostrarModalExportacion] = useState(false);
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
+  const [columnasExcel, setColumnasExcel] = useState<string[]>(
+    () => COLUMNAS_DISPONIBLES.filter(c => c.defaultVisible).map(c => c.key)
+  );
   const [mostrarModalEliminar, setMostrarModalEliminar] = useState(false);
   const [eliminandoPlan, setEliminandoPlan] = useState(false);
   
@@ -3344,9 +3683,10 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
             .map((p) => ({
               id: p.id, // UUID de configuracion_profesionales_OCI
               nombre: p.nombre || '',
-              cargo: p.cargo || 'Profesional OCI',
+              cargo: p.rolOcig || p.rolOCI || p.cargo || 'Profesional OCI',
               email: p.email || ''
             }));
+          console.log('[useAuditores] Profesionales mapeados:', auditoresMapeados.map(a => `${a.nombre} (${a.cargo})`));
           setAuditores(auditoresMapeados);
         }
       } catch (error) {
@@ -3424,7 +3764,29 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
     
     // ✅ NUEVO: Usar exportación local con ExcelJS + Logo (no depende del backend)
     try {
-      const resultado = await exportarPlanAnualExcel(plan);
+      // 🔍 DEBUG: Mostrar datos EXACTOS que se envían al Excel
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📊 [handleExportarExcel] DATOS DEL PLAN para Excel:');
+      console.log('   plan.id:', plan.id);
+      console.log('   plan.vigencia:', plan.vigencia);
+      console.log('   plan.fecha_inicio:', (plan as any).fecha_inicio);
+      console.log('   plan.fechaInicio:', (plan as any).fechaInicio);
+      console.log('   plan.roles:', plan.roles?.length, 'roles');
+      plan.roles?.forEach((rol, ri) => {
+        console.log(`   ROL ${ri + 1} (${rol.nombre}): ${rol.actividades?.length || 0} actividades`);
+        if (rol.actividades?.length > 0) {
+          const act = rol.actividades[0] as any;
+          console.log(`     → Primera actividad: "${act.nombre}"`);
+          console.log(`       responsable:`, act.responsable);
+          console.log(`       responsables:`, act.responsables);
+          console.log(`       fechaInicio:`, act.fechaInicio);
+          console.log(`       fecha_inicio:`, act.fecha_inicio);
+          console.log(`       fechaFin:`, act.fechaFin);
+          console.log(`       fecha_fin:`, act.fecha_fin);
+        }
+      });
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      const resultado = await exportarPlanAnualExcel(plan, { columnasSeleccionadas: columnasExcel });
       if (resultado.exito) {
         toast.success('Exportado', { description: 'Excel descargado correctamente con logo ESAP' });
       } else {
@@ -3456,9 +3818,13 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 10;
 
-      // Header institucional estandarizado
+      // Header institucional estandarizado — datos dinámicos del plan (NO hardcodeados)
       const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
         ...DOCUMENTOS_PREDEFINIDOS.PLAN_ANUAL,
+        version: (plan as any).version ?? 1,
+        fecha: plan.fechaCreacion 
+          ? new Date(plan.fechaCreacion).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+          : new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
         logoImg: LOGO_ESAP_URL
       });
       
@@ -3487,6 +3853,20 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         const tieneDatosTarea = !!tarea && typeof tarea === 'object' && Object.keys(tarea).length > 0;
         if (tieneDatosTarea) return '-';
 
+        const planDates = plan as any;
+        const pdfFechaInicio = planDates.fecha_inicio || planDates.fechaInicio || '';
+        const pdfFechaFin = planDates.fecha_fin || planDates.fechaFin || '';
+        const pdfFechaCreacion = planDates.fecha_creacion || planDates.fechaCreacion || '';
+
+        const infoData = [
+          ['Vigencia', vigencia.toString()],
+          ['Estado', estadoLabel],
+          ['Jefe OCI', plan.jefeOCI?.nombre || ''],
+          ['Cargo', plan.jefeOCI?.cargo || ''],
+          ['Fecha Inicio', pdfFechaInicio ? new Date(pdfFechaInicio).toLocaleDateString('es-CO') : ''],
+          ['Fecha Fin', pdfFechaFin ? new Date(pdfFechaFin).toLocaleDateString('es-CO') : ''],
+          ['Fecha Creación', pdfFechaCreacion ? new Date(pdfFechaCreacion).toLocaleDateString('es-CO') : '']
+        ];
         const puntosControl = actividad?.puntosControl || actividad?.puntos_control || [];
         if (Array.isArray(puntosControl) && puntosControl.length > 0) {
           const fechas = puntosControl
@@ -3530,6 +3910,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       const tableBody: any[] = [];
       let totalActividadesCount = 0;
       let totalAvanceSuma = 0;
+      let sumaAvanceTotal = 0;
 
       // Procesar datos para la tabla plana
       [...plan.roles].sort((a, b) => a.numero - b.numero).forEach((rol) => {
@@ -3628,6 +4009,95 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
 
       currentY = (doc as any).lastAutoTable.finalY + 10;
       
+      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach((rol, rolIdx) => {
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(0, 61, 165);
+        doc.text(`ROL ${rol.numero}: ${rol.nombre.toUpperCase()}`, margin, currentY);
+        currentY += 7;
+
+        // Calcular avance promedio del rol
+        const sumaAvanceRol = rol.actividades.reduce((s, a) => {
+          const pct = (a.estado === 'Completada' || a.estado === 'COMPLETADA') ? 100 
+                    : (a.entradasSeguimiento && a.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(a) : 0);
+          return s + pct;
+        }, 0);
+        const promedioRol = rol.actividades.length > 0 ? Math.round(sumaAvanceRol / rol.actividades.length) : 0;
+
+        sumaAvanceTotal += sumaAvanceRol;
+        totalActividadesCount += rol.actividades.length;
+
+        const actividadesData = rol.actividades.map((act, idx) => {
+          const pctFinal = (act.estado === 'Completada' || act.estado === 'COMPLETADA') ? 100 
+                    : (act.entradasSeguimiento && act.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(act) : 0);
+          // Responsable: prioridad responsables[] → responsable → 'No asignado'
+          const actX = act as any;
+          let responsablePdf = '';
+          if (Array.isArray(actX.responsables) && actX.responsables.length > 0) {
+            responsablePdf = actX.responsables.map((r: any) => typeof r === 'string' ? r : r.nombre || '').filter(Boolean).join(', ');
+          } else if (actX.responsable) {
+            responsablePdf = typeof actX.responsable === 'string' ? actX.responsable : actX.responsable?.nombre || '';
+          }
+          if (!responsablePdf) responsablePdf = 'No asignado';
+          
+          return [
+            (idx + 1).toString(),
+            act.nombre,
+            responsablePdf,
+            act.estado === 'COMPLETADA' ? 'Completada' : 
+            act.estado === 'EN_EJECUCION' ? 'En ejecución' : 'Pendiente',
+            `${pctFinal}%`
+          ];
+        });
+        
+        // Agregar fila de subtotal del rol
+        actividadesData.push([
+          '',
+          `SUBTOTAL ROL (${rol.actividades.length} actividades)`,
+          '',
+          'PROMEDIO:',
+          `${promedioRol}%`
+        ]);
+
+        autoTable(doc, {
+          startY: currentY,
+          head: [['#', 'Actividad', 'Responsable', 'Estado', 'Avance']],
+          body: actividadesData,
+          theme: 'striped',
+          headStyles: {
+            fillColor: [0, 61, 165],
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 9
+          },
+          styles: { fontSize: 8, cellPadding: 2 },
+          columnStyles: {
+            0: { cellWidth: 10, halign: 'center' },
+            1: { cellWidth: 'auto' },
+            2: { cellWidth: 40 },
+            3: { cellWidth: 30, halign: 'center' },
+            4: { cellWidth: 20, halign: 'center' }
+          },
+          margin: { left: margin, right: margin },
+          didParseCell: function(data) {
+            // Destacar la fila de subtotal
+            if (data.row.index === actividadesData.length - 1) {
+              data.cell.styles.fillColor = [41, 98, 255];
+              data.cell.styles.textColor = [255, 255, 255];
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        });
+
+        currentY = (doc as any).lastAutoTable.finalY + 8;
+
+        if (currentY > pageHeight - 40 && rolIdx < plan.roles.length - 1) {
+          doc.addPage();
+          currentY = margin;
+        }
+      });
+      
+      // Total general del plan
       // Resumen final
       const promedioGral = totalActividadesCount > 0 ? Math.round(totalAvanceSuma / totalActividadesCount) : 0;
       
@@ -3712,6 +4182,9 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               </button>
             )}
 
+
+
+            {(puedeExportarPlan || puedeSeguimiento || esSuperUsuario) && (
             <button
               type="button"
               onClick={() => setMostrarModalExportacion(true)}
@@ -3720,6 +4193,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               <Download className="w-4 h-4" />
               Exportar
             </button>
+            )}
 
             {plan.estado === 'BORRADOR' && (
               <button
@@ -3806,35 +4280,74 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
                     </div>
                   </button>
 
-                  <button
-                    onClick={handleExportarExcel}
-                    disabled={!!exportando}
-                    className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-green-600 hover:bg-green-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 bg-green-100 group-hover:bg-green-200 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors">
-                        <FileSpreadsheet className="w-6 h-6 text-green-600" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <h3 className="text-base font-bold text-gray-900 mb-1">📊 Exportar a Excel</h3>
-                        <p className="text-sm text-gray-600 mb-2">
-                          Tabla estructurada editable con todas las actividades. Ideal para análisis, seguimiento y modificaciones.
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">✓ Editable</span>
-                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">✓ Con fórmulas</span>
-                          <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">✓ Análisis de datos</span>
+                  <div className="border-2 border-gray-200 rounded-xl hover:border-green-600 transition-all">
+                    <button
+                      onClick={handleExportarExcel}
+                      disabled={!!exportando || columnasExcel.length === 0}
+                      className="w-full p-4 hover:bg-green-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed rounded-t-xl"
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 bg-green-100 group-hover:bg-green-200 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors">
+                          <FileSpreadsheet className="w-6 h-6 text-green-600" />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <h3 className="text-base font-bold text-gray-900 mb-1">📊 Exportar a Excel</h3>
+                          <p className="text-sm text-gray-600 mb-2">
+                            Tabla estructurada con datos reales del plan. Selecciona las columnas a incluir.
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">✓ Datos reales</span>
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">✓ {columnasExcel.length} columnas</span>
+                            <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">✓ Editable</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center">
+                          {exportando === 'excel' ? (
+                            <Loader2 className="w-5 h-5 text-green-600 animate-spin" />
+                          ) : (
+                            <Download className="w-5 h-5 text-gray-400 group-hover:text-green-600" />
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center">
-                        {exportando === 'excel' ? (
-                          <Loader2 className="w-5 h-5 text-green-600 animate-spin" />
-                        ) : (
-                          <Download className="w-5 h-5 text-gray-400 group-hover:text-green-600" />
-                        )}
+                    </button>
+                    {/* Selector de columnas */}
+                    <div className="border-t border-gray-200 p-3 bg-gray-50 rounded-b-xl" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Columnas del informe</span>
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setColumnasExcel(COLUMNAS_DISPONIBLES.map(c => c.key))}
+                            className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold hover:bg-blue-200 transition-colors"
+                          >Todos</button>
+                          <button
+                            type="button"
+                            onClick={() => setColumnasExcel([])}
+                            className="text-[10px] px-2 py-0.5 bg-gray-200 text-gray-600 rounded font-semibold hover:bg-gray-300 transition-colors"
+                          >Ninguno</button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1">
+                        {COLUMNAS_DISPONIBLES.map(col => (
+                          <label key={col.key} className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-white cursor-pointer transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={columnasExcel.includes(col.key)}
+                              onChange={() => {
+                                setColumnasExcel(prev =>
+                                  prev.includes(col.key)
+                                    ? prev.filter(k => k !== col.key)
+                                    : [...prev, col.key]
+                                );
+                              }}
+                              className="w-3.5 h-3.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                            />
+                            <span className="text-xs text-gray-700">{col.label}</span>
+                          </label>
+                        ))}
                       </div>
                     </div>
-                  </button>
+                  </div>
                 </div>
 
                 <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -3983,7 +4496,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       <div className="flex-1 overflow-y-auto bg-gray-50 px-8 py-6">
         <div className="max-w-7xl mx-auto">
           <AnimatePresence mode="wait">
-            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} cargandoAuditores={cargandoAuditores} onCambiarPlan={onCambiarPlan} />}
+            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} cargandoAuditores={cargandoAuditores} onCambiarPlan={onCambiarPlan} onEditarPlan={onEditarPlan} />}
             {seccion === 'aprobar' && <SeccionAprobacion key="aprobar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} puedeAprobarPlan={puedeAprobarPlan} puedeActivarPlan={puedeActivarPlan} puedeEditarPlan={puedeEditarPlan} auditores={auditores} />}
           </AnimatePresence>
         </div>
@@ -4006,7 +4519,8 @@ function SeccionGestionYSeguimiento({
   onAbrirRol4,
   auditores,
   cargandoAuditores = false,
-  onCambiarPlan
+  onCambiarPlan,
+  onEditarPlan
 }: { 
   plan: PlanAnual; 
   planesAnteriores?: PlanAnual[]; 
@@ -4016,6 +4530,7 @@ function SeccionGestionYSeguimiento({
   auditores: Auditor[];
   cargandoAuditores?: boolean;
   onCambiarPlan?: (planId: string) => void;
+  onEditarPlan?: (plan: PlanAnual) => void;
 }) {
 
   // Estados para el seguimiento
@@ -4325,8 +4840,8 @@ function SeccionGestionYSeguimiento({
         setNuevaActividad({
           nombre: '',
           descripcion: '',
-          fechaInicio: new Date().toISOString().split('T')[0],
-          fechaFin: new Date().toISOString().split('T')[0],
+          fechaInicio: fechaInicio || `${plan.vigencia || new Date().getFullYear()}-01-01`,
+          fechaFin: fechaFin || `${plan.vigencia || new Date().getFullYear()}-12-31`,
           control: 'Seguimiento trimestral',
           evaluacion: '0% avance',
           seguimiento: 'Por definir'
@@ -5204,6 +5719,16 @@ function SeccionGestionYSeguimiento({
                     <p>Aprobado: {planAnterior.fechaAprobacion || 'N/A'}</p>
                     <p>{obtenerTotalActividadesPlanAnterior(planAnterior)} actividades</p>
                   </div>
+                  
+                  {planAnterior.estado === 'BORRADOR' && onEditarPlan && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onEditarPlan(planAnterior); }}
+                      className="ml-2 p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors flex items-center justify-center group"
+                      title="Editar plan en formato de creación"
+                    >
+                      <Edit3 className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -5217,15 +5742,30 @@ function SeccionGestionYSeguimiento({
           Vista unificada: estadísticas + seguimiento detallado
           ══════════════════════════════════════════════════════════════════════ */}
       
-      {/* ✅ NUEVO: Botones de control global reubicados en 1 solo botón para ahorrar espacio */}
-      {planesAnteriores.length === 0 && (
-        <div className="flex justify-end mb-2">
-          {renderBotonToggleRoles()}
+      {plan.estado === 'BORRADOR' || plan.estado === 'EN_REVISION' ? (
+        <div className="bg-amber-50 border-2 border-amber-200 border-dashed rounded-xl p-8 text-center mt-6">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 className="text-xl font-bold text-amber-900 mb-2">Módulo de Seguimiento Inactivo</h3>
+          <p className="text-amber-800 max-w-2xl mx-auto">
+            Esta sección es exclusiva para realizar el seguimiento de las actividades de auditoría. 
+            Actualmente el plan se encuentra en estado <strong>{plan.estado}</strong>. Para configurar los roles y actividades, utiliza el botón de edición (el lápiz azul) en el historial de arriba.
+          </p>
         </div>
-      )}
+      ) : (
+        <>
+          {/* ✅ NUEVO: Botones de control global reubicados en 1 solo botón para ahorrar espacio */}
+          {planesAnteriores.length === 0 && (
+            <div className="flex justify-end mb-2">
+              {renderBotonToggleRoles()}
+            </div>
+          )}
 
-      {/* Lista de roles y actividades con seguimiento */}
-      {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => {
+          {/* Lista de roles y actividades con seguimiento */}
+          {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => {
         // Solo contar actividades activas (activo !== false) para estadísticas
         const actividadesActivas = rol.actividades.filter(a => a.activo !== false);
 
@@ -5559,7 +6099,77 @@ function SeccionGestionYSeguimiento({
                             )}
                           </div>
 
-                          {/* ══ TAREAS DE SEGUIMIENTO dentro de la actividad ══ */}
+                          {/* ══ DETALLES DE LA PROGRAMACIÓN Y OBSERVACIONES ══ */}
+                          <div className="mt-3 ml-11 space-y-3">
+                            {/* ── Detalles de la Programación del Plan Anual ── */}
+                            {(actividad.control || actividad.evaluacion || actividad.seguimiento) && (
+                              <div className="border border-blue-200 rounded-lg overflow-hidden">
+                                <div className="bg-blue-50 px-3 py-2 border-b border-blue-200">
+                                  <p className="text-xs font-bold text-blue-800 uppercase tracking-wider flex items-center gap-1.5">
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                    Detalles de la Programación
+                                  </p>
+                                </div>
+                                <div className="p-3 bg-white space-y-2">
+                                  {actividad.control && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Control</span>
+                                      <p className="text-xs text-gray-800 leading-relaxed mt-0.5">{actividad.control}</p>
+                                    </div>
+                                  )}
+                                  {actividad.evaluacion && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Evaluación</span>
+                                      <p className="text-xs text-gray-800 leading-relaxed mt-0.5">{actividad.evaluacion}</p>
+                                    </div>
+                                  )}
+                                  {actividad.seguimiento && (
+                                    <div>
+                                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Seguimiento</span>
+                                      <p className="text-xs text-gray-800 leading-relaxed mt-0.5">{actividad.seguimiento}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* ── Observaciones de Cumplimiento (texto completo) ── */}
+                            {(() => {
+                              const obs = actividad.observacionesCumplimiento;
+                              const obsArray: ObservacionCumplimiento[] = Array.isArray(obs) ? obs : (typeof obs === 'string' && obs.trim() ? [{ id: 'legacy', texto: obs, fechaRegistro: '', registradoPor: '' }] : []);
+                              if (obsArray.length === 0) return null;
+                              return (
+                                <div className="border border-amber-200 rounded-lg overflow-hidden">
+                                  <div className="bg-amber-50 px-3 py-2 border-b border-amber-200">
+                                    <p className="text-xs font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                                      Observaciones ({obsArray.length})
+                                    </p>
+                                  </div>
+                                  <div className="p-3 bg-white space-y-2">
+                                    {obsArray.map((ob, idx) => (
+                                      <div key={ob.id || idx} className="flex gap-2.5 items-start">
+                                        <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-[10px] font-bold flex-shrink-0 mt-0.5">
+                                          {idx + 1}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-xs text-gray-800 leading-relaxed">{ob.texto}</p>
+                                          {(ob.registradoPor || ob.fechaRegistro) && (
+                                            <p className="text-[10px] text-gray-400 mt-1">
+                                              {ob.registradoPor && <span>— {ob.registradoPor}</span>}
+                                              {ob.fechaRegistro && <span> • {new Date(ob.fechaRegistro).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+
+
                           {actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 && (
                             <div className="mt-3 ml-11 border-t border-dashed border-gray-200 pt-3">
                               <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -5930,6 +6540,8 @@ function SeccionGestionYSeguimiento({
           </div>
         );
       })}
+        </>
+      )}
     </motion.div>
   );
 }
@@ -7724,27 +8336,81 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                     </button>
                   )}
                 </div>
-              ) : (
-                equipo.map((aprobador, idx) => {
+              ) : ([
+                /* Resumen de progreso del comité — visible para TODOS */
+                plan.estado === 'EN_REVISION' && equipo.length > 0 && (() => {
+                    const totalVotos = equipo.length;
+                    const votosAprobados = historial.filter(h => h.estado === 'APROBADA').length;
+                    const votosObservados = historial.filter(h => h.estado === 'OBSERVADA').length;
+                    const votosPendientes = totalVotos - votosAprobados - votosObservados;
+                    const porcentaje = totalVotos > 0 ? Math.round((votosAprobados / totalVotos) * 100) : 0;
+                    const esParalelo = plan.ordenAprobacion !== 'secuencial';
+                    return (
+                      <div key="__progress_header" className="col-span-full mb-2 p-4 bg-gradient-to-r from-blue-50 via-white to-blue-50 border-2 border-blue-100 rounded-xl">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <Shield className="w-5 h-5 text-blue-600" />
+                            <span className="font-bold text-sm text-blue-900">
+                              Progreso de Aprobación — <span className="text-blue-600">{esParalelo ? 'Paralelo' : 'Secuencial'}</span>
+                            </span>
+                          </div>
+                          <span className="text-sm font-black text-blue-700">{porcentaje}%</span>
+                        </div>
+                        <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden mb-3">
+                          <div 
+                            className="h-full bg-gradient-to-r from-blue-500 via-green-400 to-emerald-500 rounded-full transition-all duration-1000 ease-out"
+                            style={{ width: `${porcentaje}%` }}
+                          />
+                        </div>
+                        <div className="flex items-center gap-4 text-xs font-semibold">
+                          <span className="flex items-center gap-1.5 text-green-700">
+                            <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                            {votosAprobados} Aprobada{votosAprobados !== 1 ? 's' : ''}
+                          </span>
+                          <span className="flex items-center gap-1.5 text-red-600">
+                            <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                            {votosObservados} Observada{votosObservados !== 1 ? 's' : ''}
+                          </span>
+                          <span className="flex items-center gap-1.5 text-blue-600">
+                            <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                            {votosPendientes} Pendiente{votosPendientes !== 1 ? 's' : ''}
+                          </span>
+                          <span className="ml-auto text-gray-400 text-[10px]">
+                            {esParalelo ? 'Todos firman simultáneamente' : `Turno ${votosAprobados + 1} de ${totalVotos}`}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })(),
+                  ...equipo.map((aprobador, idx) => {
                   const track = historial.find(h => h.auditorId === aprobador.id) || { estado: 'PENDIENTE', auditorNombre: aprobador.nombre };
                   const isPendiente = track.estado === 'PENDIENTE';
                   const isAprobado = track.estado === 'APROBADA';
                   const isObservado = track.estado === 'OBSERVADA';
                   const isSecuencial = plan.ordenAprobacion === 'secuencial';
+                  const isParalelo = !isSecuencial;
                   
                   // Calcular si el usuario está bloqueado por el flujo secuencial
                   let isWaitingTurn = false;
-                  if (plan.ordenAprobacion === 'secuencial') {
+                  if (isSecuencial) {
                     const firstPendingIdx = equipo.findIndex(a => {
                       const t = historial.find(hi => hi.auditorId === a.id);
                       return !t || t.estado === 'PENDIENTE';
                     });
                     if (firstPendingIdx !== -1 && idx > firstPendingIdx) isWaitingTurn = true;
                   }
+                  // En paralelo NUNCA hay bloqueo de turno
                   
                   const getInitials = (name: string) => name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
 
+                  // En paralelo: todos los pendientes están activos simultáneamente
                   const isActiveTurn = !isWaitingTurn && isPendiente && plan.estado === 'EN_REVISION';
+
+                  // Estadísticas de progreso (para mostrar en cada card en modo paralelo)
+                  const totalEquipo = equipo.length;
+                  const aprobados = historial.filter(h => h.estado === 'APROBADA').length;
+                  const observados = historial.filter(h => h.estado === 'OBSERVADA').length;
+                  const pendientes = totalEquipo - aprobados - observados;
 
                   return (
                     <div key={aprobador.id} className={`p-4 border-2 rounded-xl flex flex-col gap-3 relative transition-all duration-500 ${
@@ -7754,10 +8420,11 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                       'border-gray-200 bg-gray-50/40 opacity-70 grayscale-[15%]'
                     }`}>
                       
+                      {/* Badge: Turno Actual (secuencial) o Pendiente de Firma (paralelo) */}
                       {isActiveTurn && (
                         <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-600 text-white text-[9px] font-black uppercase tracking-wider py-0.5 px-3 text-center rounded-full shadow border border-blue-400 z-20 flex items-center justify-center gap-1.5 whitespace-nowrap">
                           <div className="w-1 h-1 rounded-full bg-white animate-pulse" />
-                          Turno Actual
+                          {isSecuencial ? 'Turno Actual' : 'Pendiente de Firma'}
                         </div>
                       )}
 
@@ -7776,7 +8443,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                             isActiveTurn ? 'bg-blue-600 text-white ring-4 ring-blue-100 shadow-md' :
                             'bg-gray-400 text-white opacity-80'
                           }`}>
-                            {isAprobado ? <Check className="w-4 h-4"/> : isObservado ? <X className="w-4 h-4"/> : (isSecuencial ? idx + 1 : '•')}
+                            {isAprobado ? <Check className="w-4 h-4"/> : isObservado ? <X className="w-4 h-4"/> : (isSecuencial ? idx + 1 : idx + 1)}
                           </div>
                           
                           {track.firmaElectronica && (
@@ -7794,20 +8461,51 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                             <p className="text-[11px] text-gray-500 truncate">{aprobador.email || 'aprobador@esap.edu.co'}</p>
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className={`px-2 py-0.5 text-[10px] uppercase font-bold rounded-full border ${
-                            isAprobado ? 'bg-green-100 text-green-800 border-green-200' :
-                            isObservado ? 'bg-red-100 text-red-800 border-red-200' :
-                            isActiveTurn ? 'bg-blue-600 text-white border-blue-700 shadow-md' :
-                            'bg-gray-100 text-gray-500 border-gray-200'
+                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                          {/* Status badge — premium pill */}
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[10px] uppercase font-black tracking-wider rounded-lg border backdrop-blur-sm transition-all ${
+                            isAprobado ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white border-green-400 shadow-sm shadow-green-200' :
+                            isObservado ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white border-red-400 shadow-sm shadow-red-200' :
+                            isActiveTurn ? 'bg-gradient-to-r from-blue-500 to-blue-700 text-white border-blue-400 shadow-md shadow-blue-200 animate-pulse' :
+                            'bg-gray-50 text-gray-400 border-gray-200'
                           }`}>
-                            {isWaitingTurn ? 'ESPERANDO TURNO' : track.estado}
+                            {isAprobado && <Check className="w-3 h-3" />}
+                            {isObservado && <AlertTriangle className="w-3 h-3" />}
+                            {isActiveTurn && <div className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />}
+                            {isWaitingTurn ? 'En espera' : track.estado}
                           </span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${isActiveTurn ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-700'}`}>
+                          {/* Role chip — subtle */}
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md shrink-0 ${
+                            isActiveTurn ? 'bg-blue-50 text-blue-700 border border-blue-100' : 
+                            isAprobado ? 'bg-green-50 text-green-700 border border-green-100' :
+                            'bg-gray-50 text-gray-500 border border-gray-100'
+                          }`}>
                             {aprobador.cargo || 'Aprobador PAI'}
                           </span>
                         </div>
                       </div>
+
+                      {/* Progreso general visible para todos en modo paralelo */}
+                      {isParalelo && plan.estado === 'EN_REVISION' && (
+                        <div className="mt-1">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                              <div 
+                                className="h-full bg-gradient-to-r from-green-400 to-emerald-500 rounded-full transition-all duration-700"
+                                style={{ width: `${totalEquipo > 0 ? (aprobados / totalEquipo) * 100 : 0}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-bold text-gray-500 whitespace-nowrap">
+                              {aprobados}/{totalEquipo} firmas
+                            </span>
+                          </div>
+                          {observados > 0 && (
+                            <p className="text-[10px] text-red-500 font-medium">
+                              ⚠ {observados} observación{observados > 1 ? 'es' : ''} registrada{observados > 1 ? 's' : ''}
+                            </p>
+                          )}
+                        </div>
+                      )}
 
                       {track?.observacion && (
                         <div className="mt-1 p-3 bg-white border border-red-100 rounded-lg shadow-sm text-sm text-red-900">
@@ -7841,7 +8539,9 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                                 <Shield className="w-3 h-3 mr-2 opacity-60 text-blue-500"/> 
                                 {track?.respuestaSubsanacion 
                                   ? `El usuario se encuentra verificando la respuesta de subsanación...` 
-                                  : `Esperando revisión de este usuario...`}
+                                  : isParalelo 
+                                    ? `Esperando firma de ${aprobador.nombre.split(' ')[0]}...`
+                                    : `Esperando revisión de este usuario...`}
                               </div>
                             </div>
                           )
@@ -7856,7 +8556,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                     </div>
                   );
                 })
-              )}
+              ])}
             </div>
           )}
         </div>

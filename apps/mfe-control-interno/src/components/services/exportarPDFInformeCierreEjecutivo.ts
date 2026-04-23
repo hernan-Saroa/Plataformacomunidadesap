@@ -152,6 +152,10 @@ export async function exportarPDFInformeCierre(datos: DatosInformeCierre): Promi
   const configDoc: ConfiguracionDocumento = {
     ...baseConfig,
     titulo: 'INFORME DE CIERRE DE AUDITORÍA',
+    // Override con datos dinámicos (no hardcodeados del template)
+    fecha: datos.auditoria.cronograma?.fechaCreacion
+      ? new Date(datos.auditoria.cronograma.fechaCreacion).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+      : new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
   };
 
   let y = dibujarEncabezadoInstitucional(doc as any, configDoc, 28);
@@ -493,6 +497,10 @@ export async function exportarPDFInformeEjecutivo(datos: DatosInformeCierre): Pr
   const configDoc: ConfiguracionDocumento = {
     ...baseConfig,
     titulo: 'INFORME EJECUTIVO DE AUDITORÍA',
+    // Override con datos dinámicos (no hardcodeados del template)
+    fecha: datos.auditoria.cronograma?.fechaCreacion
+      ? new Date(datos.auditoria.cronograma.fechaCreacion).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
+      : new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
   };
 
   let y = dibujarEncabezadoInstitucional(doc as any, configDoc, 28);

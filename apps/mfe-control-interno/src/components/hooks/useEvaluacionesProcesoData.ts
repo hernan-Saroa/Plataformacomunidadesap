@@ -213,10 +213,12 @@ export function useEvaluacionesProcesoData(
         
         let data: EvaluacionProceso[];
         
-        if (procesoId) {
-          data = await controlInternoService.getEvaluacionesByProceso(procesoId);
+        const validProcesoId = procesoId && procesoId !== 'undefined' ? procesoId : undefined;
+        
+        if (validProcesoId) {
+          data = await controlInternoService.getEvaluacionesByProceso(validProcesoId);
         } else {
-          data = await controlInternoService.getEvaluaciones();
+          data = await controlInternoService.getEvaluaciones(vigencia);
         }
         
         console.log('[useEvaluacionesProcesoData] API returned:', data.length, 'evaluaciones');
