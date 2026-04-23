@@ -420,18 +420,14 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">RAD</span>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
-                    {noticia.radicador || (noticia.radicadorId ? 'Usuario no encontrado' : 'Sin información')}
+                    {noticia.radicador || (noticia.radicadorId === currentUserId ? 'Radicador' : 'Sin información')}
                   </p>
-                  {noticia.radicadorEmail && (
+                  {noticia.radicadorEmail && noticia.radicadorId !== currentUserId && (
                     <p className="text-[11px] text-gray-500 truncate mt-0.5">
                       {noticia.radicadorEmail}
                     </p>
                   )}
-                  {!noticia.radicador && noticia.radicadorId && (
-                    <p className="text-[10px] text-gray-400 truncate mt-0.5">
-                      ID: {noticia.radicadorId}
-                    </p>
-                  )}
+                  
                   {noticia.radicadorId && currentUserId && noticia.radicadorId === currentUserId && (
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-blue-100 text-blue-800 mt-1">
                       Radicada por ti
@@ -2061,6 +2057,23 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'noticia' | 'proceso'>('todos');
   const [ordenarPor, setOrdenarPor] = useState<'reciente' | 'antiguo'>('reciente');
 
+  // Permission checks for restore functionality
+  const currentUser = authService.getCurrentUser();
+  const currentUserId = currentUser?.id;
+  const canRestoreProcesos = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_RESTAURAR);
+  const canRestoreNoticias = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_RESTAURAR);
+  const canRestoreMisNoticias = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_RESTAURAR_MINE);
+
+  // Function to check if user can restore a specific item
+  const canRestoreItem = (item: any): boolean => {
+    if (item.tipo === 'proceso') {
+      return canRestoreProcesos;
+    } else if (item.tipo === 'noticia') {
+      return canRestoreNoticias || (canRestoreMisNoticias && item.radicadorId === currentUserId);
+    }
+    return false;
+  };
+
   const itemsFiltrados = items
     .filter(item => {
       if (filtroTipo !== 'todos' && item.tipo !== filtroTipo) return false;
@@ -2240,7 +2253,9 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <KanbanButtonTertiary compact onClick={() => onVerDetalles(item)} icon={<Eye className="w-3.5 h-3.5" />} title="Ver detalles" className="!flex-none !w-8" />
-                        <KanbanButtonSemantic variant="success" onClick={() => onDesarchivar(item)} icon={<RefreshCw className="w-3.5 h-3.5" />} title="Restaurar al flujo activo" className="!w-auto !px-2 !py-1.5" />
+                        {canRestoreItem(item) && (
+                          <KanbanButtonSemantic variant="success" onClick={() => onDesarchivar(item)} icon={<RefreshCw className="w-3.5 h-3.5" />} title="Restaurar al flujo activo" className="!w-auto !px-2 !py-1.5" />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2317,9 +2332,11 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
                     <KanbanButtonSecondary onClick={() => onVerDetalles(item)} icon={<Eye className="w-3 h-3" />} title="Ver detalles" className="!text-[10px] !px-2 !py-1">
                       Ver
                     </KanbanButtonSecondary>
-                    <KanbanButtonSemantic variant="success" onClick={() => onDesarchivar(item)} icon={<RefreshCw className="w-3 h-3" />} title="Restaurar al flujo activo" className="!text-[10px] !px-2 !py-1">
-                      Restaurar
-                    </KanbanButtonSemantic>
+                    {canRestoreItem(item) && (
+                      <KanbanButtonSemantic variant="success" onClick={() => onDesarchivar(item)} icon={<RefreshCw className="w-3 h-3" />} title="Restaurar al flujo activo" className="!text-[10px] !px-2 !py-1">
+                        Restaurar
+                      </KanbanButtonSemantic>
+                    )}
                   </div>
                 </div>
               );

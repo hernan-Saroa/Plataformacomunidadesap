@@ -439,13 +439,13 @@ function VistaArbolSeccionalesSedes({
             )}
             {expandidosSedeCentral && (
             <div className="ml-6 space-y-2">
-              {territorialesFiltradas.map((item) => {
+              {territorialesFiltradas.map((item, index) => {
                 if (!item) return null;
                 const { seccional, sedes: sedesSeccional } = item;
                 const isExpandida = seccionalesExpandidas[seccional.idSeccional] ?? false;
 
                 return (
-                  <div key={seccional.idSeccional}>
+                  <div key={seccional.idSeccional ?? `seccional-${index}`}>
                 <motion.div
                   initial={{ opacity: 0, y: -5 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -521,9 +521,9 @@ function VistaArbolSeccionalesSedes({
                       exit={{ opacity: 0, height: 0 }}
                       className="mt-2 ml-6 space-y-1"
                     >
-                      {sedesSeccional.map((sede) => (
+                      {sedesSeccional.map((sede, sedeIndex) => (
                         <motion.div
-                          key={sede.idSede}
+                          key={sede.idSede ?? `sede-${sedeIndex}`}
                           initial={{ opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                           className="group"
@@ -837,7 +837,7 @@ function VistaListaTerritorialesCetap({
 
                 return (
                   <motion.div
-                    key={seccional.idSeccional}
+                    key={seccional.idSeccional ?? `seccional-${index}`}
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ 
@@ -1030,7 +1030,7 @@ function VistaListaTerritorialesCetap({
                             <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar-white pr-1">
                               {sedesTerritorial.map((sede, sedeIndex) => (
                                 <motion.div
-                                  key={sede.idSede}
+                                  key={sede.idSede ?? `sede-${sedeIndex}`}
                                   initial={{ opacity: 0, x: -20 }}
                                   animate={{ opacity: 1, x: 0 }}
                                   transition={{ 

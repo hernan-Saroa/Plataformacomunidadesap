@@ -200,8 +200,33 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
   console.log('📋 Inicial module:', finalInitialModule);
 
-  const [currentModule, setCurrentModule] = useState<ModuleView>(finalInitialModule as ModuleView);
-  const [currentSidebarModule, setCurrentSidebarModule] = useState<string>('');
+  // 🚀 RECUPERAR MÓDULO PREVIO: Mantener la sesión del usuario donde estaba
+  const [currentModule, setCurrentModule] = useState<ModuleView>(() => {
+    const saved = localStorage.getItem('esap-last-module');
+    // Si hay un módulo guardado, lo restauramos para mantener el contexto
+    if (saved) return saved as ModuleView;
+    // Si es la primera vez, cargamos el módulo por defecto según sus permisos
+    return finalInitialModule as ModuleView;
+  });
+
+  const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(() => {
+    const saved = localStorage.getItem('esap-last-sidebar-module');
+    if (saved) return saved;
+    return '';
+  });
+
+  // Guardar el módulo actual cada vez que cambie
+  useEffect(() => {
+    if (currentModule) {
+      localStorage.setItem('esap-last-module', currentModule);
+    }
+  }, [currentModule]);
+
+  useEffect(() => {
+    if (currentSidebarModule) {
+      localStorage.setItem('esap-last-sidebar-module', currentSidebarModule);
+    }
+  }, [currentSidebarModule]);
 
   // 🚀 AUTO-COLAPSO INTELIGENTE: Detectar tamaño de pantalla
   const getInitialCollapsedState = () => {
