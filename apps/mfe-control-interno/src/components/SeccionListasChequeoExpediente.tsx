@@ -61,6 +61,8 @@ interface ItemChequeo {
   responsable?: string;
   fechaCompletado?: string;
   observaciones?: string;
+  documentoBibliotecaId?: string;
+  documentoNombre?: string;
 }
 
 interface DocumentoAdjunto {
@@ -83,6 +85,13 @@ interface ListaChequeo {
   activa: boolean;
 }
 
+interface DocumentoAuditoriaSubido {
+  documentoBibliotecaId?: string | null;
+  id?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 interface SeccionListasChequeoExpedienteProps {
   auditoriaId: string;
   etapaActual: EtapaKanban;
@@ -93,7 +102,10 @@ interface SeccionListasChequeoExpedienteProps {
 // FUNCIÓN PARA MAPEAR DATOS DEL BACKEND AL FORMATO DE UI
 // ════════════════════════════════════════════════════════════════════════════
 
-function mapApiListaToExpediente(apiLista: any): ListaChequeo {
+function mapApiListaToExpediente(
+  apiLista: any,
+  documentosSubidosPorBiblioteca: Record<string, { id: string; fecha?: string }>
+): ListaChequeo {
   // Preferir etapaNombreKanban del backend (viene del registro de la etapa real del Kanban).
   // Fallback: mapear desde el campo tipo para compatibilidad con datos anteriores.
   const VALID_STAGES: EtapaKanban[] = ['Plan Anual', 'Planeación', 'Ejecución', 'Comunicación', 'Seguimiento'];
@@ -123,16 +135,74 @@ function mapApiListaToExpediente(apiLista: any): ListaChequeo {
     completado: item.completado || item.checked || false,
     responsable: item.responsable || item.usuario_completado || undefined,
     fechaCompletado: item.fecha_completado || item.fechaCompletado || undefined,
-    observaciones: item.observaciones || undefined
+    observaciones: item.observaciones || undefined,
+    documentoBibliotecaId: item.documentoBibliotecaId || undefined,
+    documentoNombre: item.documentoNombre || undefined
   }));
 
-  const documentosAdjuntos: DocumentoAdjunto[] = (apiLista.documentos || []).map((doc: any) => ({
-    documentoBibliotecaId: doc.id?.toString() || '',
-    nombreDocumento: doc.nombre || doc.nombreDocumento || '',
-    diligenciado: doc.diligenciado || doc.completado || false,
-    archivoSubidoUrl: doc.url || doc.archivoUrl || undefined,
-    fechaSubida: doc.fecha_subida || doc.fechaSubida || undefined
-  }));
+  const documentosRaw = apiLista.documentosAdjuntos
+    || apiLista.documentosRequeridos
+    || apiLista.plantillas
+    || apiLista.documentos
+    || [];
+
+  const documentosDesdeLista: DocumentoAdjunto[] = documentosRaw.map((doc: any, idx: number) => {
+    const documentoBibliotecaId = (
+      doc.documentoBibliotecaId
+      || doc.bibliotecaId
+      || doc.documentoId
+      || doc.id
+      || ''
+    ).toString();
+
+    const subido = documentoBibliotecaId
+      ? documentosSubidosPorBiblioteca[documentoBibliotecaId]
+      : undefined;
+
+    return {
+      documentoBibliotecaId,
+      nombreDocumento: doc.nombreDocumento || doc.nombre || doc.titulo || `Documento ${idx + 1}`,
+      diligenciado: Boolean(
+      doc.diligenciado
+      || doc.completado
+      || doc.subido
+      || doc.archivoSubidoUrl
+      || doc.urlDocumentoSubido
+      || doc.archivoUrl
+      || doc.url
+      || subido
+      ),
+      archivoSubidoUrl:
+        doc.archivoSubidoUrl
+        || doc.urlDocumentoSubido
+        || doc.archivoUrl
+        || doc.url
+        || subido?.id
+        || undefined,
+      fechaSubida: doc.fecha_subida || doc.fechaSubida || doc.updatedAt || subido?.fecha || undefined
+    };
+  });
+
+  const documentosDesdeItems: DocumentoAdjunto[] = items
+    .filter(item => item.documentoBibliotecaId)
+    .map((item) => {
+      const documentoBibliotecaId = item.documentoBibliotecaId!;
+      const subido = documentosSubidosPorBiblioteca[documentoBibliotecaId];
+      return {
+        documentoBibliotecaId,
+        nombreDocumento: item.documentoNombre || item.texto,
+        diligenciado: Boolean(subido),
+        archivoSubidoUrl: subido?.id,
+        fechaSubida: subido?.fecha
+      };
+    });
+
+  const documentosAdjuntos = [...documentosDesdeLista];
+  documentosDesdeItems.forEach((docItem) => {
+    if (!documentosAdjuntos.some(d => d.documentoBibliotecaId === docItem.documentoBibliotecaId)) {
+      documentosAdjuntos.push(docItem);
+    }
+  });
 
   const itemsCompletados = items.filter(i => i.completado).length;
   const completitud = items.length > 0 ? Math.round((itemsCompletados / items.length) * 100) : 0;
@@ -177,8 +247,35 @@ export function SeccionListasChequeoExpediente({
     setLoadError(null);
     try {
       const listasApi = await controlInternoService.getListasAplicadas(auditoriaId);
-      const listasMapeadas = (listasApi || []).map(mapApiListaToExpediente);
+
+      // Cruzar con documentos ya subidos para marcar plantillas diligenciadas
+      const documentosAuditoria = await controlInternoService.getDocumentosByAuditoria(auditoriaId)
+        .catch(() => []) as DocumentoAuditoriaSubido[];
+
+      const documentosSubidosPorBiblioteca = (documentosAuditoria || []).reduce((acc, doc) => {
+        if (!doc.documentoBibliotecaId) return acc;
+        const key = String(doc.documentoBibliotecaId);
+        const actual = acc[key];
+        const fechaDoc = doc.updatedAt || doc.createdAt;
+        if (!actual) {
+          acc[key] = { id: String(doc.id || ''), fecha: fechaDoc };
+          return acc;
+        }
+        const actualTime = new Date(actual.fecha || 0).getTime();
+        const nuevoTime = new Date(fechaDoc || 0).getTime();
+        if (nuevoTime >= actualTime) {
+          acc[key] = { id: String(doc.id || actual.id), fecha: fechaDoc };
+        }
+        return acc;
+      }, {} as Record<string, { id: string; fecha?: string }>);
+
+      const listasMapeadas = (listasApi || []).map((listaApi: any) =>
+        mapApiListaToExpediente(listaApi, documentosSubidosPorBiblioteca)
+      );
       setListas(listasMapeadas);
+      if (listasMapeadas.length > 0) {
+        setListaExpandida(prev => prev ?? listasMapeadas[0].id);
+      }
     } catch (error) {
       console.error('[ListasChequeo] ❌ Error cargando listas:', error);
       setLoadError('No se pudieron cargar las listas de chequeo');
@@ -533,12 +630,43 @@ export function SeccionListasChequeoExpediente({
                                 </div>
                               )}
                             </div>
+
+                            {item.documentoBibliotecaId && (
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                <button
+                                  onClick={() => handleDescargarDoc(item.documentoBibliotecaId!)}
+                                  className="px-2.5 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                                  title="Descargar plantilla del ítem"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  Plantilla
+                                </button>
+                                {!readOnly && (
+                                  <button
+                                    onClick={() => setModalUpload({
+                                      listaId: lista.id,
+                                      doc: {
+                                        documentoBibliotecaId: item.documentoBibliotecaId!,
+                                        nombreDocumento: item.documentoNombre || item.texto || 'Documento',
+                                        diligenciado: false
+                                      }
+                                    })}
+                                    className="px-2.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                                    style={{ backgroundColor: '#003DA5', color: '#FFFFFF' }}
+                                    title="Subir documento diligenciado"
+                                  >
+                                    <Upload className="w-3.5 h-3.5" />
+                                    Subir
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
 
                       {/* ── Plantillas requeridas de la lista ── */}
-                      {lista.documentosAdjuntos.length > 0 && (
+                      {lista.documentosAdjuntos.length > 0 ? (
                         <div className="mt-1 pt-4 border-t-2 border-gray-100">
                           <div className="flex items-center gap-2 mb-3">
                             <Paperclip className="w-4 h-4 text-indigo-500" />
@@ -600,7 +728,8 @@ export function SeccionListasChequeoExpediente({
                                   ) : !readOnly ? (
                                     <button
                                       onClick={() => setModalUpload({ listaId: lista.id, doc })}
-                                      className="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                                      className="px-2.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                                      style={{ backgroundColor: '#003DA5', color: '#FFFFFF' }}
                                       title="Subir documento diligenciado"
                                     >
                                       <Upload className="w-3.5 h-3.5" />
@@ -610,6 +739,37 @@ export function SeccionListasChequeoExpediente({
                                 </div>
                               </div>
                             ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-1 pt-4 border-t-2 border-gray-100">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                            <div>
+                              <p className="text-sm font-semibold text-amber-800">
+                                Esta lista no tiene plantilla configurada
+                              </p>
+                              <p className="text-xs text-amber-700">
+                                Puedes subir un soporte manual mientras se configura la plantilla.
+                              </p>
+                            </div>
+                            {!readOnly && (
+                              <button
+                                onClick={() => setModalUpload({
+                                  listaId: lista.id,
+                                  doc: {
+                                    documentoBibliotecaId: '',
+                                    nombreDocumento: `Soporte - ${lista.nombre}`,
+                                    diligenciado: false
+                                  }
+                                })}
+                                className="px-2.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
+                                style={{ backgroundColor: '#003DA5', color: '#FFFFFF' }}
+                                title="Subir documento de soporte"
+                              >
+                                <Upload className="w-3.5 h-3.5" />
+                                Subir soporte
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -712,7 +872,7 @@ function ModalSubirPlantilla({
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
+      className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-[9999] p-4"
       onClick={onClose}
     >
       <motion.div
@@ -722,7 +882,7 @@ function ModalSubirPlantilla({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex-shrink-0 bg-indigo-600 text-white px-6 py-5">
+        <div className="flex-shrink-0 bg-blue-700 text-white px-6 py-5" style={{ backgroundColor: '#003DA5', color: '#FFFFFF' }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 bg-white/20 rounded-xl flex items-center justify-center">
@@ -730,10 +890,10 @@ function ModalSubirPlantilla({
               </div>
               <div>
                 <h2 className="text-lg font-black">Subir documento diligenciado</h2>
-                <p className="text-indigo-200 text-xs mt-0.5 truncate max-w-xs">{doc.nombreDocumento}</p>
+                <p className="text-blue-100 text-xs mt-0.5 truncate max-w-xs" style={{ color: '#DBEAFE' }}>{doc.nombreDocumento}</p>
               </div>
             </div>
-            <button type="button" onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg transition-colors">
+            <button type="button" onClick={onClose} className="p-2 text-white hover:bg-white/20 rounded-lg transition-colors">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -750,7 +910,7 @@ function ModalSubirPlantilla({
                 ? 'border-indigo-400 bg-indigo-50'
                 : archivo
                 ? 'border-emerald-400 bg-emerald-50'
-                : 'border-gray-300 bg-gray-50 hover:border-indigo-300 hover:bg-indigo-50'
+                : 'border-gray-300 bg-gray-50 hover:border-blue-300 hover:bg-blue-50'
             }`}
           >
             {archivo ? (
@@ -773,9 +933,12 @@ function ModalSubirPlantilla({
                 <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
                   <Upload className="w-7 h-7 text-gray-400" />
                 </div>
-                <p className="font-bold text-gray-700">Arrastra el archivo aquí</p>
-                <p className="text-sm text-gray-500">o haz clic para seleccionar</p>
-                <label className="inline-block px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold cursor-pointer text-sm transition-colors">
+                <p className="font-bold text-gray-800">Arrastra el archivo aquí</p>
+                <p className="text-sm text-gray-600">o haz clic para seleccionar</p>
+                <label
+                  className="inline-block px-5 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg font-bold cursor-pointer text-sm transition-colors shadow-sm"
+                  style={{ backgroundColor: '#003DA5', color: '#FFFFFF', border: '1px solid #1D4ED8' }}
+                >
                   Seleccionar archivo
                   <input
                     type="file"
@@ -787,7 +950,7 @@ function ModalSubirPlantilla({
               </div>
             )}
           </div>
-          <p className="text-xs text-gray-400 text-center">
+          <p className="text-xs text-gray-600 text-center">
             Se asociará a la plantilla &ldquo;{doc.nombreDocumento}&rdquo; en esta auditoría.
           </p>
         </div>
@@ -805,7 +968,8 @@ function ModalSubirPlantilla({
             type="button"
             onClick={submit}
             disabled={!archivo || subiendo}
-            className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
+            className="flex-1 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
+            style={{ backgroundColor: '#003DA5', color: '#FFFFFF' }}
           >
             <Upload className="w-4 h-4" />
             {subiendo ? 'Subiendo...' : 'Subir documento'}

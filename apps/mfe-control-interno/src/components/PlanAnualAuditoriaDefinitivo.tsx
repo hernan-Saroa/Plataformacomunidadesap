@@ -1470,20 +1470,34 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         if (response.data && Array.isArray(response.data)) {
           // Transformar planes del backend al formato frontend
           const planesTransformados = response.data.map((planBackend: any) => ({
+            ...planBackend,
             id: planBackend.id,
             vigencia: planBackend.año || planBackend.vigencia || new Date().getFullYear(),
             version: planBackend.version || 1,
             estado: (planBackend.estado?.toUpperCase().replace(/-/g, '_') || 'BORRADOR') as EstadoPlan,
+            nombrePlan:
+              planBackend.nombre
+              || planBackend.nombre_plan
+              || planBackend.titulo
+              || null,
+            totalActividades:
+              planBackend.total_actividades
+              || planBackend.totalActividades
+              || 0,
             jefeOCI: {
-              id: planBackend.responsable_id || '',
-              nombre: planBackend.responsable || 'No asignado',
-              cargo: 'Responsable',
-              email: ''
+              id: planBackend.responsable_id || planBackend.jefe_oci_id || '',
+              nombre:
+                planBackend.responsable
+                || planBackend.responsable_nombre
+                || planBackend.jefe_oci
+                || 'No asignado',
+              cargo: planBackend.responsable_cargo || 'Responsable',
+              email: planBackend.responsable_email || ''
             },
-            fechaAprobacion: planBackend.fecha_aprobacion || null,
-            fechaCreacion: planBackend.fecha_creacion || new Date().toISOString(),
-            actaCICC: planBackend.acta_cicc || null,
-            roles: [] // Se cargarán al abrir el plan
+            fechaAprobacion: planBackend.fecha_aprobacion || planBackend.fechaAprobacion || null,
+            fechaCreacion: planBackend.fecha_creacion || planBackend.createdAt || new Date().toISOString(),
+            actaCICC: planBackend.acta_cicc || planBackend.actaCICC || null,
+            roles: Array.isArray(planBackend.roles) ? planBackend.roles : [] // En listados puede venir vacío
           }));
           setPlanesAnteriores(planesTransformados);
         }
@@ -1676,12 +1690,13 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               frecuencia_puntos_control: act.frecuenciaPuntosControl || undefined,
               // Tareas de seguimiento (sub-tareas de la actividad)
               tareas_seguimiento: act.tareasSeguimiento && act.tareasSeguimiento.length > 0 
-                ? act.tareasSeguimiento.map(t => ({
+                ? act.tareasSeguimiento.map((t: any) => ({
                     id: t.id,
                     descripcion: t.descripcion,
                     completada: false,
                     responsables: t.responsables || [],
-                    fechaLimite: t.fechaLimite || undefined,
+                    // Compatibilidad: en varios flujos UI la fecha viene como fechaEntrega.
+                    fechaLimite: t.fechaLimite || t.fechaEntrega || t.fecha_limite || t.fecha_entrega || undefined,
                   }))
                 : undefined,
             });

@@ -2355,7 +2355,7 @@ function Paso2({
                                                 <span className="text-[11px] text-gray-500">📅</span>
                                                 <input
                                                   type="date"
-                                                  value={tarea.fechaEntrega || ''}
+                                                  value={tarea.fechaEntrega || (tarea as any).fechaLimite || ''}
                                                   onChange={(e) => updateTarea({ fechaEntrega: e.target.value })}
                                                   className="text-[11px] border border-gray-200 rounded-md px-1.5 py-0.5 bg-white hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none w-[120px]"
                                                   title="Fecha de entrega (opcional)"
@@ -2831,7 +2831,7 @@ function Paso2({
                                               <span className="text-[11px] text-gray-500">📅</span>
                                               <input
                                                 type="date"
-                                                value={tarea.fechaEntrega || ''}
+                                                value={tarea.fechaEntrega || (tarea as any).fechaLimite || ''}
                                                 onChange={(e) => updateTareaCustom({ fechaEntrega: e.target.value })}
                                                 className="text-[11px] border border-gray-200 rounded-md px-1.5 py-0.5 bg-white hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none w-[120px]"
                                                 title="Fecha de entrega (opcional)"
@@ -3455,18 +3455,18 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       const autoTable = (await import('jspdf-autotable')).default;
       const vigencia = plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear();
       
-      // Crear documento PDF con jsPDF
+      // Crear documento PDF con jsPDF - Paisaje para más columnas
       const doc = new jsPDF({
-        orientation: 'portrait',
+        orientation: 'landscape',
         unit: 'mm',
         format: 'letter'
       });
 
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
-      const margin = 20;
+      const margin = 10;
 
-      // Header institucional estandarizado (carga logo dinámicamente)
+      // Header institucional estandarizado
       const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
         ...DOCUMENTOS_PREDEFINIDOS.PLAN_ANUAL,
         logoImg: LOGO_ESAP_URL
@@ -3474,160 +3474,190 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       
       let currentY = alturaEncabezado + 5;
 
-      // Vigencia
+      // Vigencia y Título
       doc.setTextColor(0, 61, 165);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
-      doc.text(`Vigencia ${vigencia}`, pageWidth / 2, currentY, { align: 'center' });
+      doc.text(`PLAN ANUAL DE AUDITORÍA - VIGENCIA ${vigencia}`, pageWidth / 2, currentY, { align: 'center' });
       currentY += 10;
 
-      // Información general
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.text('INFORMACIÓN GENERAL', margin, currentY);
-      currentY += 8;
+      const formatearFechaExportacion = (valor: unknown): string => {
+        if (!valor || typeof valor !== 'string') return '-';
+        const limpio = valor.trim();
+        if (!limpio || limpio === '-') return '-';
+        const fecha = new Date(limpio);
+        if (Number.isNaN(fecha.getTime())) return limpio;
+        return fecha.toLocaleDateString('es-CO');
+      };
 
-      const estadoLabel = plan.estado === 'BORRADOR' ? 'Borrador' : 
-                          plan.estado === 'EN_REVISION' ? 'En revisión' : 
-                          plan.estado === 'APROBADO' ? 'Aprobado' : 
-                          plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado';
+      const obtenerFechaTareaExport = (tarea: any, actividad: any): string => {
+        // En BD (tareas_seguimiento) el campo oficial de fecha es fechaLimite.
+        const fechaLimite = tarea?.fechaLimite || tarea?.fecha_limite;
+        if (fechaLimite) return formatearFechaExportacion(fechaLimite);
+        const tieneDatosTarea = !!tarea && typeof tarea === 'object' && Object.keys(tarea).length > 0;
+        if (tieneDatosTarea) return '-';
 
-      const infoData = [
-        ['Vigencia', vigencia.toString()],
-        ['Estado', estadoLabel],
-        ['Jefe OCI', plan.jefeOCI?.nombre || ''],
-        ['Cargo', plan.jefeOCI?.cargo || ''],
-        ['Fecha Creación', new Date(plan.fechaCreacion).toLocaleDateString('es-CO')]
-      ];
+        const puntosControl = actividad?.puntosControl || actividad?.puntos_control || [];
+        if (Array.isArray(puntosControl) && puntosControl.length > 0) {
+          const fechas = puntosControl
+            .map((pc: any) => pc?.fechaSeguimiento || pc?.fecha_seguimiento)
+            .filter(Boolean)
+            .map((f: any) => formatearFechaExportacion(f))
+            .filter((f: string) => f !== '-');
+          if (fechas.length > 0) return fechas.join('\n');
+        }
+        return '-';
+      };
 
+      const obtenerResponsableTareaExport = (tarea: any): string => {
+        const fuente = tarea?.responsables ?? tarea?.responsable;
+        if (Array.isArray(fuente)) {
+          const valores = fuente
+            .map((r: any) => (typeof r === 'string' ? r : r?.nombre || r?.name || r?.email || ''))
+            .filter(Boolean);
+          return valores.length ? valores.join(', ') : '-';
+        }
+        if (typeof fuente === 'object' && fuente) return fuente.nombre || fuente.name || fuente.email || '-';
+        if (typeof fuente === 'string' && fuente.trim()) return fuente;
+        return '-';
+      };
+
+      // Definición de columnas solicitadas
+      const tableHead = [[
+        'Rol / Macroproceso',
+        'Lista de actividades',
+        'Inicio',
+        'Fin',
+        'Responsable',
+        'Control',
+        'Est.',
+        'Resp. Tarea',
+        'Seguimiento y evaluación tareas',
+        'Fecha',
+        'Eval.'
+      ]];
+
+      const tableBody: any[] = [];
+      let totalActividadesCount = 0;
+      let totalAvanceSuma = 0;
+
+      // Procesar datos para la tabla plana
+      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach((rol) => {
+        rol.actividades.forEach((act, actIdx) => {
+          totalActividadesCount++;
+          const pctActividad = (act.estado === 'Completada' || act.estado === 'COMPLETADA') ? 100 
+                             : (act.entradasSeguimiento && act.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(act) : 0);
+          totalAvanceSuma += pctActividad;
+
+          const fInicio = act.fechaInicio ? new Date(act.fechaInicio).toLocaleDateString('es-CO') : '';
+          const fFin = act.fechaFin ? new Date(act.fechaFin).toLocaleDateString('es-CO') : '';
+          
+          const tareas = act.tareasSeguimiento || [];
+          
+          if (tareas.length === 0) {
+            // Fila única si no hay tareas
+            const fechaDesdePuntos = obtenerFechaTareaExport({}, act);
+            tableBody.push([
+              `${rol.numero}. ${rol.nombre}`,
+              act.nombre,
+              fInicio,
+              fFin,
+              act.responsable?.nombre || 'Solicitado',
+              act.control || 'Seguimiento periódico',
+              `${pctActividad}%`,
+              '-',
+              'Sin tareas registradas',
+              fechaDesdePuntos,
+              '0%'
+            ]);
+          } else {
+            // Una fila por cada tarea de seguimiento
+            tareas.forEach((tarea) => {
+              const fEntrega = obtenerFechaTareaExport(tarea, act);
+              const respTarea = obtenerResponsableTareaExport(tarea);
+              const pctTarea = tarea.completada ? '100%' : '0%';
+              
+              tableBody.push([
+                `${rol.numero}. ${rol.nombre}`,
+                act.nombre,
+                fInicio,
+                fFin,
+                act.responsable?.nombre || 'Solicitado',
+                act.control || 'Seguimiento',
+                `${pctActividad}%`,
+                respTarea,
+                tarea.descripcion,
+                fEntrega,
+                pctTarea
+              ]);
+            });
+          }
+        });
+      });
+
+      // Generar tabla principal
       autoTable(doc, {
         startY: currentY,
-        head: [],
-        body: infoData,
+        head: tableHead,
+        body: tableBody,
         theme: 'grid',
-        styles: { fontSize: 9, cellPadding: 3 },
-        columnStyles: {
-          0: { fontStyle: 'bold', cellWidth: 40 },
-          1: { cellWidth: 'auto' }
+        headStyles: {
+          fillColor: [0, 61, 165],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 7,
+          halign: 'center'
         },
-        margin: { left: margin, right: margin }
+        styles: { 
+          fontSize: 6, 
+          cellPadding: 1.5,
+          overflow: 'linebreak',
+          cellWidth: 'wrap'
+        },
+        columnStyles: {
+          0: { cellWidth: 30 }, // Rol
+          1: { cellWidth: 42 }, // Actividades
+          2: { cellWidth: 15, halign: 'center' }, // Inicio
+          3: { cellWidth: 15, halign: 'center' }, // Fin
+          4: { cellWidth: 22 }, // Responsable
+          5: { cellWidth: 20 }, // Control
+          6: { cellWidth: 10, halign: 'center' }, // Est.
+          7: { cellWidth: 18 }, // Resp. Tarea
+          8: { cellWidth: 42 }, // Seguimiento tareas
+          9: { cellWidth: 15, halign: 'center' }, // Fecha
+          10: { cellWidth: 10, halign: 'center' } // Eval.
+        },
+        margin: { left: margin, right: margin, top: alturaEncabezado + 20 },
+        pageBreak: 'auto',
+        rowPageBreak: 'avoid',
+        didDrawPage: (data) => {
+          // Footer en cada página
+          dibujarPieInstitucional(doc, doc.getNumberOfPages(), true);
+        }
       });
 
       currentY = (doc as any).lastAutoTable.finalY + 10;
-
-      // Actividades por rol
-      let sumaAvanceTotal = 0;
-      let totalActividadesCount = 0;
       
-      [...plan.roles].sort((a, b) => a.numero - b.numero).forEach((rol, rolIdx) => {
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(0, 61, 165);
-        doc.text(`ROL ${rol.numero}: ${rol.nombre.toUpperCase()}`, margin, currentY);
-        currentY += 7;
-
-        // Calcular avance promedio del rol
-        const sumaAvanceRol = rol.actividades.reduce((s, a) => {
-          const pct = (a.estado === 'Completada' || a.estado === 'COMPLETADA') ? 100 
-                    : (a.entradasSeguimiento && a.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(a) : 0);
-          return s + pct;
-        }, 0);
-        const promedioRol = rol.actividades.length > 0 ? Math.round(sumaAvanceRol / rol.actividades.length) : 0;
-
-        sumaAvanceTotal += sumaAvanceRol;
-        totalActividadesCount += rol.actividades.length;
-
-        const actividadesData = rol.actividades.map((act, idx) => {
-          const pctFinal = (act.estado === 'Completada' || act.estado === 'COMPLETADA') ? 100 
-                    : (act.entradasSeguimiento && act.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(act) : 0);
-          return [
-            (idx + 1).toString(),
-            act.nombre,
-            act.responsable?.nombre || 'Sin asignar',
-            act.estado === 'COMPLETADA' ? 'Completada' : 
-            act.estado === 'EN_EJECUCION' ? 'En ejecución' : 'Pendiente',
-            `${pctFinal}%`
-          ];
-        });
-        
-        // Agregar fila de subtotal del rol
-        actividadesData.push([
-          '',
-          `SUBTOTAL ROL (${rol.actividades.length} actividades)`,
-          '',
-          'PROMEDIO:',
-          `${promedioRol}%`
-        ]);
-
-        autoTable(doc, {
-          startY: currentY,
-          head: [['#', 'Actividad', 'Responsable', 'Estado', 'Avance']],
-          body: actividadesData,
-          theme: 'striped',
-          headStyles: {
-            fillColor: [0, 61, 165],
-            textColor: [255, 255, 255],
-            fontStyle: 'bold',
-            fontSize: 9
-          },
-          styles: { fontSize: 8, cellPadding: 2 },
-          columnStyles: {
-            0: { cellWidth: 10, halign: 'center' },
-            1: { cellWidth: 'auto' },
-            2: { cellWidth: 40 },
-            3: { cellWidth: 30, halign: 'center' },
-            4: { cellWidth: 20, halign: 'center' }
-          },
-          margin: { left: margin, right: margin },
-          didParseCell: function(data) {
-            // Destacar la fila de subtotal
-            if (data.row.index === actividadesData.length - 1) {
-              data.cell.styles.fillColor = [41, 98, 255];
-              data.cell.styles.textColor = [255, 255, 255];
-              data.cell.styles.fontStyle = 'bold';
-            }
-          }
-        });
-
-        currentY = (doc as any).lastAutoTable.finalY + 8;
-
-        if (currentY > pageHeight - 40 && rolIdx < plan.roles.length - 1) {
-          doc.addPage();
-          currentY = margin;
-        }
-      });
-      
-      // Total general del plan
-      const promedioGeneral = totalActividadesCount > 0 ? Math.round(sumaAvanceTotal / totalActividadesCount) : 0;
+      // Resumen final
+      const promedioGral = totalActividadesCount > 0 ? Math.round(totalAvanceSuma / totalActividadesCount) : 0;
       
       if (currentY > pageHeight - 30) {
         doc.addPage();
-        currentY = margin;
+        currentY = margin + 20;
       }
-      
-      // Dibujar cuadro de resumen total
-      doc.setFillColor(0, 61, 165);
-      doc.rect(margin, currentY, pageWidth - (margin * 2), 15, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(11);
+
+      doc.setFillColor(240, 240, 240);
+      doc.rect(margin, currentY, pageWidth - (margin * 2), 12, 'F');
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
-      doc.text(`AVANCE TOTAL DEL PLAN: ${promedioGeneral}%`, margin + 5, currentY + 10);
-      doc.text(`(${totalActividadesCount} actividades en ${plan.roles.length} roles)`, pageWidth - margin - 80, currentY + 10);
-      currentY += 20;
+      doc.text(`AVANCE GLOBAL DEL PLAN: ${promedioGral}%  (Total Actividades: ${totalActividadesCount})`, margin + 5, currentY + 8);
 
-      // Footer institucional
-      const totalPages = doc.getNumberOfPages();
-      for (let i = 1; i <= totalPages; i++) {
-        doc.setPage(i);
-        dibujarPieInstitucional(doc, i, true);
-      }
-
-      doc.save(`Plan-Anual-Auditoria-${vigencia}.pdf`);
-      toast.success('PDF generado exitosamente', { description: 'Documento con formato institucional oficial ESAP' });
+      doc.save(`Plan-Anual-Auditoria-${vigencia}-Detallado.pdf`);
+      toast.success('PDF detallado generado', { description: 'Incluye todas las tareas de seguimiento y evaluación.' });
     } catch (error) {
       console.error('Error generando PDF:', error);
-      toast.error('Error al generar PDF', { description: 'Intente nuevamente' });
+      toast.error('Error al generar PDF', { description: 'Ocurrió un error al procesar el documento' });
     }
     setExportando(null);
   };
@@ -4030,6 +4060,21 @@ function SeccionGestionYSeguimiento({
   const [comentarioTareaId, setComentarioTareaId] = useState<string | null>(null);
   const [textoComentarioTarea, setTextoComentarioTarea] = useState('');
 
+  const mapTareasParaBackend = (tareas: TareaSeguimiento[]) =>
+    tareas.map(t => ({
+      id: t.id,
+      descripcion: t.descripcion,
+      completada: t.completada,
+      responsables: (t.responsables || []).map(r => typeof r === 'string' ? { id: r, nombre: r } : r),
+      fechaLimite: t.fechaEntrega || (t as any).fechaLimite || (t as any).fecha_limite || null,
+      fechaCompletada: t.fechaCompletado || (t as any).fechaCompletada || (t as any).fecha_completada || null,
+      // Campos extendidos para no perder requisitos/evidencias al recargar
+      requiereAdjuntos: !!t.requiereAdjuntos,
+      requiereObservaciones: !!t.requiereObservaciones,
+      observaciones: t.observaciones || '',
+      adjuntosTarea: t.adjuntosTarea || [],
+    }));
+
   // Verificar si el usuario actual puede gestionar tareas de seguimiento
   // (Director OCI + responsables del rol)
   const puedeGestionarTareas = (rol: any) => {
@@ -4081,14 +4126,7 @@ function SeccionGestionYSeguimiento({
       onActualizar(planActualizado);
       // Persistir en backend
       if (typeof actividadId === 'string' && actividadId.length >= 32) {
-        const backendTareas = tareasActualizadas.map(t => ({
-          id: t.id,
-          descripcion: t.descripcion,
-          completada: t.completada,
-          responsables: (t.responsables || []).map(r => typeof r === 'string' ? { id: r, nombre: r } : r),
-          fechaLimite: t.fechaEntrega || null,
-          fechaCompletada: t.fechaCompletado || null,
-        }));
+        const backendTareas = mapTareasParaBackend(tareasActualizadas);
         await actividadesApi.update(String(actividadId), { tareas_seguimiento: backendTareas } as any);
       }
       toast.success('Tarea de seguimiento agregada');
@@ -4136,11 +4174,7 @@ function SeccionGestionYSeguimiento({
     onActualizar(planActualizado);
     // Persistir
     if (typeof actividadId === 'string' && actividadId.length >= 32) {
-      const backendTareas = tareasActualizadas.map(t => ({
-        id: t.id, descripcion: t.descripcion, completada: t.completada,
-        responsables: (t.responsables || []).map(r => typeof r === 'string' ? { id: r, nombre: r } : r),
-        fechaLimite: t.fechaEntrega || null, fechaCompletada: t.fechaCompletado || null,
-      }));
+      const backendTareas = mapTareasParaBackend(tareasActualizadas);
       actividadesApi.update(String(actividadId), { tareas_seguimiento: backendTareas } as any)
         .catch(e => console.error('Error persistiendo tarea:', e));
     }
@@ -4169,17 +4203,56 @@ function SeccionGestionYSeguimiento({
     };
     onActualizar(planActualizado);
     if (typeof actividadId === 'string' && actividadId.length >= 32) {
-      const backendTareas = tareasActualizadas.map(t => ({
-        id: t.id, descripcion: t.descripcion, completada: t.completada,
-        responsables: (t.responsables || []).map(r => typeof r === 'string' ? { id: r, nombre: r } : r),
-        fechaLimite: t.fechaEntrega || null, fechaCompletada: t.fechaCompletado || null,
-      }));
+      const backendTareas = mapTareasParaBackend(tareasActualizadas);
       actividadesApi.update(String(actividadId), { tareas_seguimiento: backendTareas } as any)
         .catch(e => console.error('Error persistiendo comentario:', e));
     }
     toast.success('Comentario agregado a la tarea');
     setComentarioTareaId(null);
     setTextoComentarioTarea('');
+  };
+
+  const agregarAdjuntosTarea = async (
+    rolNumero: number,
+    actividadId: string | number,
+    tareaId: string,
+    files: FileList | null
+  ) => {
+    if (!files || files.length === 0) return;
+    const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
+    if (!actividadActual) return;
+    const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
+    const nuevosAdjuntos = Array.from(files).map(file => ({
+      nombre: file.name,
+      url: URL.createObjectURL(file),
+      fecha: new Date().toISOString(),
+    }));
+    const tareasActualizadas = tareasActuales.map(t =>
+      t.id === tareaId
+        ? { ...t, adjuntosTarea: [...(t.adjuntosTarea || []), ...nuevosAdjuntos] }
+        : t
+    );
+    const planActualizado = {
+      ...plan,
+      roles: plan.roles.map(rol => {
+        if (rol.numero === rolNumero) {
+          return {
+            ...rol,
+            actividades: rol.actividades.map(act =>
+              act.id === actividadId ? { ...act, tareasSeguimiento: tareasActualizadas } : act
+            )
+          };
+        }
+        return rol;
+      })
+    };
+    onActualizar(planActualizado);
+    if (typeof actividadId === 'string' && actividadId.length >= 32) {
+      const backendTareas = mapTareasParaBackend(tareasActualizadas);
+      actividadesApi.update(String(actividadId), { tareas_seguimiento: backendTareas } as any)
+        .catch(e => console.error('Error persistiendo adjuntos de tarea:', e));
+    }
+    toast.success(`${nuevosAdjuntos.length} adjunto(s) agregado(s) a la tarea`);
   };
 
   
@@ -4323,8 +4396,8 @@ function SeccionGestionYSeguimiento({
     if (plan?.roles) plan.roles.forEach(r => estado[r.numero] = true);
     return estado;
   });
-  // Estado para colapsar el historial de planes anteriores
-  const [historialColapsado, setHistorialColapsado] = useState(false);
+  // Estado para colapsar el historial de planes anteriores (inicia cerrado)
+  const [historialColapsado, setHistorialColapsado] = useState(true);
   const [formulario, setFormulario] = useState({
     control: '',
     evaluacion: '',
@@ -4427,6 +4500,18 @@ function SeccionGestionYSeguimiento({
       nuevoEstado[rol.numero] = colapsar;
     });
     setRolesColapsados(nuevoEstado);
+  };
+
+  const obtenerTotalActividadesPlanAnterior = (planAnterior: any): number => {
+    if (Array.isArray(planAnterior?.roles) && planAnterior.roles.length > 0) {
+      return planAnterior.roles.reduce((sum: number, rol: any) => {
+        const actividades = Array.isArray(rol?.actividades) ? rol.actividades.length : 0;
+        return sum + actividades;
+      }, 0);
+    }
+    if (typeof planAnterior?.total_actividades === 'number') return planAnterior.total_actividades;
+    if (typeof planAnterior?.totalActividades === 'number') return planAnterior.totalActividades;
+    return 0;
   };
 
   // Funciones de seguimiento
@@ -5077,10 +5162,26 @@ function SeccionGestionYSeguimiento({
             </h3>
             <div className="flex items-center gap-4 flex-wrap">
               <span className="text-sm text-gray-500 font-medium">{planesAnteriores.length} plan(es) completado(s)</span>
-              {renderBotonToggleRoles()}
+              <button
+                onClick={() => setHistorialColapsado(!historialColapsado)}
+                className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-md font-semibold text-xs flex items-center gap-2 transition-all shadow-sm"
+              >
+                {historialColapsado ? (
+                  <>
+                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    Expandir historial
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                    Colapsar historial
+                  </>
+                )}
+              </button>
             </div>
           </div>
           
+          {!historialColapsado && (
           <div className="space-y-3">
             {planesAnteriores.map((planAnterior) => (
               <div 
@@ -5093,7 +5194,7 @@ function SeccionGestionYSeguimiento({
                   </div>
                   <div>
                     <h4 className="font-semibold text-gray-900">
-                      Plan Anual de Auditoría {planAnterior.vigencia}
+                      {(planAnterior as any).nombrePlan || `Plan Anual de Auditoría ${planAnterior.vigencia}`}
                     </h4>
                     <p className="text-sm text-gray-600">
                       {planAnterior.id} • Jefe OCI: {planAnterior.jefeOCI.nombre}
@@ -5111,12 +5212,13 @@ function SeccionGestionYSeguimiento({
                   </span>
                   <div className="text-right text-xs text-gray-500">
                     <p>Aprobado: {planAnterior.fechaAprobacion || 'N/A'}</p>
-                    <p>{planAnterior.roles.reduce((sum, rol) => sum + rol.actividades.length, 0)} actividades</p>
+                    <p>{obtenerTotalActividadesPlanAnterior(planAnterior)} actividades</p>
                   </div>
                 </div>
               </div>
             ))}
           </div>
+          )}
         </div>
       )}
 
@@ -5476,7 +5578,8 @@ function SeccionGestionYSeguimiento({
                               </p>
                               <div className="space-y-1.5">
                                 {actividad.tareasSeguimiento.map((tarea) => {
-                                  const fechaLimite = tarea.fechaEntrega ? new Date(tarea.fechaEntrega) : null;
+                                  const fechaTarea = tarea.fechaEntrega || (tarea as any).fechaLimite || null;
+                                  const fechaLimite = fechaTarea ? new Date(fechaTarea) : null;
                                   const hoy = new Date();
                                   const diasRestantes = fechaLimite ? Math.ceil((fechaLimite.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : null;
                                   const estaVencida = diasRestantes !== null && diasRestantes < 0 && !tarea.completada;
@@ -5528,7 +5631,12 @@ function SeccionGestionYSeguimiento({
                                         {(() => {
                                           const tieneResp = tarea.responsables && tarea.responsables.length > 0;
                                           const rolResps = (rol as any).responsables as Auditor[] | undefined;
-                                          const respNames = tieneResp ? tarea.responsables!.join(', ') : (rolResps && rolResps.length > 0 ? rolResps.map(r => r.nombre).join(', ') : null);
+                                          const respNames = tieneResp
+                                            ? tarea.responsables!
+                                                .map((r: any) => (typeof r === 'string' ? r : r?.nombre || r?.name || r?.email || ''))
+                                                .filter(Boolean)
+                                                .join(', ')
+                                            : (rolResps && rolResps.length > 0 ? rolResps.map(r => r.nombre).join(', ') : null);
                                           const esFallback = !tieneResp && respNames;
                                           return (
                                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] ${
@@ -5543,20 +5651,46 @@ function SeccionGestionYSeguimiento({
                                         })()}
 
                                         {/* 📎 Adjuntos — SIEMPRE visible */}
-                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] ${
-                                          cantAdjuntos > 0 ? 'bg-purple-50 text-purple-700 border border-purple-200 font-medium' : 'bg-gray-100 text-gray-400 border border-dashed border-gray-300'
-                                        }`}>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const input = document.createElement('input');
+                                            input.type = 'file';
+                                            input.multiple = true;
+                                            input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip';
+                                            input.onchange = () => {
+                                              agregarAdjuntosTarea(rol.numero, actividad.id, tarea.id, input.files);
+                                            };
+                                            input.click();
+                                          }}
+                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${
+                                            cantAdjuntos > 0
+                                              ? 'bg-purple-50 text-purple-700 border-purple-200 font-medium hover:bg-purple-100'
+                                              : 'bg-gray-100 text-gray-500 border-dashed border-gray-300 hover:bg-gray-200'
+                                          }`}
+                                          title="Clic para adjuntar evidencia"
+                                        >
                                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
                                           {cantAdjuntos > 0 ? `${cantAdjuntos} archivo${cantAdjuntos !== 1 ? 's' : ''}` : 'Sin adjuntos'}
-                                        </span>
+                                        </button>
 
                                         {/* 💬 Comentario — SIEMPRE visible */}
-                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] ${
-                                          tieneObservacion ? 'bg-amber-50 text-amber-700 border border-amber-200 font-medium' : 'bg-gray-100 text-gray-400 border border-dashed border-gray-300'
-                                        }`}>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setComentarioTareaId(tarea.id);
+                                            setTextoComentarioTarea((tarea.observaciones || '').trim());
+                                          }}
+                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${
+                                            tieneObservacion
+                                              ? 'bg-amber-50 text-amber-700 border-amber-200 font-medium hover:bg-amber-100'
+                                              : 'bg-gray-100 text-gray-500 border-dashed border-gray-300 hover:bg-gray-200'
+                                          }`}
+                                          title="Clic para agregar o editar comentario"
+                                        >
                                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
                                           {tieneObservacion ? 'Con comentario' : 'Sin comentarios'}
-                                        </span>
+                                        </button>
 
                                         {/* ✅ Completada */}
                                         {tarea.completada && (
@@ -5594,6 +5728,38 @@ function SeccionGestionYSeguimiento({
                                             Comentario
                                           </p>
                                           <p className="text-xs text-gray-700 leading-relaxed">{tarea.observaciones}</p>
+                                        </div>
+                                      )}
+
+                                      {/* Editor rápido de comentario de tarea */}
+                                      {comentarioTareaId === tarea.id && (
+                                        <div className="ml-7 mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                                          <textarea
+                                            value={textoComentarioTarea}
+                                            onChange={(e) => setTextoComentarioTarea(e.target.value)}
+                                            className="w-full px-2 py-1.5 border border-amber-300 rounded text-xs resize-none"
+                                            rows={2}
+                                            placeholder="Escribe un comentario para la tarea..."
+                                          />
+                                          <div className="mt-2 flex items-center gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => agregarComentarioTarea(rol.numero, actividad.id, tarea.id, textoComentarioTarea)}
+                                              className="px-2 py-1 text-xs bg-amber-600 hover:bg-amber-700 text-white rounded"
+                                            >
+                                              Guardar comentario
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setComentarioTareaId(null);
+                                                setTextoComentarioTarea('');
+                                              }}
+                                              className="px-2 py-1 text-xs bg-white border border-gray-300 rounded"
+                                            >
+                                              Cancelar
+                                            </button>
+                                          </div>
                                         </div>
                                       )}
                                     </div>
@@ -5674,15 +5840,15 @@ function SeccionGestionYSeguimiento({
                                       <div className="flex justify-end gap-2">
                                         <button
                                           onClick={() => { setFormTareaActividadId(null); setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false }); }}
-                                          className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                                          className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-400 rounded-md hover:bg-gray-100"
                                         >Cancelar</button>
                                         <button
                                           onClick={() => agregarTareaSeguimiento(rol.numero, actividad.id)}
                                           disabled={guardandoTarea || !nuevaTarea.descripcion.trim()}
-                                          className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                                          className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors ${
                                             guardandoTarea || !nuevaTarea.descripcion.trim()
-                                              ? 'bg-gray-200 text-gray-400 border border-gray-300 cursor-not-allowed'
-                                              : 'bg-teal-600 text-white hover:bg-teal-700 shadow-sm'
+                                              ? 'bg-gray-300 text-gray-500 border border-gray-400 cursor-not-allowed'
+                                              : 'bg-teal-700 text-white border border-teal-800 hover:bg-teal-800 shadow-sm'
                                           }`}
                                         >{guardandoTarea ? 'Guardando...' : '✚ Agregar tarea'}</button>
                                       </div>
@@ -5699,6 +5865,15 @@ function SeccionGestionYSeguimiento({
                                 )
                               )}
                             </div>
+                          )}
+                          {(!actividad.tareasSeguimiento || actividad.tareasSeguimiento.length === 0) && puedeGestionarTareas(rol) && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setFormTareaActividadId(actividad.id); }}
+                              className="mt-3 ml-11 w-[calc(100%-2.75rem)] py-2 text-xs font-semibold text-teal-700 bg-teal-50 border-2 border-dashed border-teal-300 rounded-lg hover:bg-teal-100 hover:border-teal-400 transition-colors flex items-center justify-center gap-1.5"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                              Agregar tarea de seguimiento
+                            </button>
                           )}
                         </div>
                       ))

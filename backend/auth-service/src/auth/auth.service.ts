@@ -7,6 +7,7 @@ import { LoginDto } from './dto/login.dto';
 import { MicrosoftLoginDto } from './dto/microsoft-login.dto';
 import { NewPersonDto } from './dto/new-person.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { LoginProtectionService } from './login-protection.service';
 
 interface MicrosoftIdTokenClaims {
   aud?: string;
@@ -23,6 +24,7 @@ export class AuthService {
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
+    private readonly loginProtectionService: LoginProtectionService,
   ) {}
 
   private readonly logger = new Logger(AuthService.name);
@@ -174,6 +176,14 @@ export class AuthService {
 
     await this.usersService.setPassword(user.id_user, newPassword);
     await this.usersService.setResetToken(user.id_user, null);
+    this.loginProtectionService.clearFailedAttempts(
+      this.loginProtectionService.buildAccountKeys(
+        user.id_user,
+        user.username,
+        user.person?.email,
+        normalizedEmail,
+      ),
+    );
 
     return { message: 'Password actualizado correctamente' };
   }
