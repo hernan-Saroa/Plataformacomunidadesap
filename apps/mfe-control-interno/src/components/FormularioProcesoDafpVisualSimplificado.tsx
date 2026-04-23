@@ -195,8 +195,30 @@ function buildInitialData(
   fechaCortePlan?: string
 ): FormularioDafpData {
   const currentYear = new Date().getFullYear();
-  const vigencia = procesoInicial?.vigencia ?? vigenciaPlan ?? currentYear;
-  const fechaCorte = procesoInicial?.fechaCorte || fechaCortePlan || `${vigencia}-12-31`;
+  let vigenciaStorage: number | undefined;
+  let fechaCorteStorage: string | undefined;
+
+  if (typeof window !== 'undefined') {
+    try {
+      const rawPlanActivo = window.localStorage.getItem('esap:plan_anual_activo');
+      if (rawPlanActivo) {
+        const planActivo = JSON.parse(rawPlanActivo);
+        const v = Number(planActivo?.vigencia);
+        if (!isNaN(v) && v >= 2020 && v <= 2100) {
+          vigenciaStorage = v;
+        }
+        if (typeof planActivo?.fechaCorte === 'string' && planActivo.fechaCorte.trim()) {
+          fechaCorteStorage = planActivo.fechaCorte.trim();
+        }
+      }
+    } catch {
+      // Ignorar errores de parseo de localStorage
+    }
+  }
+
+  // Regla solicitada: solo localStorage; si no existe, usar año actual.
+  const vigencia = vigenciaStorage ?? currentYear;
+  const fechaCorte = fechaCorteStorage || `${vigencia}-12-31`;
   const modoProcesoEspecial = inferirModoEspecial(procesoInicial);
 
   return {

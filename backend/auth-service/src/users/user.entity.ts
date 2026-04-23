@@ -7,6 +7,13 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id_user: string;
 
+  @Column({
+    type: 'uuid',
+    unique: true,
+    default: () => 'gen_random_uuid()',
+  })
+  public_id: string;
+
   @Column({ unique: true })
   username: string;
 

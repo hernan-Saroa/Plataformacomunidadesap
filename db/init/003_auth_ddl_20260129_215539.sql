@@ -362,6 +362,7 @@ CREATE TABLE auth.sedes (
 
 CREATE TABLE auth."user" (
     id_user uuid NOT NULL,
+    public_id uuid DEFAULT gen_random_uuid() NOT NULL,
     username character varying(100) NOT NULL,
     password_hash character varying(255) NOT NULL,
     id_tercero bigint,
@@ -556,6 +557,14 @@ ALTER TABLE ONLY auth.registros_calificados
 
 ALTER TABLE ONLY auth."user"
     ADD CONSTRAINT user_pkey PRIMARY KEY (id_user);
+
+
+--
+-- Name: user user_public_id_key; Type: CONSTRAINT; Schema: auth; Owner: -
+--
+
+ALTER TABLE ONLY auth."user"
+    ADD CONSTRAINT user_public_id_key UNIQUE (public_id);
 
 
 --
