@@ -47,6 +47,7 @@ fi
 COMPOSE_FILE_DEV="docker-compose.dev.yml"
 COMPOSE_FILE_MFE="docker-compose.frontend-mfe.yml"
 SERVER_URL_DEV="http://4.156.71.181"
+FRONTEND_NGINX_CONTAINERS="${FRONTEND_NGINX_CONTAINERS:-superapp-frontend-dev superapp-frontend}"
 FRONTEND_MFE_SERVICES=(
     frontend
     frontend-shell
@@ -112,6 +113,34 @@ compose_dev_mfe_prebuilt() {
 
 compose_dev_mfe_gateway_prebuilt() {
     FRONTEND_GATEWAY_DOCKERFILE="Dockerfile.frontend.gateway.prebuilt" compose_dev_mfe "$@"
+}
+
+restart_frontend_nginx() {
+    local container
+    local restarted=0
+
+    for container in $FRONTEND_NGINX_CONTAINERS; do
+        if ! docker inspect "$container" >/dev/null 2>&1; then
+            continue
+        fi
+
+        if [ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null)" != "true" ]; then
+            echo -e "${YELLOW}Nginx frontend ${container} no está en ejecución. Omitiendo reinicio.${NC}"
+            continue
+        fi
+
+        echo -e "${YELLOW}Validando configuración Nginx frontend en ${container}...${NC}"
+        docker exec "$container" nginx -t
+
+        echo -e "${YELLOW}Reiniciando Nginx frontend ${container} para tomar cambios...${NC}"
+        docker restart "$container" >/dev/null
+        echo -e "${GREEN}Nginx frontend ${container} reiniciado${NC}"
+        restarted=1
+    done
+
+    if [ "$restarted" -eq 0 ]; then
+        echo -e "${YELLOW}No se encontró un Nginx frontend activo (${FRONTEND_NGINX_CONTAINERS}). Omitiendo reinicio.${NC}"
+    fi
 }
 
 cleanup_build_artifacts() {
@@ -312,6 +341,7 @@ cmd_rebuild_changed() {
         echo -e "${YELLOW}Reconstruyendo frontend afectado:${NC} ${frontend_services[*]}"
         compose_dev_mfe build "${frontend_services[@]}"
         compose_dev_mfe up -d --no-deps "${frontend_services[@]}"
+        restart_frontend_nginx
     fi
 
     if [ $run_migrations -eq 1 ] || [ ${#backend_services[@]} -gt 0 ]; then
@@ -407,6 +437,7 @@ usage() {
 cmd_up() {
     echo -e "${GREEN}Iniciando servicios...${NC}"
     compose_dev up -d
+    restart_frontend_nginx
     echo -e "${GREEN}Servicios iniciados exitosamente${NC}"
     echo -e "${YELLOW}Nota: si hiciste git pull y esperas publicar cambios nuevos, usa ./deploy.dev.sh rebuild${NC}"
     echo ""
@@ -437,6 +468,7 @@ cmd_down() {
 cmd_restart() {
     echo -e "${YELLOW}Reiniciando servicios...${NC}"
     compose_dev restart
+    restart_frontend_nginx
     echo -e "${GREEN}Servicios reiniciados${NC}"
 }
 
@@ -452,6 +484,7 @@ cmd_rebuild() {
 
     # Publicar nueva versión una vez terminado el build.
     compose_dev up -d
+    restart_frontend_nginx
 
     # Ejecutar migraciones automáticamente
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
@@ -496,6 +529,7 @@ cmd_rebuild_all_mfe() {
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
 
+    restart_frontend_nginx
     echo -e "${GREEN}App completa publicada: microservicios + microfrontends.${NC}"
 }
 
@@ -504,6 +538,7 @@ cmd_rebuild_frontend() {
     echo -e "${YELLOW}Reconstruyendo solo frontend...${NC}"
     compose_dev build frontend
     compose_dev up -d --no-deps frontend
+    restart_frontend_nginx
     echo -e "${GREEN}Frontend reconstruido y reiniciado${NC}"
 }
 
@@ -555,6 +590,7 @@ cmd_up_mfe() {
 
     echo -e "${GREEN}Iniciando frontend desacoplado (gateway + shell + MFEs)...${NC}"
     compose_dev_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE iniciado exitosamente${NC}"
     echo -e "${YELLOW}Nota: si hiciste git pull y esperas publicar cambios nuevos del frontend, usa ./deploy.dev.sh rebuild-mfe <app>${NC}"
     echo ""
@@ -577,6 +613,7 @@ cmd_down_mfe() {
 cmd_restart_mfe() {
     echo -e "${YELLOW}Reiniciando frontend desacoplado...${NC}"
     compose_dev_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE reiniciado${NC}"
 }
 
@@ -627,6 +664,7 @@ cmd_rebuild_mfe() {
     echo -e "${YELLOW}Reconstruyendo servicio frontend MFE: ${resolved_service}${NC}"
     compose_dev_mfe build "$resolved_service"
     compose_dev_mfe up -d --no-deps "$resolved_service"
+    restart_frontend_nginx
     echo -e "${GREEN}Servicio ${resolved_service} reconstruido y reiniciado${NC}"
 }
 
