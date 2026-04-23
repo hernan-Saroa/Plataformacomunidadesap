@@ -197,7 +197,9 @@ ensure_docker_disk_space() {
     echo -e "${YELLOW}Ejecuta en el server PRE:${NC}"
     echo -e "${YELLOW}  ./deploy.pre.sh clean-safe${NC}"
     echo -e "${YELLOW}Luego repite el deploy, o usa:${NC}"
-    echo -e "${YELLOW}  AUTO_CLEAN_DOCKER=true ./deploy.pre.sh rebuild${NC}"
+    echo -e "${YELLOW}  AUTO_CLEAN_DOCKER=true $0 ${1:-rebuild}${NC}"
+    echo -e "${YELLOW}Si solo cambió frontend, usa un rebuild puntual con menor umbral, por ejemplo:${NC}"
+    echo -e "${YELLOW}  MIN_DOCKER_FREE_MB=4096 $0 rebuild-mfe control-interno${NC}"
     exit 1
 }
 
@@ -435,6 +437,7 @@ usage() {
     echo "  down      - Detener todos los servicios"
     echo "  restart   - Reiniciar todos los servicios"
     echo "  rebuild   - Reconstruir sin bajar servicios y publicar al finalizar"
+    echo "  rebuild-fresh - Bajar stack, limpiar imágenes/cache y reconstruir todo sin borrar DB"
     echo "  rebuild-all-mfe - Reconstruir backend + gateway + shell + todos los MFEs"
     echo "  rebuild-changed [rango] - Reconstruir solo servicios afectados por el último pull o por un rango git"
     echo "  rebuild-frontend - Reconstruir y reiniciar solo frontend"
@@ -512,6 +515,51 @@ cmd_rebuild() {
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
     echo -e "${GREEN}Nueva versión publicada. Servicios PRE reconstruidos y reiniciados.${NC}"
+}
+
+cmd_rebuild_fresh() {
+    if [ ! -f "$COMPOSE_FILE_MFE" ]; then
+        echo -e "${RED}Error: Archivo ${COMPOSE_FILE_MFE} no encontrado${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}Reconstrucción fresca PRE: se detendrá el stack y habrá downtime.${NC}"
+    echo -e "${YELLOW}Se eliminarán contenedores detenidos, imágenes no usadas y caché Docker.${NC}"
+    echo -e "${GREEN}No se ejecutará docker volume prune ni docker compose down -v; los volúmenes de DB se conservan.${NC}"
+    echo -e "${YELLOW}Recomendado antes de producción: ejecutar db-backup manualmente si hay espacio suficiente.${NC}"
+
+    if [ "${REBUILD_FRESH_CONFIRM:-false}" != "true" ]; then
+        echo ""
+        read -p "Escribe REBUILD_FRESH para continuar: " confirm
+        if [ "$confirm" != "REBUILD_FRESH" ]; then
+            echo -e "${YELLOW}Operación cancelada${NC}"
+            exit 1
+        fi
+    fi
+
+    cleanup_build_artifacts
+
+    echo -e "${YELLOW}Deteniendo stack PRE sin borrar volúmenes...${NC}"
+    compose_env_mfe down --remove-orphans
+
+    echo -e "${YELLOW}Eliminando imágenes no usadas y caché Docker...${NC}"
+    docker system prune -a -f
+    docker builder prune -a -f
+
+    ensure_docker_disk_space
+
+    echo -e "${YELLOW}Reconstruyendo todo el stack PRE desde cero...${NC}"
+    compose_env_mfe build
+    compose_env_mfe up -d
+
+    echo -e "${YELLOW}Esperando a que la base de datos esté lista...${NC}"
+    sleep 5
+
+    echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
+    cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+
+    restart_frontend_nginx
+    echo -e "${GREEN}Reconstrucción fresca PRE completada sin borrar la DB.${NC}"
 }
 
 cmd_rebuild_all_mfe() {
@@ -869,6 +917,9 @@ case "$1" in
         ;;
     rebuild)
         cmd_rebuild
+        ;;
+    rebuild-fresh)
+        cmd_rebuild_fresh
         ;;
     rebuild-all-mfe)
         cmd_rebuild_all_mfe
