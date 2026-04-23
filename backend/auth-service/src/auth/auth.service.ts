@@ -201,7 +201,9 @@ export class AuthService {
     jwtUser: AuthenticatedJwtUser,
     dto: RequestSignatureOtpDto,
   ) {
-    const user = await this.usersService.findById(jwtUser.userId);
+    const user = await this.usersService.findById(jwtUser.userId, {
+      allowInternalId: true,
+    });
     if (!user.is_active) {
       throw new UnauthorizedException('Usuario inactivo');
     }
@@ -236,7 +238,9 @@ export class AuthService {
   }
 
   async verifySignatureOtp(jwtUser: AuthenticatedJwtUser, code: string) {
-    const user = await this.usersService.findById(jwtUser.userId);
+    const user = await this.usersService.findById(jwtUser.userId, {
+      allowInternalId: true,
+    });
     const email = this.resolveAuthenticatedEmail(jwtUser, user);
     if (!email) {
       throw new BadRequestException(
