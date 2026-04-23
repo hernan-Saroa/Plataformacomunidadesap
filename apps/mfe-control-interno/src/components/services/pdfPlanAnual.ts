@@ -84,463 +84,175 @@ function obtenerFechaHoraGeneracion(): string {
 // ============================================
 
 export async function generarPDFPlanAnual(plan: PlanAnual, configuracion: ConfiguracionPDF): Promise<void> {
-  // Crear documento PDF (Carta: 215.9mm x 279.4mm)
+  // Crear documento PDF (Carta Paisaje para más columnas)
   const doc = new jsPDF({
-    orientation: 'portrait',
+    orientation: 'landscape',
     unit: 'mm',
     format: 'letter'
   });
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 20;
-
-  let currentY = margin;
+  const margin = 10;
 
   // ============================================
   // 1. HEADER CORPORATIVO
   // ============================================
   
-  // Fondo azul principal
-  const [r, g, b] = hexToRgb(configuracion.colorFondo || COLORES_DEFAULT.azulPrincipal);
+  const [r, g, b] = hexToRgb((configuracion as any).colorFondo || COLORES_DEFAULT.azulPrincipal);
   doc.setFillColor(r, g, b);
-  doc.rect(0, 0, pageWidth, 45, 'F');
+  doc.rect(0, 0, pageWidth, 35, 'F');
 
-  // Logo ESAP (texto por ahora, podría ser imagen)
   doc.setTextColor(255, 255, 255);
-  doc.setFontSize(24);
+  doc.setFontSize(20);
   doc.setFont('helvetica', 'bold');
-  doc.text('ESAP', margin, 20);
+  doc.text('ESAP - ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA', margin, 15);
 
-  // Título del documento
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text('PLAN ANUAL DE AUDITORÍA', margin, 32);
-
-  // Año
   doc.setFontSize(14);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Vigencia ${plan.año}`, margin, 40);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`PLAN ANUAL DE AUDITORÍA - VIGENCIA ${plan.año}`, margin, 25);
 
-  currentY = 55;
+  let currentY = 45;
 
   // ============================================
-  // 2. INFORMACIÓN GENERAL
+  // 2. INFORMACIÓN GENERAL (RESUMIDA)
   // ============================================
 
   doc.setTextColor(0, 0, 0);
-  doc.setFontSize(12);
+  doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text('INFORMACIÓN GENERAL', margin, currentY);
+  doc.text(`Jefe OCI: ${plan.jefeOCI.nombre} | Estado: ${plan.estado} | Versión: ${plan.version}`, margin, currentY);
   currentY += 8;
 
-  // Tabla de información general
-  const infoData = [
-    ['Año Fiscal', plan.año.toString()],
-    ['Estado', plan.estado],
-    ['Versión', plan.version.toString()],
-    ['Jefe OCI', plan.jefeOCI.nombre],
-    ['Cargo', plan.jefeOCI.cargo],
-    ['Fecha de Creación', formatearFecha(plan.fechaCreacion)],
-    ['Fecha de Aprobación', plan.fechaAprobacion ? formatearFecha(plan.fechaAprobacion) : 'Pendiente']
-  ];
+  // ============================================
+  // 3. TABLA DETALLADA DE ACTIVIDADES
+  // ============================================
+
+  const tableHead = [[
+    'Id',
+    'Rol / Macroproceso',
+    'Lista de actividades',
+    'Inicio',
+    'Fin',
+    'Resp. Actividad',
+    'Control',
+    'Est.',
+    'Resp. Tarea',
+    'Seguimiento y evaluación tareas',
+    'Fecha Tarea',
+    'Eval.'
+  ]];
+
+  const tableBody: any[] = [];
+  let currentActivityId = 0;
+
+  // Recolectar todas las actividades de todos los roles
+  [...plan.roles].sort((a, b) => (a.id || 0) - (b.id || 0)).forEach((rol) => {
+    (rol.actividades || []).forEach((act) => {
+      currentActivityId++;
+      
+      const fInicio = act.fechaInicio ? new Date(act.fechaInicio).toLocaleDateString('es-CO') : '';
+      const fFin = act.fechaFin ? new Date(act.fechaFin).toLocaleDateString('es-CO') : '';
+      
+      const actAny = act as any;
+      const tareas = actAny.tareasSeguimiento || actAny.tareas_seguimiento || [];
+      const respActividad = act.responsableNombre || (actAny.responsable?.nombre) || 'Sin asignar';
+      
+      if (tareas.length === 0) {
+        tableBody.push([
+          currentActivityId,
+          rol.nombre, // Siempre mostrar el nombre del rol (desagrupado)
+          act.nombre,
+          fInicio,
+          fFin,
+          respActividad,
+          actAny.control || 'Seguimiento',
+          `${act.porcentaje || 0}%`,
+          '-',
+          actAny.seguimiento || 'Sin tareas registradas',
+          '-',
+          '0%'
+        ]);
+      } else {
+        tareas.forEach((tarea: any) => {
+          // Extraer fecha de la tarea (priorizando fechaEntrega o similares)
+          let fTarea = '-';
+          const rawFecha = tarea.fechaEntrega || tarea.fecha_entrega || tarea.fechaLimite || tarea.fechaFin;
+          if (rawFecha && rawFecha !== '-') {
+            fTarea = new Date(rawFecha).toLocaleDateString('es-CO');
+          }
+
+          // Responsables de la tarea (ahora en su propia columna)
+          const respTarea = Array.isArray(tarea.responsables) 
+            ? tarea.responsables.join(', ') 
+            : (tarea.responsable || '-');
+          
+          tableBody.push([
+            currentActivityId,
+            rol.nombre, // Siempre mostrar el nombre del rol (desagrupado)
+            act.nombre,
+            fInicio,
+            fFin,
+            respActividad,
+            actAny.control || 'Seguimiento',
+            `${act.porcentaje || 0}%`,
+            respTarea,
+            tarea.descripcion || tarea.nombre || '',
+            fTarea,
+            (tarea.completada || tarea.estado === 'completada') ? '100%' : '0%'
+          ]);
+        });
+      }
+    });
+
+    // Agregar fila de subtotal por rol si es necesario (opcional, manteniendo estilo anterior)
+    // tableBody.push([{ content: `SUBTOTAL ROL: ${rol.nombre}`, colSpan: 12, styles: { fillColor: [240, 240, 240], fontStyle: 'bold' } }]);
+  });
 
   autoTable(doc, {
     startY: currentY,
-    head: [],
-    body: infoData,
-    theme: 'plain',
-    styles: {
-      fontSize: 10,
-      cellPadding: 3
+    head: tableHead,
+    body: tableBody,
+    theme: 'grid',
+    headStyles: {
+      fillColor: [0, 61, 165],
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      fontSize: 6,
+      halign: 'center'
+    },
+    styles: { 
+      fontSize: 6, 
+      cellPadding: 1,
+      overflow: 'linebreak'
     },
     columnStyles: {
-      0: { fontStyle: 'bold', cellWidth: 50 },
-      1: { cellWidth: 'auto' }
+      0: { cellWidth: 8, halign: 'center' },  // Id
+      1: { cellWidth: 25 },                  // Rol
+      2: { cellWidth: 35 },                  // Actividad
+      3: { cellWidth: 15, halign: 'center' }, // Inicio
+      4: { cellWidth: 15, halign: 'center' }, // Fin
+      5: { cellWidth: 23 },                  // Resp. Act
+      6: { cellWidth: 22 },                  // Control
+      7: { cellWidth: 10, halign: 'center' }, // Est %
+      8: { cellWidth: 23 },                  // Resp. Tarea (NUEVA)
+      9: { cellWidth: 45 },                  // Seguimiento/Tarea
+      10: { cellWidth: 15, halign: 'center' },// Fecha Tarea
+      11: { cellWidth: 10, halign: 'center' } // Eval %
     },
-    margin: { left: margin, right: margin }
-  });
-
-  currentY = (doc as any).lastAutoTable.finalY + 10;
-
-  // ============================================
-  // 3. CUMPLIMIENTO DECRETO 648/2017
-  // ============================================
-
-  const validacion = validarDecreto648(plan);
-  const stats = obtenerEstadisticasPlan(plan);
-
-  // Box de cumplimiento
-  const boxHeight = 35;
-  const boxColor = validacion.valido 
-    ? hexToRgb(COLORES_DEFAULT.verde)
-    : hexToRgb(COLORES_DEFAULT.rojo);
-
-  doc.setFillColor(boxColor[0], boxColor[1], boxColor[2], 0.1);
-  doc.setDrawColor(boxColor[0], boxColor[1], boxColor[2]);
-  doc.setLineWidth(1);
-  doc.rect(margin, currentY, pageWidth - 2 * margin, boxHeight, 'FD');
-
-  // Título del box
-  doc.setTextColor(boxColor[0], boxColor[1], boxColor[2]);
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  doc.text(
-    validacion.valido ? '✓ CUMPLE DECRETO 648/2017' : '✗ NO CUMPLE DECRETO 648/2017',
-    margin + 5,
-    currentY + 8
-  );
-
-  // Estadísticas
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(60, 60, 60);
-  
-  const statsY = currentY + 18;
-  const statsSpacing = (pageWidth - 2 * margin - 10) / 4;
-  
-  doc.text(`Roles: ${stats.rolesConActividades}/5`, margin + 5, statsY);
-  doc.text(`Actividades: ${stats.totalActividades}`, margin + 5 + statsSpacing, statsY);
-  doc.text(`Progreso: ${stats.progresoGeneral}%`, margin + 5 + statsSpacing * 2, statsY);
-  doc.text(`Estado: ${validacion.valido ? 'Válido' : 'Inválido'}`, margin + 5 + statsSpacing * 3, statsY);
-
-  // Actividades por estado
-  doc.setFontSize(9);
-  const detailY = statsY + 8;
-  doc.text(
-    `Pendiente: ${stats.actividadesPorEstado.Pendiente} | ` +
-    `En Ejecución: ${stats.actividadesPorEstado['En Ejecución']} | ` +
-    `Completada: ${stats.actividadesPorEstado.Completada} | ` +
-    `Retrasada: ${stats.actividadesPorEstado.Retrasada}`,
-    margin + 5,
-    detailY
-  );
-
-  currentY += boxHeight + 15;
-
-  // Errores (si existen)
-  if (!validacion.valido && validacion.errores.length > 0) {
-    doc.setTextColor(239, 68, 68);
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text('ERRORES ENCONTRADOS:', margin, currentY);
-    currentY += 6;
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    validacion.errores.slice(0, 3).forEach((error, idx) => {
-      const lines = doc.splitTextToSize(`${idx + 1}. ${error}`, pageWidth - 2 * margin - 5);
-      doc.text(lines, margin + 3, currentY);
-      currentY += lines.length * 5;
-    });
-
-    if (validacion.errores.length > 3) {
-      doc.text(`... y ${validacion.errores.length - 3} error(es) más`, margin + 3, currentY);
-      currentY += 5;
-    }
-
-    currentY += 5;
-  }
-
-  // ============================================
-  // 4. ROLES Y ACTIVIDADES DEL DECRETO 648
-  // ============================================
-
-  doc.setTextColor(0, 0, 0);
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text('ROLES Y ACTIVIDADES - DECRETO 648/2017', margin, currentY);
-  currentY += 8;
-
-  // Procesar cada rol
-  plan.roles.forEach((rol, rolIdx) => {
-    // Verificar si necesitamos nueva página
-    if (currentY > pageHeight - 60) {
-      doc.addPage();
-      currentY = margin;
-    }
-
-    // Header del rol
-    const rolColor = hexToRgb(rol.color || COLORES_DEFAULT.azulPrincipal);
-    doc.setFillColor(rolColor[0], rolColor[1], rolColor[2], 0.1);
-    doc.setDrawColor(rolColor[0], rolColor[1], rolColor[2]);
-    doc.rect(margin, currentY, pageWidth - 2 * margin, 12, 'FD');
-
-    doc.setTextColor(rolColor[0], rolColor[1], rolColor[2]);
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text(
-      `${rolIdx + 1}. ${rol.icono} ${rol.nombre}`,
-      margin + 3,
-      currentY + 8
-    );
-
-    currentY += 15;
-
-    // Descripción del rol
-    doc.setTextColor(100, 100, 100);
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'italic');
-    const descLines = doc.splitTextToSize(rol.descripcion, pageWidth - 2 * margin - 6);
-    doc.text(descLines, margin + 3, currentY);
-    currentY += descLines.length * 4 + 5;
-
-    // Tabla de actividades con información completa
-    if (rol.actividades.length > 0) {
-      // Para cada actividad, creamos una tabla detallada
-      rol.actividades.forEach((act, actIdx) => {
-        // Verificar si necesitamos nueva página
-        if (currentY > pageHeight - 80) {
-          doc.addPage();
-          currentY = margin;
-        }
-
-        // Header de la actividad
-        doc.setFillColor(245, 245, 245);
-        doc.rect(margin + 3, currentY, pageWidth - 2 * margin - 6, 8, 'F');
-        doc.setTextColor(60, 60, 60);
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.text(`Actividad ${actIdx + 1}: ${act.nombre}`, margin + 5, currentY + 5);
-        currentY += 12;
-
-        // Obtener nombre del responsable (puede venir como objeto o string)
-        const actAny = act as any;
-        const nombreResponsable = actAny.responsable?.nombre || act.responsableNombre || 'Sin asignar';
-        const cargoResponsable = actAny.responsable?.cargo || '';
-        const responsableCompleto = cargoResponsable 
-          ? `${nombreResponsable} - ${cargoResponsable}` 
-          : nombreResponsable;
-
-        // Datos básicos de la actividad
-        const datosBasicos = [
-          ['Responsable', responsableCompleto],
-          ['Fecha Inicio', formatearFecha(act.fechaInicio)],
-          ['Fecha Fin', formatearFecha(act.fechaFin)],
-          ['Avance', `${act.porcentaje}%`],
-          ['Estado', act.estado]
-        ];
-
-        autoTable(doc, {
-          startY: currentY,
-          head: [],
-          body: datosBasicos,
-          theme: 'plain',
-          styles: {
-            fontSize: 8,
-            cellPadding: 2
-          },
-          columnStyles: {
-            0: { fontStyle: 'bold', cellWidth: 35 },
-            1: { cellWidth: 'auto' }
-          },
-          margin: { left: margin + 5, right: margin }
-        });
-
-        currentY = (doc as any).lastAutoTable.finalY + 3;
-
-        // Descripción (si existe)
-        if (act.descripcion && act.descripcion.trim()) {
-          doc.setFontSize(8);
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(80, 80, 80);
-          doc.text('Descripción:', margin + 5, currentY);
-          currentY += 4;
-          doc.setFont('helvetica', 'normal');
-          const descLines = doc.splitTextToSize(act.descripcion, pageWidth - 2 * margin - 10);
-          doc.text(descLines, margin + 5, currentY);
-          currentY += descLines.length * 3.5 + 2;
-        }
-
-        // Seguimiento y Evaluación (campos críticos)
-        const camposSeguimiento: [string, string | undefined][] = [
-          ['Control', (act as any).control],
-          ['Evaluación', (act as any).evaluacion],
-          ['Seguimiento', (act as any).seguimiento],
-          ['Observaciones Director', (act as any).observacionesDirector]
-        ];
-
-        const camposConValor = camposSeguimiento.filter(([, valor]) => valor && valor.trim());
-
-        if (camposConValor.length > 0) {
-          doc.setFillColor(254, 249, 231);
-          doc.rect(margin + 3, currentY, pageWidth - 2 * margin - 6, 6, 'F');
-          doc.setFontSize(8);
-          doc.setFont('helvetica', 'bold');
-          doc.setTextColor(156, 110, 0);
-          doc.text('SEGUIMIENTO Y EVALUACIÓN DE TAREA', margin + 5, currentY + 4);
-          currentY += 9;
-
-          camposConValor.forEach(([label, valor]) => {
-            if (currentY > pageHeight - 30) {
-              doc.addPage();
-              currentY = margin;
-            }
-            doc.setFont('helvetica', 'bold');
-            doc.setTextColor(60, 60, 60);
-            doc.text(`${label}:`, margin + 5, currentY);
-            currentY += 4;
-            doc.setFont('helvetica', 'normal');
-            const lines = doc.splitTextToSize(valor!, pageWidth - 2 * margin - 10);
-            doc.text(lines, margin + 5, currentY);
-            currentY += lines.length * 3.5 + 3;
-          });
-        }
-
-        currentY += 5;
-      });
-    } else {
-      doc.setTextColor(239, 68, 68);
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'italic');
-      doc.text('⚠ Sin actividades asignadas', margin + 6, currentY);
-      currentY += 10;
+    margin: { left: margin, right: margin, bottom: 20 },
+    didDrawPage: (data) => {
+      // Footer
+      const str = `Página ${doc.getNumberOfPages()}`;
+      doc.setFontSize(7);
+      doc.setTextColor(100);
+      doc.text(str, pageWidth - margin - 15, pageHeight - 10);
+      doc.text(`Generado el: ${obtenerFechaHoraGeneracion()}`, margin, pageHeight - 10);
     }
   });
 
-  // ============================================
-  // 5. INFORMACIÓN NORMATIVA
-  // ============================================
-
-  // Verificar espacio para sección final
-  if (currentY > pageHeight - 80) {
-    doc.addPage();
-    currentY = margin;
-  }
-
-  currentY += 5;
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(0, 0, 0);
-  doc.text('MARCO NORMATIVO', margin, currentY);
-  currentY += 7;
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(60, 60, 60);
-
-  const normas = [
-    '• Decreto 648 de 2017: Por el cual se modifica y adiciona el Decreto 1083 de 2015',
-    '• Ley 87 de 1993: Normas para el ejercicio del control interno',
-    '• Ley 1474 de 2011: Estatuto Anticorrupción',
-    '• MECI 2014: Modelo Estándar de Control Interno'
-  ];
-
-  normas.forEach(norma => {
-    const lines = doc.splitTextToSize(norma, pageWidth - 2 * margin);
-    doc.text(lines, margin, currentY);
-    currentY += lines.length * 5;
-  });
-
-  currentY += 5;
-
-  // ============================================
-  // 6. FIRMAS Y APROBACIONES
-  // ============================================
-
-  if (currentY > pageHeight - 60) {
-    doc.addPage();
-    currentY = margin;
-  }
-
-  doc.setDrawColor(200, 200, 200);
-  doc.line(margin, currentY, pageWidth - margin, currentY);
-  currentY += 8;
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(0, 0, 0);
-  doc.text('APROBACIONES', margin, currentY);
-  currentY += 10;
-
-  // Firma Jefe OCI
-  const firmaWidth = 60;
-  const firmaX = margin;
-
-  doc.setDrawColor(100, 100, 100);
-  doc.line(firmaX, currentY, firmaX + firmaWidth, currentY);
-  currentY += 5;
-
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
-  doc.text(plan.jefeOCI.nombre, firmaX, currentY);
-  currentY += 4;
-
-  doc.setFont('helvetica', 'normal');
-  doc.text(plan.jefeOCI.cargo, firmaX, currentY);
-  currentY += 4;
-
-  doc.setTextColor(100, 100, 100);
-  doc.setFontSize(8);
-  if (plan.fechaAprobacion) {
-    doc.text(`Aprobado: ${formatearFecha(plan.fechaAprobacion)}`, firmaX, currentY);
-  } else {
-    doc.text('Pendiente de aprobación', firmaX, currentY);
-  }
-
-  // ============================================
-  // 7. FOOTER EN TODAS LAS PÁGINAS
-  // ============================================
-
-  const totalPages = doc.getNumberOfPages();
-
-  for (let i = 1; i <= totalPages; i++) {
-    doc.setPage(i);
-
-    // Línea superior del footer
-    const footerY = pageHeight - 15;
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.5);
-    doc.line(margin, footerY, pageWidth - margin, footerY);
-
-    // Texto del footer
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.setTextColor(100, 100, 100);
-
-    // Izquierda: Entidad
-    doc.text(
-      'Escuela Superior de Administración Pública - ESAP',
-      margin,
-      footerY + 5
-    );
-
-    // Centro: Fecha de generación
-    const fechaGen = obtenerFechaHoraGeneracion();
-    const fechaWidth = doc.getTextWidth(fechaGen);
-    doc.text(
-      fechaGen,
-      (pageWidth - fechaWidth) / 2,
-      footerY + 5
-    );
-
-    // Derecha: Número de página
-    const pageText = `Página ${i} de ${totalPages}`;
-    const pageWidth2 = doc.getTextWidth(pageText);
-    doc.text(
-      pageText,
-      pageWidth - margin - pageWidth2,
-      footerY + 5
-    );
-
-    // Línea inferior
-    doc.setTextColor(0, 61, 165);
-    doc.setFontSize(7);
-    const urlText = 'www.esap.edu.co';
-    const urlWidth = doc.getTextWidth(urlText);
-    doc.text(
-      urlText,
-      (pageWidth - urlWidth) / 2,
-      footerY + 10
-    );
-  }
-
-  // ============================================
-  // 8. GUARDAR PDF
-  // ============================================
-
-  const nombreArchivo = `Plan_Anual_${plan.año}_${plan.estado.replace(/ /g, '_')}_v${plan.version}.pdf`;
+  // Guardar PDF
+  const nombreArchivo = `Plan_Anual_${plan.año}_Detallado.pdf`;
   doc.save(nombreArchivo);
 }
 

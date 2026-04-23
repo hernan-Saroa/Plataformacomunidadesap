@@ -1676,12 +1676,13 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               frecuencia_puntos_control: act.frecuenciaPuntosControl || undefined,
               // Tareas de seguimiento (sub-tareas de la actividad)
               tareas_seguimiento: act.tareasSeguimiento && act.tareasSeguimiento.length > 0 
-                ? act.tareasSeguimiento.map(t => ({
+                ? act.tareasSeguimiento.map((t: any) => ({
                     id: t.id,
                     descripcion: t.descripcion,
                     completada: false,
                     responsables: t.responsables || [],
-                    fechaLimite: t.fechaLimite || undefined,
+                    // Compatibilidad: en varios flujos UI la fecha viene como fechaEntrega.
+                    fechaLimite: t.fechaLimite || t.fechaEntrega || t.fecha_limite || t.fecha_entrega || undefined,
                   }))
                 : undefined,
             });
