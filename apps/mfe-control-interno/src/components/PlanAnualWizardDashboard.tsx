@@ -344,8 +344,7 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
         evaluacion: '60% avance', 
         seguimiento: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno, a través de sus cinco (5) componentes y publicar en la página web',
         tareasSeguimiento: [
-          { id: 'r1-a4-t1', descripcion: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno, a través de sus cinco (5) componentes', completada: false },
-          { id: 'r1-a4-t2', descripcion: 'Publicar en la página web', completada: false },
+          { id: 'r1-a4-t1', descripcion: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno, a través de sus cinco (5) componentes y publicar en la página web', completada: false },
         ]
       },
       { 
@@ -357,9 +356,7 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
         evaluacion: '60% avance', 
         seguimiento: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION',
         tareasSeguimiento: [
-          { id: 'r1-a5-t1', descripcion: 'Hacer informe', completada: false },
-          { id: 'r1-a5-t2', descripcion: 'Publicar en la página web', completada: false },
-          { id: 'r1-a5-t3', descripcion: 'Diligenciar el seguimiento como tercera línea en ISOLUCION', completada: false },
+          { id: 'r1-a5-t1', descripcion: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION', completada: false },
         ]
       },
       { 
@@ -410,8 +407,7 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
         evaluacion: '60% avance', 
         seguimiento: 'Documentar procedimiento y formato para hacer seguimiento al cumplimiento y efectividad de las acciones de mejora',
         tareasSeguimiento: [
-          { id: 'r2-a3-t1', descripcion: 'Documentar procedimiento para hacer seguimiento al cumplimiento y efectividad de las acciones de mejora', completada: false },
-          { id: 'r2-a3-t2', descripcion: 'Documentar formato para hacer seguimiento al cumplimiento y efectividad de las acciones de mejora', completada: false },
+          { id: 'r2-a3-t1', descripcion: 'Documentar procedimiento y formato para hacer seguimiento al cumplimiento y efectividad de las acciones de mejora', completada: false },
         ]
       },
       { 
@@ -447,8 +443,7 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
         evaluacion: '60% avance', 
         seguimiento: 'Establecer a través de la auditoría interna la efectividad de los controles para evitar la materialización de riesgos y socializar en el Comité Institucional de Coordinación de Control Interno',
         tareasSeguimiento: [
-          { id: 'r2-a6-t1', descripcion: 'Establecer a través de la auditoría interna la efectividad de los controles para evitar la materialización de riesgos', completada: false },
-          { id: 'r2-a6-t2', descripcion: 'Socializar en el Comité Institucional de Coordinación de Control Interno', completada: false },
+          { id: 'r2-a6-t1', descripcion: 'Establecer a través de la auditoría interna la efectividad de los controles para evitar la materialización de riesgos y socializar en el Comité Institucional de Coordinación de Control Interno', completada: false },
         ]
       },
       { 
@@ -552,8 +547,7 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
         evaluacion: '60% avance', 
         seguimiento: 'Realizar capacitaciones y acompañamiento en el diseño de tableros de control',
         tareasSeguimiento: [
-          { id: 'r4-a3-t1', descripcion: 'Realizar capacitaciones en el diseño de tableros de control', completada: false },
-          { id: 'r4-a3-t2', descripcion: 'Realizar acompañamiento en el diseño de tableros de control', completada: false },
+          { id: 'r4-a3-t1', descripcion: 'Realizar capacitaciones y acompañamiento en el diseño de tableros de control', completada: false },
         ]
       },
       { 
@@ -592,8 +586,7 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
         evaluacion: '59% avance', 
         seguimiento: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del proceso respectivo',
         tareasSeguimiento: [
-          { id: 'r5-a1-t1', descripcion: 'Publicar todos los informes de gestión en la página web institucional', completada: false },
-          { id: 'r5-a1-t2', descripcion: 'Allegar al correo del proceso respectivo', completada: false },
+          { id: 'r5-a1-t1', descripcion: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del proceso respectivo', completada: false },
         ]
       },
       { 
@@ -1461,7 +1454,7 @@ function Paso2({
     indexCustom?: number;
   } | null>(null);
 
-  const toggleActividad = (numeroRol: number, actId: string, nombreActividad: string) => {
+  const toggleActividad = (numeroRol: number, actId: string, actividadBase: ActividadBase) => {
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero === numeroRol) {
         const yaSeleccionada = rol.actividadesSeleccionadas.some(a => a.id === actId);
@@ -1473,30 +1466,27 @@ function Paso2({
           };
         } else {
           // Seleccionar
-          const actividadBase = getActividadesPorRol(numeroRol)?.find(a => a.nombre === nombreActividad);
-          if (actividadBase) {
-            // Auto-asignar primer responsable del rol si existe
-            const primerResponsable = rol.responsables?.[0];
-            // Auto-generar 3 puntos de control trimestrales (31 Mar, 30 Jun, 30 Sep)
-            const año = vigencia;
-            const puntosDefault: PuntoControl[] = [
-              { id: `pc-${actId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-              { id: `pc-${actId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-              { id: `pc-${actId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-            ];
-            return {
-              ...rol,
-              actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
-                ...actividadBase,
-                id: actId,
-                tipoEvidencia: 'SOLO_CHECK' as const,
-                fechaCorte: `${año}-09-30`,
-                responsables: primerResponsable ? [primerResponsable] : [],
-                puntosControl: puntosDefault,
-                frecuenciaPuntosControl: 'trimestral' as const,
-              }]
-            };
-          }
+          // Auto-asignar primer responsable del rol si existe
+          const primerResponsable = rol.responsables?.[0];
+          // Auto-generar 3 puntos de control trimestrales (31 Mar, 30 Jun, 30 Sep)
+          const año = parseInt((fechaInicio || new Date().toISOString().split('T')[0]).split('-')[0], 10) || new Date().getFullYear();
+          const puntosDefault: PuntoControl[] = [
+            { id: `pc-${actId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+            { id: `pc-${actId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+            { id: `pc-${actId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+          ];
+          return {
+            ...rol,
+            actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
+              ...actividadBase,
+              id: actId,
+              tipoEvidencia: 'SOLO_CHECK' as const,
+              fechaCorte: `${año}-09-30`,
+              responsables: primerResponsable ? [primerResponsable] : [],
+              puntosControl: puntosDefault,
+              frecuenciaPuntosControl: 'trimestral' as const,
+            }]
+          };
         }
       }
       return rol;
@@ -1968,7 +1958,7 @@ function Paso2({
                                   <input
                                     type="checkbox"
                                     checked={seleccionada}
-                                    onChange={() => toggleActividad(rol.numero, actId, actividad.nombre)}
+                                    onChange={() => toggleActividad(rol.numero, actId, actividad)}
                                     className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500 mt-0.5"
                                   />
                                   <div className="flex-1 min-w-0">
