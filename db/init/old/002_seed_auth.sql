@@ -10,7 +10,7 @@ TRUNCATE TABLE auth.user_roles, auth.role_permissions, auth."user", auth.role, a
 -- ============================================
 INSERT INTO auth.personas (id_tercero, num_identificacion, tip_identificacion, nom_largo, nom_tercero, pri_apellido, gen_tercero, dir_email)
 VALUES
-  (1, '123456789', 'CC', 'Super User',         'Super',      'Usuario',      'M', 'superuser@esap.edu.co'),
+  (1, '123456788', 'CC', 'Super User',         'Super',      'Usuario',      'M', 'superuser@esap.edu.co'),
   (2, '123456789', 'CC', 'Admin Sistema',      'Admin',      'Sistema',      'M', 'admin@esap.edu.co'),
   (3, '123456790', 'CC', 'Estudiante Prueba',  'Estudiante', 'Prueba',       'M', 'estudiante@esap.edu.co'),
   (4, '123456791', 'CC', 'Docente Planta',     'Docente',    'Planta',       'F', 'planta@esap.edu.co'),
