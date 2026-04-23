@@ -496,7 +496,7 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
   return (
     <div className="space-y-4">
       {/* Header con estadísticas */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-lg font-bold text-gray-900">
             Hallazgos de Auditoría
@@ -510,13 +510,16 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
             )}
           </p>
         </div>
-        <ButtonSIGL
-          variant="primary"
-          icon={<Plus className="w-4 h-4" />}
-          onClick={() => setMostrarFormulario(true)}
-        >
-          Nuevo Hallazgo
-        </ButtonSIGL>
+        <div className="w-full sm:w-auto">
+          <ButtonSIGL
+            variant="primary"
+            icon={<Plus className="w-4 h-4" />}
+            onClick={() => setMostrarFormulario(true)}
+            className="w-full sm:w-auto"
+          >
+            Nuevo Hallazgo
+          </ButtonSIGL>
+        </div>
       </div>
 
       {/* FORMULARIO DE CREACIÓN */}

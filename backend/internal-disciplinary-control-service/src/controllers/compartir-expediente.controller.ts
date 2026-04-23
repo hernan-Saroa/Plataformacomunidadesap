@@ -10,6 +10,8 @@ import {
   Ip,
   Req,
   Res,
+  NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { CompartirExpedienteService } from '../services/compartir-expediente.service';
 import { CrearCompartidoDto, AccederCompartidoDto } from '../dtos/compartir-expediente.dto';
@@ -28,6 +30,7 @@ import { AutoService } from '../services/auto.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
+@UseGuards(JwtAuthGuard)
 @Controller('compartir-expediente')
 export class CompartirExpedienteController {
   constructor(
@@ -204,6 +207,64 @@ export class CompartirExpedienteController {
   ) {
     const frontendBaseUrl = this.getFrontendBaseUrl(req);
     return this.compartirService.obtenerExpedientePublico(token, frontendBaseUrl);
+  }
+
+  /**
+   * Obtener documentos públicos del expediente compartido (sin autenticación)
+   * Retorna la lista de documentos disponibles para el expediente compartido
+   */
+  @Public()
+  @Get('documentos/:token')
+  async obtenerDocumentosPublicos(@Param('token') token: string) {
+    console.log('📄 [CompartirExpediente] obtenerDocumentosPublicos called with token:', token);
+
+    // Verificar que el token de compartido sea válido
+    const compartido = await this.compartirService.obtenerPorToken(token);
+
+    if (!compartido) {
+      throw new NotFoundException('Enlace no encontrado');
+    }
+
+    if (compartido.estado !== EstadoCompartido.ACTIVO) {
+      throw new ForbiddenException('Este enlace ya no está activo');
+    }
+
+    if (compartido.fechaExpiracion && new Date() > compartido.fechaExpiracion) {
+      throw new ForbiddenException('Este enlace ha expirado');
+    }
+
+    // Obtener documentos del proceso
+    const documentos = await this.processService.getEvidenceByProcessId(compartido.procesoId);
+
+    // Mapear al formato esperado por el frontend
+    const documentosMapeados = documentos.map(doc => ({
+      id: doc.id,
+      nombre: doc.documentName || doc.filename || 'Documento sin nombre',
+      tipo: doc.documentType || 'Documento',
+      etapa: doc.etapa || 'Sin etapa',
+      version: doc.version || 1,
+      tamaño: doc.fileSize ? `${Math.round(doc.fileSize / 1024)} KB` : 'Tamaño desconocido',
+      fechaCarga: doc.createdAt || doc.fechaCarga || new Date().toISOString(),
+      usuarioCarga: doc.usuarioCarga || 'Sistema',
+      descripcion: doc.description || '',
+      url: doc.url,
+      urlExterna: doc.urlExterna,
+      downloadUrl: `/compartir-expediente/documento/${token}/${doc.id}/download`,
+      metadatos: {
+        firmado: doc.metadatos?.firmado || false,
+        notificado: doc.metadatos?.notificado || false,
+        folios: doc.metadatos?.folios || 0,
+      },
+    }));
+
+    return {
+      proceso: {
+        id: compartido.procesoId,
+        radicadoProceso: compartido.proceso?.radicadoProceso || 'Sin radicado',
+      },
+      documentos: documentosMapeados,
+    };
+
   }
 
   /**

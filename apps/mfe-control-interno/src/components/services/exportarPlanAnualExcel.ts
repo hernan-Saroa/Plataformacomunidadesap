@@ -6,7 +6,10 @@
  * Genera Excel del Plan Anual de Auditoría con:
  * - Encabezado institucional formato EM-PT-004
  * - Logo ESAP
- * - Estructura: Logo | Título | Código/Versión/Fecha
+ * - 11 columnas: Rol, Actividad, Inicio, Fin, Responsable, Control, Est., Responsable tarea, Seguimiento, Fecha, Eval.
+ * - Datos de actividad REPETIDOS en cada fila de tarea
+ * - Rol agrupado (solo primera actividad del rol)
+ * - Responsables de tarea incluidos
  * 
  * Usa ExcelJS para soporte de imágenes
  */
@@ -19,9 +22,6 @@ import logoESAP from '@/assets/cropped-favicon-32x32.png';
 // Cache del logo en base64
 let _logoCache: string | null = null;
 
-/**
- * Convierte el logo a base64 para uso en Excel
- */
 async function getLogoBase64(): Promise<string> {
   if (_logoCache) return _logoCache;
   return new Promise((resolve) => {
@@ -45,12 +45,10 @@ async function getLogoBase64(): Promise<string> {
   });
 }
 
-// Colores corporativos ESAP
 const EXCEL_COLORS = {
-  primaryDark: 'FF003DA5',  // Azul ESAP
+  primaryDark: 'FF003DA5',
   primaryLight: 'FF2962FF',
   white: 'FFFFFFFF',
-  grayLight: 'FFF5F5F5',
   textDark: 'FF333333',
   success: 'FF22C55E',
   warning: 'FFFBBF24',
@@ -149,20 +147,56 @@ export const COLUMNAS_DISPONIBLES: ColumnaExcel[] = [
 export interface ExportOptions {
   columnasSeleccionadas?: string[]; // keys de columnas a incluir
 }
+function formatearFechaExportacion(valor: unknown): string {
+  if (!valor) return '-';
+  if (typeof valor !== 'string') return '-';
+  const limpio = valor.trim();
+  if (!limpio || limpio === '-') return '-';
+  const fecha = new Date(limpio);
+  if (Number.isNaN(fecha.getTime())) return limpio;
+  return fecha.toLocaleDateString('es-CO');
+}
 
-/**
- * Exporta el Plan Anual a Excel con encabezado institucional y logo
- */
+function extraerResponsablesTarea(tarea: any): string {
+  const fuente = tarea?.responsables ?? tarea?.responsable;
+  if (Array.isArray(fuente)) {
+    const valores = fuente
+      .map((r: any) => (typeof r === 'string' ? r : r?.nombre || r?.name || r?.email || ''))
+      .filter(Boolean);
+    return valores.length ? valores.join(', ') : '-';
+  }
+  if (typeof fuente === 'object' && fuente) {
+    return fuente.nombre || fuente.name || fuente.email || '-';
+  }
+  if (typeof fuente === 'string' && fuente.trim()) return fuente;
+  return '-';
+}
+
+function extraerFechaTarea(tarea: any, actividad: any): string {
+  // En BD (tareas_seguimiento) el campo oficial de fecha es fechaLimite.
+  const fechaLimite = tarea?.fechaLimite || tarea?.fecha_limite;
+  if (fechaLimite) return formatearFechaExportacion(fechaLimite);
+  const tieneDatosTarea = !!tarea && typeof tarea === 'object' && Object.keys(tarea).length > 0;
+  if (tieneDatosTarea) return '-';
+
+  const puntosControl = actividad?.puntosControl || actividad?.puntos_control || [];
+  if (Array.isArray(puntosControl) && puntosControl.length > 0) {
+    const fechas = puntosControl
+      .map((pc: any) => pc?.fechaSeguimiento || pc?.fecha_seguimiento)
+      .filter(Boolean)
+      .map((f: any) => formatearFechaExportacion(f))
+      .filter((f: string) => f !== '-');
+    if (fechas.length > 0) return fechas.join('\n');
+  }
+  return '-';
+}
+
 export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOptions): Promise<ResultadoExportacion> {
   const vigencia = plan.vigencia ?? plan.año ?? new Date().getFullYear();
   const nombreArchivo = `Plan_Anual_Auditoria_${vigencia}_ESAP.xlsx`;
   const fechaCorta = new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
   const fechaGeneracion = new Date().toLocaleDateString('es-CO', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
+    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
   });
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -191,20 +225,15 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
     workbook.creator = 'ESAP - Control Interno';
     workbook.created = new Date();
 
-    // Cargar logo
     let logoImageId: number | null = null;
     try {
       const logoBase64 = await getLogoBase64();
       const base64Data = logoBase64.includes(',') ? logoBase64.split(',')[1] : logoBase64;
-      logoImageId = workbook.addImage({
-        base64: base64Data,
-        extension: 'png',
-      });
+      logoImageId = workbook.addImage({ base64: base64Data, extension: 'png' });
     } catch (e) {
       console.warn('No se pudo cargar el logo para Excel:', e);
     }
 
-    // Crear hoja
     const ws = workbook.addWorksheet('Plan Anual', {
       properties: { tabColor: { argb: EXCEL_COLORS.primaryDark } },
       pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true }
@@ -228,23 +257,13 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
     ws.getRow(3).height = 22;
     ws.getRow(4).height = 20;
 
-    // --- SECCIÓN LOGO (Columnas A-B, Filas 1-3) ---
+    // Logo
     ws.mergeCells('A1:B3');
     const logoCell = ws.getCell('A1');
     logoCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
-    logoCell.border = {
-      top: { style: 'thin', color: { argb: '000000' } },
-      left: { style: 'thin', color: { argb: '000000' } },
-      bottom: { style: 'thin', color: { argb: '000000' } },
-      right: { style: 'thin', color: { argb: '000000' } }
-    };
-
-    // Agregar imagen del logo
+    logoCell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
     if (logoImageId !== null) {
-      ws.addImage(logoImageId, {
-        tl: { col: 0.3, row: 0.3 },
-        ext: { width: 55, height: 55 }
-      });
+      ws.addImage(logoImageId, { tl: { col: 0.3, row: 0.3 }, ext: { width: 55, height: 55 } });
     } else {
       logoCell.value = 'ESAP';
       logoCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: EXCEL_COLORS.primaryDark } };
@@ -261,7 +280,6 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
     titleCell.value = 'PLAN ANUAL DE AUDITORÍA INTERNA';
     titleCell.font = { name: 'Calibri', size: 14, bold: true, color: { argb: '000000' } };
     titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
-    titleCell.border = { top: { style: 'thin' }, bottom: { style: 'thin' } };
 
     ws.mergeCells(`C2:${titleEndCol}2`);
     const subtitleCell = ws.getCell('C2');
@@ -333,8 +351,6 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
     infoCell.font = { name: 'Calibri', size: 9, italic: true, color: { argb: '666666' } };
     infoCell.alignment = { horizontal: 'left', vertical: 'middle' };
     ws.getRow(5).height = 18;
-
-    // --- FILA 6: Espacio ---
     ws.getRow(6).height = 8;
 
     const COLUMN_WIDTHS: Record<string, number> = {
@@ -352,36 +368,57 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
       cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: EXCEL_COLORS.white } };
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryDark } };
       cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-      cell.border = {
-        top: { style: 'thin', color: { argb: EXCEL_COLORS.primaryDark } },
-        bottom: { style: 'thin', color: { argb: EXCEL_COLORS.primaryDark } },
-        left: { style: 'thin', color: { argb: EXCEL_COLORS.primaryDark } },
-        right: { style: 'thin', color: { argb: EXCEL_COLORS.primaryDark } }
-      };
+      cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
     });
     headerRow.height = 30;
 
     // --- Anchos de columna (dinámicos) ---
     ws.columns = activeColumns.map(col => ({ width: COLUMN_WIDTHS[col.key] || 20 }));
 
-    // --- DATOS DE ACTIVIDADES (empiezan en fila 8) ---
+    // ═══════════════ DATOS ═══════════════
     let rowNum = 8;
     
     // Variables para el cálculo del total general
     let totalActividadesPlan = 0;
     let sumaAvancePlan = 0;
+    let absoluteRowCounter = 0;
+
+    const pintarFila = (data: any[], count: number) => {
+      const isEven = count % 2 === 0;
+      const row = ws.getRow(rowNum);
+      data.forEach((val, ci) => {
+        const cell = row.getCell(ci + 1);
+        cell.value = val;
+        cell.font = { name: 'Calibri', size: 9, color: { argb: EXCEL_COLORS.textDark } };
+        // Estilo especial para la Actividad (Columna 3)
+        if (ci === 2) cell.font = { ...cell.font, bold: true };
+        
+        cell.alignment = { 
+          horizontal: [0, 1, 4, 7, 8].includes(ci) ? 'left' : 'center', 
+          vertical: 'middle', 
+          wrapText: [0, 1, 4, 7, 8].includes(ci) 
+        };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isEven ? 'FFFFFFFF' : 'FFF9FAFB' } };
+        cell.border = { 
+          top: { style: 'thin', color: { argb: 'FFE5E7EB' } }, 
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } }, 
+          left: { style: 'thin', color: { argb: 'FFE5E7EB' } }, 
+          right: { style: 'thin', color: { argb: 'FFE5E7EB' } } 
+        };
+
+        if (ci === 6 || ci === 10) { // Est. o Eval.
+          const n = typeof val === 'string' ? Number(val.replace('%', '')) : 0;
+          if (n >= 100) cell.font = { ...cell.font, color: { argb: EXCEL_COLORS.success }, bold: true };
+        }
+      });
+      row.height = 30;
+      rowNum++;
+    };
 
     for (const rol of roles) {
       const actividades = rol.actividades ?? [];
-      
-      // Variables para subtotal del rol
       let sumaAvanceRol = 0;
       const totalActividadesRol = actividades.length;
-      
-      for (let i = 0; i < actividades.length; i++) {
-        const a = actividades[i];
-        const dataRow = ws.getRow(rowNum);
-        const isEven = (rowNum - 8) % 2 === 0;
 
         // ═══════════════════════════════════════════════════════════════════
         // RESPONSABLE: Prioridad → responsables[] (array moderno del backend)
@@ -437,6 +474,9 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
         sumaAvanceRol += porcentaje;
         sumaAvancePlan += porcentaje;
         totalActividadesPlan++;
+        const actAny = act as any;
+        const tareas = actAny.tareasSeguimiento || actAny.tareas_seguimiento || [];
+        const respActividad = act.responsableNombre || (actAny.responsable?.nombre) || 'Sin asignar';
 
         // Fecha de corte
         const fechaCorteStr = actAny.fecha_corte || actAny.fechaCorte || '';
@@ -576,6 +616,7 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
         rowNum++;
       }
     }
+    // Sin total general ni pie separador (requerimiento de formato continuo)
 
     // ═══════════════════════════════════════════════════════════════════════
     // TOTAL GENERAL DEL PLAN
@@ -617,17 +658,9 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
     link.click();
     window.URL.revokeObjectURL(url);
 
-    return {
-      exito: true,
-      nombreArchivo
-    };
-
+    return { exito: true, nombreArchivo };
   } catch (error) {
     console.error('Error al generar Excel:', error);
-    return {
-      exito: false,
-      nombreArchivo,
-      error: error instanceof Error ? error.message : 'Error desconocido'
-    };
+    return { exito: false, nombreArchivo, error: error instanceof Error ? error.message : 'Error desconocido' };
   }
 }
