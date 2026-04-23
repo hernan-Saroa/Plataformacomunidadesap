@@ -65,9 +65,9 @@ export const notificationsService = {
     try {
       const response = await apiClient.get(`${SERVICE_PREFIX}/users/${userId}/notifications`, params as Record<string, any>);
       return response;
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
-      throw error;
+    } catch {
+      // Silenciar errores cuando el servicio de notificaciones no está disponible
+      return { data: [], total: 0, no_leidas: 0 };
     }
   },
 
@@ -78,9 +78,8 @@ export const notificationsService = {
     try {
       const response = await apiClient.get(`${SERVICE_PREFIX}/users/${userId}/notifications/unread`);
       return response.data;
-    } catch (error) {
-      console.error('Error fetching unread notifications:', error);
-      throw error;
+    } catch {
+      return [];
     }
   },
 
@@ -91,9 +90,8 @@ export const notificationsService = {
     try {
       const response = await apiClient.get(`${SERVICE_PREFIX}/users/${userId}/notifications/unread/count`);
       return response.data.count;
-    } catch (error) {
-      console.error('Error fetching unread count:', error);
-      throw error;
+    } catch {
+      return 0;
     }
   },
 

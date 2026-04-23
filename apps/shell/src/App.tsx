@@ -214,6 +214,7 @@ export default function App() {
     );
   }
 
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [currentView, setCurrentView] = useState<AppView>('landing');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userData, setUserData] = useState<any>({ name: '', email: '', personId: '', modules: [], roles: [], permissions: [] });
@@ -240,6 +241,20 @@ export default function App() {
   // ============================================
   // PERSISTENCIA DE SESIÓN
   // ============================================
+
+  // Detector de conexión a internet
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Cargar sesión guardada al iniciar
   useEffect(() => {
@@ -1171,6 +1186,14 @@ export default function App() {
         )}
 
         <Toaster position="top-right" richColors expand={true} />
+
+        {/* INDICADOR GLOBAL DE MODO OFFLINE */}
+        {!isOnline && (
+          <div className="fixed bottom-0 left-0 right-0 z-[9999] bg-orange-500 text-white p-2 text-center text-sm font-medium flex items-center justify-center gap-2 shadow-lg animate-in slide-in-from-bottom-2">
+            <AlertTriangle className="w-4 h-4" />
+            Sin conexión a internet. Estás en modo offline. Los cambios se guardarán localmente y se sincronizarán al reconectar.
+          </div>
+        )}
       </ErrorBoundary>
     </NotificacionesProvider >
   );
