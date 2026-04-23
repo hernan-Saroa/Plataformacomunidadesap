@@ -3,7 +3,7 @@
  * Sistema centralizado para gestionar notificaciones desde cualquier módulo
  */
 
-import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
 import { notificationsService, Notification as ApiNotification } from '../../services/api/notificationsService';
 import { authService } from '../../services/api/authService';
 
@@ -143,8 +143,13 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
     });
   }, []);
 
+  const consecutiveFailures = useRef<number>(0);
+
   // Cargar notificaciones desde el backend
   const loadNotifications = useCallback(async () => {
+    // Si ha fallado repetidamente, pausar el polling para evitar spam en la consola
+    if (consecutiveFailures.current >= 3) return;
+
     const user = authService.getCurrentUser();
     if (!user?.id) return;
     try {
@@ -152,8 +157,10 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
       const list = Array.isArray(result) ? result : (result.data || []);
       const mapped = list.map(mapApiNotification);
       setNotifications(mapped);
-    } catch (err) {
-      console.error('[Notif] error cargando notificaciones:', err);
+      consecutiveFailures.current = 0; // Reiniciar contador de fallos si tiene éxito
+    } catch {
+      consecutiveFailures.current += 1;
+      // Silencioso cuando el servicio no está disponible
     }
   }, []);
 
@@ -174,7 +181,11 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
 
   // Polling cada 30 segundos para actualizar el badge
   useEffect(() => {
-    const interval = setInterval(loadNotifications, 30_000);
+    const interval = setInterval(() => {
+      if (consecutiveFailures.current < 3) {
+        loadNotifications();
+      }
+    }, 30_000);
     return () => clearInterval(interval);
   }, [loadNotifications]);
 

@@ -51,6 +51,7 @@ SERVER_URL_ENV="http://135.237.81.133"
 ENV_FILE=".env.qa"
 ENV_NETWORK_KEY="superapp-net-qa"
 ENV_CONTAINER_SUFFIX="-qa"
+FRONTEND_NGINX_CONTAINERS="${FRONTEND_NGINX_CONTAINERS:-superapp-frontend-qa}"
 FRONTEND_MFE_SERVICES=(
     frontend
     frontend-shell
@@ -118,9 +119,88 @@ compose_env_mfe_gateway_prebuilt() {
     FRONTEND_GATEWAY_DOCKERFILE="Dockerfile.frontend.gateway.prebuilt" compose_env_mfe "$@"
 }
 
+restart_frontend_nginx() {
+    local container
+    local restarted=0
+
+    for container in $FRONTEND_NGINX_CONTAINERS; do
+        if ! docker inspect "$container" >/dev/null 2>&1; then
+            continue
+        fi
+
+        if [ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null)" != "true" ]; then
+            echo -e "${YELLOW}Nginx frontend ${container} no está en ejecución. Omitiendo reinicio.${NC}"
+            continue
+        fi
+
+        echo -e "${YELLOW}Validando configuración Nginx frontend en ${container}...${NC}"
+        docker exec "$container" nginx -t
+
+        echo -e "${YELLOW}Reiniciando Nginx frontend ${container} para tomar cambios...${NC}"
+        docker restart "$container" >/dev/null
+        echo -e "${GREEN}Nginx frontend ${container} reiniciado${NC}"
+        restarted=1
+    done
+
+    if [ "$restarted" -eq 0 ]; then
+        echo -e "${YELLOW}No se encontró un Nginx frontend activo (${FRONTEND_NGINX_CONTAINERS}). Omitiendo reinicio.${NC}"
+    fi
+}
+
 cleanup_build_artifacts() {
     echo -e "${YELLOW}Limpiando artefactos locales del backend para reducir el contexto de build...${NC}"
     find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
+}
+
+get_docker_free_mb() {
+    local docker_root
+    docker_root=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || true)
+
+    if [ -z "$docker_root" ] || [ ! -d "$docker_root" ]; then
+        return 1
+    fi
+
+    df -Pm "$docker_root" | awk 'NR==2 {print $4}'
+}
+
+ensure_docker_disk_space() {
+    local min_free_mb="${MIN_DOCKER_FREE_MB:-10240}"
+    local free_mb
+
+    if ! free_mb=$(get_docker_free_mb); then
+        echo -e "${YELLOW}No fue posible validar espacio libre de Docker. Continuando...${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}Espacio libre Docker: ${free_mb} MB (mínimo recomendado: ${min_free_mb} MB)${NC}"
+
+    if [ "$free_mb" -ge "$min_free_mb" ]; then
+        return 0
+    fi
+
+    echo -e "${RED}Espacio insuficiente para construir imágenes Docker.${NC}"
+
+    if [ "${AUTO_CLEAN_DOCKER:-false}" = "true" ]; then
+        echo -e "${YELLOW}AUTO_CLEAN_DOCKER=true: ejecutando limpieza segura antes del build...${NC}"
+        cmd_clean_safe
+
+        if ! free_mb=$(get_docker_free_mb); then
+            return 0
+        fi
+
+        echo -e "${YELLOW}Espacio libre Docker después de limpiar: ${free_mb} MB${NC}"
+        if [ "$free_mb" -ge "$min_free_mb" ]; then
+            return 0
+        fi
+    fi
+
+    echo -e "${YELLOW}Ejecuta en el server QA:${NC}"
+    echo -e "${YELLOW}  ./deploy.qa.sh clean-safe${NC}"
+    echo -e "${YELLOW}Luego repite el deploy, o usa:${NC}"
+    echo -e "${YELLOW}  AUTO_CLEAN_DOCKER=true $0 ${1:-rebuild}${NC}"
+    echo -e "${YELLOW}Si solo cambió frontend, usa un rebuild puntual con menor umbral, por ejemplo:${NC}"
+    echo -e "${YELLOW}  MIN_DOCKER_FREE_MB=4096 $0 rebuild-mfe control-interno${NC}"
+    exit 1
 }
 
 ensure_frontend_dependencies() {
@@ -304,6 +384,7 @@ cmd_rebuild_changed() {
         exit 0
     fi
 
+    ensure_docker_disk_space
     cleanup_build_artifacts
 
     if [ ${#backend_services[@]} -gt 0 ]; then
@@ -316,6 +397,7 @@ cmd_rebuild_changed() {
         echo -e "${YELLOW}Reconstruyendo frontend afectado:${NC} ${frontend_services[*]}"
         compose_env_mfe build "${frontend_services[@]}"
         compose_env_mfe up -d --no-deps "${frontend_services[@]}"
+        restart_frontend_nginx
     fi
 
     if [ $run_migrations -eq 1 ] || [ ${#backend_services[@]} -gt 0 ]; then
@@ -355,6 +437,7 @@ usage() {
     echo "  down      - Detener todos los servicios"
     echo "  restart   - Reiniciar todos los servicios"
     echo "  rebuild   - Reconstruir sin bajar servicios y publicar al finalizar"
+    echo "  rebuild-fresh - Bajar stack, limpiar imágenes/cache y reconstruir todo sin borrar DB"
     echo "  rebuild-all-mfe - Reconstruir backend + gateway + shell + todos los MFEs"
     echo "  rebuild-changed [rango] - Reconstruir solo servicios afectados por el último pull o por un rango git"
     echo "  rebuild-frontend - Reconstruir y reiniciar solo frontend"
@@ -381,6 +464,7 @@ usage() {
 cmd_up() {
     echo -e "${GREEN}Iniciando servicios QA...${NC}"
     compose_env up -d
+    restart_frontend_nginx
     echo -e "${GREEN}Servicios QA iniciados exitosamente${NC}"
 
     # Esperar a que la base de datos esté lista
@@ -409,6 +493,7 @@ cmd_down() {
 cmd_restart() {
     echo -e "${YELLOW}Reiniciando servicios QA...${NC}"
     compose_env restart
+    restart_frontend_nginx
     echo -e "${GREEN}Servicios QA reiniciados${NC}"
 }
 
@@ -417,6 +502,7 @@ cmd_rebuild() {
     echo -e "${YELLOW}Reconstruyendo servicios QA (sin detener la versión actual)...${NC}"
     echo -e "${YELLOW}La aplicación seguirá disponible mientras termina el build.${NC}"
 
+    ensure_docker_disk_space
     cleanup_build_artifacts
 
     # Construir imágenes con los contenedores actuales activos.
@@ -424,10 +510,56 @@ cmd_rebuild() {
 
     # Publicar nueva versión una vez terminado el build.
     compose_env up -d
+    restart_frontend_nginx
     # Ejecutar migraciones automáticamente
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
     echo -e "${GREEN}Nueva versión publicada. Servicios QA reconstruidos y reiniciados.${NC}"
+}
+
+cmd_rebuild_fresh() {
+    if [ ! -f "$COMPOSE_FILE_MFE" ]; then
+        echo -e "${RED}Error: Archivo ${COMPOSE_FILE_MFE} no encontrado${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}Reconstrucción fresca QA: se detendrá el stack y habrá downtime.${NC}"
+    echo -e "${YELLOW}Se eliminarán contenedores detenidos, imágenes no usadas y caché Docker.${NC}"
+    echo -e "${GREEN}No se ejecutará docker volume prune ni docker compose down -v; los volúmenes de DB se conservan.${NC}"
+    echo -e "${YELLOW}Recomendado antes de producción: ejecutar db-backup manualmente si hay espacio suficiente.${NC}"
+
+    if [ "${REBUILD_FRESH_CONFIRM:-false}" != "true" ]; then
+        echo ""
+        read -p "Escribe REBUILD_FRESH para continuar: " confirm
+        if [ "$confirm" != "REBUILD_FRESH" ]; then
+            echo -e "${YELLOW}Operación cancelada${NC}"
+            exit 1
+        fi
+    fi
+
+    cleanup_build_artifacts
+
+    echo -e "${YELLOW}Deteniendo stack QA sin borrar volúmenes...${NC}"
+    compose_env_mfe down --remove-orphans
+
+    echo -e "${YELLOW}Eliminando imágenes no usadas y caché Docker...${NC}"
+    docker system prune -a -f
+    docker builder prune -a -f
+
+    ensure_docker_disk_space
+
+    echo -e "${YELLOW}Reconstruyendo todo el stack QA desde cero...${NC}"
+    compose_env_mfe build
+    compose_env_mfe up -d
+
+    echo -e "${YELLOW}Esperando a que la base de datos esté lista...${NC}"
+    sleep 5
+
+    echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
+    cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+
+    restart_frontend_nginx
+    echo -e "${GREEN}Reconstrucción fresca QA completada sin borrar la DB.${NC}"
 }
 
 cmd_rebuild_all_mfe() {
@@ -441,6 +573,7 @@ cmd_rebuild_all_mfe() {
     echo -e "${YELLOW}Modo rápido QA: build frontend en host + empaquetado Nginx liviano.${NC}"
     echo -e "${YELLOW}Para forzar el flujo Docker anterior usa: MFE_DOCKER_BUILD_ONLY=true $0 rebuild-all-mfe${NC}"
 
+    ensure_docker_disk_space
     cleanup_build_artifacts
 
     if [ "${MFE_DOCKER_BUILD_ONLY:-false}" = "true" ]; then
@@ -465,14 +598,17 @@ cmd_rebuild_all_mfe() {
 
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+    restart_frontend_nginx
     echo -e "${GREEN}App completa QA publicada: microservicios + microfrontends.${NC}"
 }
 
 # Comando: rebuild-frontend (rápido)
 cmd_rebuild_frontend() {
     echo -e "${YELLOW}Reconstruyendo solo frontend QA...${NC}"
+    ensure_docker_disk_space
     compose_env build frontend
     compose_env up -d --no-deps frontend
+    restart_frontend_nginx
     echo -e "${GREEN}Frontend QA reconstruido y reiniciado${NC}"
 }
 
@@ -486,6 +622,7 @@ cmd_rebuild_service() {
     fi
 
     echo -e "${YELLOW}Reconstruyendo servicio QA: ${service}${NC}"
+    ensure_docker_disk_space
     compose_env build "$service"
     compose_env up -d --no-deps "$service"
     echo -e "${GREEN}Servicio QA ${service} reconstruido y reiniciado${NC}"
@@ -522,6 +659,7 @@ cmd_up_mfe() {
     fi
     echo -e "${GREEN}Iniciando frontend desacoplado QA...${NC}"
     compose_env_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE QA iniciado exitosamente${NC}"
 }
 
@@ -534,6 +672,7 @@ cmd_down_mfe() {
 cmd_restart_mfe() {
     echo -e "${YELLOW}Reiniciando frontend desacoplado QA...${NC}"
     compose_env_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE QA reiniciado${NC}"
 }
 
@@ -568,8 +707,10 @@ cmd_rebuild_mfe() {
         exit 1
     fi
     echo -e "${YELLOW}Reconstruyendo servicio frontend MFE QA: ${resolved_service}${NC}"
+    ensure_docker_disk_space
     compose_env_mfe build "$resolved_service"
     compose_env_mfe up -d --no-deps "$resolved_service"
+    restart_frontend_nginx
     echo -e "${GREEN}Servicio ${resolved_service} reconstruido y reiniciado${NC}"
 }
 
@@ -630,7 +771,7 @@ cmd_clean_safe() {
     # Elimina imágenes NO usadas (aunque estén "taggeadas").
     # No borra imágenes en uso por contenedores en ejecución.
     docker image prune -a -f
-    docker builder prune -f --filter "until=168h"
+    docker builder prune -a -f
     docker network prune -f
 
     # Eliminar solo volúmenes huérfanos, excepto los protegidos de BD QA
@@ -771,6 +912,9 @@ case "$1" in
         ;;
     rebuild)
         cmd_rebuild
+        ;;
+    rebuild-fresh)
+        cmd_rebuild_fresh
         ;;
     rebuild-all-mfe)
         cmd_rebuild_all_mfe

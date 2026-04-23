@@ -43,7 +43,7 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('plan.roles', 'roles')
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
-      .where("plan.estado != 'eliminado'")
+      .where('plan.año > 0')
       .orderBy('plan.año', 'DESC')
       .addOrderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC');
@@ -62,7 +62,7 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.id = :id', { id })
-      .andWhere("plan.estado != 'eliminado'")
+      .andWhere('plan.año > 0')
       .orderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC')
       .getOne();
@@ -81,7 +81,7 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.año = :year', { year })
-      .andWhere("plan.estado != 'eliminado'")
+      .andWhere('plan.año > 0')
       .orderBy('plan.fecha_creacion', 'DESC') // El más reciente primero
       .addOrderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC')
@@ -89,29 +89,10 @@ export class PlanAnual5RolesService {
   }
 
   async create(createDto: CreatePlanAnual5RolesDto, usuarioId?: string): Promise<PlanAnual5Roles> {
-    // Verificar solapamiento de fechas con planes existentes
-    const fechaInicio = createDto.fecha_inicio || `${createDto.año}-01-01`;
-    const fechaFin = createDto.fecha_fin || `${createDto.año}-12-31`;
-    
-    const overlapping = await this.planRepository
-      .createQueryBuilder('plan')
-      .where("plan.estado != 'eliminado'")
-      .andWhere(
-        `(plan.fecha_inicio <= :fechaFin AND plan.fecha_fin >= :fechaInicio)`,
-        { fechaInicio, fechaFin }
-      )
-      .getOne();
-    
-    if (overlapping) {
-      const overlapInicio = overlapping.fecha_inicio instanceof Date 
-        ? overlapping.fecha_inicio.toISOString().split('T')[0] 
-        : overlapping.fecha_inicio;
-      const overlapFin = overlapping.fecha_fin instanceof Date 
-        ? overlapping.fecha_fin.toISOString().split('T')[0] 
-        : overlapping.fecha_fin;
-      throw new BadRequestException(
-        `Ya existe un plan anual (${overlapInicio} a ${overlapFin}) que se solapa con el rango de fechas seleccionado (${fechaInicio} a ${fechaFin}).`
-      );
+    // Verificar si ya existe un plan para la misma vigencia
+    const existing = await this.findByYear(createDto.año);
+    if (existing) {
+      throw new BadRequestException(`Ya existe un plan anual activo para la vigencia ${createDto.año}.`);
     }
 
     // Crear el plan
@@ -215,7 +196,55 @@ export class PlanAnual5RolesService {
       plan.orden_aprobacion = updateDto.orden_aprobacion;
     }
 
+    // Manejo de fecha_inicio y fecha_fin del plan
+    const oldFechaInicio = plan.fecha_inicio 
+      ? (plan.fecha_inicio instanceof Date ? plan.fecha_inicio.toISOString().split('T')[0] : String(plan.fecha_inicio))
+      : null;
+    const oldFechaFin = plan.fecha_fin 
+      ? (plan.fecha_fin instanceof Date ? plan.fecha_fin.toISOString().split('T')[0] : String(plan.fecha_fin))
+      : null;
+
+    if (updateDto.fecha_inicio !== undefined) {
+      const newVal = updateDto.fecha_inicio;
+      if (newVal !== oldFechaInicio) {
+        cambios.push({ campo: 'fecha_inicio', valorAnterior: oldFechaInicio || '', valorNuevo: newVal });
+        plan.fecha_inicio = new Date(newVal);
+      }
+    }
+    if (updateDto.fecha_fin !== undefined) {
+      const newVal = updateDto.fecha_fin;
+      if (newVal !== oldFechaFin) {
+        cambios.push({ campo: 'fecha_fin', valorAnterior: oldFechaFin || '', valorNuevo: newVal });
+        plan.fecha_fin = new Date(newVal);
+      }
+    }
+
     const savedPlan: PlanAnual5Roles = await this.planRepository.save(plan);
+
+    // Propagar fechas del plan a actividades que aún tienen las fechas anteriores
+    const fechaInicioChanged = cambios.some(c => c.campo === 'fecha_inicio');
+    const fechaFinChanged = cambios.some(c => c.campo === 'fecha_fin');
+    if (fechaInicioChanged || fechaFinChanged) {
+      try {
+        if (fechaInicioChanged && oldFechaInicio) {
+          await this.dataSource.query(`
+            UPDATE control_interno.actividad_plan_anual_5 
+            SET fecha_inicio = $1::date, updated_at = CURRENT_TIMESTAMP
+            WHERE plan_id = $2 AND fecha_inicio = $3::date AND activo = true
+          `, [updateDto.fecha_inicio, savedPlan.id, oldFechaInicio]);
+        }
+        if (fechaFinChanged && oldFechaFin) {
+          await this.dataSource.query(`
+            UPDATE control_interno.actividad_plan_anual_5 
+            SET fecha_fin = $1::date, updated_at = CURRENT_TIMESTAMP
+            WHERE plan_id = $2 AND fecha_fin = $3::date AND activo = true
+          `, [updateDto.fecha_fin, savedPlan.id, oldFechaFin]);
+        }
+        console.log(`[PlanAnual] Fechas propagadas a actividades del plan ${savedPlan.id}`);
+      } catch (propError) {
+        console.error('[PlanAnual] Error propagando fechas a actividades:', propError);
+      }
+    }
 
     // Registrar en historial si hubo cambios
     if (cambios.length > 0) {
@@ -286,10 +315,15 @@ export class PlanAnual5RolesService {
       throw new NotFoundException(`Rol con ID ${rolId} no encontrado`);
     }
 
-    // Guardar usando query SQL directa para evitar problemas de zona horaria con TypeORM
-    // Las fechas se insertan directamente como strings YYYY-MM-DD
-    const fechaInicio = createDto.fecha_inicio || new Date().toISOString().split('T')[0];
-    const fechaFin = createDto.fecha_fin || new Date().toISOString().split('T')[0];
+    // Fechas: prioridad actividad → plan → hoy (fallback, NO hardcodeadas)
+    const planFechaInicio = rol.plan?.fecha_inicio 
+      ? (rol.plan.fecha_inicio instanceof Date ? rol.plan.fecha_inicio.toISOString().split('T')[0] : String(rol.plan.fecha_inicio))
+      : null;
+    const planFechaFin = rol.plan?.fecha_fin 
+      ? (rol.plan.fecha_fin instanceof Date ? rol.plan.fecha_fin.toISOString().split('T')[0] : String(rol.plan.fecha_fin))
+      : null;
+    const fechaInicio = createDto.fecha_inicio || planFechaInicio || new Date().toISOString().split('T')[0];
+    const fechaFin = createDto.fecha_fin || planFechaFin || new Date().toISOString().split('T')[0];
     
     // Asignar configuración de evidencias por defecto si no se proporciona
     // Los campos documentos/observaciones se derivan de adjuntosRequeridos/observacionRequerida
@@ -736,8 +770,9 @@ export class PlanAnual5RolesService {
 
     const vigenciaOriginal = plan.año;
 
-    // Soft delete release pattern
-    plan.estado = 'eliminado' as any;
+    // Soft delete release pattern: usar estado válido para no violar CHECK.
+    // El "eliminado lógico" se determina por año negativo.
+    plan.estado = 'completado';
     // Liberar la vigencia para que el usuario pueda crear otro plan en el mismo año,
     // garantizando que no choque con la restricción @Unique(['año']) de TypeORM
     plan.año = -(Date.now() % 1000000000); 
@@ -752,7 +787,7 @@ export class PlanAnual5RolesService {
       `El Plan Anual de Auditoría de la vigencia ${vigenciaOriginal} fue eliminado por el usuario. Eliminación lógica registrada por control de trazabilidad.`,
       usuarioId || 1, 
       JSON.stringify({ accion: 'SOFT_DELETE', vigenciaOriginal }),
-      'eliminado'
+      'completado'
     );
   }
 

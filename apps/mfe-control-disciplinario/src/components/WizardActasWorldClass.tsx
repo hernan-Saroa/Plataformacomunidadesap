@@ -446,12 +446,32 @@ export function WizardActasWorldClass({
   };
 
   const handleDescargarPlantilla = async () => {
-    const plantillaUrl = tipoSeleccionado?.plantilla?.url || tipoSeleccionado?.plantilla;
-    const nombreArchivo = tipoSeleccionado?.nombre_plantilla || tipoSeleccionado?.nombre || 'acta_generica.docx';
+    // Check if plantilla is a valid URL or if it's just fallback data
+    let plantillaUrl = tipoSeleccionado?.plantilla?.url || tipoSeleccionado?.plantilla;
+    const nombreArchivo = tipoSeleccionado?.nombre_plantilla ||
+                         tipoSeleccionado?.plantilla?.nombreArchivo ||
+                         tipoSeleccionado?.nombre ||
+                         'acta_generica.docx';
 
-    if (!plantillaUrl) {
+    console.log('Debug plantilla:', {
+      tipoSeleccionado,
+      plantilla: tipoSeleccionado?.plantilla,
+      nombreArchivo
+    });
+
+    // If plantilla is an object (fallback data), it's not a real URL
+    if (!plantillaUrl || typeof plantillaUrl === 'object') {
       toast.warning('No hay plantilla configurada para este tipo de acta', {
-        description: 'Configure una plantilla en la sección de configuración',
+        description: 'Configure una plantilla en la sección de Configuración → Actas Parametrizadas',
+        duration: 3000,
+      });
+      return;
+    }
+
+    // Ensure it's a string and not empty
+    if (typeof plantillaUrl !== 'string' || plantillaUrl.trim() === '') {
+      toast.warning('La plantilla configurada no es válida', {
+        description: 'Verifique la configuración de la plantilla en Actas Parametrizadas',
         duration: 3000,
       });
       return;
@@ -459,8 +479,26 @@ export function WizardActasWorldClass({
 
     setDescargando(true);
     try {
-      const urlProcesada = disciplinaryService.getFileUrl(plantillaUrl);
-      await disciplinaryService.downloadFileFromUrl(urlProcesada, nombreArchivo);
+      let urlToDownload = plantillaUrl;
+
+      // Intentar diferentes formatos de URL
+      if (plantillaUrl.startsWith('/uploads/')) {
+        // Las plantillas se guardan en /uploads/plantillas-actas/ pero se sirven desde /files/
+        const filename = plantillaUrl.split('/').pop();
+        urlToDownload = `/files/plantillas-actas/${filename}`;
+      } else if (plantillaUrl.startsWith('/files/')) {
+        // Ya está en el formato correcto
+        urlToDownload = plantillaUrl;
+      } else if (!plantillaUrl.startsWith('http') && plantillaUrl.includes('plantilla-acta')) {
+        // Es una ruta relativa que contiene 'plantilla-acta', intentar convertir
+        const filename = plantillaUrl.split('/').pop();
+        urlToDownload = `/files/plantillas-actas/${filename}`;
+      }
+
+      console.log('Intentando descargar plantilla:', { original: plantillaUrl, processed: urlToDownload, nombreArchivo, tipoSeleccionadoId: tipoSeleccionado?.id });
+
+      // Usar downloadFileFromUrl que maneja la construcción de URLs completa
+      await disciplinaryService.downloadFileFromUrl(urlToDownload, nombreArchivo);
       setPlantillaDescargada(true);
       toast.success('Plantilla descargada correctamente', {
         description: nombreArchivo,
@@ -469,7 +507,7 @@ export function WizardActasWorldClass({
     } catch (error) {
       console.error('Error descargando plantilla:', error);
       toast.error('Error al descargar la plantilla', {
-        description: 'No se pudo descargar el archivo configurado para este tipo de acta.',
+        description: 'Verifique que el archivo existe en el servidor y que la configuración es correcta.',
         duration: 5000,
       });
     } finally {

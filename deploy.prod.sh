@@ -145,6 +145,57 @@ cleanup_build_artifacts() {
     find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
 }
 
+get_docker_free_mb() {
+    local docker_root
+    docker_root=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || true)
+
+    if [ -z "$docker_root" ] || [ ! -d "$docker_root" ]; then
+        return 1
+    fi
+
+    df -Pm "$docker_root" | awk 'NR==2 {print $4}'
+}
+
+ensure_docker_disk_space() {
+    local min_free_mb="${MIN_DOCKER_FREE_MB:-10240}"
+    local free_mb
+
+    if ! free_mb=$(get_docker_free_mb); then
+        echo -e "${YELLOW}No fue posible validar espacio libre de Docker. Continuando...${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}Espacio libre Docker: ${free_mb} MB (mínimo recomendado: ${min_free_mb} MB)${NC}"
+
+    if [ "$free_mb" -ge "$min_free_mb" ]; then
+        return 0
+    fi
+
+    echo -e "${RED}Espacio insuficiente para construir imágenes Docker.${NC}"
+
+    if [ "${AUTO_CLEAN_DOCKER:-false}" = "true" ]; then
+        echo -e "${YELLOW}AUTO_CLEAN_DOCKER=true: ejecutando limpieza segura antes del build...${NC}"
+        cmd_clean_safe
+
+        if ! free_mb=$(get_docker_free_mb); then
+            return 0
+        fi
+
+        echo -e "${YELLOW}Espacio libre Docker después de limpiar: ${free_mb} MB${NC}"
+        if [ "$free_mb" -ge "$min_free_mb" ]; then
+            return 0
+        fi
+    fi
+
+    echo -e "${YELLOW}Ejecuta en el server PROD:${NC}"
+    echo -e "${YELLOW}  ./deploy.prod.sh clean-safe${NC}"
+    echo -e "${YELLOW}Luego repite el deploy, o usa:${NC}"
+    echo -e "${YELLOW}  AUTO_CLEAN_DOCKER=true $0 ${1:-rebuild}${NC}"
+    echo -e "${YELLOW}Si solo cambió frontend, usa un rebuild puntual con menor umbral, por ejemplo:${NC}"
+    echo -e "${YELLOW}  MIN_DOCKER_FREE_MB=4096 $0 rebuild-mfe control-interno${NC}"
+    exit 1
+}
+
 ensure_frontend_dependencies() {
     if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
         echo -e "${YELLOW}Node/npm no están disponibles en el host. Se usará el build Docker tradicional.${NC}"
@@ -326,6 +377,7 @@ cmd_rebuild_changed() {
         exit 0
     fi
 
+    ensure_docker_disk_space
     cleanup_build_artifacts
 
     if [ ${#backend_services[@]} -gt 0 ]; then
@@ -378,6 +430,7 @@ usage() {
     echo "  down      - Detener todos los servicios"
     echo "  restart   - Reiniciar todos los servicios"
     echo "  rebuild   - Reconstruir sin bajar servicios y publicar al finalizar"
+    echo "  rebuild-fresh - Bajar stack, limpiar imágenes/cache y reconstruir todo sin borrar DB"
     echo "  rebuild-all-mfe - Reconstruir backend + gateway + shell + todos los MFEs"
     echo "  rebuild-changed [rango] - Reconstruir solo servicios afectados por el último pull o por un rango git"
     echo "  rebuild-frontend - Reconstruir y reiniciar solo frontend"
@@ -442,6 +495,7 @@ cmd_rebuild() {
     echo -e "${YELLOW}Reconstruyendo servicios PROD (sin detener la versión actual)...${NC}"
     echo -e "${YELLOW}La aplicación seguirá disponible mientras termina el build.${NC}"
 
+    ensure_docker_disk_space
     cleanup_build_artifacts
 
     # Construir imágenes con los contenedores actuales activos.
@@ -456,6 +510,51 @@ cmd_rebuild() {
     echo -e "${GREEN}Nueva versión publicada. Servicios PROD reconstruidos y reiniciados.${NC}"
 }
 
+cmd_rebuild_fresh() {
+    if [ ! -f "$COMPOSE_FILE_MFE" ]; then
+        echo -e "${RED}Error: Archivo ${COMPOSE_FILE_MFE} no encontrado${NC}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}Reconstrucción fresca PROD: se detendrá el stack y habrá downtime.${NC}"
+    echo -e "${YELLOW}Se eliminarán contenedores detenidos, imágenes no usadas y caché Docker.${NC}"
+    echo -e "${GREEN}No se ejecutará docker volume prune ni docker compose down -v; los volúmenes de DB se conservan.${NC}"
+    echo -e "${YELLOW}Recomendado antes de producción: ejecutar db-backup manualmente si hay espacio suficiente.${NC}"
+
+    if [ "${REBUILD_FRESH_CONFIRM:-false}" != "true" ]; then
+        echo ""
+        read -p "Escribe REBUILD_FRESH para continuar: " confirm
+        if [ "$confirm" != "REBUILD_FRESH" ]; then
+            echo -e "${YELLOW}Operación cancelada${NC}"
+            exit 1
+        fi
+    fi
+
+    cleanup_build_artifacts
+
+    echo -e "${YELLOW}Deteniendo stack PROD sin borrar volúmenes...${NC}"
+    compose_env_mfe down --remove-orphans
+
+    echo -e "${YELLOW}Eliminando imágenes no usadas y caché Docker...${NC}"
+    docker system prune -a -f
+    docker builder prune -a -f
+
+    ensure_docker_disk_space
+
+    echo -e "${YELLOW}Reconstruyendo todo el stack PROD desde cero...${NC}"
+    compose_env_mfe build
+    compose_env_mfe up -d
+
+    echo -e "${YELLOW}Esperando a que la base de datos esté lista...${NC}"
+    sleep 5
+
+    echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
+    cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+
+    restart_ssl_proxy
+    echo -e "${GREEN}Reconstrucción fresca PROD completada sin borrar la DB.${NC}"
+}
+
 cmd_rebuild_all_mfe() {
     if [ ! -f "$COMPOSE_FILE_MFE" ]; then
         echo -e "${RED}Error: Archivo ${COMPOSE_FILE_MFE} no encontrado${NC}"
@@ -467,6 +566,7 @@ cmd_rebuild_all_mfe() {
     echo -e "${YELLOW}Modo rápido PROD: build frontend en host + empaquetado Nginx liviano.${NC}"
     echo -e "${YELLOW}Para forzar el flujo Docker anterior usa: MFE_DOCKER_BUILD_ONLY=true $0 rebuild-all-mfe${NC}"
 
+    ensure_docker_disk_space
     cleanup_build_artifacts
 
     if [ "${MFE_DOCKER_BUILD_ONLY:-false}" = "true" ]; then
@@ -498,6 +598,7 @@ cmd_rebuild_all_mfe() {
 # Comando: rebuild-frontend (rápido)
 cmd_rebuild_frontend() {
     echo -e "${YELLOW}Reconstruyendo solo frontend PROD...${NC}"
+    ensure_docker_disk_space
     compose_env build frontend
     compose_env up -d --no-deps frontend
     restart_ssl_proxy
@@ -514,6 +615,7 @@ cmd_rebuild_service() {
     fi
 
     echo -e "${YELLOW}Reconstruyendo servicio PROD: ${service}${NC}"
+    ensure_docker_disk_space
     compose_env build "$service"
     compose_env up -d --no-deps "$service"
     echo -e "${GREEN}Servicio PROD ${service} reconstruido y reiniciado${NC}"
@@ -598,6 +700,7 @@ cmd_rebuild_mfe() {
         exit 1
     fi
     echo -e "${YELLOW}Reconstruyendo servicio frontend MFE PROD: ${resolved_service}${NC}"
+    ensure_docker_disk_space
     compose_env_mfe build "$resolved_service"
     compose_env_mfe up -d --no-deps "$resolved_service"
     restart_ssl_proxy
@@ -661,7 +764,7 @@ cmd_clean_safe() {
     # Elimina imágenes NO usadas (aunque estén "taggeadas").
     # No borra imágenes en uso por contenedores en ejecución.
     docker image prune -a -f
-    docker builder prune -f --filter "until=168h"
+    docker builder prune -a -f
     docker network prune -f
 
     # Eliminar solo volúmenes huérfanos, excepto los protegidos de BD PROD
@@ -802,6 +905,9 @@ case "$1" in
         ;;
     rebuild)
         cmd_rebuild
+        ;;
+    rebuild-fresh)
+        cmd_rebuild_fresh
         ;;
     rebuild-all-mfe)
         cmd_rebuild_all_mfe

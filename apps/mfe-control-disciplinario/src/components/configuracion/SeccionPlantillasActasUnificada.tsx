@@ -395,11 +395,7 @@ export function SeccionPlantillasActasUnificada({
                                 <span className="hidden sm:inline">Ver</span>
                               </button>
                               <button
-                                onClick={() => {
-                                  if (confirm(`¿Eliminar "${acta.nombre}"?\n\nSe eliminará el tipo y todas sus plantillas.\n\nEsta acción NO se puede deshacer.`)) {
-                                    onEliminarTipo(acta.id);
-                                  }
-                                }}
+                                onClick={() => onEliminarTipo(acta.id)}
                                 className="flex items-center gap-1 px-2.5 lg:px-3 py-1.5 rounded-lg bg-red-50 border-2 border-red-300 text-red-700 hover:bg-red-100 hover:border-red-400 transition-colors font-semibold text-xs"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />

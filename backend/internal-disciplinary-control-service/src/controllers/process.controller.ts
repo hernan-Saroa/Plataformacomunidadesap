@@ -7,6 +7,7 @@ import {
   Param,
   Body,
   Query,
+  Req,
   HttpCode,
   HttpStatus,
   UseInterceptors,
@@ -39,7 +40,7 @@ import {
   buildStoredFileName,
   ensureUploadDirExists,
 } from '../services/storage.service';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { HttpService } from '@nestjs/axios';
@@ -52,6 +53,22 @@ import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 const MAX_EVIDENCE_FILE_SIZE = 10 * 1024 * 1024 * 1024;
 const MAX_STANDARD_DOCUMENT_SIZE = 50 * 1024 * 1024;
+const DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES = new Set([
+  'SUPER_ADMIN',
+  'ADMIN',
+  'CONTROL_DISCIPLINARIO',
+  'JEFE_OCID',
+  'JEFE_DE_LA_OCID',
+]);
+
+type AuthenticatedRequest = Request & {
+  user?: {
+    userId?: string;
+    email?: string;
+    roles?: unknown;
+  };
+};
+
 const PROCESS_DOCUMENT_UPLOAD_OPTIONS = {
   storage: diskStorage({
     destination: (_req, _file, cb) => {
@@ -84,6 +101,77 @@ export class ProcessController {
     private httpService: HttpService,
   ) { }
 
+  private normalizeRoleCode(role: unknown): string | null {
+    if (typeof role === 'string') {
+      const normalized = role.trim().toUpperCase();
+      return normalized || null;
+    }
+
+    if (role && typeof role === 'object' && 'code' in role) {
+      const code = (role as { code?: unknown }).code;
+      if (typeof code === 'string') {
+        const normalized = code.trim().toUpperCase();
+        return normalized || null;
+      }
+    }
+
+    return null;
+  }
+
+  private extractNormalizedRoles(req: AuthenticatedRequest): Set<string> {
+    const source = req.user?.roles;
+    const roles = Array.isArray(source) ? source : source ? [source] : [];
+
+    return new Set(
+      roles
+        .map((role) => this.normalizeRoleCode(role))
+        .filter((role): role is string => Boolean(role)),
+    );
+  }
+
+  private hasFullSensitiveAccess(req: AuthenticatedRequest): boolean {
+    const normalizedRoles = this.extractNormalizedRoles(req);
+
+    for (const role of normalizedRoles) {
+      if (DISCIPLINARY_FULL_PROCESS_ACCESS_ROLES.has(role)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private getSensitiveAccessContext(req: AuthenticatedRequest): {
+    fullAccess: boolean;
+    userId?: string;
+    email?: string;
+  } {
+    return {
+      fullAccess: this.hasFullSensitiveAccess(req),
+      userId: req.user?.userId,
+      email: req.user?.email,
+    };
+  }
+
+  private async ensureSensitiveProcessAccess(
+    req: AuthenticatedRequest,
+    processId: string,
+    includeAutos = false,
+  ): Promise<void> {
+    const access = this.getSensitiveAccessContext(req);
+
+    if (access.fullAccess) {
+      return;
+    }
+
+    await this.processService.findByIdAccessible(
+      processId,
+      includeAutos,
+      access.userId,
+      access.email,
+    );
+  }
+
   /**
    * Obtener estadísticas para el dashboard
    */
@@ -111,8 +199,21 @@ export class ProcessController {
     description: 'Estadísticas del proceso',
   })
   @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
-  async getProcessStatistics(@Param('id') id: string) {
-    return await this.processService.getProcessStatistics(id);
+  async getProcessStatistics(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    const access = this.getSensitiveAccessContext(req);
+
+    if (access.fullAccess) {
+      return await this.processService.getProcessStatistics(id);
+    }
+
+    return await this.processService.getProcessStatisticsAccessible(
+      id,
+      access.userId,
+      access.email,
+    );
   }
 
   /**
@@ -152,9 +253,11 @@ export class ProcessController {
     type: DisciplinaryProcess,
   })
   async update(
+    @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() updateDto: UpdateDisciplinaryProcessDto,
   ): Promise<DisciplinaryProcess> {
+    await this.ensureSensitiveProcessAccess(req, id);
     return await this.processService.update(id, updateDto);
   }
 
@@ -173,8 +276,21 @@ export class ProcessController {
     type: DisciplinaryProcess,
   })
   @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
-  async getByRadicado(@Param('radicado') radicado: string): Promise<DisciplinaryProcess> {
-    return await this.processService.findByRadicado(radicado);
+  async getByRadicado(
+    @Req() req: AuthenticatedRequest,
+    @Param('radicado') radicado: string,
+  ): Promise<DisciplinaryProcess> {
+    const access = this.getSensitiveAccessContext(req);
+
+    if (access.fullAccess) {
+      return await this.processService.findByRadicado(radicado);
+    }
+
+    return await this.processService.findByRadicadoAccessible(
+      radicado,
+      access.userId,
+      access.email,
+    );
   }
 
   /**
@@ -193,9 +309,11 @@ export class ProcessController {
   @ApiResponse({ status: 400, description: 'Transición de etapa no permitida' })
   @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
   async updateStage(
+    @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() changeStageDto: ChangeStageDto,
   ): Promise<DisciplinaryProcess> {
+    await this.ensureSensitiveProcessAccess(req, id);
     return await this.processService.changeStage(
       id,
       changeStageDto.stageId,
@@ -217,9 +335,11 @@ export class ProcessController {
     type: DisciplinaryProcess,
   })
   async addEvidence(
+    @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() body: { url: string; originalName: string },
   ): Promise<DisciplinaryProcess> {
+    await this.ensureSensitiveProcessAccess(req, id);
     return await this.processService.addEvidence(id, body.url, body.originalName);
   }
 
@@ -239,12 +359,14 @@ export class ProcessController {
     description: 'Documento subido exitosamente',
   })
   async uploadDocument(
+    @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File | undefined,
     @Body() body: { tipo?: string; descripcion?: string; nombre?: string; etapa?: string; usuarioCarga?: string; categoria?: string; destinatario?: string; asunto?: string; participantes?: string; urlExterna?: string },
   ) {
     let metadataSaved = false;
     try {
+      await this.ensureSensitiveProcessAccess(req, id);
       console.log('📤 Upload Document - Iniciando...');
       console.log('📤 Body recibido:', JSON.stringify(body, null, 2));
       console.log('📤 Archivo:', file ? `${file.originalname}, ${file.size} bytes` : 'No hay archivo');
@@ -675,8 +797,12 @@ export class ProcessController {
     status: 200,
     description: 'Lista de documentos',
   })
-  async getDocuments(@Param('id') id: string) {
+  async getDocuments(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
     try {
+      await this.ensureSensitiveProcessAccess(req, id, true);
       // Obtener evidencias del proceso
       const evidencias = await this.processService.getEvidenceByProcessId(id);
 
@@ -849,11 +975,13 @@ export class ProcessController {
     description: 'Archivo descargado',
   })
   async downloadDocument(
+    @Req() req: AuthenticatedRequest,
     @Param('id') processId: string,
     @Param('documentId') documentId: string,
     @Query('view') view: string,
     @Res() res: Response,
   ) {
+    await this.ensureSensitiveProcessAccess(req, processId);
     const evidencias = await this.processService.getEvidenceByProcessId(processId);
     let documento: any = evidencias.find(e => e.id === documentId);
 
@@ -929,9 +1057,11 @@ export class ProcessController {
     description: 'Documento eliminado',
   })
   async deleteDocument(
+    @Req() req: AuthenticatedRequest,
     @Param('id') processId: string,
     @Param('documentId') documentId: string,
   ) {
+    await this.ensureSensitiveProcessAccess(req, processId);
     const evidencia = await this.processService.deleteEvidence(processId, documentId);
 
     if (evidencia?.url) {
@@ -959,12 +1089,23 @@ export class ProcessController {
     type: [DisciplinaryProcess],
   })
   async getMyProcesses(
+    @Req() req: AuthenticatedRequest,
     @Query('abogadoId') abogadoId: string,
   ): Promise<DisciplinaryProcess[]> {
-    if (!abogadoId) {
-      throw new Error('abogadoId es requerido');
+    const access = this.getSensitiveAccessContext(req);
+
+    if (access.fullAccess) {
+      if (!abogadoId) {
+        throw new HttpException('abogadoId es requerido', HttpStatus.BAD_REQUEST);
+      }
+
+      return await this.processService.findByAbogadoId(abogadoId);
     }
-    return await this.processService.findByAbogadoId(abogadoId);
+
+    return await this.processService.findMyProcessesAccessible(
+      access.userId,
+      access.email,
+    );
   }
 
   /**
@@ -980,8 +1121,17 @@ export class ProcessController {
     description: 'Lista de procesos',
     type: [DisciplinaryProcess],
   })
-  async getAll(): Promise<DisciplinaryProcess[]> {
-    return await this.processService.findAll();
+  async getAll(@Req() req: AuthenticatedRequest): Promise<DisciplinaryProcess[]> {
+    const access = this.getSensitiveAccessContext(req);
+
+    if (access.fullAccess) {
+      return await this.processService.findAll();
+    }
+
+    return await this.processService.findAllAccessible(
+      access.userId,
+      access.email,
+    );
   }
 
   /**
@@ -998,8 +1148,22 @@ export class ProcessController {
     type: DisciplinaryProcess,
   })
   @ApiResponse({ status: 404, description: 'Proceso no encontrado' })
-  async getById(@Param('id') id: string): Promise<DisciplinaryProcess> {
-    return await this.processService.findById(id, true); // Cargar autos para vista completa
+  async getById(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ): Promise<DisciplinaryProcess> {
+    const access = this.getSensitiveAccessContext(req);
+
+    if (access.fullAccess) {
+      return await this.processService.findById(id, true);
+    }
+
+    return await this.processService.findByIdAccessible(
+      id,
+      true,
+      access.userId,
+      access.email,
+    );
   }
 
   /**
