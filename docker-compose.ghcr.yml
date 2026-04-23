@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-frontend:dev-latest
+    # Se elimina la directiva build localmente porque usamos la imagen precompilada
+    build:
+      context: .
+      dockerfile: Dockerfile.none # Dummy para inutilizar el build en algunos docker-compose legacy
