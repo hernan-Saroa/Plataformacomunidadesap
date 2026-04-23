@@ -2216,7 +2216,7 @@ export class CertificatesService {
 
     if (!signer) {
       throw new NotFoundException(
-        'No se encontrИ un firmante principal activo',
+        'No se encontra un firmante principal activo',
       );
     }
 

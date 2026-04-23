@@ -344,10 +344,18 @@ export function usePlanesMejoramiento() {
       } else {
         setPlanes([]);
       }
-    } catch (err) {
-      const mensaje = err instanceof Error ? err.message : 'Error al cargar planes';
-      console.error('[usePlanesMejoramiento] Error:', mensaje, err);
-      setError(mensaje);
+    } catch (err: any) {
+      const status = err?.response?.status;
+      const msjOriginal = (err?.response?.data?.message) || err.message;
+      
+      // Manejar silenciosamente el error 403 para usuarios que sólo tienen permisos de lectura/aprobación a otros planes
+      if (status === 403 || String(msjOriginal).includes('No tienes permisos')) {
+        console.info('[usePlanesMejoramiento] Precarga omitida: El usuario actual no tiene el rol para visualizar el inventario global de planes de mejoramiento.');
+      } else {
+        const mensaje = err instanceof Error ? err.message : 'Error al cargar planes';
+        console.error('[usePlanesMejoramiento] Error de carga:', mensaje, err);
+        setError(mensaje);
+      }
       setPlanes([]);
     } finally {
       setLoading(false);

@@ -1,0 +1,11 @@
+UPDATE auth.permission SET name=REPLACE(name, 'Gesti??n', 'Gestión'), description=REPLACE(description, 'gesti??n', 'gestión');
+UPDATE auth.permission SET name=REPLACE(name, 'Auditor??a', 'Auditoría'), description=REPLACE(description, 'auditor??a', 'auditoría');
+UPDATE auth.permission SET name=REPLACE(name, 'Auditoria', 'Auditoría'), description=REPLACE(description, 'auditoria', 'auditoría');
+UPDATE auth.permission SET name=REPLACE(name, 'Planeaci??n', 'Planeación'), description=REPLACE(description, 'planeaci??n', 'planeación');
+UPDATE auth.permission SET name=REPLACE(name, 'Ejecuci??n', 'Ejecución'), description=REPLACE(description, 'ejecuci??n', 'ejecución');
+UPDATE auth.permission SET name=REPLACE(name, 'Aprobaci??n', 'Aprobación'), description=REPLACE(description, 'aprobaci??n', 'aprobación');
+UPDATE auth.permission SET name=REPLACE(name, 'Aprobaciones', 'Aprobaciones'), description=REPLACE(description, 'aprobaci??nes', 'aprobaciones');
+UPDATE auth.permission SET name=REPLACE(name, 'Configuraci??n', 'Configuración'), description=REPLACE(description, 'configuraci??n', 'configuración');
+UPDATE auth.permission SET name=REPLACE(name, 'S??nior', 'Sénior'), description=REPLACE(description, 's??nior', 'sénior');
+UPDATE auth.permission SET name=REPLACE(name, 'J??nior', 'Júnior'), description=REPLACE(description, 'j??nior', 'júnior');
+UPDATE auth.permission SET name=REPLACE(name, 'T??cnico', 'Técnico'), description=REPLACE(description, 't??cnico', 'técnico');

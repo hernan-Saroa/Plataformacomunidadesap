@@ -245,6 +245,52 @@ export class ConfiguracionesProfesionalesOCIGService {
   }
 
   /**
+   * Obtener roles OCIG disponibles desde la BD (auth.role con category 'backoffice')
+   * Obtener roles OCIG disponibles desde la BD (auth.role con category 'control_interno')
+   * + rol especial 'Aprobador PAI' para miembros del Comité Institucional
+   */
+  async getRolesOCIG(): Promise<Array<{ name: string; description: string }>> {
+    try {
+      const roles: Array<{ name: string; description: string | null }> =
+        await this.configRepository.query(
+          `SELECT name, description FROM auth.role
+           WHERE (category = 'control_interno' OR name LIKE '%Aprobador PAI%')
+             AND is_active = true
+           ORDER BY name ASC`,
+        );
+
+      return roles.map((r) => ({
+        name: r.name ? r.name.trim() : '',
+        description: r.description || '',
+      }));
+    } catch (error) {
+      console.error('[getRolesOCIG] Error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Obtener especialidades OCIG disponibles desde la BD
+   */
+  async getEspecialidadesOCIG(): Promise<Array<{ id: number; nombre: string; descripcion: string }>> {
+    try {
+      const especialidades = await this.configRepository.query(
+        `SELECT id, nombre, descripcion FROM control_interno.especialidades_ocig
+         WHERE activo = true
+         ORDER BY orden, nombre`,
+      );
+      return especialidades.map((e: any) => ({
+        id: e.id,
+        nombre: e.nombre,
+        descripcion: e.descripcion || '',
+      }));
+    } catch (error) {
+      console.error('[getEspecialidadesOCIG] Error:', error);
+      return [];
+    }
+  }
+
+  /**
    * Buscar personas candidatas de auth.personas que pueden ser configuradas como profesionales OCIG
    * Devuelve personas que AÚN NO están en configuracion_profesionales_ocig
    * @param busqueda Texto opcional para filtrar por nombre o email
@@ -285,7 +331,7 @@ export class ConfiguracionesProfesionalesOCIGService {
         INNER JOIN auth.role r ON r.id = ur.id_rol
         WHERE p.nom_largo IS NOT NULL
           AND u.is_active = true
-          AND r.category IN ('control_interno', 'sistema')
+          AND r.category IN ('control_interno', 'sistema', 'backoffice', 'Control Interno')
       `;
 
       const params: string[] = [];

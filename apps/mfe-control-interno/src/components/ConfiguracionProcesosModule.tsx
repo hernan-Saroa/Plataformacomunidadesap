@@ -92,6 +92,25 @@ function saveEspIds(ids: Set<string>) {
 const FORM_VACIO = { nombre: '', codigo: '', tipo: 'estrategico', macroproceso: '', dependencia: '', esEspecial: false };
 // dependencias: array de strings separados por "; " al guardarse en el campo dependencia
 
+function createClientId(): string {
+  const cryptoApi = globalThis.crypto;
+
+  if (typeof cryptoApi?.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0'));
+    return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
+  }
+
+  return `local-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE
 // ════════════════════════════════════════════════════════════════════════════
@@ -173,7 +192,7 @@ export function ConfiguracionProcesosModule() {
     setForm(FORM_VACIO);
     setDependencias([]);
     setDepInput('');
-    setUnidades([{ id: crypto.randomUUID(), nombre: '', descripcion: '' }]);
+    setUnidades([{ id: createClientId(), nombre: '', descripcion: '' }]);
     setModalOpen(true);
   };
 
@@ -191,10 +210,10 @@ export function ConfiguracionProcesosModule() {
     
     let initialUnidades = p.unidadesAuditables || [];
     if (initialUnidades.length === 0 && p.macroproceso) {
-      initialUnidades = [{ id: crypto.randomUUID(), nombre: p.macroproceso, descripcion: '' }];
+      initialUnidades = [{ id: createClientId(), nombre: p.macroproceso, descripcion: '' }];
     }
     if (initialUnidades.length === 0) {
-      initialUnidades = [{ id: crypto.randomUUID(), nombre: '', descripcion: '' }];
+      initialUnidades = [{ id: createClientId(), nombre: '', descripcion: '' }];
     }
     setUnidades(initialUnidades);
 
@@ -353,7 +372,7 @@ export function ConfiguracionProcesosModule() {
   }
 
   return (
-    <div className="w-full h-full p-4 sm:p-6 lg:p-8">
+    <div className="w-full h-full p-3">
 
       {/* ─── Cabecera ─── */}
       <HeaderSeccionConfig
@@ -769,7 +788,7 @@ export function ConfiguracionProcesosModule() {
                             e.preventDefault();
                             const val = unidadInput.trim();
                             if (val && !unidades.some(u => u.nombre === val)) {
-                              setUnidades(prev => [...prev, { id: crypto.randomUUID(), nombre: val, descripcion: '' }]);
+                              setUnidades(prev => [...prev, { id: createClientId(), nombre: val, descripcion: '' }]);
                               setUnidadInput('');
                             }
                           }
@@ -782,7 +801,7 @@ export function ConfiguracionProcesosModule() {
                         onClick={() => {
                           const val = unidadInput.trim();
                           if (val && !unidades.some(u => u.nombre === val)) {
-                            setUnidades(prev => [...prev, { id: crypto.randomUUID(), nombre: val, descripcion: '' }]);
+                            setUnidades(prev => [...prev, { id: createClientId(), nombre: val, descripcion: '' }]);
                             setUnidadInput('');
                           }
                         }}

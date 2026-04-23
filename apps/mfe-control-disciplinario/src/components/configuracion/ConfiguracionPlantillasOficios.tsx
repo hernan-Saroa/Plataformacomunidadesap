@@ -18,6 +18,7 @@ import { useOficiosConfiguration } from '../../../../hooks/useOficiosConfigurati
 import { SeccionPlantillasOficiosUnificada, type TipoOficio, type PlantillaArchivo, CATEGORIAS_OFICIOS, type CategoriaOficioId } from './SeccionPlantillasOficiosUnificada';
 import { ModalNuevoTipoOficio } from './ModalNuevoTipoOficio';
 import { ModalGestionarPlantillasOficio } from './ModalGestionarPlantillasOficio';
+import { ModalConfirmacion } from './ModalConfirmacion';
 
 // Función para convertir OficioConfiguration del backend al formato TipoOficio del frontend
 const mapBackendToFrontend = (config: OficioConfiguration): TipoOficio => {
@@ -90,6 +91,8 @@ export function ConfiguracionPlantillasOficios() {
   const [tipoOficioEdicion, setTipoOficioEdicion] = useState<TipoOficio | null>(null);
   const [tipoOficioGestionando, setTipoOficioGestionando] = useState<TipoOficio | null>(null);
   const [mostrarModalGestionarPlantillas, setMostrarModalGestionarPlantillas] = useState(false);
+  const [mostrarModalConfirmacion, setMostrarModalConfirmacion] = useState(false);
+  const [tipoOficioAEliminar, setTipoOficioAEliminar] = useState<TipoOficio | null>(null);
 
   // Hook para usar el API de oficios configuration
   const {
@@ -236,20 +239,31 @@ export function ConfiguracionPlantillasOficios() {
   };
 
   const eliminarTipoOficio = async (tipoId: string) => {
-    if (window.confirm('¿Está seguro de eliminar este tipo de oficio y todas sus plantillas?')) {
-      // Si viene del backend, eliminar también allí
-      if (datosDesdeBackend && !tipoId.startsWith('tipo-oficio-')) {
-        try {
-          await deleteConfiguration(tipoId);
-          toast.success('Tipo de oficio eliminado correctamente');
-        } catch (err) {
-          console.error('Error eliminando en backend:', err);
-          toast.error('Error al eliminar en el servidor');
-        }
-      }
-      setTiposOficios(tiposOficios.filter(t => t.id !== tipoId));
-      setCambiosPendientes(true);
+    const tipo = tiposOficios.find(t => t.id === tipoId);
+    if (tipo) {
+      setTipoOficioAEliminar(tipo);
+      setMostrarModalConfirmacion(true);
     }
+  };
+
+  const confirmarEliminacionTipoOficio = async () => {
+    if (!tipoOficioAEliminar) return;
+
+    // Si viene del backend, eliminar también allí
+    if (datosDesdeBackend && !tipoOficioAEliminar.id.startsWith('tipo-oficio-')) {
+      try {
+        await deleteConfiguration(tipoOficioAEliminar.id);
+        toast.success('Tipo de oficio eliminado correctamente');
+      } catch (err) {
+        console.error('Error eliminando en backend:', err);
+        toast.error('Error al eliminar en el servidor');
+        return;
+      }
+    }
+    setTiposOficios(tiposOficios.filter(t => t.id !== tipoOficioAEliminar.id));
+    setCambiosPendientes(true);
+    setMostrarModalConfirmacion(false);
+    setTipoOficioAEliminar(null);
   };
 
   const toggleActivoTipoOficio = async (tipoId: string, activo: boolean) => {
@@ -493,6 +507,23 @@ export function ConfiguracionPlantillasOficios() {
             setMostrarModalGestionarPlantillas(false);
             setTipoOficioGestionando(null);
           }}
+        />
+      )}
+
+      {/* Modal de confirmación para eliminar tipo de oficio */}
+      {mostrarModalConfirmacion && tipoOficioAEliminar && (
+        <ModalConfirmacion
+          titulo="Eliminar Tipo de Oficio"
+          mensaje={`¿Está seguro de eliminar "${tipoOficioAEliminar.nombre}"?`}
+          detalle="Se eliminará el tipo de oficio y todas sus plantillas asociadas. Esta acción no se puede deshacer."
+          textoConfirmar="Eliminar"
+          textoCancelar="Cancelar"
+          onConfirmar={confirmarEliminacionTipoOficio}
+          onCancelar={() => {
+            setMostrarModalConfirmacion(false);
+            setTipoOficioAEliminar(null);
+          }}
+          tipo="peligro"
         />
       )}
     </div>

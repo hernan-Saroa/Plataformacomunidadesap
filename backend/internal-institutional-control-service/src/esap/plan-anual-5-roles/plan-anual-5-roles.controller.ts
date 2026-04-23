@@ -103,7 +103,7 @@ export class PlanAnual5RolesController {
   // Ruta genérica de actualización debe ir ANTES de las rutas con parámetros dinámicos
   @Put(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions(CIP.PLAN_ANUAL_EDIT)
+  @Permissions(CIP.PLAN_ANUAL_EDIT, CIP.PLAN_ANUAL_APPROVE)
   async update(
     @Param('id') id: string,
     @Body() updateDto: Partial<CreatePlanAnual5RolesDto>,
@@ -170,7 +170,7 @@ export class PlanAnual5RolesController {
 
   @Put('actividades/:actividadId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions(CIP.PLAN_ANUAL_EDIT)
+  @Permissions(CIP.PLAN_ANUAL_EDIT, CIP.PLAN_ANUAL_FOLLOW_UP)
   async updateActividad(
     @Param('actividadId') actividadId: string,
     @Body() updateDto: Partial<CreateActividadDto>,
@@ -317,7 +317,7 @@ export class PlanAnual5RolesController {
 
   @Post('actividades/:actividadId/adjuntos')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions(CIP.PLAN_ANUAL_EDIT)
+  @Permissions(CIP.PLAN_ANUAL_EDIT, CIP.PLAN_ANUAL_FOLLOW_UP)
   @HttpCode(HttpStatus.CREATED)
   async addAdjunto(
     @Param('actividadId') actividadId: string,

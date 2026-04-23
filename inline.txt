@@ -1,0 +1,411 @@
+                      {/* --- INLINE EDITOR --- */}
+                      {modoCardExpandida === 'edicion' && modalEdicion?.actividad?.id === actividad.id && (
+                        <div className="bg-white shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] flex flex-col mt-4 rounded-xl mx-4 mb-4 overflow-hidden border-2 border-amber-300">
+{/* Header del modal */}
+              <div className="px-6 py-4 bg-amber-50 shrink-0 relative overflow-hidden border-b border-amber-200">
+                {/* Decoración de fondo */}
+                
+                
+                
+                <div className="flex items-center gap-4 relative z-10">
+                  <div className="w-12 h-12 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center shadow-inner">
+                    <svg className="w-6 h-6 text-amber-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-amber-900">Editar Actividad</h3>
+                    <p className="text-amber-700 bg-amber-200/50 px-2 py-0.5 rounded font-medium inline-block mt-1 text-sm">Decreto 648 de 2017 - Control Interno</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Contenido del modal - scrollable */}
+              <div className="p-6 bg-amber-50/20">
+                <div className="space-y-5">
+                  {/* Bloque 1: Información Principal */}
+                  <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                    <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-amber-600" />
+                      Información General
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Columna Izquierda */}
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-700 mb-1">Nombre de la actividad *</label>
+                          <textarea
+                            value={formularioEdicion.nombre}
+                            onChange={(e) => setFormularioEdicion(prev => ({ ...prev, nombre: e.target.value }))}
+                            rows={3}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none text-sm"
+                            placeholder="Nombre según Decreto 648/2017"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-bold text-gray-700 mb-1">Fecha de inicio</label>
+                            <input
+                              type="date"
+                              value={formularioEdicion.fechaInicio}
+                              onChange={(e) => setFormularioEdicion(prev => ({ ...prev, fechaInicio: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-gray-700 mb-1">Fecha de fin</label>
+                            <input
+                              type="date"
+                              value={formularioEdicion.fechaFin}
+                              onChange={(e) => setFormularioEdicion(prev => ({ ...prev, fechaFin: e.target.value }))}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Columna Derecha */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-1">Descripción de la actividad</label>
+                        <textarea
+                          value={formularioEdicion.descripcion}
+                          onChange={(e) => setFormularioEdicion(prev => ({ ...prev, descripcion: e.target.value }))}
+                          rows={6}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none text-sm"
+                          placeholder="Descripción detallada de la actividad"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bloque 2: Aspectos Metodológicos en Grid (Ahorra mucho espacio vertical) */}
+                  <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                    <h4 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-amber-600" />
+                      Marco Metodológico
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Control */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1">
+                          🔍 Control
+                        </label>
+                        <textarea
+                          value={formularioEdicion.control}
+                          onChange={(e) => setFormularioEdicion(prev => ({ ...prev, control: e.target.value }))}
+                          rows={2}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none text-sm"
+                          placeholder="Ej: Revisión mensual..."
+                        />
+                      </div>
+                      {/* Evaluación */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1">
+                          📊 Evaluación
+                        </label>
+                        <textarea
+                          value={formularioEdicion.evaluacion}
+                          onChange={(e) => setFormularioEdicion(prev => ({ ...prev, evaluacion: e.target.value }))}
+                          rows={2}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none text-sm"
+                          placeholder="Ej: 50% avance..."
+                        />
+                      </div>
+                      {/* Seguimiento */}
+                      <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-1">
+                          ✅ Seguimiento (notas)
+                        </label>
+                        <textarea
+                          value={formularioEdicion.seguimiento}
+                          onChange={(e) => setFormularioEdicion(prev => ({ ...prev, seguimiento: e.target.value }))}
+                          rows={2}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none text-sm"
+                          placeholder="Tareas de seguimiento..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ═══════════ SISTEMA DE EVIDENCIAS Y PERIODICIDAD ═══════════ */}
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Evidencias de la actividad */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                      <p className="text-sm font-bold text-gray-800 flex items-center gap-1.5 mb-3">
+                        <FileText className="w-4 h-4 text-blue-600" />
+                        Sistema de Evidencias (Actividad)
+                      </p>
+                      <div className="flex gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <div className={`w-8 h-4 rounded-full transition-colors relative ${modalEdicion?.actividad?.configuracionEvidencias?.adjuntosRequeridos ? 'bg-blue-600' : 'bg-gray-300'}`} onClick={() => {
+                            setModalEdicion(prev => prev ? {
+                              ...prev,
+                              actividad: {
+                                ...prev.actividad,
+                                configuracionEvidencias: {
+                                  ...prev.actividad.configuracionEvidencias,
+                                  adjuntosRequeridos: !prev.actividad.configuracionEvidencias?.adjuntosRequeridos
+                                }
+                              }
+                            } : prev);
+                          }}>
+                            <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-transform ${modalEdicion?.actividad?.configuracionEvidencias?.adjuntosRequeridos ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                          </div>
+                          <span className="text-xs text-gray-700">Requiere Adjuntos</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <div className={`w-8 h-4 rounded-full transition-colors relative ${modalEdicion?.actividad?.configuracionEvidencias?.observacionRequerida ? 'bg-purple-600' : 'bg-gray-300'}`} onClick={() => {
+                            setModalEdicion(prev => prev ? {
+                              ...prev,
+                              actividad: {
+                                ...prev.actividad,
+                                configuracionEvidencias: {
+                                  ...prev.actividad.configuracionEvidencias,
+                                  observacionRequerida: !prev.actividad.configuracionEvidencias?.observacionRequerida
+                                }
+                              }
+                            } : prev);
+                          }}>
+                            <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-transform ${modalEdicion?.actividad?.configuracionEvidencias?.observacionRequerida ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                          </div>
+                          <span className="text-xs text-gray-700">Requiere Observación</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Periodicidad (Cortes) */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex flex-col justify-center">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+                          <CalendarClock className="w-4 h-4 text-blue-600" />
+                          Periodicidad
+                        </p>
+                        {modalEdicion?.actividad?.frecuenciaPuntosControl && (
+                          <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded uppercase font-semibold">
+                            {modalEdicion.actividad.frecuenciaPuntosControl}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setModalPuntosControlAbierto(true)}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-white border border-blue-300 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-semibold transition-colors mt-auto"
+                      >
+                        <Settings className="w-3.5 h-3.5" />
+                        Configurar Cortes de Seguimiento
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* ═══════════ TAREAS DE SEGUIMIENTO EDITABLES ═══════════ */}
+                  <div className="border border-gray-200 bg-gray-50/30 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <p className="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+                        <span className="w-6 h-6 rounded-md bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+                          <Check className="w-3 h-3 text-amber-900" />
+                        </span>
+                        Tareas de seguimiento
+                        <span className="text-xs font-normal text-gray-400 ml-1">
+                          ({(modalEdicion?.actividad?.tareasSeguimiento || []).length} tareas)
+                        </span>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const tareasActuales = modalEdicion?.actividad?.tareasSeguimiento || [];
+                          const nuevaTarea = {
+                            id: `tarea-${Date.now()}`,
+                            descripcion: '',
+                            completada: false,
+                            responsables: [],
+                            requiereObservaciones: false,
+                            requiereAdjuntos: false
+                          };
+                          setModalEdicion(prev => prev ? {
+                            ...prev,
+                            actividad: { ...prev.actividad, tareasSeguimiento: [...tareasActuales, nuevaTarea] }
+                          } : prev);
+                        }}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-amber-900 text-xs rounded-lg font-medium flex items-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Agregar tarea
+                      </button>
+                    </div>
+                    
+                    {(modalEdicion?.actividad?.tareasSeguimiento || []).length === 0 ? (
+                      <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg">
+                        <p className="text-sm text-gray-400">No hay tareas. Haz clic en "Agregar tarea" para crear una.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {(modalEdicion?.actividad?.tareasSeguimiento || []).map((tarea, idx) => (
+                          <div key={tarea.id} className="group bg-white border border-gray-200 rounded-lg shadow-sm hover:border-blue-300 transition-all">
+                            {/* Header de la tarea */}
+                            <div className="px-3 py-3 flex items-start gap-2.5">
+                              <div className="w-5 h-5 mt-1 rounded bg-green-100 flex items-center justify-center shrink-0">
+                                <span className="text-[10px] font-bold text-green-700">{idx + 1}</span>
+                              </div>
+                              <div className="flex-1 min-w-0 space-y-2">
+                                <input
+                                  type="text"
+                                  value={tarea.descripcion}
+                                  onChange={(e) => {
+                                    const nuevasTareas = (modalEdicion?.actividad?.tareasSeguimiento || []).map(t =>
+                                      t.id === tarea.id ? { ...t, descripcion: e.target.value } : t
+                                    );
+                                    setModalEdicion(prev => prev ? {
+                                      ...prev,
+                                      actividad: { ...prev.actividad, tareasSeguimiento: nuevasTareas }
+                                    } : prev);
+                                  }}
+                                  className="w-full px-2 py-1 border border-transparent hover:border-gray-200 focus:border-amber-500 rounded text-sm text-gray-900 bg-transparent transition-colors placeholder:text-gray-300"
+                                  placeholder="Describe la tarea..."
+                                />
+                                {(tarea.responsables || []).length > 0 && (
+                                  <div className="flex flex-wrap gap-1 px-2">
+                                    {(tarea.responsables || []).map((resp, ri) => (
+                                      <span key={ri} className="inline-flex items-center gap-1 pl-1 pr-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[10px]">
+                                        <span className="text-blue-800 font-medium">{resp}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const nuevasTareas = (modalEdicion?.actividad?.tareasSeguimiento || []).map(t =>
+                                              t.id === tarea.id ? { ...t, responsables: (t.responsables || []).filter((_, i) => i !== ri) } : t
+                                            );
+                                            setModalEdicion(prev => prev ? { ...prev, actividad: { ...prev.actividad, tareasSeguimiento: nuevasTareas } } : prev);
+                                          }}
+                                          className="w-3.5 h-3.5 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 flex items-center justify-center transition-colors"
+                                        >✕</button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              {/* Acciones */}
+                              <div className="flex items-center gap-1 shrink-0">
+                                <select
+                                  className="text-[10px] border border-gray-300 rounded-md px-1 py-1 text-gray-500 bg-gray-50 hover:border-blue-400 cursor-pointer"
+                                  value=""
+                                  onChange={(e) => {
+                                    if (!e.target.value) return;
+                                    const aud = auditores.find(a => a.id === e.target.value);
+                                    if (!aud || (tarea.responsables || []).includes(aud.nombre)) return;
+                                    const nuevasTareas = (modalEdicion?.actividad?.tareasSeguimiento || []).map(t =>
+                                      t.id === tarea.id ? { ...t, responsables: [...(t.responsables || []), aud.nombre] } : t
+                                    );
+                                    setModalEdicion(prev => prev ? { ...prev, actividad: { ...prev.actividad, tareasSeguimiento: nuevasTareas } } : prev);
+                                  }}
+                                >
+                                  <option value="">+ Asignar</option>
+                                  {auditores
+                                    .filter(a => !(tarea.responsables || []).includes(a.nombre) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))
+                                    .map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const nuevasTareas = (modalEdicion?.actividad?.tareasSeguimiento || []).filter(t => t.id !== tarea.id);
+                                    setModalEdicion(prev => prev ? { ...prev, actividad: { ...prev.actividad, tareasSeguimiento: nuevasTareas } } : prev);
+                                  }}
+                                  className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                  title="Eliminar tarea"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Footer: opciones compactas */}
+                            <div className="px-3 pb-2.5 flex flex-wrap items-center gap-4 border-t border-gray-100 pt-2 bg-gray-50 rounded-b-lg">
+                              <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere observaciones al completar">
+                                <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => {
+                                  const nuevasTareas = (modalEdicion?.actividad?.tareasSeguimiento || []).map(t =>
+                                    t.id === tarea.id ? { ...t, requiereObservaciones: !t.requiereObservaciones } : t
+                                  );
+                                  setModalEdicion(prev => prev ? { ...prev, actividad: { ...prev.actividad, tareasSeguimiento: nuevasTareas } } : prev);
+                                }}>
+                                  <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} />
+                                </div>
+                                <span className={`text-[11px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝 Observaciones</span>
+                              </label>
+                              <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere archivos adjuntos">
+                                <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => {
+                                  const nuevasTareas = (modalEdicion?.actividad?.tareasSeguimiento || []).map(t =>
+                                    t.id === tarea.id ? { ...t, requiereAdjuntos: !t.requiereAdjuntos } : t
+                                  );
+                                  setModalEdicion(prev => prev ? { ...prev, actividad: { ...prev.actividad, tareasSeguimiento: nuevasTareas } } : prev);
+                                }}>
+                                  <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} />
+                                </div>
+                                <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
+                              </label>
+                              <div className="flex items-center gap-1.5 ml-auto">
+                                <span className="text-[11px] text-gray-500 font-semibold">📅 Entrega:</span>
+                                <input
+                                  type="date"
+                                  value={tarea.fechaEntrega || ''}
+                                  onChange={(e) => {
+                                    const nuevasTareas = (modalEdicion?.actividad?.tareasSeguimiento || []).map(t =>
+                                      t.id === tarea.id ? { ...t, fechaEntrega: e.target.value } : t
+                                    );
+                                    setModalEdicion(prev => prev ? { ...prev, actividad: { ...prev.actividad, tareasSeguimiento: nuevasTareas } } : prev);
+                                  }}
+                                  className="text-[10px] px-2 py-0.5 rounded border border-gray-200 text-gray-600 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Nota informativa */}
+                <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-800 flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Nota:</strong> Las actividades del Plan Anual pueden editarse para ajustarlas a las necesidades específicas de la entidad, manteniendo el cumplimiento del Decreto 648 de 2017.
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Footer con botones de acción - fixed */}
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 shrink-0">
+                <div className="flex gap-3 justify-end">
+                  <button
+                    onClick={() => { setActividadExpandida(null); setModoCardExpandida('seguimiento'); }}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+                    disabled={guardandoEdicion}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={guardarEdicionActividad}
+                    disabled={guardandoEdicion || !formularioEdicion.nombre.trim()}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-amber-900 rounded-lg font-medium transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {guardandoEdicion ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Guardando...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Guardar Cambios
+                      </>
+                    )}
+                  </button>
+                </div>
+              
+                        </div>
+                      )}
+                      {/* --- END INLINE EDITOR --- */}

@@ -171,6 +171,9 @@ playwright/.cache/
 .local
 .dev
 
+#Arquivos SSL .pem y .key
+ssl/
+
 #Data produccion
 db/prod/
 
@@ -188,3 +191,5 @@ backend/academic-registration-service/uploads/
 package-lock.json
 backend/auth-service/package-lock.json
 backend/internal-disciplinary-control-service/package-lock.json
+
+.claude/

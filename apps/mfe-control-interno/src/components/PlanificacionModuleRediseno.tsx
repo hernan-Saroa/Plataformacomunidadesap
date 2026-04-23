@@ -35,6 +35,7 @@ import { PlanAnualAuditoriaDefinitivo as PlanAnualOperativo } from './PlanAnualA
 import { UniversoAuditorias } from './UniversoAuditorias';
 import { ProgramaAnualOCIG } from './ProgramaAnualCIG';
 import { HeaderModulOCIG } from './HeaderModuloCIG';
+import { ModuleHeaderBar } from './ModuleHeaderBar';
 // ✅ INTEGRACIÓN BACKEND: Hook para obtener estadísticas reales
 import { useUniversoAuditableData } from './hooks/useUniversoAuditableData';
 import { useProgramaAnualData, calcularEstadisticas } from './hooks/useProgramaAnualData';
@@ -164,17 +165,22 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa', onNav
       {/* HEADER PREMIUM CON HeaderModulOCIG */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       <div className="flex-shrink-0 bg-white border-b border-gray-200">
-        <div className="px-6 py-6">
-          <HeaderModulOCIG
-            titulo={tituloModulo}
-            subtitulo={subtituloModulo}
+        <div className="px-3 pt-3">
+          <ModuleHeaderBar
+            title={tituloModulo}
+            subtitle={subtituloModulo}
+            icon={vista === 'plan-operativo'
+              ? <ClipboardList className="w-5 h-5 text-white" />
+              : <Layers className="w-5 h-5 text-white" />
+            }
+            color={vista === 'plan-operativo' ? '#2962FF' : '#003DA5'}
           />
         </div>
 
         {/* Barra de Filtros y Acciones - SOLO para Universo y Programa */}
         {vista !== 'plan-operativo' && (
           <>
-            <div className="px-4 sm:px-6 pb-4">
+            <div className="px-4 pb-3">
               <div className="flex flex-col gap-3 bg-gray-50 rounded-lg p-3">
                 {/* Filtros Quick */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1">
@@ -286,60 +292,38 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa', onNav
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      {/* TABS NAVEGACIÓN */}
-      {/* ═══════════════════════════════════════════════════════════════════ */}
-      {vista !== 'plan-operativo' && (
-        <>
-          <div className="flex-shrink-0 bg-white border-b border-gray-200">
-            <div className="px-4 sm:px-6">
-              <div className="flex gap-1 overflow-x-auto scroll-smooth -mx-4 px-4 sm:mx-0 sm:px-0" style={{ scrollbarWidth: 'thin' }}>
-                {tabsVisibles.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setTabActiva(tab.id)}
-                    className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all text-sm font-medium flex-shrink-0 ${ 
-                      tabActiva === tab.id
-                        ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50'
-                        : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                    }`}
-                  >
-                    {tab.icon}
-                    <span className="hidden sm:inline">{tab.label}</span>
-                    <span className="sm:hidden whitespace-nowrap">{tab.label.split(' ')[0]}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                      tabActiva === tab.id
-                        ? 'bg-[#1e5da8] text-white'
-                        : 'bg-gray-200 text-gray-700'
-                    }`}>
-                      {tab.badge}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Banner de Ayuda Contextual - ESPACIADO UNIFICADO */}
-          {tabActual && (
-            <div className="flex-shrink-0 bg-blue-50 border-b border-blue-100 px-6 py-6">
-              <div className="flex items-start gap-4">
-                <div className="p-2 bg-blue-600 rounded-lg shadow-md flex-shrink-0">
-                  <Info className="w-4 h-4 text-white" />
-                </div>
-                <p className="text-sm text-blue-900 leading-relaxed">
-                  <span className="font-bold uppercase tracking-wider text-[10px] text-blue-600 block mb-1">{tabActual.label}</span>
-                  {tabActual.descripcion}
-                </p>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ═══════════════════════════════════════════════════════════════════ */}
       {/* CONTENIDO TABS */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto p-3">
+        {/* Tabs - en el área de contenido, separados del título */}
+        {vista !== 'plan-operativo' && (
+          <div className="mb-3">
+            <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
+              {tabsVisibles.map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setTabActiva(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-all ${ 
+                    tabActiva === tab.id
+                      ? 'bg-[#1e5da8] text-white shadow-sm'
+                      : 'text-gray-600 hover:bg-white'
+                  }`}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-xs font-semibold ${
+                    tabActiva === tab.id
+                      ? 'bg-white/20 text-white'
+                      : 'bg-gray-200 text-gray-700'
+                  }`}>
+                    {tab.badge}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
           <motion.div
             key={tabActiva}
@@ -360,7 +344,7 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa', onNav
       {/* FOOTER CON INDICADORES - Solo para Universo/Programa */}
       {/* ═══════════════════════════════════════════════════════════════════ */}
       {vista !== 'plan-operativo' && (
-        <div className="flex-shrink-0 bg-white border-t border-gray-200 px-6 py-3">
+        <div className="flex-shrink-0 bg-white border-t border-gray-200 px-3 py-2">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
             <div className="flex items-center gap-4 text-gray-600">
               <div className="flex items-center gap-2">

@@ -48,7 +48,7 @@ Cada ambiente usa su propio compose, env y script:
   - Script: `deploy.prod.sh`
   - Compose: `docker-compose.prod.yml`
   - Env: `.env.prod`
-  - URL: `http://172.16.202.169`
+  - URL: `https://comunidadesap.esap.edu.co`
 
 ## 3. Variables clave (Microsoft login)
 

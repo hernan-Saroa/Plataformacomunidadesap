@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -23,6 +24,8 @@ import { CreatePersonDto } from './dto/create-person.dto';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly dataSource: DataSource,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
@@ -54,16 +57,29 @@ export class UsersService {
     return `"${this.schemaName}"."personas"`;
   }
 
-  private normalizeRequiredText(value: string): string {
-    return value.trim();
+  private normalizeRequiredText(value: unknown, fieldName = 'campo'): string {
+    if (typeof value !== 'string') {
+      throw new BadRequestException(`El ${fieldName} es obligatorio.`);
+    }
+
+    const normalized = value.trim();
+    if (!normalized) {
+      throw new BadRequestException(`El ${fieldName} es obligatorio.`);
+    }
+
+    return normalized;
   }
 
   private normalizeOptionalText(value?: string | null): string {
     return value?.trim() || '';
   }
 
-  private normalizeEmail(value: string): string {
-    return value.trim().toLowerCase();
+  private normalizeEmail(value: unknown): string {
+    const normalized = this.normalizeRequiredText(
+      value,
+      'correo electronico',
+    ).toLowerCase();
+    return normalized;
   }
 
   private normalizeGender(value?: string | null): string {
@@ -158,27 +174,69 @@ export class UsersService {
   ): Promise<Person> {
     const personRepo = manager.getRepository(Person);
     const legacyPersonId = await this.getNextLegacyPersonId(manager);
-    const firstName = this.normalizeRequiredText(data.firstName);
-    const lastName = this.normalizeRequiredText(data.lastName);
+    const firstName = this.normalizeRequiredText(data.firstName, 'nombre');
+    const lastName = this.normalizeRequiredText(data.lastName, 'apellido');
 
-    return personRepo.save(
-      personRepo.create({
-        id: randomUUID(),
-        idTercero: legacyPersonId,
-        first_name: firstName,
-        last_name: lastName,
-        full_name: `${firstName} ${lastName}`.trim(),
-        identification_number: this.normalizeRequiredText(
-          data.identificationNumber,
-        ),
-        identification_type: this.normalizeRequiredText(data.identificationType),
-        email: this.normalizeEmail(data.email),
-        phone: this.normalizeOptionalText(data.phone),
-        gender: this.normalizeGender(data.gender),
-        idSeccional: data.idSeccional ?? null,
-        idSede: data.idSede ?? null,
-      }),
+    const personData: Partial<Person> = {
+      id: randomUUID(),
+      first_name: firstName,
+      last_name: lastName,
+      full_name: `${firstName} ${lastName}`.trim(),
+      identification_number: this.normalizeRequiredText(
+        data.identificationNumber,
+        'numero de documento',
+      ),
+      identification_type: this.normalizeRequiredText(
+        data.identificationType,
+        'tipo de documento',
+      ),
+      email: this.normalizeEmail(data.email),
+      phone: this.normalizeOptionalText(data.phone),
+      gender: this.normalizeGender(data.gender),
+      idSeccional: data.idSeccional ?? null,
+      idSede: data.idSede ?? null,
+    };
+
+    if (legacyPersonId !== null) {
+      personData.idTercero = legacyPersonId;
+      return personRepo.save(personRepo.create(personData));
+    }
+
+    await manager.query(
+      `
+        INSERT INTO ${this.personasTableRef} (
+          id_person,
+          num_identificacion,
+          tip_identificacion,
+          nom_largo,
+          nom_tercero,
+          pri_apellido,
+          gen_tercero,
+          dir_email,
+          tel_celular,
+          id_seccional,
+          id_sede,
+          fec_creacion,
+          fec_modificacion
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CURRENT_DATE, CURRENT_DATE)
+      `,
+      [
+        personData.id,
+        personData.identification_number,
+        personData.identification_type,
+        personData.full_name,
+        personData.first_name,
+        personData.last_name,
+        personData.gender,
+        personData.email,
+        personData.phone,
+        personData.idSeccional,
+        personData.idSede,
+      ],
     );
+
+    return personRepo.create(personData);
   }
 
   private async loadUserWithRelations(
@@ -207,6 +265,7 @@ export class UsersService {
   }
 
   private rethrowCreateUserError(error: unknown): never {
+    console.error('🔥 [rethrowCreateUserError] Raw Exception details:', error);
     if (
       error instanceof ConflictException ||
       error instanceof BadRequestException
@@ -218,7 +277,15 @@ export class UsersService {
       const driverError = error.driverError as {
         code?: string;
         constraint?: string;
+        column?: string;
+        detail?: string;
+        message?: string;
+        table?: string;
       };
+
+      this.logger.error(
+        `Error al crear usuario. PostgreSQL code=${driverError.code || 'unknown'} constraint=${driverError.constraint || 'none'} table=${driverError.table || 'unknown'} column=${driverError.column || 'unknown'} detail=${driverError.detail || driverError.message || error.message}`,
+      );
 
       if (driverError.code === '23503') {
         if (driverError.constraint === 'fk_personas_seccional') {
@@ -243,6 +310,38 @@ export class UsersService {
           'Ya existe un registro con los mismos datos del usuario.',
         );
       }
+
+      if (driverError.code === '23502') {
+        throw new BadRequestException(
+          `Falta un dato obligatorio para crear el usuario${driverError.column ? `: ${driverError.column}` : ''}.`,
+        );
+      }
+
+      if (driverError.code === '22001') {
+        throw new BadRequestException(
+          `Uno de los datos del usuario supera la longitud permitida${driverError.column ? `: ${driverError.column}` : ''}.`,
+        );
+      }
+
+      if (driverError.code === '22P02') {
+        throw new BadRequestException(
+          'Uno de los identificadores enviados no tiene un formato valido.',
+        );
+      }
+
+      if (driverError.code === '23514') {
+        throw new BadRequestException(
+          'Uno de los datos del usuario no cumple las reglas configuradas en base de datos.',
+        );
+      }
+    } else {
+      this.logger.error(
+        `Error inesperado al crear usuario: ${
+          error instanceof Error
+            ? error.stack || error.message
+            : JSON.stringify(error)
+        }`,
+      );
     }
 
     throw new InternalServerErrorException(
@@ -256,8 +355,12 @@ export class UsersService {
         const normalizedEmail = this.normalizeEmail(dto.email);
         const normalizedDocument = this.normalizeRequiredText(
           dto.documentNumber,
+          'numero de documento',
         );
-        const normalizedUsername = this.normalizeRequiredText(dto.username);
+        const normalizedUsername = this.normalizeRequiredText(
+          dto.username,
+          'nombre de usuario',
+        );
 
         const existingUsername = await manager.getRepository(User).findOne({
           where: { username: normalizedUsername },
@@ -292,7 +395,6 @@ export class UsersService {
             username: normalizedUsername,
             password_hash: passwordHash,
             id_person: person.id,
-            person,
           }),
         );
 
@@ -300,6 +402,11 @@ export class UsersService {
           const roles = await manager.getRepository(Role).find({
             where: dto.roles.map((name) => ({ name })),
           });
+          if (roles.length !== dto.roles.length) {
+            throw new BadRequestException(
+              'Uno o mas roles seleccionados no existen.',
+            );
+          }
           savedUser.roles = roles;
           await userRepo.save(savedUser);
         }
@@ -443,6 +550,7 @@ export class UsersService {
         const normalizedEmail = this.normalizeEmail(dto.email);
         const normalizedDocument = this.normalizeRequiredText(
           dto.identification_number,
+          'numero de documento',
         );
 
         await this.assertCreateUserUniqueness(
@@ -472,7 +580,6 @@ export class UsersService {
             password_hash: passwordHash,
             is_active: false,
             id_person: savedPerson.id,
-            person: savedPerson,
           }),
         );
 
@@ -480,6 +587,11 @@ export class UsersService {
           const roles = await manager.getRepository(Role).findBy({
             id: In(dto.roleIds),
           });
+          if (roles.length !== dto.roleIds.length) {
+            throw new BadRequestException(
+              'Uno o mas roles seleccionados no existen.',
+            );
+          }
           savedUser.roles = roles;
           await userRepo.save(savedUser);
         }

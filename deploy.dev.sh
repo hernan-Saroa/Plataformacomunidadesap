@@ -47,6 +47,7 @@ fi
 COMPOSE_FILE_DEV="docker-compose.dev.yml"
 COMPOSE_FILE_MFE="docker-compose.frontend-mfe.yml"
 SERVER_URL_DEV="http://4.156.71.181"
+FRONTEND_NGINX_CONTAINERS="${FRONTEND_NGINX_CONTAINERS:-superapp-frontend-dev superapp-frontend}"
 FRONTEND_MFE_SERVICES=(
     frontend
     frontend-shell
@@ -110,9 +111,90 @@ compose_dev_mfe_prebuilt() {
     FRONTEND_APP_DOCKERFILE="Dockerfile.frontend.app.prebuilt" compose_dev_mfe "$@"
 }
 
+compose_dev_mfe_gateway_prebuilt() {
+    FRONTEND_GATEWAY_DOCKERFILE="Dockerfile.frontend.gateway.prebuilt" compose_dev_mfe "$@"
+}
+
+restart_frontend_nginx() {
+    local container
+    local restarted=0
+
+    for container in $FRONTEND_NGINX_CONTAINERS; do
+        if ! docker inspect "$container" >/dev/null 2>&1; then
+            continue
+        fi
+
+        if [ "$(docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null)" != "true" ]; then
+            echo -e "${YELLOW}Nginx frontend ${container} no está en ejecución. Omitiendo reinicio.${NC}"
+            continue
+        fi
+
+        echo -e "${YELLOW}Validando configuración Nginx frontend en ${container}...${NC}"
+        docker exec "$container" nginx -t
+
+        echo -e "${YELLOW}Reiniciando Nginx frontend ${container} para tomar cambios...${NC}"
+        docker restart "$container" >/dev/null
+        echo -e "${GREEN}Nginx frontend ${container} reiniciado${NC}"
+        restarted=1
+    done
+
+    if [ "$restarted" -eq 0 ]; then
+        echo -e "${YELLOW}No se encontró un Nginx frontend activo (${FRONTEND_NGINX_CONTAINERS}). Omitiendo reinicio.${NC}"
+    fi
+}
+
 cleanup_build_artifacts() {
     echo -e "${YELLOW}Limpiando artefactos locales del backend para reducir el contexto de build...${NC}"
     find backend -maxdepth 2 -type d \( -name node_modules -o -name dist -o -name build \) -prune -exec rm -rf {} +
+}
+
+get_docker_free_mb() {
+    local docker_root
+    docker_root=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || true)
+
+    if [ -z "$docker_root" ] || [ ! -d "$docker_root" ]; then
+        return 1
+    fi
+
+    df -Pm "$docker_root" | awk 'NR==2 {print $4}'
+}
+
+ensure_docker_disk_space() {
+    local min_free_mb="${MIN_DOCKER_FREE_MB:-10240}"
+    local free_mb
+
+    if ! free_mb=$(get_docker_free_mb); then
+        echo -e "${YELLOW}No fue posible validar espacio libre de Docker. Continuando...${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}Espacio libre Docker: ${free_mb} MB (mínimo recomendado: ${min_free_mb} MB)${NC}"
+
+    if [ "$free_mb" -ge "$min_free_mb" ]; then
+        return 0
+    fi
+
+    echo -e "${RED}Espacio insuficiente para construir imágenes Docker.${NC}"
+
+    if [ "${AUTO_CLEAN_DOCKER:-false}" = "true" ]; then
+        echo -e "${YELLOW}AUTO_CLEAN_DOCKER=true: ejecutando limpieza segura antes del build...${NC}"
+        cmd_clean_safe
+
+        if ! free_mb=$(get_docker_free_mb); then
+            return 0
+        fi
+
+        echo -e "${YELLOW}Espacio libre Docker después de limpiar: ${free_mb} MB${NC}"
+        if [ "$free_mb" -ge "$min_free_mb" ]; then
+            return 0
+        fi
+    fi
+
+    echo -e "${YELLOW}Ejecuta en el server DEV:${NC}"
+    echo -e "${YELLOW}  ./deploy.dev.sh clean-safe${NC}"
+    echo -e "${YELLOW}Luego repite el deploy, o usa:${NC}"
+    echo -e "${YELLOW}  AUTO_CLEAN_DOCKER=true ./deploy.dev.sh rebuild${NC}"
+    exit 1
 }
 
 ensure_frontend_dependencies() {
@@ -296,6 +378,7 @@ cmd_rebuild_changed() {
         exit 0
     fi
 
+    ensure_docker_disk_space
     cleanup_build_artifacts
 
     if [ ${#backend_services[@]} -gt 0 ]; then
@@ -308,6 +391,7 @@ cmd_rebuild_changed() {
         echo -e "${YELLOW}Reconstruyendo frontend afectado:${NC} ${frontend_services[*]}"
         compose_dev_mfe build "${frontend_services[@]}"
         compose_dev_mfe up -d --no-deps "${frontend_services[@]}"
+        restart_frontend_nginx
     fi
 
     if [ $run_migrations -eq 1 ] || [ ${#backend_services[@]} -gt 0 ]; then
@@ -403,6 +487,7 @@ usage() {
 cmd_up() {
     echo -e "${GREEN}Iniciando servicios...${NC}"
     compose_dev up -d
+    restart_frontend_nginx
     echo -e "${GREEN}Servicios iniciados exitosamente${NC}"
     echo -e "${YELLOW}Nota: si hiciste git pull y esperas publicar cambios nuevos, usa ./deploy.dev.sh rebuild${NC}"
     echo ""
@@ -433,6 +518,7 @@ cmd_down() {
 cmd_restart() {
     echo -e "${YELLOW}Reiniciando servicios...${NC}"
     compose_dev restart
+    restart_frontend_nginx
     echo -e "${GREEN}Servicios reiniciados${NC}"
 }
 
@@ -441,6 +527,7 @@ cmd_rebuild() {
     echo -e "${YELLOW}Reconstruyendo servicios (sin detener la versión actual)...${NC}"
     echo -e "${YELLOW}La aplicación seguirá disponible mientras termina el build.${NC}"
 
+    ensure_docker_disk_space
     cleanup_build_artifacts
 
     # Construir imágenes con los contenedores actuales activos.
@@ -448,6 +535,7 @@ cmd_rebuild() {
 
     # Publicar nueva versión una vez terminado el build.
     compose_dev up -d
+    restart_frontend_nginx
 
     # Ejecutar migraciones automáticamente
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
@@ -467,6 +555,7 @@ cmd_rebuild_all_mfe() {
     echo -e "${YELLOW}Modo rápido DEV: build frontend en host + empaquetado Nginx liviano.${NC}"
     echo -e "${YELLOW}Para forzar el flujo Docker anterior usa: MFE_DOCKER_BUILD_ONLY=true $0 rebuild-all-mfe${NC}"
 
+    ensure_docker_disk_space
     cleanup_build_artifacts
 
     if [ "${MFE_DOCKER_BUILD_ONLY:-false}" = "true" ]; then
@@ -474,12 +563,15 @@ cmd_rebuild_all_mfe() {
         compose_dev_mfe build
         compose_dev_mfe up -d
     elif build_frontend_assets_once; then
-        echo -e "${YELLOW}Reconstruyendo backend y gateway...${NC}"
-        compose_dev_mfe build "${BACKEND_DEV_SERVICES[@]}" frontend
+        echo -e "${YELLOW}Reconstruyendo backend...${NC}"
+        compose_dev_mfe build "${BACKEND_DEV_SERVICES[@]}"
 
         echo -e "${YELLOW}Empaquetando shell + MFEs desde artefactos ya compilados...${NC}"
-        compose_dev_mfe_prebuilt build "${FRONTEND_MFE_APP_SERVICES[@]}"
-        compose_dev_mfe_prebuilt up -d
+        compose_dev_mfe_prebuilt build --no-cache "${FRONTEND_MFE_APP_SERVICES[@]}"
+        compose_dev_mfe_prebuilt up -d --force-recreate "${FRONTEND_MFE_APP_SERVICES[@]}"
+        echo -e "${YELLOW}Empaquetando gateway frontend con artefactos estáticos completos...${NC}"
+        compose_dev_mfe_gateway_prebuilt build --no-cache frontend
+        compose_dev_mfe_gateway_prebuilt up -d --no-deps --force-recreate frontend
     else
         echo -e "${YELLOW}Fallback: usando build Docker tradicional para todo el stack MFE...${NC}"
         compose_dev_mfe build
@@ -489,14 +581,17 @@ cmd_rebuild_all_mfe() {
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
     cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
 
+    restart_frontend_nginx
     echo -e "${GREEN}App completa publicada: microservicios + microfrontends.${NC}"
 }
 
 # Comando: rebuild-frontend (rápido)
 cmd_rebuild_frontend() {
     echo -e "${YELLOW}Reconstruyendo solo frontend...${NC}"
+    ensure_docker_disk_space
     compose_dev build frontend
     compose_dev up -d --no-deps frontend
+    restart_frontend_nginx
     echo -e "${GREEN}Frontend reconstruido y reiniciado${NC}"
 }
 
@@ -510,6 +605,7 @@ cmd_rebuild_service() {
     fi
 
     echo -e "${YELLOW}Reconstruyendo servicio: ${service}${NC}"
+    ensure_docker_disk_space
     compose_dev build "$service"
     compose_dev up -d --no-deps "$service"
     echo -e "${GREEN}Servicio ${service} reconstruido y reiniciado${NC}"
@@ -548,6 +644,7 @@ cmd_up_mfe() {
 
     echo -e "${GREEN}Iniciando frontend desacoplado (gateway + shell + MFEs)...${NC}"
     compose_dev_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE iniciado exitosamente${NC}"
     echo -e "${YELLOW}Nota: si hiciste git pull y esperas publicar cambios nuevos del frontend, usa ./deploy.dev.sh rebuild-mfe <app>${NC}"
     echo ""
@@ -570,6 +667,7 @@ cmd_down_mfe() {
 cmd_restart_mfe() {
     echo -e "${YELLOW}Reiniciando frontend desacoplado...${NC}"
     compose_dev_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE reiniciado${NC}"
 }
 
@@ -618,8 +716,10 @@ cmd_rebuild_mfe() {
     fi
 
     echo -e "${YELLOW}Reconstruyendo servicio frontend MFE: ${resolved_service}${NC}"
+    ensure_docker_disk_space
     compose_dev_mfe build "$resolved_service"
     compose_dev_mfe up -d --no-deps "$resolved_service"
+    restart_frontend_nginx
     echo -e "${GREEN}Servicio ${resolved_service} reconstruido y reiniciado${NC}"
 }
 
@@ -685,7 +785,7 @@ cmd_clean_safe() {
     # Elimina imágenes NO usadas (aunque estén "taggeadas").
     # No borra imágenes en uso por contenedores en ejecución.
     docker image prune -a -f
-    docker builder prune -f --filter "until=168h"
+    docker builder prune -a -f
     docker network prune -f
 
     # Eliminar solo volúmenes huérfanos, excepto los protegidos de BD DEV

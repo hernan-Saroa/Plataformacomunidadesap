@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { HeaderModulOCIG } from './HeaderModuloCIG';
+import { ModuleHeaderBar } from './ModuleHeaderBar';
 import { controlInternoService, ListaChequeo as ListaChequeoService } from '../../../services/api/controlInternoService';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 import { useConfiguracionKanban } from './services/useConfiguracionKanban';
@@ -422,31 +423,43 @@ export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tab
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <HeaderModulOCIG 
-        titulo="Biblioteca" 
-        subtitulo="Control Interno de Gestión" 
+      <ModuleHeaderBar
+        title="Biblioteca"
+        subtitle="Plantillas, requisitos y documentos oficiales"
+        icon={<FileText className="w-5 h-5 text-white" />}
+        color="#6366F1"
       />
 
-      <div className="bg-white border-b sticky top-0 z-40 shadow-sm">
-        <div className="w-full px-8">
-          <div className="flex gap-1">
-            <TabButton
-              active={tabActiva === 'BIBLIOTECA'}
+      <div className="p-3">
+        {/* Tabs - en el área de contenido */}
+        <div className="mb-3">
+          <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
+            <button
               onClick={() => setTabActiva('BIBLIOTECA')}
-              icon={<FolderOpen className="w-4 h-4" />}
-              label="Biblioteca de Plantillas"
-              badge={documentosBiblioteca.length}
-            />
-            <TabButton
-              active={tabActiva === 'LISTAS_CHEQUEO'}
+              className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
+                tabActiva === 'BIBLIOTECA' ? 'bg-[#1e5da8] text-white shadow-sm' : 'text-gray-600 hover:bg-white'
+              }`}
+            >
+              <FolderOpen className="w-4 h-4" />
+              Biblioteca de Plantillas
+              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                tabActiva === 'BIBLIOTECA' ? 'bg-white/20' : 'bg-gray-200'
+              }`}>{documentosBiblioteca.length}</span>
+            </button>
+            <button
               onClick={() => setTabActiva('LISTAS_CHEQUEO')}
-              icon={<CheckSquare className="w-4 h-4" />}
-              label="Listas de Chequeo"
-              badge={listasBackend.length}
-            />
+              className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-all ${
+                tabActiva === 'LISTAS_CHEQUEO' ? 'bg-[#1e5da8] text-white shadow-sm' : 'text-gray-600 hover:bg-white'
+              }`}
+            >
+              <CheckSquare className="w-4 h-4" />
+              Listas de Chequeo
+              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                tabActiva === 'LISTAS_CHEQUEO' ? 'bg-white/20' : 'bg-gray-200'
+              }`}>{listasBackend.length}</span>
+            </button>
           </div>
         </div>
-      </div>
 
       <AnimatePresence mode="wait">
         <motion.div
@@ -479,6 +492,7 @@ export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tab
           )}
         </motion.div>
       </AnimatePresence>
+      </div>
     </div>
   );
 }
@@ -713,77 +727,75 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-6 sm:mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex-1">
-            <h1 className="text-2xl sm:text-3xl font-black text-gray-900 mb-2">
-              Biblioteca de Plantillas
-            </h1>
-            <p className="text-sm sm:text-base text-gray-600">
-              Repositorio centralizado de plantillas, oficios y documentos oficiales para auditoría
-            </p>
+    <div className="p-3 w-full">
+      {/* Header - Alineado con Auditorías OCI */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-3">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h2 className="text-sm font-bold text-gray-900">Biblioteca de Plantillas</h2>
+            <p className="text-[11px] text-gray-500">Repositorio centralizado de plantillas, oficios y documentos oficiales para auditoría</p>
           </div>
           <button
             onClick={() => setMostrarModalSubir(true)}
-            className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-bold flex items-center justify-center gap-2 hover:shadow-lg transition-all text-sm sm:text-base"
+            className="px-4 py-2 bg-[#1e5da8] text-white rounded-lg hover:bg-[#174a8a] transition-all flex items-center gap-2 text-sm font-semibold"
           >
-            <Upload className="w-4 h-4 sm:w-5 sm:h-5" />
+            <Upload className="w-4 h-4" />
             Subir Documento
           </button>
         </div>
-      </div>
 
-      {/* Estadísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
-        <div className="bg-white rounded-xl border-2 border-blue-200 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-blue-700">Total Documentos</span>
-            <FileText className="w-4 h-4 text-blue-600" />
+        {/* Estadísticas - Patrón Kanban referencia */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+              <FileText className="w-3.5 h-3.5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-lg font-black text-gray-900 leading-none">{documentos.length}</p>
+              <p className="text-[10px] text-gray-500">Total Documentos</p>
+            </div>
           </div>
-          <p className="text-2xl font-black text-blue-700">{documentos.length}</p>
-        </div>
-        <div className="bg-white rounded-xl border-2 border-green-200 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-green-700">Plantillas</span>
-            <File className="w-4 h-4 text-green-600" />
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-green-50 flex items-center justify-center flex-shrink-0">
+              <File className="w-3.5 h-3.5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-lg font-black text-green-700 leading-none">{documentos.filter(d => d.categoria === 'PLANTILLA').length}</p>
+              <p className="text-[10px] text-gray-500">Plantillas</p>
+            </div>
           </div>
-          <p className="text-2xl font-black text-green-700">
-            {documentos.filter(d => d.categoria === 'PLANTILLA').length}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl border-2 border-purple-200 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-purple-700">Oficios</span>
-            <FileText className="w-4 h-4 text-purple-600" />
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
+              <FileText className="w-3.5 h-3.5 text-purple-600" />
+            </div>
+            <div>
+              <p className="text-lg font-black text-purple-700 leading-none">{documentos.filter(d => d.categoria === 'OFICIO').length}</p>
+              <p className="text-[10px] text-gray-500">Oficios</p>
+            </div>
           </div>
-          <p className="text-2xl font-black text-purple-700">
-            {documentos.filter(d => d.categoria === 'OFICIO').length}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl border-2 border-yellow-200 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-yellow-700">Formatos</span>
-            <CheckSquare className="w-4 h-4 text-yellow-600" />
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0">
+              <CheckSquare className="w-3.5 h-3.5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-lg font-black text-amber-700 leading-none">{documentos.filter(d => d.categoria === 'FORMATO').length}</p>
+              <p className="text-[10px] text-gray-500">Formatos</p>
+            </div>
           </div>
-          <p className="text-2xl font-black text-yellow-700">
-            {documentos.filter(d => d.categoria === 'FORMATO').length}
-          </p>
-        </div>
-        <div className="bg-white rounded-xl border-2 border-red-200 p-4">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-semibold text-red-700">Descargas Totales</span>
-            <Download className="w-4 h-4 text-red-600" />
+          <div className="bg-white border border-gray-200 rounded-lg px-3 py-2.5 flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
+              <Download className="w-3.5 h-3.5 text-red-600" />
+            </div>
+            <div>
+              <p className="text-lg font-black text-red-700 leading-none">{documentos.reduce((sum, d) => sum + d.descargas, 0)}</p>
+              <p className="text-[10px] text-gray-500">Descargas Totales</p>
+            </div>
           </div>
-          <p className="text-2xl font-black text-red-700">
-            {documentos.reduce((sum, d) => sum + d.descargas, 0)}
-          </p>
         </div>
       </div>
 
       {/* Filtros y Búsqueda */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-6 mb-6">
+      <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex-1 min-w-[200px] relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -792,13 +804,13 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
               placeholder="Buscar plantilla..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none text-sm"
             />
           </div>
           <select
             value={filtroEtapa}
             onChange={(e) => setFiltroEtapa(e.target.value)}
-            className="px-4 py-3 border-2 border-gray-300 rounded-lg font-semibold focus:border-blue-500 focus:outline-none"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:border-blue-500 focus:outline-none"
           >
             <option value="TODOS">Todas las etapas</option>
             {etapasActivas.map(etapa => (
@@ -810,7 +822,7 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
           <select
             value={filtroCategoria}
             onChange={(e) => setFiltroCategoria(e.target.value)}
-            className="px-4 py-3 border-2 border-gray-300 rounded-lg font-semibold focus:border-blue-500 focus:outline-none"
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:border-blue-500 focus:outline-none"
           >
             <option value="TODOS">Todas las categorías</option>
             <option value="OFICIO">Oficios</option>
@@ -829,8 +841,8 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
 
       {/* Lista de Documentos agrupada por etapa */}
       <div className="bg-white rounded-xl border-2 border-gray-200 overflow-hidden">
-        <div className="p-6 border-b-2 border-gray-200 bg-gray-50">
-          <h2 className="text-xl font-black text-gray-900">
+        <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
+          <h2 className="text-sm font-bold text-gray-900">
             Documentos Disponibles ({documentosFiltrados.length})
           </h2>
         </div>
@@ -1376,7 +1388,7 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+    <div className="p-3 w-full">
       {/* Banner: contexto de auditoría cuando se navega desde expediente/Comunicación */}
       {auditoriaIdFoco && (
         <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl">
@@ -1465,7 +1477,7 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
       </div>
 
       {/* Filtro por Etapa */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-4 sm:p-6 mb-6">
+      <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-2">
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
@@ -1560,7 +1572,7 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
       </div>
 
       {/* Lista de Listas de Chequeo */}
-      <div className="space-y-6">
+      <div className="space-y-3">
         {!isLoading && !loadError && listasFiltradas.map((lista) => (
           <TarjetaListaChequeo
             key={lista.id}
@@ -1856,7 +1868,7 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
   return (
     <button
       onClick={onClick}
-      className={`relative px-6 py-4 flex items-center gap-2 text-sm font-medium border-b-2 transition-all ${
+      className={`relative px-4 py-2.5 flex items-center gap-1.5 text-sm font-medium border-b-2 transition-all ${
         active
           ? 'border-[#1e5da8] text-[#1e5da8] bg-blue-50/50'
           : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'

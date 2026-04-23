@@ -185,6 +185,7 @@ export function RolePermissionsEditor({
       });
       setHasChanges(false);
       onSaved?.();
+      onOpenChange(false);
     } catch (error) {
       console.error('Error saving permissions:', error);
       toast.error('Error al guardar permisos', {

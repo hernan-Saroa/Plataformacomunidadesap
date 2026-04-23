@@ -1708,9 +1708,19 @@ class DisciplinaryService {
         return apiClient.get<any>(`${SERVICE_PREFIX}/compartir-expediente/publico/${token}`, undefined, { skipAuth: true });
     }
 
-    // --- ASOCIACIONES ---
+  /**
+   * Obtener documentos públicos de expediente compartido (público)
+   */
+  async obtenerDocumentosExpedienteCompartido(token: string): Promise<{
+    proceso: { id: string; radicadoProceso: string };
+    documentos: any[];
+  }> {
+    return apiClient.get<any>(`${SERVICE_PREFIX}/compartir-expediente/documentos/${token}`, undefined, { skipAuth: true });
+  }
 
-    async asociarNoticiaAProceso(noticiaId: string, procesoId: string, justificacion: string): Promise<{ message: string; association?: any }> {
+  // --- ASOCIACIONES ---
+
+  async asociarNoticiaAProceso(noticiaId: string, procesoId: string, justificacion: string): Promise<{ message: string; association?: any }> {
         return apiClient.patch<{ message: string; association?: any }>(`${SERVICE_PREFIX}/disciplinary-news/${noticiaId}/associate-process`, {
             procesoDestinoId: procesoId,
             justificacion,

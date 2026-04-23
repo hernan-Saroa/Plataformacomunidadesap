@@ -982,17 +982,32 @@ function VistaLista({
   onArchivarNoticia,
   onVerDetallesNoticia,
   onDevolverNoticia,
-  onDevolverCompetencia,
-  onAsociarNoticiaProceso,
-  onAsociarNoticiaNoticia,
-  onVerProcesoAsociado,
-  onVerNoticiaAsociada,
-  onEditarNoticia,
-  onEditarProceso, // ✅ NUEVO: Editar proceso
+  onDevolverCompetencia, // ✅ AGREGADO: Coherencia con Kanban
+  onAsociarNoticiaProceso, // ✅ AGREGADO: Coherencia con Kanban
+  onAsociarNoticiaNoticia, // ✅ NUEVO: Asociar noticia a noticia
+  onVerProcesoAsociado, // ✅ AGREGADO: Coherencia con Kanban
+  onVerNoticiaAsociada, // ✅ AGREGADO: Coherencia con Kanban
+  onEditarNoticia, // ✅ AGREGADO: Coherencia con Kanban
+  onEditarProceso, // ✅ NUEVO: Editar proceso (reemplaza Ver Detalles)
   onCambiarEtapa, // ✅ NUEVO: Handler para cambiar etapa
   etapasConfig,
   isMobile
 }: VistaListaProps) {
+  // Permission and role checks for list view (same as kanban)
+  const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+  const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR);
+  const canEditNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
+  const canViewDetailNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL);
+  const canDevolve = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER);
+  const canRedimir = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR);
+  const canArchive = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVAR);
+  const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
+  const canViewDetailProceso = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_DETAIL);
+  const canViewExpediente = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EXPIDIENTE);
+  const canEditProceso = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_EDIT);
+  const canReassign = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REASIGNACION);
+  const canAssociateProcesos = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR_PROCESOS);
+  const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
   const [filtroEtapa, setFiltroEtapa] = useState<string>('todos');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -1188,7 +1203,7 @@ function VistaLista({
                     {isNoticia ? (
                       <>
                         <KanbanActionRowPrimary>
-                          {onVerDetallesNoticia && (
+                          {onVerDetallesNoticia && canViewDetailNoticia && (
                             <KanbanButtonSecondary
                               onClick={() => onVerDetallesNoticia(noticia!)}
                               icon={<Eye className="w-3 h-3" />}
@@ -1197,55 +1212,69 @@ function VistaLista({
                               Detalles
                             </KanbanButtonSecondary>
                           )}
-                          <KanbanButtonPrimary
-                            onClick={() => onConvertirNoticia(noticia!)}
-                            icon={<PlusCircle className="w-3 h-3" />}
-                          >
-                            Convertir
-                          </KanbanButtonPrimary>
+                          {canConvert && esJefe && (
+                            <KanbanButtonPrimary
+                              onClick={() => onConvertirNoticia(noticia!)}
+                              icon={<PlusCircle className="w-3 h-3" />}
+                            >
+                              Convertir
+                            </KanbanButtonPrimary>
+                          )}
                         </KanbanActionRowPrimary>
                         <KanbanActionRowTertiary>
-                          {onEditarNoticia && (
+                          {onEditarNoticia && canEditNoticia && esJefe && (
                             <KanbanButtonTertiary compact onClick={() => onEditarNoticia(noticia!)} icon={<Edit className="w-3 h-3" />} title="Editar noticia" />
                           )}
-                          {onDevolverNoticia && (
+                          {!noticia!.procesoAsociado && onAsociarNoticiaNoticia && canAssociate && esJefe && (
+                            <KanbanButtonTertiary compact onClick={() => onAsociarNoticiaNoticia!(noticia!)} icon={<Link2 className="w-3 h-3" />} title="Asociar a otra noticia" />
+                          )}
+                          {!noticia!.procesoAsociado && onAsociarNoticiaProceso && canAssociate && esJefe && (
+                            <KanbanButtonTertiary compact onClick={() => onAsociarNoticiaProceso!(noticia!)} icon={<Link2 className="w-3 h-3" />} title="Asociar a proceso" />
+                          )}
+                          {onDevolverNoticia && canDevolve && esJefe && (
                             <KanbanButtonTertiary compact onClick={() => onDevolverNoticia(noticia!)} icon={<ArrowLeft className="w-3 h-3" />} title="Devolver" />
                           )}
-                          {onDevolverCompetencia && (
+                          {onDevolverCompetencia && canRedimir && esJefe && (
                             <KanbanButtonTertiary compact onClick={() => onDevolverCompetencia(noticia!)} icon={<Send className="w-3 h-3" />} title="Remitir por competencia" />
                           )}
-                          <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3 h-3" />} title="Archivar" />
+                          {canArchive && esJefe && (
+                            <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3 h-3" />} title="Archivar" />
+                          )}
                         </KanbanActionRowTertiary>
                       </>
                     ) : (
                       <>
                         <KanbanActionRowPrimary>
-                          <KanbanButtonSecondary
-                            onClick={() => onVerDetalles(proceso!)}
-                            icon={<FileText className="w-3 h-3" />}
-                            title="Ver detalles"
-                          >
-                            Detalles
-                          </KanbanButtonSecondary>
-                          <KanbanButtonPrimary
-                            onClick={() => onVerExpediente(proceso!)}
-                            icon={<FolderOpen className="w-3 h-3" />}
-                          >
-                            Exp.
-                          </KanbanButtonPrimary>
+                          {canViewDetailProceso && (
+                            <KanbanButtonSecondary
+                              onClick={() => onVerDetalles(proceso!)}
+                              icon={<FileText className="w-3 h-3" />}
+                              title="Ver detalles"
+                            >
+                              Detalles
+                            </KanbanButtonSecondary>
+                          )}
+                          {canViewExpediente && (
+                            <KanbanButtonPrimary
+                              onClick={() => onVerExpediente(proceso!)}
+                              icon={<FolderOpen className="w-3 h-3" />}
+                            >
+                              Exp.
+                            </KanbanButtonPrimary>
+                          )}
                         </KanbanActionRowPrimary>
                         <KanbanActionRowTertiary>
-                          {onEditarProceso && (
+                          {onEditarProceso && canEditProceso && (
                             <KanbanButtonTertiary compact onClick={() => onEditarProceso(proceso!)} icon={<Edit className="w-3 h-3" />} title="Editar proceso" />
                           )}
-                          {onSolicitarReasignacion && (
+                          {proceso!.etapaActual !== 'Recepción' && onSolicitarReasignacion && canReassign && (
                             <KanbanButtonTertiary compact onClick={() => onSolicitarReasignacion(proceso!)} icon={<UserCheck className="w-3 h-3" />} title="Reasignar profesional" />
                           )}
-                          {onAsociarProcesoProceso && (
+                          {proceso!.etapaActual !== 'Recepción' && onAsociarProcesoProceso && canAssociateProcesos && (
                             <KanbanButtonTertiary compact onClick={() => onAsociarProcesoProceso(proceso!)} icon={<Link2 className="w-3 h-3" />} title="Asociar a otro proceso" />
                           )}
                         </KanbanActionRowTertiary>
-                        {proceso!.pendienteAprobacion && (
+                        {proceso!.pendienteAprobacion && canApprove && (
                           <KanbanButtonSemantic variant="success" onClick={() => onAprobarBorrador(proceso!)} icon={<CheckCircle className="w-3 h-3" />}>
                             Aprobar Documento
                           </KanbanButtonSemantic>
@@ -1461,50 +1490,64 @@ function VistaLista({
                           {isNoticia ? (
                             <>
                               <KanbanActionRowPrimary>
-                                {onVerDetallesNoticia && (
+                                {onVerDetallesNoticia && canViewDetailNoticia && (
                                   <KanbanButtonSecondary onClick={() => onVerDetallesNoticia(noticia!)} icon={<Eye className="w-3 h-3" />} title="Ver detalles">
                                     Detalles
                                   </KanbanButtonSecondary>
                                 )}
-                                <KanbanButtonPrimary onClick={() => onConvertirNoticia(noticia!)} icon={<PlusCircle className="w-3 h-3" />} title="Convertir a proceso">
-                                  Convertir
-                                </KanbanButtonPrimary>
+                                {canConvert && esJefe && (
+                                  <KanbanButtonPrimary onClick={() => onConvertirNoticia(noticia!)} icon={<PlusCircle className="w-3 h-3" />} title="Convertir a proceso">
+                                    Convertir
+                                  </KanbanButtonPrimary>
+                                )}
                               </KanbanActionRowPrimary>
                               <KanbanActionRowTertiary>
-                                {onEditarNoticia && (
+                                {onEditarNoticia && canEditNoticia && esJefe && (
                                   <KanbanButtonTertiary compact onClick={() => onEditarNoticia(noticia!)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar noticia" />
                                 )}
-                                {onDevolverNoticia && (
+                                {!noticia!.procesoAsociado && onAsociarNoticiaNoticia && canAssociate && esJefe && (
+                                  <KanbanButtonTertiary compact onClick={() => onAsociarNoticiaNoticia!(noticia!)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a otra noticia" />
+                                )}
+                                {!noticia!.procesoAsociado && onAsociarNoticiaProceso && canAssociate && esJefe && (
+                                  <KanbanButtonTertiary compact onClick={() => onAsociarNoticiaProceso!(noticia!)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a proceso" />
+                                )}
+                                {onDevolverNoticia && canDevolve && esJefe && (
                                   <KanbanButtonTertiary compact onClick={() => onDevolverNoticia(noticia!)} icon={<ArrowLeft className="w-3.5 h-3.5" />} title="Devolver" />
                                 )}
-                                {onDevolverCompetencia && (
+                                {onDevolverCompetencia && canRedimir && esJefe && (
                                   <KanbanButtonTertiary compact onClick={() => onDevolverCompetencia(noticia!)} icon={<Send className="w-3.5 h-3.5" />} title="Remitir por competencia" />
                                 )}
-                                <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3.5 h-3.5" />} title="Archivar" />
+                                {canArchive && esJefe && (
+                                  <KanbanButtonDestructive compact onClick={() => onArchivarNoticia(noticia!)} icon={<Archive className="w-3.5 h-3.5" />} title="Archivar" />
+                                )}
                               </KanbanActionRowTertiary>
                             </>
                           ) : (
                             <>
                               <KanbanActionRowPrimary>
-                                <KanbanButtonSecondary onClick={() => onVerDetalles(proceso!)} icon={<FileText className="w-3 h-3" />} title="Ver detalles">
-                                  Detalles
-                                </KanbanButtonSecondary>
-                                <KanbanButtonPrimary onClick={() => onVerExpediente(proceso!)} icon={<FolderOpen className="w-3 h-3" />} title="Expediente">
-                                  Exp.
-                                </KanbanButtonPrimary>
+                                {canViewDetailProceso && (
+                                  <KanbanButtonSecondary onClick={() => onVerDetalles(proceso!)} icon={<FileText className="w-3 h-3" />} title="Ver detalles">
+                                    Detalles
+                                  </KanbanButtonSecondary>
+                                )}
+                                {canViewExpediente && (
+                                  <KanbanButtonPrimary onClick={() => onVerExpediente(proceso!)} icon={<FolderOpen className="w-3 h-3" />} title="Expediente">
+                                    Exp.
+                                  </KanbanButtonPrimary>
+                                )}
                               </KanbanActionRowPrimary>
                               <KanbanActionRowTertiary>
-                                {onEditarProceso && (
+                                {onEditarProceso && canEditProceso && (
                                   <KanbanButtonTertiary compact onClick={() => onEditarProceso(proceso!)} icon={<Edit className="w-3.5 h-3.5" />} title="Editar proceso" />
                                 )}
-                                {onSolicitarReasignacion && (
+                                {proceso!.etapaActual !== 'Recepción' && onSolicitarReasignacion && canReassign && (
                                   <KanbanButtonTertiary compact onClick={() => onSolicitarReasignacion(proceso!)} icon={<UserCheck className="w-3.5 h-3.5" />} title="Reasignar" />
                                 )}
-                                {onAsociarProcesoProceso && (
+                                {proceso!.etapaActual !== 'Recepción' && onAsociarProcesoProceso && canAssociateProcesos && (
                                   <KanbanButtonTertiary compact onClick={() => onAsociarProcesoProceso(proceso!)} icon={<Link2 className="w-3.5 h-3.5" />} title="Asociar a otro proceso" />
                                 )}
                               </KanbanActionRowTertiary>
-                              {proceso!.pendienteAprobacion && (
+                              {proceso!.pendienteAprobacion && canApprove && (
                                 <KanbanButtonSemantic variant="success" onClick={() => onAprobarBorrador(proceso!)} icon={<CheckCircle className="w-3 h-3" />} title="Aprobar documento pendiente">
                                   Aprobar Documento
                                 </KanbanButtonSemantic>
