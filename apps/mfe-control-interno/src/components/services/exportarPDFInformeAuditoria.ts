@@ -58,6 +58,8 @@ export interface AuditoriaBasicaPDF {
   contextoGeneral?: string;
   descripcionUnidad?: string;
   fechasReuniones?: string;
+  fechaReunionApertura?: string;
+  fechaReunionCierre?: string;
   /** Reuniones sostenidas durante la auditoría (apertura, cierre, etc.) */
   reuniones?: Array<{
     tipo: string;       // ej: 'Reunión de Apertura', 'Reunión de Cierre'
@@ -286,8 +288,20 @@ export async function exportarPDFInformeAuditoria(
     || 'el periodo correspondiente';
 
   // ─── Derivar valores ────────────────────────────────────────────────────────
-  // El "consecutivo" es el radicado o el código técnico
-  const radicado = auditoria.radicado || auditoria.codigo || `I-${añoActual}-001`;
+  // El "consecutivo" es el radicado o el código técnico formateado como I-YYYY-XXXXXX
+  let radicado = auditoria.radicado;
+  if (!radicado && auditoria.codigo) {
+    const parts = auditoria.codigo.split('-');
+    if (parts.length >= 3) {
+      const year = parts[1];
+      const num = parts[2];
+      radicado = `I-${year}-${num.padStart(6, '0')}`;
+    } else {
+      radicado = auditoria.codigo;
+    }
+  }
+  if (!radicado) radicado = `I-${añoActual}-000001`;
+
   const fechaOficio = auditoria.fechaOficio || fechaStr;
   const cargoDest = auditoria.destinatarioCargo || 'Director(a) Territorial';
   // Si destinatarioNombre parece un ID (sin espacios y corto), usar cargo como nombre de display
@@ -307,7 +321,7 @@ export async function exportarPDFInformeAuditoria(
   // ═══════════════════════════════════════════════════════════════════════════
   // PÁGINA 1 — CARTA DE CUBIERTA (Estilo Oficio)
   // ═══════════════════════════════════════════════════════════════════════════
-  if (tipo === 'preliminar' || tipo === 'final') {
+  if (tipo === 'preliminar' || tipo === 'final' || tipo === 'ejecutivo') {
     const isFinal = tipo === 'final';
     // Logo institucional completo (escudo + texto) únicamente en la página 1
     const logoInstitucionalBase64 = await getLogoInstitucionalESAP();
@@ -334,9 +348,12 @@ export async function exportarPDFInformeAuditoria(
     
     let y = boxY + boxH + 20;
 
-    //    // Bogotá, D.C.
+    // Consecutivo y Ciudad
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
+    if (auditoria.codigo) {
+      doc.text(auditoria.codigo, margin, y - 4);
+    }
     doc.text('Bogotá, D.C.', margin, y);
     y += LH * 3;
 
@@ -356,8 +373,10 @@ export async function exportarPDFInformeAuditoria(
     doc.setFont('helvetica', 'bold');
     doc.text('Asunto:', margin, y);
     doc.setFont('helvetica', 'normal');
-    const asuntoTxt = isFinal
+    const asuntoTxt = tipo === 'final'
       ? `Informe final auditoría interna de evaluación y seguimiento ${unidad} – Vigencia ${planAnualAño}.`
+      : tipo === 'ejecutivo'
+      ? `Informe ejecutivo auditoría interna de evaluación y seguimiento ${unidad} – Vigencia ${planAnualAño}.`
       : `Informe preliminar auditoría interna de evaluación y seguimiento ${unidad} – Vigencia ${planAnualAño}.`;
     const lAsunto = doc.splitTextToSize(asuntoTxt, tableW - 20);
     doc.text(lAsunto, margin + 20, y);
@@ -370,11 +389,21 @@ export async function exportarPDFInformeAuditoria(
     y += LH * 2;
 
     // Cuerpo
-    const parrafosCuerpo = isFinal
+    const parrafosCuerpo = tipo === 'final'
       ? [
           `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento el Informe Final de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para el periodo comprendido entre el 1 de enero y el 31 de diciembre de ${planAnualAño - 1}.`,
           '',
           `La ${unidad} tiene plazo hasta el ${plazoPronunc}, para formular un plan de mejora el cual debe contener acciones con el objetivo de subsanar la(s) causa(s) raíz de los hallazgos formalizados.`,
+          '',
+          'De antemano, agradecemos su colaboración en el desarrollo de las funciones de esta dependencia.',
+          '',
+          'Cordialmente,',
+        ].join('\n')
+      : tipo === 'ejecutivo'
+      ? [
+          `La Oficina de Control Interno de la ESAP, en cumplimiento de las actividades encomendadas por la Ley 87 de 1993 y del Plan Anual de Auditoría del año ${añoActual}, remite para su conocimiento el Informe Ejecutivo de Auditoría de Evaluación y Seguimiento a la gestión adelantada por la ${unidad}, para el periodo comprendido entre el 1 de enero y el 31 de diciembre de ${planAnualAño - 1}.`,
+          '',
+          'Este documento resume los resultados definitivos y la evaluación del sistema de control interno del proceso auditado.',
           '',
           'De antemano, agradecemos su colaboración en el desarrollo de las funciones de esta dependencia.',
           '',
@@ -439,6 +468,9 @@ export async function exportarPDFInformeAuditoria(
 
   // Fila: TIPO DE INFORME
   y = filaTabla(doc, margin, y, tableW, 'TIPO DE INFORME:', tituloInforme, TABLA_OPTS);
+
+  // Fila: RADICADO / CONSECUTIVO
+  y = filaTabla(doc, margin, y, tableW, 'RADICADO / CONSECUTIVO:', radicado, TABLA_OPTS);
 
   // Fila: TITULO
   y = filaTabla(doc, margin, y, tableW,
@@ -537,23 +569,23 @@ export async function exportarPDFInformeAuditoria(
   doc.text(lNS, margin, y);
   y += (lNS.length * LH) + SEC + 4;
 
-  // ─── ANTECEDENTES (Centrado) ────────────────────────────────────────────────
+  // ─── ANTECEDENTES Y CONTEXTO GENERAL ───────────────────────────────────────
   y = checkPage(doc, y, 20, FOOTER_MARGIN);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text('ANTECEDENTES', margin + (tableW / 2), y, { align: 'center' });
+  doc.text('ANTECEDENTES Y CONTEXTO GENERAL', margin + (tableW / 2), y, { align: 'center' });
   y += LH + 4;
 
-  // ── Marco Normativo ──
+  // 1. MARCO NORMATIVO
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.text('MARCO NORMATIVO', margin, y);
+  doc.text('1.1 MARCO NORMATIVO', margin, y);
   y += LH + 2;
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
 
-  // Extracción de normas desde la respuesta de la IA (ahora es un objeto)
+  // Extracción de normas (se mantiene igual)
   let nGenerales: string[] = [];
   let nEspecificas: string[] = [];
   
@@ -561,24 +593,17 @@ export async function exportarPDFInformeAuditoria(
     nGenerales = (auditoria.marcoNormativo as any).generales || [];
     nEspecificas = (auditoria.marcoNormativo as any).especificas || [];
   } else {
-    // Fallback por si la IA no siguió el nuevo formato o si vienen de antes
-    const normasBaseG = [
+    nGenerales = [
       'Constitución Política de Colombia 1991.',
       'Ley 87 de 1993 – Por la cual se establecen normas para el ejercicio del control interno.',
-      'Ley 80 de 1993 – Estatuto General de Contratación de la Administración Pública.',
-      'Ley 1150 de 2007 – Medidas para la eficiencia y la transparencia en la contratación.',
       'Ley 1474 de 2011 – Estatuto Anticorrupción.',
       'Decreto 1083 de 2015 – Único Reglamentario del Sector de Función Pública.',
-      'Decreto 1082 de 2015 – Único Reglamentario de Planeación Nacional.',
+      'MIPG – Modelo Integrado de Planeación y Gestión.'
     ];
-    const normasBaseE = [
+    nEspecificas = [
       'Decreto 164 de 2021 – Estructura de la ESAP.',
-      'Plan Decenal de Desarrollo 2023 – 2033 de la ESAP.',
-      'Resolución No SC-043 de 2022 – Comité de Inventarios de la ESAP.',
-      'Acuerdo 002 de 2018 – Reglamento Único Estudiantil ESAP.',
+      'Plan Institucional de Desarrollo de la ESAP.'
     ];
-    nGenerales = normasBaseG;
-    nEspecificas = normasBaseE;
   }
 
   if (nGenerales.length > 0) {
@@ -611,37 +636,40 @@ export async function exportarPDFInformeAuditoria(
   }
   y += SEC;
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // CONTEXTO GENERAL DE LA AUDITORÍA
-  // ═══════════════════════════════════════════════════════════════════════
-  y = checkPage(doc, y, 20, FOOTER_MARGIN);
+  // 2. DESCRIPCIÓN DE LA UNIDAD / CONTEXTO
+  y = checkPage(doc, y, 15, FOOTER_MARGIN);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.text('CONTEXTO GENERAL DE LA AUDITORÍA', margin, y);
+  doc.text('1.2 CONTEXTO DE LA AUDITORÍA Y DESCRIPCIÓN DE LA UNIDAD', margin, y);
   y += LH + 3;
 
-  // Párrafo descriptivo de la unidad/territorial
-  const descUnidad = auditoria.descripcionUnidad ||
-    `La ${unidad} hace parte de la estructura organizacional de la Escuela Superior de Administración Pública – ESAP, ` +
-    `entidad adscrita al Departamento Administrativo de la Función Pública. Su misión es brindar formación ` +
-    `y capacitación en administración pública, contribuyendo al fortalecimiento del Estado colombiano.`;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
+  
+  const descUnidad = auditoria.descripcionUnidad ||
+    `La ${unidad} hace parte de la estructura organizacional de la Escuela Superior de Administración Pública – ESAP, ` +
+    `entidad adscrita al Departamento Administrativo de la Función Pública.`;
   const lDesc = doc.splitTextToSize(descUnidad, tableW);
   y = checkPage(doc, y, lDesc.length * LH + 4, FOOTER_MARGIN);
   doc.text(lDesc, margin, y);
-  y += lDesc.length * LH + SEC;
+  y += lDesc.length * LH + 2;
 
-  // Párrafo de contexto de la auditoría
   const ctxText = auditoria.contextoGeneral ||
-    `De acuerdo con el Plan Anual de Auditoría Interna del año ${añoActual}, la Oficina de Control Interno ` +
-    `programó y ejecutó la Auditoría Interna basada en riesgos a los procesos al interior de la ${unidad} ` +
-    `de la ESAP. La verificación se realizó mediante la revisión de evidencias documentales, sistemas de ` +
-    `información, expedientes, reportes e inspección en sitio.`;
+    `En cumplimiento al Plan Anual de Auditoría Interna del año ${añoActual}, la Oficina de Control Interno ` +
+    `ejecutó la Auditoría Interna a los procesos de la ${unidad}.`;
   const lCtx = doc.splitTextToSize(ctxText, tableW);
   y = checkPage(doc, y, lCtx.length * LH + 4, FOOTER_MARGIN);
   doc.text(lCtx, margin, y);
   y += lCtx.length * LH + SEC;
+
+  // 3. EQUIPO Y REUNIONES
+  y = checkPage(doc, y, 30, FOOTER_MARGIN);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.text('1.3 EQUIPO AUDITOR Y REUNIONES SOSTENIDAS', margin, y);
+  y += LH + 3;
+
+  // Párrafo descriptivo de la unidad/territorial y Contexto ya se movieron arriba a ANTECEDENTES Y CONTEXTO GENERAL
 
   // ── Tabla EQUIPO AUDITOR ──
   y = checkPage(doc, y, 30, FOOTER_MARGIN);
@@ -694,15 +722,19 @@ export async function exportarPDFInformeAuditoria(
       : [
           {
             tipo: 'Reunión de Apertura',
-            fecha: auditoria.fechaEjecucionInicio || fechaOficio,
+            fecha: auditoria.fechaReunionApertura || auditoria.fechaEjecucionInicio || fechaOficio,
             lugar: auditoria.lugarEjecucion || 'Sede de la unidad auditada',
-            participantes: 'Equipo Auditor OCI, Responsable de la Unidad Auditada',
+            participantes: auditoria.responsableUnidadAuditada 
+              ? `Equipo Auditor OCI, ${auditoria.responsableUnidadAuditada}` 
+              : 'Equipo Auditor OCI, Responsable de la Unidad Auditada',
           },
           {
             tipo: 'Reunión de Cierre',
-            fecha: auditoria.fechaEjecucionFin || fechaOficio,
+            fecha: auditoria.fechaReunionCierre || auditoria.fechaEjecucionFin || fechaOficio,
             lugar: auditoria.lugarEjecucion || 'Sede de la unidad auditada',
-            participantes: 'Equipo Auditor OCI, Responsable de la Unidad Auditada',
+            participantes: auditoria.responsableUnidadAuditada 
+              ? `Equipo Auditor OCI, ${auditoria.responsableUnidadAuditada}` 
+              : 'Equipo Auditor OCI, Responsable de la Unidad Auditada',
           },
         ];
 
@@ -917,18 +949,20 @@ export async function exportarPDFInformeAuditoria(
       });
     }
 
-    // ── 2. PLANES DE MEJORAMIENTO ──
-    y = checkPage(doc, y, 14, FOOTER_MARGIN);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.text('PLANES DE MEJORAMIENTO:', margin, y);
-    y += 5;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    const planText = auditoria.planesMejoramiento || 'La unidad auditada no cuenta con planes de mejoramiento vigentes.';
-    const lplan = doc.splitTextToSize(planText, tableW);
-    doc.text(lplan, margin, y);
-    y += lplan.length * LH + SEC;
+    // ── 2. PLANES DE MEJORAMIENTO (Solo para informes que NO sean preliminares) ──
+    if (tipo !== 'preliminar') {
+      y = checkPage(doc, y, 14, FOOTER_MARGIN);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text('PLANES DE MEJORAMIENTO:', margin, y);
+      y += 5;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      const planText = auditoria.planesMejoramiento || 'La unidad auditada no cuenta con planes de mejoramiento vigentes.';
+      const lplan = doc.splitTextToSize(planText, tableW);
+      doc.text(lplan, margin, y);
+      y += lplan.length * LH + SEC;
+    }
 
     // ── 3. ASPECTOS RELEVANTES DE LA INFORMACIÓN ANALIZADA ──
     y = checkPage(doc, y, 14, FOOTER_MARGIN);
