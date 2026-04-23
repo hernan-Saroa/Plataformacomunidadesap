@@ -3771,6 +3771,28 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
     
     // ✅ NUEVO: Usar exportación local con ExcelJS + Logo (no depende del backend)
     try {
+      // 🔍 DEBUG: Mostrar datos EXACTOS que se envían al Excel
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('📊 [handleExportarExcel] DATOS DEL PLAN para Excel:');
+      console.log('   plan.id:', plan.id);
+      console.log('   plan.vigencia:', plan.vigencia);
+      console.log('   plan.fecha_inicio:', (plan as any).fecha_inicio);
+      console.log('   plan.fechaInicio:', (plan as any).fechaInicio);
+      console.log('   plan.roles:', plan.roles?.length, 'roles');
+      plan.roles?.forEach((rol, ri) => {
+        console.log(`   ROL ${ri + 1} (${rol.nombre}): ${rol.actividades?.length || 0} actividades`);
+        if (rol.actividades?.length > 0) {
+          const act = rol.actividades[0] as any;
+          console.log(`     → Primera actividad: "${act.nombre}"`);
+          console.log(`       responsable:`, act.responsable);
+          console.log(`       responsables:`, act.responsables);
+          console.log(`       fechaInicio:`, act.fechaInicio);
+          console.log(`       fecha_inicio:`, act.fecha_inicio);
+          console.log(`       fechaFin:`, act.fechaFin);
+          console.log(`       fecha_fin:`, act.fecha_fin);
+        }
+      });
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       const resultado = await exportarPlanAnualExcel(plan, { columnasSeleccionadas: columnasExcel });
       if (resultado.exito) {
         toast.success('Exportado', { description: 'Excel descargado correctamente con logo ESAP' });

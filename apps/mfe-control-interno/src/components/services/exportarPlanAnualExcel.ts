@@ -384,53 +384,53 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
         const isEven = (rowNum - 8) % 2 === 0;
 
         // ═══════════════════════════════════════════════════════════════════
-        // RESPONSABLE: Prioridad → responsables[] (array moderno del backend)
-        //              → responsable (string/objeto legacy) → 'No asignado'
+        // RESPONSABLE — FIEL COPIA DE LA UI:
+        // La UI muestra responsables[].nombre; si vacío → "Sin responsable"
+        // El campo legacy "responsable" (string) se IGNORA por inconsistente
         // ═══════════════════════════════════════════════════════════════════
         const actAny = a as any;
         let responsableNombre = '';
-        // 1. responsables[] — array de objetos { id, nombre, cargo, email }
+        // 1. responsables[] — array de objetos (fuente de verdad del módulo)
         const responsablesArray = actAny.responsables;
         if (Array.isArray(responsablesArray) && responsablesArray.length > 0) {
           responsableNombre = responsablesArray
-            .map((r: any) => (typeof r === 'string' ? r : r.nombre || r.name || ''))
+            .map((r: any) => {
+              if (typeof r === 'string') return r;
+              return r.nombre || r.name || '';
+            })
             .filter(Boolean)
             .join(', ');
         }
-        // 2. responsable (legacy — string o { nombre })
-        if (!responsableNombre && actAny.responsable) {
-          if (typeof actAny.responsable === 'string') {
-            responsableNombre = actAny.responsable;
-          } else if (typeof actAny.responsable === 'object' && actAny.responsable.nombre) {
+        // 2. Si responsables[] vacío, intentar responsable como objeto (transformación frontend)
+        if (!responsableNombre && actAny.responsable && typeof actAny.responsable === 'object' && actAny.responsable.nombre) {
+          // Solo usar si no es un ID temporal (temp-*)
+          if (!actAny.responsable.id?.startsWith('temp-')) {
             responsableNombre = actAny.responsable.nombre;
           }
         }
-        // 3. responsableNombre directo
-        if (!responsableNombre && actAny.responsableNombre) {
-          responsableNombre = actAny.responsableNombre;
-        }
-        // 4. Fallback explícito — NUNCA quemado
+        // 3. Fallback exacto como la UI
         if (!responsableNombre) {
           responsableNombre = 'No asignado';
         }
 
         // ═══════════════════════════════════════════════════════════════════
-        // FECHAS: Siempre del PLAN si la actividad no tiene fechas propias
-        // o si sus fechas no coinciden con la vigencia del plan.
-        // Cadena: actividad.fecha_inicio → plan.fecha_inicio → vacío
+        // FECHAS — FIEL COPIA DE LA UI:
+        // La transformación frontend genera fechaInicio/fechaFin (camelCase)
+        // Si no coinciden con la vigencia, usar las del plan
+        // NOTA: Usar T12:00:00 al parsear para evitar timezone shift (UTC-5)
         // ═══════════════════════════════════════════════════════════════════
+        const safeParse = (d: string) => new Date(d.split('T')[0] + 'T12:00:00');
         const actFechaInicioRaw = actAny.fechaInicio || actAny.fecha_inicio || '';
         const actFechaFinRaw = actAny.fechaFin || actAny.fecha_fin || '';
-        // Usar fecha de actividad SOLO si existe y su año coincide con la vigencia;
-        // de lo contrario, usar la fecha del plan (fuente de verdad)
-        const fechaInicioStr = (actFechaInicioRaw && new Date(actFechaInicioRaw).getFullYear() === vigencia)
+        // Validar que la fecha corresponda a la vigencia del plan
+        const fechaInicioStr = (actFechaInicioRaw && !isNaN(safeParse(actFechaInicioRaw).getTime()) && safeParse(actFechaInicioRaw).getFullYear() === vigencia)
           ? actFechaInicioRaw
-          : (planFechaInicio || actFechaInicioRaw || '');
-        const fechaFinStr = (actFechaFinRaw && new Date(actFechaFinRaw).getFullYear() === vigencia)
+          : (planFechaInicio || `${vigencia}-01-01`);
+        const fechaFinStr = (actFechaFinRaw && !isNaN(safeParse(actFechaFinRaw).getTime()) && safeParse(actFechaFinRaw).getFullYear() === vigencia)
           ? actFechaFinRaw
-          : (planFechaFin || actFechaFinRaw || '');
-        const fechaInicio = fechaInicioStr ? new Date(fechaInicioStr).toLocaleDateString('es-CO') : '';
-        const fechaFin = fechaFinStr ? new Date(fechaFinStr).toLocaleDateString('es-CO') : '';
+          : (planFechaFin || `${vigencia}-12-31`);
+        const fechaInicio = fechaInicioStr ? safeParse(fechaInicioStr).toLocaleDateString('es-CO') : '';
+        const fechaFin = fechaFinStr ? safeParse(fechaFinStr).toLocaleDateString('es-CO') : '';
 
         // Porcentaje de avance (soporta camelCase y snake_case)
         const porcentaje = actAny.porcentajeAvance ?? actAny.porcentaje_avance ?? actAny.porcentaje ?? 0;
@@ -440,7 +440,7 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
 
         // Fecha de corte
         const fechaCorteStr = actAny.fecha_corte || actAny.fechaCorte || '';
-        const fechaCorte = fechaCorteStr ? new Date(fechaCorteStr + 'T00:00:00').toLocaleDateString('es-CO') : '';
+        const fechaCorte = fechaCorteStr ? safeParse(fechaCorteStr).toLocaleDateString('es-CO') : '';
 
         // Observaciones de cumplimiento (texto concatenado)
         let obsTexto = '';

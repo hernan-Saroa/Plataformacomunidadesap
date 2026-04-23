@@ -1305,6 +1305,27 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         estado: mapearEstadoPlan(planDesdeBackend.estado),
         jefeOCI: auditores[0] || { id: '1', nombre: planDesdeBackend.responsable, cargo: 'Jefe de Control Interno', email: '' },
         fechaCreacion: planDesdeBackend.fecha_creacion,
+        // ═══════════════════════════════════════════════════════════════════
+        // CORRECCIÓN DE TIMEZONE: El backend NestJS/TypeORM serializa columnas
+        // DATE de PostgreSQL con desfase -1 día (UTC-5 Colombia).
+        // Ejemplo: DB tiene 2028-01-01 → backend devuelve "2027-12-31"
+        // Solución: sumar 1 día a las fechas que vienen del backend.
+        // ═══════════════════════════════════════════════════════════════════
+        fechaInicio: (() => {
+          const fi = planDesdeBackend.fecha_inicio;
+          if (!fi) return `${planDesdeBackend.año}-01-01`;
+          // Parsear a mediodía local para evitar timezone shift, luego sumar 1 día
+          const d = new Date(String(fi).split('T')[0] + 'T12:00:00');
+          d.setDate(d.getDate() + 1);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        })(),
+        fechaFin: (() => {
+          const ff = planDesdeBackend.fecha_fin;
+          if (!ff) return `${planDesdeBackend.año}-12-31`;
+          const d = new Date(String(ff).split('T')[0] + 'T12:00:00');
+          d.setDate(d.getDate() + 1);
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        })(),
         fechaAprobacion: null,
         actaCICC: null,
         equipoAprobacion: planDesdeBackend.equipo_aprobacion || [],
@@ -1321,10 +1342,13 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             const actExtendido = act as any;
 
             // Formatear fechas (backend puede devolver Date o string)
+            // NOTA: Usar getUTC* para evitar bug de timezone (UTC-5 restaba 1 día)
             const formatearFecha = (fecha: any): string => {
               if (!fecha) return '';
               if (typeof fecha === 'string') return fecha.split('T')[0];
-              if (fecha instanceof Date) return fecha.toISOString().split('T')[0];
+              if (fecha instanceof Date) {
+                return `${fecha.getUTCFullYear()}-${String(fecha.getUTCMonth() + 1).padStart(2, '0')}-${String(fecha.getUTCDate()).padStart(2, '0')}`;
+              }
               return '';
             };
 
