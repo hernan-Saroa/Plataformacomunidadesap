@@ -1770,7 +1770,7 @@ function ConfiguracionFirmaPersonal() {
   const [currentProfessionalId, setCurrentProfessionalId] = useState<string | null>(null);
 
   // Mock fallback logic
-  const mockUser = { id: '770e8400-e29b-41d4-a716-446655440002', nombre: 'Admin Sistema' };
+  const mockUser = { id: '8e0b5a7e-70e9-4f84-b4eb-64e2d8e1d1b4', nombre: 'Admin Sistema' };
 
   useEffect(() => {
     loadFirma();

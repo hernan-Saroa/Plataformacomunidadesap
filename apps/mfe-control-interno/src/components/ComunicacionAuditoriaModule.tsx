@@ -256,6 +256,33 @@ export const ComunicacionAuditoriaModule: React.FC<{
     navegarAVerPlan(id);
   }, [id, navegarAVerPlan]);
 
+  const calcularFechaLimiteEstimada = () => {
+    const dias = parseInt(informe.plazosPlanMejora || '30', 10) || 30;
+    const vigenciaPlan = Number(
+      (auditoria as any).vigencia ||
+      (auditoria as any).año ||
+      (auditoriaInfo as any)?.vigencia ||
+      (auditoriaInfo as any)?.año
+    );
+
+    let fechaBase = new Date();
+    if (!isNaN(vigenciaPlan) && vigenciaPlan >= 2020 && vigenciaPlan <= 2100) {
+      fechaBase = new Date(`${vigenciaPlan}-12-31T00:00:00`);
+    } else if (auditoria.fechaFin) {
+      const fechaFinRaw = auditoria.fechaFin;
+      if (fechaFinRaw.includes('/')) {
+        const [d, m, a] = fechaFinRaw.split('/');
+        fechaBase = new Date(`${a}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T00:00:00`);
+      } else {
+        fechaBase = new Date(`${fechaFinRaw.split('T')[0]}T00:00:00`);
+      }
+    }
+
+    const fechaLimite = new Date(fechaBase);
+    fechaLimite.setDate(fechaLimite.getDate() + dias);
+    return fechaLimite.toLocaleDateString('es-CO');
+  };
+
   const cargarDatos = useCallback(async () => {
     if (!useAPI) return;
     try {
@@ -1750,6 +1777,47 @@ const SeccionInformeFinal: React.FC<{
 }> = ({ auditoria, hallazgos = [], estadoComunicacion, controversias = [], informe, setInforme, onGenerar, onPreview }) => {
   const hayBloqueo = estadoComunicacion?.hayControversiasPendientes ?? (hallazgos.filter(h => h.estado === 'en-controversia').length > 0);
   const enControversia = hallazgos.filter(h => h.estado === 'en-controversia').length;
+  const calcularFechaLimiteEstimada = () => {
+    const dias = parseInt(informe.plazosPlanMejora || '30', 10) || 30;
+    let vigenciaPlan: number | undefined;
+    if (typeof window !== 'undefined') {
+      try {
+        const rawPlanActivo = window.localStorage.getItem('esap:plan_anual_activo');
+        if (rawPlanActivo) {
+          const planActivo = JSON.parse(rawPlanActivo);
+          const v = Number(planActivo?.vigencia);
+          if (!isNaN(v) && v >= 2020 && v <= 2100) {
+            vigenciaPlan = v;
+          }
+        }
+      } catch {
+        // Ignorar parseo inválido de localStorage
+      }
+    }
+    if (vigenciaPlan === undefined) {
+      const vAud = Number((auditoria as any).vigencia || (auditoria as any).año);
+      if (!isNaN(vAud) && vAud >= 2020 && vAud <= 2100) vigenciaPlan = vAud;
+    }
+
+    let fechaBase = new Date();
+    if (vigenciaPlan !== undefined) {
+      // Regla solicitada: usar fecha de hoy (mes/día) pero con año de la vigencia.
+      const hoy = new Date();
+      fechaBase = new Date(vigenciaPlan, hoy.getMonth(), hoy.getDate());
+    } else if (auditoria.fechaFin) {
+      const fechaFinRaw = auditoria.fechaFin;
+      if (fechaFinRaw.includes('/')) {
+        const [d, m, a] = fechaFinRaw.split('/');
+        fechaBase = new Date(`${a}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T00:00:00`);
+      } else {
+        fechaBase = new Date(`${fechaFinRaw.split('T')[0]}T00:00:00`);
+      }
+    }
+
+    const fechaLimite = new Date(fechaBase);
+    fechaLimite.setDate(fechaLimite.getDate() + dias);
+    return fechaLimite.toLocaleDateString('es-CO');
+  };
   return (
     <div className="space-y-6">
       {/* Banner: Informe Final ya terminado */}
@@ -1873,7 +1941,7 @@ const SeccionInformeFinal: React.FC<{
               <div>
                 <p className="text-sm font-medium text-blue-900">Fecha límite estimada</p>
                 <p className="text-lg font-bold text-blue-700">
-                  {new Date(Date.now() + parseInt(informe.plazosPlanMejora || '30') * 24 * 60 * 60 * 1000).toLocaleDateString()}
+                  {calcularFechaLimiteEstimada()}
                 </p>
               </div>
             </div>

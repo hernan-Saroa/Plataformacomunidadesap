@@ -483,7 +483,7 @@ BEGIN
   SELECT id_user INTO u_ocig FROM auth."user" WHERE username = 'ocig@esap.edu.co';
   IF u_ocig IS NULL THEN
     INSERT INTO auth."user" (id_user, username, password_hash, id_tercero)
-    VALUES ('770e8400-e29b-41d4-a716-446655440009', 'ocig@esap.edu.co', '$2b$10$0hAnE/dXPJvVpIFJ48W0yOHy/s1EdCEb1IT/AScUsKmVuYY7BFfJS', p_ocig);
+    VALUES ('2ca0b55a-bbca-4203-bf35-a0f55ecf753f', 'ocig@esap.edu.co', '$2b$10$0hAnE/dXPJvVpIFJ48W0yOHy/s1EdCEb1IT/AScUsKmVuYY7BFfJS', p_ocig);
     SELECT id_user INTO u_ocig FROM auth."user" WHERE username = 'ocig@esap.edu.co';
   END IF;
   
