@@ -118,13 +118,40 @@ interface PersonaDisponible {
   disponibilidad: string;
 }
 
+function esNombrePlaceholder(nombre?: string | null): boolean {
+  const valor = (nombre || '').trim().toLowerCase();
+  return (
+    !valor ||
+    valor === 'usuario sin nombre' ||
+    valor === 'sin nombre' ||
+    valor === 'no asignado' ||
+    valor === 'n/a'
+  );
+}
+
+function nombreDesdePartes(data: any): string {
+  const partes = [
+    data?.primerNombre,
+    data?.segundoNombre,
+    data?.primerApellido,
+    data?.segundoApellido,
+  ].filter(Boolean);
+  return partes.join(' ').trim();
+}
+
 function convertirPersonaAUsuarioSistema(persona: PersonaDisponible): UsuarioSistema {
+  const nombre =
+    persona.nombre
+    || (persona as any).nombreCompleto
+    || nombreDesdePartes(persona)
+    || '';
+
   return {
     id: persona.id,
     idTercero: String(persona.idPersona),
-    nombre: persona.nombre,
-    identificacion: persona.numeroIdentificacion,
-    email: persona.email,
+    nombre: esNombrePlaceholder(nombre) ? (persona.email || `Usuario ${persona.numeroIdentificacion || persona.idPersona}`) : nombre,
+    identificacion: persona.numeroIdentificacion || (persona as any).identificacion || '',
+    email: persona.email || (persona as any).correo || '',
     cargo: persona.cargo,
     area: undefined,
     activo: true,
@@ -133,6 +160,11 @@ function convertirPersonaAUsuarioSistema(persona: PersonaDisponible): UsuarioSis
 }
 
 function convertirConfigBackendALocal(config: ConfigBackend): ConfiguracionOCI {
+  const nombreBackend =
+    config.nombre
+    || (config as any).nombreCompleto
+    || nombreDesdePartes(config);
+
   const rolOCI = (config.rolOcig ?? config.rolOCI) as ConfiguracionOCI['rolOCI'];
   return {
     id: config.id,
@@ -148,9 +180,9 @@ function convertirConfigBackendALocal(config: ConfigBackend): ConfiguracionOCI {
     fechaAsignacion: config.fechaAsignacion,
     observaciones: config.observaciones,
     // Datos enriquecidos del usuario
-    nombre: config.nombre,
-    email: config.email,
-    identificacion: config.identificacion,
+    nombre: esNombrePlaceholder(nombreBackend) ? undefined : nombreBackend,
+    email: config.email || (config as any).correo || undefined,
+    identificacion: config.identificacion || (config as any).numeroIdentificacion || undefined,
     roles: config.roles
   };
 }
@@ -207,9 +239,11 @@ export function useConfiguracionProfesionales() {
       const usuarios = personas.map((p: any) => ({
         id: p.id,
         idTercero: p.idTercero,
-        nombre: p.nombre,
-        identificacion: p.identificacion,
-        email: p.email,
+        nombre: esNombrePlaceholder(p.nombre)
+          ? (p.nombreCompleto || nombreDesdePartes(p) || p.email || `Usuario ${p.identificacion || p.idTercero}`)
+          : p.nombre,
+        identificacion: p.identificacion || p.numeroIdentificacion || '',
+        email: p.email || p.correo || '',
         cargo: '',
         area: undefined,
         activo: true,
@@ -252,23 +286,26 @@ export function useConfiguracionProfesionales() {
       .filter(config => config.activo)
       .map(config => {
         let usuario: UsuarioSistema;
+        const encontrado = usuariosControlInterno.find(
+          u => u.id === String(config.idTercero) || u.idTercero === String(config.idTercero)
+        );
+        const nombreFinal = !esNombrePlaceholder(config.nombre)
+          ? config.nombre!
+          : (encontrado?.nombre || config.email || config.identificacion || `Usuario ${config.idTercero}`);
 
-        if (config.nombre) {
+        if (config.nombre || encontrado) {
           usuario = {
-            id: String(config.idTercero),
+            id: encontrado?.id || String(config.idTercero),
             idTercero: config.idTercero,
-            nombre: config.nombre,
-            identificacion: config.identificacion || '',
-            email: config.email || '',
+            nombre: nombreFinal,
+            identificacion: config.identificacion || encontrado?.identificacion || '',
+            email: config.email || encontrado?.email || '',
             cargo: config.rolOCI as string,
             area: 'OCI',
             activo: true,
-            roles: config.roles || []
+            roles: config.roles || encontrado?.roles || []
           };
         } else {
-          const encontrado = usuariosControlInterno.find(
-            u => u.id === String(config.idTercero) || u.idTercero === String(config.idTercero)
-          );
           if (!encontrado) {
             console.warn(`Config idTercero=${config.idTercero}: Sin datos - omitido`);
             return null;
@@ -295,8 +332,10 @@ export function useConfiguracionProfesionales() {
 
   // Usuarios disponibles para agregar (tienen rol de Control Interno pero no están en OCI)
   const usuariosDisponiblesParaOCI = useMemo(() => {
-    const idsTercerosConfigurados = new Set(configuracionesOCI.map(c => c.idTercero));
-    return usuariosControlInterno.filter(u => !idsTercerosConfigurados.has(u.idTercero) && u.activo);
+    const idsTercerosConfiguradosActivos = new Set(
+      configuracionesOCI.filter(c => c.activo).map(c => c.idTercero)
+    );
+    return usuariosControlInterno.filter(u => !idsTercerosConfiguradosActivos.has(u.idTercero) && u.activo);
   }, [usuariosControlInterno, configuracionesOCI]);
 
   // ══════════════════════════════════════════════════════════════════════════

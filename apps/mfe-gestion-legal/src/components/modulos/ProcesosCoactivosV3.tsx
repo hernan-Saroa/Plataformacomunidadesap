@@ -1038,6 +1038,7 @@ function ModalNuevoProceso({
                   onChange={(e) => handleInputChange('deudorIdentificacion', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Ej: 1.012.345.678"
+                  maxLength={11}
                 />
               </div>
               <div>
@@ -1048,6 +1049,7 @@ function ModalNuevoProceso({
                   onChange={(e) => handleInputChange('deudorTelefono', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Ej: +57 312 456 7890"
+                  maxLength={15}
                 />
               </div>
               <div>

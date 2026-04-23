@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
@@ -56,10 +56,29 @@ function shutdown(signal = 'SIGTERM') {
 
 for (const serviceName of selectedServices) {
   const cwd = path.join(backendRoot, serviceName);
+
+  // Load the service's .env file and merge with process.env
+  const envFilePath = path.join(cwd, '.env');
+  const serviceEnv = { ...process.env };
+  if (existsSync(envFilePath)) {
+    const envContent = readFileSync(envFilePath, 'utf-8');
+    for (const line of envContent.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx > 0) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        const val = trimmed.slice(eqIdx + 1).trim();
+        serviceEnv[key] = val;
+      }
+    }
+  }
+
   const child = spawn(npmCmd, ['run', 'start:dev'], {
     cwd,
-    env: process.env,
+    env: serviceEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
+    shell: true,
   });
 
   child.serviceName = serviceName;
@@ -87,21 +106,18 @@ for (const serviceName of selectedServices) {
 
     if (signal) {
       process.stderr.write(
-        `\n[dev:backend] ${serviceName} terminó por señal ${signal}. Cerrando los demás servicios.\n`,
+        `\n[dev:backend] ⚠️  ${serviceName} terminó por señal ${signal}. Continuando con los demás servicios.\n`,
       );
-      shutdown();
-      process.exit(1);
-    }
-
-    if (code !== 0) {
+    } else if (code !== 0) {
       process.stderr.write(
-        `\n[dev:backend] ${serviceName} terminó con código ${code}. Cerrando los demás servicios.\n`,
+        `\n[dev:backend] ⚠️  ${serviceName} terminó con código ${code}. Continuando con los demás servicios.\n`,
       );
-      shutdown();
-      process.exit(code ?? 1);
     }
 
-    if (children.size === 0) process.exit(0);
+    if (children.size === 0) {
+      process.stderr.write('\n[dev:backend] Todos los servicios han terminado.\n');
+      process.exit(0);
+    }
   });
 }
 

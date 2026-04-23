@@ -47,9 +47,9 @@ export class EvaluacionProcesoController {
     @Query('soloActivos') soloActivos?: string,
   ) {
     return this.evaluacionService.findAll({
-      vigencia: vigencia ? parseInt(vigencia, 10) : undefined,
-      procesoId,
-      decisionFinal,
+      vigencia: vigencia && vigencia !== 'undefined' ? parseInt(vigencia, 10) : undefined,
+      procesoId: procesoId === 'undefined' ? undefined : procesoId,
+      decisionFinal: decisionFinal === 'undefined' ? undefined : decisionFinal,
       soloActivos: soloActivos !== 'false',
     });
   }

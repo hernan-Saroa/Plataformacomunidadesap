@@ -299,6 +299,46 @@ export function ExpedienteAuditoriaCompleto({
   tabInicial = 'general',
   onComunicacionCompletada: onComunicacionCompletadaProp,
 }: ExpedienteAuditoriaCompletoProps) {
+  const normalizarFaseBackend = (faseRaw: string | undefined | null): string => {
+    const fase = (faseRaw || '').toString().trim().toLowerCase();
+    const mapeo: Record<string, string> = {
+      'planeacion': 'planeacion',
+      'planeación': 'planeacion',
+      'ejecucion': 'en-curso',
+      'ejecución': 'en-curso',
+      'en-curso': 'en-curso',
+      'en curso': 'en-curso',
+      'comunicacion': 'revision',
+      'comunicación': 'revision',
+      'revision': 'revision',
+      'revisión': 'revision',
+      'seguimiento': 'completada',
+      'finalizada': 'completada',
+      'completada': 'completada',
+    };
+    return mapeo[fase] || fase;
+  };
+
+  const calcularProgresoPorFases = (
+    faseRaw: string | undefined | null,
+    progresoRaw: number | undefined | null
+  ) => {
+    const progreso = Math.max(0, Math.min(Number(progresoRaw || 0), 100));
+    const fase = normalizarFaseBackend(faseRaw);
+
+    if (fase === 'planeacion') {
+      return { general: progreso, planeacion: progreso, ejecucion: 0, comunicacion: 0 };
+    }
+    if (fase === 'en-curso') {
+      return { general: progreso, planeacion: 100, ejecucion: progreso, comunicacion: 0 };
+    }
+    if (fase === 'revision' || fase === 'completada') {
+      return { general: progreso, planeacion: 100, ejecucion: 100, comunicacion: progreso };
+    }
+
+    return { general: progreso, planeacion: progreso, ejecucion: 0, comunicacion: 0 };
+  };
+
   // ✅ CORREGIDO: Inicializar como null para evitar renderizar con datos MOCK
   const [auditoria, setAuditoria] = useState<Auditoria | null>(null);
   // ✅ CONECTADO AL BACKEND: Documentos se cargan del backend
@@ -324,6 +364,8 @@ export function ExpedienteAuditoriaCompleto({
         const data = await controlInternoService.getAuditoriaById(auditoriaId);
         
         // Mapear datos del backend a la estructura del frontend
+        const progresoFases = calcularProgresoPorFases(data.fase, data.progreso);
+
         const auditoriaBackend: Auditoria = {
           id: data.id,
           codigo: data.codigo,
@@ -371,12 +413,7 @@ export function ExpedienteAuditoriaCompleto({
             diasTranscurridos: calcularDiasTranscurridos(data.fechaInicio),
           },
           
-          progreso: {
-            general: data.progreso || 0,
-            planeacion: data.fase === 'planeacion' ? Math.min(data.progreso || 0, 100) : 100,
-            ejecucion: ['en-curso', 'revision', 'completada'].includes(data.fase) ? (data.progreso || 0) : 0,
-            comunicacion: ['revision', 'completada'].includes(data.fase) ? (data.progreso || 0) : 0,
-          },
+          progreso: progresoFases,
           
           estadisticas: {
             totalHallazgos: data.hallazgos || 0,

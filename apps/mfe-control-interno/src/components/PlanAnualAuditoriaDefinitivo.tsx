@@ -25,7 +25,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { usePlanAnualCompleto, useCreatePlanAnual, actividadesApi, planAnualApi } from './services/plan-anual';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import {
-  Shield, Calendar, Users, FileText, Download, ArrowLeft,
+  Shield, Calendar, Users, FileText, Download, ArrowLeft, ArrowRight,
   Plus, Check, AlertCircle, CheckCircle2, TrendingUp,
   BookOpen, Eye, Clock, FileCheck, ChevronRight, X
 } from 'lucide-react';
@@ -1222,6 +1222,7 @@ export function crearPlanConDatosMock(vigencia: number, jefeOCI: Auditor): PlanA
 
 export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarModulo?: (seccion: string) => void }) {
   const [vista, setVista] = useState<'inicio' | 'wizard' | 'dashboard' | 'rol4-integrado'>('inicio');
+  const [planAEditar, setPlanAEditar] = useState<PlanAnual | undefined>(undefined);
   const { puedeRealizar, esSuperUsuario } = useControlInternoPermissions();
   const puedeCrearPlan = puedeRealizar('plan-anual', 'create') || esSuperUsuario;
   
@@ -1470,20 +1471,34 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         if (response.data && Array.isArray(response.data)) {
           // Transformar planes del backend al formato frontend
           const planesTransformados = response.data.map((planBackend: any) => ({
+            ...planBackend,
             id: planBackend.id,
             vigencia: planBackend.año || planBackend.vigencia || new Date().getFullYear(),
             version: planBackend.version || 1,
             estado: (planBackend.estado?.toUpperCase().replace(/-/g, '_') || 'BORRADOR') as EstadoPlan,
+            nombrePlan:
+              planBackend.nombre
+              || planBackend.nombre_plan
+              || planBackend.titulo
+              || null,
+            totalActividades:
+              planBackend.total_actividades
+              || planBackend.totalActividades
+              || 0,
             jefeOCI: {
-              id: planBackend.responsable_id || '',
-              nombre: planBackend.responsable || 'No asignado',
-              cargo: 'Responsable',
-              email: ''
+              id: planBackend.responsable_id || planBackend.jefe_oci_id || '',
+              nombre:
+                planBackend.responsable
+                || planBackend.responsable_nombre
+                || planBackend.jefe_oci
+                || 'No asignado',
+              cargo: planBackend.responsable_cargo || 'Responsable',
+              email: planBackend.responsable_email || ''
             },
-            fechaAprobacion: planBackend.fecha_aprobacion || null,
-            fechaCreacion: planBackend.fecha_creacion || new Date().toISOString(),
-            actaCICC: planBackend.acta_cicc || null,
-            roles: [] // Se cargarán al abrir el plan
+            fechaAprobacion: planBackend.fecha_aprobacion || planBackend.fechaAprobacion || null,
+            fechaCreacion: planBackend.fecha_creacion || planBackend.createdAt || new Date().toISOString(),
+            actaCICC: planBackend.acta_cicc || planBackend.actaCICC || null,
+            roles: Array.isArray(planBackend.roles) ? planBackend.roles : [] // En listados puede venir vacío
           }));
           setPlanesAnteriores(planesTransformados);
         }
@@ -1546,16 +1561,53 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       // Validar si el id es un UUID válido. Si no lo es, enviamos undefined para evitar el Error 400 del Backend.
       const esIdUUID = jefeOCI.id && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(jefeOCI.id);
 
-      // Crear plan en backend
-    const planCreado = await crearPlanEnBackend({
-      año: vigencia,
-      responsable: jefeOCI.nombre,
-      responsable_id: esIdUUID ? jefeOCI.id : undefined,
-      fecha_inicio: fechaInicio,
-      fecha_fin: fechaFin,
-      equipo_aprobacion: comiteAprobacion || [],
-      orden_aprobacion: ordenAprobacion || 'secuencial',
-    });
+      // Determinar si creamos o actualizamos
+      let planCreado: any = null;
+
+      if (planAEditar) {
+        // Actualizar plan existente
+        const resp = await planAnualApi.update(planAEditar.id, {
+          estado: planAEditar.estado,
+          responsable: jefeOCI.nombre,
+          responsable_id: esIdUUID ? jefeOCI.id : undefined,
+          fecha_inicio: fechaInicio,
+          fecha_fin: fechaFin,
+          equipo_aprobacion: comiteAprobacion || [],
+          orden_aprobacion: ordenAprobacion || 'secuencial',
+        });
+        
+        if (resp.success) {
+          planCreado = resp.data;
+          // NOTA: En este MVP de edición, solo actualizamos los datos generales del plan. 
+          // Si cambian las actividades desde el wizard, se requeriría una lógica de diffing
+          // o eliminar todas las actividades del plan y recrearlas, lo cual es riesgoso 
+          // si ya hay progreso. Para borrador, idealmente borraríamos y recrearíamos, 
+          // pero dejaremos que el wizard de edición funcione primariamente para datos del plan.
+          
+          toast.success('Plan actualizado exitosamente');
+          setPlanAEditar(undefined);
+          return true;
+        } else {
+          toast.error('Error al actualizar el plan', { description: resp.error });
+          return false;
+        }
+      } else {
+        // Crear plan nuevo en backend
+        planCreado = await crearPlanEnBackend({
+          año: vigencia,
+          responsable: jefeOCI.nombre,
+          responsable_id: esIdUUID ? jefeOCI.id : undefined,
+          fecha_inicio: fechaInicio,
+          fecha_fin: fechaFin,
+          equipo_aprobacion: comiteAprobacion || [],
+          orden_aprobacion: ordenAprobacion || 'secuencial',
+        });
+      }
+
+    // ✅ Sincronizar año activo con la vigencia del plan recién creado
+    if (planCreado) {
+      setAñoActual(vigencia);
+    }
 
     if (planCreado && planCreado.roles) {
       let actividadesCreadas = 0;
@@ -1676,12 +1728,13 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               frecuencia_puntos_control: act.frecuenciaPuntosControl || undefined,
               // Tareas de seguimiento (sub-tareas de la actividad)
               tareas_seguimiento: act.tareasSeguimiento && act.tareasSeguimiento.length > 0 
-                ? act.tareasSeguimiento.map(t => ({
+                ? act.tareasSeguimiento.map((t: any) => ({
                     id: t.id,
                     descripcion: t.descripcion,
                     completada: false,
                     responsables: t.responsables || [],
-                    fechaLimite: t.fechaLimite || undefined,
+                    // Compatibilidad: en varios flujos UI la fecha viene como fechaEntrega.
+                    fechaLimite: t.fechaLimite || t.fechaEntrega || t.fecha_limite || t.fecha_entrega || undefined,
                   }))
                 : undefined,
             });
@@ -1729,10 +1782,19 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     } else {
       // crearPlanEnBackend devolvió null — el hook ya mostró toast, pero reforzamos el mensaje
       console.error('[handleCrearPlan] ❌ No se pudo crear el plan. Posible duplicado de vigencia.');
-      toast.error('No se pudo crear el Plan Anual', {
-        description: `Verifique que no exista un plan para la vigencia ${vigencia} o que las fechas no se solapen con otro plan existente. Puede eliminar el plan existente desde el Dashboard.`,
-        duration: 12000
-      });
+      // Verificar si ya existe un plan para esa vigencia entre los planes cargados
+      const planExistente = planesAnteriores.find(p => p.vigencia === vigencia);
+      if (planExistente) {
+        toast.error(`Ya existe un plan para la vigencia ${vigencia}`, {
+          description: `El plan "${planExistente.id}" (${planExistente.estado}) ya cubre esa vigencia. Puede abrirlo desde la pantalla de inicio o eliminarlo para crear uno nuevo.`,
+          duration: 12000
+        });
+      } else {
+        toast.error('No se pudo crear el Plan Anual', {
+          description: `El servidor rechazó la creación para vigencia ${vigencia}. Verifique que no exista ya un plan o intente con otra vigencia.`,
+          duration: 12000
+        });
+      }
       return false;
     }
   } catch (error: any) {
@@ -1773,8 +1835,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           <PantallaInicio
             key="inicio"
             planesAnteriores={planesAnteriores}
-            onCrearNuevo={puedeCrearPlan ? () => setVista('wizard') : undefined}
+            onCrearNuevo={puedeCrearPlan ? () => { setPlanAEditar(undefined); setVista('wizard'); } : undefined}
             onAbrirPlan={(plan) => {
+              setPlanAEditar(undefined);
               // Si el plan ya está cargado para ese mismo año, ir directo al dashboard
               if (plan.vigencia === añoActual && planActual) {
                 setVista('dashboard');
@@ -1791,9 +1854,11 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         {vista === 'wizard' && (
           <WizardCreacion
             key="wizard"
+            planAEditar={planAEditar}
             onCancelar={() => setVista(planActual ? 'dashboard' : 'inicio')}
             onCrear={handleCrearPlan}
             onTerminado={async () => {
+              // añoActual ya fue sincronizado en handleCrearPlan
               await recargarPlan();
               setVista('dashboard');
             }}
@@ -1815,7 +1880,8 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                 setVista('rol4-integrado');
               }
             }}
-            onCrearNuevo={puedeCrearPlan ? () => setVista('wizard') : undefined}
+            onCrearNuevo={puedeCrearPlan ? () => { setPlanAEditar(undefined); setVista('wizard'); } : undefined}
+            onEditarPlan={puedeCrearPlan ? (plan) => { setPlanAEditar(plan); setVista('wizard'); } : undefined}
             planesAnteriores={planesAnteriores}
             planesDisponibles={planesAnteriores}
             onCambiarPlan={handleCambiarPlan}
@@ -1856,6 +1922,13 @@ interface PantallaInicioProps {
 
 function PantallaInicio({ planesAnteriores, onCrearNuevo, onAbrirPlan, onCargarMock }: PantallaInicioProps) {
   const vigenciaActual = new Date().getFullYear();
+  
+  // Revisar si existe un borrador local no enviado
+  const draftStr = typeof window !== 'undefined' ? localStorage.getItem('esap:wizard_plan_anual_draft') : null;
+  let borradorLocal = null;
+  try {
+    if (draftStr) borradorLocal = JSON.parse(draftStr);
+  } catch (e) {}
 
   return (
     <motion.div
@@ -1924,6 +1997,26 @@ function PantallaInicio({ planesAnteriores, onCrearNuevo, onAbrirPlan, onCargarM
             </div>
           )}
         </div>
+
+        {/* Borrador en Progreso */}
+        {borradorLocal && onCrearNuevo && (
+          <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-2xl border-2 border-orange-200 p-8 shadow-lg mb-8 animate-pulse-slow">
+            <h2 className="text-xl font-bold text-orange-900 mb-2 flex items-center gap-2">
+              <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+              Borrador en Progreso (Vigencia {borradorLocal.vigencia || vigenciaActual})
+            </h2>
+            <p className="text-orange-800 mb-4">
+              Tienes un plan anual que estabas editando pero aún no ha sido enviado al comité aprobador.
+            </p>
+            <button
+              onClick={onCrearNuevo}
+              className="px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-bold flex items-center gap-2 transition-colors shadow-sm"
+            >
+              Continuar Editando
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         {/* Planes anteriores */}
         {planesAnteriores.length > 0 && (

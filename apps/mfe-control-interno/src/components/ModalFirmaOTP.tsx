@@ -2,11 +2,15 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle2, AlertCircle, Shield, Loader2, Key } from 'lucide-react';
 import { toast } from 'sonner';
+import { API_MODE, buildApiUrl, getDefaultHeaders } from '../../../config/environment';
 
 export interface FirmaElectronicaMetadata {
   otp: string;
   fechaFirma: string;
   metodo: 'OTP_EMAIL';
+  id?: string;
+  hash?: string;
+  validadoBackend?: boolean;
 }
 
 interface ModalFirmaOTPProps {
@@ -19,12 +23,19 @@ interface ModalFirmaOTPProps {
 }
 
 export function ModalFirmaOTP({ isOpen, onClose, onSuccess, userEmail, userName, accionDetalle = 'Aprobación de Documento' }: ModalFirmaOTPProps) {
-  const [paso, setPaso] = useState<'generando' | 'ingresando' | 'verificando'>('generando');
-  const [otpGenerado, setOtpGenerado] = useState('');
+  const [paso, setPaso] = useState<'generando' | 'ingresando' | 'verificando' | 'error'>('generando');
   const [otpIngresado, setOtpIngresado] = useState(['', '', '', '', '', '']);
   const [errorOTP, setErrorOTP] = useState(false);
+  const [errorEnvio, setErrorEnvio] = useState('');
+  const [emailDestino, setEmailDestino] = useState(userEmail);
   const [tiempoRestante, setTiempoRestante] = useState(300); // 5 minutos
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setEmailDestino(userEmail);
+    }
+  }, [isOpen, userEmail]);
 
   // Timer para OTP
   useEffect(() => {
@@ -38,29 +49,87 @@ export function ModalFirmaOTP({ isOpen, onClose, onSuccess, userEmail, userName,
     }
   }, [isOpen, paso, tiempoRestante]);
 
-  // Generar y "enviar" OTP
-  const enviarOTP = () => {
+  const buildAuthUrl = (path: string) => {
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return buildApiUrl(
+      'auth',
+      API_MODE === 'direct' ? normalizedPath : `/api/v1${normalizedPath}`,
+    );
+  };
+
+  const readJsonResponse = async <T,>(response: Response): Promise<T | null> => {
+    const responseText = await response.text();
+    if (!responseText) return null;
+    try {
+      return JSON.parse(responseText) as T;
+    } catch {
+      return { message: responseText } as T;
+    }
+  };
+
+  const unwrapResponseData = <T,>(payload: (T & { data?: T }) | null): T | null => {
+    if (!payload) return null;
+    return payload.data || payload;
+  };
+
+  const getApiErrorMessage = (data: any, fallback: string) => {
+    const message = data?.message || data?.error;
+    return Array.isArray(message) ? message.join(', ') : message || fallback;
+  };
+
+  // Solicita al auth-service generar el OTP, guardarlo en auth."user".token y enviarlo por correo.
+  const enviarOTP = async () => {
     setPaso('generando');
     setOtpIngresado(['', '', '', '', '', '']);
     setErrorOTP(false);
-    
-    // Generación de 6 dígitos
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setOtpGenerado(code);
-    
-    setTimeout(() => {
-      setTiempoRestante(300);
+    setErrorEnvio('');
+
+    try {
+      const response = await fetch(buildAuthUrl('/signature-otp/request'), {
+        method: 'POST',
+        headers: getDefaultHeaders(),
+        body: JSON.stringify({
+          userName,
+          actionDetail: accionDetalle,
+        }),
+      });
+
+      const responseData = await readJsonResponse<{
+        message?: string;
+        error?: string;
+        data?: {
+          email?: string;
+          expiresInSeconds?: number;
+        };
+        email?: string;
+        expiresInSeconds?: number;
+      }>(response);
+
+      if (!response.ok) {
+        throw new Error(getApiErrorMessage(responseData, `Error ${response.status}`));
+      }
+
+      const data = unwrapResponseData(responseData);
+      const destino = data?.email || userEmail || '';
+      setEmailDestino(destino);
+      setTiempoRestante(data?.expiresInSeconds || 300);
       setPaso('ingresando');
       toast.success('Código de seguridad enviado', {
-        description: `Se ha enviado un correo a ${userEmail}`,
+        description: destino
+          ? `Se ha enviado un correo a ${destino}`
+          : 'Se ha enviado el código al correo institucional del usuario.',
       });
-      // Sólo en dev/simulación: Mostramos el código por consola o toast
-      console.log('OTP CODE:', code);
-      toast.info(`🔐 MODO PRUEBA ALERTA CORREO - Tu código es: ${code}`, { duration: 10000 });
       
       // Auto-focus en el primer input después de un ciclo de renderizado
       setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
-    }, 1500);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No fue posible enviar el código OTP';
+      setErrorEnvio(message);
+      setPaso('error');
+      toast.error('No se pudo enviar el código OTP', {
+        description: message,
+      });
+    }
   };
 
   const handleOTPChange = (index: number, value: string) => {
@@ -98,34 +167,62 @@ export function ModalFirmaOTP({ isOpen, onClose, onSuccess, userEmail, userName,
     otpInputRefs.current[lastIndex]?.focus();
   };
 
-  const handleVerificar = () => {
+  const handleVerificar = async () => {
     const codeIngresado = otpIngresado.join('');
     if (codeIngresado.length !== 6) return;
 
     setPaso('verificando');
 
-    setTimeout(() => {
-      if (codeIngresado === otpGenerado) {
-        toast.success('Firma Digital Aprobada', {
-          description: 'Identidad validada exitosamente.',
-        });
-        const metadata: FirmaElectronicaMetadata = {
-          otp: codeIngresado,
-          fechaFirma: new Date().toISOString(),
-          metodo: 'OTP_EMAIL'
+    try {
+      const response = await fetch(buildAuthUrl('/signature-otp/verify'), {
+        method: 'POST',
+        headers: getDefaultHeaders(),
+        body: JSON.stringify({ code: codeIngresado }),
+      });
+
+      const responseData = await readJsonResponse<{
+        message?: string;
+        error?: string;
+        data?: {
+          fechaFirma?: string;
+          metodo?: 'OTP_EMAIL';
+          id?: string;
         };
-        onSuccess(metadata);
-        handleCierre();
-      } else {
-        setErrorOTP(true);
-        setPaso('ingresando');
-        setOtpIngresado(['', '', '', '', '', '']);
-        otpInputRefs.current[0]?.focus();
-        toast.error('Código incorrecto', {
-          description: 'El código proporcionado no coincide.',
-        });
+        fechaFirma?: string;
+        metodo?: 'OTP_EMAIL';
+        id?: string;
+      }>(response);
+
+      if (!response.ok) {
+        throw new Error(getApiErrorMessage(responseData, `Error ${response.status}`));
       }
-    }, 1500);
+
+      const data = unwrapResponseData(responseData);
+      toast.success('Firma Digital Aprobada', {
+        description: 'Identidad validada exitosamente.',
+      });
+
+      const idFirma = data?.id || `OTP-${Date.now().toString(36).toUpperCase()}`;
+      const metadata: FirmaElectronicaMetadata = {
+        otp: idFirma,
+        id: idFirma,
+        hash: idFirma,
+        fechaFirma: data?.fechaFirma || new Date().toISOString(),
+        metodo: 'OTP_EMAIL',
+        validadoBackend: true,
+      };
+      onSuccess(metadata);
+      handleCierre();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'El código proporcionado no coincide.';
+      setErrorOTP(true);
+      setPaso('ingresando');
+      setOtpIngresado(['', '', '', '', '', '']);
+      otpInputRefs.current[0]?.focus();
+      toast.error('Código incorrecto', {
+        description: message,
+      });
+    }
   };
 
   const formatearTiempo = (segundos: number) => {
@@ -136,9 +233,9 @@ export function ModalFirmaOTP({ isOpen, onClose, onSuccess, userEmail, userName,
 
   const handleCierre = () => {
     setPaso('generando');
-    setOtpGenerado('');
     setOtpIngresado(['', '', '', '', '', '']);
     setErrorOTP(false);
+    setErrorEnvio('');
     onClose();
   };
 
@@ -154,11 +251,31 @@ export function ModalFirmaOTP({ isOpen, onClose, onSuccess, userEmail, userName,
           initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
           className="bg-white rounded-2xl shadow-2xl p-0 w-full max-w-lg border overflow-hidden"
         >
-          {paso === 'generando' && (
+          {(paso === 'generando' || paso === 'error') && (
             <div className="flex flex-col items-center justify-center p-12 text-center">
-               <Loader2 className="w-12 h-12 text-[#1e5da8] animate-spin mb-4" />
-               <h3 className="text-xl font-bold text-gray-900">Generando Firma Digital...</h3>
-               <p className="text-sm text-gray-500 mt-2">Estamos creando tu token de alta seguridad hacia el correo.</p>
+               {paso === 'generando' ? (
+                 <Loader2 className="w-12 h-12 text-[#1e5da8] animate-spin mb-4" />
+               ) : (
+                 <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+               )}
+               <h3 className="text-xl font-bold text-gray-900">
+                 {paso === 'generando' ? 'Generando Firma Digital...' : 'No se pudo enviar el OTP'}
+               </h3>
+               <p className="text-sm text-gray-500 mt-2">
+                 {paso === 'generando'
+                   ? 'Estamos enviando tu token de alta seguridad al correo.'
+                   : errorEnvio || 'Verifica el correo y la configuración SMTP.'}
+               </p>
+               {paso === 'error' && (
+                 <div className="flex gap-3 mt-6">
+                   <button onClick={handleCierre} className="px-4 py-2 border border-gray-200 text-gray-700 font-semibold rounded-xl hover:bg-gray-100 transition-colors">
+                     Cancelar
+                   </button>
+                   <button onClick={enviarOTP} className="px-4 py-2 bg-[#1e5da8] hover:bg-[#154682] text-white font-bold rounded-xl transition-colors">
+                     Reintentar envío
+                   </button>
+                 </div>
+               )}
             </div>
           )}
 
@@ -184,7 +301,7 @@ export function ModalFirmaOTP({ isOpen, onClose, onSuccess, userEmail, userName,
                    <h3 className="text-lg font-bold text-gray-900">{accionDetalle}</h3>
                    <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg mx-auto w-full inline-block mt-3 text-sm text-gray-700 font-medium">
                      Validando identidad de <span className="font-bold text-[#1e5da8]">{userName}</span><br/>
-                     <span className="text-gray-500 text-xs">{userEmail}</span>
+                     <span className="text-gray-500 text-xs">{emailDestino || userEmail || 'correo institucional'}</span>
                    </div>
                  </div>
 
