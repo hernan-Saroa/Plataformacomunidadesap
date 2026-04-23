@@ -469,9 +469,6 @@ export async function exportarPDFInformeAuditoria(
   // Fila: TIPO DE INFORME
   y = filaTabla(doc, margin, y, tableW, 'TIPO DE INFORME:', tituloInforme, TABLA_OPTS);
 
-  // Fila: RADICADO / CONSECUTIVO
-  y = filaTabla(doc, margin, y, tableW, 'RADICADO / CONSECUTIVO:', radicado, TABLA_OPTS);
-
   // Fila: TITULO
   y = filaTabla(doc, margin, y, tableW,
     'TITULO DE LA AUDITORIA (unidad auditable):', tituloAud, TABLA_OPTS);

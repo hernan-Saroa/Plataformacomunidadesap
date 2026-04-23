@@ -730,15 +730,19 @@ export const ComunicacionAuditoriaModule: React.FC<{
                       onClick={() => puedeAcceder && setSeccionActual(seccion.id)}
                       disabled={!puedeAcceder}
                       title={!puedeAcceder ? 'Complete la verificación de cumplimiento primero' : undefined}
-                      className={`flex items-center gap-2 px-4 py-3 rounded-lg transition-all flex-1 min-w-[200px] ${
+                      className={`flex flex-col items-center justify-center gap-1 px-3 py-4 rounded-xl transition-all flex-1 min-w-[140px] min-h-[90px] text-center relative ${
                         !puedeAcceder ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : seccionActual === seccion.id ? (embedded ? 'bg-green-600 text-white' : 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-lg')
-                          : seccion.completado ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                          : seccionActual === seccion.id ? (embedded ? 'bg-green-600 text-white shadow-md' : 'bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-xl scale-105 z-10')
+                          : seccion.completado ? 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200' : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
                       }`}
                     >
-                      <seccion.icono className="w-5 h-5" />
-                      <span className="font-medium">{seccion.nombre}</span>
-                      {seccion.completado && <CheckCircle2 className="w-4 h-4 ml-auto" />}
+                      <seccion.icono className={`w-6 h-6 ${seccionActual === seccion.id ? 'animate-pulse' : ''}`} />
+                      <span className="text-xs sm:text-sm font-bold leading-tight max-w-[120px]">{seccion.nombre}</span>
+                      {seccion.completado && (
+                        <div className="absolute top-2 right-2">
+                          <CheckCircle2 className="w-4 h-4 text-current" />
+                        </div>
+                      )}
                     </button>
                     {index < 1 && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
                   </React.Fragment>
@@ -766,15 +770,19 @@ export const ComunicacionAuditoriaModule: React.FC<{
                       onClick={() => puedeAcceder && setSeccionActual(seccion.id)}
                       disabled={!puedeAcceder}
                       title={!puedeAcceder ? 'Complete la sección anterior primero' : undefined}
-                      className={`flex items-center gap-2 px-4 py-3 rounded-lg transition-all flex-1 min-w-[180px] ${
+                      className={`flex flex-col items-center justify-center gap-1 px-3 py-4 rounded-xl transition-all flex-1 min-w-[140px] min-h-[90px] text-center relative ${
                         !puedeAcceder ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : seccionActual === seccion.id ? (embedded ? 'bg-green-600 text-white' : 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg')
-                          : seccion.completado ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                          : seccionActual === seccion.id ? (embedded ? 'bg-green-600 text-white shadow-md' : 'bg-gradient-to-br from-purple-500 to-purple-700 text-white shadow-xl scale-105 z-10')
+                          : seccion.completado ? 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200' : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
                       }`}
                     >
-                      <seccion.icono className="w-5 h-5" />
-                      <span className="font-medium">{seccion.nombre}</span>
-                      {seccion.completado && <CheckCircle2 className="w-4 h-4 ml-auto" />}
+                      <seccion.icono className={`w-6 h-6 ${seccionActual === seccion.id ? 'animate-pulse' : ''}`} />
+                      <span className="text-xs sm:text-sm font-bold leading-tight max-w-[120px]">{seccion.nombre}</span>
+                      {seccion.completado && (
+                        <div className="absolute top-2 right-2">
+                          <CheckCircle2 className="w-4 h-4 text-current" />
+                        </div>
+                      )}
                     </button>
                     {index < 3 && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
                   </React.Fragment>
