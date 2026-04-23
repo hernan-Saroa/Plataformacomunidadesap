@@ -263,7 +263,7 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
   return (
     <div className="space-y-4">
       {/* Header con estadísticas */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-lg font-bold text-gray-900">
             Tareas y Actividades
@@ -275,11 +275,12 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
             </span>
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <ButtonSIGL
             variant="secondary"
             icon={<RefreshCw className="w-4 h-4" />}
             onClick={cargarTareas}
+            className="w-full sm:w-auto"
           >
             Refrescar
           </ButtonSIGL>
@@ -288,6 +289,7 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
             icon={<Plus className="w-4 h-4" />}
             onClick={() => setShowModal(true)}
             disabled={!isValidUUID(auditoriaId)}
+            className="w-full sm:w-auto"
           >
             Nueva Tarea
           </ButtonSIGL>
@@ -524,11 +526,11 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
 
       {/* Modal para crear nueva tarea */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto"
+            className="relative w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl bg-white shadow-xl pointer-events-auto"
           >
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-bold text-gray-900">Nueva Tarea</h3>
@@ -551,7 +553,7 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                   value={formData.titulo}
                   onChange={(e) => setFormData(prev => ({ ...prev, titulo: e.target.value }))}
                   maxLength={255}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Ej: Revisar documentación del proceso"
                 />
                 <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
@@ -569,7 +571,7 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                   value={formData.descripcion}
                   onChange={(e) => setFormData(prev => ({ ...prev, descripcion: e.target.value }))}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Descripción detallada de la tarea..."
                 />
               </div>
@@ -583,7 +585,7 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                   <select
                     value={formData.prioridad}
                     onChange={(e) => setFormData(prev => ({ ...prev, prioridad: e.target.value as PrioridadTarea }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="Baja">Baja</option>
                     <option value="Media">Media</option>
@@ -598,7 +600,7 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                   <select
                     value={formData.fase || ''}
                     onChange={(e) => setFormData(prev => ({ ...prev, fase: e.target.value as FaseTarea || undefined }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Sin fase específica</option>
                     <option value="Planeación">Planeación</option>
@@ -617,7 +619,7 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                 <select
                   value={formData.responsableId}
                   onChange={handleResponsableChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {EQUIPO_AUDITORES.map(auditor => (
                     <option key={auditor.id} value={auditor.id}>
@@ -636,7 +638,7 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                   type="date"
                   value={formData.fechaVencimiento}
                   onChange={(e) => setFormData(prev => ({ ...prev, fechaVencimiento: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -649,7 +651,7 @@ export function SeccionTareasExpediente({ auditoriaId }: Props) {
                   value={formData.notas}
                   onChange={(e) => setFormData(prev => ({ ...prev, notas: e.target.value }))}
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-gray-900 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Notas o comentarios..."
                 />
               </div>

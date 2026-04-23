@@ -34,6 +34,9 @@ export class UserResponseDto {
   id_user: string;
 
   @Expose()
+  public_id: string;
+
+  @Expose()
   username: string;
 
   @Expose()

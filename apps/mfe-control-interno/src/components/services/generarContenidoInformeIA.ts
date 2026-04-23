@@ -72,6 +72,9 @@ function buildPrompt(auditoria: AuditoriaBasicaPDF, hallazgos: HallazgoPDF[], a�
         efectos: h.efectos,
       })),
       año,
+      fechaReunionApertura: auditoria.fechaReunionApertura,
+      fechaReunionCierre: auditoria.fechaReunionCierre,
+      responsableUnidad: auditoria.responsableUnidadAuditada,
     },
     null,
     2
@@ -90,7 +93,7 @@ ESTRUCTURA Y SECCIONES REQUERIDAS:
 
 3. **DECLARACIÓN**: Redacta un párrafo formal indicando que la auditoría se basa en muestras representativas, que se revisaron evidencias documentales y se utilizaron los sistemas de información institucionales (MIPG, ISOLUCIÓN, etc.).
 
-4. **CONTEXTO GENERAL**: Explica la relación con el plan anual de auditoría, el rol de la Oficina de Control Interno y el propósito preventivo de la evaluación.
+4. **CONTEXTO GENERAL**: Explica la relación con el plan anual de auditoría, el rol de la Oficina de Control Interno y el propósito preventivo de la evaluación. **IMPORTANTE**: Debes mencionar explícitamente la fecha de la reunión de apertura (si se proporciona) y el nombre del responsable de la unidad auditada que participó.
 
 5. **EJECUCIÓN DE LA AUDITORÍA**: Para CADA proceso evaluado en el JSON, genera:
    - categoria: ESTRATÉGICO, MISIONAL o DE APOYO.
@@ -141,7 +144,7 @@ RESPONDE ÚNICAMENTE con un objeto JSON válido (sin markdown):
       ]
     }
   ],
-  "planesMejoramiento": "...",
+  "planesMejoramiento": "N/A para informe preliminar",
   "aspectosRelevantes": "...",
   "evaluacionControlInterno": "...",
   "fortalezas": ["..."],
@@ -266,8 +269,11 @@ function contenidoPorDefecto(
       `De acuerdo con el Plan Anual de Auditoría Interna aprobado para el año ${año}, la Oficina de Control ` +
       `Interno de la ESAP programó y ejecutó la Auditoría Interna a los procesos al interior de la ` +
       `${unidad}, en cumplimiento de las funciones asignadas por la Ley 87 de 1993. ` +
-      `La auditoría se desarrolló entre el ${ini} y el ${fin}, con sede en ${lugar}, ` +
-      `utilizando técnicas de auditoría como revisión documental, entrevistas estructuradas, ` +
+      `La auditoría se desarrolló entre el ${ini} y el ${fin}, con sede en ${lugar}. ` +
+      (auditoria.fechaReunionApertura 
+        ? `La reunión de apertura se llevó a cabo el ${new Date(auditoria.fechaReunionApertura).toLocaleDateString('es-CO')} con la participación de ${auditoria.responsableUnidadAuditada || 'el responsable del proceso'}. ` 
+        : '') +
+      `Se utilizaron técnicas de auditoría como revisión documental, entrevistas estructuradas, ` +
       `validación cruzada de información y análisis de indicadores de gestión. ` +
       `El equipo auditor contó con acceso a los sistemas de información institucionales y a los ` +
       `responsables de los procesos evaluados, quienes brindaron la cooperación necesaria para el ` +
@@ -741,13 +747,9 @@ function contenidoPorDefecto(
     ],
 
     planesMejoramiento:
-      `La ${unidad} no cuenta con planes de mejoramiento vigentes suscritos ante la Oficina de Control ` +
-      `Interno de la ESAP. Durante la presente auditoría se identificaron situaciones que requieren ` +
-      `atención y que, una vez se surta el proceso de notificación del Informe Final de Auditoría, ` +
-      `deberán formalizarse mediante la suscripción de planes de mejoramiento en los plazos ` +
-      `establecidos en la normatividad vigente. Los planes deberán incluir acciones concretas, ` +
-      `responsables, indicadores de cumplimiento y fechas comprometidas que permitan subsanar ` +
-      `las situaciones identificadas y fortalecer los controles del proceso.`,
+      `Teniendo en cuenta que el presente documento constituye un Informe Preliminar, no se incluyen Planes de Mejoramiento en esta etapa. ` +
+      `Una vez se consolide el Informe Ejecutivo y se surta el proceso de comunicación definitiva, la unidad auditada ` +
+      `deberá formalizar las acciones de mejora para subsanar los hallazgos que queden en firme.`,
 
     aspectosRelevantes:
       `El personal de planta de la ${unidad} asciende a dieciséis (16) servidores, de los cuales doce (12) ` +
