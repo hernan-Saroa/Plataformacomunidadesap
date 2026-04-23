@@ -332,6 +332,7 @@ export function ModalCrearProcesoCoactivo({
                         onChange={(e) => setDocumentoDeudor(e.target.value)}
                         placeholder={tipoDeudor === 'PERSONA' ? '1234567890' : '900123456-7'}
                         className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 outline-none font-mono"
+                        maxLength={11}
                         required
                       />
                     </div>
@@ -358,6 +359,7 @@ export function ModalCrearProcesoCoactivo({
                         onChange={(e) => setTelefonoDeudor(e.target.value)}
                         placeholder="3001234567"
                         className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-red-500 outline-none"
+                        maxLength={15}
                         required
                       />
                     </div>

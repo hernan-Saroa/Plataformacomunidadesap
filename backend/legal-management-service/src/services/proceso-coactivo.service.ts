@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
 import { ProcesoCoactivo, DeudorInfo, ObligacionInfo, EstadoProcesoCoactivo } from '../entities/proceso-coactivo.entity';
@@ -84,7 +84,17 @@ export class ProcesoCoactivoService {
         return proceso;
     }
 
+    private validateDeudor(deudor: DeudorInfo): void {
+        if (deudor.identificacion && deudor.identificacion.length > 11) {
+            throw new BadRequestException('La identificación no puede superar los 11 dígitos');
+        }
+        if (deudor.telefono && deudor.telefono.length > 15) {
+            throw new BadRequestException('El teléfono no puede superar los 15 caracteres');
+        }
+    }
+
     async create(dto: CreateProcesoCoactivoDto): Promise<ProcesoCoactivo> {
+        this.validateDeudor(dto.deudor);
         // Generar radicado automático basado en secuencia anual
         const year = new Date().getFullYear();
         const lastProceso = await this.procesoCoactivoRepository.findOne({
@@ -131,6 +141,7 @@ export class ProcesoCoactivoService {
 
         // Detectar cambios y registrar auditoría
         if (dto.deudor) {
+            this.validateDeudor(dto.deudor);
             // Simplificación: registrar que cambió el deudor sin detalle profundo JSON
             await this.registrarHistorial(id, 'ACTUALIZACION', 'deudor', JSON.stringify(proceso.deudor), JSON.stringify(dto.deudor), usuario, 'Actualización de datos del deudor');
             proceso.deudor = dto.deudor;
