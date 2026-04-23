@@ -398,7 +398,10 @@ export const ComunicacionAuditoriaModule: React.FC<{
             equipoAuditores: audData.equipoAuditores.map((a: any) => ({ nombre: a.nombre || a.nom_largo || 'Auditor', rol: a.cargo || a.rol })),
           }),
           ...(audData.responsable && { responsable: audData.responsable }),
-          ...(audData.responsableAreaNombre && { responsableUnidad: audData.responsableAreaNombre }),
+          ...(audData.responsableAreaNombre && { 
+            responsableUnidadAuditada: audData.responsableAreaNombre,
+            responsableUnidad: audData.responsableAreaNombre 
+          }),
           ...(audData.responsableAreaCargo && { cargo: audData.responsableAreaCargo }),
           ...(audData.responsableAreaEmail && { responsableEmail: audData.responsableAreaEmail }),
           ...(audData.areaObjetivo && { areaResponsable: audData.areaObjetivo }),
@@ -410,6 +413,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
           ...(audData.riesgosIdentificados && { riesgosIdentificados: audData.riesgosIdentificados }),
           ...(audData.fortalezas && { fortalezas: audData.fortalezas }),
           ...(audData.recomendacionesPorCategoria && { recomendacionesPorCategoria: audData.recomendacionesPorCategoria }),
+          ...(audData.fechaReunionApertura && { fechaReunionApertura: audData.fechaReunionApertura }),
+          ...(audData.fechaReunionCierre && { fechaReunionCierre: audData.fechaReunionCierre }),
         }));
       }
     } catch (err: any) {
@@ -725,15 +730,19 @@ export const ComunicacionAuditoriaModule: React.FC<{
                       onClick={() => puedeAcceder && setSeccionActual(seccion.id)}
                       disabled={!puedeAcceder}
                       title={!puedeAcceder ? 'Complete la verificación de cumplimiento primero' : undefined}
-                      className={`flex items-center gap-2 px-4 py-3 rounded-lg transition-all flex-1 min-w-[200px] ${
+                      className={`flex flex-col items-center justify-center gap-1 px-3 py-4 rounded-xl transition-all flex-1 min-w-[140px] min-h-[90px] text-center relative ${
                         !puedeAcceder ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : seccionActual === seccion.id ? (embedded ? 'bg-green-600 text-white' : 'bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-lg')
-                          : seccion.completado ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                          : seccionActual === seccion.id ? (embedded ? 'bg-green-600 text-white shadow-md' : 'bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-xl scale-105 z-10')
+                          : seccion.completado ? 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200' : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
                       }`}
                     >
-                      <seccion.icono className="w-5 h-5" />
-                      <span className="font-medium">{seccion.nombre}</span>
-                      {seccion.completado && <CheckCircle2 className="w-4 h-4 ml-auto" />}
+                      <seccion.icono className={`w-6 h-6 ${seccionActual === seccion.id ? 'animate-pulse' : ''}`} />
+                      <span className="text-xs sm:text-sm font-bold leading-tight max-w-[120px]">{seccion.nombre}</span>
+                      {seccion.completado && (
+                        <div className="absolute top-2 right-2">
+                          <CheckCircle2 className="w-4 h-4 text-current" />
+                        </div>
+                      )}
                     </button>
                     {index < 1 && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
                   </React.Fragment>
@@ -744,7 +753,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
               [
                 { id: 1, nombre: 'Informe Preliminar', icono: FileText, completado: informePreliminar.generado },
                 { id: 2, nombre: 'Gestión Hallazgos', icono: MessageSquare, completado: !estadoComunicacion?.hayControversiasPendientes },
-                { id: 3, nombre: 'Decisión / Informe Final', icono: FileCheck, completado: informeFinal.generado },
+                { id: 3, nombre: 'Decisión / Informe Ejecutivo', icono: FileCheck, completado: informeFinal.generado },
                 { id: 4, nombre: 'Plan de Mejoramiento', icono: TrendingUp, completado: planCompleto },
               ].map((seccion, index) => {
                 const seccion1Completa = informePreliminar.generado;
@@ -761,15 +770,19 @@ export const ComunicacionAuditoriaModule: React.FC<{
                       onClick={() => puedeAcceder && setSeccionActual(seccion.id)}
                       disabled={!puedeAcceder}
                       title={!puedeAcceder ? 'Complete la sección anterior primero' : undefined}
-                      className={`flex items-center gap-2 px-4 py-3 rounded-lg transition-all flex-1 min-w-[180px] ${
+                      className={`flex flex-col items-center justify-center gap-1 px-3 py-4 rounded-xl transition-all flex-1 min-w-[140px] min-h-[90px] text-center relative ${
                         !puedeAcceder ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : seccionActual === seccion.id ? (embedded ? 'bg-green-600 text-white' : 'bg-gradient-to-r from-purple-500 to-purple-600 text-white shadow-lg')
-                          : seccion.completado ? 'bg-green-50 text-green-700 hover:bg-green-100' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                          : seccionActual === seccion.id ? (embedded ? 'bg-green-600 text-white shadow-md' : 'bg-gradient-to-br from-purple-500 to-purple-700 text-white shadow-xl scale-105 z-10')
+                          : seccion.completado ? 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200' : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
                       }`}
                     >
-                      <seccion.icono className="w-5 h-5" />
-                      <span className="font-medium">{seccion.nombre}</span>
-                      {seccion.completado && <CheckCircle2 className="w-4 h-4 ml-auto" />}
+                      <seccion.icono className={`w-6 h-6 ${seccionActual === seccion.id ? 'animate-pulse' : ''}`} />
+                      <span className="text-xs sm:text-sm font-bold leading-tight max-w-[120px]">{seccion.nombre}</span>
+                      {seccion.completado && (
+                        <div className="absolute top-2 right-2">
+                          <CheckCircle2 className="w-4 h-4 text-current" />
+                        </div>
+                      )}
                     </button>
                     {index < 3 && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
                   </React.Fragment>
@@ -832,7 +845,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
                       typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre,
                       ...((auditoria as any).equipoAuditores?.slice?.(1) || []).map((a: any) => typeof a === 'string' ? a : a?.nombre).filter(Boolean),
                     ].filter(Boolean).join(' / '),
-                    tituloAuditoria: (auditoria as any).tituloAuditoria,
+                    tituloAuditoria: auditoria.nombre,
                     responsableUnidadAuditada: (auditoria as any).responsable || (auditoria as any).responsableUnidad,
                     // Lugar de ejecución: campo explícito > sede > territorial
                     lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).sede || (auditoria as any).territorial,
@@ -1114,7 +1127,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
               <p className="text-sm text-gray-600">
                 {puedeAvanzar 
                   ? 'Todas las secciones completadas. Puede avanzar a Seguimiento (el plan de mejoramiento ya fue creado con las acciones correctivas).'
-                  : 'Complete: Informe Preliminar, Gestión Hallazgos, Informe Final y Plan de Mejoramiento (con acciones correctivas para cada hallazgo) para poder finalizar.'}
+                  : 'Complete: Informe Preliminar, Gestión Hallazgos, Informe Ejecutivo y Plan de Mejoramiento (con acciones correctivas para cada hallazgo) para poder finalizar.'}
               </p>
             </div>
             <Button
@@ -1825,7 +1838,7 @@ const SeccionInformeFinal: React.FC<{
         <div className="p-4 bg-green-50 border-2 border-green-300 rounded-lg flex items-center gap-3">
           <CheckCircle2 className="w-8 h-8 text-green-600 flex-shrink-0" />
           <div>
-            <p className="font-bold text-green-900 text-lg">Informe Final ya terminado</p>
+            <p className="font-bold text-green-900 text-lg">Informe Ejecutivo ya terminado</p>
             <p className="text-sm text-green-700">Aprobado como Jefe OCI. Plazo de Plan de Mejoramiento definido.</p>
           </div>
         </div>
@@ -1838,7 +1851,7 @@ const SeccionInformeFinal: React.FC<{
             <div className="flex items-center gap-3">
               <AlertCircle className="w-8 h-8 text-red-600 flex-shrink-0" />
               <div>
-                <p className="font-bold text-red-900">No se puede generar el Informe Final</p>
+                <p className="font-bold text-red-900">No se puede generar el Informe Ejecutivo</p>
                 <p className="text-sm text-red-700">
                   Existen {enControversia} controversia(s) pendiente(s) de decisión del auditor.
                 </p>
@@ -1965,7 +1978,7 @@ const SeccionInformeFinal: React.FC<{
             <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
               <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
               <div>
-                <p className="font-medium text-green-900">Informe Final Generado</p>
+                <p className="font-medium text-green-900">Informe Ejecutivo Generado</p>
                 <p className="text-sm text-green-700">Fecha: {new Date(informe.fecha).toLocaleDateString()}</p>
               </div>
             </div>
@@ -2051,7 +2064,7 @@ const SeccionInformeFinal: React.FC<{
                   typeof auditoria.auditorLider === 'string'
                     ? auditoria.auditorLider
                     : (auditoria as any).auditorLider?.nombre || 'No asignado',
-                tituloAuditoria: (auditoria as any).titulo || auditoria.nombre,
+                tituloAuditoria: auditoria.nombre,
                 responsableUnidadAuditada: (auditoria as any).responsableUnidad || (auditoria as any).areaResponsable || '—',
                 lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).territorial || '—',
                 fechaEjecucionInicio: auditoria.fechaInicio,
@@ -2074,7 +2087,7 @@ const SeccionInformeFinal: React.FC<{
           }}
         >
           <Download className="w-4 h-4 mr-2" />
-          Descargar Informe Final (PDF)
+          Descargar Informe Ejecutivo (PDF)
         </Button>
         {!informe.generado && (
           <Button
@@ -2085,7 +2098,7 @@ const SeccionInformeFinal: React.FC<{
             className="font-medium bg-green-600 hover:bg-green-700 text-white"
           >
             <FileCheck className="w-4 h-4 mr-2" />
-            Generar Informe Final — Aprobar como Jefe OCI
+            Generar Informe Ejecutivo — Aprobar como Jefe OCI
           </Button>
         )}
       </div>
@@ -2804,7 +2817,7 @@ const ModalPreviewInforme: React.FC<{
   hallazgos?: Hallazgo[];
   onClose: () => void;
 }> = ({ tipo, auditoria, informe, onClose }) => {
-  const titulo = tipo === 'preliminar' ? 'Informe Preliminar' : tipo === 'final' ? 'Informe Final' : 'Informe Ejecutivo';
+  const titulo = tipo === 'preliminar' ? 'Informe Preliminar' : tipo === 'final' ? 'Informe Ejecutivo' : 'Informe Ejecutivo';
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   const prepararDatosPDF = () => {
@@ -2843,6 +2856,7 @@ const ModalPreviewInforme: React.FC<{
         typeof auditoria.auditorLider === 'string'
           ? auditoria.auditorLider
           : (auditoria as any).auditorLider?.nombre || 'No asignado',
+      tituloAuditoria: auditoria.nombre,
       ...(tipo === 'preliminar' && {
         fechaOficio: informe?.fecha,
         destinatarioNombre: (auditoria as any).responsable || (auditoria as any).responsableUnidad,

@@ -36,6 +36,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { SeccionAutosParametrizados } from './configuracion/SeccionAutosParametrizados';
+import { SeccionActasParametrizadas } from './configuracion/SeccionActasParametrizadas';
 
 // ============ INTERFACES ============
 
@@ -1018,6 +1019,9 @@ export function ModuloConfiguracion() {
 
           {/* 5. AUTOS PARAMETRIZADOS - Lista los autos de la BD */}
           <SeccionAutosParametrizados />
+
+          {/* 6. ACTAS PARAMETRIZADAS - Lista las actas de la BD */}
+          <SeccionActasParametrizadas />
 
           {/* 4. CAPACIDAD POR CARGO */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
