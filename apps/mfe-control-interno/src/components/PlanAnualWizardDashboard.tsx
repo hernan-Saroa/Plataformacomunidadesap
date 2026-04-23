@@ -829,11 +829,11 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
   
   // Buscar fecha inicio mínima y fin máxima en las actividades, o usar defaults
   const [fechaInicio, setFechaInicio] = useState(() => {
-    return draft?.fechaInicio || `${planAEditar?.vigencia || new Date().getFullYear()}-01-01`;
+    return draft?.fechaInicio || planAEditar?.fecha_inicio || planAEditar?.fechaInicio || `${planAEditar?.vigencia || new Date().getFullYear()}-01-01`;
   });
   
   const [fechaFin, setFechaFin] = useState(() => {
-    return draft?.fechaFin || `${planAEditar?.vigencia || new Date().getFullYear()}-12-31`;
+    return draft?.fechaFin || planAEditar?.fecha_fin || planAEditar?.fechaFin || `${planAEditar?.vigencia || new Date().getFullYear()}-12-31`;
   });
 
   const [comiteAprobacion, setComiteAprobacion] = useState<Auditor[]>(() => {
@@ -939,16 +939,24 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     });
   }, [planAEditar]); // draft no está como dependencia para que evalúe el closure inicial
 
-  // Actualizar fechas de puntos de control cuando cambie la vigencia
+  // Actualizar fechas de puntos de control Y actividades cuando cambie la vigencia
   useEffect(() => {
     // Solo actualizar si el año es válido (evita fechas rotas al escribir valores intermedios)
     if (!vigencia || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100) return;
+    
+    // Propagar fechaInicio y fechaFin del plan a la vigencia actual
+    setFechaInicio(`${vigencia}-01-01`);
+    setFechaFin(`${vigencia}-12-31`);
+    
     setRolesConfig(prev => prev.map(rol => ({
       ...rol,
       actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
         const año = vigencia;
         return {
           ...act,
+          // ═══ FECHAS DINÁMICAS: siempre reflejan la vigencia del plan ═══
+          fechaInicio: `${año}-01-01`,
+          fechaFin: `${año}-12-31`,
           fechaCorte: `${año}-09-30`,
           puntosControl: [
             { ...act.puntosControl[0], fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31` },
@@ -956,7 +964,13 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
             { ...act.puntosControl[2], fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30` },
           ]
         };
-      })
+      }),
+      actividadesCustom: (rol.actividadesCustom || []).map(act => ({
+        ...act,
+        fechaInicio: `${vigencia}-01-01`,
+        fechaFin: `${vigencia}-12-31`,
+        fechaCorte: `${vigencia}-09-30`,
+      }))
     })));
   }, [vigencia]);
   const [rolesConfig, setRolesConfig] = useState<RolConfig[]>(() => {
@@ -3820,14 +3834,19 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
                           plan.estado === 'APROBADO' ? 'Aprobado' : 
                           plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado';
 
+      const planDates = plan as any;
+      const pdfFechaInicio = planDates.fecha_inicio || planDates.fechaInicio || '';
+      const pdfFechaFin = planDates.fecha_fin || planDates.fechaFin || '';
+      const pdfFechaCreacion = planDates.fecha_creacion || planDates.fechaCreacion || '';
+
       const infoData = [
         ['Vigencia', vigencia.toString()],
         ['Estado', estadoLabel],
         ['Jefe OCI', plan.jefeOCI?.nombre || ''],
         ['Cargo', plan.jefeOCI?.cargo || ''],
-        ['Fecha Inicio', (plan as any).fechaInicio ? new Date((plan as any).fechaInicio).toLocaleDateString('es-CO') : ''],
-        ['Fecha Fin', (plan as any).fechaFin ? new Date((plan as any).fechaFin).toLocaleDateString('es-CO') : ''],
-        ['Fecha Creación', new Date(plan.fechaCreacion).toLocaleDateString('es-CO')]
+        ['Fecha Inicio', pdfFechaInicio ? new Date(pdfFechaInicio).toLocaleDateString('es-CO') : ''],
+        ['Fecha Fin', pdfFechaFin ? new Date(pdfFechaFin).toLocaleDateString('es-CO') : ''],
+        ['Fecha Creación', pdfFechaCreacion ? new Date(pdfFechaCreacion).toLocaleDateString('es-CO') : '']
       ];
 
       autoTable(doc, {
@@ -3870,10 +3889,20 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         const actividadesData = rol.actividades.map((act, idx) => {
           const pctFinal = (act.estado === 'Completada' || act.estado === 'COMPLETADA') ? 100 
                     : (act.entradasSeguimiento && act.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(act) : 0);
+          // Responsable: prioridad responsables[] → responsable → 'No asignado'
+          const actX = act as any;
+          let responsablePdf = '';
+          if (Array.isArray(actX.responsables) && actX.responsables.length > 0) {
+            responsablePdf = actX.responsables.map((r: any) => typeof r === 'string' ? r : r.nombre || '').filter(Boolean).join(', ');
+          } else if (actX.responsable) {
+            responsablePdf = typeof actX.responsable === 'string' ? actX.responsable : actX.responsable?.nombre || '';
+          }
+          if (!responsablePdf) responsablePdf = 'No asignado';
+          
           return [
             (idx + 1).toString(),
             act.nombre,
-            act.responsable?.nombre || 'Sin asignar',
+            responsablePdf,
             act.estado === 'COMPLETADA' ? 'Completada' : 
             act.estado === 'EN_EJECUCION' ? 'En ejecución' : 'Pendiente',
             `${pctFinal}%`
@@ -4636,8 +4665,8 @@ function SeccionGestionYSeguimiento({
         setNuevaActividad({
           nombre: '',
           descripcion: '',
-          fechaInicio: new Date().toISOString().split('T')[0],
-          fechaFin: new Date().toISOString().split('T')[0],
+          fechaInicio: fechaInicio || `${plan.vigencia || new Date().getFullYear()}-01-01`,
+          fechaFin: fechaFin || `${plan.vigencia || new Date().getFullYear()}-12-31`,
           control: 'Seguimiento trimestral',
           evaluacion: '0% avance',
           seguimiento: 'Por definir'

@@ -304,10 +304,23 @@ export async function generarPDFPlanAnual(plan: PlanAnual, configuracion: Config
         doc.text(`Actividad ${actIdx + 1}: ${act.nombre}`, margin + 5, currentY + 5);
         currentY += 12;
 
-        // Obtener nombre del responsable (puede venir como objeto o string)
+        // Obtener nombre del responsable: prioridad responsables[] → responsable → 'No asignado'
         const actAny = act as any;
-        const nombreResponsable = actAny.responsable?.nombre || act.responsableNombre || 'Sin asignar';
-        const cargoResponsable = actAny.responsable?.cargo || '';
+        let nombreResponsable = '';
+        let cargoResponsable = '';
+        if (Array.isArray(actAny.responsables) && actAny.responsables.length > 0) {
+          nombreResponsable = actAny.responsables.map((r: any) => typeof r === 'string' ? r : r.nombre || '').filter(Boolean).join(', ');
+          cargoResponsable = actAny.responsables[0]?.cargo || '';
+        } else if (actAny.responsable) {
+          if (typeof actAny.responsable === 'string') {
+            nombreResponsable = actAny.responsable;
+          } else {
+            nombreResponsable = actAny.responsable?.nombre || '';
+            cargoResponsable = actAny.responsable?.cargo || '';
+          }
+        }
+        if (!nombreResponsable && act.responsableNombre) nombreResponsable = act.responsableNombre;
+        if (!nombreResponsable) nombreResponsable = 'No asignado';
         const responsableCompleto = cargoResponsable 
           ? `${nombreResponsable} - ${cargoResponsable}` 
           : nombreResponsable;

@@ -165,6 +165,14 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
     minute: '2-digit'
   });
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // EXTRAER FECHAS MAESTRAS DEL PLAN (snake_case y camelCase)
+  // Estas son la fuente de verdad — NUNCA hardcodeadas
+  // ═══════════════════════════════════════════════════════════════════════
+  const planAny = plan as any;
+  const planFechaInicio = planAny.fecha_inicio || planAny.fechaInicio || '';
+  const planFechaFin = planAny.fecha_fin || planAny.fechaFin || '';
+
   // Columnas activas (por defecto todas las que tienen defaultVisible)
   const columnKeys = options?.columnasSeleccionadas 
     ?? COLUMNAS_DISPONIBLES.filter(c => c.defaultVisible).map(c => c.key);
@@ -318,9 +326,8 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
     ws.mergeCells(`A5:${lastCol}5`);
     const infoCell = ws.getCell('A5');
     const totalActividades = roles.reduce((s, r) => s + r.actividades.length, 0);
-    const planAnyInfo = plan as any;
-    const periodoStr = (planAnyInfo.fechaInicio && planAnyInfo.fechaFin)
-      ? ` | Período: ${new Date(planAnyInfo.fechaInicio).toLocaleDateString('es-CO')} — ${new Date(planAnyInfo.fechaFin).toLocaleDateString('es-CO')}`
+    const periodoStr = (planFechaInicio && planFechaFin)
+      ? ` | Período: ${new Date(planFechaInicio).toLocaleDateString('es-CO')} — ${new Date(planFechaFin).toLocaleDateString('es-CO')}`
       : '';
     infoCell.value = `Estado: ${plan.estado || 'BORRADOR'} | ${totalActividades} actividades en ${roles.length} roles${periodoStr} | Generado: ${fechaGeneracion}`;
     infoCell.font = { name: 'Calibri', size: 9, italic: true, color: { argb: '666666' } };
@@ -376,25 +383,52 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
         const dataRow = ws.getRow(rowNum);
         const isEven = (rowNum - 8) % 2 === 0;
 
-        // Obtener nombre del responsable (soporta múltiples formatos del backend)
+        // ═══════════════════════════════════════════════════════════════════
+        // RESPONSABLE: Prioridad → responsables[] (array moderno del backend)
+        //              → responsable (string/objeto legacy) → 'No asignado'
+        // ═══════════════════════════════════════════════════════════════════
         const actAny = a as any;
         let responsableNombre = '';
-        if (actAny.responsable) {
+        // 1. responsables[] — array de objetos { id, nombre, cargo, email }
+        const responsablesArray = actAny.responsables;
+        if (Array.isArray(responsablesArray) && responsablesArray.length > 0) {
+          responsableNombre = responsablesArray
+            .map((r: any) => (typeof r === 'string' ? r : r.nombre || r.name || ''))
+            .filter(Boolean)
+            .join(', ');
+        }
+        // 2. responsable (legacy — string o { nombre })
+        if (!responsableNombre && actAny.responsable) {
           if (typeof actAny.responsable === 'string') {
             responsableNombre = actAny.responsable;
           } else if (typeof actAny.responsable === 'object' && actAny.responsable.nombre) {
             responsableNombre = actAny.responsable.nombre;
           }
         }
-        // Fallback a responsableNombre si existe
+        // 3. responsableNombre directo
         if (!responsableNombre && actAny.responsableNombre) {
           responsableNombre = actAny.responsableNombre;
         }
+        // 4. Fallback explícito — NUNCA quemado
+        if (!responsableNombre) {
+          responsableNombre = 'No asignado';
+        }
 
-        // Formatear fechas: prioridad actividad → plan (fallback, NO hardcodeadas)
-        const planAny = plan as any;
-        const fechaInicioStr = actAny.fechaInicio || actAny.fecha_inicio || planAny.fechaInicio || planAny.fecha_inicio || '';
-        const fechaFinStr = actAny.fechaFin || actAny.fecha_fin || planAny.fechaFin || planAny.fecha_fin || '';
+        // ═══════════════════════════════════════════════════════════════════
+        // FECHAS: Siempre del PLAN si la actividad no tiene fechas propias
+        // o si sus fechas no coinciden con la vigencia del plan.
+        // Cadena: actividad.fecha_inicio → plan.fecha_inicio → vacío
+        // ═══════════════════════════════════════════════════════════════════
+        const actFechaInicioRaw = actAny.fechaInicio || actAny.fecha_inicio || '';
+        const actFechaFinRaw = actAny.fechaFin || actAny.fecha_fin || '';
+        // Usar fecha de actividad SOLO si existe y su año coincide con la vigencia;
+        // de lo contrario, usar la fecha del plan (fuente de verdad)
+        const fechaInicioStr = (actFechaInicioRaw && new Date(actFechaInicioRaw).getFullYear() === vigencia)
+          ? actFechaInicioRaw
+          : (planFechaInicio || actFechaInicioRaw || '');
+        const fechaFinStr = (actFechaFinRaw && new Date(actFechaFinRaw).getFullYear() === vigencia)
+          ? actFechaFinRaw
+          : (planFechaFin || actFechaFinRaw || '');
         const fechaInicio = fechaInicioStr ? new Date(fechaInicioStr).toLocaleDateString('es-CO') : '';
         const fechaFin = fechaFinStr ? new Date(fechaFinStr).toLocaleDateString('es-CO') : '';
 
