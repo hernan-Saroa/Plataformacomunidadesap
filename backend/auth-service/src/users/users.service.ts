@@ -82,6 +82,52 @@ export class UsersService {
     return normalized;
   }
 
+  private normalizeIdentificationType(value: unknown): string {
+    return this.normalizeRequiredText(value, 'tipo de documento').toUpperCase();
+  }
+
+  private normalizeIdentificationNumber(
+    value: unknown,
+    identificationType: unknown,
+  ): string {
+    const normalizedNumber = this.normalizeRequiredText(
+      value,
+      'numero de documento',
+    );
+    const normalizedType =
+      typeof identificationType === 'string' && identificationType.trim()
+        ? identificationType.trim().toUpperCase()
+        : this.normalizeIdentificationType(identificationType);
+
+    switch (normalizedType) {
+      case 'CC':
+        if (!/^\d{6,10}$/.test(normalizedNumber)) {
+          throw new BadRequestException(
+            'La cedula debe tener entre 6 y 10 digitos.',
+          );
+        }
+        break;
+      case 'CE':
+        if (!/^\d{6,10}$/.test(normalizedNumber)) {
+          throw new BadRequestException(
+            'La cedula de extranjeria debe tener entre 6 y 10 digitos.',
+          );
+        }
+        break;
+      case 'TI':
+        if (!/^\d{10,11}$/.test(normalizedNumber)) {
+          throw new BadRequestException(
+            'La tarjeta de identidad debe tener 10 u 11 digitos.',
+          );
+        }
+        break;
+      default:
+        break;
+    }
+
+    return normalizedNumber;
+  }
+
   private normalizeGender(value?: string | null): string {
     const normalized = value?.trim().toUpperCase();
     return normalized || 'N';
@@ -127,19 +173,39 @@ export class UsersService {
     return String(nextValue.next_id);
   }
 
+  private async findPersonByIdentificationNumber(
+    repository: Repository<Person>,
+    identificationNumber: string,
+    excludePersonId?: string,
+  ): Promise<Person | null> {
+    const query = repository
+      .createQueryBuilder('person')
+      .where('person.identification_number = :identificationNumber', {
+        identificationNumber,
+      });
+
+    if (excludePersonId) {
+      query.andWhere('person.id != :excludePersonId', { excludePersonId });
+    }
+
+    return query.getOne();
+  }
+
   private async assertCreateUserUniqueness(
     manager: EntityManager,
     email: string,
     identificationNumber: string,
   ): Promise<void> {
+    const personRepository = manager.getRepository(Person);
     const [existingUser, existingPersonByDocument, existingPersonByEmail] =
       await Promise.all([
         manager.getRepository(User).findOne({
           where: { username: email },
         }),
-        manager.getRepository(Person).findOne({
-          where: { identification_number: identificationNumber },
-        }),
+        this.findPersonByIdentificationNumber(
+          personRepository,
+          identificationNumber,
+        ),
         manager.getRepository(Person).findOne({
           where: { email },
         }),
@@ -176,20 +242,21 @@ export class UsersService {
     const legacyPersonId = await this.getNextLegacyPersonId(manager);
     const firstName = this.normalizeRequiredText(data.firstName, 'nombre');
     const lastName = this.normalizeRequiredText(data.lastName, 'apellido');
+    const identificationType = this.normalizeIdentificationType(
+      data.identificationType,
+    );
+    const identificationNumber = this.normalizeIdentificationNumber(
+      data.identificationNumber,
+      identificationType,
+    );
 
     const personData: Partial<Person> = {
       id: randomUUID(),
       first_name: firstName,
       last_name: lastName,
       full_name: `${firstName} ${lastName}`.trim(),
-      identification_number: this.normalizeRequiredText(
-        data.identificationNumber,
-        'numero de documento',
-      ),
-      identification_type: this.normalizeRequiredText(
-        data.identificationType,
-        'tipo de documento',
-      ),
+      identification_number: identificationNumber,
+      identification_type: identificationType,
       email: this.normalizeEmail(data.email),
       phone: this.normalizeOptionalText(data.phone),
       gender: this.normalizeGender(data.gender),
@@ -353,9 +420,9 @@ export class UsersService {
     try {
       return await this.dataSource.transaction(async (manager) => {
         const normalizedEmail = this.normalizeEmail(dto.email);
-        const normalizedDocument = this.normalizeRequiredText(
+        const normalizedDocument = this.normalizeIdentificationNumber(
           dto.documentNumber,
-          'numero de documento',
+          'CC',
         );
         const normalizedUsername = this.normalizeRequiredText(
           dto.username,
@@ -548,9 +615,12 @@ export class UsersService {
     try {
       return await this.dataSource.transaction(async (manager) => {
         const normalizedEmail = this.normalizeEmail(dto.email);
-        const normalizedDocument = this.normalizeRequiredText(
+        const normalizedIdentificationType = this.normalizeIdentificationType(
+          dto.identification_type,
+        );
+        const normalizedDocument = this.normalizeIdentificationNumber(
           dto.identification_number,
-          'numero de documento',
+          normalizedIdentificationType,
         );
 
         await this.assertCreateUserUniqueness(
@@ -563,7 +633,7 @@ export class UsersService {
           firstName: dto.first_name,
           lastName: dto.last_name,
           identificationNumber: normalizedDocument,
-          identificationType: dto.identification_type,
+          identificationType: normalizedIdentificationType,
           email: normalizedEmail,
           phone: dto.phone,
           gender: dto.gender,
@@ -619,6 +689,55 @@ export class UsersService {
 
     // Construir SQL dinámico para actualizar todos los campos
     const setClauses: string[] = [];
+    const currentIdentificationNumber = this.normalizeRequiredText(
+      user.person.identification_number,
+      'numero de documento',
+    );
+    const currentIdentificationType = this.normalizeIdentificationType(
+      user.person.identification_type,
+    );
+    const requestedIdentificationNumber =
+      dto.identification_number !== undefined
+        ? this.normalizeRequiredText(
+            dto.identification_number,
+            'numero de documento',
+          )
+        : undefined;
+    const normalizedIdentificationType =
+      dto.identification_type !== undefined
+        ? this.normalizeIdentificationType(dto.identification_type)
+        : undefined;
+    const shouldValidateIdentification =
+      (requestedIdentificationNumber !== undefined &&
+        requestedIdentificationNumber !== currentIdentificationNumber) ||
+      (normalizedIdentificationType !== undefined &&
+        normalizedIdentificationType !== currentIdentificationType);
+    const normalizedIdentificationNumber = shouldValidateIdentification
+      ? this.normalizeIdentificationNumber(
+          requestedIdentificationNumber ?? currentIdentificationNumber,
+          normalizedIdentificationType ?? currentIdentificationType,
+        )
+      : requestedIdentificationNumber;
+
+    if (
+      shouldValidateIdentification &&
+      normalizedIdentificationNumber &&
+      normalizedIdentificationNumber !== currentIdentificationNumber
+    ) {
+      const existingPersonByDocument =
+        await this.findPersonByIdentificationNumber(
+          this.personRepo,
+          normalizedIdentificationNumber,
+          user.person.id,
+        );
+
+      if (existingPersonByDocument) {
+        throw new ConflictException(
+          'Ya existe una persona registrada con ese numero de documento.',
+        );
+      }
+    }
+
     const values: any[] = [];
     let paramIndex = 1;
 
@@ -639,11 +758,11 @@ export class UsersService {
     }
     if (dto.identification_number !== undefined) {
       setClauses.push(`num_identificacion = $${paramIndex++}`);
-      values.push(dto.identification_number);
+      values.push(normalizedIdentificationNumber);
     }
-    if (dto.identification_type !== undefined) {
+    if (normalizedIdentificationType !== undefined) {
       setClauses.push(`tip_identificacion = $${paramIndex++}`);
-      values.push(dto.identification_type);
+      values.push(normalizedIdentificationType);
     }
     if (dto.email !== undefined) {
       setClauses.push(`dir_email = $${paramIndex++}`);

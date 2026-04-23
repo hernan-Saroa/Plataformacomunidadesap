@@ -258,10 +258,23 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       console.log('✅ [8] onLogin handler completed');
     } catch (error: any) {
       console.error('❌ Error de autenticación:', error);
+      const statusCode =
+        error?.statusCode ??
+        error?.response?.data?.statusCode ??
+        error?.response?.status;
+      const errorMessage =
+        typeof error?.message === 'string' && error.message.trim()
+          ? error.message
+          : 'Ocurrió un error inesperado. Intenta nuevamente.';
 
       // Manejar diferentes tipos de errores
-      if (error.response?.data.statusCode === 401) {
-        if (error.response?.data.message === 'El usuario no tiene roles asignados') {
+      if (statusCode === 429) {
+        toast.error('Demasiados intentos', {
+          description: errorMessage,
+          duration: 7000,
+        });
+      } else if (statusCode === 401) {
+        if (errorMessage === 'El usuario no tiene roles asignados') {
           toast.error('Acceso denegado', {
             description: 'El usuario no tiene roles asignados. Por favor, solicita que te asignen un rol e intenta nuevamente.',
             duration: 10000,
@@ -276,14 +289,14 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
             password: 'Verifica tu contraseña'
           });
         }
-      } else if (error.response?.status === 400) {
+      } else if (statusCode === 400) {
         toast.error('Datos inválidos', {
           description: 'Por favor verifica la información ingresada.',
           duration: 5000,
         });
       } else {
         toast.error('Error de conexión', {
-          description: error.message || 'Ocurrió un error inesperado. Intenta nuevamente.',
+          description: errorMessage,
           duration: 5000,
         });
       }
