@@ -331,6 +331,31 @@ export class UsersService {
     return createdUser;
   }
 
+  private async findUserByApiIdentifier(
+    identifier: string,
+    relations: string[] = [],
+    allowInternalId = false,
+  ): Promise<User | null> {
+    const normalizedIdentifier = this.normalizeRequiredText(
+      identifier,
+      'identificador de usuario',
+    );
+
+    const userByPublicId = await this.userRepo.findOne({
+      where: { public_id: normalizedIdentifier },
+      relations,
+    });
+
+    if (userByPublicId || !allowInternalId) {
+      return userByPublicId;
+    }
+
+    return this.userRepo.findOne({
+      where: { id_user: normalizedIdentifier },
+      relations,
+    });
+  }
+
   private rethrowCreateUserError(error: unknown): never {
     console.error('🔥 [rethrowCreateUserError] Raw Exception details:', error);
     if (
@@ -459,6 +484,7 @@ export class UsersService {
         const savedUser = await userRepo.save(
           userRepo.create({
             id_user: randomUUID(),
+            public_id: randomUUID(),
             username: normalizedUsername,
             password_hash: passwordHash,
             id_person: person.id,
@@ -598,11 +624,22 @@ export class UsersService {
     return { users, total, totalActive, totalBlocked };
   }
 
-  async findById(id: string): Promise<User> {
-    const updatedUser = await this.userRepo.findOne({
-      where: { id_user: id },
-      relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'roles']
-    });
+  async findById(
+    id: string,
+    options?: { allowInternalId?: boolean },
+  ): Promise<User> {
+    const updatedUser = await this.findUserByApiIdentifier(
+      id,
+      [
+        'person',
+        'person.seccional',
+        'person.seccional.ubicacion',
+        'person.sede',
+        'person.sede.geopolitica',
+        'roles',
+      ],
+      options?.allowInternalId ?? false,
+    );
 
     if (!updatedUser) {
       throw new NotFoundException('Usuario no encontrado');
@@ -646,6 +683,7 @@ export class UsersService {
         const savedUser = await userRepo.save(
           userRepo.create({
             id_user: randomUUID(),
+            public_id: randomUUID(),
             username: normalizedEmail,
             password_hash: passwordHash,
             is_active: false,
@@ -673,15 +711,20 @@ export class UsersService {
     }
   }
 
-  async updatePerson(id: string, dto: Partial<CreatePersonDto>): Promise<User> {
+  async updatePerson(
+    id: string,
+    dto: Partial<CreatePersonDto>,
+    options?: { allowInternalId?: boolean },
+  ): Promise<User> {
     console.log('📝 updatePerson called with:', { id, dto });
     console.log('📝 idSeccional value:', dto.idSeccional, 'type:', typeof dto.idSeccional);
     console.log('📝 idSede value:', dto.idSede, 'type:', typeof dto.idSede);
 
-    const user = await this.userRepo.findOne({
-      where: { id_user: id },
-      relations: ['person', 'roles']
-    });
+    const user = await this.findUserByApiIdentifier(
+      id,
+      ['person', 'roles'],
+      options?.allowInternalId ?? false,
+    );
 
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
@@ -809,7 +852,7 @@ export class UsersService {
     }
 
     const updatedUser = await this.userRepo.findOne({
-      where: { id_user: id },
+      where: { id_user: user.id_user },
       relations: ['person', 'person.seccional', 'person.seccional.ubicacion', 'person.sede', 'person.sede.geopolitica', 'roles']
     });
 
@@ -820,11 +863,15 @@ export class UsersService {
     return updatedUser;
   }
 
-  async deletePerson(id: string): Promise<void> {
-    const existingUser = await this.userRepo.findOne({
-      where: { id_user: id },
-      relations: ['person']
-    });
+  async deletePerson(
+    id: string,
+    options?: { allowInternalId?: boolean },
+  ): Promise<void> {
+    const existingUser = await this.findUserByApiIdentifier(
+      id,
+      ['person'],
+      options?.allowInternalId ?? false,
+    );
 
     if (!existingUser) {
       throw new NotFoundException('Usuario no encontrado');
@@ -834,11 +881,16 @@ export class UsersService {
     await this.personRepo.remove(existingUser.person);
   }
 
-  async updateUserStatus(id: string, isActive: boolean): Promise<User> {
-    const userToUpdate = await this.userRepo.findOne({
-      where: { id_user: id },
-      relations: ['person', 'roles']
-    });
+  async updateUserStatus(
+    id: string,
+    isActive: boolean,
+    options?: { allowInternalId?: boolean },
+  ): Promise<User> {
+    const userToUpdate = await this.findUserByApiIdentifier(
+      id,
+      ['person', 'roles'],
+      options?.allowInternalId ?? false,
+    );
 
     if (!userToUpdate) {
       throw new NotFoundException('Usuario no encontrado');

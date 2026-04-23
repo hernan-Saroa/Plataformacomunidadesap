@@ -36,6 +36,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { SeccionAutosParametrizados } from './configuracion/SeccionAutosParametrizados';
+import { SeccionActasParametrizadas } from './configuracion/SeccionActasParametrizadas';
 
 // ============ INTERFACES ============
 
@@ -1019,6 +1020,9 @@ export function ModuloConfiguracion() {
           {/* 5. AUTOS PARAMETRIZADOS - Lista los autos de la BD */}
           <SeccionAutosParametrizados />
 
+          {/* 6. ACTAS PARAMETRIZADAS - Lista las actas de la BD */}
+          <SeccionActasParametrizadas />
+
           {/* 4. CAPACIDAD POR CARGO */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200">
             <div className="p-3 sm:p-4 lg:p-6">
@@ -1770,7 +1774,7 @@ function ConfiguracionFirmaPersonal() {
   const [currentProfessionalId, setCurrentProfessionalId] = useState<string | null>(null);
 
   // Mock fallback logic
-  const mockUser = { id: '770e8400-e29b-41d4-a716-446655440002', nombre: 'Admin Sistema' };
+  const mockUser = { id: '8e0b5a7e-70e9-4f84-b4eb-64e2d8e1d1b4', nombre: 'Admin Sistema' };
 
   useEffect(() => {
     loadFirma();

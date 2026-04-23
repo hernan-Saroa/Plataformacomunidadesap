@@ -21,6 +21,8 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { VerifyResetCodeDto } from './dto/verify-reset-code.dto';
+import { RequestSignatureOtpDto } from './dto/request-signature-otp.dto';
+import { VerifySignatureOtpDto } from './dto/verify-signature-otp.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { Public } from './decorators/public.decorator';
 import {
@@ -156,6 +158,20 @@ export class AuthController {
   @HttpCode(200)
   verifyResetCode(@Body() dto: VerifyResetCodeDto) {
     return this.authService.verifyResetCode(dto.email, dto.code);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('signature-otp/request')
+  @HttpCode(200)
+  requestSignatureOtp(@Req() req, @Body() dto: RequestSignatureOtpDto) {
+    return this.authService.requestSignatureOtp(req.user, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('signature-otp/verify')
+  @HttpCode(200)
+  verifySignatureOtp(@Req() req, @Body() dto: VerifySignatureOtpDto) {
+    return this.authService.verifySignatureOtp(req.user, dto.code);
   }
 
   @UseGuards(JwtAuthGuard)

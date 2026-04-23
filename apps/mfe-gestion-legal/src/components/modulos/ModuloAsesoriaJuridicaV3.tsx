@@ -140,6 +140,8 @@ export function ModuloAsesoriaJuridicaV3() {
         id: c.numeroRadicado,
         uuid: c.id,
         etapa: mapEstadoToEtapa(c.estado),
+        tipoSolicitud: c.tipoSolicitud || 'Consulta',
+        canalEntrada: c.canalEntrada || 'Correo Electrónico',
         temaJuridico: c.materiaJuridica || 'Administrativo',
         solicitante: c.dependenciaSolicitante || 'Sin dependencia',
         funcionarioSolicitante: c.nombreSolicitante || 'Sin asignar',
@@ -156,11 +158,19 @@ export function ModuloAsesoriaJuridicaV3() {
         prioridad: (c.prioridad || 'media').toUpperCase(),
         normativaAplicable: [],
         documentosAdjuntos: [],
-        respuesta: c.respuesta || '', // Preservar respuesta/borrador guardado
+        timeline: [],
+        respuesta: c.respuesta || '',
         fechaRespuesta: c.fechaRespuesta || null,
         estado: c.estado || ''
       }));
       setConsultas(mapped);
+      // Sincronizar consultaSeleccionada con los datos frescos para que el modal expediente
+      // muestre la información actualizada después de una edición
+      setConsultaSeleccionada(prev => {
+        if (!prev) return null;
+        const updated = mapped.find((c: any) => c.uuid === (prev as any).uuid || c.id === prev.id);
+        return updated || prev;
+      });
     } catch (error) {
       console.error('Error loading consultas:', error);
       toast.error('Error al cargar consultas');
