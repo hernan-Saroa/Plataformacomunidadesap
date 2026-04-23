@@ -5,6 +5,7 @@ on:
     branches:
       - micro-frontend
       - development
+      - feat/ci-cd-dev
 
 env:
   REGISTRY: ghcr.io
