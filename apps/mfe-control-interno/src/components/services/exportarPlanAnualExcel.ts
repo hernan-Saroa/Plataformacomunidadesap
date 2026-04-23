@@ -337,62 +337,9 @@ export async function exportarPlanAnualExcel(plan: PlanAnual): Promise<Resultado
         }
       }
 
-      // Subtotal por rol (Ajustado a 12 columnas)
-      if (totalActividadesRol > 0) {
-        const prom = Math.round(sumaAvanceRol / totalActividadesRol);
-        const sRow = ws.getRow(rowNum);
-        ws.mergeCells(`A${rowNum}:F${rowNum}`);
-        sRow.getCell(1).value = `SUBTOTAL ROL: ${rol.nombre} (${totalActividadesRol} actividades)`;
-        sRow.getCell(1).font = { name: 'Calibri', size: 9, bold: true, color: { argb: EXCEL_COLORS.white } };
-        sRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryLight } };
-        sRow.getCell(1).alignment = { horizontal: 'right', vertical: 'middle' };
-        sRow.getCell(7).value = `${prom}%`;
-        sRow.getCell(7).font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.white } };
-        sRow.getCell(7).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: prom >= 75 ? EXCEL_COLORS.success : prom >= 50 ? EXCEL_COLORS.warning : EXCEL_COLORS.info } };
-        sRow.getCell(7).alignment = { horizontal: 'center', vertical: 'middle' };
-        
-        // Celdas vacías del subtotal
-        [8, 9, 10, 11].forEach(c => {
-          sRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryLight } };
-        });
-        sRow.height = 22;
-        rowNum++;
-      }
+      // Sin filas separadoras por rol (requerimiento de formato continuo)
     }
-
-    // ═══════════════ TOTAL GENERAL ═══════════════
-    rowNum++;
-    const tRow = ws.getRow(rowNum);
-    const promGen = totalActividadesPlan > 0 ? Math.round(sumaAvancePlan / totalActividadesPlan) : 0;
-    ws.mergeCells(`A${rowNum}:E${rowNum}`);
-    tRow.getCell(1).value = `TOTAL PLAN ANUAL (${totalActividadesPlan} actividades en ${roles.length} roles)`;
-    tRow.getCell(1).font = { name: 'Calibri', size: 11, bold: true, color: { argb: EXCEL_COLORS.white } };
-    tRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryDark } };
-    tRow.getCell(1).alignment = { horizontal: 'right', vertical: 'middle' };
-    tRow.getCell(1).border = { top: { style: 'medium' }, bottom: { style: 'medium' }, left: { style: 'medium' }, right: { style: 'medium' } };
-    tRow.getCell(6).value = 'PROMEDIO';
-    tRow.getCell(6).font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.white } };
-    tRow.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryDark } };
-    tRow.getCell(6).alignment = { horizontal: 'center', vertical: 'middle' };
-    tRow.getCell(6).border = { top: { style: 'medium' }, bottom: { style: 'medium' }, left: { style: 'medium' }, right: { style: 'medium' } };
-    tRow.getCell(7).value = `${promGen}%`;
-    tRow.getCell(7).font = { name: 'Calibri', size: 12, bold: true, color: { argb: EXCEL_COLORS.white } };
-    tRow.getCell(7).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: promGen >= 75 ? EXCEL_COLORS.success : promGen >= 50 ? EXCEL_COLORS.warning : EXCEL_COLORS.danger } };
-    tRow.getCell(7).alignment = { horizontal: 'center', vertical: 'middle' };
-    tRow.getCell(7).border = { top: { style: 'medium' }, bottom: { style: 'medium' }, left: { style: 'medium' }, right: { style: 'medium' } };
-    [8, 9, 10, 11].forEach(c => {
-      tRow.getCell(c).value = '';
-      tRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: EXCEL_COLORS.primaryDark } };
-      tRow.getCell(c).border = { top: { style: 'medium' }, bottom: { style: 'medium' }, left: { style: 'medium' }, right: { style: 'medium' } };
-    });
-    tRow.height = 30;
-
-    // Pie
-    rowNum += 2;
-    ws.mergeCells(`A${rowNum}:K${rowNum}`);
-    ws.getCell(`A${rowNum}`).value = 'Escuela Superior de Administración Pública - ESAP | Oficina de Control Interno de Gestión';
-    ws.getCell(`A${rowNum}`).font = { name: 'Calibri', size: 9, italic: true, color: { argb: '888888' } };
-    ws.getCell(`A${rowNum}`).alignment = { horizontal: 'center', vertical: 'middle' };
+    // Sin total general ni pie separador (requerimiento de formato continuo)
 
     // Descargar
     const buffer = await workbook.xlsx.writeBuffer();
