@@ -1,0 +1,59 @@
+name: Build and Push Backend (QA)
+
+on:
+  push:
+    branches:
+      - qa
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build-and-push-backend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - api-gateway
+          - auth-service
+          - academic-registration-service
+          - academic-work-plan-service
+          - certification-service
+          - internal-disciplinary-control-service
+          - interoperability-service
+          - internal-institutional-control-service
+          - legal-management-service
+          - notifications-service
+          - travel-expenses-service
+          - audit-service
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/esap-${{ matrix.service }}
+          tags: type=raw,value=qa-latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend/${{ matrix.service }}
+          file: ./backend/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

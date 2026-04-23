@@ -240,14 +240,256 @@ export async function generarPDFPlanAnual(plan: PlanAnual, configuracion: Config
       10: { cellWidth: 15, halign: 'center' },// Fecha Tarea
       11: { cellWidth: 10, halign: 'center' } // Eval %
     },
-    margin: { left: margin, right: margin, bottom: 20 },
-    didDrawPage: (data) => {
-      // Footer
-      const str = `Página ${doc.getNumberOfPages()}`;
-      doc.setFontSize(7);
-      doc.setTextColor(100);
-      doc.text(str, pageWidth - margin - 15, pageHeight - 10);
-      doc.text(`Generado el: ${obtenerFechaHoraGeneracion()}`, margin, pageHeight - 10);
+    margin: { left: margin, right: margin }
+  });
+
+  currentY = (doc as any).lastAutoTable.finalY + 10;
+
+  // ============================================
+  // 3. CUMPLIMIENTO DECRETO 648/2017
+  // ============================================
+
+  const validacion = validarDecreto648(plan);
+  const stats = obtenerEstadisticasPlan(plan);
+
+  // Box de cumplimiento
+  const boxHeight = 35;
+  const boxColor = validacion.valido 
+    ? hexToRgb(COLORES_DEFAULT.verde)
+    : hexToRgb(COLORES_DEFAULT.rojo);
+
+  doc.setFillColor(boxColor[0], boxColor[1], boxColor[2], 0.1);
+  doc.setDrawColor(boxColor[0], boxColor[1], boxColor[2]);
+  doc.setLineWidth(1);
+  doc.rect(margin, currentY, pageWidth - 2 * margin, boxHeight, 'FD');
+
+  // Título del box
+  doc.setTextColor(boxColor[0], boxColor[1], boxColor[2]);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text(
+    validacion.valido ? '✓ CUMPLE DECRETO 648/2017' : '✗ NO CUMPLE DECRETO 648/2017',
+    margin + 5,
+    currentY + 8
+  );
+
+  // Estadísticas
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(60, 60, 60);
+  
+  const statsY = currentY + 18;
+  const statsSpacing = (pageWidth - 2 * margin - 10) / 4;
+  
+  doc.text(`Roles: ${stats.rolesConActividades}/5`, margin + 5, statsY);
+  doc.text(`Actividades: ${stats.totalActividades}`, margin + 5 + statsSpacing, statsY);
+  doc.text(`Progreso: ${stats.progresoGeneral}%`, margin + 5 + statsSpacing * 2, statsY);
+  doc.text(`Estado: ${validacion.valido ? 'Válido' : 'Inválido'}`, margin + 5 + statsSpacing * 3, statsY);
+
+  // Actividades por estado
+  doc.setFontSize(9);
+  const detailY = statsY + 8;
+  doc.text(
+    `Pendiente: ${stats.actividadesPorEstado.Pendiente} | ` +
+    `En Ejecución: ${stats.actividadesPorEstado['En Ejecución']} | ` +
+    `Completada: ${stats.actividadesPorEstado.Completada} | ` +
+    `Retrasada: ${stats.actividadesPorEstado.Retrasada}`,
+    margin + 5,
+    detailY
+  );
+
+  currentY += boxHeight + 15;
+
+  // Errores (si existen)
+  if (!validacion.valido && validacion.errores.length > 0) {
+    doc.setTextColor(239, 68, 68);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ERRORES ENCONTRADOS:', margin, currentY);
+    currentY += 6;
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    validacion.errores.slice(0, 3).forEach((error, idx) => {
+      const lines = doc.splitTextToSize(`${idx + 1}. ${error}`, pageWidth - 2 * margin - 5);
+      doc.text(lines, margin + 3, currentY);
+      currentY += lines.length * 5;
+    });
+
+    if (validacion.errores.length > 3) {
+      doc.text(`... y ${validacion.errores.length - 3} error(es) más`, margin + 3, currentY);
+      currentY += 5;
+    }
+
+    currentY += 5;
+  }
+
+  // ============================================
+  // 4. ROLES Y ACTIVIDADES DEL DECRETO 648
+  // ============================================
+
+  doc.setTextColor(0, 0, 0);
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'bold');
+  doc.text('ROLES Y ACTIVIDADES - DECRETO 648/2017', margin, currentY);
+  currentY += 8;
+
+  // Procesar cada rol
+  plan.roles.forEach((rol, rolIdx) => {
+    // Verificar si necesitamos nueva página
+    if (currentY > pageHeight - 60) {
+      doc.addPage();
+      currentY = margin;
+    }
+
+    // Header del rol
+    const rolColor = hexToRgb(rol.color || COLORES_DEFAULT.azulPrincipal);
+    doc.setFillColor(rolColor[0], rolColor[1], rolColor[2], 0.1);
+    doc.setDrawColor(rolColor[0], rolColor[1], rolColor[2]);
+    doc.rect(margin, currentY, pageWidth - 2 * margin, 12, 'FD');
+
+    doc.setTextColor(rolColor[0], rolColor[1], rolColor[2]);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(
+      `${rolIdx + 1}. ${rol.icono} ${rol.nombre}`,
+      margin + 3,
+      currentY + 8
+    );
+
+    currentY += 15;
+
+    // Descripción del rol
+    doc.setTextColor(100, 100, 100);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'italic');
+    const descLines = doc.splitTextToSize(rol.descripcion, pageWidth - 2 * margin - 6);
+    doc.text(descLines, margin + 3, currentY);
+    currentY += descLines.length * 4 + 5;
+
+    // Tabla de actividades con información completa
+    if (rol.actividades.length > 0) {
+      // Para cada actividad, creamos una tabla detallada
+      rol.actividades.forEach((act, actIdx) => {
+        // Verificar si necesitamos nueva página
+        if (currentY > pageHeight - 80) {
+          doc.addPage();
+          currentY = margin;
+        }
+
+        // Header de la actividad
+        doc.setFillColor(245, 245, 245);
+        doc.rect(margin + 3, currentY, pageWidth - 2 * margin - 6, 8, 'F');
+        doc.setTextColor(60, 60, 60);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Actividad ${actIdx + 1}: ${act.nombre}`, margin + 5, currentY + 5);
+        currentY += 12;
+
+        // Obtener nombre del responsable: prioridad responsables[] → responsable → 'No asignado'
+        const actAny = act as any;
+        let nombreResponsable = '';
+        let cargoResponsable = '';
+        if (Array.isArray(actAny.responsables) && actAny.responsables.length > 0) {
+          nombreResponsable = actAny.responsables.map((r: any) => typeof r === 'string' ? r : r.nombre || '').filter(Boolean).join(', ');
+          cargoResponsable = actAny.responsables[0]?.cargo || '';
+        } else if (actAny.responsable) {
+          if (typeof actAny.responsable === 'string') {
+            nombreResponsable = actAny.responsable;
+          } else {
+            nombreResponsable = actAny.responsable?.nombre || '';
+            cargoResponsable = actAny.responsable?.cargo || '';
+          }
+        }
+        if (!nombreResponsable && act.responsableNombre) nombreResponsable = act.responsableNombre;
+        if (!nombreResponsable) nombreResponsable = 'No asignado';
+        const responsableCompleto = cargoResponsable 
+          ? `${nombreResponsable} - ${cargoResponsable}` 
+          : nombreResponsable;
+
+        // Datos básicos de la actividad
+        const datosBasicos = [
+          ['Responsable', responsableCompleto],
+          ['Fecha Inicio', formatearFecha(act.fechaInicio)],
+          ['Fecha Fin', formatearFecha(act.fechaFin)],
+          ['Avance', `${act.porcentaje}%`],
+          ['Estado', act.estado]
+        ];
+
+        autoTable(doc, {
+          startY: currentY,
+          head: [],
+          body: datosBasicos,
+          theme: 'plain',
+          styles: {
+            fontSize: 8,
+            cellPadding: 2
+          },
+          columnStyles: {
+            0: { fontStyle: 'bold', cellWidth: 35 },
+            1: { cellWidth: 'auto' }
+          },
+          margin: { left: margin + 5, right: margin }
+        });
+
+        currentY = (doc as any).lastAutoTable.finalY + 3;
+
+        // Descripción (si existe)
+        if (act.descripcion && act.descripcion.trim()) {
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(80, 80, 80);
+          doc.text('Descripción:', margin + 5, currentY);
+          currentY += 4;
+          doc.setFont('helvetica', 'normal');
+          const descLines = doc.splitTextToSize(act.descripcion, pageWidth - 2 * margin - 10);
+          doc.text(descLines, margin + 5, currentY);
+          currentY += descLines.length * 3.5 + 2;
+        }
+
+        // Seguimiento y Evaluación (campos críticos)
+        const camposSeguimiento: [string, string | undefined][] = [
+          ['Control', (act as any).control],
+          ['Evaluación', (act as any).evaluacion],
+          ['Seguimiento', (act as any).seguimiento],
+          ['Observaciones Director', (act as any).observacionesDirector]
+        ];
+
+        const camposConValor = camposSeguimiento.filter(([, valor]) => valor && valor.trim());
+
+        if (camposConValor.length > 0) {
+          doc.setFillColor(254, 249, 231);
+          doc.rect(margin + 3, currentY, pageWidth - 2 * margin - 6, 6, 'F');
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(156, 110, 0);
+          doc.text('SEGUIMIENTO Y EVALUACIÓN DE TAREA', margin + 5, currentY + 4);
+          currentY += 9;
+
+          camposConValor.forEach(([label, valor]) => {
+            if (currentY > pageHeight - 30) {
+              doc.addPage();
+              currentY = margin;
+            }
+            doc.setFont('helvetica', 'bold');
+            doc.setTextColor(60, 60, 60);
+            doc.text(`${label}:`, margin + 5, currentY);
+            currentY += 4;
+            doc.setFont('helvetica', 'normal');
+            const lines = doc.splitTextToSize(valor!, pageWidth - 2 * margin - 10);
+            doc.text(lines, margin + 5, currentY);
+            currentY += lines.length * 3.5 + 3;
+          });
+        }
+
+        currentY += 5;
+      });
+    } else {
+      doc.setTextColor(239, 68, 68);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'italic');
+      doc.text('⚠ Sin actividades asignadas', margin + 6, currentY);
+      currentY += 10;
     }
   });
 

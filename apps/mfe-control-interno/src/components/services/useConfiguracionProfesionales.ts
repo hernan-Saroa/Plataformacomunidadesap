@@ -332,8 +332,10 @@ export function useConfiguracionProfesionales() {
 
   // Usuarios disponibles para agregar (tienen rol de Control Interno pero no están en OCI)
   const usuariosDisponiblesParaOCI = useMemo(() => {
-    const idsTercerosConfigurados = new Set(configuracionesOCI.map(c => c.idTercero));
-    return usuariosControlInterno.filter(u => !idsTercerosConfigurados.has(u.idTercero) && u.activo);
+    const idsTercerosConfiguradosActivos = new Set(
+      configuracionesOCI.filter(c => c.activo).map(c => c.idTercero)
+    );
+    return usuariosControlInterno.filter(u => !idsTercerosConfiguradosActivos.has(u.idTercero) && u.activo);
   }, [usuariosControlInterno, configuracionesOCI]);
 
   // ══════════════════════════════════════════════════════════════════════════

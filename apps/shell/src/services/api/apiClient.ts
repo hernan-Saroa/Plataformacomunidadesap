@@ -16,6 +16,8 @@
 import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../config/environment';
 import type { ApiResponse, ApiError } from '../../types';
 import { toast } from 'sonner';
+import { offlineCache } from './offlineCache';
+import { syncEngine } from './syncEngine';
 
 // ============================================================================
 // TIPOS INTERNOS
@@ -334,6 +336,39 @@ export class ApiClient {
     skipErrorToast: boolean,
     allowRefresh = true,
   ): Promise<T> {
+    const isGet = !fetchConfig.method || fetchConfig.method.toUpperCase() === 'GET';
+    const isMutation = fetchConfig.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(fetchConfig.method.toUpperCase());
+
+    // 🔴 MODO OFFLINE: Interceptar si no hay conexión
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (isGet) {
+        try {
+          const cached = await offlineCache.getCache(url);
+          if (cached) {
+            console.log('📦 Servido desde caché local (offline):', url);
+            return cached;
+          }
+          throw new Error('No hay conexión a internet y no hay datos en caché para esta consulta');
+        } catch (e) {
+          if (!skipErrorToast) toast.error('Sin conexión a internet');
+          throw e;
+        }
+      } else if (isMutation) {
+        const method = fetchConfig.method || 'POST';
+        // Encolar mutación para luego
+        await offlineCache.queueMutation(url, method, fetchConfig.body, fetchConfig.headers || {});
+        
+        console.log('📦 Petición encolada para sincronización:', method, url);
+        toast.info('Modo sin conexión', { 
+          description: 'Tu cambio fue guardado localmente y se sincronizará automáticamente cuando vuelva el internet.' 
+        });
+        
+        // Retornar éxito optimista (falso) para que la UI no se bloquee
+        return { success: true, message: 'Encolado offline', data: null } as any;
+      }
+    }
+
+    // 🟢 MODO ONLINE
     const headers = skipAuth
       ? { 'Content-Type': 'application/json; charset=utf-8' }
       : getDefaultHeaders(true);
@@ -368,9 +403,19 @@ export class ApiClient {
       }
 
       // Manejo de respuesta
-      return await this.handleResponse<T>(response, skipErrorToast, skipAuth);
+      const responseData = await this.handleResponse<T>(response, skipErrorToast, skipAuth);
+      
+      // 💾 CACHÉ SILENCIOSA: Guardar respuestas GET exitosas
+      if (isGet && typeof navigator !== 'undefined') {
+        offlineCache.setCache(url, responseData).catch(e => console.error('Error guardando caché:', e));
+      }
+      
+      return responseData;
     } catch (error: any) {
-      console.log('🔴 Error en request:', error);
+      // Solo loguear errores de requests que no sean del servicio de notificaciones
+      if (!url.includes('/notificaciones/') && !url.includes(':3009/') && !url.includes('/notifications')) {
+        console.log('🔴 Error en request:', error);
+      }
       clearTimeout(timeoutId);
 
       if (error.name === 'AbortError') {

@@ -253,14 +253,27 @@ Este plan estructura las actividades de auditoría interna para la vigencia ${da
     yPos += 10;
 
     // Tabla de actividades del rol
-    const actividadesData = rol.actividadesPlan.map((act, idx) => [
-      (idx + 1).toString(),
-      act.nombre,
-      act.responsableAsignado?.nombre || 'Sin asignar',
-      `${act.fechaInicio} - ${act.fechaFin}`,
-      `${act.porcentajeAvance}%`,
-      act.estadoActividad
-    ]);
+    const actividadesData = rol.actividadesPlan.map((act, idx) => {
+      // Responsable: prioridad responsables[] → responsable → 'No asignado'
+      const actR = act as any;
+      let respNombre = '';
+      if (Array.isArray(actR.responsables) && actR.responsables.length > 0) {
+        respNombre = actR.responsables.map((r: any) => typeof r === 'string' ? r : r.nombre || '').filter(Boolean).join(', ');
+      } else if (actR.responsableAsignado?.nombre) {
+        respNombre = actR.responsableAsignado.nombre;
+      } else if (actR.responsable) {
+        respNombre = typeof actR.responsable === 'string' ? actR.responsable : actR.responsable?.nombre || '';
+      }
+      if (!respNombre) respNombre = 'No asignado';
+      return [
+        (idx + 1).toString(),
+        act.nombre,
+        respNombre,
+        `${act.fechaInicio} - ${act.fechaFin}`,
+        `${act.porcentajeAvance}%`,
+        act.estadoActividad
+      ];
+    });
 
     (doc as any).autoTable({
       startY: yPos,
