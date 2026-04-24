@@ -2727,6 +2727,7 @@ export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = [])
     procesoAsociadoTipo: proceso.procesoAsociadoTipo,
     procesoAsociadoFecha: proceso.procesoAsociadoFecha,
     procesoAsociadoJustificacion: proceso.procesoAsociadoJustificacion,
+    profesionalAsignadoId: proceso.abogadoAsignadoId,
   };
 };
 
@@ -3354,6 +3355,7 @@ export function DashboardKanbanOperativo({
       procesoConsolidadoPrincipal,
       procesosConsolidados,
       informacionConsolidada,
+      profesionalAsignadoId: proceso.abogadoAsignadoId,
     };
   };
 
