@@ -55,6 +55,249 @@ export class ProcessService {
     private notificationClient: NotificationClientService,
   ) { }
 
+  private normalizeAccessEmail(email?: string | null): string | null {
+    const normalized = email?.trim().toLowerCase();
+    return normalized || null;
+  }
+
+  private async resolveAccessibleProfessionalContext(
+    userId?: string,
+    email?: string,
+  ): Promise<{ professionalIds: Set<string>; normalizedEmail: string | null }> {
+    const professionalIds = new Set<string>();
+    const normalizedEmail = this.normalizeAccessEmail(email);
+
+    if (userId?.trim()) {
+      professionalIds.add(userId.trim());
+    }
+
+    if (normalizedEmail) {
+      const professional = await this.professionalRepository
+        .createQueryBuilder('professional')
+        .where('LOWER(professional.email) = :email', { email: normalizedEmail })
+        .getOne();
+
+      if (professional?.id) {
+        professionalIds.add(professional.id);
+      }
+    }
+
+    return { professionalIds, normalizedEmail };
+  }
+
+  private processBelongsToAccessContext(
+    process: {
+      abogadoAsignadoId?: string | null;
+      abogadoAsignado?: { email?: string | null } | null;
+    },
+    professionalIds: Set<string>,
+    normalizedEmail: string | null,
+  ): boolean {
+    if (process.abogadoAsignadoId && professionalIds.has(process.abogadoAsignadoId)) {
+      return true;
+    }
+
+    const assignedEmail = this.normalizeAccessEmail(process.abogadoAsignado?.email);
+    return Boolean(normalizedEmail && assignedEmail && assignedEmail === normalizedEmail);
+  }
+
+  async findAllAccessible(
+    userId?: string,
+    email?: string,
+  ): Promise<DisciplinaryProcess[]> {
+    const { professionalIds, normalizedEmail } =
+      await this.resolveAccessibleProfessionalContext(userId, email);
+
+    if (professionalIds.size === 0 && !normalizedEmail) {
+      return [];
+    }
+
+    const processes = await this.findAll();
+
+    return processes.filter((process) =>
+      this.processBelongsToAccessContext(
+        process,
+        professionalIds,
+        normalizedEmail,
+      ),
+    );
+  }
+
+  async findByIdAccessible(
+    id: string,
+    includeAutos: boolean,
+    userId?: string,
+    email?: string,
+  ): Promise<DisciplinaryProcess> {
+    const process = await this.findById(id, includeAutos);
+    const { professionalIds, normalizedEmail } =
+      await this.resolveAccessibleProfessionalContext(userId, email);
+
+    if (
+      !this.processBelongsToAccessContext(
+        process,
+        professionalIds,
+        normalizedEmail,
+      )
+    ) {
+      throw new HttpException(
+        'No tiene permisos para acceder a este proceso disciplinario.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    return process;
+  }
+
+  async findByRadicadoAccessible(
+    radicadoProceso: string,
+    userId?: string,
+    email?: string,
+  ): Promise<DisciplinaryProcess> {
+    const process = await this.findByRadicado(radicadoProceso);
+    const { professionalIds, normalizedEmail } =
+      await this.resolveAccessibleProfessionalContext(userId, email);
+
+    if (
+      !this.processBelongsToAccessContext(
+        process,
+        professionalIds,
+        normalizedEmail,
+      )
+    ) {
+      throw new HttpException(
+        'No tiene permisos para acceder a este proceso disciplinario.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    return process;
+  }
+
+  async getProcessStatisticsAccessible(
+    processId: string,
+    userId?: string,
+    email?: string,
+  ): Promise<{
+    draftsCount: number;
+    documentsCount: number;
+    timePercentage: number;
+  }> {
+    await this.findByIdAccessible(processId, false, userId, email);
+    return this.getProcessStatistics(processId);
+  }
+
+  async findMyProcessesAccessible(
+    userId?: string,
+    email?: string,
+  ): Promise<any[]> {
+    const { professionalIds, normalizedEmail } =
+      await this.resolveAccessibleProfessionalContext(userId, email);
+
+    if (professionalIds.size === 0 && !normalizedEmail) {
+      return [];
+    }
+
+    const query = this.processRepository
+      .createQueryBuilder('process')
+      .leftJoinAndSelect('process.news', 'news')
+      .leftJoinAndSelect('process.evidence', 'evidence')
+      .leftJoinAndSelect('process.autos', 'autos')
+      .leftJoinAndSelect('process.abogadoAsignado', 'abogadoAsignado')
+      .orderBy('process.createdAt', 'DESC');
+
+    const professionalIdsList = Array.from(professionalIds);
+
+    if (professionalIdsList.length > 0 && normalizedEmail) {
+      query
+        .where('process.abogadoAsignadoId IN (:...professionalIds)', {
+          professionalIds: professionalIdsList,
+        })
+        .orWhere('LOWER(abogadoAsignado.email) = :email', {
+          email: normalizedEmail,
+        });
+    } else if (professionalIdsList.length > 0) {
+      query.where('process.abogadoAsignadoId IN (:...professionalIds)', {
+        professionalIds: professionalIdsList,
+      });
+    } else if (normalizedEmail) {
+      query.where('LOWER(abogadoAsignado.email) = :email', {
+        email: normalizedEmail,
+      });
+    }
+
+    const processes = await query.getMany();
+
+    const actuacionesResumen = await this.buildActuacionesResumen(
+      processes.map((process) => process.id),
+    );
+    const tasksResumen = await this.buildTasksResumen(
+      processes.map((process) => process.id),
+    );
+    const notesResumen = await this.buildNotesResumen(
+      processes.map((process) => process.id),
+    );
+
+    return processes.map((p) => {
+      const actuaciones = actuacionesResumen.get(p.id);
+      const tasks = tasksResumen.get(p.id);
+      const notes = notesResumen.get(p.id);
+      const draftsCount =
+        p.autos?.filter((auto) => auto.estado === 'BORRADOR').length || 0;
+      const documentsCount = p.evidence?.length || 0;
+
+      let timePercentage = 0;
+      if (p.fechaVencimientoEtapa && p.createdAt) {
+        const now = new Date();
+        const created = new Date(p.createdAt);
+        const deadline = new Date(p.fechaVencimientoEtapa);
+        const totalTime = deadline.getTime() - created.getTime();
+        const elapsedTime = now.getTime() - created.getTime();
+        if (totalTime > 0) {
+          timePercentage = Math.min(
+            100,
+            Math.max(0, (elapsedTime / totalTime) * 100),
+          );
+        } else {
+          timePercentage = 100;
+        }
+      }
+
+      return {
+        ...p,
+        procesoAsociado: p.procesoAsociadoId
+          ? {
+              id: p.procesoAsociadoId,
+              numeroProceso: p.procesoAsociadoNumero || '',
+              tipoAsociacion: p.procesoAsociadoTipo || 'similar',
+              fechaAsociacion: p.procesoAsociadoFecha
+                ? new Date(p.procesoAsociadoFecha).toISOString()
+                : new Date().toISOString(),
+              justificacion: p.procesoAsociadoJustificacion || '',
+            }
+          : undefined,
+        procesoAsociadoId: p.procesoAsociadoId,
+        procesoAsociadoNumero: p.procesoAsociadoNumero,
+        procesoAsociadoTipo: p.procesoAsociadoTipo,
+        procesoAsociadoFecha: p.procesoAsociadoFecha,
+        procesoAsociadoJustificacion: p.procesoAsociadoJustificacion,
+        procesoConsolidadoPrincipal: p.procesoConsolidadoPrincipal,
+        procesosConsolidados: p.procesosConsolidados,
+        informacionConsolidada: p.informacionConsolidada,
+        draftsCount,
+        documentsCount,
+        actuacionesCount: actuaciones?.actuacionesCount || 0,
+        ultimaActuacion: actuaciones?.ultimaActuacion || null,
+        ultimaActuacionFecha: actuaciones?.ultimaActuacionFecha || null,
+        tasksCount: tasks?.tasksCount || 0,
+        completedTasksCount: tasks?.completedTasksCount || 0,
+        pendingTasksCount: tasks?.pendingTasksCount || 0,
+        notesCount: notes?.notesCount || 0,
+        timePercentage: Math.round(timePercentage * 100) / 100,
+      };
+    });
+  }
+
   private async buildActuacionesResumen(processIds: string[]): Promise<Map<string, {
     actuacionesCount: number;
     ultimaActuacion: string | null;

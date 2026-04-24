@@ -79,7 +79,7 @@ async function bootstrap() {
     console.error('Error running seed:', error);
   }
 
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   const server = app.getHttpServer();
   server.requestTimeout = requestTimeoutMs;
   server.headersTimeout = requestTimeoutMs + 1000;

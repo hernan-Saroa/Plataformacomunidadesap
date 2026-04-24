@@ -17,7 +17,7 @@ describe('CertificatesService', () => {
       status: 'A',
       hiring_date: new Date('2024-06-18'),
       request_date: null,
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
     const encargoRequest = {
       id: 'encargo',
       position_category: 'Cra. Administrativa',
@@ -25,7 +25,7 @@ describe('CertificatesService', () => {
       status: 'A',
       hiring_date: new Date('2025-12-01'),
       request_date: null,
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
 
     const selected = service['selectPreferredRequestForCertificate']([
       encargoRequest,
@@ -43,7 +43,7 @@ describe('CertificatesService', () => {
       status: 'A',
       hiring_date: new Date('2025-12-01'),
       request_date: null,
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
     const secondEncargoRequest = {
       id: 'encargo-2',
       position_category: 'Libre Nombramiento',
@@ -51,7 +51,7 @@ describe('CertificatesService', () => {
       status: 'A',
       hiring_date: new Date('2025-12-01'),
       request_date: null,
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
 
     const selected = service['selectPreferredRequestForCertificate']([
       firstEncargoRequest,
@@ -69,7 +69,7 @@ describe('CertificatesService', () => {
       status: 'A',
       hiring_date: new Date('2001-07-30'),
       request_date: null,
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
     const primaryRequest = {
       id: 'principal',
       position_category: 'Cra. Administrativa',
@@ -77,7 +77,7 @@ describe('CertificatesService', () => {
       status: 'A',
       hiring_date: new Date('2001-07-30'),
       request_date: null,
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
 
     const selected = service['selectPreferredRequestForCertificate']([
       provisionalRequest,
@@ -95,7 +95,7 @@ describe('CertificatesService', () => {
       status: 'A',
       hiring_date: new Date('2001-07-30'),
       request_date: null,
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
     const secondRequest = {
       id: 'provisional-2',
       position_category: 'Libre Nombramiento',
@@ -103,7 +103,7 @@ describe('CertificatesService', () => {
       status: 'A',
       hiring_date: new Date('2001-07-30'),
       request_date: null,
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
 
     const selected = service['selectPreferredRequestForCertificate']([
       firstRequest,
@@ -122,7 +122,7 @@ describe('CertificatesService', () => {
       cod_grade: '18',
       monthly_salary: 1000,
       salary_text: '1000',
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
     const requestWithLeadingZero = {
       id: 'better-code',
       career_category: 'Jefe de Oficina',
@@ -131,7 +131,7 @@ describe('CertificatesService', () => {
       cod_grade: '18',
       monthly_salary: 950,
       salary_text: '950',
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
 
     const merged = service['mergeRequestWithSalarySource'](
       selectedRequest,
@@ -153,7 +153,7 @@ describe('CertificatesService', () => {
       cod_grade: '18',
       monthly_salary: 1000,
       salary_text: '1000',
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
     const unrelatedRequest = {
       id: 'other-role',
       career_category: 'Auxiliar de Servicios Generales',
@@ -162,7 +162,7 @@ describe('CertificatesService', () => {
       cod_grade: '18',
       monthly_salary: 950,
       salary_text: '950',
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
 
     const merged = service['mergeRequestWithSalarySource'](
       selectedRequest,
@@ -196,7 +196,7 @@ describe('CertificatesService', () => {
         monthly_salary: 1000,
         salary_text: '1000',
       },
-    } as Certificate & { request: CertificateRequest };
+    } as unknown as Certificate & { request: CertificateRequest };
 
     const requestWithLeadingZero = {
       id: 'better-code',
@@ -207,7 +207,7 @@ describe('CertificatesService', () => {
       cod_grade: '18',
       monthly_salary: 950,
       salary_text: '950',
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
 
     service['applyRequestContextToCertificate'](certificate, [
       certificate.request,

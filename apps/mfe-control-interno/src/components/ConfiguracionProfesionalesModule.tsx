@@ -735,17 +735,23 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 flex items-center justify-center z-50"
-      style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+      className="fixed inset-0 flex items-end sm:items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)', zIndex: 9999, isolation: 'isolate' }}
       onClick={onCerrar}
     >
       <motion.div
-        initial={{ scale: 0.92, y: 30, opacity: 0 }}
+        initial={{ scale: 0.95, y: 40, opacity: 0 }}
         animate={{ scale: 1, y: 0, opacity: 1 }}
-        exit={{ scale: 0.92, y: 30, opacity: 0 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-        className="bg-white rounded-2xl shadow-2xl w-full overflow-hidden flex flex-col"
-        style={{ maxWidth: '540px', maxHeight: 'calc(100vh - 2rem)', margin: '1rem' }}
+        exit={{ scale: 0.95, y: 40, opacity: 0 }}
+        transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+        className="bg-white w-full sm:rounded-2xl rounded-t-2xl rounded-b-none sm:rounded-b-2xl shadow-2xl overflow-hidden flex flex-col"
+        style={{
+          maxWidth: 'min(540px, 100vw)',
+          maxHeight: 'min(calc(100dvh - 1rem), 95dvh)',
+          height: 'auto',
+          margin: '0 auto',
+          marginTop: 'env(safe-area-inset-top, 0px)',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         <form onSubmit={handleSubmit} className="flex flex-col h-full max-h-[inherit]">
@@ -849,7 +855,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
           </div>
 
           {/* ═══ Step Content ═══ */}
-          <div className="flex-1 overflow-y-auto p-5" style={{ minHeight: 0 }}>
+          <div className="flex-1 overflow-y-auto p-4 sm:p-5" style={{ minHeight: 0, maxHeight: 'calc(100dvh - 14rem)', WebkitOverflowScrolling: 'touch' }}>
             <AnimatePresence mode="wait">
               {/* ──────── STEP 1: Seleccionar profesional ──────── */}
               {wizardStep === 1 && (
@@ -885,7 +891,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                   </div>
 
                   {/* User list */}
-                  <div className="max-h-[240px] overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100">
+                  <div className="max-h-[35dvh] sm:max-h-[240px] overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-100 -webkit-overflow-scrolling-touch">
                     {usuariosDisponibles.length === 0 ? (
                       <div className="p-6 text-center text-gray-400 text-sm">
                         <AlertCircle className="w-8 h-8 mx-auto mb-2 text-amber-400" />
@@ -975,7 +981,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                     <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
                       Rol en OCIG
                     </label>
-                    <div className="grid grid-cols-3 gap-1.5">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                       {ROLES_OCIG.map(rol => (
                         <button
                           key={rol}
@@ -1074,7 +1080,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                   </div>
 
                   {/* Capacity controls */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider">
                         Auditorías Simultáneas
@@ -1122,7 +1128,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                   {/* Quick capacity presets */}
                   <div>
                     <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">Perfiles predefinidos</span>
-                    <div className="grid grid-cols-3 gap-1.5 mt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 mt-1">
                       {[
                         { label: 'Dedicación Parcial', cap: 2, hrs: 80 },
                         { label: 'Dedicación Media', cap: 4, hrs: 120 },
@@ -1149,7 +1155,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
           </div>
 
           {/* ═══ Footer ═══ */}
-          <div className="shrink-0 border-t border-gray-200 px-4 py-3 flex items-center gap-2" style={{ backgroundColor: '#f9fafb' }}>
+          <div className="shrink-0 border-t border-gray-200 px-3 sm:px-4 py-3 flex items-center gap-2" style={{ backgroundColor: '#f9fafb', paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0.75rem))' }}>
             {wizardStep > 1 ? (
               <button
                 type="button"

@@ -12,7 +12,7 @@ export const CAPACIDADES_POR_DEFECTO: CapacidadRol[] = [
   { rol: 'Auditor', capacidadMaximaAuditorias: 3, horasMensualesDisponibles: 120 },
   { rol: 'Auditor Júnior', capacidadMaximaAuditorias: 2, horasMensualesDisponibles: 100 },
   { rol: 'Apoyo Técnico', capacidadMaximaAuditorias: 1, horasMensualesDisponibles: 60 },
-  { rol: 'Aprobador PAI', capacidadMaximaAuditorias: 0, horasMensualesDisponibles: 20 },
+  { rol: 'Aprobador PAI', capacidadMaximaAuditorias: 1, horasMensualesDisponibles: 20 },
   { rol: 'Profesional OCI', capacidadMaximaAuditorias: 3, horasMensualesDisponibles: 120 },
 ];
 
@@ -27,7 +27,15 @@ export function useConfiguracionCapacidadesGlobales() {
     try {
       const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (stored) {
-        setCapacidadesRoles(JSON.parse(stored));
+        let parsed: CapacidadRol[] = JSON.parse(stored);
+        // Ensure Aprobador PAI has at least capacity 1 to satisfy DB constraints
+        parsed = parsed.map(p => {
+          if (p.rol === 'Aprobador PAI' && p.capacidadMaximaAuditorias < 1) {
+            return { ...p, capacidadMaximaAuditorias: 1 };
+          }
+          return p;
+        });
+        setCapacidadesRoles(parsed);
       } else {
         setCapacidadesRoles(CAPACIDADES_POR_DEFECTO);
       }

@@ -120,6 +120,7 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_PROCESOS_DEVOLVER = 'control-disciplinario.procesos.devolver',
   CONTROL_DISCIPLINARIO_PROCESOS_REDIMIR = 'control-disciplinario.procesos.redimir',
   CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVAR = 'control-disciplinario.procesos.archivar',
+  CONTROL_DISCIPLINARIO_PROCESOS_RESTAURAR = 'control-disciplinario.procesos.restaurar',
   CONTROL_DISCIPLINARIO_PROCESOS_EXPIDIENTE = 'control-disciplinario.procesos.expidiente',
   CONTROL_DISCIPLINARIO_PROCESOS_AUTOS_CREATE = 'control-disciplinario.procesos.autos.create',
   CONTROL_DISCIPLINARIO_PROCESOS_AUTOS_EDIT = 'control-disciplinario.procesos.autos.edit',
@@ -139,6 +140,8 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_ASIGNAR = 'control-disciplinario.noticia-disciplinaria.asignar',
   CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER = 'control-disciplinario.noticia-disciplinaria.devolver',
   CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR = 'control-disciplinario.noticia-disciplinaria.redimir',
+  CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_RESTAURAR = 'control-disciplinario.noticia-disciplinaria.restaurar',
+  CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_RESTAURAR_MINE = 'control-disciplinario.noticia-disciplinaria.restaurar_mine',
 
   //Control Disciplinario - Revisión y Aprobación
   CONTROL_DISCIPLINARIO_REVISION_APROBACION_MANAGE = 'control-disciplinario.revision-aprobacion.manage',

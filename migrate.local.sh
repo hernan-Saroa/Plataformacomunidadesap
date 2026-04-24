@@ -35,12 +35,14 @@ fi
 if ! command -v psql >/dev/null 2>&1; then
   # Fallback para macOS
   PSQL_FALLBACK="/Applications/Postgres.app/Contents/Versions/16/bin/psql"
-  # Fallback para Windows (Git Bash)
-  PSQL_WINDOWS="/c/Program Files/PostgreSQL/18/bin/psql"
+  PSQL_WINDOWS_18="/c/Program Files/PostgreSQL/18/bin/psql"
+  PSQL_WINDOWS_17="/c/Program Files/PostgreSQL/17/bin/psql"
   if [ -x "$PSQL_FALLBACK" ]; then
     export PATH="/Applications/Postgres.app/Contents/Versions/16/bin:$PATH"
-  elif [ -x "$PSQL_WINDOWS" ]; then
+  elif [ -x "$PSQL_WINDOWS_18" ]; then
     export PATH="/c/Program Files/PostgreSQL/18/bin:$PATH"
+  elif [ -x "$PSQL_WINDOWS_17" ]; then
+    export PATH="/c/Program Files/PostgreSQL/17/bin:$PATH"
   else
     echo "Error: psql no encontrado. Instala Postgres CLI o agrega psql al PATH."
     exit 1

@@ -19,7 +19,7 @@
  * VERSIÓN: 5.0 - Enterprise Social
  */
 
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   GraduationCap, BookOpen, FileText, Calendar, Award, TrendingUp,
@@ -59,7 +59,6 @@ import { CommunitySection } from './CommunitySection';
 import { PublicTitleVerification } from './PublicTitleVerification';
 import { CertificadosLaboralesPortal } from './CertificadosLaboralesPortal';
 import { SolicitarCertificadoLaboral } from './SolicitarCertificadoLaboral';
-import { DocentesPTAPortal } from './gestion-profesoral/DocentesPTAPortal';
 import { JobBoardPortal } from './JobBoardPortal';
 import { NotificacionesArquitectura } from './NotificacionesArquitectura';
 import { PerfilUsuarioEditable } from './PerfilUsuarioEditable';
@@ -70,6 +69,7 @@ import { PORTAL_EXTERNAL_URLS } from '../../config/environment';
 interface UnifiedPortalViewV5Props {
   userName: string;
   userEmail: string;
+  userPersonId: string;
   activeRole: string;
   roleData?: any;
 }
@@ -110,9 +110,21 @@ interface NetworkContact {
   mutualConnections?: number;
 }
 
+const PTAModuleRemote = lazy(async () => {
+  const mod: any = await import('pta/Portal');
+  const component =
+    mod?.default ||
+    mod?.PTAPortalModule ||
+    mod?.PortalModule ||
+    mod?.default?.PTAPortalModule ||
+    mod?.default?.PortalModule;
+  return { default: component };
+});
+
 export function UnifiedPortalViewV5({ 
   userName, 
   userEmail, 
+  userPersonId,
   activeRole, 
   roleData 
 }: UnifiedPortalViewV5Props) {
@@ -943,7 +955,16 @@ export function UnifiedPortalViewV5({
   if (vistaActual === 'docente-pta') {
     return (
       <ViewWrapper>
-        <DocentesPTAPortal onVolver={volverADashboard} />
+        <Suspense fallback={<div className="p-6 text-sm text-gray-600">Cargando PTA...</div>}>
+          <PTAModuleRemote
+            onBack={volverADashboard}
+            userPersonId={userPersonId}
+            userName={userName}
+            userEmail={userEmail}
+            userRoles={[activeRole]}
+            embedded
+          />
+        </Suspense>
       </ViewWrapper>
     );
   }
