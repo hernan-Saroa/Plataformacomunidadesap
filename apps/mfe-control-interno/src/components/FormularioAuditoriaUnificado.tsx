@@ -42,6 +42,7 @@ import { Card } from '@esap-mfe/shared-ui/card';
 import { toast } from 'sonner';
 import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/api';
 import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../../../services/api/controlInternoService';
+import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -1634,7 +1635,9 @@ function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el jefe OCI / supervisor...</option>
-              {auditores.map(auditor => (
+              {auditores
+                .filter(a => REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esJefeOCISupervisor(a.cargo))
+                .map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
                   {auditor.nombre}
                 </option>
@@ -1650,7 +1653,9 @@ function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Seleccione el auditor líder...</option>
-              {auditores.filter(a => a.id !== formData.supervisorAsignado).map(auditor => (
+              {auditores
+                .filter(a => a.id !== formData.supervisorAsignado && REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esAuditorLider(a.cargo))
+                .map(auditor => (
                 <option key={auditor.id} value={auditor.id}>
                   {auditor.nombre}
                 </option>
@@ -1666,7 +1671,8 @@ function Paso3EquipoAuditor({ formData, onChange, auditores }: Paso3Props) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
               {auditores.filter(a =>
                 a.id !== formData.supervisorAsignado &&
-                a.id !== formData.auditorLider
+                a.id !== formData.auditorLider &&
+                REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esEquipoAuditor(a.cargo)
               ).map(auditor => (
                 <button
                   key={auditor.id}

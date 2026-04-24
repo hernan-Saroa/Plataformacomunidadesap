@@ -2816,13 +2816,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             </p>
                           </div>
 
-                          <div className="rounded-lg border border-gray-200 bg-white p-2">
+                          <div className="flex flex-col items-center rounded-lg border border-gray-200 bg-white p-2">
                             <QRCodeSVG
                               value={previewCertificate.validationUrl}
-                              size={88}
+                              size={92}
                               level="M"
                               includeMargin
                             />
+                            <p className="mt-1.5 max-w-[116px] text-center text-[10px] leading-3 text-gray-600">
+                              Escanee y verifique el certificado
+                            </p>
                           </div>
                         </div>
 

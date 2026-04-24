@@ -20,7 +20,6 @@ import {
   Calendar, 
   Mail, 
   Hash,
-  TrendingUp, 
   RefreshCw, 
   MessageSquare,
   Award, 
@@ -1115,7 +1114,7 @@ export function ReviewRequestsModule() {
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4"
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4"
       >
         {/* Card 1: Total */}
         <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
@@ -1242,30 +1241,6 @@ export function ReviewRequestsModule() {
           </div>
         </Card>
 
-        {/* Card 6: Tiempo Promedio */}
-        <Card className="border-2 hover:shadow-lg transition-shadow" style={{ borderColor: '#E5E7EB' }}>
-          <div className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Tiempo Promedio
-                </p>
-                <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {stats.avgResolutionTime}h
-                </p>
-                <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  Resolución
-                </p>
-              </div>
-              <div
-                className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)' }}
-              >
-                <TrendingUp className="w-7 h-7 text-white" />
-              </div>
-            </div>
-          </div>
-        </Card>
       </motion.div>
 
       {/* Filtros y Búsqueda */}
