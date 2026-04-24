@@ -22,6 +22,31 @@ interface RolTemplate {
 
 @Injectable()
 export class PlanAnual5RolesService {
+  private static readonly ESTADOS_PLAN_VALIDOS = new Set([
+    'borrador',
+    'en-revision',
+    'aprobado',
+    'en-ejecucion',
+    'completado',
+  ]);
+
+  private normalizarEstadoPlan(estado?: string): 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' {
+    const estadoNormalizado = (estado || 'borrador').trim().toLowerCase().replace(/_/g, '-');
+
+    // Compatibilidad con valores legacy usados por frontend/servicio.
+    if (estadoNormalizado === 'activo' || estadoNormalizado === 'vigente') {
+      return 'en-ejecucion';
+    }
+
+    if (!PlanAnual5RolesService.ESTADOS_PLAN_VALIDOS.has(estadoNormalizado)) {
+      throw new BadRequestException(
+        `Estado de plan inválido: "${estado}". Valores permitidos: borrador, en-revision, aprobado, en-ejecucion, completado.`,
+      );
+    }
+
+    return estadoNormalizado as 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado';
+  }
+
   constructor(
     @InjectRepository(PlanAnual5Roles)
     private readonly planRepository: Repository<PlanAnual5Roles>,
@@ -102,7 +127,7 @@ export class PlanAnual5RolesService {
       responsable_id: createDto.responsable_id,
       fecha_inicio: createDto.fecha_inicio ? new Date(createDto.fecha_inicio) : undefined,
       fecha_fin: createDto.fecha_fin ? new Date(createDto.fecha_fin) : undefined,
-      estado: createDto.estado || 'borrador',
+      estado: this.normalizarEstadoPlan(createDto.estado),
       fecha_creacion: new Date(),
       equipo_aprobacion: createDto.equipo_aprobacion || [],
       orden_aprobacion: createDto.orden_aprobacion || 'secuencial',
@@ -180,10 +205,16 @@ export class PlanAnual5RolesService {
       plan.responsable = updateDto.responsable;
     }
 
-    if (updateDto.estado !== undefined && updateDto.estado !== plan.estado) {
-      cambios.push({ campo: 'estado', valorAnterior: plan.estado, valorNuevo: updateDto.estado });
-      plan.estado = updateDto.estado as 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' | 'activo';
+    if (updateDto.estado !== undefined) {
+      const estadoNormalizado = this.normalizarEstadoPlan(updateDto.estado);
+      if (estadoNormalizado !== plan.estado) {
+        cambios.push({ campo: 'estado', valorAnterior: plan.estado, valorNuevo: estadoNormalizado });
+        plan.estado = estadoNormalizado;
+      }
     }
+
+    // Sanea estado legacy en la fila (ej. BORRADOR) para que no falle cualquier otro UPDATE.
+    plan.estado = this.normalizarEstadoPlan(plan.estado);
 
     if (updateDto.equipo_aprobacion !== undefined) {
       // Comparación profunda simple para historial es compleja, marcamos como actualizado

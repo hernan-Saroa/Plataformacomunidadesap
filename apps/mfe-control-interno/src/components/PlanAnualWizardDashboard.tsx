@@ -1013,8 +1013,9 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
         // Determinar responsables del rol basándonos en las actividades (podemos dejar vacío y que se derive)
         const responsablesMap = new Map();
         actividadesConfiguradas.forEach(act => {
-          if (act.responsables) {
-            act.responsables.forEach(resp => responsablesMap.set(resp.id, resp));
+          const lista = Array.isArray(act.responsables) ? act.responsables : [];
+          if (lista.length > 0) {
+            lista.forEach(resp => responsablesMap.set(resp.id, resp));
           } else if (act.responsable && typeof act.responsable === 'object') {
             responsablesMap.set(act.responsable.id, act.responsable);
           }
@@ -1880,7 +1881,8 @@ function Paso2({
         if (act.id === actId) {
           const yaAsignado = (act.responsables || []).some(r => r.id === auditor.id);
           if (yaAsignado) return act;
-          return { ...act, responsables: [...(act.responsables || []), auditor] };
+          // Solo permitir un responsable por actividad
+          return { ...act, responsables: [auditor] };
         }
         return act;
       })
@@ -1910,7 +1912,8 @@ function Paso2({
           if (i !== index) return act;
           const yaAsignado = (act.responsables || []).some(r => r.id === auditor.id);
           if (yaAsignado) return act;
-          return { ...act, responsables: [...(act.responsables || []), auditor] };
+          // Solo permitir un responsable por actividad personalizada
+          return { ...act, responsables: [auditor] };
         })
       };
     });
@@ -2125,7 +2128,9 @@ function Paso2({
                               </div>
                               <span className="text-sm font-medium text-gray-900 flex-1">{auditor.nombre}</span>
                               <button
+                                type="button"
                                 onClick={(e) => {
+                                  e.preventDefault();
                                   e.stopPropagation();
                                   const nuevaConfig = rolesConfig.map(r => {
                                     if (r.numero === rol.numero) {
@@ -2193,6 +2198,8 @@ function Paso2({
                             const actId = `rol-${rol.numero}-act-${index}`;
                             const seleccionada = estaSeleccionada(actId, actividad.nombre);
                             const actividadData = rol.actividadesSeleccionadas.find(a => a.id === actId || a.nombre === actividad.nombre);
+                            /** UUID del backend vs id sintético del template — las mutaciones deben usar el id real en estado */
+                            const idActividadEnEstado = actividadData?.id ?? actId;
                             return (
                               <div
                                 key={actId}
@@ -2212,7 +2219,7 @@ function Paso2({
                                     className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500 mt-0.5 flex-shrink-0"
                                   />
                                   <div className="flex-1 min-w-0">
-                                    {editandoActividadBase?.rolNumero === rol.numero && editandoActividadBase?.actId === actId ? (
+                                    {editandoActividadBase?.rolNumero === rol.numero && editandoActividadBase?.actId === idActividadEnEstado ? (
                                       <div className="space-y-2 mb-2 bg-white p-3 rounded-lg border border-blue-200 shadow-sm" onClick={e => e.stopPropagation()}>
                                         <input 
                                           type="text" 
@@ -2225,7 +2232,7 @@ function Paso2({
                                               const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
                                                 ...r,
                                                 actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => 
-                                                  a.id === actId ? { ...a, nombre: nuevoNombre } : a
+                                                  a.id === idActividadEnEstado ? { ...a, nombre: nuevoNombre } : a
                                                 )
                                               } : r);
                                               onRolesChange(nuevaConfig);
@@ -2243,7 +2250,7 @@ function Paso2({
                                               const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
                                                 ...r,
                                                 actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => 
-                                                  a.id === actId ? { ...a, descripcion: nuevaDesc } : a
+                                                  a.id === idActividadEnEstado ? { ...a, descripcion: nuevaDesc } : a
                                                 )
                                               } : r);
                                               onRolesChange(nuevaConfig);
@@ -2273,7 +2280,7 @@ function Paso2({
                                             title="Editar texto de actividad"
                                             onClick={(e) => { 
                                               e.stopPropagation(); 
-                                              setEditandoActividadBase({rolNumero: rol.numero, actId}); 
+                                              setEditandoActividadBase({rolNumero: rol.numero, actId: idActividadEnEstado}); 
                                             }}
                                           >
                                             <Edit3 className="w-4 h-4" />
@@ -2334,7 +2341,7 @@ function Paso2({
                                         checked={actividadData?.requiereAutorizacionJefeOCI || false}
                                         onChange={(e) => {
                                           e.stopPropagation();
-                                          toggleAutorizacionJefeOCI(actId);
+                                          toggleAutorizacionJefeOCI(idActividadEnEstado);
                                         }}
                                         className="w-4 h-4 text-orange-600 rounded border-gray-300 focus:ring-2 focus:ring-orange-500 mt-0.5"
                                       />
@@ -2369,13 +2376,13 @@ function Paso2({
                                               const requiereObservaciones = e.target.checked;
                                               
                                               if (requiereObservaciones && requiereAdjuntos) {
-                                                cambiarTipoEvidencia(actId, 'COMPLETO');
+                                                cambiarTipoEvidencia(idActividadEnEstado, 'COMPLETO');
                                               } else if (requiereObservaciones) {
-                                                cambiarTipoEvidencia(actId, 'OBSERVACIONES');
+                                                cambiarTipoEvidencia(idActividadEnEstado, 'OBSERVACIONES');
                                               } else if (requiereAdjuntos) {
-                                                cambiarTipoEvidencia(actId, 'ADJUNTOS');
+                                                cambiarTipoEvidencia(idActividadEnEstado, 'ADJUNTOS');
                                               } else {
-                                                cambiarTipoEvidencia(actId, 'SOLO_CHECK');
+                                                cambiarTipoEvidencia(idActividadEnEstado, 'SOLO_CHECK');
                                               }
                                             }}
                                             className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
@@ -2394,13 +2401,13 @@ function Paso2({
                                               const requiereAdjuntos = e.target.checked;
                                               
                                               if (requiereObservaciones && requiereAdjuntos) {
-                                                cambiarTipoEvidencia(actId, 'COMPLETO');
+                                                cambiarTipoEvidencia(idActividadEnEstado, 'COMPLETO');
                                               } else if (requiereAdjuntos) {
-                                                cambiarTipoEvidencia(actId, 'ADJUNTOS');
+                                                cambiarTipoEvidencia(idActividadEnEstado, 'ADJUNTOS');
                                               } else if (requiereObservaciones) {
-                                                cambiarTipoEvidencia(actId, 'OBSERVACIONES');
+                                                cambiarTipoEvidencia(idActividadEnEstado, 'OBSERVACIONES');
                                               } else {
-                                                cambiarTipoEvidencia(actId, 'SOLO_CHECK');
+                                                cambiarTipoEvidencia(idActividadEnEstado, 'SOLO_CHECK');
                                               }
                                             }}
                                             className="w-3.5 h-3.5 text-purple-600 rounded border-gray-300 focus:ring-2 focus:ring-purple-500"
@@ -2533,20 +2540,22 @@ function Paso2({
                                             <span className="text-xs font-medium text-gray-900 flex-1">{r.nombre}</span>
                                             <button
                                               type="button"
-                                              onClick={e => { e.stopPropagation(); quitarResponsableActividad(actId, r.id); }}
+                                              onClick={e => { e.stopPropagation(); quitarResponsableActividad(idActividadEnEstado, r.id); }}
                                               className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[10px] transition-colors flex-shrink-0"
                                             >✕</button>
                                           </div>
                                         ))}
                                         {/* Dropdown punteado */}
-                                        <SelectorProfesional
-                                          auditores={auditores.filter(a => !(actividadData?.responsables || []).some(r => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
-                                          onSelect={(id) => {
-                                            if (!id) return;
-                                            const auditor = auditores.find(a => a.id === id);
-                                            if (auditor) agregarResponsableActividad(actId, auditor);
-                                          }}
-                                        />
+                                        {(actividadData?.responsables || []).length === 0 && (
+                                          <SelectorProfesional
+                                            auditores={auditores.filter(a => !(actividadData?.responsables || []).some(r => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
+                                            onSelect={(id) => {
+                                              if (!id) return;
+                                              const auditor = auditores.find(a => a.id === id);
+                                              if (auditor) agregarResponsableActividad(idActividadEnEstado, auditor);
+                                            }}
+                                          />
+                                        )}
                                         {(actividadData?.responsables || []).length === 0 && (
                                           <p className="text-[10px] text-red-500 flex items-center gap-1">⚠ Requerido</p>
                                         )}
@@ -2575,7 +2584,7 @@ function Paso2({
                                             const nuevaConfig = rolesConfig.map(r => ({
                                               ...r,
                                               actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                a.id === actId ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, ...updates } : t) } : a
+                                                a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, ...updates } : t) } : a
                                               )
                                             }));
                                             onRolesChange(nuevaConfig);
@@ -2599,7 +2608,12 @@ function Paso2({
                                                         </span>
                                                         <span className="text-blue-800 font-medium">{resp.split(' ').slice(0, 2).join(' ')}</span>
                                                         <button
-                                                          onClick={() => updateTarea({ responsables: (tarea.responsables || []).filter((_, idx) => idx !== ri) })}
+                                                          type="button"
+                                                          onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            updateTarea({ responsables: (tarea.responsables || []).filter((_, idx) => idx !== ri) });
+                                                          }}
                                                           className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[8px] flex items-center justify-center transition-colors"
                                                         >×</button>
                                                       </span>
@@ -2609,29 +2623,32 @@ function Paso2({
                                               </div>
                                               {/* Acciones */}
                                               <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                                                <select
-                                                  className="text-[10px] border border-gray-300 rounded-md px-1 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
-                                                  value=""
-                                                  onChange={(e) => {
-                                                    if (!e.target.value) return;
-                                                    const aud = auditores.find(a => a.id === e.target.value);
-                                                    if (!aud) return;
-                                                    updateTarea({ responsables: [...(tarea.responsables || []), aud.nombre] });
-                                                  }}
-                                                >
-                                                  <option value="">+ Asignar</option>
-                                                  {auditores
-                                                    .filter(a => !(tarea.responsables || []).includes(a.nombre))
-                                                    .map(a => (
-                                                      <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
-                                                    ))}
-                                                </select>
+                                                {(tarea.responsables || []).length === 0 && (
+                                                  <select
+                                                    className="text-[10px] border border-gray-300 rounded-md px-1 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
+                                                    value=""
+                                                    onChange={(e) => {
+                                                      if (!e.target.value) return;
+                                                      const aud = auditores.find(a => a.id === e.target.value);
+                                                      if (!aud) return;
+                                                      // Solo permitir un responsable por tarea
+                                                      updateTarea({ responsables: [aud.nombre] });
+                                                    }}
+                                                  >
+                                                    <option value="">+ Asignar</option>
+                                                    {auditores
+                                                      .filter(a => !(tarea.responsables || []).includes(a.nombre))
+                                                      .map(a => (
+                                                        <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
+                                                      ))}
+                                                  </select>
+                                                )}
                                                 <button
                                                   onClick={() => {
                                                     const nuevaConfig = rolesConfig.map(r => ({
                                                       ...r,
                                                       actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                        a.id === actId ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a
+                                                        a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a
                                                       )
                                                     }));
                                                     onRolesChange(nuevaConfig);
@@ -2677,7 +2694,7 @@ function Paso2({
                                         <div className="flex gap-2 mt-1">
                                           <input
                                             type="text"
-                                            data-tarea-wizard={actId}
+                                            data-tarea-wizard={idActividadEnEstado}
                                             placeholder="✍ Escribir nueva tarea…"
                                             className="flex-1 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-green-500 focus:bg-green-50/30 text-sm text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
                                             onClick={e => e.stopPropagation()}
@@ -2687,7 +2704,7 @@ function Paso2({
                                                 const nuevaConfig = rolesConfig.map(r => ({
                                                   ...r,
                                                   actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                    a.id === actId ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [] }] } : a
+                                                    a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [] }] } : a
                                                   )
                                                 }));
                                                 onRolesChange(nuevaConfig);
@@ -2697,12 +2714,12 @@ function Paso2({
                                           />
                                           <button
                                             onClick={() => {
-                                              const input = document.querySelector<HTMLInputElement>(`[data-tarea-wizard="${actId}"]`);
+                                              const input = document.querySelector<HTMLInputElement>(`[data-tarea-wizard="${idActividadEnEstado}"]`);
                                               if (input && input.value.trim()) {
                                                 const nuevaConfig = rolesConfig.map(r => ({
                                                   ...r,
                                                   actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                    a.id === actId ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [] }] } : a
+                                                    a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [] }] } : a
                                                   )
                                                 }));
                                                 onRolesChange(nuevaConfig);
@@ -3008,14 +3025,16 @@ function Paso2({
                                           >✕</button>
                                         </div>
                                       ))}
-                                      <SelectorProfesional
-                                        auditores={auditores.filter(a => !(actividad.responsables || []).some(r => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
-                                        onSelect={(id) => {
-                                          if (!id) return;
-                                          const auditor = auditores.find(a => a.id === id);
-                                          if (auditor) agregarResponsableCustom(rol.numero, index, auditor);
-                                        }}
-                                      />
+                                      {(actividad.responsables || []).length === 0 && (
+                                        <SelectorProfesional
+                                          auditores={auditores.filter(a => !(actividad.responsables || []).some(r => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
+                                          onSelect={(id) => {
+                                            if (!id) return;
+                                            const auditor = auditores.find(a => a.id === id);
+                                            if (auditor) agregarResponsableCustom(rol.numero, index, auditor);
+                                          }}
+                                        />
+                                      )}
                                       {(actividad.responsables || []).length === 0 && (
                                         <p className="text-[10px] text-red-500 flex items-center gap-1">⚠ Requerido</p>
                                       )}
@@ -3085,23 +3104,26 @@ function Paso2({
                                             </div>
                                             {/* Acciones */}
                                             <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                                              <select
-                                                className="text-[10px] border border-gray-300 rounded-md px-1 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
-                                                value=""
-                                                onChange={(e) => {
-                                                  if (!e.target.value) return;
-                                                  const aud = auditores.find(a => a.id === e.target.value);
-                                                  if (!aud) return;
-                                                  updateTareaCustom({ responsables: [...(tarea.responsables || []), aud.nombre] });
-                                                }}
-                                              >
-                                                <option value="">+ Asignar</option>
-                                                {auditores
-                                                  .filter(a => !(tarea.responsables || []).includes(a.nombre))
-                                                  .map(a => (
-                                                    <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
-                                                  ))}
-                                              </select>
+                                              {(tarea.responsables || []).length === 0 && (
+                                                <select
+                                                  className="text-[10px] border border-gray-300 rounded-md px-1 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
+                                                  value=""
+                                                  onChange={(e) => {
+                                                    if (!e.target.value) return;
+                                                    const aud = auditores.find(a => a.id === e.target.value);
+                                                    if (!aud) return;
+                                                    // Solo permitir un responsable por tarea personalizada
+                                                    updateTareaCustom({ responsables: [aud.nombre] });
+                                                  }}
+                                                >
+                                                  <option value="">+ Asignar</option>
+                                                  {auditores
+                                                    .filter(a => !(tarea.responsables || []).includes(a.nombre))
+                                                    .map(a => (
+                                                      <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
+                                                    ))}
+                                                </select>
+                                              )}
                                               <button
                                                 onClick={() => {
                                                   const nuevaConfig = rolesConfig.map(r => {
@@ -7307,7 +7329,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                           </div>
                                           <span className="text-gray-700">{resp}</span>
                                           <button
-                                            onClick={() => {
+                                            onClick={async () => {
                                               const nuevasTareas = (actividad.tareasSeguimiento || []).map(t =>
                                                 t.id === tarea.id ? { ...t, responsables: (t.responsables || []).filter((_, idx) => idx !== ri) } : t
                                               );
@@ -7318,6 +7340,13 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                                 )
                                               }));
                                               onActualizar({ ...plan, roles: nuevoRoles });
+                                              try {
+                                                await actividadesApi.update(String(actividad.id), {
+                                                  tareas_seguimiento: mapTareasParaBackend(nuevasTareas),
+                                                } as any);
+                                              } catch (e) {
+                                                console.warn('[Tareas] Error al quitar responsable de tarea:', e);
+                                              }
                                             }}
                                             className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[8px] transition-colors"
                                           >✕</button>
@@ -7326,32 +7355,42 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                       {tarea.fechaCompletado && (
                                         <span className="text-xs text-green-600">✓ {tarea.fechaCompletado}</span>
                                       )}
-                                      <select
-                                        className="text-xs border-2 border-dashed border-gray-300 rounded-lg px-2 py-0.5 text-gray-500 bg-white"
-                                        value=""
-                                        onChange={(e) => {
-                                          if (!e.target.value) return;
-                                          const auditorSeleccionado = auditores.find(a => a.id === e.target.value);
-                                          if (!auditorSeleccionado) return;
-                                          const nuevasTareas = (actividad.tareasSeguimiento || []).map(t =>
-                                            t.id === tarea.id ? { ...t, responsables: [...(t.responsables || []), auditorSeleccionado.nombre] } : t
-                                          );
-                                          const nuevoRoles = plan.roles.map(r => ({
-                                            ...r,
-                                            actividades: r.actividades.map(a =>
-                                              a.id === actividad.id ? { ...a, tareasSeguimiento: nuevasTareas } : a
-                                            )
-                                          }));
-                                          onActualizar({ ...plan, roles: nuevoRoles });
-                                        }}
-                                      >
-                                        <option value="">+ Responsable</option>
-                                        {auditores
-                                          .filter(a => !(tarea.responsables || []).includes(a.nombre))
-                                          .map(a => (
-                                            <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
-                                          ))}
-                                      </select>
+                                      {(tarea.responsables || []).length === 0 && (
+                                        <select
+                                          className="text-xs border-2 border-dashed border-gray-300 rounded-lg px-2 py-0.5 text-gray-500 bg-white"
+                                          value=""
+                                          onChange={async (e) => {
+                                            if (!e.target.value) return;
+                                            const auditorSeleccionado = auditores.find(a => a.id === e.target.value);
+                                            if (!auditorSeleccionado) return;
+                                            const nuevasTareas = (actividad.tareasSeguimiento || []).map(t =>
+                                              // Solo permitir un responsable por tarea
+                                              t.id === tarea.id ? { ...t, responsables: [auditorSeleccionado.nombre] } : t
+                                            );
+                                            const nuevoRoles = plan.roles.map(r => ({
+                                              ...r,
+                                              actividades: r.actividades.map(a =>
+                                                a.id === actividad.id ? { ...a, tareasSeguimiento: nuevasTareas } : a
+                                              )
+                                            }));
+                                            onActualizar({ ...plan, roles: nuevoRoles });
+                                            try {
+                                              await actividadesApi.update(String(actividad.id), {
+                                                tareas_seguimiento: mapTareasParaBackend(nuevasTareas),
+                                              } as any);
+                                            } catch (e2) {
+                                              console.warn('[Tareas] Error al asignar responsable de tarea:', e2);
+                                            }
+                                          }}
+                                        >
+                                          <option value="">+ Responsable</option>
+                                          {auditores
+                                            .filter(a => !(tarea.responsables || []).includes(a.nombre))
+                                            .map(a => (
+                                              <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
+                                            ))}
+                                        </select>
+                                      )}
                                     </div>
                                   </div>
                                   <button
