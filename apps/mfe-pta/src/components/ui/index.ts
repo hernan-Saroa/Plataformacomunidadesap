@@ -1,0 +1,45 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * UI COMPONENTS - EXPORTS CENTRALIZADOS
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Archivo de exports para facilitar imports de componentes UI
+ * 
+ * ACTUALIZADO: 10 Marzo 2026 - Limpieza de componentes sin uso
+ */
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// COMPONENTES RESPONSIVE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export { Container4K } from './container-4k';
+export type { Container4KProps } from './container-4k';
+
+export { ResponsiveHeader } from './responsive-header';
+export type { ResponsiveHeaderProps } from './responsive-header';
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// COMPONENTES EXISTENTES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export { Card } from './card';
+export { Badge } from './badge';
+export { Button } from './button';
+export { Input } from './input';
+export { Textarea } from './textarea';
+export { Select } from './select';
+export { Checkbox } from './checkbox';
+export { Switch } from './switch';
+export { Tabs, TabsContent, TabsList, TabsTrigger } from './tabs';
+export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from './dialog';
+export { Alert, AlertDescription, AlertTitle } from './alert';
+export { Separator } from './separator';
+export { Avatar, AvatarFallback, AvatarImage } from './avatar';
+export { Progress } from './progress';
+export { Skeleton } from './skeleton';
+export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
+export { Label } from './label';
+export { RadioGroup, RadioGroupItem } from './radio-group';
+export { ScrollArea } from './scroll-area';
+export { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from './dropdown-menu';
+export { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './sheet';

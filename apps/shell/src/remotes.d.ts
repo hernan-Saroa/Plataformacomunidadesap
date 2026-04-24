@@ -85,3 +85,16 @@ declare module 'gestion_legal/Module' {
   export { Module as GestionLegalFull };
   export default Module;
 }
+
+declare module 'pta/Module' {
+  const Module: React.ComponentType<any>;
+  export { Module as PTAModule };
+  export { Module as PTAKanbanModule };
+  export default Module;
+}
+
+declare module 'pta/Portal' {
+  const Module: React.ComponentType<any>;
+  export { Module as PTAPortalModule };
+  export default Module;
+}

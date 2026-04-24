@@ -1059,11 +1059,11 @@ const handleManualReviewSubmit = async () => {
           <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-blue-100 to-indigo-100 rounded-full mb-3 shadow-sm">
             <Sparkles className="w-4 h-4 text-blue-600" />
             <span className="text-sm font-semibold text-blue-900">
-              Certificación Oficial de Títulos
+              Verificación Oficial de Títulos
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-gray-900 mb-3 leading-tight px-4">
-            <span className="block sm:inline">Certificación de Títulos</span>
+            <span className="block sm:inline">Verificación de Títulos</span>
             <span className="hidden sm:inline"> </span>
             <span className="block sm:inline bg-gradient-to-r from-[#1e5da8] to-[#2962FF] bg-clip-text text-transparent">
               Graduados ESAP
@@ -1091,7 +1091,7 @@ const handleManualReviewSubmit = async () => {
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-gray-900">
-                      Certificación de Títulos
+                      Verificación de Títulos
                     </h2>
                     <p className="text-xs text-gray-500">
                       Código: CERT-{Date.now().toString().slice(-6)}

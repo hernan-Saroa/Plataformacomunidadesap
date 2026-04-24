@@ -24,7 +24,7 @@ El gateway mantiene URLs estables para que el shell siempre cargue los remotos d
 ## Levantar todo el frontend desacoplado en PROD
 
 ```bash
-docker compose -f docker-compose.prod.yml -f docker-compose.frontend-mfe.yml up -d --build frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+docker compose -f docker-compose.prod.yml -f docker-compose.frontend-mfe.yml up -d --build frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
 ```
 
 Si también quieres levantar backend y base de datos en el mismo comando:

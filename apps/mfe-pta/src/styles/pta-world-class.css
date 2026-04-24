@@ -1,0 +1,921 @@
+/**
+ * ═══════════════════════════════════════════════════════════════
+ * PTA MODERN DESIGN SYSTEM — Clean, Simple, Beautiful
+ * Inspirado en Linear, Notion, Stripe — User-Friendly First
+ * ═══════════════════════════════════════════════════════════════
+ */
+
+/* ── Modern Color Palette ── */
+:root {
+  /* Colores primarios más suaves */
+  --pta-primary:       #2563EB;     /* Azul más vivo pero no agresivo */
+  --pta-primary-hover: #1D4ED8;
+  --pta-primary-soft:  #DBEAFE;
+  --pta-primary-ultra: #EFF6FF;
+  
+  /* Colores de estado más amigables */
+  --pta-success:       #10B981;
+  --pta-success-soft:  #D1FAE5;
+  --pta-warning:       #F59E0B;
+  --pta-warning-soft:  #FEF3C7;
+  --pta-danger:        #EF4444;
+  --pta-danger-soft:   #FEE2E2;
+  --pta-info:          #3B82F6;
+  --pta-info-soft:     #DBEAFE;
+  
+  /* Neutrales más suaves */
+  --pta-bg:            #FAFAFA;      /* Gris clarísimo, menos amarillento */
+  --pta-surface:       #FFFFFF;
+  --pta-surface-hover: #F9FAFB;
+  --pta-border:        #E5E7EB;
+  --pta-border-light:  #F3F4F6;
+  
+  /* Texto con mejor jerarquía */
+  --pta-text-primary:  #111827;
+  --pta-text-secondary:#6B7280;
+  --pta-text-tertiary: #9CA3AF;
+  --pta-text-disabled: #D1D5DB;
+  
+  /* Sombras sutiles y modernas */
+  --shadow-xs:  0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm:  0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md:  0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --shadow-lg:  0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+  --shadow-xl:  0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.03);
+  
+  /* Radios más sutiles */
+  --radius-sm:  6px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+  --radius-2xl: 20px;
+  
+  /* Espaciado consistente */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  
+  /* Transiciones suaves */
+  --transition-fast:   0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base:   0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow:   0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Mobile bottom nav */
+  --bottom-nav-height: 68px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   🎨 BASE LAYOUT
+   ═══════════════════════════════════════════════════════════════ */
+
+.pta-module-root {
+  min-height: 100vh;
+  background: var(--pta-bg);
+  padding: var(--space-4);
+}
+
+@media (min-width: 768px) {
+  .pta-module-root {
+    padding: var(--space-6);
+  }
+}
+
+@media (max-width: 767px) {
+  .pta-module-root {
+    padding-bottom: calc(var(--bottom-nav-height) + var(--space-4));
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   📐 HEADER — Clean & Modern
+   ═══════════════════════════════════════════════════════════════ */
+
+.pta-page-header {
+  margin-bottom: var(--space-6);
+}
+
+.pta-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.pta-header-title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+}
+
+.pta-header-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--pta-primary) 0%, var(--pta-primary-hover) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+}
+
+.pta-header-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--pta-text-primary);
+  margin: 0;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.pta-header-subtitle {
+  font-size: 0.875rem;
+  color: var(--pta-text-secondary);
+  margin: 0;
+  margin-top: var(--space-1);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pta-header-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+@media (max-width: 639px) {
+  .pta-header-title {
+    font-size: 1.25rem;
+  }
+  .pta-header-icon {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   📊 STATS CARDS — Limpio y moderno
+   ═══════════════════════════════════════════════════════════════ */
+
+.pta-stats-grid {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (min-width: 640px) {
+  .pta-stats-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .pta-stats-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+}
+
+.pta-stat-card {
+  background: var(--pta-surface);
+  border: 1px solid var(--pta-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  transition: all var(--transition-base);
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pta-stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: transparent;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  transition: background var(--transition-base);
+}
+
+.pta-stat-card:hover {
+  border-color: var(--pta-primary);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.pta-stat-card:hover::before {
+  background: var(--pta-primary);
+}
+
+.pta-stat-card.filter-active {
+  border-color: var(--pta-primary);
+  box-shadow: var(--shadow-lg);
+  background: var(--pta-primary-ultra);
+}
+
+.pta-stat-card.filter-active::before {
+  background: var(--pta-primary);
+}
+
+.pta-stat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-1);
+}
+
+.pta-stat-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--pta-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pta-stat-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.pta-stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--pta-text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.pta-stat-caption {
+  font-size: 0.75rem;
+  color: var(--pta-text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   🧭 NAVIGATION TABS — Estilo Linear
+   ═══════════════════════════════════════════════════════════════ */
+
+.pta-nav-container {
+  margin-bottom: var(--space-6);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.pta-nav-container::-webkit-scrollbar {
+  display: none;
+}
+
+.pta-desktop-nav {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--pta-surface);
+  border: 1px solid var(--pta-border);
+  border-radius: var(--radius-lg);
+  width: fit-content;
+}
+
+.pta-nav-tab {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  color: var(--pta-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pta-nav-tab:hover {
+  background: var(--pta-surface-hover);
+  color: var(--pta-text-primary);
+}
+
+.pta-nav-tab.active {
+  background: var(--pta-primary);
+  color: white;
+  font-weight: 600;
+}
+
+.pta-mobile-nav {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .pta-desktop-nav {
+    display: none;
+  }
+  
+  .pta-mobile-nav {
+    display: block;
+  }
+  
+  .pta-mobile-nav-select-wrap {
+    position: relative;
+    background: var(--pta-surface);
+    border: 1px solid var(--pta-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   🔍 FILTERS — Limpio y simple
+   ═══════════════════════════════════════════════════════════════ */
+
+.pta-filter-section {
+  background: var(--pta-surface);
+  border: 1px solid var(--pta-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.pta-filter-toggle-header {
+  display: none;
+}
+
+.pta-filter-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.pta-filter-primary-row {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.pta-filter-search {
+  flex: 1;
+  min-width: 200px;
+  position: relative;
+}
+
+.pta-filter-search-input {
+  width: 100%;
+  padding: var(--space-2) var(--space-3) var(--space-2) 36px;
+  border: 1px solid var(--pta-border);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  color: var(--pta-text-primary);
+  background: var(--pta-surface);
+  transition: all var(--transition-fast);
+  outline: none;
+}
+
+.pta-filter-search-input:focus {
+  border-color: var(--pta-primary);
+  box-shadow: 0 0 0 3px var(--pta-primary-soft);
+}
+
+.pta-filter-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--pta-text-tertiary);
+  pointer-events: none;
+}
+
+.pta-filter-select {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--pta-border);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  color: var(--pta-text-primary);
+  background: var(--pta-surface);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  outline: none;
+}
+
+.pta-filter-select:focus {
+  border-color: var(--pta-primary);
+  box-shadow: 0 0 0 3px var(--pta-primary-soft);
+}
+
+.pta-filter-tools-row {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--pta-border-light);
+}
+
+.pta-tool-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--pta-border);
+  background: var(--pta-surface);
+  color: var(--pta-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.pta-tool-btn:hover {
+  border-color: var(--pta-primary);
+  color: var(--pta-primary);
+  background: var(--pta-primary-ultra);
+}
+
+.pta-tool-btn.active {
+  border-color: var(--pta-primary);
+  background: var(--pta-primary);
+  color: white;
+}
+
+@media (max-width: 767px) {
+  .pta-filter-section {
+    padding: 0;
+  }
+  
+  .pta-filter-toggle-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-3);
+    cursor: pointer;
+    border-bottom: 1px solid var(--pta-border-light);
+  }
+  
+  .pta-filter-toggle-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--pta-text-primary);
+  }
+  
+  .pta-filter-count-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: var(--pta-primary);
+    color: white;
+    font-size: 0.625rem;
+    font-weight: 700;
+  }
+  
+  .pta-filter-body {
+    display: none;
+    padding: var(--space-3);
+  }
+  
+  .pta-filter-body.open {
+    display: flex;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   📋 TABLE — Limpia y moderna
+   ═══════════════════════════════════════════════════════════════ */
+
+.pta-table-wrapper {
+  background: var(--pta-surface);
+  border: 1px solid var(--pta-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  margin-bottom: var(--space-6);
+}
+
+.pta-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.pta-table-header {
+  background: var(--pta-surface-hover);
+  border-bottom: 1px solid var(--pta-border);
+}
+
+.pta-table-header th {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--pta-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pta-table-row {
+  border-bottom: 1px solid var(--pta-border-light);
+  transition: background var(--transition-fast);
+  cursor: pointer;
+}
+
+.pta-table-row:last-child {
+  border-bottom: none;
+}
+
+.pta-table-row:hover {
+  background: var(--pta-surface-hover);
+}
+
+.pta-table-row.selected {
+  background: var(--pta-primary-ultra);
+}
+
+.pta-table-row td {
+  padding: var(--space-4);
+  font-size: 0.875rem;
+  color: var(--pta-text-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   💳 CARDS — Grid moderno
+   ═══════════════════════════════════════════════════════════════ */
+
+.pta-cards-grid {
+  display: grid;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 640px) {
+  .pta-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .pta-cards-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.pta-pta-card {
+  background: var(--pta-surface);
+  border: 1px solid var(--pta-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  transition: all var(--transition-base);
+  cursor: pointer;
+}
+
+.pta-pta-card:hover {
+  border-color: var(--pta-primary);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   🏷️ BADGES — Modernos y limpios
+   ═══════════════════════════════════════════════════════════════ */
+
+.pta-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pta-status-badge.success {
+  background: var(--pta-success-soft);
+  color: #059669;
+}
+
+.pta-status-badge.warning {
+  background: var(--pta-warning-soft);
+  color: #D97706;
+}
+
+.pta-status-badge.danger {
+  background: var(--pta-danger-soft);
+  color: #DC2626;
+}
+
+.pta-status-badge.info {
+  background: var(--pta-info-soft);
+  color: #2563EB;
+}
+
+.pta-status-badge.neutral {
+  background: #F3F4F6;
+  color: #6B7280;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   🎯 BUTTONS — Clean & Modern
+   ═══════════════════════════════════════════════════════════════ */
+
+.pta-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+  outline: none;
+  white-space: nowrap;
+}
+
+.pta-btn-primary {
+  background: var(--pta-primary);
+  color: white;
+  border-color: var(--pta-primary);
+}
+
+.pta-btn-primary:hover {
+  background: var(--pta-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.pta-btn-secondary {
+  background: var(--pta-surface);
+  color: var(--pta-text-primary);
+  border-color: var(--pta-border);
+}
+
+.pta-btn-secondary:hover {
+  border-color: var(--pta-primary);
+  color: var(--pta-primary);
+}
+
+.pta-btn-ghost {
+  background: transparent;
+  color: var(--pta-text-secondary);
+}
+
+.pta-btn-ghost:hover {
+  background: var(--pta-surface-hover);
+  color: var(--pta-text-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   📱 MOBILE BOTTOM BAR — iOS Style
+   ═══════════════════════════════════════════════════════════════ */
+
+.pta-mobile-bottom-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--bottom-nav-height);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--pta-border-light);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 var(--space-2);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+@media (min-width: 768px) {
+  .pta-mobile-bottom-bar {
+    display: none;
+  }
+}
+
+.pta-bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  color: var(--pta-text-tertiary);
+  font-size: 0.625rem;
+  font-weight: 500;
+  min-width: 56px;
+  background: transparent;
+  border: none;
+  position: relative;
+}
+
+.pta-bottom-nav-item:active {
+  transform: scale(0.95);
+}
+
+.pta-bottom-nav-item.active {
+  color: var(--pta-primary);
+}
+
+.pta-bottom-nav-icon-wrap {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.pta-bottom-nav-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--pta-danger);
+  color: white;
+  font-size: 0.625rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ⚡ FAB — Floating Action Button
+   ═══════════════════════════════════════════════════════════════ */
+
+.pta-fab {
+  position: fixed;
+  bottom: calc(var(--bottom-nav-height) + var(--space-4));
+  right: var(--space-4);
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--pta-primary);
+  color: white;
+  border: none;
+  cursor: pointer;
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 40;
+  transition: all var(--transition-base);
+}
+
+.pta-fab:hover {
+  transform: scale(1.1);
+  box-shadow: 0 20px 35px -5px rgba(37, 99, 235, 0.4);
+}
+
+.pta-fab:active {
+  transform: scale(0.95);
+}
+
+@media (min-width: 768px) {
+  .pta-fab {
+    display: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   🔘 LOADING & EMPTY STATES
+   ═══════════════════════════════════════════════════════════════ */
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.pta-spin {
+  animation: spin 1s linear infinite;
+}
+
+.pta-skeleton {
+  background: linear-gradient(90deg, #F3F4F6 0%, #E5E7EB 50%, #F3F4F6 100%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+  border-radius: var(--radius-md);
+}
+
+@keyframes skeleton-pulse {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.pta-empty-state {
+  background: var(--pta-surface);
+  border: 1px solid var(--pta-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-12);
+  text-align: center;
+  color: var(--pta-text-secondary);
+}
+
+.pta-empty-illustration {
+  width: 120px;
+  height: 120px;
+  margin: 0 auto var(--space-4);
+  opacity: 0.5;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   🎭 MODAL — Clean overlay
+   ═══════════════════════════════════════════════════════════════ */
+
+.pta-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgba(17, 24, 39, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.pta-modal-card {
+  background: var(--pta-surface);
+  border-radius: var(--radius-xl);
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-xl);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   🎨 UTILITY CLASSES
+   ═══════════════════════════════════════════════════════════════ */
+
+.desktop-only {
+  display: none !important;
+}
+
+@media (min-width: 768px) {
+  .desktop-only {
+    display: block !important;
+  }
+  .mobile-only {
+    display: none !important;
+  }
+}
+
+.mobile-only {
+  display: block;
+}
+
+/* Smooth scrolling */
+* {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Focus visible para accesibilidad */
+*:focus-visible {
+  outline: 2px solid var(--pta-primary);
+  outline-offset: 2px;
+}
+
+/* Eliminar el outline predeterminado en elementos interactivos */
+button, a, input, select, textarea {
+  -webkit-tap-highlight-color: transparent;
+}
