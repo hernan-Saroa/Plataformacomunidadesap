@@ -438,15 +438,18 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       {/* ═══════════════════════════════════════════════════════════════ */}
       {/* INDICADOR DE ESTADO DE CONEXIÓN */}
       {/* ═══════════════════════════════════════════════════════════════ */}
-      {!isOnline && (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-sm">
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {/* INDICADOR DE ESTADO DE CONEXIÓN / ERRORES GLOBALES */}
+      {/* ═══════════════════════════════════════════════════════════════ */}
+      {error && (!error.includes('permisos') || (error.includes('auditoria') && tabActiva !== 'programa')) && (
+        <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-sm transition-all">
           <div className="flex items-center gap-2 text-amber-700">
             <WifiOff className="w-4 h-4" />
-            <span className="font-medium">Sin conexión al servidor</span>
-            <span className="text-amber-600">— {error || 'Verificando conexión...'}</span>
+            <span className="font-bold text-amber-700">Sin conexión al servidor</span>
+            <span className="text-amber-600">— {error}</span>
           </div>
           <button
-            onClick={() => { refetchProcesos(); refetchAuditorias(); }}
+            onClick={() => { refetchProcesos(); refetchAuditorias(); refetchEvaluaciones(); }}
             className="flex items-center gap-1 px-3 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-xs font-semibold transition-colors"
           >
             <RefreshCw className="w-3 h-3" />
@@ -592,6 +595,9 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
                 mostrarFormulario={mostrarFormulario}
                 setMostrarFormulario={setMostrarFormulario}
                 puedeCrear={!modoSeguimiento}
+                puedeCrearAuditoria={puedeRealizar('auditorias', 'create')}
+                error={errorAuditorias}
+                onRefresh={refetchAuditorias}
               />
             )}
             {tabActiva === 'profesionales' && (
@@ -798,9 +804,24 @@ interface TabProgramaAnualProps {
   setMostrarFormulario: (mostrar: boolean) => void;
   /** Cuando false oculta el botón de crear nueva auditoría */
   puedeCrear?: boolean;
+  /** Permiso específico para crear auditorías */
+  puedeCrearAuditoria?: boolean;
+  /** Error opcional para mostrar banner de acceso restringido */
+  error?: string | null;
+  /** Función para reintentar la carga */
+  onRefresh?: () => void;
 }
 
-function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMostrarFormulario, puedeCrear = true }: TabProgramaAnualProps) {
+function TabProgramaAnual({ 
+  auditorias, 
+  estadisticas, 
+  mostrarFormulario, 
+  setMostrarFormulario, 
+  puedeCrear = true,
+  puedeCrearAuditoria = false,
+  error = null,
+  onRefresh
+}: TabProgramaAnualProps) {
   const [vistaProgramaAnual, setVistaProgramaAnual] = useState<'lista' | 'cronograma'>('cronograma'); // 🆕 Estado para alternar vista
   
   const getColorEstado = (auditoria: AuditoriaProgramada) => {
@@ -828,6 +849,29 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
+      {/* 🚨 BANNER DE ERROR ESPECÍFICO DE PERMISOS PARA AUDITORÍAS */}
+      {error && error.includes('permisos') && (
+        <div className="bg-red-50 border-2 border-red-200 rounded-xl px-4 py-3 flex items-center justify-between text-sm animate-in fade-in slide-in-from-top-2">
+          <div className="flex items-center gap-3 text-red-700">
+            <div className="p-1.5 bg-red-100 rounded-lg">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-bold text-red-800 text-base">Acceso Restringido</p>
+              <p className="text-red-600">{error}</p>
+            </div>
+          </div>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              className="flex items-center gap-2 px-4 py-2 bg-red-100 hover:bg-red-200 text-red-800 rounded-lg text-sm font-bold transition-colors"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Reintentar
+            </button>
+          )}
+        </div>
+      )}
       {/* Estadísticas del programa */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl border-2 border-blue-200 p-6">
@@ -925,11 +969,17 @@ function TabProgramaAnual({ auditorias, estadisticas, mostrarFormulario, setMost
               
               {puedeCrear && (
                 <button
-                  onClick={() => setMostrarFormulario(true)}
-                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg font-semibold flex items-center gap-2 hover:shadow-lg transition-all"
+                  onClick={() => {
+                    if (puedeCrearAuditoria) {
+                      setMostrarFormulario(true);
+                    } else {
+                      toast.error('No cuentas con los permisos necesarios para realizar esta acción.');
+                    }
+                  }}
+                  className={`px-4 py-2 bg-gradient-to-r ${puedeCrearAuditoria ? 'from-blue-600 to-blue-700 hover:shadow-lg' : 'from-gray-400 to-gray-500 cursor-not-allowed'} text-white rounded-lg font-semibold flex items-center gap-2 transition-all`}
                 >
-                  <Plus className="w-4 h-4" />
-                  Programar Auditoría
+                  {puedeCrearAuditoria ? <Plus className="w-4 h-4" /> : <Layers className="w-4 h-4 opacity-50" />}
+                  {puedeCrearAuditoria ? 'Programar Auditoría' : 'Acceso Restringido'}
                 </button>
               )}
             </div>

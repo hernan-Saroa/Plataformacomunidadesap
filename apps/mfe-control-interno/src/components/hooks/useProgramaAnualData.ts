@@ -17,6 +17,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { controlInternoService } from '@/services/api/controlInternoService';
 import { auditoriaService, mapBackendToUI, type AuditoriaFormData } from '../services/auditoriaService';
+import { useCrearNotificacion } from './useCrearNotificacion';
 import type { ProcesoAuditableUI, NivelRiesgo } from './useUniversoAuditableData';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -501,6 +502,26 @@ export function useProgramaAnualData(
   const procesosMap = new Map<string, ProcesoAuditableUI>();
   procesos.forEach(p => procesosMap.set(p.id, p));
 
+  // ✅ Hook para crear notificaciones
+  const { notificarAuditoriaCreada, notificarAccesoRestringido } = useCrearNotificacion();
+
+  /**
+   * Verifica si el usuario tiene permiso para crear auditorías
+   */
+  const verificarPermisoCrear = useCallback(() => {
+    if (!authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIAS_CREATE)) {
+      toast.error('Acceso restringido', {
+        description: 'No tienes los permisos necesarios para programar auditorías.'
+      });
+      
+      // Notificar al sistema para que aparezca en la campana
+      notificarAccesoRestringido('Programar Auditoría');
+      
+      return false;
+    }
+    return true;
+  }, [notificarAccesoRestringido]);
+
   // ── Fetch auditorías programadas ──
   const fetchAuditorias = useCallback(async () => {
     setLoading(true);
@@ -665,6 +686,49 @@ export function useProgramaAnualData(
       const auditoriaId = await auditoriaService.crear(formData, showToasts);
       
       if (auditoriaId) {
+        // ✅ NOTIFICAR A LOS INVOLUCRADOS
+        try {
+          // 1. Notificar al Auditor Líder
+          if (data.auditorLider && data.auditorLider !== 'Por asignar') {
+            await notificarAuditoriaCreada(
+              auditoriaId,
+              data.titulo, // Código temporal o título
+              data.titulo,
+              data.auditorLider,
+              data.fechaInicio
+            );
+          }
+
+          // 2. Notificar al Equipo de Auditores
+          if (data.equipoAuditores && data.equipoAuditores.length > 0) {
+            for (const auditorId of data.equipoAuditores) {
+              if (auditorId !== data.auditorLider) { // Evitar duplicado si el líder está en el equipo
+                await notificarAuditoriaCreada(
+                  auditoriaId,
+                  data.titulo,
+                  data.titulo,
+                  auditorId,
+                  data.fechaInicio
+                );
+              }
+            }
+          }
+
+          // 3. Notificar al Supervisor
+          if (data.supervisorAsignado) {
+            await notificarAuditoriaCreada(
+              auditoriaId,
+              data.titulo,
+              data.titulo,
+              data.supervisorAsignado,
+              data.fechaInicio
+            );
+          }
+          console.log('[useProgramaAnualData] ✅ Notificaciones enviadas a los responsables');
+        } catch (errN) {
+          console.warn('[useProgramaAnualData] Error al enviar notificaciones:', errN);
+        }
+
         // Crear hallazgos preliminares si se incluyeron
         if (data.incluirHallazgosPreliminares && data.hallazgos?.length) {
           try {

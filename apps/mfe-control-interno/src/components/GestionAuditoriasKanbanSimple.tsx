@@ -3,7 +3,7 @@
  * Versión: 4.0 | Drag & Drop, Filtros, Vista Kanban/Lista, Semáforos
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { motion, AnimatePresence } from 'motion/react';
@@ -72,15 +72,14 @@ import { useControlInternoPermissions } from './hooks/useControlInternoPermissio
 // ✅ CONFIGURACIÓN KANBAN: Context para aplicar config visual + SLA dinámico
 import { useKanbanConfig } from './context/KanbanConfigContext';
 
-// ============ TIPOS ============
+import {
+  type EstadoAuditoria,
+  construirEtapasKanbanAuditoria,
+  columnasKanbanDesdeCatalogo,
+  iconoParaEstadoAuditoria,
+} from './config/auditoriaKanbanCatalog';
 
-type EstadoAuditoria =
-  | 'Plan Anual'
-  | 'Planeación'
-  | 'Ejecución'
-  | 'Comunicación'
-  | 'Seguimiento'
-  | 'Finalizada';
+// ============ TIPOS ============
 
 type RiesgoAuditoria = 'Alto' | 'Medio' | 'Bajo';
 type SemaforoColor = 'verde' | 'amarillo' | 'rojo';
@@ -768,56 +767,9 @@ const AUDITORIAS_MOCK: Auditoria[] = [
 
 // ============ CONFIGURACIÓN DE COLUMNAS ============
 
-const COLUMNAS_KANBAN = [
-  {
-    id: 'Plan Anual',
-    titulo: 'Programa Anual',
-    count: 0,
-    icono: <Calendar className="w-4 h-4" style={{ color: '#003DA5' }} />,
-    diasEstimados: 15,
-    accentColor: '#003DA5'
-  },
-  {
-    id: 'Planeación',
-    titulo: 'Planeación',
-    count: 3,
-    icono: <ClipboardCheck className="w-4 h-4" style={{ color: '#7C3AED' }} />,
-    diasEstimados: 30,
-    accentColor: '#7C3AED'
-  },
-  {
-    id: 'Ejecución',
-    titulo: 'Ejecución',
-    count: 3,
-    icono: <Target className="w-4 h-4" style={{ color: '#0891B2' }} />,
-    diasEstimados: 60,
-    accentColor: '#0891B2'
-  },
-  {
-    id: 'Comunicación',
-    titulo: 'Comunicación',
-    count: 2,
-    icono: <MessageSquare className="w-4 h-4" style={{ color: '#F97316' }} />,
-    diasEstimados: 15,
-    accentColor: '#F97316'
-  },
-  {
-    id: 'Seguimiento',
-    titulo: 'Seguimiento',
-    count: 2,
-    icono: <History className="w-4 h-4" style={{ color: '#EAB308' }} />,
-    diasEstimados: 30,
-    accentColor: '#EAB308'
-  },
-  {
-    id: 'Finalizada',
-    titulo: 'Finalizada',
-    count: 3,
-    icono: <CheckCircle className="w-4 h-4" style={{ color: '#16A34A' }} />,
-    diasEstimados: 0,
-    accentColor: '#16A34A'
-  }
-];
+type KanbanColumna = ReturnType<typeof columnasKanbanDesdeCatalogo>[number];
+
+const COLUMNAS_KANBAN_FALLBACK: KanbanColumna[] = columnasKanbanDesdeCatalogo();
 
 // ============ COMPONENTE DE TARJETA ============
 
@@ -1546,7 +1498,7 @@ function TarjetaAuditoria({
 // ============ COMPONENTE DE COLUMNA ============
 
 interface ColumnaKanbanProps {
-  columna: typeof COLUMNAS_KANBAN[0];
+  columna: KanbanColumna;
   auditorias: Auditoria[];
   onVerDetalle: (aud: Auditoria) => void;
   onVerNotas: (aud: Auditoria) => void;
@@ -1877,6 +1829,26 @@ export function GestionAuditoriasKanbanSimple() {
   const puedeAprobarAuditoria = puedeRealizar('auditorias', 'approve');
   const puedeAsignarAuditoria = puedeRealizar('auditorias', 'assign') || puedeRealizar('auditorias', 'edit');
   const puedeArchivarAuditoria = puedeRealizar('auditorias', 'edit');
+
+  // Config Kanban centralizada (incluye etapas dinámicas sincronizadas con backend)
+  const kanbanConfig = useKanbanConfig();
+  const columnasKanban = useMemo<KanbanColumna[]>(() => {
+    const etapasEfectivas = construirEtapasKanbanAuditoria(
+      kanbanConfig.loaded ? kanbanConfig.etapasKanban : undefined,
+    );
+
+    const columnasConfiguradas = etapasEfectivas
+      .map((etapa) => ({
+        id: etapa.id,
+        titulo: etapa.titulo,
+        count: 0,
+        icono: iconoParaEstadoAuditoria(etapa.id, etapa.accentColor),
+        diasEstimados: etapa.diasEstimados,
+        accentColor: etapa.accentColor,
+      }));
+
+    return columnasConfiguradas.length > 0 ? columnasConfiguradas : COLUMNAS_KANBAN_FALLBACK;
+  }, [kanbanConfig.loaded, kanbanConfig.etapasKanban]);
   
   // ✅ OBTENER USUARIO ACTUAL PARA FILTROS
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -2124,7 +2096,7 @@ export function GestionAuditoriasKanbanSimple() {
       if (!scrollContainerRef.current || modoVista !== 'confortable') return;
       
       const container = scrollContainerRef.current;
-      const columnWidth = container.scrollWidth / COLUMNAS_KANBAN.length;
+      const columnWidth = container.scrollWidth / Math.max(columnasKanban.length, 1);
       const currentIndex = Math.round(container.scrollLeft / columnWidth);
       
       setColumnaActiva(currentIndex);
@@ -2135,7 +2107,7 @@ export function GestionAuditoriasKanbanSimple() {
       container.addEventListener('scroll', handleScroll);
       return () => container.removeEventListener('scroll', handleScroll);
     }
-  }, [modoVista]);
+  }, [modoVista, columnasKanban.length]);
 
   // 🚀 NUEVO: Effect para forzar recálculo después de cambiar modo vista
   useEffect(() => {
@@ -3232,7 +3204,7 @@ export function GestionAuditoriasKanbanSimple() {
     if (!scrollContainerRef.current) return;
     
     const container = scrollContainerRef.current;
-    const columnWidth = container.scrollWidth / COLUMNAS_KANBAN.length;
+    const columnWidth = container.scrollWidth / Math.max(columnasKanban.length, 1);
     const scrollAmount = direccion === 'next' ? columnWidth : -columnWidth;
     
     container.scrollBy({
@@ -3245,7 +3217,7 @@ export function GestionAuditoriasKanbanSimple() {
     if (!scrollContainerRef.current) return;
     
     const container = scrollContainerRef.current;
-    const columnWidth = container.scrollWidth / COLUMNAS_KANBAN.length;
+    const columnWidth = container.scrollWidth / Math.max(columnasKanban.length, 1);
     
     container.scrollTo({
       left: columnWidth * index,
@@ -3271,7 +3243,7 @@ export function GestionAuditoriasKanbanSimple() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [vistaActiva, modoVista]);
+  }, [vistaActiva, modoVista, columnasKanban.length]);
 
   // ✅ LOADING STATE: Mostrar mientras carga del backend
   if (cargandoBackend) {
@@ -3724,7 +3696,7 @@ export function GestionAuditoriasKanbanSimple() {
                   }}
                 >
                   {/* 🚀 MODO AJUSTADO: Todas las columnas visibles sin scroll | MODO CONFORTABLE: Scroll horizontal */}
-              {COLUMNAS_KANBAN.map((columna) => {
+              {columnasKanban.map((columna) => {
                 const auditoriasColumna = auditoriasFiltradas.filter(
                   (aud) => aud.estado === columna.id
                 );
@@ -4534,10 +4506,10 @@ export function GestionAuditoriasKanbanSimple() {
               setAuditoriaSeleccionada(null);
             }}
             auditoriaId={auditoriaSeleccionada.id}
-            estadoActual={auditoriaSeleccionada.estado as any}
+            estadoActual={auditoriaSeleccionada.estado}
             onCambiar={(nuevoEstado) => {
               console.log('Estado cambiado:', nuevoEstado);
-              handleGuardarCambioEstado(auditoriaSeleccionada.id, nuevoEstado as any, '');
+              handleGuardarCambioEstado(auditoriaSeleccionada.id, nuevoEstado, '');
             }}
           />
         )}
