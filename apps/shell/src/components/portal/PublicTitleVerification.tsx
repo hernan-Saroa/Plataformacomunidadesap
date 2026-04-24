@@ -1789,8 +1789,8 @@ export function PublicTitleVerification({
                           <p className="text-sm leading-6 text-gray-600">
                             No encontramos ningún graduado ni coincidencias con
                             los datos ingresados. Si deseas, puedes enviar ahora
-                            una solicitud de revisión manual para el certificado
-                            de egresado.
+                            una solicitud de revisión manual para la verificación
+                            del título de egresado.
                           </p>
                         </div>
                       </div>
