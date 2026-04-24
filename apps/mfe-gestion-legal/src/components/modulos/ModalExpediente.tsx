@@ -1408,7 +1408,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     className="text-indigo-600 border-indigo-600 hover:bg-indigo-50 bg-white shadow-sm flex-shrink-0"
                   >
                     <LinkIcon className="w-4 h-4 mr-2" />
-                    Anexar
+                    Asociado
                   </Button>
                 )}
               </div>
