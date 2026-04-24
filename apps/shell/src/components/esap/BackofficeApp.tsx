@@ -6,6 +6,7 @@
 import { useState, useEffect, lazy, Suspense, type ComponentType } from 'react';
 import { SidebarPremium } from './SidebarPremium';
 import { TopBar } from './TopBar';
+import { PortalDashboard } from '../portal/PortalDashboard';
 
 // ✅ SIEMPRE IMPORTADOS (Core components)
 import { ProfileModal } from './ProfileModal';
@@ -93,6 +94,7 @@ const ControlInternoFull = lazyRemote(() => import('control_interno/Module'), ['
 const PortalTransaccionalUsuarioMD3 = lazy(() => import('./control-interno/PortalTransaccionalUsuarioMD3').then(m => ({ default: m.PortalTransaccionalUsuarioMD3 })));
 const ControlDisciplinarioFull = lazyRemote(() => import('control_disciplinario/Module'), ['ControlDisciplinarioFull']);
 const GestionLegalFull = lazyRemote(() => import('gestion_legal/Module'), ['GestionLegalFull']);
+const PTAModule = lazyRemote(() => import('pta/Module'), ['PTAModule', 'PTAKanbanModule']);
 const CertificadosLaboralesRouter = lazyRemote(() => import('certificados_laborales/Router'), ['CertificadosLaboralesRouter']);
 const EstructuraOrganizacionalModule = lazyRemote(() => import('estructura_org/Module'), ['EstructuraOrganizacionalModule']);
 const ProgramasAcademicosModule = lazyRemote(() => import('programas_academicos/Module'), ['ProgramasAcademicosModule']);
@@ -143,6 +145,7 @@ type ModuleView =
   | 'programas-academicos'
   | 'gestion-passwords'
   | 'demo-pta-motor'
+  | 'pta'
   | 'gestion-profesoral';
 
 interface BackofficeAppProps {
@@ -169,6 +172,21 @@ interface BackofficeAppProps {
   userRoles?: string[];
 }
 
+const ACADEMIC_ROLE_CODES = new Set(['ESTUDIANTE', 'DOCENTE', 'GRADUADO', 'ASPIRANTE']);
+const ACADEMIC_ROLE_LABELS = new Set(['Estudiante', 'Docente', 'Graduado', 'Aspirante']);
+
+function shouldUseAcademicLayout(userData: any, userRoles?: string[]) {
+  const roleCodes = Array.isArray(userData?.roles)
+    ? (userData.roles as unknown[]).map((r) => String(r))
+    : [];
+  const hasOnlyAcademicCodes = roleCodes.length > 0 && roleCodes.every((role) => ACADEMIC_ROLE_CODES.has(role));
+
+  const roleLabels = Array.isArray(userRoles) ? userRoles.map((r) => String(r)) : [];
+  const hasOnlyAcademicLabels = roleLabels.length > 0 && roleLabels.every((role) => ACADEMIC_ROLE_LABELS.has(role));
+
+  return hasOnlyAcademicCodes || hasOnlyAcademicLabels;
+}
+
 export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, usuario, userData, userRoles }: BackofficeAppProps = {}) {
   console.log('BackofficeApp', userData, userRoles)
   const currentUser = userData || {
@@ -177,11 +195,43 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     personId: usuario?.id || 'admin-001'
   };
   console.log('📋 Usuario actual:', userData?.module);
+
+  // Layout por rol: Docentes/Estudiantes (Portal) vs Administrativo (Backoffice)
+  if (shouldUseAcademicLayout(userData, userRoles)) {
+    const portalUserRoles = Array.isArray(userRoles) && userRoles.length > 0
+      ? userRoles
+      : (Array.isArray(userData?.roles) && userData.roles.length > 0
+        ? userData.roles
+          .map((role: any) => String(role))
+          .filter((role: string) => ACADEMIC_ROLE_CODES.has(role))
+          .map((role: string) => (role === 'DOCENTE' ? 'Docente' : role === 'ESTUDIANTE' ? 'Estudiante' : role === 'GRADUADO' ? 'Graduado' : 'Aspirante'))
+        : ['Estudiante']);
+
+    return (
+      <PortalDashboard
+        userName={currentUser.name}
+        userEmail={currentUser.email}
+        userPersonId={currentUser.personId}
+        userRoles={portalUserRoles}
+        hasBothSystemsAccess={!!userData?.hasBothSystemsAccess}
+        onSystemChange={onSystemChange}
+        userData={{
+          ...(userData && typeof userData === 'object' ? userData : {}),
+          rol_principal: portalUserRoles[0],
+          datos_por_rol: (userData && typeof userData === 'object' && 'datos_por_rol' in userData) ? (userData as any).datos_por_rol : {},
+        }}
+        onLogout={onLogout}
+      />
+    );
+  }
+
   const initialModule = userData?.module === 'control-interno' ? 'control-interno'
     : userData?.module === 'control-disciplinario' ? 'control-disciplinario'
       : userData?.module === 'registro-academico' ? 'graduates'
         : userData?.module === 'certificados-laborales' ? 'certificados-laborales'
           : userData?.module === 'gestion-legal' ? 'gestion-legal'
+            : userData?.module === 'pta' ? 'pta'
+              : userData?.module === 'pta-portal' ? 'pta'
             : userData?.module === 'procesos' ? 'control-interno'
               : userData?.module === 'graduates' ? 'graduates'
                 : userData?.module === 'carpeta-digital' ? 'carpeta-digital'
@@ -200,154 +250,19 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
   console.log('📋 Inicial module:', finalInitialModule);
 
-  const mapSidebarToModule = (sidebarModule: string): ModuleView => {
-    const mappings: Record<string, ModuleView> = {
-      'executive': 'dashboard',
-      'users-management': 'users-persons',
-      'carpeta-digital': 'carpeta-digital',
-      'roles-administration': 'roles-permissions',
-      'audit': 'audit',
-      'reports': 'reports',
-      'graduates-verification': 'graduates',
-      'graduates-certificates': 'verification-certificates',
-      'graduates-review-requests': 'verification-certificates',
-      'community': 'community-posts', // Por defecto abre Posts
-      'community-posts': 'community-posts',
-      'community-events': 'community-events',
-      'community-announcements': 'community-announcements',
-      'certificate-requests': 'certificate-requests', // Certificados Académicos (dentro de Comunidad en sidebar)
-      'job-board': 'job-board',
-      'certificados-laborales': 'certificados-laborales',
-      'estructura-organizacional': 'estructura-organizacional',
-      'programas-academicos': 'programas-academicos',
-      'firma-electronica': 'firma-electronica',
-      'control-interno': 'control-interno',
-      'control-disciplinario': 'control-disciplinario',
-      'gestion-legal': 'gestion-legal',
-      'gestion-passwords': 'gestion-passwords',
-      'gestion-profesoral': 'gestion-profesoral'
-    };
-    return (mappings[sidebarModule] as ModuleView) || 'dashboard';
-  };
-
-  const normalizedAssignedModules = (() => {
-    const normalized = new Set(userData?.modules || []);
-    if (normalized.has('graduates')) {
-      normalized.add('graduates-verification');
-    }
-    if (normalized.has('graduates-review-requests')) {
-      normalized.add('graduates-certificates');
-    }
-    return Array.from(normalized);
-  })();
-
-  const hasAllAssignedModules = normalizedAssignedModules.includes('all');
-
-  const sidebarModuleOrder = [
-    'executive',
-    'users-management',
-    'carpeta-digital',
-    'estructura-organizacional',
-    'programas-academicos',
-    'roles-administration',
-    'audit',
-    'reports',
-    'graduates-verification',
-    'graduates-certificates',
-    'gestion-profesoral',
-    'certificados-laborales',
-    'firma-electronica',
-    'control-interno',
-    'control-disciplinario',
-    'gestion-legal'
-  ] as const;
-
-  const getSidebarModuleForView = (view: ModuleView): string => {
-    const reverseMappings: Partial<Record<ModuleView, string>> = {
-      'dashboard': 'executive',
-      'users-persons': 'users-management',
-      'roles-permissions': 'roles-administration',
-      'graduates': 'graduates-verification',
-      'verification-certificates': 'graduates-certificates',
-      'certificate-requests': 'certificate-requests',
-    };
-
-    return reverseMappings[view] || view;
-  };
-
-  const hasAccessToSidebarModule = (sidebarModule?: string | null): boolean => {
-    if (!sidebarModule) {
-      return false;
-    }
-
-    if (hasAllAssignedModules) {
-      return true;
-    }
-
-    if (normalizedAssignedModules.length === 0) {
-      return sidebarModule === 'executive';
-    }
-
-    if (sidebarModule === 'graduates-verification') {
-      return normalizedAssignedModules.includes('graduates') || normalizedAssignedModules.includes('graduates-verification');
-    }
-
-    if (sidebarModule === 'graduates-certificates') {
-      return normalizedAssignedModules.includes('graduates-certificates') || normalizedAssignedModules.includes('graduates-review-requests');
-    }
-
-    return normalizedAssignedModules.includes(sidebarModule);
-  };
-
-  const hasAccessToView = (view?: ModuleView | null): boolean => {
-    if (!view) {
-      return false;
-    }
-
-    if (hasAllAssignedModules || normalizedAssignedModules.length === 0) {
-      return true;
-    }
-
-    return hasAccessToSidebarModule(getSidebarModuleForView(view));
-  };
-
-  const firstAccessibleSidebarModule = hasAllAssignedModules
-    ? 'executive'
-    : sidebarModuleOrder.find(module => hasAccessToSidebarModule(module)) || '';
-
-  const preferredInitialModule = hasAccessToView(finalInitialModule)
-    ? finalInitialModule
-    : firstAccessibleSidebarModule
-      ? mapSidebarToModule(firstAccessibleSidebarModule)
-      : finalInitialModule;
-
   // 🚀 RECUPERAR MÓDULO PREVIO: Mantener la sesión del usuario donde estaba
   const [currentModule, setCurrentModule] = useState<ModuleView>(() => {
-    const savedSidebar = localStorage.getItem('esap-last-sidebar-module');
-    if (savedSidebar && hasAccessToSidebarModule(savedSidebar)) {
-      return mapSidebarToModule(savedSidebar);
-    }
-
     const saved = localStorage.getItem('esap-last-module');
-    if (saved && hasAccessToView(saved as ModuleView)) {
-      return saved as ModuleView;
-    }
-
-    return preferredInitialModule;
+    // Si hay un módulo guardado, lo restauramos para mantener el contexto
+    if (saved) return saved as ModuleView;
+    // Si es la primera vez, cargamos el módulo por defecto según sus permisos
+    return finalInitialModule as ModuleView;
   });
 
   const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(() => {
     const saved = localStorage.getItem('esap-last-sidebar-module');
-    if (saved && hasAccessToSidebarModule(saved)) {
-      return saved;
-    }
-
-    const savedModule = localStorage.getItem('esap-last-module');
-    if (savedModule && hasAccessToView(savedModule as ModuleView)) {
-      return getSidebarModuleForView(savedModule as ModuleView);
-    }
-
-    return getSidebarModuleForView(preferredInitialModule);
+    if (saved) return saved;
+    return '';
   });
 
   // Guardar el módulo actual cada vez que cambie
@@ -362,21 +277,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       localStorage.setItem('esap-last-sidebar-module', currentSidebarModule);
     }
   }, [currentSidebarModule]);
-
-  useEffect(() => {
-    const nextModule = hasAccessToView(currentModule) ? currentModule : preferredInitialModule;
-    const nextSidebarModule = hasAccessToSidebarModule(currentSidebarModule)
-      ? currentSidebarModule
-      : getSidebarModuleForView(nextModule);
-
-    if (currentModule !== nextModule) {
-      setCurrentModule(nextModule);
-    }
-
-    if (nextSidebarModule && currentSidebarModule !== nextSidebarModule) {
-      setCurrentSidebarModule(nextSidebarModule);
-    }
-  }, [currentModule, currentSidebarModule, preferredInitialModule, hasAllAssignedModules, normalizedAssignedModules.join('|')]);
 
   // 🚀 AUTO-COLAPSO INTELIGENTE: Detectar tamaño de pantalla
   const getInitialCollapsedState = () => {
@@ -399,6 +299,37 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable');
   const [certificatesPendingCount, setCertificatesPendingCount] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
+
+  const mapSidebarToModule = (sidebarModule: string): ModuleView => {
+    const mappings: Record<string, ModuleView> = {
+      'executive': 'dashboard',
+      'users-management': 'users-persons',
+      'carpeta-digital': 'carpeta-digital',
+      'roles-administration': 'roles-permissions',
+      'audit': 'audit',
+      'reports': 'reports',
+      'graduates-verification': 'graduates',
+      'graduates-certificates': 'verification-certificates',
+      'graduates-review-requests': 'certificate-requests',
+      'community': 'community-posts', // Por defecto abre Posts
+      'community-posts': 'community-posts',
+      'community-events': 'community-events',
+      'community-announcements': 'community-announcements',
+      'certificate-requests': 'certificate-requests', // Certificados Académicos (dentro de Comunidad en sidebar)
+      'job-board': 'job-board',
+      'certificados-laborales': 'certificados-laborales',
+      'estructura-organizacional': 'estructura-organizacional',
+      'programas-academicos': 'programas-academicos',
+      'firma-electronica': 'firma-electronica',
+      'control-interno': 'control-interno',
+      'control-disciplinario': 'control-disciplinario',
+      'gestion-legal': 'gestion-legal',
+      'pta': 'pta',
+      'gestion-passwords': 'gestion-passwords',
+      'gestion-profesoral': 'gestion-profesoral'
+    };
+    return (mappings[sidebarModule] as ModuleView) || 'dashboard';
+  };
 
   // Extraer nombre del usuario, priorizando userData.name, luego usuario.nombre
   const userName = currentUser.name || usuario?.nombre || 'Administrador ESAP';
@@ -575,6 +506,26 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
           <Suspense fallback={<ModuleLoader />}>
             <GestionLegalFull />
           </Suspense>
+        );
+
+      case 'pta':
+        return (
+          <div className="grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-6">
+            <aside className="hidden lg:block">
+              <div id="portal-left-sidebar-slot" className="space-y-5" />
+            </aside>
+            <div className="min-w-0">
+              <Suspense fallback={<ModuleLoader />}>
+                <PTAModule
+                  userPersonId={currentUser.personId}
+                  userName={currentUser.name}
+                  userEmail={currentUser.email}
+                  userRoles={userRoles || []}
+                  embedded
+                />
+              </Suspense>
+            </div>
+          </div>
         );
 
       case 'certificados-laborales':

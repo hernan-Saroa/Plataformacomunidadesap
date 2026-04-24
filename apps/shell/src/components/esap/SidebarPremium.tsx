@@ -26,7 +26,6 @@ import {
   ChevronDown,
   Menu,
   Eye,
-  UserCheck,
   BadgeCheck,
   Scale,
   ClipboardList,
@@ -46,7 +45,7 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 // Importar isotipo oficial de ESAP (OPTIMIZADO: SVG en lugar de PNG)
 import { IsotipoESAP } from '../assets/ESAPLogoSVG';
 
-type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica';
+type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -89,6 +88,9 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
   restrictedMode = undefined; // Nuevo: No restringir módulos en modo de desarrollo
   const canShowModule = (module: ModuleType): boolean => {
     if (hasAllModules) return true;
+    // En desarrollo, si no viene la lista de módulos (por ejemplo, sesión mock),
+    // mostramos el menú completo para no bloquear navegación.
+    if (import.meta.env.MODE === 'development' && (!assignedModules || assignedModules.length === 0)) return true;
     if (!assignedModules || assignedModules.length === 0) return false;
     return assignedModules.includes(module);
   };
@@ -110,6 +112,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     'graduates-verification',
     'graduates-certificates',
     'gestion-profesoral',
+    'pta',
     'certificados-laborales',
     'firma-electronica',
     'control-interno',
@@ -1163,6 +1166,13 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     <BookOpen className="w-5 h-5" strokeWidth={2} />,
                     'Gestión Profesoral',
                     'PTAs y docentes'
+                  )}
+
+                  {renderMenuItem(
+                    'pta',
+                    <FileText className="w-5 h-5" strokeWidth={2} />,
+                    'PTA',
+                    'Plan de Trabajo Académico'
                   )}
 
                   {renderMenuItem(

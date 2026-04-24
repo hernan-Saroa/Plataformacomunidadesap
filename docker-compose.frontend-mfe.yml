@@ -32,6 +32,7 @@ services:
       - frontend-mfe-control-interno
       - frontend-mfe-control-disciplinario
       - frontend-mfe-gestion-legal
+      - frontend-mfe-pta
       - api-gateway
       - onlyoffice
     volumes:
@@ -192,4 +193,15 @@ services:
         FRONTEND_DIST_DIR: /app/build/remotes/mfe-gestion-legal
         FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-gestion-legal
     container_name: superapp-mfe-gestion-legal${FRONTEND_CONTAINER_SUFFIX:--prod}
+    <<: *frontend-service
+
+  frontend-mfe-pta:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend.app
+      args:
+        <<: *frontend-build-args
+        FRONTEND_APP_DIR: mfe-pta
+        FRONTEND_DIST_DIR: /app/build/remotes/mfe-pta
+    container_name: superapp-mfe-pta${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
