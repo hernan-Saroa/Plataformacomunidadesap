@@ -40,6 +40,52 @@ interface PublicTitleVerificationProps {
   onLoginClick?: () => void;
 }
 
+const COLOMBIAN_ID_MIN_LENGTH = 5;
+const COLOMBIAN_ID_MAX_LENGTH = 10;
+const PERSON_NAME_MAX_LENGTH = 80;
+const COMPANY_NAME_MAX_LENGTH = 120;
+const COMPANY_NIT_MIN_LENGTH = 9;
+const COMPANY_NIT_MAX_LENGTH = 10;
+const EMAIL_MAX_LENGTH = 254;
+const PERSON_NAME_ALLOWED_REGEX = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.'-]+$/;
+
+const sanitizeDigits = (value: string, maxLength: number) =>
+  value.replace(/\D+/g, "").slice(0, maxLength);
+
+const sanitizePersonName = (value: string) =>
+  value
+    .replace(/[0-9]/g, "")
+    .replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.'-]/g, "")
+    .slice(0, PERSON_NAME_MAX_LENGTH);
+
+const normalizeTextSpaces = (value: string) => value.trim().replace(/\s+/g, " ");
+
+const getPersonNameValidationError = (value: string, fieldName: string) => {
+  const normalizedValue = normalizeTextSpaces(value);
+
+  if (!normalizedValue) {
+    return `Por favor ingresa ${fieldName}`;
+  }
+
+  if (normalizedValue.length < 2) {
+    return `${fieldName} debe tener al menos 2 caracteres`;
+  }
+
+  if (normalizedValue.length > PERSON_NAME_MAX_LENGTH) {
+    return `${fieldName} no puede superar ${PERSON_NAME_MAX_LENGTH} caracteres`;
+  }
+
+  if (/\d/.test(normalizedValue)) {
+    return `${fieldName} no debe contener números`;
+  }
+
+  if (!PERSON_NAME_ALLOWED_REGEX.test(normalizedValue)) {
+    return `${fieldName} solo debe contener letras, espacios, apóstrofes o guiones`;
+  }
+
+  return null;
+};
+
 /**
  * LÓGICA DE NEGOCIO - VERIFICACIÓN DE TÍTULOS ESAP
  *
@@ -107,7 +153,23 @@ export function PublicTitleVerification({
 
   // Capturar NIT manualmente; no se consulta ni autocompleta información de empresa.
   const handleNITChange = (nit: string) => {
-    setCompanyNIT(nit.replace(/\D+/g, ""));
+    setCompanyNIT(sanitizeDigits(nit, COMPANY_NIT_MAX_LENGTH));
+  };
+
+  const handleGraduateDocumentChange = (documentNumber: string) => {
+    clearMatchSuggestions();
+    setGraduateDocumentNumber(
+      sanitizeDigits(documentNumber, COLOMBIAN_ID_MAX_LENGTH),
+    );
+  };
+
+  const handleGraduateNameChange = (name: string) => {
+    clearMatchSuggestions();
+    setGraduateLastName(sanitizePersonName(name));
+  };
+
+  const handleContactPersonChange = (name: string) => {
+    setContactPerson(sanitizePersonName(name));
   };
 
   const clearMatchSuggestions = () => {
@@ -225,24 +287,71 @@ export function PublicTitleVerification({
   };
 
   const validateRequestForm = () => {
-    if (!graduateDocumentNumber.trim()) {
+    const normalizedDocumentNumber = graduateDocumentNumber.trim();
+    const normalizedCompanyNit = companyNIT.trim();
+    const normalizedRequesterName = normalizeTextSpaces(requesterName);
+    const normalizedRequesterEmail = requesterEmail.trim();
+
+    if (!normalizedDocumentNumber) {
       return "Por favor ingresa el número de cédula del graduado";
     }
-    if (!graduateLastName.trim()) {
-      return "Por favor ingresa al menos un nombre o apellido del graduado";
+
+    if (
+      !/^\d+$/.test(normalizedDocumentNumber) ||
+      normalizedDocumentNumber.length < COLOMBIAN_ID_MIN_LENGTH ||
+      normalizedDocumentNumber.length > COLOMBIAN_ID_MAX_LENGTH
+    ) {
+      return `El número de cédula debe tener entre ${COLOMBIAN_ID_MIN_LENGTH} y ${COLOMBIAN_ID_MAX_LENGTH} dígitos`;
     }
-    if (requesterType === "empresa" && !requesterName.trim()) {
-      return "Por favor ingresa el nombre de la empresa";
+
+    const graduateNameError = getPersonNameValidationError(
+      graduateLastName,
+      "el nombre del graduado",
+    );
+    if (graduateNameError) {
+      return graduateNameError;
     }
-    if (requesterType === "empresa" && !contactPerson.trim()) {
-      return "Por favor ingresa el nombre de la persona que solicita";
+
+    if (
+      normalizedCompanyNit &&
+      !new RegExp(
+        `^\\d{${COMPANY_NIT_MIN_LENGTH},${COMPANY_NIT_MAX_LENGTH}}$`,
+      ).test(normalizedCompanyNit)
+    ) {
+      return `El NIT debe tener entre ${COMPANY_NIT_MIN_LENGTH} y ${COMPANY_NIT_MAX_LENGTH} dígitos`;
     }
-    if (!requesterEmail.trim()) {
+
+    if (requesterType === "empresa") {
+      if (!normalizedRequesterName) {
+        return "Por favor ingresa el nombre de la empresa";
+      }
+
+      if (normalizedRequesterName.length < 2) {
+        return "El nombre de la empresa debe tener al menos 2 caracteres";
+      }
+
+      if (normalizedRequesterName.length > COMPANY_NAME_MAX_LENGTH) {
+        return `El nombre de la empresa no puede superar ${COMPANY_NAME_MAX_LENGTH} caracteres`;
+      }
+
+      const contactPersonError = getPersonNameValidationError(
+        contactPerson,
+        "el nombre de la persona que solicita",
+      );
+      if (contactPersonError) {
+        return contactPersonError;
+      }
+    }
+
+    if (!normalizedRequesterEmail) {
       return "Por favor ingresa tu correo electrónico";
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(requesterEmail.trim())) {
+    if (
+      normalizedRequesterEmail.length > EMAIL_MAX_LENGTH ||
+      !emailRegex.test(normalizedRequesterEmail)
+    ) {
       return "Por favor ingresa un correo electrónico válido";
     }
     if (!acceptedTerms) {
@@ -256,14 +365,15 @@ export function PublicTitleVerification({
     selectedGraduateId?: string;
     selectedFullName?: string;
   }) => {
-    const normalizedGraduateName = (
+    const normalizedGraduateName = normalizeTextSpaces(
       options?.selectedFullName || graduateLastName
-    ).trim();
-    const normalizedCompanyName = requesterName.trim();
-    const normalizedContactPerson = contactPerson.trim();
+    );
+    const normalizedCompanyName = normalizeTextSpaces(requesterName);
+    const normalizedContactPerson = normalizeTextSpaces(contactPerson);
+    const normalizedDocumentNumber = graduateDocumentNumber.trim();
 
     return {
-      idNumber: graduateDocumentNumber,
+      idNumber: normalizedDocumentNumber,
       lastName: normalizedGraduateName,
       requesterType:
         requesterType === "empresa"
@@ -330,6 +440,12 @@ export function PublicTitleVerification({
   };
 
   const handleConfirmManualReviewCreation = async () => {
+    const validationError = validateRequestForm();
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
     setIsGenerating(true);
 
     try {
@@ -344,7 +460,13 @@ export function PublicTitleVerification({
     }
   };
 
-const handleManualReviewSubmit = async () => {
+  const handleManualReviewSubmit = async () => {
+    const validationError = validateRequestForm();
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
     setIsGenerating(true);
 
     try {
@@ -426,6 +548,12 @@ const handleManualReviewSubmit = async () => {
   };
 
   const handleConfirmSelection = async () => {
+    const validationError = validateRequestForm();
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
     const selectedSuggestion = matchSuggestions.find(
       (suggestion) => suggestion.graduateId === selectedSuggestionId,
     );
@@ -1219,6 +1347,9 @@ const handleManualReviewSubmit = async () => {
                             type="text"
                             value={companyNIT}
                             onChange={(e) => handleNITChange(e.target.value)}
+                            inputMode="numeric"
+                            maxLength={COMPANY_NIT_MAX_LENGTH}
+                            pattern={`[0-9]{${COMPANY_NIT_MIN_LENGTH},${COMPANY_NIT_MAX_LENGTH}}`}
                             placeholder="Ej: 9001234567"
                             className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                           />
@@ -1240,7 +1371,12 @@ const handleManualReviewSubmit = async () => {
                             id="companyName"
                             type="text"
                             value={requesterName}
-                            onChange={(e) => setRequesterName(e.target.value)}
+                            onChange={(e) =>
+                              setRequesterName(
+                                e.target.value.slice(0, COMPANY_NAME_MAX_LENGTH),
+                              )
+                            }
+                            maxLength={COMPANY_NAME_MAX_LENGTH}
                             placeholder="Ej: Empresa Ejemplo S.A.S."
                             className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                             required
@@ -1260,7 +1396,12 @@ const handleManualReviewSubmit = async () => {
                             id="requesterEmail"
                             type="email"
                             value={requesterEmail}
-                            onChange={(e) => setRequesterEmail(e.target.value)}
+                            onChange={(e) =>
+                              setRequesterEmail(
+                                e.target.value.slice(0, EMAIL_MAX_LENGTH),
+                              )
+                            }
+                            maxLength={EMAIL_MAX_LENGTH}
                             placeholder="empresa@ejemplo.com"
                             className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                             required
@@ -1284,7 +1425,10 @@ const handleManualReviewSubmit = async () => {
                             id="contactPerson"
                             type="text"
                             value={contactPerson}
-                            onChange={(e) => setContactPerson(e.target.value)}
+                            onChange={(e) =>
+                              handleContactPersonChange(e.target.value)
+                            }
+                            maxLength={PERSON_NAME_MAX_LENGTH}
                             placeholder="Ej: María Fernanda Rodríguez"
                             className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                             required
@@ -1319,10 +1463,10 @@ const handleManualReviewSubmit = async () => {
                         id="graduateLastName"
                         type="text"
                         value={graduateLastName}
-                        onChange={(e) => {
-                          clearMatchSuggestions();
-                          setGraduateLastName(e.target.value);
-                        }}
+                        onChange={(e) =>
+                          handleGraduateNameChange(e.target.value)
+                        }
+                        maxLength={PERSON_NAME_MAX_LENGTH}
                         placeholder="Ej: María Fernanda Rodríguez García"
                         className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                         required
@@ -1343,17 +1487,21 @@ const handleManualReviewSubmit = async () => {
                           id="graduateDocument"
                           type="text"
                           value={graduateDocumentNumber}
-                          onChange={(e) => {
-                            clearMatchSuggestions();
-                            setGraduateDocumentNumber(
-                              e.target.value.replace(/\D+/g, ""),
-                            );
-                          }}
+                          onChange={(e) =>
+                            handleGraduateDocumentChange(e.target.value)
+                          }
                           inputMode="numeric"
+                          minLength={COLOMBIAN_ID_MIN_LENGTH}
+                          maxLength={COLOMBIAN_ID_MAX_LENGTH}
+                          pattern={`[0-9]{${COLOMBIAN_ID_MIN_LENGTH},${COLOMBIAN_ID_MAX_LENGTH}}`}
                           placeholder="Ej: 1234567890"
                           className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                           required
                         />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Solo números, entre {COLOMBIAN_ID_MIN_LENGTH} y{" "}
+                          {COLOMBIAN_ID_MAX_LENGTH} dígitos.
+                        </p>
                       </div>
 
                       <div>
@@ -1388,7 +1536,12 @@ const handleManualReviewSubmit = async () => {
                             id="graduateEmail"
                             type="email"
                             value={requesterEmail}
-                            onChange={(e) => setRequesterEmail(e.target.value)}
+                            onChange={(e) =>
+                              setRequesterEmail(
+                                e.target.value.slice(0, EMAIL_MAX_LENGTH),
+                              )
+                            }
+                            maxLength={EMAIL_MAX_LENGTH}
                             placeholder="tucorreo@ejemplo.com"
                             className="h-10 text-sm border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
                             required
