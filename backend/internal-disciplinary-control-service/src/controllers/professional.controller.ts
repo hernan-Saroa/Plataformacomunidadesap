@@ -59,11 +59,12 @@ export class ProfessionalController {
         // Por cada profesional, contar su número de procesos ACTIVOS (excluyendo DEVUELTA)
         const workload = await Promise.all(
             professionals.map(async (prof) => {
-                // Contar solo procesos cuya noticia NO esté en estado DEVUELTA
+                // Contar procesos asignados que estén activos y cuya noticia NO esté devuelta
                 const processCount = await this.processRepository
                     .createQueryBuilder('process')
                     .leftJoin('process.news', 'news')
                     .where('process.abogadoAsignadoId = :profId', { profId: prof.id })
+                    .andWhere('process.estado = :activo', { activo: 'ACTIVO' })
                     .andWhere('news.estado != :devuelta', { devuelta: 'DEVUELTA' })
                     .getCount();
 
@@ -130,10 +131,12 @@ export class ProfessionalController {
 
         // Solo retornar datos de la BD local con conteo de procesos
         const result = await Promise.all(professionalsDB.map(async prof => {
+            // Contar procesos asignados al profesional que estén activos
             const processCount = await this.processRepository
                 .createQueryBuilder('process')
                 .leftJoin('process.news', 'news')
                 .where('process.abogadoAsignadoId = :profId', { profId: prof.id })
+                .andWhere('process.estado = :activo', { activo: 'ACTIVO' })
                 .andWhere('news.estado != :devuelta', { devuelta: 'DEVUELTA' })
                 .getCount();
 
