@@ -3625,6 +3625,13 @@ export function DashboardKanbanOperativo({
     // Extraer primer denunciado y denunciante para campos principales
     const primerDenunciado = data.denunciados?.[0] || data.denunciado;
     const primerDenunciante = data.denunciantes?.[0];
+    const apoderadoDenunciado = primerDenunciado?.apoderado || data.denunciado?.apoderado;
+    console.log('[DashboardKanban] Fuente disciplinable:', {
+      denunciados: data.denunciados,
+      denunciado: data.denunciado,
+      primerDenunciado,
+      apoderadoDenunciado,
+    });
     const denunciadoPersona = primerDenunciado?.nombre
       ? { nombre: primerDenunciado.nombre, tipoIdentificacion: 'CC' as const, numeroIdentificacion: primerDenunciado.identificacion || '' }
       : (data.denunciado?.nombre || '');
@@ -3661,7 +3668,7 @@ export function DashboardKanbanOperativo({
 
     try {
       // Preparar datos para el backend
-      const newsData = {
+      const newsData: any = {
         origen: origenNormalizado,
         radicador: data.radicador || 'Usuario Actual',
         territorial: data.territorial || undefined,
@@ -3677,23 +3684,61 @@ export function DashboardKanbanOperativo({
         // Denunciante
         denunciante: primerDenunciante ? {
           nombre: primerDenunciante.nombre,
-          tipoIdentificacion: 'CC',
-          numeroIdentificacion: primerDenunciante.identificacion || '',
+          cedula: primerDenunciante.identificacion || '',
           telefono: primerDenunciante.telefono || '',
-          correo: primerDenunciante.correo || '',
+          email: primerDenunciante.correo || '',
           direccion: primerDenunciante.direccion || '',
           entidad: primerDenunciante.entidad || '',
-          cargo: primerDenunciante.cargo || ''
-        } : undefined,
+          cargo: primerDenunciante.cargo || '',
+          ...(primerDenunciante.apoderado?.nombre ? {
+            apoderado: {
+              nombre: primerDenunciante.apoderado.nombre || '',
+              cedula: primerDenunciante.apoderado.cedula || '',
+              email: primerDenunciante.apoderado.correo || '',
+              telefono: primerDenunciante.apoderado.celular || '',
+              direccion: primerDenunciante.apoderado.direccion || ''
+            }
+          } : {})
+        } : {
+          nombre: 'Anónimo'
+        },
         // Denunciado/Disciplinable
         disciplinable: primerDenunciado ? {
           nombre: primerDenunciado.nombre,
-          tipoIdentificacion: primerDenunciado.tipoIdentificacion || 'CC',
-          numeroIdentificacion: primerDenunciado.identificacion || '',
+          cedula: primerDenunciado.identificacion || '',
           cargo: primerDenunciado.cargo || '',
-          dependencia: primerDenunciado.dependencia || primerDenunciado.lugarHechos || ''
+          dependencia: primerDenunciado.dependencia || primerDenunciado.lugarHechos || '',
+          ...(primerDenunciado.apoderado?.nombre ? {
+            apoderado: {
+              nombre: primerDenunciado.apoderado.nombre || '',
+              cedula: primerDenunciado.apoderado.cedula || '',
+              email: primerDenunciado.apoderado.correo || '',
+              telefono: primerDenunciado.apoderado.celular || '',
+              direccion: primerDenunciado.apoderado.direccion || ''
+            }
+          } : {})
         } : undefined
       };
+
+      if (!primerDenunciante) {
+        newsData.denunciante = undefined;
+      }
+
+      if (apoderadoDenunciado?.nombre && newsData.disciplinable) {
+        newsData.disciplinable.apoderado = {
+          nombre: apoderadoDenunciado.nombre || '',
+          cedula: apoderadoDenunciado.cedula || '',
+          email: apoderadoDenunciado.correo || apoderadoDenunciado.email || '',
+          telefono: apoderadoDenunciado.celular || apoderadoDenunciado.telefono || '',
+          direccion: apoderadoDenunciado.direccion || ''
+        };
+      }
+
+      console.log('[DashboardKanban] Payload disciplinable listo:', {
+        dependenciaDenunciado: newsData.dependenciaDenunciado,
+        disciplinable: newsData.disciplinable,
+        denunciante: newsData.denunciante,
+      });
 
       console.log('[DashboardKanban] Enviando datos al backend:', JSON.stringify(newsData, null, 2));
       console.log('[DEBUG] handleCrearNoticia - newsData.radicadorId:', newsData.radicadorId);
