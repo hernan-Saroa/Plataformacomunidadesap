@@ -208,6 +208,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [qrPreviewCertificate, setQrPreviewCertificate] = useState<CertificateRecord | null>(null);
   const qrCanvasRef = useRef<HTMLDivElement>(null);
   const validationUrlCodeRef = useRef<HTMLElement | null>(null);
+  const [qrModalViewport, setQrModalViewport] = useState({ width: 0, height: 0 });
   const isLoadingCertificatesRef = useRef(false);
   const lastCertificatesLoadAtRef = useRef(0);
   const FOCUS_RELOAD_COOLDOWN_MS = 20000;
@@ -598,6 +599,37 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [loadCertificates]);
+
+  useEffect(() => {
+    if (!isQrModalOpen) {
+      return;
+    }
+
+    const updateQrViewport = () => {
+      setQrModalViewport({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+
+    updateQrViewport();
+    window.addEventListener('resize', updateQrViewport);
+    return () => window.removeEventListener('resize', updateQrViewport);
+  }, [isQrModalOpen]);
+
+  const qrDisplaySize = useMemo(() => {
+    const viewportWidth = qrModalViewport.width || 1280;
+    const viewportHeight = qrModalViewport.height || 900;
+    const dynamicSize = Math.min(
+      172,
+      Math.floor(viewportWidth * 0.3),
+      Math.floor(viewportHeight * 0.22),
+    );
+
+    return Math.max(128, dynamicSize);
+  }, [qrModalViewport.height, qrModalViewport.width]);
+  const qrCardWidth = qrDisplaySize + 52;
+  const qrCardMinHeight = qrDisplaySize + 60;
 
   useEffect(() => {
     if (!isQrModalOpen || !qrPreviewCertificate?.id) {
@@ -3183,43 +3215,57 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
       {/* Modal: Ver Código QR Único */}
       <Dialog open={isQrModalOpen} onOpenChange={setIsQrModalOpen}>
-        <DialogContent className="w-[92vw] max-w-2xl max-h-[80vh] overflow-y-auto top-1/2 -translate-y-1/2">
+        <DialogContent className="w-[calc(100vw-1rem)] sm:w-[92vw] max-w-2xl max-h-[calc(100vh-1rem)] sm:max-h-[90vh] overflow-hidden top-2 sm:top-1/2 sm:-translate-y-1/2 grid-rows-[auto,minmax(0,1fr),auto] p-3 sm:p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 pr-8 text-base leading-snug sm:text-lg">
               <QrCode className="w-5 h-5 text-amber-600" />
               Código QR Único - Validación Pública
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="pr-8 text-xs leading-relaxed sm:text-sm">
               Este QR permite que cualquier persona valide la autenticidad del certificado. Cada escaneo queda registrado en el historial.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="py-4 space-y-4">
+          <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain pr-1 py-2 sm:py-4">
             {/* QR Placeholder + Estado */}
-            <div className={`${qrPreviewCertificate?.status === 'active' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-6`}>
+            <div className={`${qrPreviewCertificate?.status === 'active' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-4 sm:p-6`}>
               <div className="flex flex-col items-center text-center">
                 {/* QR real */}
-                <div 
-                  className="w-48 h-48 rounded-xl flex items-center justify-center mb-4"
-                  style={{
-                    background: '#FFFFFF',
-                    border: '2px solid #D1D5DB'
-                  }}
-                >
-                  <div className="text-center p-2">
-                    {qrPreviewCertificate?.qrCode ? (
-                      <QRCodeSVG
-                        value={getPublicValidationUrl(qrPreviewCertificate.qrCode)}
-                        size={160}
-                        level="M"
-                        includeMargin
-                      />
-                    ) : (
-                      <QrCode className="w-32 h-32 mx-auto" style={{ color: '#9CA3AF' }} />
-                    )}
-                    <p className="text-xs font-mono font-semibold mt-2" style={{ color: '#6B7280' }}>
-                      {qrPreviewCertificate?.qrCode || 'Sin codigo'}
-                    </p>
+                <div className="mb-4 flex w-full justify-center">
+                  <div
+                    className="flex flex-none items-center justify-center rounded-xl bg-white p-3 shadow-sm"
+                    style={{
+                      border: '2px solid #D1D5DB',
+                      minHeight: `${qrCardMinHeight}px`,
+                      minWidth: `${qrCardWidth}px`,
+                      width: `${qrCardWidth}px`,
+                    }}
+                  >
+                    <div className="flex min-w-0 flex-col items-center text-center">
+                      {qrPreviewCertificate?.qrCode ? (
+                        <QRCodeSVG
+                          value={getPublicValidationUrl(qrPreviewCertificate.qrCode)}
+                          size={qrDisplaySize}
+                          level="M"
+                          includeMargin
+                          className="block flex-none"
+                          style={{
+                            height: `${qrDisplaySize}px`,
+                            minHeight: `${qrDisplaySize}px`,
+                            minWidth: `${qrDisplaySize}px`,
+                            width: `${qrDisplaySize}px`,
+                          }}
+                        />
+                      ) : (
+                        <QrCode className="w-32 h-32 mx-auto" style={{ color: '#9CA3AF' }} />
+                      )}
+                      <p
+                        className="mt-2 break-all text-[10px] font-mono font-semibold leading-tight sm:text-xs"
+                        style={{ color: '#6B7280', maxWidth: `${qrDisplaySize}px` }}
+                      >
+                        {qrPreviewCertificate?.qrCode || 'Sin codigo'}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -3236,16 +3282,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
                 {/* Badge de Estado */}
                 {qrPreviewCertificate?.status === 'active' ? (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-green-100 border-2 border-green-300 rounded-lg">
+                  <div className="flex max-w-full items-center justify-center gap-2 rounded-lg border-2 border-green-300 bg-green-100 px-3 py-2 sm:px-4">
                     <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></div>
-                    <span className="font-semibold text-sm text-green-800">
+                    <span className="text-center text-xs font-semibold text-green-800 sm:text-sm">
                       ✅ QR ACTIVO PARA VALIDACIÓN
                     </span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-red-100 border-2 border-red-300 rounded-lg">
+                  <div className="flex max-w-full items-center justify-center gap-2 rounded-lg border-2 border-red-300 bg-red-100 px-3 py-2 sm:px-4">
                     <XCircle className="w-4 h-4 text-red-600" />
-                    <span className="font-semibold text-sm text-red-800">
+                    <span className="text-center text-xs font-semibold text-red-800 sm:text-sm">
                       ❌ QR INACTIVO
                     </span>
                   </div>
