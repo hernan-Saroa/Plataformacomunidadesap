@@ -82,10 +82,17 @@ export class ProfessionalController {
     @Get()
     @ApiOperation({ summary: 'Listar todos los profesionales con conteo de carga' })
     async findAll(): Promise<any[]> {
+        console.log('[ProfessionalController] findAll() called - Using only DB data');
+
+        // TEMPORAL: Solo usar datos de la tabla disciplinary_professional
+        // Comentar lógica del Auth Service para usar solo BD local
+
+        /*
         // 1. Intentar obtener usuarios desde el Auth Service
         let usersFromAuth: any[] = [];
         try {
             const authServiceUrl = process.env.AUTH_SERVICE_URL || process.env.API_AUTH_SERVICE_URL || 'http://auth-service:3001';
+            console.log('[ProfessionalController] Trying to connect to Auth Service:', authServiceUrl);
             const base = authServiceUrl.replace(/\/+$/, '');
             const response = await firstValueFrom(
                 this.httpService.get(`${base}/users?limit=1000`, {
@@ -94,66 +101,50 @@ export class ProfessionalController {
                 })
             );
 
+            console.log('[ProfessionalController] Auth Service response status:', response.status);
             if (response.data && response.data.data && Array.isArray(response.data.data.data)) {
                 usersFromAuth = response.data.data.data;
+                console.log('[ProfessionalController] Got', usersFromAuth.length, 'users from Auth Service');
+            } else {
+                console.warn('[ProfessionalController] Invalid response structure from Auth Service');
             }
         } catch (error) {
+            console.error('[ProfessionalController] Auth Service error:', error.message);
             console.error('[ProfessionalController] No se pudo obtener usuarios de Auth Service. Usando locales.');
         }
 
         // 2. Filtrar solo usuarios que tengan los roles permitidos (Dinámico - Opción A)
-        // Definir los roles válidos para disciplinario
         const validRoles = ['auditor', 'jefe_control_interno', 'profesional especializado', 'profesional universitario', 'operador disciplinario', 'sustanciador', 'admin', 'super_admin', 'profesional de control interno disciplinario'];
         const assignableUsers = usersFromAuth.filter(u => {
             if (!u.user || !u.user.is_active) return false;
             const userRoles = u.user.roles || [];
             return userRoles.some(r => validRoles.some(vr => (r.name || '').toLowerCase().includes(vr)));
         });
+        */
 
         const professionalsDB = await this.professionalRepository.find({
             order: { nombreCompleto: 'ASC' }
         });
 
-        // 3. Cruzar los usuarios permitidos con la base local para mantener el conteo y capacidad (o agregar si no existen en BD local)
-        const enrichedProfessionals = await Promise.all(
-            assignableUsers.map(async (authU) => {
-                const dbProf = professionalsDB.find(p => p.email.toLowerCase() === authU.email?.toLowerCase());
+        console.log('[ProfessionalController] professionalsDB count:', professionalsDB.length);
 
-                const processCount = dbProf ? await this.processRepository
-                    .createQueryBuilder('process')
-                    .leftJoin('process.news', 'news')
-                    .where('process.abogadoAsignadoId = :profId', { profId: dbProf.id })
-                    .andWhere('process.estado != :processStatus', { processStatus: 'ARCHIVADO' })
-                    .getCount() : 0;
+        // Solo retornar datos de la BD local con conteo de procesos
+        const result = await Promise.all(professionalsDB.map(async prof => {
+            const processCount = await this.processRepository
+                .createQueryBuilder('process')
+                .leftJoin('process.news', 'news')
+                .where('process.abogadoAsignadoId = :profId', { profId: prof.id })
+                .andWhere('news.estado != :devuelta', { devuelta: 'DEVUELTA' })
+                .getCount();
 
-                return {
-                    id: dbProf ? dbProf.id : authU.user?.id_user || `auto-${authU.email}`,
-                    nombreCompleto: authU.full_name || `${authU.first_name || ''} ${authU.last_name || ''}`.trim(),
-                    email: authU.email,
-                    cargo: dbProf?.cargo || (authU.user?.roles?.[0]?.name || 'Profesional'),
-                    estado: dbProf?.estado || 'ACTIVO',
-                    capacidadMaxima: dbProf?.capacidadMaxima || 10,
-                    firmaUrl: dbProf?.firmaUrl || null,
-                    tipoContrato: dbProf?.tipoContrato || 'Planta',
-                    territorial: dbProf?.territorial || 'Sede Central',
-                    procesosAsignados: processCount
-                };
-            })
-        );
+            return {
+                ...prof,
+                procesosAsignados: processCount
+            };
+        }));
 
-        // Si auth falló y no devolvió usuarios, devolvemos lo que hay en BD (fallback)
-        if (enrichedProfessionals.length === 0 && professionalsDB.length > 0) {
-            return Promise.all(professionalsDB.map(async prof => {
-                const processCount = await this.processRepository
-                    .createQueryBuilder('process')
-                    .where('process.abogadoAsignadoId = :profId', { profId: prof.id })
-                    .andWhere('process.estado != :processStatus', { processStatus: 'ARCHIVADO' })
-                    .getCount();
-                return { ...prof, procesosAsignados: processCount };
-            }));
-        }
-
-        return enrichedProfessionals;
+        console.log('[ProfessionalController] Returning', result.length, 'professionals from DB only');
+        return result;
     }
 
     @Post()
@@ -399,6 +390,54 @@ export class ProfessionalController {
                 `Error crítico al obtener candidatos: ${error.message}`,
                 HttpStatus.INTERNAL_SERVER_ERROR
             );
+        }
+    }
+
+    @Get('debug')
+    @ApiOperation({ summary: 'Endpoint de debug para verificar estado' })
+    async debug(): Promise<any> {
+        console.log('[ProfessionalController] Debug endpoint called');
+
+        try {
+            // Verificar conexión a BD
+            const dbCount = await this.professionalRepository.count();
+            console.log('[ProfessionalController] DB professional count:', dbCount);
+
+            // Verificar Auth Service
+            let authStatus = 'not tested';
+            try {
+                const authServiceUrl = process.env.AUTH_SERVICE_URL || process.env.API_AUTH_SERVICE_URL || 'http://auth-service:3001';
+                const response = await firstValueFrom(
+                    this.httpService.get(`${authServiceUrl.replace(/\/+$/, '')}/users?limit=1`, {
+                        headers: this.buildAuthHeaders(),
+                        timeout: 2000
+                    })
+                );
+                authStatus = `success (${response.status})`;
+            } catch (error) {
+                authStatus = `error: ${error.message}`;
+            }
+
+            return {
+                timestamp: new Date().toISOString(),
+                database: {
+                    professionalsCount: dbCount,
+                    connection: 'OK'
+                },
+                authService: {
+                    status: authStatus
+                },
+                environment: {
+                    authServiceUrl: process.env.AUTH_SERVICE_URL || process.env.API_AUTH_SERVICE_URL || 'http://auth-service:3001',
+                    nodeEnv: process.env.NODE_ENV || 'development'
+                }
+            };
+        } catch (error) {
+            console.error('[ProfessionalController] Debug error:', error);
+            return {
+                error: error.message,
+                timestamp: new Date().toISOString()
+            };
         }
     }
 

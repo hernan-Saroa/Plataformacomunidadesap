@@ -244,7 +244,16 @@ export function GestionProfesionalesWorldClass({ onVerProcesos }: { onVerProceso
         setProfesionales(mappedProfesionales);
       } catch (error) {
         console.error('Error fetching professionals:', error);
-        toast.error('Error al cargar profesionales');
+        console.log('Error details:', {
+          message: error.message,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          url: error.config?.url,
+          method: error.config?.method
+        });
+        console.log('Full error object:', error);
+        toast.error('Error al cargar profesionales - usando datos de prueba');
         // Usar datos mock como fallback
         setProfesionales(PROFESIONALES_MOCK);
       } finally {
