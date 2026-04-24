@@ -32,6 +32,48 @@ export const REGLAS_NEGOCIO_OCIG = {
       const esAuditorLider = cargoMin.includes('auditor') && (cargoMin.includes('lider') || cargoMin.includes('líder') || cargoMin.includes('lìder'));
       
       return esJefeOCI || esAuditorLider;
+    },
+
+    /**
+     * Valida si es Jefe OCI o Supervisor
+     * Requerimiento: Jefe de la OCI o la OCIG, o Supervisor.
+     */
+    esJefeOCISupervisor: (cargo: string | undefined | null): boolean => {
+      if (!cargo) return false;
+      const cargoMin = cargo.toLowerCase();
+      return cargoMin.includes('jefe oci') || 
+             cargoMin.includes('jefe ocig') || 
+             cargoMin.includes('jefe de oci') ||
+             cargoMin.includes('jefe de la oci') ||
+             cargoMin.includes('jefe oficina control interno') ||
+             cargoMin.includes('supervisor');
+    },
+
+    /**
+     * Valida si es Auditor Líder
+     * Requerimiento: Auditor Líder, Auditor Senior o superior.
+     */
+    esAuditorLider: (cargo: string | undefined | null): boolean => {
+      if (!cargo) return false;
+      const cargoMin = cargo.toLowerCase();
+      const esLiderOSenior = cargoMin.includes('auditor') && (
+        cargoMin.includes('lider') || 
+        cargoMin.includes('líder') || 
+        cargoMin.includes('lìder') || 
+        cargoMin.includes('senior') ||
+        cargoMin.includes('sénior')
+      );
+      const esSuperior = cargoMin.includes('jefe');
+      return esLiderOSenior || esSuperior;
+    },
+
+    /**
+     * Valida si es parte del equipo auditor (Cualquiera)
+     * Requerimiento: Auditores o cualquiera.
+     */
+    esEquipoAuditor: (cargo: string | undefined | null): boolean => {
+      // El requerimiento especifica que puede ser "auditores o cualquiera"
+      return true;
     }
   },
 
