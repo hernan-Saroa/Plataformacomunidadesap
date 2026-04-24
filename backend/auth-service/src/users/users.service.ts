@@ -25,6 +25,8 @@ import { CreatePersonDto } from './dto/create-person.dto';
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
+  private readonly disciplinaryProcessesManagePermission =
+    'control-disciplinario.procesos.manage';
 
   constructor(
     private readonly dataSource: DataSource,
@@ -57,6 +59,10 @@ export class UsersService {
     return `"${this.schemaName}"."personas"`;
   }
 
+  private get disciplinaryProfessionalTableRef(): string {
+    return '"internal_disciplinary_control"."disciplinary_professional"';
+  }
+
   private normalizeRequiredText(value: unknown, fieldName = 'campo'): string {
     if (typeof value !== 'string') {
       throw new BadRequestException(`El ${fieldName} es obligatorio.`);
@@ -72,6 +78,133 @@ export class UsersService {
 
   private normalizeOptionalText(value?: string | null): string {
     return value?.trim() || '';
+  }
+
+  private resolveDisciplinaryCargo(roles: Role[]): string {
+    const roleCodes = roles.map((role) => role.code?.trim().toUpperCase() || '');
+    const roleNames = roles.map((role) => role.name?.trim().toUpperCase() || '');
+
+    if (roleCodes.includes('JEFE_DE_LA_OCID')) {
+      return 'jefe oficina';
+    }
+
+    if (roleCodes.includes('SECRETARIA_RADICADOR')) {
+      return 'radicador';
+    }
+
+    if (roleCodes.includes('PROFESIONAL')) {
+      return 'profesional';
+    }
+
+    if (
+      roleCodes.some((code) => code.includes('JEFE')) ||
+      roleNames.some((name) => name.includes('JEFE'))
+    ) {
+      return 'jefe oficina';
+    }
+
+    if (
+      roleCodes.some((code) => code.includes('RADICADOR')) ||
+      roleNames.some((name) => name.includes('RADICADOR'))
+    ) {
+      return 'radicador';
+    }
+
+    return 'profesional';
+  }
+
+  private async syncDisciplinaryProfessional(
+    manager: EntityManager,
+    userId: string,
+    previousUsername?: string,
+  ): Promise<void> {
+    const user = await manager.getRepository(User).findOne({
+      where: { id_user: userId },
+      relations: ['person', 'roles', 'roles.permissions'],
+    });
+
+    if (!user?.person) {
+      return;
+    }
+
+    const qualifyingRoles = (user.roles || []).filter((role) =>
+      (role.permissions || []).some(
+        (permission) =>
+          permission.is_active &&
+          permission.code === this.disciplinaryProcessesManagePermission,
+      ),
+    );
+
+    if (qualifyingRoles.length === 0) {
+      return;
+    }
+
+    const currentEmail = this.normalizeOptionalText(user.username).toLowerCase();
+    const previousEmail = this.normalizeOptionalText(previousUsername).toLowerCase();
+
+    if (!currentEmail) {
+      return;
+    }
+
+    const cargo = this.resolveDisciplinaryCargo(qualifyingRoles);
+
+    if (previousEmail && previousEmail !== currentEmail) {
+      await manager.query(
+        `
+          UPDATE ${this.disciplinaryProfessionalTableRef}
+          SET
+            email = $1,
+            nombre_completo = $2,
+            telefono = $3,
+            cargo = $4,
+            especialidad = NULL,
+            tipo_contrato = NULL,
+            territorial = NULL,
+            capacidad_maxima = 10,
+            estado = 'ACTIVO',
+            updated_at = NOW()
+          WHERE email = $5
+        `,
+        [
+          currentEmail,
+          user.person.full_name,
+          user.person.phone || null,
+          cargo,
+          previousEmail,
+        ],
+      );
+    }
+
+    await manager.query(
+      `
+        INSERT INTO ${this.disciplinaryProfessionalTableRef} (
+          nombre_completo,
+          email,
+          telefono,
+          cargo,
+          especialidad,
+          tipo_contrato,
+          territorial,
+          capacidad_maxima,
+          estado,
+          created_at,
+          updated_at
+        )
+        VALUES ($1, $2, $3, $4, NULL, NULL, NULL, 10, 'ACTIVO', NOW(), NOW())
+        ON CONFLICT (email) DO UPDATE
+        SET
+          nombre_completo = EXCLUDED.nombre_completo,
+          telefono = EXCLUDED.telefono,
+          cargo = EXCLUDED.cargo,
+          especialidad = NULL,
+          tipo_contrato = NULL,
+          territorial = NULL,
+          capacidad_maxima = 10,
+          estado = 'ACTIVO',
+          updated_at = NOW()
+      `,
+      [user.person.full_name, currentEmail, user.person.phone || null, cargo],
+    );
   }
 
   private normalizeEmail(value: unknown): string {
@@ -692,8 +825,9 @@ export class UsersService {
         );
 
         if (dto.roleIds && dto.roleIds.length > 0) {
-          const roles = await manager.getRepository(Role).findBy({
-            id: In(dto.roleIds),
+          const roles = await manager.getRepository(Role).find({
+            where: { id: In(dto.roleIds) },
+            relations: ['permissions'],
           });
           if (roles.length !== dto.roleIds.length) {
             throw new BadRequestException(
@@ -703,6 +837,8 @@ export class UsersService {
           savedUser.roles = roles;
           await userRepo.save(savedUser);
         }
+
+        await this.syncDisciplinaryProfessional(manager, savedUser.id_user);
 
         return this.loadUserWithRelations(manager, savedUser.id_user);
       });
@@ -719,6 +855,9 @@ export class UsersService {
     console.log('📝 updatePerson called with:', { id, dto });
     console.log('📝 idSeccional value:', dto.idSeccional, 'type:', typeof dto.idSeccional);
     console.log('📝 idSede value:', dto.idSede, 'type:', typeof dto.idSede);
+
+    return this.updatePersonWithDisciplinarySync(id, dto, options);
+    /*
 
     const user = await this.findUserByApiIdentifier(
       id,
@@ -861,6 +1000,174 @@ export class UsersService {
     }
 
     return updatedUser;
+    */
+  }
+
+  private async updatePersonWithDisciplinarySync(
+    id: string,
+    dto: Partial<CreatePersonDto>,
+    options?: { allowInternalId?: boolean },
+  ): Promise<User> {
+    return this.dataSource.transaction(async (manager) => {
+      const user = await this.findUserByApiIdentifier(
+        id,
+        ['person', 'roles'],
+        options?.allowInternalId ?? false,
+      );
+
+      if (!user) {
+        throw new NotFoundException('Usuario no encontrado');
+      }
+
+      const previousUsername = user.username;
+      const setClauses: string[] = [];
+      const currentIdentificationNumber = this.normalizeRequiredText(
+        user.person.identification_number,
+        'numero de documento',
+      );
+      const currentIdentificationType = this.normalizeIdentificationType(
+        user.person.identification_type,
+      );
+      const requestedIdentificationNumber =
+        dto.identification_number !== undefined
+          ? this.normalizeRequiredText(
+              dto.identification_number,
+              'numero de documento',
+            )
+          : undefined;
+      const normalizedIdentificationType =
+        dto.identification_type !== undefined
+          ? this.normalizeIdentificationType(dto.identification_type)
+          : undefined;
+      const shouldValidateIdentification =
+        (requestedIdentificationNumber !== undefined &&
+          requestedIdentificationNumber !== currentIdentificationNumber) ||
+        (normalizedIdentificationType !== undefined &&
+          normalizedIdentificationType !== currentIdentificationType);
+      const normalizedIdentificationNumber = shouldValidateIdentification
+        ? this.normalizeIdentificationNumber(
+            requestedIdentificationNumber ?? currentIdentificationNumber,
+            normalizedIdentificationType ?? currentIdentificationType,
+          )
+        : requestedIdentificationNumber;
+
+      if (
+        shouldValidateIdentification &&
+        normalizedIdentificationNumber &&
+        normalizedIdentificationNumber !== currentIdentificationNumber
+      ) {
+        const existingPersonByDocument =
+          await this.findPersonByIdentificationNumber(
+            manager.getRepository(Person),
+            normalizedIdentificationNumber,
+            user.person.id,
+          );
+
+        if (existingPersonByDocument) {
+          throw new ConflictException(
+            'Ya existe una persona registrada con ese numero de documento.',
+          );
+        }
+      }
+
+      const values: any[] = [];
+      let paramIndex = 1;
+
+      if (dto.first_name !== undefined) {
+        setClauses.push(`nom_tercero = $${paramIndex++}`);
+        values.push(dto.first_name);
+      }
+      if (dto.last_name !== undefined) {
+        setClauses.push(`pri_apellido = $${paramIndex++}`);
+        values.push(dto.last_name);
+      }
+      if (dto.first_name !== undefined || dto.last_name !== undefined) {
+        const firstName = dto.first_name ?? user.person.first_name;
+        const lastName = dto.last_name ?? user.person.last_name;
+        setClauses.push(`nom_largo = $${paramIndex++}`);
+        values.push(`${firstName} ${lastName}`);
+      }
+      if (dto.identification_number !== undefined) {
+        setClauses.push(`num_identificacion = $${paramIndex++}`);
+        values.push(normalizedIdentificationNumber);
+      }
+      if (normalizedIdentificationType !== undefined) {
+        setClauses.push(`tip_identificacion = $${paramIndex++}`);
+        values.push(normalizedIdentificationType);
+      }
+      if (dto.email !== undefined) {
+        setClauses.push(`dir_email = $${paramIndex++}`);
+        values.push(dto.email);
+      }
+      if (dto.phone !== undefined) {
+        setClauses.push(`tel_celular = $${paramIndex++}`);
+        values.push(dto.phone || null);
+      }
+      if (dto.gender !== undefined) {
+        setClauses.push(`gen_tercero = $${paramIndex++}`);
+        values.push(dto.gender || 'N');
+      }
+      if (dto.idSeccional !== undefined) {
+        setClauses.push(`id_seccional = $${paramIndex++}`);
+        values.push(dto.idSeccional || null);
+      }
+      if (dto.idSede !== undefined) {
+        setClauses.push(`id_sede = $${paramIndex++}`);
+        values.push(dto.idSede || null);
+      }
+
+      if (setClauses.length > 0) {
+        values.push(user.person.id);
+        const sql = `UPDATE auth.personas SET ${setClauses.join(', ')} WHERE id_person = $${paramIndex}`;
+
+        await manager.query(sql, values);
+      }
+
+      if (dto.roleIds && dto.roleIds.length > 0) {
+        const roles = await manager.getRepository(Role).find({
+          where: { id: In(dto.roleIds) },
+        });
+
+        if (roles.length !== dto.roleIds.length) {
+          throw new BadRequestException(
+            'Uno o mas roles seleccionados no existen.',
+          );
+        }
+
+        await manager
+          .createQueryBuilder()
+          .relation(User, 'roles')
+          .of(user.id_user)
+          .addAndRemove(
+            roles.map((role) => role.id),
+            user.roles.map((role) => role.id),
+          );
+      }
+
+      await this.syncDisciplinaryProfessional(
+        manager,
+        user.id_user,
+        previousUsername,
+      );
+
+      const updatedUser = await manager.getRepository(User).findOne({
+        where: { id_user: user.id_user },
+        relations: [
+          'person',
+          'person.seccional',
+          'person.seccional.ubicacion',
+          'person.sede',
+          'person.sede.geopolitica',
+          'roles',
+        ],
+      });
+
+      if (!updatedUser) {
+        throw new NotFoundException('Usuario no encontrado');
+      }
+
+      return updatedUser;
+    });
   }
 
   async deletePerson(
