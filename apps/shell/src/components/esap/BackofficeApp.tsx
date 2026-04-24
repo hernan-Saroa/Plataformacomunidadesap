@@ -200,19 +200,154 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
   console.log('📋 Inicial module:', finalInitialModule);
 
+  const mapSidebarToModule = (sidebarModule: string): ModuleView => {
+    const mappings: Record<string, ModuleView> = {
+      'executive': 'dashboard',
+      'users-management': 'users-persons',
+      'carpeta-digital': 'carpeta-digital',
+      'roles-administration': 'roles-permissions',
+      'audit': 'audit',
+      'reports': 'reports',
+      'graduates-verification': 'graduates',
+      'graduates-certificates': 'verification-certificates',
+      'graduates-review-requests': 'verification-certificates',
+      'community': 'community-posts', // Por defecto abre Posts
+      'community-posts': 'community-posts',
+      'community-events': 'community-events',
+      'community-announcements': 'community-announcements',
+      'certificate-requests': 'certificate-requests', // Certificados Académicos (dentro de Comunidad en sidebar)
+      'job-board': 'job-board',
+      'certificados-laborales': 'certificados-laborales',
+      'estructura-organizacional': 'estructura-organizacional',
+      'programas-academicos': 'programas-academicos',
+      'firma-electronica': 'firma-electronica',
+      'control-interno': 'control-interno',
+      'control-disciplinario': 'control-disciplinario',
+      'gestion-legal': 'gestion-legal',
+      'gestion-passwords': 'gestion-passwords',
+      'gestion-profesoral': 'gestion-profesoral'
+    };
+    return (mappings[sidebarModule] as ModuleView) || 'dashboard';
+  };
+
+  const normalizedAssignedModules = (() => {
+    const normalized = new Set(userData?.modules || []);
+    if (normalized.has('graduates')) {
+      normalized.add('graduates-verification');
+    }
+    if (normalized.has('graduates-review-requests')) {
+      normalized.add('graduates-certificates');
+    }
+    return Array.from(normalized);
+  })();
+
+  const hasAllAssignedModules = normalizedAssignedModules.includes('all');
+
+  const sidebarModuleOrder = [
+    'executive',
+    'users-management',
+    'carpeta-digital',
+    'estructura-organizacional',
+    'programas-academicos',
+    'roles-administration',
+    'audit',
+    'reports',
+    'graduates-verification',
+    'graduates-certificates',
+    'gestion-profesoral',
+    'certificados-laborales',
+    'firma-electronica',
+    'control-interno',
+    'control-disciplinario',
+    'gestion-legal'
+  ] as const;
+
+  const getSidebarModuleForView = (view: ModuleView): string => {
+    const reverseMappings: Partial<Record<ModuleView, string>> = {
+      'dashboard': 'executive',
+      'users-persons': 'users-management',
+      'roles-permissions': 'roles-administration',
+      'graduates': 'graduates-verification',
+      'verification-certificates': 'graduates-certificates',
+      'certificate-requests': 'certificate-requests',
+    };
+
+    return reverseMappings[view] || view;
+  };
+
+  const hasAccessToSidebarModule = (sidebarModule?: string | null): boolean => {
+    if (!sidebarModule) {
+      return false;
+    }
+
+    if (hasAllAssignedModules) {
+      return true;
+    }
+
+    if (normalizedAssignedModules.length === 0) {
+      return sidebarModule === 'executive';
+    }
+
+    if (sidebarModule === 'graduates-verification') {
+      return normalizedAssignedModules.includes('graduates') || normalizedAssignedModules.includes('graduates-verification');
+    }
+
+    if (sidebarModule === 'graduates-certificates') {
+      return normalizedAssignedModules.includes('graduates-certificates') || normalizedAssignedModules.includes('graduates-review-requests');
+    }
+
+    return normalizedAssignedModules.includes(sidebarModule);
+  };
+
+  const hasAccessToView = (view?: ModuleView | null): boolean => {
+    if (!view) {
+      return false;
+    }
+
+    if (hasAllAssignedModules || normalizedAssignedModules.length === 0) {
+      return true;
+    }
+
+    return hasAccessToSidebarModule(getSidebarModuleForView(view));
+  };
+
+  const firstAccessibleSidebarModule = hasAllAssignedModules
+    ? 'executive'
+    : sidebarModuleOrder.find(module => hasAccessToSidebarModule(module)) || '';
+
+  const preferredInitialModule = hasAccessToView(finalInitialModule)
+    ? finalInitialModule
+    : firstAccessibleSidebarModule
+      ? mapSidebarToModule(firstAccessibleSidebarModule)
+      : finalInitialModule;
+
   // 🚀 RECUPERAR MÓDULO PREVIO: Mantener la sesión del usuario donde estaba
   const [currentModule, setCurrentModule] = useState<ModuleView>(() => {
+    const savedSidebar = localStorage.getItem('esap-last-sidebar-module');
+    if (savedSidebar && hasAccessToSidebarModule(savedSidebar)) {
+      return mapSidebarToModule(savedSidebar);
+    }
+
     const saved = localStorage.getItem('esap-last-module');
-    // Si hay un módulo guardado, lo restauramos para mantener el contexto
-    if (saved) return saved as ModuleView;
-    // Si es la primera vez, cargamos el módulo por defecto según sus permisos
-    return finalInitialModule as ModuleView;
+    if (saved && hasAccessToView(saved as ModuleView)) {
+      return saved as ModuleView;
+    }
+
+    return preferredInitialModule;
   });
 
   const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(() => {
     const saved = localStorage.getItem('esap-last-sidebar-module');
-    if (saved) return saved;
-    return '';
+    if (saved && hasAccessToSidebarModule(saved)) {
+      return saved;
+    }
+
+    const savedModule = localStorage.getItem('esap-last-module');
+    if (savedModule && hasAccessToView(savedModule as ModuleView)) {
+      return getSidebarModuleForView(savedModule as ModuleView);
+    }
+
+    return getSidebarModuleForView(preferredInitialModule);
   });
 
   // Guardar el módulo actual cada vez que cambie
@@ -227,6 +362,21 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       localStorage.setItem('esap-last-sidebar-module', currentSidebarModule);
     }
   }, [currentSidebarModule]);
+
+  useEffect(() => {
+    const nextModule = hasAccessToView(currentModule) ? currentModule : preferredInitialModule;
+    const nextSidebarModule = hasAccessToSidebarModule(currentSidebarModule)
+      ? currentSidebarModule
+      : getSidebarModuleForView(nextModule);
+
+    if (currentModule !== nextModule) {
+      setCurrentModule(nextModule);
+    }
+
+    if (nextSidebarModule && currentSidebarModule !== nextSidebarModule) {
+      setCurrentSidebarModule(nextSidebarModule);
+    }
+  }, [currentModule, currentSidebarModule, preferredInitialModule, hasAllAssignedModules, normalizedAssignedModules.join('|')]);
 
   // 🚀 AUTO-COLAPSO INTELIGENTE: Detectar tamaño de pantalla
   const getInitialCollapsedState = () => {
@@ -249,36 +399,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable');
   const [certificatesPendingCount, setCertificatesPendingCount] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
-
-  const mapSidebarToModule = (sidebarModule: string): ModuleView => {
-    const mappings: Record<string, ModuleView> = {
-      'executive': 'dashboard',
-      'users-management': 'users-persons',
-      'carpeta-digital': 'carpeta-digital',
-      'roles-administration': 'roles-permissions',
-      'audit': 'audit',
-      'reports': 'reports',
-      'graduates-verification': 'graduates',
-      'graduates-certificates': 'verification-certificates',
-      'graduates-review-requests': 'certificate-requests',
-      'community': 'community-posts', // Por defecto abre Posts
-      'community-posts': 'community-posts',
-      'community-events': 'community-events',
-      'community-announcements': 'community-announcements',
-      'certificate-requests': 'certificate-requests', // Certificados Académicos (dentro de Comunidad en sidebar)
-      'job-board': 'job-board',
-      'certificados-laborales': 'certificados-laborales',
-      'estructura-organizacional': 'estructura-organizacional',
-      'programas-academicos': 'programas-academicos',
-      'firma-electronica': 'firma-electronica',
-      'control-interno': 'control-interno',
-      'control-disciplinario': 'control-disciplinario',
-      'gestion-legal': 'gestion-legal',
-      'gestion-passwords': 'gestion-passwords',
-      'gestion-profesoral': 'gestion-profesoral'
-    };
-    return (mappings[sidebarModule] as ModuleView) || 'dashboard';
-  };
 
   // Extraer nombre del usuario, priorizando userData.name, luego usuario.nombre
   const userName = currentUser.name || usuario?.nombre || 'Administrador ESAP';
