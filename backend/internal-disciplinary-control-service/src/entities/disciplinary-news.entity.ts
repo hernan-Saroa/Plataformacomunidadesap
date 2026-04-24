@@ -26,6 +26,14 @@ export enum NewsStatus {
   ASOCIADA = 'ASOCIADA',
 }
 
+export interface Apoderado {
+  nombre?: string;
+  cedula?: string;
+  email?: string;
+  telefono?: string;
+  direccion?: string;
+}
+
 // export interface Apoderado {
 //   nombre?: string;
 //   cedula?: string;
@@ -43,6 +51,7 @@ export interface PersonInfo {
   direccion?: string;
   dependencia?: string;
   entidad?: string;
+  apoderado?: Apoderado;
   // ✅ NUEVO: Campo opcional para almacenar información del apoderado
   // apoderado?: Apoderado;
 }
