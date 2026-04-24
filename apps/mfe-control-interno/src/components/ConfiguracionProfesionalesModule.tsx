@@ -16,7 +16,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Users, Save, Plus, Edit2, Trash2, AlertCircle, CheckCircle2,
@@ -81,7 +81,9 @@ export function ConfiguracionProfesionalesModule() {
     cargarDatos,
     agregarProfesional,
     actualizarProfesional,
-    eliminarProfesional
+    eliminarProfesional,
+    ROLES_OCIG: rolesDisponibles,
+    ESPECIALIDADES_DISPONIBLES: especialidadesDisponibles
   } = useConfiguracionProfesionales();
 
   // Estado local del UI
@@ -227,7 +229,7 @@ export function ConfiguracionProfesionalesModule() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="TODOS">Todos los roles</SelectItem>
-            {ROLES_OCIG.map(rol => (
+            {rolesDisponibles.map(rol => (
               <SelectItem key={rol} value={rol}>{rol}</SelectItem>
             ))}
           </SelectContent>
@@ -319,6 +321,7 @@ export function ConfiguracionProfesionalesModule() {
           <TarjetaProfesional
             key={profesional.usuario.id}
             profesional={profesional}
+            rolesDisponibles={rolesDisponibles}
             editando={profesionalEditando?.usuario.id === profesional.usuario.id}
             onEditar={() => setProfesionalEditando(profesional)}
             onCancelar={() => setProfesionalEditando(null)}
@@ -362,6 +365,8 @@ export function ConfiguracionProfesionalesModule() {
       {mostrarModalAgregar && (
         <ModalAgregarProfesional
           usuariosDisponibles={usuariosDisponiblesParaOCIG}
+          rolesDisponibles={rolesDisponibles}
+          especialidadesDisponibles={especialidadesDisponibles}
           onAgregar={handleAgregarProfesional}
           onCerrar={() => setMostrarModalAgregar(false)}
         />
@@ -384,6 +389,7 @@ export function ConfiguracionProfesionalesModule() {
 
 interface TarjetaProfesionalProps {
   profesional: ProfesionalOCIG;
+  rolesDisponibles: readonly string[];
   editando: boolean;
   onEditar: () => void;
   onCancelar: () => void;
@@ -393,6 +399,7 @@ interface TarjetaProfesionalProps {
 
 function TarjetaProfesional({
   profesional,
+  rolesDisponibles,
   editando,
   onEditar,
   onCancelar,
@@ -436,7 +443,7 @@ function TarjetaProfesional({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {ROLES_OCIG.map(rol => (
+                {rolesDisponibles.map(rol => (
                   <SelectItem key={rol} value={rol}>{rol}</SelectItem>
                 ))}
               </SelectContent>
@@ -647,19 +654,40 @@ function TarjetaProfesional({
 
 interface ModalAgregarProfesionalProps {
   usuariosDisponibles: UsuarioSistema[];
+  rolesDisponibles: readonly string[];
+  especialidadesDisponibles: string[];
   onAgregar: (config: ConfiguracionOCIG) => void;
   onCerrar: () => void;
 }
 
-function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: ModalAgregarProfesionalProps) {
+function ModalAgregarProfesional({ 
+  usuariosDisponibles, 
+  rolesDisponibles,
+  especialidadesDisponibles,
+  onAgregar, 
+  onCerrar 
+}: ModalAgregarProfesionalProps) {
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<string>('');
   const [openCombobox, setOpenCombobox] = useState(false);
   const [openEspecialidades, setOpenEspecialidades] = useState(false);
   const [especialidades, setEspecialidades] = useState<string[]>([]);
   const { getCapacidadPorRol } = useConfiguracionCapacidadesGlobales();
-  const [rolOCIG, setRolOCIG] = useState(ROLES_OCIG[0]);
-  const [capacidad, setCapacidad] = useState(() => getCapacidadPorRol(ROLES_OCIG[0]).capacidadMaximaAuditorias);
-  const [horas, setHoras] = useState(() => getCapacidadPorRol(ROLES_OCIG[0]).horasMensualesDisponibles);
+  
+  // Estado para el rol, inicializado con el primer rol disponible si existe
+  const [rolOCIG, setRolOCIG] = useState<string>(rolesDisponibles[0] || '');
+  const [capacidad, setCapacidad] = useState(1);
+  const [horas, setHoras] = useState(160);
+
+  // Efecto para actualizar el rol por defecto cuando los roles se cargan
+  useEffect(() => {
+    if (rolesDisponibles.length > 0 && !rolOCIG) {
+      const primerRol = rolesDisponibles[0];
+      setRolOCIG(primerRol);
+      const defaults = getCapacidadPorRol(primerRol);
+      setCapacidad(defaults.capacidadMaximaAuditorias);
+      setHoras(defaults.horasMensualesDisponibles);
+    }
+  }, [rolesDisponibles, rolOCIG, getCapacidadPorRol]);
 
   const handleRolCambio = (nuevoRol: string) => {
     setRolOCIG(nuevoRol);
@@ -674,6 +702,11 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
 
     if (!usuarioSeleccionado) {
       toast.error('❌ Debes seleccionar un usuario');
+      return;
+    }
+
+    if (!rolOCIG) {
+      toast.error('❌ Debes seleccionar un rol para el profesional');
       return;
     }
 
@@ -722,7 +755,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
 
   const canAdvanceStep = (step: number) => {
     if (step === 1) return !!usuarioSeleccionado;
-    if (step === 2) return true;
+    if (step === 2) return !!rolOCIG;
     return true;
   };
 
@@ -982,7 +1015,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
                       Rol en OCIG
                     </label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                      {ROLES_OCIG.map(rol => (
+                      {rolesDisponibles.map(rol => (
                         <button
                           key={rol}
                           type="button"
@@ -1031,7 +1064,7 @@ function ModalAgregarProfesional({ usuariosDisponibles, onAgregar, onCerrar }: M
 
                     {/* Available chips */}
                     <div className="flex flex-wrap gap-1.5 p-2.5 bg-gray-50 rounded-xl border border-gray-200 max-h-[120px] overflow-y-auto">
-                      {ESPECIALIDADES_DISPONIBLES.filter(e => !especialidades.includes(e)).map(esp => (
+                      {especialidadesDisponibles.filter(e => !especialidades.includes(e)).map(esp => (
                         <button
                           key={esp}
                           type="button"

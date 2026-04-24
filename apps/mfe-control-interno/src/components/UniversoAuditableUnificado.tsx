@@ -1166,13 +1166,19 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
       const horasEquipo = comoEquipo.reduce((sum, a) => sum + (a.horasEstimadas || 0), 0);
       const horasAsignadas = horasLider + horasEquipo;
 
-      // Porcentaje de carga: auditorías asignadas vs capacidad máxima
-      const capacidad = p.configuracion.capacidadMaximaAuditorias || 4;
-      const porcentajePorAuditorias = Math.round((auditoriasTotales / capacidad) * 100);
+      // ✅ FIX: El programa es ANUAL (Vigencia), pero la configuración es MENSUAL.
+      // Debemos comparar totales anuales contra capacidad anual (mensual * 12).
+      const MESES_VIGENCIA = 12;
 
-      // También considerar horas: horasAsignadas vs horasMensualesDisponibles
-      const horasDisponibles = p.configuracion.horasMensualesDisponibles || 150;
-      const porcentajePorHoras = horasDisponibles > 0 ? Math.round((horasAsignadas / horasDisponibles) * 100) : 0;
+      // Porcentaje de carga: auditorías asignadas vs capacidad máxima ANUAL
+      const capacidadMensual = p.configuracion.capacidadMaximaAuditorias || 4;
+      const capacidadAnual = capacidadMensual * MESES_VIGENCIA;
+      const porcentajePorAuditorias = Math.round((auditoriasTotales / capacidadAnual) * 100);
+
+      // También considerar horas: horasAsignadas vs horas ANUALES disponibles
+      const horasMensualesDisponibles = p.configuracion.horasMensualesDisponibles || 150;
+      const horasAnualesDisponibles = horasMensualesDisponibles * MESES_VIGENCIA;
+      const porcentajePorHoras = horasAnualesDisponibles > 0 ? Math.round((horasAsignadas / horasAnualesDisponibles) * 100) : 0;
 
       // Usar el mayor de los dos porcentajes como indicador de carga
       const porcentajeCarga = Math.max(porcentajePorAuditorias, porcentajePorHoras);
@@ -1186,6 +1192,8 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
           cargaPonderada: porcentajeCarga,
           porcentajeCarga,
           horasAsignadas,
+          capacidadAnual,
+          horasAnualesDisponibles,
         },
       };
     });
@@ -1347,10 +1355,10 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
                     </div>
                     <div className="flex items-center justify-between mt-1.5 text-[11px] text-gray-500">
                       <span>
-                        <strong className="text-gray-700">{p.estadisticas.auditoriasTotales}</strong> auditoría(s) • <strong className="text-gray-700">{p.estadisticas.horasAsignadas}h</strong> asignadas
+                        <strong className="text-gray-700">{p.estadisticas.auditoriasTotales}</strong> auditoría(s) • <strong className="text-gray-700">{p.estadisticas.horasAsignadas}h</strong> asignadas en la vigencia
                       </span>
                       <span>
-                        Cap: {p.configuracion.capacidadMaximaAuditorias} aud. • {p.configuracion.horasMensualesDisponibles}h/mes
+                        Meta Anual: {p.estadisticas.capacidadAnual} aud. • {p.estadisticas.horasAnualesDisponibles}h/año
                       </span>
                     </div>
                   </div>
