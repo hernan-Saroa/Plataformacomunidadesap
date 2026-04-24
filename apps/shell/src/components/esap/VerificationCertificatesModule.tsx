@@ -44,7 +44,9 @@ import {
   Loader2,
   PencilLine,
   RotateCcw,
-  Save
+  Save,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '../ui/card';
@@ -55,6 +57,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
+import { Checkbox } from '../ui/checkbox';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -76,6 +79,7 @@ import graduadosService, {
 import estructuraService from '../../services/estructuraService';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
+import { buildServiceAssetUrl } from '../../config/environment';
 
 // Tipo de certificado con QR único (uno por solicitud)
 interface CertificateRequest {
@@ -180,6 +184,15 @@ const TEMPLATE_TEXT_FIELDS: Array<{
   { key: 'validationMessage', label: 'Mensaje de validacion', rows: 2 },
 ];
 
+const DEFAULT_TEMPLATE_SIGNATURE_FORM = {
+  enabled: false,
+  signerName: '',
+  signatureUrl: '',
+  signatureFilename: '',
+  signatureImageDataUrl: '',
+  signatureImageFilename: '',
+};
+
 export function VerificationCertificatesModule({ onPendingCountChange }: VerificationCertificatesModuleProps = {}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -195,6 +208,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [qrPreviewCertificate, setQrPreviewCertificate] = useState<CertificateRecord | null>(null);
   const qrCanvasRef = useRef<HTMLDivElement>(null);
   const validationUrlCodeRef = useRef<HTMLElement | null>(null);
+  const [qrModalViewport, setQrModalViewport] = useState({ width: 0, height: 0 });
   const isLoadingCertificatesRef = useRef(false);
   const lastCertificatesLoadAtRef = useRef(0);
   const FOCUS_RELOAD_COOLDOWN_MS = 20000;
@@ -221,6 +235,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     useState<GraduationCertificateTemplateTexts>(
       DEFAULT_CERTIFICATE_TEMPLATE_TEXTS,
     );
+  const [templateSignatureForm, setTemplateSignatureForm] = useState(
+    DEFAULT_TEMPLATE_SIGNATURE_FORM,
+  );
   const [editCertificateForm, setEditCertificateForm] = useState({
     fullName: '',
     idNumber: '',
@@ -584,6 +601,37 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   }, [loadCertificates]);
 
   useEffect(() => {
+    if (!isQrModalOpen) {
+      return;
+    }
+
+    const updateQrViewport = () => {
+      setQrModalViewport({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
+
+    updateQrViewport();
+    window.addEventListener('resize', updateQrViewport);
+    return () => window.removeEventListener('resize', updateQrViewport);
+  }, [isQrModalOpen]);
+
+  const qrDisplaySize = useMemo(() => {
+    const viewportWidth = qrModalViewport.width || 1280;
+    const viewportHeight = qrModalViewport.height || 900;
+    const dynamicSize = Math.min(
+      172,
+      Math.floor(viewportWidth * 0.3),
+      Math.floor(viewportHeight * 0.22),
+    );
+
+    return Math.max(128, dynamicSize);
+  }, [qrModalViewport.height, qrModalViewport.width]);
+  const qrCardWidth = qrDisplaySize + 52;
+  const qrCardMinHeight = qrDisplaySize + 60;
+
+  useEffect(() => {
     if (!isQrModalOpen || !qrPreviewCertificate?.id) {
       return;
     }
@@ -919,6 +967,57 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     );
   };
 
+  const getSignatureFormFromConfig = (
+    config?: GraduationCertificateTemplateConfig | null,
+  ) => ({
+    enabled: Boolean(config?.electronicSignature?.enabled),
+    signerName: config?.electronicSignature?.signerName || '',
+    signatureUrl: config?.electronicSignature?.signatureUrl || '',
+    signatureFilename: config?.electronicSignature?.signatureFilename || '',
+    signatureImageDataUrl: '',
+    signatureImageFilename: '',
+  });
+
+  const handleSignatureFileChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+
+    const allowedTypes = new Set(['image/png', 'image/jpeg']);
+    if (!allowedTypes.has(file.type)) {
+      toast.error('La firma debe ser una imagen PNG o JPEG');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('La imagen de la firma debe pesar maximo 2 MB');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      if (!result) {
+        toast.error('No se pudo leer la imagen de la firma');
+        return;
+      }
+      setTemplateSignatureForm((prev) => ({
+        ...prev,
+        enabled: true,
+        signatureImageDataUrl: result,
+        signatureImageFilename: file.name,
+        signatureFilename: file.name,
+      }));
+    };
+    reader.onerror = () => {
+      toast.error('No se pudo leer la imagen de la firma');
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleOpenTemplateEditor = async () => {
     setIsTemplateEditorOpen(true);
     setIsLoadingTemplateConfig(true);
@@ -927,10 +1026,12 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       const config = await graduadosService.plantilla.obtenerConfiguracion();
       setTemplateConfig(config);
       setTemplateForm(config?.texts || DEFAULT_CERTIFICATE_TEMPLATE_TEXTS);
+      setTemplateSignatureForm(getSignatureFormFromConfig(config));
     } catch (error: any) {
       console.error('Error cargando plantilla academica:', error);
       setTemplateConfig(null);
       setTemplateForm(DEFAULT_CERTIFICATE_TEMPLATE_TEXTS);
+      setTemplateSignatureForm(DEFAULT_TEMPLATE_SIGNATURE_FORM);
       toast.error('No se pudo cargar la plantilla', {
         description: error?.response?.data?.message || error?.message,
       });
@@ -960,14 +1061,42 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       return;
     }
 
+    if (templateSignatureForm.enabled) {
+      if (!templateSignatureForm.signerName.trim()) {
+        toast.error('El nombre del firmante es obligatorio');
+        return;
+      }
+      if (
+        !templateSignatureForm.signatureImageDataUrl &&
+        !templateSignatureForm.signatureUrl
+      ) {
+        toast.error('La imagen de la firma es obligatoria');
+        return;
+      }
+    }
+
     setIsSavingTemplateConfig(true);
     try {
       const response = await graduadosService.plantilla.actualizarTextos({
         ...templateForm,
+        electronicSignatureEnabled: templateSignatureForm.enabled,
+        signerName: templateSignatureForm.enabled
+          ? templateSignatureForm.signerName.trim()
+          : undefined,
+        signatureImageDataUrl:
+          templateSignatureForm.enabled &&
+          templateSignatureForm.signatureImageDataUrl
+            ? templateSignatureForm.signatureImageDataUrl
+            : undefined,
+        signatureFilename:
+          templateSignatureForm.signatureImageFilename ||
+          templateSignatureForm.signatureFilename ||
+          undefined,
         updatedBy: resolveTemplateActor(),
       });
       setTemplateConfig(response);
       setTemplateForm(response.texts);
+      setTemplateSignatureForm(getSignatureFormFromConfig(response));
       toast.success('Plantilla actualizada', {
         description:
           'Los textos del certificado de registro academico quedaron guardados.',
@@ -990,6 +1119,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       );
       setTemplateConfig(response);
       setTemplateForm(response.texts);
+      setTemplateSignatureForm(getSignatureFormFromConfig(response));
       toast.success('Textos restablecidos', {
         description: 'Se recupero la plantilla base del certificado.',
       });
@@ -1565,8 +1695,34 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   }, [certificates]);
   const hasTemplateChanges = useMemo(() => {
     const baseTexts = templateConfig?.texts || DEFAULT_CERTIFICATE_TEMPLATE_TEXTS;
-    return JSON.stringify(baseTexts) !== JSON.stringify(templateForm);
-  }, [templateConfig?.texts, templateForm]);
+    const baseSignature = getSignatureFormFromConfig(templateConfig);
+    const signatureChanged =
+      baseSignature.enabled !== templateSignatureForm.enabled ||
+      baseSignature.signerName !== templateSignatureForm.signerName ||
+      baseSignature.signatureUrl !== templateSignatureForm.signatureUrl ||
+      Boolean(templateSignatureForm.signatureImageDataUrl);
+
+    return (
+      JSON.stringify(baseTexts) !== JSON.stringify(templateForm) ||
+      signatureChanged
+    );
+  }, [templateConfig, templateForm, templateSignatureForm]);
+
+  const signaturePreviewUrl = useMemo(() => {
+    if (templateSignatureForm.signatureImageDataUrl) {
+      return templateSignatureForm.signatureImageDataUrl;
+    }
+    if (templateSignatureForm.signatureUrl) {
+      if (/^data:image\/(png|jpe?g);base64,/i.test(templateSignatureForm.signatureUrl)) {
+        return templateSignatureForm.signatureUrl;
+      }
+      return buildServiceAssetUrl(
+        'registro-academico',
+        templateSignatureForm.signatureUrl,
+      );
+    }
+    return '';
+  }, [templateSignatureForm.signatureImageDataUrl, templateSignatureForm.signatureUrl]);
 
   return (
     <div className="space-y-6">
@@ -2708,6 +2864,90 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         )}
                       </div>
                     ))}
+                    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          id="template-electronic-signature"
+                          checked={templateSignatureForm.enabled}
+                          onCheckedChange={(checked) =>
+                            setTemplateSignatureForm((prev) => ({
+                              ...prev,
+                              enabled: checked === true,
+                            }))
+                          }
+                          disabled={isSavingTemplateConfig}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <Label
+                            htmlFor="template-electronic-signature"
+                            className="text-sm font-semibold text-gray-900"
+                          >
+                            Incluir firma electronica
+                          </Label>
+                          <p className="mt-1 text-xs text-gray-500">
+                            La firma se aplicara a los certificados generados despues de guardar esta plantilla.
+                          </p>
+                        </div>
+                      </div>
+
+                      {templateSignatureForm.enabled && (
+                        <div className="grid grid-cols-1 gap-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+                          <div className="space-y-2">
+                            <Label htmlFor="template-signer-name">
+                              Nombre del firmante
+                            </Label>
+                            <Input
+                              id="template-signer-name"
+                              value={templateSignatureForm.signerName}
+                              onChange={(event) =>
+                                setTemplateSignatureForm((prev) => ({
+                                  ...prev,
+                                  signerName: event.target.value,
+                                }))
+                              }
+                              placeholder="Nombre completo del firmante"
+                              disabled={isSavingTemplateConfig}
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Imagen de la firma</Label>
+                            <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-blue-200 bg-white px-4 py-5 text-center transition-colors hover:border-blue-400">
+                              <input
+                                type="file"
+                                accept="image/png,image/jpeg"
+                                className="hidden"
+                                onChange={handleSignatureFileChange}
+                                disabled={isSavingTemplateConfig}
+                              />
+                              <Upload className="mb-2 h-5 w-5 text-blue-600" />
+                              <span className="text-sm font-semibold text-gray-900">
+                                Subir firma PNG o JPEG
+                              </span>
+                              <span className="mt-1 text-xs text-gray-500">
+                                Maximo 2 MB. Se ajustara al espacio del certificado.
+                              </span>
+                            </label>
+
+                            {signaturePreviewUrl ? (
+                              <div className="rounded-lg border border-gray-200 bg-white p-3">
+                                <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-600">
+                                  <ImageIcon className="h-4 w-4 text-blue-600" />
+                                  {templateSignatureForm.signatureImageFilename ||
+                                    templateSignatureForm.signatureFilename ||
+                                    'Firma cargada'}
+                                </div>
+                                <img
+                                  src={signaturePreviewUrl}
+                                  alt="Vista previa de la firma"
+                                  className="h-16 max-w-[260px] object-contain object-left"
+                                />
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -2811,9 +3051,25 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             <p className="whitespace-pre-line text-[15px] text-gray-900">
                               {templateForm.closingText}
                             </p>
-                            <p className="mt-8 whitespace-pre-line text-[16px] font-semibold text-gray-900">
-                              {templateForm.signerTitle}
-                            </p>
+                            {templateSignatureForm.enabled && signaturePreviewUrl ? (
+                              <div className="mt-4">
+                                <img
+                                  src={signaturePreviewUrl}
+                                  alt="Firma electronica"
+                                  className="h-14 max-w-[220px] object-contain object-left"
+                                />
+                                <p className="mt-2 text-[15px] font-semibold leading-5 text-gray-900">
+                                  {templateSignatureForm.signerName || 'Nombre del firmante'}
+                                </p>
+                                <p className="text-[15px] font-semibold leading-5 text-gray-900">
+                                  Director(a) de Direccion Tecnica Registro y Control
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="mt-8 whitespace-pre-line text-[16px] font-semibold text-gray-900">
+                                {templateForm.signerTitle}
+                              </p>
+                            )}
                           </div>
 
                           <div className="flex flex-col items-center rounded-lg border border-gray-200 bg-white p-2">
@@ -2959,43 +3215,57 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
       {/* Modal: Ver Código QR Único */}
       <Dialog open={isQrModalOpen} onOpenChange={setIsQrModalOpen}>
-        <DialogContent className="w-[92vw] max-w-2xl max-h-[80vh] overflow-y-auto top-1/2 -translate-y-1/2">
+        <DialogContent className="w-[calc(100vw-1rem)] sm:w-[92vw] max-w-2xl max-h-[calc(100vh-1rem)] sm:max-h-[90vh] overflow-hidden top-2 sm:top-1/2 sm:-translate-y-1/2 grid-rows-[auto,minmax(0,1fr),auto] p-3 sm:p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 pr-8 text-base leading-snug sm:text-lg">
               <QrCode className="w-5 h-5 text-amber-600" />
               Código QR Único - Validación Pública
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="pr-8 text-xs leading-relaxed sm:text-sm">
               Este QR permite que cualquier persona valide la autenticidad del certificado. Cada escaneo queda registrado en el historial.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="py-4 space-y-4">
+          <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain pr-1 py-2 sm:py-4">
             {/* QR Placeholder + Estado */}
-            <div className={`${qrPreviewCertificate?.status === 'active' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-6`}>
+            <div className={`${qrPreviewCertificate?.status === 'active' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-4 sm:p-6`}>
               <div className="flex flex-col items-center text-center">
                 {/* QR real */}
-                <div 
-                  className="w-48 h-48 rounded-xl flex items-center justify-center mb-4"
-                  style={{
-                    background: '#FFFFFF',
-                    border: '2px solid #D1D5DB'
-                  }}
-                >
-                  <div className="text-center p-2">
-                    {qrPreviewCertificate?.qrCode ? (
-                      <QRCodeSVG
-                        value={getPublicValidationUrl(qrPreviewCertificate.qrCode)}
-                        size={160}
-                        level="M"
-                        includeMargin
-                      />
-                    ) : (
-                      <QrCode className="w-32 h-32 mx-auto" style={{ color: '#9CA3AF' }} />
-                    )}
-                    <p className="text-xs font-mono font-semibold mt-2" style={{ color: '#6B7280' }}>
-                      {qrPreviewCertificate?.qrCode || 'Sin codigo'}
-                    </p>
+                <div className="mb-4 flex w-full justify-center">
+                  <div
+                    className="flex flex-none items-center justify-center rounded-xl bg-white p-3 shadow-sm"
+                    style={{
+                      border: '2px solid #D1D5DB',
+                      minHeight: `${qrCardMinHeight}px`,
+                      minWidth: `${qrCardWidth}px`,
+                      width: `${qrCardWidth}px`,
+                    }}
+                  >
+                    <div className="flex min-w-0 flex-col items-center text-center">
+                      {qrPreviewCertificate?.qrCode ? (
+                        <QRCodeSVG
+                          value={getPublicValidationUrl(qrPreviewCertificate.qrCode)}
+                          size={qrDisplaySize}
+                          level="M"
+                          includeMargin
+                          className="block flex-none"
+                          style={{
+                            height: `${qrDisplaySize}px`,
+                            minHeight: `${qrDisplaySize}px`,
+                            minWidth: `${qrDisplaySize}px`,
+                            width: `${qrDisplaySize}px`,
+                          }}
+                        />
+                      ) : (
+                        <QrCode className="w-32 h-32 mx-auto" style={{ color: '#9CA3AF' }} />
+                      )}
+                      <p
+                        className="mt-2 break-all text-[10px] font-mono font-semibold leading-tight sm:text-xs"
+                        style={{ color: '#6B7280', maxWidth: `${qrDisplaySize}px` }}
+                      >
+                        {qrPreviewCertificate?.qrCode || 'Sin codigo'}
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -3012,16 +3282,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
                 {/* Badge de Estado */}
                 {qrPreviewCertificate?.status === 'active' ? (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-green-100 border-2 border-green-300 rounded-lg">
+                  <div className="flex max-w-full items-center justify-center gap-2 rounded-lg border-2 border-green-300 bg-green-100 px-3 py-2 sm:px-4">
                     <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></div>
-                    <span className="font-semibold text-sm text-green-800">
+                    <span className="text-center text-xs font-semibold text-green-800 sm:text-sm">
                       ✅ QR ACTIVO PARA VALIDACIÓN
                     </span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 px-4 py-2 bg-red-100 border-2 border-red-300 rounded-lg">
+                  <div className="flex max-w-full items-center justify-center gap-2 rounded-lg border-2 border-red-300 bg-red-100 px-3 py-2 sm:px-4">
                     <XCircle className="w-4 h-4 text-red-600" />
-                    <span className="font-semibold text-sm text-red-800">
+                    <span className="text-center text-xs font-semibold text-red-800 sm:text-sm">
                       ❌ QR INACTIVO
                     </span>
                   </div>

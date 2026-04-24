@@ -9,8 +9,46 @@ import {
   IsArray,
   IsDateString,
 } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { Type, Transform, plainToInstance } from 'class-transformer';
 import { NewsOrigin } from '../entities/disciplinary-news.entity';
+
+const toPersonInfoDto = (value: unknown): PersonInfoDto | null => {
+  if (typeof value === 'string') {
+    try {
+      return plainToInstance(PersonInfoDto, JSON.parse(value));
+    } catch {
+      return null;
+    }
+  }
+
+  if (value && typeof value === 'object') {
+    return plainToInstance(PersonInfoDto, value);
+  }
+
+  return null;
+};
+
+export class ApoderadoDto {
+  @IsOptional()
+  @IsString()
+  nombre?: string;
+
+  @IsOptional()
+  @IsString()
+  cedula?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  telefono?: string;
+
+  @IsOptional()
+  @IsString()
+  direccion?: string;
+}
 
 export class PersonInfoDto {
   @IsString()
@@ -44,36 +82,12 @@ export class PersonInfoDto {
   @IsString()
   entidad?: string;
 
-  // ✅ NUEVO: Campo opcional para almacenar información del apoderado
-  // @IsOptional()
-  // @IsObject()
-  // @ValidateNested()
-  // @Type(() => ApoderadoDto)
-  // apoderado?: ApoderadoDto;
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => ApoderadoDto)
+  apoderado?: ApoderadoDto;
 }
-
-// ✅ NUEVO: DTO para información del apoderado
-// export class ApoderadoDto {
-//   @IsOptional()
-//   @IsString()
-//   nombre?: string;
-
-//   @IsOptional()
-//   @IsString()
-//   cedula?: string;
-
-//   @IsOptional()
-//   @IsEmail()
-//   email?: string;
-
-//   @IsOptional()
-//   @IsString()
-//   telefono?: string;
-
-//   @IsOptional()
-//   @IsString()
-//   direccion?: string;
-// }
 
 export class CreateDisciplinaryNewsDto {
   @IsEnum(NewsOrigin)
@@ -99,30 +113,16 @@ export class CreateDisciplinaryNewsDto {
 
   @IsOptional()
   @IsObject()
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      try {
-        return JSON.parse(value);
-      } catch {
-        return null;
-      }
-    }
-    return value;
-  })
+  @ValidateNested()
+  @Type(() => PersonInfoDto)
+  @Transform(({ value }) => toPersonInfoDto(value))
   denunciante: PersonInfoDto;
 
   @IsOptional()
   @IsObject()
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      try {
-        return JSON.parse(value);
-      } catch {
-        return null;
-      }
-    }
-    return value;
-  })
+  @ValidateNested()
+  @Type(() => PersonInfoDto)
+  @Transform(({ value }) => toPersonInfoDto(value))
   disciplinable: PersonInfoDto;
 
   @IsString()

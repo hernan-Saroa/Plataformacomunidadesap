@@ -132,7 +132,7 @@
         }
 
         .firma-seccion {
-            margin-top: 0.6cm;
+            margin-top: 0.35cm;
             text-align: left;
             padding-left: 0.4cm;
         }
@@ -140,6 +140,21 @@
         .firma-nombre {
             font-weight: bold;
             font-size: 10.5pt;
+        }
+
+        .firma-img {
+            display: block;
+            width: 4.4cm;
+            height: 1.15cm;
+            object-fit: contain;
+            object-position: left center;
+            margin-bottom: 0.08cm;
+        }
+
+        .firma-cargo {
+            font-weight: bold;
+            font-size: 10.5pt;
+            line-height: 1.25;
         }
 
         .validacion-url {
@@ -241,10 +256,7 @@
                     <p>{{CLOSING_TEXT}}</p>
                 </div>
 
-                <!-- Firma -->
-                <div class="firma-seccion">
-                    <div class="firma-nombre">{{SIGNER_TITLE}}</div>
-                </div>
+                {{SIGNATURE_BLOCK}}
             </div>
 
             <!-- Código QR -->

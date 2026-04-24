@@ -261,6 +261,12 @@ export interface GraduationCertificateTemplateConfig {
   status: string;
   updatedAt?: string;
   updatedBy?: string;
+  electronicSignature?: {
+    enabled: boolean;
+    signerName: string;
+    signatureUrl: string;
+    signatureFilename: string;
+  };
   texts: GraduationCertificateTemplateTexts;
 }
 
@@ -683,6 +689,10 @@ const graduadosService = {
     actualizarTextos: async (
       payload: Partial<GraduationCertificateTemplateTexts> & {
         updatedBy?: string;
+        electronicSignatureEnabled?: boolean;
+        signerName?: string;
+        signatureImageDataUrl?: string;
+        signatureFilename?: string;
       },
     ): Promise<GraduationCertificateTemplateConfig> => {
       const response = await apiClient.post(
