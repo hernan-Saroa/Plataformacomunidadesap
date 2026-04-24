@@ -50,7 +50,6 @@ BEGIN
     AND ur.is_active = true
     AND rp.is_active = true
     AND p.is_active = true
-    AND u.is_active = true
     AND r.is_active = true
   ORDER BY u.username,
     CASE
