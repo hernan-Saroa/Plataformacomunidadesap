@@ -24,7 +24,12 @@
 import React, { useState, useRef } from 'react';
 import { X, Check, Users, MessageSquare, FileText, Send, AlertCircle, Workflow, Info, Upload } from 'lucide-react';
 import { toast } from 'sonner';
-import { type EstadoKanban } from '../utils/esapThemeOCIG';
+import {
+  construirEtapasKanbanAuditoria,
+  type EstadoAuditoria,
+  normalizarTextoEstadoAuditoria,
+} from '../config/auditoriaKanbanCatalog';
+import { useKanbanConfig } from '../context/KanbanConfigContext';
 import { ModalBaseWorldClass } from '../ModalBaseWorldClass';
 import { motion } from 'motion/react';
 
@@ -442,72 +447,38 @@ export function ModalAprobarAuditoria({ isOpen, onClose, auditoriaId, onAprobar 
 // 3. MODAL CAMBIAR ESTADO - WORLD CLASS
 // ═════════════════════════════════════════════════════════════════════════
 
-// Helper para normalizar estado del backend al formato del modal
-const normalizarEstado = (estado: string | undefined): EstadoKanban => {
-  if (!estado) return 'planeacion';
-  const estadoLower = estado.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  if (estadoLower.includes('backlog') || estadoLower.includes('pendiente') || estadoLower.includes('plan anual') || estadoLower.includes('plan-anual')) return 'backlog';
-  if (estadoLower.includes('planeacion') || estadoLower.includes('planificacion')) return 'planeacion';
-  if (estadoLower.includes('ejecucion')) return 'ejecucion';
-  if (estadoLower.includes('comunicacion') || estadoLower.includes('informe')) return 'comunicacion';
-  if (estadoLower.includes('cerrado') || estadoLower.includes('finalizada') || estadoLower.includes('seguimiento')) return 'cerrado';
-  return 'planeacion';
-};
-
 interface ModalCambiarEstadoProps {
   isOpen: boolean;
   onClose: () => void;
   auditoriaId: string;
-  estadoActual: EstadoKanban | string;
-  onCambiar: (nuevoEstado: EstadoKanban) => void;
+  estadoActual: string;
+  onCambiar: (nuevoEstado: EstadoAuditoria) => void;
 }
 
 export function ModalCambiarEstado({ isOpen, onClose, auditoriaId, estadoActual, onCambiar }: ModalCambiarEstadoProps) {
-  // Normalizar el estado actual
-  const estadoNormalizado = normalizarEstado(estadoActual as string);
-  const [nuevoEstado, setNuevoEstado] = useState<EstadoKanban>(estadoNormalizado);
+  const kanbanConfig = useKanbanConfig();
+  const estadoNormalizado = normalizarTextoEstadoAuditoria(estadoActual);
+  const [nuevoEstado, setNuevoEstado] = useState<EstadoAuditoria>(estadoNormalizado);
 
-  // Actualizar cuando cambia el estado actual
   React.useEffect(() => {
-    setNuevoEstado(normalizarEstado(estadoActual as string));
+    setNuevoEstado(normalizarTextoEstadoAuditoria(estadoActual));
   }, [estadoActual]);
 
-  const estados: { value: EstadoKanban; label: string; color: string; descripcion: string }[] = [
-    { 
-      value: 'backlog', 
-      label: 'Backlog', 
-      color: '#E8F4F8',
-      descripcion: 'Auditorías pendientes de planificar'
-    },
-    { 
-      value: 'planeacion', 
-      label: 'Planeación', 
-      color: '#FEF9E7',
-      descripcion: 'En fase de planeación y preparación'
-    },
-    { 
-      value: 'ejecucion', 
-      label: 'Ejecución', 
-      color: '#D4EFDF',
-      descripcion: 'En proceso de ejecución activa'
-    },
-    { 
-      value: 'comunicacion', 
-      label: 'Comunicación', 
-      color: '#FADBD8',
-      descripcion: 'Comunicación de resultados'
-    },
-    { 
-      value: 'finalizada', 
-      label: 'Finalizada', 
-      color: '#D5DBDB',
-      descripcion: 'Auditoría finalizada (requiere documento de cierre)'
-    },
-  ];
+  const etapasEfectivas = React.useMemo(
+    () => construirEtapasKanbanAuditoria(kanbanConfig.loaded ? kanbanConfig.etapasKanban : undefined),
+    [kanbanConfig.loaded, kanbanConfig.etapasKanban],
+  );
+
+  const estados = etapasEfectivas.map((e) => ({
+    value: e.id,
+    label: e.titulo,
+    color: e.accentColor,
+    descripcion: e.descripcion,
+  }));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const estado = estados.find(e => e.value === nuevoEstado);
+    const estado = estados.find((item) => item.value === nuevoEstado);
     onCambiar(nuevoEstado);
     toast.success(`Estado cambiado exitosamente`, {
       description: `La auditoría ahora está en: ${estado?.label}`
@@ -569,7 +540,7 @@ export function ModalCambiarEstado({ isOpen, onClose, auditoriaId, estadoActual,
               name="estado"
               value={estado.value}
               checked={nuevoEstado === estado.value}
-              onChange={(e) => setNuevoEstado(e.target.value as EstadoKanban)}
+              onChange={(e) => setNuevoEstado(e.target.value as EstadoAuditoria)}
               className="w-5 h-5 text-[#003DA5] focus:ring-[#003DA5] cursor-pointer"
             />
             

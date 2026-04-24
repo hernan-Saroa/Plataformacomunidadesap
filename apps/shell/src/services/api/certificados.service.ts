@@ -401,7 +401,10 @@ export const certificadosService = {
     /**
      * Generar código de validación para el documento
      */
-    async generarCodigoValidacion(documento: string): Promise<{
+    async generarCodigoValidacion(
+      documento: string,
+      documentType?: string,
+    ): Promise<{
       mensaje: string;
       email: string;
       codigoTest?: string;
@@ -429,7 +432,10 @@ export const certificadosService = {
       };
     }> {
       return apiClient.post(`${SERVICE_PREFIX}/certificates/autoservicio/generar-codigo`,
-        { documento },
+        {
+          documento,
+          ...(documentType ? { documentType } : {}),
+        },
         { requiresAuth: false }
       );
     },
@@ -441,6 +447,7 @@ export const certificadosService = {
       documento: string,
       codigo: string,
       options?: {
+        documentType?: string;
         includeSalary?: boolean;
         includeTechnicalBonus?: boolean;
       },
@@ -452,6 +459,7 @@ export const certificadosService = {
         {
           documento,
           codigo,
+          ...(options?.documentType ? { documentType: options.documentType } : {}),
           ...(options?.includeSalary !== undefined ? { includeSalary: options.includeSalary } : {}),
           ...(options?.includeTechnicalBonus !== undefined ? { includeTechnicalBonus: options.includeTechnicalBonus } : {}),
         },

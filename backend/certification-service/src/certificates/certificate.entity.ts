@@ -22,6 +22,9 @@ export class Certificate {
   @Column({ length: 50 })
   id_number: string;
 
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  document_type: string | null;
+
   @Column({ length: 100 })
   career_category: string;
 

@@ -862,7 +862,11 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       }
 
       // Llamar al backend para verificar documento y generar código
-      const response = await certificadosService.autoservicio.generarCodigoValidacion(documentoIngresado);
+      const response =
+        await certificadosService.autoservicio.generarCodigoValidacion(
+          documentoIngresado,
+          tipoDocumento,
+        );
       if (!response || typeof response !== 'object') {
         setBuscandoEmpleado(false);
         toast.error('No pudimos generar el codigo en este momento. Intenta nuevamente.');
@@ -966,6 +970,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         numeroDocumento,
         codigoValidacion,
         {
+          documentType: tipoDocumento,
           includeSalary: incluirSalario,
           includeTechnicalBonus: incluirPrimaTecnica,
         }
@@ -1468,7 +1473,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                             </option>
                             <option value="CC">Cédula de Ciudadanía (CC)</option>
                             <option value="CE">Cédula de Extranjería (CE)</option>
-                            <option value="TI">Tarjeta de Identidad (TI)</option>
                             <option value="PP">Pasaporte (PP)</option>
                           </select>
                         ) : (
@@ -1485,7 +1489,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                             <SelectContent>
                               <SelectItem value="CC">Cédula de Ciudadanía (CC)</SelectItem>
                               <SelectItem value="CE">Cédula de Extranjería (CE)</SelectItem>
-                              <SelectItem value="TI">Tarjeta de Identidad (TI)</SelectItem>
                               <SelectItem value="PP">Pasaporte (PP)</SelectItem>
                             </SelectContent>
                           </Select>

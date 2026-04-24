@@ -40,6 +40,24 @@ import {
   CONFIGURACIONES_PREDEFINIDAS
 } from './SistemaEvidenciasActividades';
 
+/**
+ * El backend guarda responsables en jsonb (`responsables`) y/o en varchar (`responsable`).
+ * Si jsonb viene como `[]`, sigue siendo truthy en JS y el wizard no caía al fallback del objeto.
+ * Además jsonb puede serializarse como string en algunos caminos.
+ */
+function normalizarArrayResponsablesBackend(raw: unknown): unknown[] {
+  if (raw == null) return [];
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(raw) ? raw : [];
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
@@ -1402,28 +1420,43 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               };
             }
 
+            const responsableSingular: Auditor | null = (() => {
+              if (!act.responsable || act.responsable === 'Por asignar') return null;
+              const auditorEncontrado = auditores.find(a =>
+                a.nombre.toLowerCase() === act.responsable.toLowerCase()
+              );
+              if (auditorEncontrado) return auditorEncontrado;
+              return {
+                id: `temp-${act.responsable}`,
+                nombre: act.responsable,
+                cargo: 'Auditor',
+                email: ''
+              } as Auditor;
+            })();
+
+            const responsablesRaw = normalizarArrayResponsablesBackend(actExtendido.responsables);
+            let responsablesLista: Auditor[] = responsablesRaw.map((r: any) => ({
+              id: r.id,
+              nombre: r.nombre,
+              cargo: r.cargo || 'Auditor',
+              email: r.email || ''
+            }));
+            if (responsablesLista.length === 0 && responsableSingular) {
+              responsablesLista = [{
+                id: responsableSingular.id,
+                nombre: responsableSingular.nombre,
+                cargo: responsableSingular.cargo || 'Auditor',
+                email: responsableSingular.email || ''
+              }];
+            }
+
             return {
               id: act.id, // UUID string desde el backend
               nombre: act.nombre,
               descripcion: act.descripcion || '',
               fechaInicio: formatearFecha(act.fecha_inicio) || formatearFecha(act.fechaInicio),
               fechaFin: formatearFecha(act.fecha_fin) || formatearFecha(act.fechaFin),
-              // Responsable: buscar en auditores (case-insensitive) o crear objeto temporal
-              responsable: (() => {
-                if (!act.responsable || act.responsable === 'Por asignar') return null;
-                // Buscar en auditores con comparación case-insensitive
-                const auditorEncontrado = auditores.find(a => 
-                  a.nombre.toLowerCase() === act.responsable.toLowerCase()
-                );
-                if (auditorEncontrado) return auditorEncontrado;
-                // Si no se encuentra, crear un auditor temporal con el nombre del backend
-                return {
-                  id: `temp-${act.responsable}`,
-                  nombre: act.responsable,
-                  cargo: 'Auditor',
-                  email: ''
-                } as Auditor;
-              })(),
+              responsable: responsableSingular,
               porcentajeAvance: act.porcentaje_avance ?? 0,
               estado: estadoFront,
               control: actExtendido.control || '',
@@ -1448,13 +1481,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               })),
               bitacoraObservaciones: actExtendido.bitacoraObservaciones || [],
               activo: actExtendido.activo ?? act.activo ?? true,
-              // Múltiples responsables del backend
-              responsables: (actExtendido.responsables || []).map((r: any) => ({
-                id: r.id,
-                nombre: r.nombre,
-                cargo: r.cargo || 'Auditor',
-                email: r.email || ''
-              })),
+              responsables: responsablesLista,
               // Puntos de control persistidos
               puntosControl: actExtendido.puntos_control || [],
               frecuenciaPuntosControl: actExtendido.frecuencia_puntos_control || null,
@@ -1466,8 +1493,13 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                 completada: t.completada || false,
                 responsables: t.responsables || [],
                 fechaLimite: t.fechaLimite || t.fecha_limite || undefined,
+                fechaEntrega: t.fechaEntrega || t.fecha_entrega || t.fechaLimite || t.fecha_limite || undefined,
                 fechaCompletada: t.fechaCompletada || t.fecha_completada || undefined,
                 completadaPor: t.completadaPor || t.completada_por || undefined,
+                requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
+                requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
+                observaciones: t.observaciones || '',
+                adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
               })),
               fechaCorte: formatearFecha(actExtendido.fecha_corte) || '',
             };
@@ -1493,37 +1525,106 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       try {
         const response = await planAnualApi.getAll();
         if (response.data && Array.isArray(response.data)) {
-          // Transformar planes del backend al formato frontend
-          const planesTransformados = response.data.map((planBackend: any) => ({
-            ...planBackend,
-            id: planBackend.id,
-            vigencia: planBackend.año || planBackend.vigencia || new Date().getFullYear(),
-            version: planBackend.version || 1,
-            estado: (planBackend.estado?.toUpperCase().replace(/-/g, '_') || 'BORRADOR') as EstadoPlan,
-            nombrePlan:
-              planBackend.nombre
-              || planBackend.nombre_plan
-              || planBackend.titulo
-              || null,
-            totalActividades:
-              planBackend.total_actividades
-              || planBackend.totalActividades
-              || 0,
-            jefeOCI: {
-              id: planBackend.responsable_id || planBackend.jefe_oci_id || '',
-              nombre:
-                planBackend.responsable
-                || planBackend.responsable_nombre
-                || planBackend.jefe_oci
-                || 'No asignado',
-              cargo: planBackend.responsable_cargo || 'Responsable',
-              email: planBackend.responsable_email || ''
-            },
-            fechaAprobacion: planBackend.fecha_aprobacion || planBackend.fechaAprobacion || null,
-            fechaCreacion: planBackend.fecha_creacion || planBackend.createdAt || new Date().toISOString(),
-            actaCICC: planBackend.acta_cicc || planBackend.actaCICC || null,
-            roles: Array.isArray(planBackend.roles) ? planBackend.roles : [] // En listados puede venir vacío
-          }));
+          // Transformar planes del backend al formato frontend (normalizado para EDICIÓN en wizard)
+          const planesTransformados = response.data.map((planBackend: any) => {
+            const rolesOrdenados = Array.isArray(planBackend.roles)
+              ? [...planBackend.roles].sort((a: any, b: any) => (a.rol_numero || a.numero || 0) - (b.rol_numero || b.numero || 0))
+              : [];
+
+            const rolesNormalizados = rolesOrdenados.map((rol: any) => ({
+              id: rol.id,
+              numero: rol.rol_numero ?? rol.numero ?? 0,
+              nombre: rol.nombre || '',
+              color: rol.color || '#3B82F6',
+              icono: obtenerIconoRol(rol.rol_numero ?? rol.numero ?? 0),
+              descripcion: rol.descripcion || '',
+              actividades: (rol.actividades || []).map((act: any) => ({
+                id: act.id,
+                nombre: act.nombre || '',
+                descripcion: act.descripcion || '',
+                fechaInicio: String(act.fecha_inicio || act.fechaInicio || '').split('T')[0],
+                fechaFin: String(act.fecha_fin || act.fechaFin || '').split('T')[0],
+                fechaCorte: String(act.fecha_corte || act.fechaCorte || '').split('T')[0],
+                porcentajeAvance: act.porcentaje_avance ?? act.porcentajeAvance ?? 0,
+                estado: (act.estado || 'pendiente').toLowerCase() === 'completada'
+                  ? 'COMPLETADA'
+                  : (String(act.estado || '').toLowerCase().replace(/_/g, '-') === 'en-progreso' || String(act.estado || '').toLowerCase() === 'retrasada')
+                    ? 'EN_EJECUCION'
+                    : 'PENDIENTE',
+                control: act.control || '',
+                evaluacion: act.evaluacion || '',
+                seguimiento: act.seguimiento || '',
+                activo: act.activo ?? true,
+                ...(() => {
+                  const respSing =
+                    act.responsable && act.responsable !== 'Por asignar'
+                      ? { id: `temp-${act.responsable}`, nombre: act.responsable, cargo: 'Auditor', email: '' }
+                      : null;
+                  let respList = normalizarArrayResponsablesBackend(act.responsables).map((r: any) => ({
+                    id: r.id,
+                    nombre: r.nombre,
+                    cargo: r.cargo || 'Auditor',
+                    email: r.email || '',
+                  }));
+                  if (respList.length === 0 && respSing) {
+                    respList = [{ ...respSing }];
+                  }
+                  return { responsable: respSing, responsables: respList };
+                })(),
+                puntosControl: act.puntos_control || act.puntosControl || [],
+                frecuenciaPuntosControl: act.frecuencia_puntos_control || act.frecuenciaPuntosControl || null,
+                entradasSeguimiento: act.entradas_seguimiento || act.entradasSeguimiento || [],
+                tareasSeguimiento: (act.tareas_seguimiento || act.tareasSeguimiento || []).map((t: any) => ({
+                  id: t.id,
+                  descripcion: t.descripcion || '',
+                  completada: !!t.completada,
+                  responsables: t.responsables || [],
+                  fechaLimite: t.fechaLimite || t.fecha_limite || t.fechaEntrega || t.fecha_entrega || undefined,
+                  fechaEntrega: t.fechaEntrega || t.fecha_entrega || t.fechaLimite || t.fecha_limite || undefined,
+                  fechaCompletada: t.fechaCompletada || t.fecha_completada || undefined,
+                  completadaPor: t.completadaPor || t.completada_por || undefined,
+                  requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
+                  requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
+                  observaciones: t.observaciones || '',
+                  adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
+                })),
+              })),
+            }));
+
+            return {
+              ...planBackend,
+              id: planBackend.id,
+              vigencia: planBackend.año || planBackend.vigencia || new Date().getFullYear(),
+              version: planBackend.version || 1,
+              estado: (planBackend.estado?.toUpperCase().replace(/-/g, '_') || 'BORRADOR') as EstadoPlan,
+              nombrePlan:
+                planBackend.nombre
+                || planBackend.nombre_plan
+                || planBackend.titulo
+                || null,
+              totalActividades:
+                planBackend.total_actividades
+                || planBackend.totalActividades
+                || 0,
+              jefeOCI: {
+                id: planBackend.responsable_id || planBackend.jefe_oci_id || '',
+                nombre:
+                  planBackend.responsable
+                  || planBackend.responsable_nombre
+                  || planBackend.jefe_oci
+                  || 'No asignado',
+                cargo: planBackend.responsable_cargo || 'Responsable',
+                email: planBackend.responsable_email || ''
+              },
+              fechaAprobacion: planBackend.fecha_aprobacion || planBackend.fechaAprobacion || null,
+              fechaCreacion: planBackend.fecha_creacion || planBackend.createdAt || new Date().toISOString(),
+              actaCICC: planBackend.acta_cicc || planBackend.actaCICC || null,
+              // ✅ Campos en camelCase para que WizardCreacion los use correctamente
+              equipoAprobacion: planBackend.equipo_aprobacion || planBackend.equipoAprobacion || [],
+              ordenAprobacion: planBackend.orden_aprobacion || planBackend.ordenAprobacion || 'secuencial',
+              roles: rolesNormalizados
+            };
+          });
           setPlanesAnteriores(planesTransformados);
         }
       } catch (error) {
@@ -1582,8 +1683,10 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       console.log(`   📊 TOTAL ESPERADO: ${totalActividadesEsperadas} actividades, ${totalTareasEsperadas} tareas`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
+      const esUUID = (v: unknown): v is string =>
+        typeof v === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(v);
       // Validar si el id es un UUID válido. Si no lo es, enviamos undefined para evitar el Error 400 del Backend.
-      const esIdUUID = jefeOCI.id && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(jefeOCI.id);
+      const esIdUUID = esUUID(jefeOCI.id);
 
       // Determinar si creamos o actualizamos
       let planCreado: any = null;
@@ -1602,13 +1705,133 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         
         if (resp.success) {
           planCreado = resp.data;
-          // NOTA: En este MVP de edición, solo actualizamos los datos generales del plan. 
-          // Si cambian las actividades desde el wizard, se requeriría una lógica de diffing
-          // o eliminar todas las actividades del plan y recrearlas, lo cual es riesgoso 
-          // si ya hay progreso. Para borrador, idealmente borraríamos y recrearíamos, 
-          // pero dejaremos que el wizard de edición funcione primariamente para datos del plan.
-          
-          toast.success('Plan actualizado exitosamente');
+
+          // Además de los datos generales del plan, sincronizar SOLO actividades modificadas.
+          const todasActividadesEdicion = rolesConfig.flatMap((rc: any) => [
+            ...(rc.actividadesSeleccionadas || []),
+            ...(rc.actividadesCustom || []),
+          ]);
+          const actividadesOriginales = (planAEditar?.roles || []).flatMap((r: any) => r.actividades || []);
+          const originalPorId = new Map<string, any>(
+            actividadesOriginales
+              .filter((a: any) => esUUID(a?.id))
+              .map((a: any) => [String(a.id), a])
+          );
+
+          const construirPayloadActividad = (act: any) => {
+            let configuracionEvidencias = act.configuracionEvidencias;
+            if (!configuracionEvidencias && act.tipoEvidencia) {
+              switch (act.tipoEvidencia) {
+                case 'SOLO_CHECK':
+                  configuracionEvidencias = {
+                    documentos: false, observaciones: false,
+                    adjuntosRequeridos: 'NO_REQUERIDO', observacionRequerida: 'NO_REQUERIDO',
+                    minimoAdjuntos: 0, longitudMinimaObservacion: 0
+                  };
+                  break;
+                case 'OBSERVACIONES':
+                  configuracionEvidencias = {
+                    documentos: false, observaciones: true,
+                    adjuntosRequeridos: 'OPCIONAL', observacionRequerida: 'OBLIGATORIO',
+                    minimoAdjuntos: 0, longitudMinimaObservacion: 30
+                  };
+                  break;
+                case 'ADJUNTOS':
+                  configuracionEvidencias = {
+                    documentos: true, observaciones: false,
+                    adjuntosRequeridos: 'OBLIGATORIO', observacionRequerida: 'OPCIONAL',
+                    minimoAdjuntos: 1, longitudMinimaObservacion: 0
+                  };
+                  break;
+                case 'COMPLETO':
+                  configuracionEvidencias = {
+                    documentos: true, observaciones: true,
+                    adjuntosRequeridos: 'OBLIGATORIO', observacionRequerida: 'OBLIGATORIO',
+                    minimoAdjuntos: 1, longitudMinimaObservacion: 30
+                  };
+                  break;
+              }
+            }
+            if (!configuracionEvidencias) {
+              configuracionEvidencias = {
+                documentos: false, observaciones: false,
+                adjuntosRequeridos: 'NO_REQUERIDO', observacionRequerida: 'NO_REQUERIDO',
+                minimoAdjuntos: 0, longitudMinimaObservacion: 0
+              };
+            }
+
+            const responsablesActividad = Array.isArray(act.responsables) ? act.responsables : [];
+            return {
+              nombre: act.nombre || '',
+              descripcion: act.descripcion || '',
+              responsable: responsablesActividad[0]?.nombre || act.responsable?.nombre || act.responsable || 'Por asignar',
+              responsables: responsablesActividad,
+              fecha_inicio: act.fechaInicio || undefined,
+              fecha_fin: act.fechaFin || undefined,
+              fecha_corte: act.fechaCorte || undefined,
+              configuracionEvidencias,
+              puntos_control: Array.isArray(act.puntosControl) ? act.puntosControl : [],
+              frecuencia_puntos_control: act.frecuenciaPuntosControl || undefined,
+              tareas_seguimiento: Array.isArray(act.tareasSeguimiento)
+                ? act.tareasSeguimiento.map((t: any) => ({
+                    id: t.id,
+                    descripcion: t.descripcion,
+                    completada: !!t.completada,
+                    responsables: t.responsables || [],
+                    fechaLimite: t.fechaEntrega || t.fechaLimite || t.fecha_limite || t.fecha_entrega || null,
+                    fechaCompletada: t.fechaCompletada || t.fecha_completada || undefined,
+                    completadaPor: t.completadaPor || t.completada_por || undefined,
+                    requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
+                    requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
+                    observaciones: t.observaciones || '',
+                    adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
+                  }))
+                : [],
+            };
+          };
+
+          let actividadesSincronizadas = 0;
+          let actividadesNoUuid = 0;
+          let actividadesConError = 0;
+          let actividadesSinCambios = 0;
+
+          const updatesPendientes: Array<{ id: string; payload: any }> = [];
+          for (const act of todasActividadesEdicion) {
+            if (!esUUID(act?.id)) {
+              actividadesNoUuid++;
+              continue;
+            }
+            const payloadNuevo = construirPayloadActividad(act);
+            const original = originalPorId.get(String(act.id));
+            if (original) {
+              const payloadOriginal = construirPayloadActividad(original);
+              if (JSON.stringify(payloadOriginal) === JSON.stringify(payloadNuevo)) {
+                actividadesSinCambios++;
+                continue;
+              }
+            }
+            updatesPendientes.push({ id: String(act.id), payload: payloadNuevo });
+          }
+
+          // Envío en lotes paralelos para reducir tiempo total sin saturar el backend.
+          const TAM_LOTE = 6;
+          for (let i = 0; i < updatesPendientes.length; i += TAM_LOTE) {
+            const lote = updatesPendientes.slice(i, i + TAM_LOTE);
+            const resultados = await Promise.allSettled(
+              lote.map((u) => actividadesApi.update(u.id, u.payload))
+            );
+            resultados.forEach((r, idx) => {
+              if (r.status === 'fulfilled' && r.value?.success) {
+                actividadesSincronizadas++;
+              } else {
+                actividadesConError++;
+                const id = lote[idx]?.id;
+                console.error('[handleCrearPlan] Error actualizando actividad en edición:', id, r);
+              }
+            });
+          }
+
+          toast.success('Plan guardado exitosamente');
           setPlanAEditar(undefined);
           return true;
         } else {

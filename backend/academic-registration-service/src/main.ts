@@ -2,9 +2,16 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
+  const requestBodyLimit = process.env.REQUEST_BODY_LIMIT ?? '8mb';
+
+  app.use(json({ limit: requestBodyLimit }));
+  app.use(urlencoded({ limit: requestBodyLimit, extended: true }));
 
   app.set('trust proxy', true);
 
