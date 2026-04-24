@@ -245,6 +245,7 @@ export function ModalProgramarAudiencia({
   };
 
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent hideCloseButton className="!max-w-[650px] !max-h-[72vh] overflow-y-auto flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">
@@ -686,5 +687,6 @@ export function ModalProgramarAudiencia({
       textoConfirmar="Sí, cancelar"
       textoCancelar="Seguir editando"
     />
+    </>
   );
 }
