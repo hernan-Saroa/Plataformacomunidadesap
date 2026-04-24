@@ -32,7 +32,8 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     ((import.meta.env.VITE_LOGIN_OPTIONS as string | undefined) || 'both')
       .trim()
       .toLowerCase();
-  const showCredentialLogin = loginOptions !== 'microsoft';
+  const showMicrosoftLogin = false;
+  const showCredentialLogin = !showMicrosoftLogin || loginOptions !== 'microsoft';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -420,47 +421,51 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
             </div>
 
             {/* Social Login Button */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="mb-5"
-            >
-              {microsoftLoginError && (
-                <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  {microsoftLoginError}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={() => handleSocialLogin('Microsoft')}
-                disabled={isLoading || isMicrosoftLoading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all group"
+            {showMicrosoftLogin && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="mb-5"
               >
-                <Building2 className="w-5 h-5 text-gray-600 group-hover:text-gray-900" />
-                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
-                  {isMicrosoftLoading ? 'Conectando con Microsoft...' : 'Iniciar sesión con Microsoft'}
-                </span>
-              </button>
-            </motion.div>
+                {microsoftLoginError && (
+                  <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    {microsoftLoginError}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => handleSocialLogin('Microsoft')}
+                  disabled={isLoading || isMicrosoftLoading}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all group"
+                >
+                  <Building2 className="w-5 h-5 text-gray-600 group-hover:text-gray-900" />
+                  <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
+                    {isMicrosoftLoading ? 'Conectando con Microsoft...' : 'Iniciar sesión con Microsoft'}
+                  </span>
+                </button>
+              </motion.div>
+            )}
 
             {showCredentialLogin && (
               <>
                 {/* Divider */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.5 }}
-                  className="relative mb-5"
-                >
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-300" />
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-4 bg-white text-gray-500">O continúa con tu correo</span>
-                  </div>
-                </motion.div>
+                {showMicrosoftLogin && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.5 }}
+                    className="relative mb-5"
+                  >
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-300" />
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-4 bg-white text-gray-500">O continúa con tu correo</span>
+                    </div>
+                  </motion.div>
+                )}
 
                 {/* Login Form */}
                 <motion.form

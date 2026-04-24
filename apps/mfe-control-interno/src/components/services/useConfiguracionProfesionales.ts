@@ -86,8 +86,8 @@ export interface EspecialidadOCIG {
 // Exportación de compatibilidad (se sobreescribe dinámicamente en el hook)
 export let ESPECIALIDADES_DISPONIBLES: string[] = [];
 
-// Roles OCIG (ahora siempre desde la API)
-export const ROLES_OCI_DEFAULT: readonly string[] = [];
+// Roles OCIG (ahora siempre desde la API, con fallback por si acaso)
+export const ROLES_OCI_DEFAULT: readonly string[] = ['Jefe OCIG', 'Auditor Sénior', 'Auditor', 'Auditor Júnior', 'Apoyo Técnico'];
 
 // Interfaz para roles con descripción desde la BD
 export interface RolOCIG {
@@ -195,13 +195,18 @@ export function useConfiguracionProfesionales() {
   // Estado
   const [usuariosControlInterno, setUsuariosControlInterno] = useState<UsuarioSistema[]>([]);
   const [configuracionesOCI, setConfiguracionesOCI] = useState<ConfiguracionOCI[]>([]);
-  const [rolesOCIG, setRolesOCIG] = useState<RolOCIG[]>([]);
-  const [rolesOCIGNames, setRolesOCIGNames] = useState<readonly string[]>(ROLES_OCI_DEFAULT);
-  const [especialidadesOCIG, setEspecialidadesOCIG] = useState<EspecialidadOCIG[]>([]);
-  const [especialidadesNames, setEspecialidadesNames] = useState<string[]>([...ESPECIALIDADES_DEFAULT]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Estados para datos dinámicos de la BD
+  const [rolesOCIG, setRolesOCIG] = useState<RolOCIG[]>([]);
+  const [rolesOCIGNames, setRolesOCIGNames] = useState<readonly string[]>([]);
+  const [especialidadesOCIG, setEspecialidadesOCIG] = useState<EspecialidadOCIG[]>([]);
+  const [especialidadesNames, setEspecialidadesNames] = useState<string[]>([]);
+
+  const [auditorias, setAuditorias] = useState<any[]>([]);
+  const [cargandoAuditorias, setCargandoAuditorias] = useState(false);
 
   // ══════════════════════════════════════════════════════════════════════════
   // CARGAR DATOS AL MONTAR
@@ -220,7 +225,10 @@ export function useConfiguracionProfesionales() {
         setRolesOCIGNames(nombres);
         ROLES_OCI = nombres;
         ROLES_OCIG = nombres;
-        console.log('✅ Roles OCIG cargados desde BD:', nombres);
+      } else {
+        setRolesOCIGNames(ROLES_OCI_DEFAULT);
+        ROLES_OCI = ROLES_OCI_DEFAULT;
+        ROLES_OCIG = ROLES_OCI_DEFAULT;
       }
 
       // 2. Cargar especialidades OCIG desde la BD (no hardcodeadas)
@@ -230,10 +238,9 @@ export function useConfiguracionProfesionales() {
         const nombresEsp = responseEsp.data.map(e => e.nombre);
         setEspecialidadesNames(nombresEsp);
         ESPECIALIDADES_DISPONIBLES = nombresEsp;
-        console.log('✅ Especialidades cargadas desde BD:', nombresEsp.length);
       }
 
-      // 2. Cargar usuarios candidatos de auth.personas (personas que AÚN NO están configuradas como OCI)
+      // 2. Cargar usuarios candidatos de auth.personas
       const responseUsuarios = await configuracionesProfesionalesOCIApi.buscarCandidatos();
       const personas = responseUsuarios.data || [];
       const usuarios = personas.map((p: any) => ({
@@ -255,10 +262,19 @@ export function useConfiguracionProfesionales() {
       const responseConfigs = await configuracionesProfesionalesOCIApi.getAll(true);
       const configuraciones = (responseConfigs.data || []).map(convertirConfigBackendALocal);
       setConfiguracionesOCI(configuraciones);
+
+      // 4. Cargar auditorías para estadísticas (Kanban trae todas las activas)
+      setCargandoAuditorias(true);
+      const respAuditorias = await auditoriasApi.getAllKanban();
+      if (respAuditorias.success && respAuditorias.data) {
+        setAuditorias(respAuditorias.data);
+      }
+      setCargandoAuditorias(false);
       
-      console.log('✅ Profesionales cargados:', {
+      console.log('✅ Profesionales y Auditorías cargados:', {
         usuariosCandidatos: usuarios.length,
-        configuracionesOCI: configuraciones.length
+        configuracionesOCI: configuraciones.length,
+        auditorias: (respAuditorias.data || []).length
       });
     } catch (err) {
       const mensaje = err instanceof Error ? err.message : 'Error al cargar profesionales';
@@ -274,14 +290,23 @@ export function useConfiguracionProfesionales() {
   }, [cargarDatos]);
 
   // ══════════════════════════════════════════════════════════════════════════
-  // PROFESIONALES OCI CON ESTADÍSTICAS
+  // PROFESIONALES OCI CON ESTADÍSTICAS REALES
   // ══════════════════════════════════════════════════════════════════════════
 
   const profesionalesOCI: ProfesionalOCI[] = useMemo(() => {
-    console.log('=== DEBUG profesionalesOCI ===');
-    console.log('configuracionesOCI:', configuracionesOCI.map(c => ({ id: c.id, idTercero: c.idTercero, nombre: c.nombre, activo: c.activo })));
-    console.log('usuariosControlInterno:', usuariosControlInterno.map(u => ({ id: u.id, idTercero: u.idTercero, nombre: u.nombre })));
-    
+    // Helpers para extracción de datos de equipo auditor (pueden ser strings o objetos)
+    const extraerNombre = (val: any): string => {
+      if (!val) return '';
+      if (typeof val === 'string') return val.toLowerCase().trim();
+      return (val.nombre || val.nombreCompleto || '').toLowerCase().trim();
+    };
+
+    const extraerId = (val: any): string => {
+      if (!val) return '';
+      if (typeof val === 'string') return val;
+      return val.id || val.usuarioId || val.idTercero || '';
+    };
+
     return configuracionesOCI
       .filter(config => config.activo)
       .map(config => {
@@ -306,29 +331,60 @@ export function useConfiguracionProfesionales() {
             roles: config.roles || encontrado?.roles || []
           };
         } else {
-          if (!encontrado) {
-            console.warn(`Config idTercero=${config.idTercero}: Sin datos - omitido`);
-            return null;
-          }
+          if (!encontrado) return null;
           usuario = encontrado;
         }
 
-        // TODO: Calcular estadísticas reales desde auditorías
+        // --- CÁLCULO DE ESTADÍSTICAS REALES ---
+        const nombreBusqueda = usuario.nombre.toLowerCase().trim();
+        const idTercero = String(config.idTercero);
+        const configId = config.id || '';
+
+        // Auditorías donde es líder
+        const comoLider = auditorias.filter(a => {
+          const liderNombre = extraerNombre(a.auditorLider);
+          const liderId = extraerId(a.auditorLiderId || a.auditorLider);
+          return liderNombre === nombreBusqueda || liderId === idTercero || liderId === configId;
+        });
+
+        // Auditorías donde está en el equipo (sin contar doble si es líder)
+        const comoEquipo = auditorias.filter(a => {
+          if (comoLider.some(l => l.id === a.id)) return false;
+          const equipo = a.equipoAuditor || a.equipo || [];
+          const equipoIds = a.equipoAuditorIds || [];
+          
+          return equipo.some((e: any) => extraerNombre(e) === nombreBusqueda || extraerId(e) === idTercero || extraerId(e) === configId) ||
+                 equipoIds.some((id: any) => String(id) === idTercero || String(id) === configId);
+        });
+
+        const auditoriasTotales = comoLider.length + comoEquipo.length;
+        const horasAsignadas = auditoriasTotales * 40; // Estimación simple si no hay horas en auditoría
+
+        // ✅ Normalización anual (para coincidir con UniversoAuditableUnificado)
+        const MESES_VIGENCIA = 12;
+        const capacidadAnual = (config.capacidadMaximaAuditorias || 4) * MESES_VIGENCIA;
+        const horasAnuales = (config.horasMensualesDisponibles || 150) * MESES_VIGENCIA;
+        
+        // El porcentaje se basa en auditorías activas vs capacidad ANUAL (porque las auditorías son hitos del plan anual)
+        const porcentajeCarga = capacidadAnual > 0 
+          ? Math.round((auditoriasTotales / capacidadAnual) * 100) 
+          : 0;
+
         return {
           usuario,
           configuracion: config,
           estadisticas: {
-            auditoriasTotales: 0,
-            auditoriasComoLider: 0,
-            auditoriasComoEquipo: 0,
-            cargaPonderada: 0,
-            porcentajeCarga: 0,
-            horasAsignadas: 0
+            auditoriasTotales,
+            auditoriasComoLider: comoLider.length,
+            auditoriasComoEquipo: comoEquipo.length,
+            cargaPonderada: auditoriasTotales,
+            porcentajeCarga: Math.min(porcentajeCarga, 100),
+            horasAsignadas
           }
         };
       })
       .filter((p): p is ProfesionalOCI => p !== null);
-  }, [configuracionesOCI, usuariosControlInterno]);
+  }, [configuracionesOCI, usuariosControlInterno, auditorias]);
 
   // Usuarios disponibles para agregar (tienen rol de Control Interno pero no están en OCI)
   const usuariosDisponiblesParaOCI = useMemo(() => {

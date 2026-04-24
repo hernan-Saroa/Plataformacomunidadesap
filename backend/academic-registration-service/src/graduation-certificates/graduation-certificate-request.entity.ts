@@ -91,7 +91,7 @@ export class GraduationCertificateRequest {
 
   // Estado
   @Column({ length: 50, default: 'PENDING' })
-  status: string; // PENDING, VALIDATED, PROCESSING, COMPLETED, REJECTED
+  status: string; // PENDING, VALIDATED, PROCESSING, COMPLETED, REJECTED, EXPIRED
 
   // Observaciones
   @Column({ type: 'text', nullable: true })

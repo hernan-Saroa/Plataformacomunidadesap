@@ -150,6 +150,11 @@ export function GraduatesManagementModule() {
   const MAX_FILES_PER_GRADUATE = 5;
   const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
   const MAX_UPLOAD_SIZE_LABEL = '10 MB';
+  const PERSON_NAME_MAX_LENGTH = 80;
+  const DOCUMENT_MIN_LENGTH = 5;
+  const DOCUMENT_MAX_LENGTH = 10;
+  const EMAIL_MAX_LENGTH = 254;
+  const REGISTRY_FIELD_MAX_LENGTH = 12;
   const PROGRAMAS_GRADUADOS = [
     'ADMINISTRACIÓN PÚBLICA',
     'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
@@ -219,8 +224,25 @@ export function GraduatesManagementModule() {
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
+  const normalizeSpaces = (value: string) => value.trim().replace(/\s+/g, ' ');
+  const sanitizeDigits = (value: string, maxLength: number) =>
+    value.replace(/\D+/g, '').slice(0, maxLength);
+  const sanitizePersonName = (value: string) =>
+    value.replace(/[^\p{L}\s.'-]+/gu, '').slice(0, PERSON_NAME_MAX_LENGTH);
+  const getPersonNameValidationError = (value: string, label: string) => {
+    if (!value) return `${label} es obligatorio`;
+    if (value.length < 2) return `${label} debe tener al menos 2 caracteres`;
+    if (value.length > PERSON_NAME_MAX_LENGTH) {
+      return `${label} no puede superar ${PERSON_NAME_MAX_LENGTH} caracteres`;
+    }
+    if (/\d/.test(value)) return `${label} no puede contener numeros`;
+    if (!/^[\p{L}\s.'-]+$/u.test(value) || !/\p{L}/u.test(value)) {
+      return `${label} solo puede contener letras, espacios, apostrofes, puntos o guiones`;
+    }
+    return '';
+  };
   const sanitizeRegistroInput = (value: string) => {
-    const digits = value.replace(/\D+/g, '').slice(0, 12);
+    const digits = sanitizeDigits(value, REGISTRY_FIELD_MAX_LENGTH);
     return /^0+$/.test(digits) ? '' : digits;
   };
   const formatRegistroInput = (value?: string) => {
@@ -1022,11 +1044,11 @@ export function GraduatesManagementModule() {
     const sanitizedPhone = (user.phone || '').replace(/\D+/g, '').slice(0, 10);
     setSelectedUser(user);
     setEditForm({
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      email: (user.email || '').trim(),
       phone: sanitizedPhone,
-      document: user.document,
+      document: user.document || '',
       program: isUnavailableProgram(user.program) ? '' : user.program || '',
       location: user.location,
       territorial:
@@ -1093,12 +1115,15 @@ export function GraduatesManagementModule() {
   // Handlers para confirmar acciones en modales
   const confirmEdit = async () => {
     if (!selectedUser) return;
-    const trimmedFirstName = editForm.firstName.trim();
-    const trimmedLastName = editForm.lastName.trim();
+    const trimmedFirstName = normalizeSpaces(editForm.firstName);
+    const trimmedLastName = normalizeSpaces(editForm.lastName);
     const trimmedDocument = editForm.document.trim();
     const trimmedEmail = editForm.email.trim();
     const trimmedProgram = editForm.program.trim();
     const trimmedLocation = editForm.location.trim();
+    const cleanNumRegistro = sanitizeRegistroInput(editForm.numRegistro);
+    const cleanNumFolio = sanitizeRegistroInput(editForm.numFolio);
+    const cleanNumLibro = sanitizeRegistroInput(editForm.numLibro);
     const effectiveTerritorial =
       (
         editForm.territorial ||
@@ -1106,28 +1131,37 @@ export function GraduatesManagementModule() {
           ? territorialBySede.get(normalizeKey(editForm.location))
           : '')
       ).trim();
-    if (!trimmedFirstName) {
-      toast.error('El nombre es obligatorio');
+    const firstNameError = getPersonNameValidationError(trimmedFirstName, 'El nombre');
+    if (firstNameError) {
+      toast.error(firstNameError);
       return;
     }
-    if (trimmedFirstName.length > 30) {
-      toast.error('El nombre no puede superar 30 caracteres');
-      return;
-    }
-    if (!trimmedLastName) {
-      toast.error('El apellido es obligatorio');
-      return;
-    }
-    if (trimmedLastName.length > 30) {
-      toast.error('El apellido no puede superar 30 caracteres');
+    const lastNameError = getPersonNameValidationError(trimmedLastName, 'El apellido');
+    if (lastNameError) {
+      toast.error(lastNameError);
       return;
     }
     if (!trimmedDocument) {
       toast.error('El documento es obligatorio');
       return;
     }
+    if (!/^\d+$/.test(trimmedDocument)) {
+      toast.error('El documento solo puede contener numeros');
+      return;
+    }
+    if (
+      trimmedDocument.length < DOCUMENT_MIN_LENGTH ||
+      trimmedDocument.length > DOCUMENT_MAX_LENGTH
+    ) {
+      toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} digitos`);
+      return;
+    }
     if (!trimmedEmail) {
       toast.error('El correo electronico es obligatorio');
+      return;
+    }
+    if (trimmedEmail.length > EMAIL_MAX_LENGTH) {
+      toast.error(`El correo electronico no puede superar ${EMAIL_MAX_LENGTH} caracteres`);
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -1160,9 +1194,9 @@ export function GraduatesManagementModule() {
         programName: trimmedProgram || selectedUser.program || '',
         campus: trimmedLocation || undefined,
         seccionalName: effectiveTerritorial || undefined,
-        numRegistro: editForm.numRegistro ? sanitizeRegistroInput(editForm.numRegistro) : undefined,
-        numFolio: editForm.numFolio ? sanitizeRegistroInput(editForm.numFolio) : undefined,
-        numLibro: editForm.numLibro ? sanitizeRegistroInput(editForm.numLibro) : undefined,
+        numRegistro: cleanNumRegistro || undefined,
+        numFolio: cleanNumFolio || undefined,
+        numLibro: cleanNumLibro || undefined,
       };
 
       await graduadosService.graduados.actualizar(selectedUser.id, payload);
@@ -1182,9 +1216,9 @@ export function GraduatesManagementModule() {
                 lastName: trimmedLastName,
                 email: trimmedEmail,
                 document: trimmedDocument,
-                numRegistro: editForm.numRegistro,
-                numFolio: editForm.numFolio,
-                numLibro: editForm.numLibro,
+                numRegistro: cleanNumRegistro,
+                numFolio: cleanNumFolio,
+                numLibro: cleanNumLibro,
                 program: trimmedProgram || graduate.program,
                 location: trimmedLocation || graduate.location,
                 territorial: updatedTerritorial || graduate.territorial,
@@ -2394,11 +2428,13 @@ export function GraduatesManagementModule() {
 
                 value={editForm.firstName}
 
-                onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, firstName: sanitizePersonName(e.target.value) })
+                }
 
                 placeholder="Nombre del graduado"
 
-                maxLength={30}
+                maxLength={PERSON_NAME_MAX_LENGTH}
 
                 required
 
@@ -2423,11 +2459,13 @@ export function GraduatesManagementModule() {
 
                 value={editForm.lastName}
 
-                onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, lastName: sanitizePersonName(e.target.value) })
+                }
 
                 placeholder="Apellido del graduado"
 
-                maxLength={30}
+                maxLength={PERSON_NAME_MAX_LENGTH}
 
                 required
 
@@ -2452,9 +2490,18 @@ export function GraduatesManagementModule() {
 
                 value={editForm.document}
 
-                onChange={(e) => setEditForm({ ...editForm, document: e.target.value })}
+                onChange={(e) =>
+                  setEditForm({
+                    ...editForm,
+                    document: sanitizeDigits(e.target.value, DOCUMENT_MAX_LENGTH),
+                  })
+                }
 
                 placeholder="Número de documento"
+
+                inputMode="numeric"
+
+                maxLength={DOCUMENT_MAX_LENGTH}
 
                 required
 
@@ -2520,9 +2567,13 @@ export function GraduatesManagementModule() {
 
                 value={editForm.email}
 
-                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, email: e.target.value.slice(0, EMAIL_MAX_LENGTH) })
+                }
 
                 placeholder="correo@ejemplo.com"
+
+                maxLength={EMAIL_MAX_LENGTH}
 
                 required
 
@@ -2631,6 +2682,8 @@ export function GraduatesManagementModule() {
 
                     inputMode="numeric"
 
+                    maxLength={REGISTRY_FIELD_MAX_LENGTH + 2}
+
                   />
 
                 </div>
@@ -2654,6 +2707,8 @@ export function GraduatesManagementModule() {
 
                     inputMode="numeric"
 
+                    maxLength={REGISTRY_FIELD_MAX_LENGTH + 2}
+
                   />
 
                 </div>
@@ -2676,6 +2731,8 @@ export function GraduatesManagementModule() {
                     }
 
                     inputMode="numeric"
+
+                    maxLength={REGISTRY_FIELD_MAX_LENGTH + 2}
 
                   />
 

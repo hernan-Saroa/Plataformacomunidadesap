@@ -695,7 +695,7 @@ export interface ReviewRequest {
   };
   
   // Estado de la solicitud
-  status: 'pending' | 'under_review' | 'approved' | 'rejected' | 'duplicate';
+  status: 'pending' | 'under_review' | 'approved' | 'rejected' | 'expired' | 'duplicate';
   
   // Fechas
   createdAt: string;
@@ -708,7 +708,7 @@ export interface ReviewRequest {
   adminNotes?: string;
   
   // Resolución
-  resolution?: 'graduate_found' | 'graduate_not_found' | 'invalid_data' | 'duplicate_request';
+  resolution?: 'graduate_found' | 'graduate_not_found' | 'invalid_data' | 'duplicate_request' | 'expired';
   resolutionDetails?: string;
   
   // Si se encuentra el graduado, se puede generar el certificado
@@ -730,6 +730,7 @@ export interface ReviewRequestStats {
   underReview: number;
   approved: number;
   rejected: number;
+  expired?: number;
   avgResolutionTime: number; // en horas
 }
 
