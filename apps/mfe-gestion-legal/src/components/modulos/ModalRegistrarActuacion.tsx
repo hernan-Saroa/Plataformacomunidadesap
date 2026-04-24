@@ -370,8 +370,8 @@ export function ModalRegistrarActuacion({
                         e.target.value = '';
                         return;
                       }
-                      if (file.size > 10 * 1024 * 1024) {
-                        toast.error('El archivo no puede superar los 10MB');
+                      if (file.size > 60 * 1024 * 1024) {
+                        toast.error('El archivo no puede superar los 60MB');
                         e.target.value = '';
                         return;
                       }
@@ -406,7 +406,7 @@ export function ModalRegistrarActuacion({
                         Haz clic para seleccionar un archivo
                       </span>
                       <span className="text-xs text-gray-400 mt-1">
-                        Solo archivos PDF (máx. 10MB)
+                        Solo archivos PDF (máx. 60MB)
                       </span>
                     </>
                   )}

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
+import { DialogoConfirmacion } from './DialogoConfirmacion';
 
 interface ModalProgramarAudienciaProps {
   isOpen: boolean;
@@ -84,6 +85,7 @@ export function ModalProgramarAudiencia({
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
   const [mostrarHistorial, setMostrarHistorial] = useState(false);
+  const [mostrarConfirmCancelar, setMostrarConfirmCancelar] = useState(false);
 
   // Sync state when audienciaExistente changes
   useEffect(() => {
@@ -230,16 +232,20 @@ export function ModalProgramarAudiencia({
    */
   const handleCancelar = () => {
     if (tipo || fecha || hora || lugar || abogadoResponsable) {
-      if (confirm('¿Estás seguro de cancelar? Se perderán los datos ingresados.')) {
-        limpiarFormulario();
-        onClose();
-      }
+      setMostrarConfirmCancelar(true);
     } else {
       onClose();
     }
   };
 
+  const confirmarCancelacion = () => {
+    limpiarFormulario();
+    setMostrarConfirmCancelar(false);
+    onClose();
+  };
+
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent hideCloseButton className="!max-w-[650px] !max-h-[72vh] overflow-y-auto flex flex-col p-0 gap-0">
         <DialogTitle className="sr-only">
@@ -670,5 +676,17 @@ export function ModalProgramarAudiencia({
         </div>
       </DialogContent>
     </Dialog>
+
+    <DialogoConfirmacion
+      isOpen={mostrarConfirmCancelar}
+      onClose={() => setMostrarConfirmCancelar(false)}
+      onConfirm={confirmarCancelacion}
+      titulo="Cancelar programación"
+      mensaje="¿Estás seguro de cancelar? Se perderán los datos ingresados en el formulario de audiencia."
+      tipo="advertencia"
+      textoConfirmar="Sí, cancelar"
+      textoCancelar="Seguir editando"
+    />
+    </>
   );
 }
