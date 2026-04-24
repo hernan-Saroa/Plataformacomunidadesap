@@ -2877,6 +2877,9 @@ export class GraduationCertificatesService {
     const parsedTexts =
       parseGraduationCertificateTemplateTexts(config.certificateContentHtml) ||
       DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS;
+    const hasSignature =
+      Boolean(config.signatureUrlOverride?.trim()) &&
+      Boolean(config.signerNameOverride?.trim());
 
     return {
       id: config.id,
@@ -2884,6 +2887,12 @@ export class GraduationCertificatesService {
       status: config.status,
       updatedAt: config.updatedAt,
       updatedBy: config.updatedBy,
+      electronicSignature: {
+        enabled: hasSignature,
+        signerName: config.signerNameOverride || '',
+        signatureUrl: config.signatureUrlOverride || '',
+        signatureFilename: config.signatureFilenameOverride || '',
+      },
       texts: normalizeGraduationCertificateTemplateTexts({
         ...parsedTexts,
         signerTitle: config.signerTitleOverride || parsedTexts.signerTitle,
@@ -2913,6 +2922,23 @@ export class GraduationCertificatesService {
 
     config.certificateContentHtml = nextSerialized;
     config.signerTitleOverride = nextTexts.signerTitle;
+
+    const previousSignature = {
+      enabled:
+        Boolean(config.signatureUrlOverride?.trim()) &&
+        Boolean(config.signerNameOverride?.trim()),
+      signerName: config.signerNameOverride || '',
+      signatureUrl: config.signatureUrlOverride || '',
+      signatureFilename: config.signatureFilenameOverride || '',
+    };
+
+    if (
+      typeof payload.electronicSignatureEnabled === 'boolean' ||
+      payload.signatureImageDataUrl !== undefined
+    ) {
+      await this.applyElectronicSignatureConfig(config, payload);
+    }
+
     config.status = 'published';
     config.isActive = true;
     config.updatedBy = actor;
@@ -2931,13 +2957,28 @@ export class GraduationCertificatesService {
 
     await this.templateConfigRepository.save(config);
 
+    const nextSignature = {
+      enabled:
+        Boolean(config.signatureUrlOverride?.trim()) &&
+        Boolean(config.signerNameOverride?.trim()),
+      signerName: config.signerNameOverride || '',
+      signatureUrl: config.signatureUrlOverride || '',
+      signatureFilename: config.signatureFilenameOverride || '',
+    };
+
     await this.templateConfigChangeRepository.save(
       this.templateConfigChangeRepository.create({
         templateConfigId: config.id,
         changeType: 'UPDATED_TEXTS',
         fieldChanged: 'certificate_template_texts',
-        oldValue: previousSerialized,
-        newValue: nextSerialized,
+        oldValue: JSON.stringify({
+          texts: previousSerialized,
+          electronicSignature: previousSignature,
+        }),
+        newValue: JSON.stringify({
+          texts: nextSerialized,
+          electronicSignature: nextSignature,
+        }),
         changedBy: actor,
         observations:
           'Actualizacion de textos de la plantilla de verificacion de titulos',
@@ -2959,6 +3000,14 @@ export class GraduationCertificatesService {
         signerTitle: config.signerTitleOverride || currentTexts.signerTitle,
       }),
     );
+    const previousSignature = {
+      enabled:
+        Boolean(config.signatureUrlOverride?.trim()) &&
+        Boolean(config.signerNameOverride?.trim()),
+      signerName: config.signerNameOverride || '',
+      signatureUrl: config.signatureUrlOverride || '',
+      signatureFilename: config.signatureFilenameOverride || '',
+    };
     const nextSerialized = serializeGraduationCertificateTemplateTexts(
       DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS,
     );
@@ -2966,6 +3015,9 @@ export class GraduationCertificatesService {
     config.certificateContentHtml = nextSerialized;
     config.signerTitleOverride =
       DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle;
+    config.signatureUrlOverride = null;
+    config.signatureFilenameOverride = null;
+    config.signerNameOverride = null;
     config.status = 'published';
     config.isActive = true;
     config.updatedBy = actor;
@@ -2978,8 +3030,19 @@ export class GraduationCertificatesService {
         templateConfigId: config.id,
         changeType: 'RESET_TEXTS',
         fieldChanged: 'certificate_template_texts',
-        oldValue: previousSerialized,
-        newValue: nextSerialized,
+        oldValue: JSON.stringify({
+          texts: previousSerialized,
+          electronicSignature: previousSignature,
+        }),
+        newValue: JSON.stringify({
+          texts: nextSerialized,
+          electronicSignature: {
+            enabled: false,
+            signerName: '',
+            signatureUrl: '',
+            signatureFilename: '',
+          },
+        }),
         changedBy: actor,
         observations:
           'Restablecimiento de textos predeterminados de la plantilla de verificacion de titulos',
@@ -2987,6 +3050,86 @@ export class GraduationCertificatesService {
     );
 
     return this.obtenerConfiguracionPlantillaCertificado();
+  }
+
+  private async applyElectronicSignatureConfig(
+    config: TemplateConfig,
+    payload: UpdateTemplateTextsDto,
+  ) {
+    if (payload.electronicSignatureEnabled === false) {
+      config.signatureUrlOverride = null;
+      config.signatureFilenameOverride = null;
+      config.signerNameOverride = null;
+      return;
+    }
+
+    const signerName = String(payload.signerName || '').trim();
+    const hasExistingSignature = Boolean(config.signatureUrlOverride?.trim());
+    const hasIncomingSignature = Boolean(payload.signatureImageDataUrl?.trim());
+
+    if (!signerName) {
+      throw new BadRequestException(
+        'El nombre del firmante es obligatorio cuando la firma electronica esta activa.',
+      );
+    }
+    if (signerName.length > 255) {
+      throw new BadRequestException(
+        'El nombre del firmante no puede superar 255 caracteres.',
+      );
+    }
+    if (!hasExistingSignature && !hasIncomingSignature) {
+      throw new BadRequestException(
+        'La imagen de la firma es obligatoria cuando la firma electronica esta activa.',
+      );
+    }
+
+    config.signerNameOverride = signerName;
+
+    if (hasIncomingSignature) {
+      const storedSignature = this.normalizeTemplateSignatureImage(
+        payload.signatureImageDataUrl!,
+        payload.signatureFilename,
+      );
+      config.signatureUrlOverride = storedSignature.dataUrl;
+      config.signatureFilenameOverride = storedSignature.filename;
+    }
+  }
+
+  private normalizeTemplateSignatureImage(
+    dataUrl: string,
+    originalFilename?: string,
+  ): { dataUrl: string; filename: string } {
+    const match = String(dataUrl || '').match(
+      /^data:(image\/png|image\/jpe?g);base64,([A-Za-z0-9+/=\r\n]+)$/i,
+    );
+    if (!match) {
+      throw new BadRequestException(
+        'La firma debe ser una imagen PNG o JPEG valida.',
+      );
+    }
+
+    const mimeType = match[1].toLowerCase();
+    const base64 = match[2].replace(/\s/g, '');
+    const buffer = Buffer.from(base64, 'base64');
+    if (!buffer.length || buffer.length > 2 * 1024 * 1024) {
+      throw new BadRequestException(
+        'La imagen de la firma debe pesar maximo 2 MB.',
+      );
+    }
+
+    const extension = mimeType === 'image/png' ? 'png' : 'jpg';
+    const safeBaseName = path
+      .basename(originalFilename || 'firma-electronica')
+      .replace(/\.[^.]+$/, '')
+      .replace(/[^a-zA-Z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60);
+    const filename = `${safeBaseName || 'firma-electronica'}.${extension}`;
+
+    return {
+      dataUrl: `data:${mimeType};base64,${base64}`,
+      filename,
+    };
   }
 
   /**
