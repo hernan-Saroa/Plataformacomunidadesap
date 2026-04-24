@@ -951,6 +951,11 @@ export class GraduationCertificatesService {
   ) {
     const graduate = request.graduate;
     const graduationDate = request.graduationDate;
+    const certificateFullName = this.resolveCertificateFullName(
+      request,
+      graduate,
+      request.fullName,
+    );
 
     if (!graduationDate) {
       throw new BadRequestException(
@@ -999,7 +1004,7 @@ export class GraduationCertificatesService {
       graduateId: graduate?.id,
       certificateNumber,
       verificationCode,
-      fullName: request.fullName,
+      fullName: certificateFullName,
       idNumber: request.idNumber,
       programName: request.programName,
       programType:
@@ -1132,12 +1137,18 @@ export class GraduationCertificatesService {
   async reenviarCertificado(id: string, frontendBaseUrl?: string) {
     const certificate = await this.certificateRepository.findOne({
       where: { id },
-      relations: ['request'],
+      relations: ['request', 'graduate'],
     });
 
     if (!certificate) {
       throw new NotFoundException('Certificado no encontrado');
     }
+
+    await this.syncAutomaticCertificateFullName(
+      certificate,
+      certificate.request,
+      certificate.graduate,
+    );
 
     let requesterEmail: string | undefined =
       certificate.request?.requesterEmail;
@@ -1537,6 +1548,44 @@ export class GraduationCertificatesService {
       return composedFromParts;
     }
     return (graduate.fullName || '').trim();
+  }
+
+  private resolveCertificateFullName(
+    request?: GraduationCertificateRequest | null,
+    graduate?: Graduate | null,
+    fallbackFullName?: string | null,
+  ): string {
+    const safeFallback = (fallbackFullName || request?.fullName || '').trim();
+    if (request?.manualReview) {
+      return safeFallback;
+    }
+
+    const graduateFullName = (graduate?.fullName || '').trim();
+    return graduateFullName || safeFallback;
+  }
+
+  private async syncAutomaticCertificateFullName(
+    certificate: GraduationCertificate,
+    request?: GraduationCertificateRequest | null,
+    graduate?: Graduate | null,
+  ): Promise<void> {
+    const resolvedFullName = this.resolveCertificateFullName(
+      request,
+      graduate,
+      certificate.fullName,
+    );
+    const currentFullName = (certificate.fullName || '').trim();
+
+    if (!resolvedFullName || resolvedFullName === currentFullName) {
+      return;
+    }
+
+    certificate.fullName = resolvedFullName;
+    Object.assign(certificate, {
+      pdfFilename: null,
+      pdfUrl: null,
+    });
+    await this.certificateRepository.save(certificate);
   }
 
   private buildGraduateSuggestions(

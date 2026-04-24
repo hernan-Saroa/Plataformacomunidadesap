@@ -134,6 +134,39 @@ export class CertificatesService {
     return raw.replace(/\s+/g, '').toUpperCase();
   }
 
+  private normalizeLaborDocumentType(
+    value?: string | null,
+    options: { strict?: boolean } = {},
+  ): 'CC' | 'CE' | 'PP' | null {
+    const raw = String(value || '').trim().toUpperCase();
+    if (!raw) return null;
+
+    if (raw === 'TI') {
+      if (options.strict) {
+        throw new BadRequestException(
+          'La Tarjeta de Identidad (TI) no esta habilitada para certificados laborales. Usa un documento de mayor de edad.',
+        );
+      }
+      return null;
+    }
+
+    if (raw === 'CC' || raw === 'CE') {
+      return raw;
+    }
+
+    if (raw === 'PP' || raw === 'PA' || raw === 'PAS') {
+      return 'PP';
+    }
+
+    if (options.strict) {
+      throw new BadRequestException(
+        'Tipo de documento invalido. Usa CC, CE o PP.',
+      );
+    }
+
+    return null;
+  }
+
   private toNullableText(value: unknown): string | null {
     if (value === null || value === undefined) return null;
     const text = String(value).trim();
@@ -1530,6 +1563,12 @@ export class CertificatesService {
     );
     const requestPayload: Partial<CertificateRequest> = {
       ...data,
+      document_type:
+        'document_type' in data
+          ? this.normalizeLaborDocumentType(data.document_type, {
+              strict: true,
+            })
+          : undefined,
       cod_cargo: this.normalizePersistedCodeValue(
         data.cod_cargo,
         data.cod_grade,
@@ -1543,6 +1582,11 @@ export class CertificatesService {
 
   async updateSolicitud(id: string, data: Partial<CertificateRequest>) {
     const patch: Partial<CertificateRequest> = { ...data };
+    if ('document_type' in data) {
+      patch.document_type = this.normalizeLaborDocumentType(data.document_type, {
+        strict: true,
+      });
+    }
     if ('cod_cargo' in data) {
       patch.cod_cargo = this.normalizePersistedCodeValue(
         data.cod_cargo,
@@ -2249,6 +2293,10 @@ export class CertificatesService {
     const includeTechnicalBonus = includeSalary
       ? this.normalizeBoolean(options.includeTechnicalBonus, false)
       : false;
+    const requestDocumentType =
+      this.normalizeLaborDocumentType(
+        requestById.document_type || request.document_type,
+      ) || undefined;
     const technicalBonus = await this.resolveTechnicalBonusForRequest(request);
 
     if (includeTechnicalBonus && !technicalBonus.available) {
@@ -2263,6 +2311,7 @@ export class CertificatesService {
       request_id: request.id,
       full_name: request.full_name,
       id_number: request.id_number,
+      document_type: requestDocumentType,
       career_category: request.career_category,
       hiring_date: request.hiring_date,
       position_category: request.position_category,
@@ -3096,8 +3145,12 @@ export class CertificatesService {
    * En produccion: enviar email
    * En local: devolver codigo fijo
    */
-  async generarCodigoValidacion(documento: string) {
+  async generarCodigoValidacion(documento: string, documentType?: string) {
     const verificacion = await this.verificarDocumentoPorSolicitud(documento);
+    const normalizedDocumentType = this.normalizeLaborDocumentType(
+      documentType,
+      { strict: true },
+    );
 
     if (!verificacion.existe) {
       throw new NotFoundException('Documento no encontrado en el sistema');
@@ -3138,7 +3191,15 @@ export class CertificatesService {
     await this.requestRepo.update(verificacion.solicitud.id, {
       validation_code: codigoValidacion,
       validation_expires_at: expiresAt,
+      ...(normalizedDocumentType
+        ? { document_type: normalizedDocumentType }
+        : {}),
     });
+
+    if (normalizedDocumentType) {
+      (verificacion.solicitud as CertificateRequest).document_type =
+        normalizedDocumentType;
+    }
 
     // Enviar email si hay configuracion SMTP
     try {
@@ -3159,6 +3220,10 @@ export class CertificatesService {
       solicitud: {
         full_name: verificacion.solicitud.full_name,
         id_number: verificacion.solicitud.id_number,
+        document_type:
+          normalizedDocumentType ||
+          (verificacion.solicitud as CertificateRequest).document_type ||
+          undefined,
         email: emailDestino,
         status: verificacion.solicitud.status,
         employment_status: employmentStatus,
@@ -3199,12 +3264,17 @@ export class CertificatesService {
     documento: string,
     codigo: string,
     options: {
+      documentType?: string;
       includeSalary?: boolean;
       includeTechnicalBonus?: boolean;
     } = {},
   ) {
     const documentoTrim = (documento || '').trim();
     const codigoTrim = (codigo || '').trim();
+    const normalizedDocumentType = this.normalizeLaborDocumentType(
+      options.documentType,
+      { strict: true },
+    );
     // Buscar la solicitud por documento + codigo para evitar conflictos con multiples solicitudes
     const solicitud = await this.requestRepo.findOne({
       where: { id_number: documentoTrim, validation_code: codigoTrim },
@@ -3237,6 +3307,14 @@ export class CertificatesService {
       throw new BadRequestException(
         'Si tu certificado no se encuentra disponible o tienes inquietudes, escribenos a talento.humano@esap.edu.co.',
       );
+    }
+
+    if (
+      normalizedDocumentType &&
+      solicitud.document_type !== normalizedDocumentType
+    ) {
+      solicitud.document_type = normalizedDocumentType;
+      await this.requestRepo.save(solicitud);
     }
 
     // Generar el certificado

@@ -481,14 +481,17 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
               </div>
             </div>
             {/* Código QR de validación */}
-            <div style={{ textAlign: 'center', marginLeft: '20px' }}>
+            <div style={{ textAlign: 'center', marginLeft: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <QRCodeSVG
                 value={verificationUrl}
-                size={100}
+                size={105}
                 level="H"
                 includeMargin={false}
                 fgColor="#000000"
               />
+              <div style={{ marginTop: '6px', maxWidth: '108px', fontSize: '7pt', lineHeight: '1.2' }}>
+                Escanee y verifique el certificado
+              </div>
             </div>
           </div>
 
@@ -684,7 +687,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                       <div className="flex-1 flex items-center justify-center">
                         <div
                           className="w-full max-w-full rounded-xl border-2 border-[#1e5da8]/30 bg-white p-3 shadow-sm sm:p-4"
-                          style={{ width: 'min(100%, 260px)' }}
+                          style={{ width: 'min(100%, 273px)' }}
                         >
                           <QRCodeCanvas
                             value={verificationUrl}
@@ -697,7 +700,7 @@ export function VerificationCertificateDisplay({ certificate, onClose }: Verific
                         </div>
                       </div>
                       <p className="text-xs text-gray-600 mt-4 leading-relaxed">
-                        Escanea para verificar autenticidad en tiempo real
+                        Escanee y verifique el certificado
                       </p>
                     </div>
                   </div>
