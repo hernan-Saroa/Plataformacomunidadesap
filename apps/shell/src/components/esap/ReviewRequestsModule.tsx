@@ -163,6 +163,7 @@ export function ReviewRequestsModule() {
   const REGISTRY_FIELD_MAX_LENGTH = 10;
   const REVIEW_NOTES_MAX_LENGTH = 1000;
   const MIN_GRADUATION_YEAR = 1900;
+  const MANUAL_REVIEW_EXPIRATION_BUSINESS_DAYS = 15;
   const PERSON_NAME_ALLOWED_REGEX = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.'-]+$/;
 
   const normalizeKey = (value?: string) =>
@@ -253,7 +254,8 @@ export function ReviewRequestsModule() {
       pending: { label: 'Pendiente', color: 'bg-amber-100 text-amber-800 border-amber-300', icon: Clock },
       under_review: { label: 'En Revisión', color: 'bg-blue-100 text-blue-800 border-blue-300', icon: RefreshCw },
       approved: { label: 'Aprobada', color: 'bg-green-100 text-green-800 border-green-300', icon: CheckCircle },
-      rejected: { label: 'Rechazada', color: 'bg-red-100 text-red-800 border-red-300', icon: XCircle }
+      rejected: { label: 'Rechazada', color: 'bg-red-100 text-red-800 border-red-300', icon: XCircle },
+      expired: { label: 'Expirada', color: 'bg-gray-100 text-gray-800 border-gray-300', icon: AlertCircle }
     };
 
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
@@ -287,7 +289,8 @@ export function ReviewRequestsModule() {
       graduate_found: { label: 'Graduado Encontrado', color: 'bg-green-50 text-green-700 border-green-200' },
       graduate_not_found: { label: 'No Encontrado', color: 'bg-red-50 text-red-700 border-red-200' },
       invalid_data: { label: 'Datos Inválidos', color: 'bg-orange-50 text-orange-700 border-orange-200' },
-      duplicate_request: { label: 'Solicitud Duplicada', color: 'bg-gray-50 text-gray-700 border-gray-200' }
+      duplicate_request: { label: 'Solicitud Duplicada', color: 'bg-gray-50 text-gray-700 border-gray-200' },
+      expired: { label: 'Vencida por tiempo', color: 'bg-gray-50 text-gray-700 border-gray-200' }
     };
 
     const config = resolutionConfig[resolution as keyof typeof resolutionConfig];
@@ -309,6 +312,24 @@ export function ReviewRequestsModule() {
   const isBusinessDay = (date: Date) => {
     const day = date.getDay();
     return day !== 0 && day !== 6;
+  };
+
+  const getManualReviewExpirationDate = (createdAt?: string | null) => {
+    const start = parseDateSafe(createdAt);
+    if (!start) return null;
+
+    const deadline = new Date(start.getTime());
+    let addedBusinessDays = 0;
+
+    while (addedBusinessDays < MANUAL_REVIEW_EXPIRATION_BUSINESS_DAYS) {
+      deadline.setDate(deadline.getDate() + 1);
+      if (isBusinessDay(deadline)) {
+        addedBusinessDays += 1;
+      }
+    }
+
+    deadline.setHours(23, 59, 59, 999);
+    return deadline;
   };
 
   const calculateBusinessHoursBetween = (start: Date, end: Date) => {
@@ -550,6 +571,8 @@ export function ReviewRequestsModule() {
         return 'approved';
       case 'REJECTED':
         return 'rejected';
+      case 'EXPIRED':
+        return 'expired';
       default:
         return 'pending';
     }
@@ -608,6 +631,7 @@ export function ReviewRequestsModule() {
       underReview: 0,
       approved: 0,
       rejected: 0,
+      expired: 0,
       avgResolutionTime: 0,
     };
 
@@ -627,6 +651,9 @@ export function ReviewRequestsModule() {
           break;
         case 'rejected':
           totals.rejected += 1;
+          break;
+        case 'expired':
+          totals.expired = (totals.expired || 0) + 1;
           break;
         default:
           break;
@@ -1429,6 +1456,7 @@ export function ReviewRequestsModule() {
               <option value="under_review">En Revisión</option>
               <option value="approved">Aprobadas</option>
               <option value="rejected">Rechazadas</option>
+              <option value="expired">Expiradas</option>
             </select>
 
             {hasActiveFilters && (
@@ -1620,7 +1648,9 @@ export function ReviewRequestsModule() {
                     <div className="col-span-2">
                       <div className="space-y-1">
                         <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
-                          {calculateTimeSince(request.createdAt, timeNow)}
+                          {request.status === 'expired'
+                            ? 'Expirada'
+                            : calculateTimeSince(request.createdAt, timeNow)}
                         </p>
                         {request.reviewerName && (
                           <div className="flex items-center gap-1.5">
@@ -1952,7 +1982,27 @@ export function ReviewRequestsModule() {
                                 {formatDate(request.createdAt)}
                               </span>
                             </div>
-                            {request.reviewedAt && (
+                            {request.status === 'expired' && (() => {
+                              const expiredAt =
+                                request.reviewedAt ||
+                                getManualReviewExpirationDate(request.createdAt)?.toISOString();
+
+                              if (!expiredAt) {
+                                return null;
+                              }
+
+                              return (
+                                <div className="flex items-center justify-between p-2 bg-red-50 rounded">
+                                  <span className="text-red-700">
+                                    Solicitud expirada por superar 15 días hábiles
+                                  </span>
+                                  <span className="font-semibold text-red-800">
+                                    {formatDate(expiredAt)}
+                                  </span>
+                                </div>
+                              );
+                            })()}
+                            {request.reviewedAt && request.status !== 'expired' && (
                               <div className="flex items-center justify-between p-2 bg-green-50 rounded">
                                 <span className="text-gray-600">Revisión completada</span>
                                 <span className="font-semibold text-gray-900">

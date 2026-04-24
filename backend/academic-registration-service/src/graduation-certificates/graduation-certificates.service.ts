@@ -107,6 +107,7 @@ export class GraduationCertificatesService {
   ) {}
 
   private readonly logger = new Logger(GraduationCertificatesService.name);
+  private readonly manualReviewExpirationBusinessDays = 15;
   private mailTransporter: nodemailer.Transporter | null = null;
 
   private resolveNotificationsBaseUrl() {
@@ -688,6 +689,7 @@ export class GraduationCertificatesService {
         `Graduado no encontrado para idNumber=${dto.idNumber?.trim()} idIssueDate=${issueDate || 'N/A'}`,
       );
 
+      await this.expireOverdueManualReviewRequests();
       const activeManualReview =
         await this.findActiveManualReviewRequestByIdNumber(dto.idNumber);
       if (activeManualReview) {
@@ -1384,6 +1386,8 @@ export class GraduationCertificatesService {
   private async findActiveManualReviewRequestByIdNumber(
     idNumber: string,
   ): Promise<GraduationCertificateRequest | null> {
+    await this.expireOverdueManualReviewRequests();
+
     const normalizedIdNumber = (idNumber || '').replace(/\D+/g, '');
     const trimmedIdNumber = (idNumber || '').trim();
 
@@ -2483,6 +2487,104 @@ export class GraduationCertificatesService {
     return parsed;
   }
 
+  private isBusinessDay(date: Date): boolean {
+    const day = date.getDay();
+    return day !== 0 && day !== 6;
+  }
+
+  private getManualReviewExpirationDate(requestDate?: Date | string | null) {
+    if (!requestDate) {
+      return null;
+    }
+
+    const deadline = new Date(requestDate);
+    if (Number.isNaN(deadline.getTime())) {
+      return null;
+    }
+
+    let addedBusinessDays = 0;
+    while (addedBusinessDays < this.manualReviewExpirationBusinessDays) {
+      deadline.setDate(deadline.getDate() + 1);
+      if (this.isBusinessDay(deadline)) {
+        addedBusinessDays += 1;
+      }
+    }
+
+    deadline.setHours(23, 59, 59, 999);
+    return deadline;
+  }
+
+  private isManualReviewExpirable(request: GraduationCertificateRequest) {
+    return (
+      request.manualReview &&
+      ['PENDING', 'PROCESSING'].includes((request.status || '').toUpperCase())
+    );
+  }
+
+  private isManualReviewExpired(
+    request: GraduationCertificateRequest,
+    now = new Date(),
+  ) {
+    if (!this.isManualReviewExpirable(request)) {
+      return false;
+    }
+
+    const expiresAt = this.getManualReviewExpirationDate(request.requestDate);
+    return !!expiresAt && now.getTime() > expiresAt.getTime();
+  }
+
+  private async expireManualReviewRequestIfNeeded(
+    request: GraduationCertificateRequest,
+    now = new Date(),
+  ) {
+    if (!this.isManualReviewExpired(request, now)) {
+      return request;
+    }
+
+    request.status = 'EXPIRED';
+    request.reviewedAt = request.reviewedAt || now;
+    request.completionDate = request.completionDate || now;
+    request.reviewResolution = request.reviewResolution || 'expired';
+    request.reviewNotes =
+      request.reviewNotes ||
+      `Solicitud vencida automaticamente por superar ${this.manualReviewExpirationBusinessDays} dias habiles sin resolucion.`;
+
+    return this.requestRepository.save(request);
+  }
+
+  private async expireOverdueManualReviewRequests(now = new Date()) {
+    const activeRequests = await this.requestRepository.find({
+      where: [
+        { manualReview: true, status: 'PENDING' },
+        { manualReview: true, status: 'PROCESSING' },
+      ],
+    });
+
+    const expired = activeRequests.filter((request) =>
+      this.isManualReviewExpired(request, now),
+    );
+
+    if (!expired.length) {
+      return;
+    }
+
+    await Promise.all(
+      expired.map((request) =>
+        this.expireManualReviewRequestIfNeeded(request, now),
+      ),
+    );
+  }
+
+  private ensureManualReviewRequestIsActionable(
+    request: GraduationCertificateRequest,
+  ) {
+    if ((request.status || '').toUpperCase() === 'EXPIRED') {
+      throw new BadRequestException(
+        'La solicitud expiro por superar los 15 dias habiles de revision. Crea una nueva solicitud para continuar.',
+      );
+    }
+  }
+
   /**
    * ADMIN: Listar todos los graduados
    */
@@ -3136,6 +3238,8 @@ export class GraduationCertificatesService {
    * ADMIN: Listar todas las solicitudes
    */
   async listarSolicitudes() {
+    await this.expireOverdueManualReviewRequests();
+
     return await this.requestRepository.find({
       relations: ['graduate'],
       order: { requestDate: 'DESC' },
@@ -3155,13 +3259,15 @@ export class GraduationCertificatesService {
       throw new NotFoundException('Solicitud no encontrada');
     }
 
-    return request;
+    return this.expireManualReviewRequestIfNeeded(request);
   }
 
   /**
    * ADMIN: Listar solicitudes de revisión manual (graduados no encontrados)
    */
   async listarSolicitudesRevision() {
+    await this.expireOverdueManualReviewRequests();
+
     return await this.requestRepository.find({
       where: { manualReview: true },
       relations: ['graduate'],
@@ -3186,6 +3292,9 @@ export class GraduationCertificatesService {
     if (!request) {
       throw new NotFoundException('Solicitud no encontrada');
     }
+
+    await this.expireManualReviewRequestIfNeeded(request);
+    this.ensureManualReviewRequestIsActionable(request);
 
     request.status = 'PROCESSING';
     request.reviewerName = reviewerName || request.reviewerName;
@@ -3220,6 +3329,9 @@ export class GraduationCertificatesService {
     if (!request) {
       throw new NotFoundException('Solicitud no encontrada');
     }
+
+    await this.expireManualReviewRequestIfNeeded(request);
+    this.ensureManualReviewRequestIsActionable(request);
 
     const reviewNotes = (
       payload?.reviewNotes || 'Aprobado por revisión manual'
@@ -3463,6 +3575,9 @@ export class GraduationCertificatesService {
     if (!request) {
       throw new NotFoundException('Solicitud no encontrada');
     }
+
+    await this.expireManualReviewRequestIfNeeded(request);
+    this.ensureManualReviewRequestIsActionable(request);
 
     request.status = 'REJECTED';
     request.reviewedAt = new Date();
