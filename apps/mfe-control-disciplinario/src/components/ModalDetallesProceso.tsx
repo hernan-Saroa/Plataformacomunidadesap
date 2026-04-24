@@ -48,8 +48,11 @@ interface Persona {
 interface Apoderado {
   nombre: string;
   cedula: string;
-  correo: string;
-  celular: string;
+  correo?: string;
+  celular?: string;
+  email?: string;
+  telefono?: string;
+  direccion?: string;
 }
 
 interface DenunciadoCompleto {
@@ -238,6 +241,12 @@ function getNombre(p: Persona | string | null | undefined): string {
 function getId(p: Persona | string | null | undefined): string {
   if (!p || typeof p === 'string') return '';
   return p.numeroIdentificacion ? `${p.tipoIdentificacion}: ${p.numeroIdentificacion}` : '';
+}
+function getApoderadoCorreo(apoderado?: Apoderado): string {
+  return apoderado?.correo || apoderado?.email || '';
+}
+function getApoderadoCelular(apoderado?: Apoderado): string {
+  return apoderado?.celular || apoderado?.telefono || '';
 }
 
 const SEMAFORO: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -4045,6 +4054,21 @@ export function ModalDetallesProceso({
                           <p className="text-xs text-gray-500 mt-0.5">{getId(proceso.denunciado)}</p>
                         )}
                         {cargo && <p className="text-xs text-gray-600 mt-1">{cargo}</p>}
+                        {proceso.denunciados?.[0]?.apoderado && (
+                          <div className="mt-2 pt-2 border-t border-orange-200">
+                            <div className="flex items-center gap-1 mb-1">
+                              <Scale className="w-3 h-3 text-orange-600" />
+                              <span className="text-[9px] font-bold text-orange-600 uppercase">Apoderado</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-700">
+                              <p><span className="font-bold text-gray-500">Nombre:</span> {proceso.denunciados[0].apoderado?.nombre || 'Sin información'}</p>
+                              <p><span className="font-bold text-gray-500">Cédula:</span> {proceso.denunciados[0].apoderado?.cedula || 'Sin información'}</p>
+                              <p><span className="font-bold text-gray-500">Correo:</span> {getApoderadoCorreo(proceso.denunciados[0].apoderado) || 'Sin información'}</p>
+                              <p><span className="font-bold text-gray-500">Celular:</span> {getApoderadoCelular(proceso.denunciados[0].apoderado) || 'Sin información'}</p>
+                              <p className="col-span-2"><span className="font-bold text-gray-500">Dirección:</span> {proceso.denunciados[0].apoderado?.direccion || 'Sin información'}</p>
+                            </div>
+                          </div>
+                        )}
                         {proceso.denunciados && proceso.denunciados.length > 1 && (
                           <div className="mt-2 pt-2 border-t border-orange-200 space-y-1">
                             {proceso.denunciados.slice(1).map((d, i) => (
@@ -4074,6 +4098,21 @@ export function ModalDetallesProceso({
                         <p className="text-sm font-bold text-gray-900">{getNombre(proceso.denunciante)}</p>
                         {getId(proceso.denunciante) && (
                           <p className="text-xs text-gray-500 mt-0.5">{getId(proceso.denunciante)}</p>
+                        )}
+                        {proceso.denunciantes?.[0]?.apoderado && (
+                          <div className="mt-2 pt-2 border-t border-gray-200">
+                            <div className="flex items-center gap-1 mb-1">
+                              <Scale className="w-3 h-3 text-blue-600" />
+                              <span className="text-[9px] font-bold text-blue-600 uppercase">Apoderado</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-700">
+                              <p><span className="font-bold text-gray-500">Nombre:</span> {proceso.denunciantes[0].apoderado?.nombre || 'Sin información'}</p>
+                              <p><span className="font-bold text-gray-500">Cédula:</span> {proceso.denunciantes[0].apoderado?.cedula || 'Sin información'}</p>
+                              <p><span className="font-bold text-gray-500">Correo:</span> {getApoderadoCorreo(proceso.denunciantes[0].apoderado) || 'Sin información'}</p>
+                              <p><span className="font-bold text-gray-500">Celular:</span> {getApoderadoCelular(proceso.denunciantes[0].apoderado) || 'Sin información'}</p>
+                              <p className="col-span-2"><span className="font-bold text-gray-500">Dirección:</span> {proceso.denunciantes[0].apoderado?.direccion || 'Sin información'}</p>
+                            </div>
+                          </div>
                         )}
                         {proceso.denunciantes && proceso.denunciantes.length > 1 && (
                           <div className="mt-2 pt-2 border-t border-gray-200 space-y-1">

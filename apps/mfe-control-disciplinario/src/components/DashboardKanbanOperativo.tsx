@@ -399,6 +399,14 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                     {noticia.denunciante.tipoIdentificacion} {noticia.denunciante.numeroIdentificacion}
                   </p>
                 )}
+                {(() => {
+                  const apoderado = (typeof noticia.denunciante !== 'string' && noticia.denunciante?.apoderado) || noticia.denunciantes?.[0]?.apoderado;
+                  return apoderado ? (
+                    <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200">
+                      Apoderado: {apoderado.nombre} ({apoderado.cedula})
+                    </p>
+                  ) : null;
+                })()}
               </div>
             </div>
             <div className="flex items-start gap-2.5">
@@ -412,6 +420,14 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                     {noticia.denunciado.tipoIdentificacion} {noticia.denunciado.numeroIdentificacion}
                   </p>
                 )}
+                {(() => {
+                  const apoderado = (typeof noticia.denunciado !== 'string' && noticia.denunciado?.apoderado) || noticia.denunciados?.[0]?.apoderado;
+                  return apoderado ? (
+                    <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200">
+                      Apoderado: {apoderado.nombre} ({apoderado.cedula})
+                    </p>
+                  ) : null;
+                })()}
               </div>
             </div>
             {/* Radicador */}
@@ -717,6 +733,14 @@ function TarjetaProceso({
                     {proceso.denunciante.tipoIdentificacion} {proceso.denunciante.numeroIdentificacion}
                   </p>
                 )}
+                {(() => {
+                  const apoderado = (typeof proceso.denunciante !== 'string' && proceso.denunciante?.apoderado) || proceso.denunciantes?.[0]?.apoderado;
+                  return apoderado ? (
+                    <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200">
+                      Apoderado: {apoderado.nombre} ({apoderado.cedula})
+                    </p>
+                  ) : null;
+                })()}
               </div>
             </div>
             <div className="flex items-start gap-2.5">
@@ -730,6 +754,14 @@ function TarjetaProceso({
                     {proceso.denunciado.tipoIdentificacion} {proceso.denunciado.numeroIdentificacion}
                   </p>
                 )}
+                {(() => {
+                  const apoderado = (typeof proceso.denunciado !== 'string' && proceso.denunciado?.apoderado) || proceso.denunciados?.[0]?.apoderado;
+                  return apoderado ? (
+                    <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200">
+                      Apoderado: {apoderado.nombre} ({apoderado.cedula})
+                    </p>
+                  ) : null;
+                })()}
               </div>
             </div>
           </KanbanCardInfoSection>
@@ -3625,7 +3657,14 @@ export function DashboardKanbanOperativo({
     // Extraer primer denunciado y denunciante para campos principales
     const primerDenunciado = data.denunciados?.[0] || data.denunciado;
     const primerDenunciante = data.denunciantes?.[0];
+    const apoderadoDenunciante = primerDenunciante?.apoderado || data.denunciante?.apoderado;
     const apoderadoDenunciado = primerDenunciado?.apoderado || data.denunciado?.apoderado;
+    console.log('[DashboardKanban] Fuente denunciante:', {
+      denunciantes: data.denunciantes,
+      denunciante: data.denunciante,
+      primerDenunciante,
+      apoderadoDenunciante,
+    });
     console.log('[DashboardKanban] Fuente disciplinable:', {
       denunciados: data.denunciados,
       denunciado: data.denunciado,
@@ -3722,6 +3761,16 @@ export function DashboardKanbanOperativo({
 
       if (!primerDenunciante) {
         newsData.denunciante = undefined;
+      }
+
+      if (apoderadoDenunciante?.nombre && newsData.denunciante) {
+        newsData.denunciante.apoderado = {
+          nombre: apoderadoDenunciante.nombre || '',
+          cedula: apoderadoDenunciante.cedula || '',
+          email: apoderadoDenunciante.correo || apoderadoDenunciante.email || '',
+          telefono: apoderadoDenunciante.celular || apoderadoDenunciante.telefono || '',
+          direccion: apoderadoDenunciante.direccion || ''
+        };
       }
 
       if (apoderadoDenunciado?.nombre && newsData.disciplinable) {
