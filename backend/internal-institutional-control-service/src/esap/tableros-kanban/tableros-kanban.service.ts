@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { TableroKanban } from './entities/tablero-kanban.entity';
+import { TableroKanban, TipoTablero } from './entities/tablero-kanban.entity';
 import { EtapaKanban } from './entities/etapa-kanban.entity';
 import { CreateTableroKanbanDto } from './dto/create-tablero-kanban.dto';
 import { UpdateTableroKanbanDto } from './dto/update-tablero-kanban.dto';
@@ -20,6 +20,28 @@ export class TablerosKanbanService {
     @InjectRepository(EtapaKanban)
     private etapaRepository: Repository<EtapaKanban>,
   ) {}
+
+  private async validarOrdenBloqueadoEnAuditorias(
+    tableroId: string,
+    accion: 'actualizar_orden' | 'reordenar',
+  ): Promise<void> {
+    const tablero = await this.tableroRepository.findOne({
+      where: { id: tableroId },
+      select: ['id', 'tipo'],
+    });
+
+    if (!tablero) {
+      throw new NotFoundException(`Tablero con ID ${tableroId} no encontrado`);
+    }
+
+    if (tablero.tipo === TipoTablero.AUDITORIAS) {
+      const mensaje =
+        accion === 'reordenar'
+          ? 'El orden de etapas del tablero de auditorías está bloqueado por reglas de proceso'
+          : 'No se permite cambiar el campo orden en etapas del tablero de auditorías';
+      throw new ConflictException(mensaje);
+    }
+  }
 
   /**
    * Obtener todos los tableros
@@ -256,6 +278,10 @@ export class TablerosKanbanService {
     etapaId: string,
     updateDto: UpdateEtapaKanbanDto,
   ): Promise<EtapaKanban> {
+    if (updateDto.orden !== undefined) {
+      await this.validarOrdenBloqueadoEnAuditorias(tableroId, 'actualizar_orden');
+    }
+
     const etapa = await this.etapaRepository.findOne({
       where: { id: etapaId, tableroKanbanId: tableroId },
     });
@@ -311,6 +337,8 @@ export class TablerosKanbanService {
     tableroId: string,
     etapasIds: string[],
   ): Promise<EtapaKanban[]> {
+    await this.validarOrdenBloqueadoEnAuditorias(tableroId, 'reordenar');
+
     const etapas = await this.etapaRepository.find({
       where: { tableroKanbanId: tableroId },
     });

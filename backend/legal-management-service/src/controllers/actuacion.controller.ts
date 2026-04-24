@@ -30,6 +30,7 @@ export class ActuacionController {
                 return cb(null, `${randomName}${extname(file.originalname)}`);
             }
         }),
+        limits: { fileSize: 60 * 1024 * 1024 },
         fileFilter: (req, file, cb) => {
             if (file.mimetype !== 'application/pdf') {
                 return cb(new BadRequestException('Solo se permiten archivos PDF'), false);

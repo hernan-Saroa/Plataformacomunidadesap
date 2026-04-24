@@ -16,10 +16,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Columns, Settings, Plus, Edit2, Trash2, Save, X, ArrowUp, ArrowDown,
+  Columns, Settings, Plus, Edit2, Trash2, Save, X,
   Clock, AlertTriangle, CheckCircle2, Layers, Zap, Bell, Eye, Palette,
   ChevronRight, Info, TrendingUp, Layout, Loader2
 } from 'lucide-react';
@@ -50,6 +50,20 @@ function sincronizarSLAaLocalStorage(etapas: EtapaKanban[]) {
   localStorage.setItem('kanban_sla_config', JSON.stringify(slaMap));
 }
 
+function sincronizarEtapasTableroLocalStorage(etapas: EtapaKanban[]) {
+  const etapasOrdenadas = [...etapas]
+    .sort((a, b) => a.orden - b.orden)
+    .map((e) => ({
+      id: e.nombre,
+      nombre: e.nombre,
+      orden: e.orden,
+      color: e.color,
+      slaDias: e.slaDias,
+    }));
+
+  localStorage.setItem('kanban_etapas_config', JSON.stringify(etapasOrdenadas));
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
@@ -65,7 +79,6 @@ export function ConfiguracionKanbanModule() {
     crearEtapa,
     actualizarEtapa,
     eliminarEtapa,
-    moverEtapa,
     actualizarConfigGeneral,
     recargarDatos,
   } = useConfiguracionKanban();
@@ -75,6 +88,14 @@ export function ConfiguracionKanbanModule() {
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
   const [tabActiva, setTabActiva] = useState<'etapas' | 'general' | 'reglas'>('etapas');
   const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    if (etapas.length > 0) {
+      sincronizarSLAaLocalStorage(etapas);
+      sincronizarEtapasTableroLocalStorage(etapas);
+      notificarCambioConfigKanban();
+    }
+  }, [etapas]);
 
   // ════════════════════════════════════════════════════════════════════════════
   // HANDLERS - ETAPAS (conectados al backend)
@@ -137,14 +158,11 @@ export function ConfiguracionKanbanModule() {
     await eliminarEtapa(id);
   };
 
-  const handleMoverEtapa = async (id: string, direccion: 'arriba' | 'abajo') => {
-    await moverEtapa(id, direccion);
-  };
-
   const handleGuardarConfiguracion = () => {
     recargarDatos();
     // Sync SLA config to localStorage for KanbanConfigContext
     sincronizarSLAaLocalStorage(etapas);
+    sincronizarEtapasTableroLocalStorage(etapas);
     notificarCambioConfigKanban();
     toast.success('💾 Configuración sincronizada', {
       description: 'Los cambios se aplicarán en el tablero Kanban'
@@ -153,6 +171,9 @@ export function ConfiguracionKanbanModule() {
 
   const handleRestaurarDefecto = () => {
     recargarDatos();
+    sincronizarSLAaLocalStorage(etapas);
+    sincronizarEtapasTableroLocalStorage(etapas);
+    notificarCambioConfigKanban();
     toast.info('🔄 Configuración recargada desde el servidor');
   };
 
@@ -280,7 +301,6 @@ export function ConfiguracionKanbanModule() {
             onAgregar={handleAgregarEtapa}
             onEditar={handleEditarEtapa}
             onEliminar={handleEliminarEtapa}
-            onMover={handleMoverEtapa}
           />
         )}
         {tabActiva === 'general' && (
@@ -336,10 +356,9 @@ interface TabEtapasProps {
   onAgregar: () => void;
   onEditar: (etapa: EtapaKanban) => void;
   onEliminar: (id: string) => void;
-  onMover: (id: string, direccion: 'arriba' | 'abajo') => void;
 }
 
-function TabEtapas({ etapas, onAgregar, onEditar, onEliminar, onMover }: TabEtapasProps) {
+function TabEtapas({ etapas, onAgregar, onEditar, onEliminar }: TabEtapasProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -360,31 +379,20 @@ function TabEtapas({ etapas, onAgregar, onEditar, onEliminar, onMover }: TabEtap
 
       {/* Lista de etapas */}
       <div className="space-y-3">
-        {etapas.map((etapa, index) => (
+        {etapas.map((etapa) => (
           <div
             key={etapa.id}
             className="bg-white rounded-xl border-2 border-gray-200 p-4 hover:border-blue-400 transition-all"
           >
             <div className="flex items-start gap-4">
               {/* Orden */}
-              <div className="flex flex-col gap-1">
-                <button
-                  onClick={() => onMover(etapa.id, 'arriba')}
-                  disabled={index === 0}
-                  className="p-1 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  <ArrowUp className="w-4 h-4 text-gray-600" />
-                </button>
-                <span className="text-center font-bold text-gray-900 text-sm">
+              <div className="flex flex-col items-center gap-1 pt-1">
+                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
+                  Orden
+                </span>
+                <span className="text-center font-bold text-gray-900 text-sm min-w-8 px-2 py-1 bg-gray-100 rounded-md">
                   {etapa.orden}
                 </span>
-                <button
-                  onClick={() => onMover(etapa.id, 'abajo')}
-                  disabled={index === etapas.length - 1}
-                  className="p-1 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                  <ArrowDown className="w-4 h-4 text-gray-600" />
-                </button>
               </div>
 
               {/* Información */}

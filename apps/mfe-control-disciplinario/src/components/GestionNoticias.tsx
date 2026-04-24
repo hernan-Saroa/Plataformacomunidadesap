@@ -1169,9 +1169,12 @@ export function GestionNoticias() {
       };
 
       // Map Disciplinable(s)
-      // The modal returns 'disciplinable' as an array if multiple, or we might need to check 'denunciados' if that's what it passes?
-      // Looking at CreateNoticiaModal handleSave: it sends 'disciplinable: disciplinables' which is an array.
-      const disciplinablesData = Array.isArray(data.disciplinable) ? data.disciplinable : (data.disciplinable ? [data.disciplinable] : []);
+      // The create modal returns `denunciados`; keep `disciplinable` as fallback for older callers.
+      const disciplinablesData = Array.isArray(data.denunciados)
+        ? data.denunciados
+        : Array.isArray(data.disciplinable)
+          ? data.disciplinable
+          : (data.disciplinable ? [data.disciplinable] : []);
       const mainDisciplinableData = disciplinablesData.length > 0 ? disciplinablesData[0] : {};
 
       const disciplinableObj = {
@@ -1179,7 +1182,7 @@ export function GestionNoticias() {
         cedula: mainDisciplinableData.identificacion || mainDisciplinableData.cedula || '',
         identificacion: mainDisciplinableData.identificacion || mainDisciplinableData.cedula || '',
         cargo: mainDisciplinableData.cargo || 'N/A',
-        dependencia: mainDisciplinableData.dependencia || 'Sin Dependencia',
+        dependencia: mainDisciplinableData.dependencia || mainDisciplinableData.lugarHechos || 'Sin Dependencia',
         // ✅ NUEVO: Incluir apoderado del disciplinable (denunciado)
         ...(mainDisciplinableData.apoderado && mainDisciplinableData.apoderado.nombre ? {
           apoderado: {
