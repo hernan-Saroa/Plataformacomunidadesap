@@ -2101,6 +2101,7 @@ export function ModalDetallesProceso({
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
   const [archivosSubidos, setArchivosSubidos] = useState<Archivo[]>([]);
   const [archivosBackend, setArchivosBackend] = useState<Archivo[]>([]);
+  const [noticia, setNoticia] = useState<ApiNoticia | null>(null);
   const [actuaciones, setActuaciones] = useState<ActuacionItem[]>([]);
   const [actuacionesLoading, setActuacionesLoading] = useState(false);
   const [actuacionesError, setActuacionesError] = useState<string | null>(null);
@@ -2140,6 +2141,24 @@ export function ModalDetallesProceso({
     || [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ').trim()
     || currentUser?.email
     || 'Sistema';
+
+  // ═══ Cargar noticia asociada ═══
+  useEffect(() => {
+    if (!proceso?.id) {
+      setNoticia(null);
+      return;
+    }
+
+    disciplinaryService.getAssociatedNewsToProcess(proceso.id)
+      .then((noticias) => {
+        // Asumimos que hay solo una noticia asociada
+        setNoticia(noticias[0] || null);
+      })
+      .catch((err) => {
+        console.error('[ModalDetallesProceso] Error cargando noticia:', err);
+        setNoticia(null);
+      });
+  }, [proceso?.id]);
 
   // ═══ Persistencia de filtros en localStorage ═══
   const STORAGE_KEY = `mdp_filtros_${proceso.numeroProceso}`;
@@ -2212,12 +2231,36 @@ export function ModalDetallesProceso({
           fileType: doc.fileType || null,
         };
       });
-      setArchivosBackend(mapped);
+
+      // ═══ Incluir archivos adjuntos de la noticia ═══
+      const archivosNoticia: Archivo[] = (proceso.archivosAdjuntos || []).map((adj, index) => {
+        const ext = adj.nombre.split('.').pop()?.toLowerCase() || 'pdf';
+        // Intentar encontrar la URL correspondiente en noticia.adjuntos (asumiendo orden)
+        const url = noticia?.adjuntos?.[index] || null;
+        return {
+          id: `noticia-${index}`,
+          nombre: adj.nombre,
+          tipo: 'evidencia' as const,
+          fecha: adj.fechaSubida,
+          firmante: 'Archivo de la noticia',
+          estado: 'aprobado' as const,
+          tamaño: formatBytes(adj.tamano),
+          extension: ext as Extension,
+          version: 1,
+          etapaProceso: 'Recepción',
+          downloadUrl: url,
+          urlExterna: url,
+          archivoNombre: adj.nombre,
+          fileType: null,
+        };
+      });
+
+      setArchivosBackend(mapped.concat(archivosNoticia));
     } catch (err) {
       console.error('[ModalDetallesProceso] Error cargando documentos:', err);
       setArchivosBackend([]);
     }
-  }, [proceso?.id]);
+  }, [proceso?.id, noticia]);
 
   // ═══ Cargar documentos del expediente desde el backend ═══
   useEffect(() => {
@@ -3661,7 +3704,14 @@ export function ModalDetallesProceso({
             {esAuto && (
               <p className="text-[10px] text-gray-600 font-medium truncate">{archivo.nombre.replace(/_/g, ' ')}</p>
             )}
-            <p className="text-[10px] text-gray-500 mt-0.5">{archivo.firmante} · {archivo.fecha} · {archivo.tamaño}</p>
+            <div className="flex items-center gap-1 mt-0.5">
+              <p className="text-[10px] text-gray-500">{archivo.firmante} · {archivo.fecha} · {archivo.tamaño}</p>
+              {archivo.firmante === 'Archivo de la noticia' && (
+                <span className="px-1 py-0.5 text-[8px] font-bold rounded bg-purple-100 text-purple-700 border border-purple-300">
+                  De la noticia
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {!ocultarBadgeEtapa && archivo.etapaProceso && (() => {
