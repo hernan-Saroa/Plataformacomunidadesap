@@ -1,11 +1,37 @@
 server {
     listen 80;
-    server_name localhost;
+    server_name ${TLS_SERVER_NAME};
+
+    location = /health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /usr/share/nginx/html;
+        try_files $uri =404;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name ${TLS_SERVER_NAME};
     root /usr/share/nginx/html;
     index index.html;
     set $esap_csp "default-src 'self'; base-uri 'self'; frame-ancestors 'self'; object-src 'self' blob: https:; script-src 'self'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: ws: wss:; frame-src 'self' blob: https:; worker-src 'self' blob: https://cdnjs.cloudflare.com; media-src 'self' data: blob: https:; form-action 'self'; manifest-src 'self';";
 
-    # Gzip compression
+    ssl_certificate ${TLS_CERT_PATH};
+    ssl_certificate_key ${TLS_KEY_PATH};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_tickets off;
+
     gzip on;
     gzip_vary on;
     gzip_min_length 1024;
@@ -13,12 +39,11 @@ server {
     gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml application/javascript;
     gzip_disable "MSIE [1-6]\.";
 
-    # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
+    add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
 
-    # Los remoteEntry de module federation no deben quedar cacheados entre deploys.
     location ~ ^/remotes/[^/]+/assets/remoteEntry\.js$ {
         expires -1;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
@@ -31,20 +56,16 @@ server {
         try_files $uri/index.html =404;
     }
 
-    # Cache static assets
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
         try_files $uri =404;
     }
 
-    # Remotos MFE servidos desde /usr/share/nginx/html/remotes/*
     location /remotes/ {
         try_files $uri =404;
     }
 
-    # Sirve directamente los uploads del gateway sin pasar al backend (requiere volumen en nginx)
-    # ^~ evita que el regex de assets intercepte .png/.jpg y devuelva 404 desde /usr/share/nginx/html
     location ^~ /services/certificados/uploads/ {
         alias /usr/share/nginx/uploads/;
         access_log off;
@@ -52,12 +73,9 @@ server {
         add_header Cache-Control "public";
     }
 
-    # Proxy para servicios backend expuestos en /services/*
-    # ^~ tiene prioridad sobre los regex de assets estáticos, evitando que .png/.pdf/etc.
-    # sean interceptados por el bloque de caché y devuelvan 404 desde /usr/share/nginx/html
     location ^~ /services/ {
         client_max_body_size 60m;
-        proxy_pass http://api-gateway:3000/; # aquí sí va "/" para recortar /services/
+        proxy_pass http://api-gateway:3000/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -97,14 +115,11 @@ server {
         return 302 https://arca.esap.edu.co;
     }
 
-    # SPA fallback - todas las rutas van a index.html
     location / {
-        # CSP aplicada solo al SPA para no interferir con proxys backend ni OnlyOffice.
         add_header Content-Security-Policy $esap_csp always;
         try_files $uri $uri/ /index.html;
     }
 
-    # Health check endpoint
     location /health {
         access_log off;
         return 200 "healthy\n";

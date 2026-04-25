@@ -156,6 +156,15 @@ export function ReviewRequestsModule() {
   const MAX_APPROVAL_FILES = 5;
   const MAX_APPROVAL_FILE_SIZE_BYTES = 10 * 1024 * 1024;
   const MAX_APPROVAL_FILE_SIZE_LABEL = '10 MB';
+  const PERSON_NAME_MAX_LENGTH = 100;
+  const DOCUMENT_MIN_LENGTH = 5;
+  const DOCUMENT_MAX_LENGTH = 10;
+  const EMAIL_MAX_LENGTH = 254;
+  const REGISTRY_FIELD_MAX_LENGTH = 10;
+  const REVIEW_NOTES_MAX_LENGTH = 1000;
+  const MIN_GRADUATION_YEAR = 1900;
+  const MANUAL_REVIEW_EXPIRATION_BUSINESS_DAYS = 15;
+  const PERSON_NAME_ALLOWED_REGEX = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.'-]+$/;
 
   const normalizeKey = (value?: string) =>
     (value || '')
@@ -167,6 +176,43 @@ export function ReviewRequestsModule() {
   const normalizeName = (value?: string) => {
     const normalized = (value || '').trim();
     return normalized || '';
+  };
+
+  const normalizeSpaces = (value: string) => value.trim().replace(/\s+/g, ' ');
+
+  const sanitizeDigits = (value: string, maxLength: number) =>
+    value.replace(/\D+/g, '').slice(0, maxLength);
+
+  const sanitizePersonName = (value: string) =>
+    value
+      .replace(/[0-9]/g, '')
+      .replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s.'-]/g, '')
+      .slice(0, PERSON_NAME_MAX_LENGTH);
+
+  const getPersonNameValidationError = (value: string, fieldLabel: string) => {
+    const normalized = normalizeSpaces(value);
+
+    if (!normalized) {
+      return `${fieldLabel} es obligatorio`;
+    }
+
+    if (normalized.length < 2) {
+      return `${fieldLabel} debe tener al menos 2 caracteres`;
+    }
+
+    if (normalized.length > PERSON_NAME_MAX_LENGTH) {
+      return `${fieldLabel} no puede superar ${PERSON_NAME_MAX_LENGTH} caracteres`;
+    }
+
+    if (/\d/.test(normalized)) {
+      return `${fieldLabel} no debe contener números`;
+    }
+
+    if (!PERSON_NAME_ALLOWED_REGEX.test(normalized)) {
+      return `${fieldLabel} solo debe contener letras, espacios, apóstrofes o guiones`;
+    }
+
+    return null;
   };
 
   const getArrayFromUnknown = <T,>(source: unknown): T[] => {
@@ -208,7 +254,8 @@ export function ReviewRequestsModule() {
       pending: { label: 'Pendiente', color: 'bg-amber-100 text-amber-800 border-amber-300', icon: Clock },
       under_review: { label: 'En Revisión', color: 'bg-blue-100 text-blue-800 border-blue-300', icon: RefreshCw },
       approved: { label: 'Aprobada', color: 'bg-green-100 text-green-800 border-green-300', icon: CheckCircle },
-      rejected: { label: 'Rechazada', color: 'bg-red-100 text-red-800 border-red-300', icon: XCircle }
+      rejected: { label: 'Rechazada', color: 'bg-red-100 text-red-800 border-red-300', icon: XCircle },
+      expired: { label: 'Expirada', color: 'bg-gray-100 text-gray-800 border-gray-300', icon: AlertCircle }
     };
 
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
@@ -242,7 +289,8 @@ export function ReviewRequestsModule() {
       graduate_found: { label: 'Graduado Encontrado', color: 'bg-green-50 text-green-700 border-green-200' },
       graduate_not_found: { label: 'No Encontrado', color: 'bg-red-50 text-red-700 border-red-200' },
       invalid_data: { label: 'Datos Inválidos', color: 'bg-orange-50 text-orange-700 border-orange-200' },
-      duplicate_request: { label: 'Solicitud Duplicada', color: 'bg-gray-50 text-gray-700 border-gray-200' }
+      duplicate_request: { label: 'Solicitud Duplicada', color: 'bg-gray-50 text-gray-700 border-gray-200' },
+      expired: { label: 'Vencida por tiempo', color: 'bg-gray-50 text-gray-700 border-gray-200' }
     };
 
     const config = resolutionConfig[resolution as keyof typeof resolutionConfig];
@@ -264,6 +312,24 @@ export function ReviewRequestsModule() {
   const isBusinessDay = (date: Date) => {
     const day = date.getDay();
     return day !== 0 && day !== 6;
+  };
+
+  const getManualReviewExpirationDate = (createdAt?: string | null) => {
+    const start = parseDateSafe(createdAt);
+    if (!start) return null;
+
+    const deadline = new Date(start.getTime());
+    let addedBusinessDays = 0;
+
+    while (addedBusinessDays < MANUAL_REVIEW_EXPIRATION_BUSINESS_DAYS) {
+      deadline.setDate(deadline.getDate() + 1);
+      if (isBusinessDay(deadline)) {
+        addedBusinessDays += 1;
+      }
+    }
+
+    deadline.setHours(23, 59, 59, 999);
+    return deadline;
   };
 
   const calculateBusinessHoursBetween = (start: Date, end: Date) => {
@@ -357,6 +423,28 @@ export function ReviewRequestsModule() {
     const month = String(parsed.getMonth() + 1).padStart(2, '0');
     const day = String(parsed.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  };
+
+  const parseDateInputAsLocal = (value: string) => {
+    const [yearRaw, monthRaw, dayRaw] = value.split('-');
+    const year = Number(yearRaw);
+    const month = Number(monthRaw);
+    const day = Number(dayRaw);
+
+    if (!year || !month || !day) {
+      return null;
+    }
+
+    const parsed = new Date(year, month - 1, day, 12, 0, 0);
+    if (
+      parsed.getFullYear() !== year ||
+      parsed.getMonth() !== month - 1 ||
+      parsed.getDate() !== day
+    ) {
+      return null;
+    }
+
+    return parsed;
   };
 
   const formatDateOnly = (value?: string | Date | null) => {
@@ -483,6 +571,8 @@ export function ReviewRequestsModule() {
         return 'approved';
       case 'REJECTED':
         return 'rejected';
+      case 'EXPIRED':
+        return 'expired';
       default:
         return 'pending';
     }
@@ -541,6 +631,7 @@ export function ReviewRequestsModule() {
       underReview: 0,
       approved: 0,
       rejected: 0,
+      expired: 0,
       avgResolutionTime: 0,
     };
 
@@ -560,6 +651,9 @@ export function ReviewRequestsModule() {
           break;
         case 'rejected':
           totals.rejected += 1;
+          break;
+        case 'expired':
+          totals.expired = (totals.expired || 0) + 1;
           break;
         default:
           break;
@@ -854,7 +948,10 @@ export function ReviewRequestsModule() {
 
       let nextForm: ApprovalForm = {
         fullName: resolvedFullName,
-        idNumber: detail.idNumber || request.graduateDocumentNumber,
+        idNumber: sanitizeDigits(
+          detail.idNumber || request.graduateDocumentNumber,
+          DOCUMENT_MAX_LENGTH,
+        ),
         email: resolvedEmail,
         programName: PROGRAMAS_ESAP.includes((detail.programName || '').trim())
           ? (detail.programName || '').trim()
@@ -873,7 +970,10 @@ export function ReviewRequestsModule() {
           nextForm = {
             ...nextForm,
             fullName: graduate.fullName || nextForm.fullName,
-            idNumber: graduate.idNumber || nextForm.idNumber,
+            idNumber: sanitizeDigits(
+              graduate.idNumber || nextForm.idNumber,
+              DOCUMENT_MAX_LENGTH,
+            ),
             email: graduate.email || nextForm.email,
             programName: PROGRAMAS_ESAP.includes((graduate.programName || '').trim())
               ? (graduate.programName || '').trim()
@@ -901,21 +1001,47 @@ export function ReviewRequestsModule() {
   };
 
   const handleSubmitReview = () => {
-    if (!reviewNotes.trim()) {
+    const trimmedReviewNotes = reviewNotes.trim();
+
+    if (!trimmedReviewNotes) {
       toast.error('Por favor ingresa notas de revision');
       return;
     }
+    if (trimmedReviewNotes.length > REVIEW_NOTES_MAX_LENGTH) {
+      toast.error(`Las notas de revision no pueden superar ${REVIEW_NOTES_MAX_LENGTH} caracteres`);
+      return;
+    }
+
     let approvalDetails: ApprovalForm | undefined;
     if (reviewAction === 'approve') {
-      const trimmedFullName = approvalForm.fullName.trim();
+      const trimmedFullName = normalizeSpaces(approvalForm.fullName);
+      const trimmedIdNumber = sanitizeDigits(
+        approvalForm.idNumber || selectedRequest?.graduateDocumentNumber || '',
+        DOCUMENT_MAX_LENGTH,
+      );
       const trimmedEmail = approvalForm.email.trim();
-      const trimmedRegistro = approvalForm.numRegistro.trim();
-      const trimmedFolio = approvalForm.numFolio.trim();
-      const trimmedLibro = approvalForm.numLibro.trim();
-      const digitsOnly = /^\d{1,10}$/;
+      const trimmedRegistro = sanitizeDigits(approvalForm.numRegistro, REGISTRY_FIELD_MAX_LENGTH);
+      const trimmedFolio = sanitizeDigits(approvalForm.numFolio, REGISTRY_FIELD_MAX_LENGTH);
+      const trimmedLibro = sanitizeDigits(approvalForm.numLibro, REGISTRY_FIELD_MAX_LENGTH);
+      const digitsOnly = new RegExp(`^\\d{1,${REGISTRY_FIELD_MAX_LENGTH}}$`);
+      const nameValidationError = getPersonNameValidationError(
+        approvalForm.fullName,
+        'El nombre del graduado',
+      );
+      const graduationDate = parseDateInputAsLocal(approvalForm.graduationDate);
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
 
-      if (!trimmedFullName) {
-        toast.error('El nombre del graduado es obligatorio');
+      if (nameValidationError) {
+        toast.error(nameValidationError);
+        return;
+      }
+      if (
+        !trimmedIdNumber ||
+        trimmedIdNumber.length < DOCUMENT_MIN_LENGTH ||
+        trimmedIdNumber.length > DOCUMENT_MAX_LENGTH
+      ) {
+        toast.error(`El documento debe tener entre ${DOCUMENT_MIN_LENGTH} y ${DOCUMENT_MAX_LENGTH} dígitos`);
         return;
       }
       if (!trimmedEmail) {
@@ -923,7 +1049,7 @@ export function ReviewRequestsModule() {
         return;
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(trimmedEmail)) {
+      if (trimmedEmail.length > EMAIL_MAX_LENGTH || !emailRegex.test(trimmedEmail)) {
         toast.error('El email no tiene un formato valido');
         return;
       }
@@ -933,6 +1059,18 @@ export function ReviewRequestsModule() {
       }
       if (!approvalForm.graduationDate) {
         toast.error('Selecciona la fecha de graduacion');
+        return;
+      }
+      if (!graduationDate) {
+        toast.error('La fecha de graduacion no tiene un formato valido');
+        return;
+      }
+      if (graduationDate.getFullYear() < MIN_GRADUATION_YEAR) {
+        toast.error(`La fecha de graduacion no puede ser anterior a ${MIN_GRADUATION_YEAR}`);
+        return;
+      }
+      if (graduationDate.getTime() > today.getTime()) {
+        toast.error('La fecha de graduacion no puede ser futura');
         return;
       }
       if (!approvalForm.campus) {
@@ -959,6 +1097,7 @@ export function ReviewRequestsModule() {
       approvalDetails = {
         ...approvalForm,
         fullName: trimmedFullName,
+        idNumber: trimmedIdNumber,
         email: trimmedEmail,
         numRegistro: trimmedRegistro,
         numFolio: trimmedFolio,
@@ -971,7 +1110,7 @@ export function ReviewRequestsModule() {
       setConfirmAction({
         type: reviewAction,
         request: selectedRequest,
-        notes: reviewNotes.trim(),
+        notes: trimmedReviewNotes,
         approvalDetails,
       });
       setShowConfirmModal(true);
@@ -1317,6 +1456,7 @@ export function ReviewRequestsModule() {
               <option value="under_review">En Revisión</option>
               <option value="approved">Aprobadas</option>
               <option value="rejected">Rechazadas</option>
+              <option value="expired">Expiradas</option>
             </select>
 
             {hasActiveFilters && (
@@ -1508,7 +1648,9 @@ export function ReviewRequestsModule() {
                     <div className="col-span-2">
                       <div className="space-y-1">
                         <p className="text-sm font-semibold" style={{ color: '#6B7280' }}>
-                          {calculateTimeSince(request.createdAt, timeNow)}
+                          {request.status === 'expired'
+                            ? 'Expirada'
+                            : calculateTimeSince(request.createdAt, timeNow)}
                         </p>
                         {request.reviewerName && (
                           <div className="flex items-center gap-1.5">
@@ -1840,7 +1982,27 @@ export function ReviewRequestsModule() {
                                 {formatDate(request.createdAt)}
                               </span>
                             </div>
-                            {request.reviewedAt && (
+                            {request.status === 'expired' && (() => {
+                              const expiredAt =
+                                request.reviewedAt ||
+                                getManualReviewExpirationDate(request.createdAt)?.toISOString();
+
+                              if (!expiredAt) {
+                                return null;
+                              }
+
+                              return (
+                                <div className="flex items-center justify-between p-2 bg-red-50 rounded">
+                                  <span className="text-red-700">
+                                    Solicitud expirada por superar 15 días hábiles
+                                  </span>
+                                  <span className="font-semibold text-red-800">
+                                    {formatDate(expiredAt)}
+                                  </span>
+                                </div>
+                              );
+                            })()}
+                            {request.reviewedAt && request.status !== 'expired' && (
                               <div className="flex items-center justify-between p-2 bg-green-50 rounded">
                                 <span className="text-gray-600">Revisión completada</span>
                                 <span className="font-semibold text-gray-900">
@@ -1928,10 +2090,11 @@ export function ReviewRequestsModule() {
               </label>
               <textarea
                 value={reviewNotes}
-                onChange={(e) => setReviewNotes(e.target.value)}
+                onChange={(e) => setReviewNotes(e.target.value.slice(0, REVIEW_NOTES_MAX_LENGTH))}
                 placeholder="Describe los hallazgos de la revisión..."
                 className="review-approval-input w-full p-3 border-2 border-gray-300 rounded-lg text-sm resize-none focus:border-[#003DA5]"
                 style={{ minHeight: '120px' }}
+                maxLength={REVIEW_NOTES_MAX_LENGTH}
               />
             </div>
 
@@ -1948,10 +2111,16 @@ export function ReviewRequestsModule() {
                     </label>
                     <input
                       value={approvalForm.fullName}
-                      onChange={(e) => setApprovalForm({ ...approvalForm, fullName: e.target.value })}
+                      onChange={(e) =>
+                        setApprovalForm({
+                          ...approvalForm,
+                          fullName: sanitizePersonName(e.target.value),
+                        })
+                      }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="Nombre completo"
                       disabled={isLoadingApprovalData}
+                      maxLength={PERSON_NAME_MAX_LENGTH}
                     />
                   </div>
                   <div className="space-y-1.5">
@@ -1960,8 +2129,15 @@ export function ReviewRequestsModule() {
                     </label>
                     <input
                       value={approvalForm.idNumber || selectedRequest?.graduateDocumentNumber || ''}
-                      onChange={(e) => setApprovalForm({ ...approvalForm, idNumber: e.target.value })}
+                      onChange={(e) =>
+                        setApprovalForm({
+                          ...approvalForm,
+                          idNumber: sanitizeDigits(e.target.value, DOCUMENT_MAX_LENGTH),
+                        })
+                      }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
+                      inputMode="numeric"
+                      maxLength={DOCUMENT_MAX_LENGTH}
                       disabled
                     />
                   </div>
@@ -1972,10 +2148,16 @@ export function ReviewRequestsModule() {
                     <input
                       type="email"
                       value={approvalForm.email}
-                      onChange={(e) => setApprovalForm({ ...approvalForm, email: e.target.value })}
+                      onChange={(e) =>
+                        setApprovalForm({
+                          ...approvalForm,
+                          email: e.target.value.slice(0, EMAIL_MAX_LENGTH),
+                        })
+                      }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       placeholder="correo@ejemplo.com"
                       disabled={isLoadingApprovalData}
+                      maxLength={EMAIL_MAX_LENGTH}
                       required
                     />
                   </div>
@@ -1989,7 +2171,7 @@ export function ReviewRequestsModule() {
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          numRegistro: e.target.value.replace(/\D+/g, ''),
+                          numRegistro: sanitizeDigits(e.target.value, REGISTRY_FIELD_MAX_LENGTH),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -1997,7 +2179,7 @@ export function ReviewRequestsModule() {
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={10}
+                      maxLength={REGISTRY_FIELD_MAX_LENGTH}
                       required
                     />
                   </div>
@@ -2011,7 +2193,7 @@ export function ReviewRequestsModule() {
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          numFolio: e.target.value.replace(/\D+/g, ''),
+                          numFolio: sanitizeDigits(e.target.value, REGISTRY_FIELD_MAX_LENGTH),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -2019,7 +2201,7 @@ export function ReviewRequestsModule() {
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={10}
+                      maxLength={REGISTRY_FIELD_MAX_LENGTH}
                       required
                     />
                   </div>
@@ -2033,7 +2215,7 @@ export function ReviewRequestsModule() {
                       onChange={(e) =>
                         setApprovalForm({
                           ...approvalForm,
-                          numLibro: e.target.value.replace(/\D+/g, ''),
+                          numLibro: sanitizeDigits(e.target.value, REGISTRY_FIELD_MAX_LENGTH),
                         })
                       }
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
@@ -2041,7 +2223,7 @@ export function ReviewRequestsModule() {
                       disabled={isLoadingApprovalData}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={10}
+                      maxLength={REGISTRY_FIELD_MAX_LENGTH}
                       required
                     />
                   </div>
@@ -2073,6 +2255,8 @@ export function ReviewRequestsModule() {
                       onChange={(e) => setApprovalForm({ ...approvalForm, graduationDate: e.target.value })}
                       className="review-approval-input w-full rounded-lg border-2 border-gray-300 px-3 py-2 text-sm"
                       disabled={isLoadingApprovalData}
+                      min={`${MIN_GRADUATION_YEAR}-01-01`}
+                      max={toDateInputValue(new Date())}
                     />
                   </div>
                   <div className="space-y-1.5">
