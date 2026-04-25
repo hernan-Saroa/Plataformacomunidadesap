@@ -48,8 +48,11 @@ interface Persona {
 interface Apoderado {
   nombre: string;
   cedula: string;
-  correo: string;
-  celular: string;
+  correo?: string;
+  celular?: string;
+  email?: string;
+  telefono?: string;
+  direccion?: string;
 }
 
 interface DenunciadoCompleto {
@@ -238,6 +241,12 @@ function getNombre(p: Persona | string | null | undefined): string {
 function getId(p: Persona | string | null | undefined): string {
   if (!p || typeof p === 'string') return '';
   return p.numeroIdentificacion ? `${p.tipoIdentificacion}: ${p.numeroIdentificacion}` : '';
+}
+function getApoderadoCorreo(apoderado?: Apoderado): string {
+  return apoderado?.correo || apoderado?.email || '';
+}
+function getApoderadoCelular(apoderado?: Apoderado): string {
+  return apoderado?.celular || apoderado?.telefono || '';
 }
 
 const SEMAFORO: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -2092,6 +2101,7 @@ export function ModalDetallesProceso({
   const [mostrarAlertaCierre, setMostrarAlertaCierre] = useState(false);
   const [archivosSubidos, setArchivosSubidos] = useState<Archivo[]>([]);
   const [archivosBackend, setArchivosBackend] = useState<Archivo[]>([]);
+  const [noticia, setNoticia] = useState<ApiNoticia | null>(null);
   const [actuaciones, setActuaciones] = useState<ActuacionItem[]>([]);
   const [actuacionesLoading, setActuacionesLoading] = useState(false);
   const [actuacionesError, setActuacionesError] = useState<string | null>(null);
@@ -2131,6 +2141,24 @@ export function ModalDetallesProceso({
     || [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ').trim()
     || currentUser?.email
     || 'Sistema';
+
+  // ═══ Cargar noticia asociada ═══
+  useEffect(() => {
+    if (!proceso?.id) {
+      setNoticia(null);
+      return;
+    }
+
+    disciplinaryService.getAssociatedNewsToProcess(proceso.id)
+      .then((noticias) => {
+        // Asumimos que hay solo una noticia asociada
+        setNoticia(noticias[0] || null);
+      })
+      .catch((err) => {
+        console.error('[ModalDetallesProceso] Error cargando noticia:', err);
+        setNoticia(null);
+      });
+  }, [proceso?.id]);
 
   // ═══ Persistencia de filtros en localStorage ═══
   const STORAGE_KEY = `mdp_filtros_${proceso.numeroProceso}`;
@@ -2203,12 +2231,36 @@ export function ModalDetallesProceso({
           fileType: doc.fileType || null,
         };
       });
-      setArchivosBackend(mapped);
+
+      // ═══ Incluir archivos adjuntos de la noticia ═══
+      const archivosNoticia: Archivo[] = (proceso.archivosAdjuntos || []).map((adj, index) => {
+        const ext = adj.nombre.split('.').pop()?.toLowerCase() || 'pdf';
+        // Intentar encontrar la URL correspondiente en noticia.adjuntos (asumiendo orden)
+        const url = noticia?.adjuntos?.[index] || null;
+        return {
+          id: `noticia-${index}`,
+          nombre: adj.nombre,
+          tipo: 'evidencia' as const,
+          fecha: adj.fechaSubida,
+          firmante: 'Archivo de la noticia',
+          estado: 'aprobado' as const,
+          tamaño: formatBytes(adj.tamano),
+          extension: ext as Extension,
+          version: 1,
+          etapaProceso: 'Recepción',
+          downloadUrl: url,
+          urlExterna: url,
+          archivoNombre: adj.nombre,
+          fileType: null,
+        };
+      });
+
+      setArchivosBackend(mapped.concat(archivosNoticia));
     } catch (err) {
       console.error('[ModalDetallesProceso] Error cargando documentos:', err);
       setArchivosBackend([]);
     }
-  }, [proceso?.id]);
+  }, [proceso?.id, noticia]);
 
   // ═══ Cargar documentos del expediente desde el backend ═══
   useEffect(() => {
@@ -3652,7 +3704,14 @@ export function ModalDetallesProceso({
             {esAuto && (
               <p className="text-[10px] text-gray-600 font-medium truncate">{archivo.nombre.replace(/_/g, ' ')}</p>
             )}
-            <p className="text-[10px] text-gray-500 mt-0.5">{archivo.firmante} · {archivo.fecha} · {archivo.tamaño}</p>
+            <div className="flex items-center gap-1 mt-0.5">
+              <p className="text-[10px] text-gray-500">{archivo.firmante} · {archivo.fecha} · {archivo.tamaño}</p>
+              {archivo.firmante === 'Archivo de la noticia' && (
+                <span className="px-1 py-0.5 text-[8px] font-bold rounded bg-purple-100 text-purple-700 border border-purple-300">
+                  De la noticia
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {!ocultarBadgeEtapa && archivo.etapaProceso && (() => {
@@ -4045,6 +4104,21 @@ export function ModalDetallesProceso({
                           <p className="text-xs text-gray-500 mt-0.5">{getId(proceso.denunciado)}</p>
                         )}
                         {cargo && <p className="text-xs text-gray-600 mt-1">{cargo}</p>}
+                        {proceso.denunciados?.[0]?.apoderado && (
+                          <div className="mt-2 pt-2 border-t border-orange-200">
+                            <div className="flex items-center gap-1 mb-1">
+                              <Scale className="w-3 h-3 text-orange-600" />
+                              <span className="text-[9px] font-bold text-orange-600 uppercase">Apoderado</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-700">
+                              <p><span className="font-bold text-gray-500">Nombre:</span> {proceso.denunciados[0].apoderado?.nombre || 'Sin información'}</p>
+                              <p><span className="font-bold text-gray-500">Cédula:</span> {proceso.denunciados[0].apoderado?.cedula || 'Sin información'}</p>
+                              <p><span className="font-bold text-gray-500">Correo:</span> {getApoderadoCorreo(proceso.denunciados[0].apoderado) || 'Sin información'}</p>
+                              <p><span className="font-bold text-gray-500">Celular:</span> {getApoderadoCelular(proceso.denunciados[0].apoderado) || 'Sin información'}</p>
+                              <p className="col-span-2"><span className="font-bold text-gray-500">Dirección:</span> {proceso.denunciados[0].apoderado?.direccion || 'Sin información'}</p>
+                            </div>
+                          </div>
+                        )}
                         {proceso.denunciados && proceso.denunciados.length > 1 && (
                           <div className="mt-2 pt-2 border-t border-orange-200 space-y-1">
                             {proceso.denunciados.slice(1).map((d, i) => (
@@ -4074,6 +4148,21 @@ export function ModalDetallesProceso({
                         <p className="text-sm font-bold text-gray-900">{getNombre(proceso.denunciante)}</p>
                         {getId(proceso.denunciante) && (
                           <p className="text-xs text-gray-500 mt-0.5">{getId(proceso.denunciante)}</p>
+                        )}
+                        {proceso.denunciantes?.[0]?.apoderado && (
+                          <div className="mt-2 pt-2 border-t border-gray-200">
+                            <div className="flex items-center gap-1 mb-1">
+                              <Scale className="w-3 h-3 text-blue-600" />
+                              <span className="text-[9px] font-bold text-blue-600 uppercase">Apoderado</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-700">
+                              <p><span className="font-bold text-gray-500">Nombre:</span> {proceso.denunciantes[0].apoderado?.nombre || 'Sin información'}</p>
+                              <p><span className="font-bold text-gray-500">Cédula:</span> {proceso.denunciantes[0].apoderado?.cedula || 'Sin información'}</p>
+                              <p><span className="font-bold text-gray-500">Correo:</span> {getApoderadoCorreo(proceso.denunciantes[0].apoderado) || 'Sin información'}</p>
+                              <p><span className="font-bold text-gray-500">Celular:</span> {getApoderadoCelular(proceso.denunciantes[0].apoderado) || 'Sin información'}</p>
+                              <p className="col-span-2"><span className="font-bold text-gray-500">Dirección:</span> {proceso.denunciantes[0].apoderado?.direccion || 'Sin información'}</p>
+                            </div>
+                          </div>
                         )}
                         {proceso.denunciantes && proceso.denunciantes.length > 1 && (
                           <div className="mt-2 pt-2 border-t border-gray-200 space-y-1">

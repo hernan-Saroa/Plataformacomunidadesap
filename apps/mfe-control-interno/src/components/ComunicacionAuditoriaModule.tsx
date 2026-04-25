@@ -48,6 +48,7 @@ interface Auditoria {
   fechaFin: string;
   esTerritoriales: boolean;
   hallazgos: Hallazgo[];
+  focos?: string[];
   stage: 'EJECUCION' | 'COMUNICACION' | 'SEGUIMIENTO' | 'FINALIZADA';
 }
 
@@ -174,6 +175,9 @@ export const ComunicacionAuditoriaModule: React.FC<{
   });
   const [controversias, setControversias] = useState<Controversia[]>([]);
   const [informeFinal, setInformeFinal] = useState<InformeFinal>({
+    fecha: '', controversiasResueltas: 0, hallazgosAjustados: 0, plazosPlanMejora: '30', observacionesFinales: '', generado: false,
+  });
+  const [informeEjecutivo, setInformeEjecutivo] = useState<InformeFinal>({
     fecha: '', controversiasResueltas: 0, hallazgosAjustados: 0, plazosPlanMejora: '30', observacionesFinales: '', generado: false,
   });
   const [planCreado, setPlanCreado] = useState<boolean>(false);
@@ -332,6 +336,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
         generado: estadoData?.informePreliminarGenerado ?? false,
       }));
       setInformeFinal(prev => ({ ...prev, generado: estadoData?.informeFinalGenerado ?? false }));
+      setInformeEjecutivo(prev => ({ ...prev, generado: estadoData?.informeEjecutivoGenerado ?? false }));
       try {
         const planes = await controlInternoService.getPlanesMejoramiento();
         const planesDeEstaAuditoria = Array.isArray(planes)
@@ -411,6 +416,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
               : audData.territorial,
           }),
           ...(audData.riesgosIdentificados && { riesgosIdentificados: audData.riesgosIdentificados }),
+          ...(audData.focos && { focos: audData.focos }),
           ...(audData.fortalezas && { fortalezas: audData.fortalezas }),
           ...(audData.recomendacionesPorCategoria && { recomendacionesPorCategoria: audData.recomendacionesPorCategoria }),
           ...(audData.fechaReunionApertura && { fechaReunionApertura: audData.fechaReunionApertura }),
@@ -460,9 +466,9 @@ export const ComunicacionAuditoriaModule: React.FC<{
     if (enSeguimiento && seccionActual === 6) cargarResumenCierre();
   }, [enSeguimiento, seccionActual, cargarResumenCierre]);
 
-  // Si soloSeguimiento (tab Seguimiento del expediente), mostrar sección 5 por defecto
+  // Si soloSeguimiento (tab Seguimiento del expediente), mostrar sección 6 por defecto (Verificación)
   useEffect(() => {
-    if (soloSeguimiento && seccionActual < 5) setSeccionActual(5);
+    if (soloSeguimiento && seccionActual < 6) setSeccionActual(6);
   }, [soloSeguimiento]);
 
   const planCompleto = useMemo(() => {
@@ -590,16 +596,14 @@ export const ComunicacionAuditoriaModule: React.FC<{
       toast.error('No se puede generar el Informe Final mientras existan controversias pendientes de decisión');
       return;
     }
-    if (!informeFinal.observacionesFinales?.trim()) {
-      toast.error('Debe agregar observaciones finales');
-      return;
-    }
+    
     if (useAPI) {
       try {
         await controlInternoService.generarInformeFinal(id);
         setInformeFinal(prev => ({ ...prev, fecha: new Date().toISOString(), generado: true }));
         await cargarDatos();
         toast.success('Informe Final generado exitosamente');
+        setSeccionActual(4); // Pasar a Plan de Mejoramiento
       } catch (err: any) {
         toast.error(err?.message || 'Error al generar');
       }
@@ -611,7 +615,38 @@ export const ComunicacionAuditoriaModule: React.FC<{
         hallazgosAjustados: hallazgos.filter(h => h.estado === 'retirado').length,
         generado: true
       }));
-      toast.success('Informe Final generado exitosamente');
+      toast.success('Informe Final generado (demo)');
+      setSeccionActual(4);
+    }
+  };
+
+  const handleGenerarInformeEjecutivo = async () => {
+    if (!informeEjecutivo.observacionesFinales?.trim()) {
+      toast.error('Debe agregar observaciones finales para el Informe Ejecutivo');
+      return;
+    }
+    if (useAPI) {
+      try {
+        // Enviar observaciones finales antes de generar si el API lo requiere o vía update
+        await controlInternoService.updateInformeCierre(id, { 
+          leccionesAprendidas: informeEjecutivo.observacionesFinales 
+        });
+        await controlInternoService.generarInformeEjecutivo(id);
+        setInformeEjecutivo(prev => ({ ...prev, fecha: new Date().toISOString(), generado: true }));
+        await cargarDatos();
+        toast.success('Informe Ejecutivo generado exitosamente');
+        setSeccionActual(6); // Pasar a Verificación
+      } catch (err: any) {
+        toast.error(err?.message || 'Error al generar');
+      }
+    } else {
+      setInformeEjecutivo(prev => ({
+        ...prev,
+        fecha: new Date().toISOString(),
+        generado: true
+      }));
+      toast.success('Informe Ejecutivo generado (demo)');
+      setSeccionActual(6);
     }
   };
 
@@ -718,33 +753,35 @@ export const ComunicacionAuditoriaModule: React.FC<{
         <div className={embedded ? 'bg-white border-2 border-green-200 rounded-lg p-4' : 'bg-white/80 backdrop-blur-md rounded-2xl shadow-xl p-2 ring-1 ring-black/5 sticky top-6 z-40'}>
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth p-1">
             {soloSeguimiento ? (
-              // Strip Seguimiento: Verificación | Informe de Cierre
+              // Strip Seguimiento: Ejecutivo | Verificación | Informe de Cierre
               [
-                { id: 5, nombre: 'Verificación Cumplimiento', icono: ClipboardCheck, completado: todasAccionesVerificadas },
-                { id: 6, nombre: 'Informe de Cierre', icono: BookOpen, completado: informeCierreAprobado },
+                { id: 5, nombre: 'Informe Ejecutivo', icono: TrendingUp, completado: informeEjecutivo.generado },
+                { id: 6, nombre: 'Verificación Cumplimiento', icono: ClipboardCheck, completado: todasAccionesVerificadas },
+                { id: 7, nombre: 'Informe de Cierre', icono: BookOpen, completado: informeCierreAprobado },
               ].map((seccion, index) => {
-                const puedeAcceder = seccion.id === 5 || (seccion.id === 6 && todasAccionesVerificadas);
+                const puedeAcceder = 
+                  seccion.id === 5 || 
+                  (seccion.id === 6 && informeEjecutivo.generado) ||
+                  (seccion.id === 7 && todasAccionesVerificadas);
                 return (
                   <React.Fragment key={seccion.id}>
                     <button
                       onClick={() => puedeAcceder && setSeccionActual(seccion.id)}
-                      disabled={!puedeAcceder}
-                      title={!puedeAcceder ? 'Complete la verificación de cumplimiento primero' : undefined}
-                      className={`flex flex-col items-center justify-center gap-1 px-3 py-4 rounded-xl transition-all flex-1 min-w-[140px] min-h-[90px] text-center relative ${
-                        !puedeAcceder ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                          : seccionActual === seccion.id ? (embedded ? 'bg-green-600 text-white shadow-md' : 'bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-xl scale-105 z-10')
-                          : seccion.completado ? 'bg-green-50 text-green-700 hover:bg-green-100 border border-green-200' : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
-                      }`}
+                      className={`flex flex-col items-center gap-2 p-2 rounded-lg transition-all min-w-[100px] ${
+                        seccionActual === seccion.id ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-500 shadow-sm' : 'text-gray-400 hover:text-gray-600'
+                      } ${!puedeAcceder ? 'opacity-40 cursor-not-allowed' : ''}`}
                     >
-                      <seccion.icono className={`w-6 h-6 ${seccionActual === seccion.id ? 'animate-pulse' : ''}`} />
-                      <span className="text-xs sm:text-sm font-bold leading-tight max-w-[120px]">{seccion.nombre}</span>
+                      <div className={`p-2 rounded-full ${seccionActual === seccion.id ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                        <seccion.icono className="w-5 h-5" />
+                      </div>
+                      <span className="text-[10px] font-bold text-center leading-tight uppercase tracking-wider">{seccion.nombre}</span>
                       {seccion.completado && (
-                        <div className="absolute top-2 right-2">
-                          <CheckCircle2 className="w-4 h-4 text-current" />
+                        <div className="absolute -top-1 -right-1 bg-green-500 rounded-full p-0.5">
+                          <CheckCircle2 className="w-3 h-3 text-white" />
                         </div>
                       )}
                     </button>
-                    {index < 1 && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
+                    {index < 2 && <ChevronRight className="w-5 h-5 text-gray-400 flex-shrink-0" />}
                   </React.Fragment>
                 );
               })
@@ -752,9 +789,9 @@ export const ComunicacionAuditoriaModule: React.FC<{
               // Strip Comunicación: 1, 2, 3, 4
               [
                 { id: 1, nombre: 'Informe Preliminar', icono: FileText, completado: informePreliminar.generado },
-                { id: 2, nombre: 'Gestión Hallazgos', icono: MessageSquare, completado: !estadoComunicacion?.hayControversiasPendientes },
-                { id: 3, nombre: 'Decisión / Informe Ejecutivo', icono: FileCheck, completado: informeFinal.generado },
-                { id: 4, nombre: 'Plan de Mejoramiento', icono: TrendingUp, completado: planCompleto },
+                { id: 2, nombre: 'Respuesta y Análisis', icono: MessageSquare, completado: !estadoComunicacion?.hayControversiasPendientes },
+                { id: 3, nombre: 'Informe Final', icono: FileCheck, completado: informeFinal.generado },
+                { id: 4, nombre: 'Plan de Mejoramiento', icono: ClipboardCheck, completado: planCompleto },
               ].map((seccion, index) => {
                 const seccion1Completa = informePreliminar.generado;
                 const seccion2Completa = !estadoComunicacion?.hayControversiasPendientes;
@@ -884,6 +921,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
                     recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
                     riesgosIdentificados: (auditoria as any).riesgosIdentificados,
                     riesgosAsociados: (auditoria as any).riesgosAsociados,
+                    focos: auditoria.focos,
                     declaracion: (auditoria as any).declaracion,
                   };
 
@@ -954,6 +992,17 @@ export const ComunicacionAuditoriaModule: React.FC<{
             )}
 
             {seccionActual === 5 && soloSeguimiento && (
+              <SeccionInformeEjecutivo
+                auditoria={{ ...auditoria, hallazgos }}
+                hallazgos={hallazgos}
+                informe={informeEjecutivo}
+                setInforme={setInformeEjecutivo}
+                onGenerar={handleGenerarInformeEjecutivo}
+                onPreview={() => setModalPreview({ tipo: 'ejecutivo', abierto: true })}
+              />
+            )}
+
+            {seccionActual === 6 && soloSeguimiento && (
               <SeccionVerificacionCumplimiento
                 auditoriaId={id}
                 planes={planesParaVerificacion}
@@ -965,7 +1014,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
               />
             )}
 
-            {seccionActual === 6 && soloSeguimiento && (() => {
+            {seccionActual === 7 && soloSeguimiento && (() => {
               const tieneDocumentoCierre = documentos.some(d =>
                 d.id?.startsWith('doc-cierre') || /cierre|informe\s*de\s*cierre/i.test(d.nombre || '')
               );
@@ -1127,7 +1176,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
               <p className="text-sm text-gray-600">
                 {puedeAvanzar 
                   ? 'Todas las secciones completadas. Puede avanzar a Seguimiento (el plan de mejoramiento ya fue creado con las acciones correctivas).'
-                  : 'Complete: Informe Preliminar, Gestión Hallazgos, Informe Ejecutivo y Plan de Mejoramiento (con acciones correctivas para cada hallazgo) para poder finalizar.'}
+                  : 'Complete: Informe Preliminar, Gestión Hallazgos, Informe Final y Plan de Mejoramiento para poder finalizar.'}
               </p>
             </div>
             <Button
@@ -1563,270 +1612,24 @@ const SeccionGestionHallazgos: React.FC<{
 };
 
 // ====================================
-// SECCIÓN 2 LEGACY: CONTROVERSIAS (referencia para Sección 3)
-// ====================================
-
-const SeccionControversias: React.FC<{
-  auditoria: Auditoria;
-  controversias: Controversia[];
-  onAgregar: () => void;
-  onResolver: (id: string, decision: 'ACEPTADA' | 'RECHAZADA', resolucion: string) => void;
-}> = ({ controversias, onAgregar, onResolver }) => {
-  const [controversiaSeleccionada, setControversiaSeleccionada] = useState<string | null>(null);
-  const [resolucion, setResolucion] = useState('');
-
-  const pendientes = controversias.filter(c => c.estado === 'PENDIENTE');
-  const resueltas = controversias.filter(c => c.estado !== 'PENDIENTE');
-
-  return (
-    <div className="space-y-6">
-      {/* Instrucciones */}
-      <CardSIGL>
-        <div className="p-6 bg-gradient-to-r from-purple-50 to-blue-50">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center flex-shrink-0">
-              <MessageSquare className="w-6 h-6 text-purple-600" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-2">Gestión de Controversias (Opcional)</h3>
-              <p className="text-sm text-gray-700 mb-3">
-                Las áreas auditadas tienen derecho a presentar controversias sobre los hallazgos identificados.
-                Esta sección permite gestionar dichas controversias de manera transparente.
-              </p>
-              <div className="flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
-                  <span className="text-gray-600">{pendientes.length} Pendientes</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-green-400 rounded-full"></div>
-                  <span className="text-gray-600">{resueltas.filter(c => c.estado === 'ACEPTADA').length} Aceptadas</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 bg-red-400 rounded-full"></div>
-                  <span className="text-gray-600">{resueltas.filter(c => c.estado === 'RECHAZADA').length} Rechazadas</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </CardSIGL>
-
-      {/* Botón Agregar */}
-      <div className="flex justify-end">
-        <ButtonSIGL variant="primary" onClick={onAgregar}>
-          <MessageSquare className="w-4 h-4" />
-          Registrar Nueva Controversia
-        </ButtonSIGL>
-      </div>
-
-      {/* Controversias Pendientes */}
-      {pendientes.length > 0 && (
-        <CardSIGL>
-          <div className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-yellow-600" />
-              Controversias Pendientes de Resolución
-            </h3>
-            <div className="space-y-4">
-              {pendientes.map((controversia) => (
-                <div key={controversia.id} className="border-2 border-yellow-200 bg-yellow-50 rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <h4 className="font-semibold text-gray-900">{controversia.hallazgoTitulo}</h4>
-                      <p className="text-sm text-gray-600 mt-1">
-                        Presentado por: {controversia.responsable} • {new Date(controversia.fechaPresentacion).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <BadgeSIGL variant="warning">PENDIENTE</BadgeSIGL>
-                  </div>
-
-                  <div className="bg-white rounded-lg p-3 mb-3">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Argumentos:</p>
-                    <p className="text-sm text-gray-600">{controversia.argumentos}</p>
-                  </div>
-
-                  {controversia.evidencias.length > 0 && (
-                    <div className="mb-3">
-                      <p className="text-sm font-medium text-gray-700 mb-2">Evidencias adjuntas:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {controversia.evidencias.map((evidencia, i) => (
-                          <span key={i} className="text-xs bg-white px-3 py-1 rounded-full border border-gray-300">
-                            {evidencia}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {controversiaSeleccionada === controversia.id ? (
-                    <div className="space-y-3">
-                      <TextareaSIGL
-                        value={resolucion}
-                        onChange={(val) => setResolucion(val)}
-                        placeholder="Escriba la resolución de la controversia..."
-                        rows={3}
-                      />
-                      <div className="flex gap-2">
-                        <ButtonSIGL
-                          variant="success"
-                          onClick={() => {
-                            onResolver(controversia.id, 'ACEPTADA', resolucion);
-                            setControversiaSeleccionada(null);
-                            setResolucion('');
-                          }}
-                          disabled={!resolucion.trim()}
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                          Aceptar Controversia
-                        </ButtonSIGL>
-                        <ButtonSIGL
-                          variant="danger"
-                          onClick={() => {
-                            onResolver(controversia.id, 'RECHAZADA', resolucion);
-                            setControversiaSeleccionada(null);
-                            setResolucion('');
-                          }}
-                          disabled={!resolucion.trim()}
-                        >
-                          <X className="w-4 h-4" />
-                          Rechazar Controversia
-                        </ButtonSIGL>
-                        <ButtonSIGL
-                          variant="default"
-                          onClick={() => {
-                            setControversiaSeleccionada(null);
-                            setResolucion('');
-                          }}
-                        >
-                          Cancelar
-                        </ButtonSIGL>
-                      </div>
-                    </div>
-                  ) : (
-                    <ButtonSIGL
-                      variant="primary"
-                      onClick={() => setControversiaSeleccionada(controversia.id)}
-                    >
-                      Resolver Controversia
-                    </ButtonSIGL>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </CardSIGL>
-      )}
-
-      {/* Controversias Resueltas */}
-      {resueltas.length > 0 && (
-        <CardSIGL>
-          <div className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-green-600" />
-              Controversias Resueltas
-            </h3>
-            <div className="space-y-3">
-              {resueltas.map((controversia) => (
-                <div key={controversia.id} className={`border rounded-lg p-4 ${
-                  controversia.estado === 'ACEPTADA' ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'
-                }`}>
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h4 className="font-semibold text-gray-900">{controversia.hallazgoTitulo}</h4>
-                      <p className="text-sm text-gray-600">Presentado por: {controversia.responsable}</p>
-                    </div>
-                    <BadgeSIGL variant={controversia.estado === 'ACEPTADA' ? 'success' : 'danger'}>
-                      {controversia.estado}
-                    </BadgeSIGL>
-                  </div>
-                  <div className="bg-white rounded p-3">
-                    <p className="text-sm font-medium text-gray-700 mb-1">Resolución:</p>
-                    <p className="text-sm text-gray-600">{controversia.resolucion}</p>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Resuelta el {new Date(controversia.fechaResolucion!).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </CardSIGL>
-      )}
-
-      {/* Estado Vacío */}
-      {controversias.length === 0 && (
-        <CardSIGL>
-          <div className="p-12 text-center">
-            <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">No hay controversias registradas</h3>
-            <p className="text-gray-600 mb-6">
-              Las controversias son opcionales. Si el área auditada acepta todos los hallazgos, puede continuar sin registrar controversias.
-            </p>
-            <ButtonSIGL variant="primary" onClick={onAgregar}>
-              <MessageSquare className="w-4 h-4" />
-              Registrar Primera Controversia
-            </ButtonSIGL>
-          </div>
-        </CardSIGL>
-      )}
-    </div>
-  );
-};
-
-// ====================================
-// SECCIÓN 3: DECISIÓN DEL AUDITOR / INFORME FINAL
+// SECCIÓN 3: INFORME FINAL DE AUDITORÍA
 // ====================================
 
 const SeccionInformeFinal: React.FC<{
   auditoria: Auditoria;
   hallazgos?: Hallazgo[];
   estadoComunicacion?: { hayControversiasPendientes?: boolean; puedeGenerarInformeFinal?: boolean } | null;
-  controversias?: Controversia[];
   informe: InformeFinal;
   setInforme: React.Dispatch<React.SetStateAction<InformeFinal>>;
   onGenerar: () => void;
   onPreview: () => void;
-}> = ({ auditoria, hallazgos = [], estadoComunicacion, controversias = [], informe, setInforme, onGenerar, onPreview }) => {
+}> = ({ auditoria, hallazgos = [], estadoComunicacion, informe, setInforme, onGenerar, onPreview }) => {
   const hayBloqueo = estadoComunicacion?.hayControversiasPendientes ?? (hallazgos.filter(h => h.estado === 'en-controversia').length > 0);
   const enControversia = hallazgos.filter(h => h.estado === 'en-controversia').length;
   const calcularFechaLimiteEstimada = () => {
     const dias = parseInt(informe.plazosPlanMejora || '30', 10) || 30;
-    let vigenciaPlan: number | undefined;
-    if (typeof window !== 'undefined') {
-      try {
-        const rawPlanActivo = window.localStorage.getItem('esap:plan_anual_activo');
-        if (rawPlanActivo) {
-          const planActivo = JSON.parse(rawPlanActivo);
-          const v = Number(planActivo?.vigencia);
-          if (!isNaN(v) && v >= 2020 && v <= 2100) {
-            vigenciaPlan = v;
-          }
-        }
-      } catch {
-        // Ignorar parseo inválido de localStorage
-      }
-    }
-    if (vigenciaPlan === undefined) {
-      const vAud = Number((auditoria as any).vigencia || (auditoria as any).año);
-      if (!isNaN(vAud) && vAud >= 2020 && vAud <= 2100) vigenciaPlan = vAud;
-    }
-
-    let fechaBase = new Date();
-    if (vigenciaPlan !== undefined) {
-      // Regla solicitada: usar fecha de hoy (mes/día) pero con año de la vigencia.
-      const hoy = new Date();
-      fechaBase = new Date(vigenciaPlan, hoy.getMonth(), hoy.getDate());
-    } else if (auditoria.fechaFin) {
-      const fechaFinRaw = auditoria.fechaFin;
-      if (fechaFinRaw.includes('/')) {
-        const [d, m, a] = fechaFinRaw.split('/');
-        fechaBase = new Date(`${a}-${m.padStart(2, '0')}-${d.padStart(2, '0')}T00:00:00`);
-      } else {
-        fechaBase = new Date(`${fechaFinRaw.split('T')[0]}T00:00:00`);
-      }
-    }
-
+    // La base es hoy (fecha de generación/notificación del informe)
+    const fechaBase = new Date();
     const fechaLimite = new Date(fechaBase);
     fechaLimite.setDate(fechaLimite.getDate() + dias);
     return fechaLimite.toLocaleDateString('es-CO');
@@ -1838,8 +1641,8 @@ const SeccionInformeFinal: React.FC<{
         <div className="p-4 bg-green-50 border-2 border-green-300 rounded-lg flex items-center gap-3">
           <CheckCircle2 className="w-8 h-8 text-green-600 flex-shrink-0" />
           <div>
-            <p className="font-bold text-green-900 text-lg">Informe Ejecutivo ya terminado</p>
-            <p className="text-sm text-green-700">Aprobado como Jefe OCI. Plazo de Plan de Mejoramiento definido.</p>
+            <p className="font-bold text-green-900 text-lg">Informe Final ya terminado</p>
+            <p className="text-sm text-green-700">Se han consolidado los hallazgos definitivos y plazos del plan.</p>
           </div>
         </div>
       )}
@@ -1851,12 +1654,12 @@ const SeccionInformeFinal: React.FC<{
             <div className="flex items-center gap-3">
               <AlertCircle className="w-8 h-8 text-red-600 flex-shrink-0" />
               <div>
-                <p className="font-bold text-red-900">No se puede generar el Informe Ejecutivo</p>
+                <p className="font-bold text-red-900">No se puede generar el Informe Final</p>
                 <p className="text-sm text-red-700">
                   Existen {enControversia} controversia(s) pendiente(s) de decisión del auditor.
                 </p>
                 <p className="text-sm text-red-600 mt-1">
-                  Vaya a <strong>Gestión de Hallazgos</strong> (sección 2) y registre la decisión del auditor (Ratificado, Modificado o Retirado) para cada hallazgo en controversia.
+                  Vaya a <strong>Respuesta y Análisis</strong> (sección 2) y registre la decisión del auditor (Ratificado, Modificado o Retirado) para cada hallazgo en controversia.
                 </p>
               </div>
             </div>
@@ -1937,6 +1740,222 @@ const SeccionInformeFinal: React.FC<{
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
+                Días para presentar Plan de Mejoramiento *
+              </label>
+              <InputSIGL
+                type="number"
+                value={informe.plazosPlanMejora}
+                onChange={(e) => setInforme(prev => ({ ...prev, plazosPlanMejora: e.target.value }))}
+                min="15"
+                max="90"
+                placeholder="Ej. 30"
+                disabled={informe.generado}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Plazo normativo: 30 días calendario tras la entrega de este informe.
+              </p>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
+              <Calendar className="w-8 h-8 text-blue-600 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-blue-900">Fecha límite estimada para el plan</p>
+                <p className="text-lg font-bold text-blue-700">
+                  {calcularFechaLimiteEstimada()}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardSIGL>
+
+      {/* Acciones */}
+      <div className="flex flex-wrap gap-3 justify-end">
+        <Button variant="outline" size="sm" onClick={onPreview} disabled={!informe.generado} className="font-medium">
+          <Eye className="w-4 h-4 mr-2" />
+          Vista Previa
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!informe.generado}
+          className="font-medium"
+          onClick={async () => {
+            if (!informe.generado) return;
+            const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
+            const hallazgosParaPDF = (hallazgos || []).map((h) => ({
+              codigo: h.codigo,
+              titulo: h.titulo,
+              gravedad: h.gravedad,
+              descripcion: h.descripcion || '',
+              criterioIncumplido: h.criterioIncumplido,
+              causas: h.causas,
+              efectos: h.efectos,
+              recomendaciones: h.recomendaciones,
+              estadoFinal: h.estado,
+              decisionAuditor: h.decisionAuditor,
+              fundamentacionTecnica: (h as any).fundamentacionTecnica,
+            }));
+            await exportarPDFInformeAuditoria(
+              'final',
+              {
+                codigo: auditoria.codigo,
+                nombre: auditoria.nombre,
+                proceso: auditoria.proceso,
+                auditorLider:
+                  typeof auditoria.auditorLider === 'string'
+                    ? auditoria.auditorLider
+                    : (auditoria as any).auditorLider?.nombre || 'No asignado',
+                tituloAuditoria: auditoria.nombre,
+                responsableUnidadAuditada: (auditoria as any).responsableUnidad || (auditoria as any).areaResponsable || '—',
+                lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).territorial || '—',
+                fechaEjecucionInicio: auditoria.fechaInicio,
+                fechaEjecucionFin: auditoria.fechaFin,
+                periodoAuditoria: (auditoria as any).periodoAuditadoTexto || (auditoria as any).periodoAuditado || (auditoria as any).periodoAuditoria || 'Vigencia correspondiente',
+                equipoAuditor: (auditoria as any).equipoAuditores,
+                objetivo: (auditoria as any).objetivo,
+                alcance: (auditoria as any).alcance,
+                marcoNormativo: (auditoria as any).marcoNormativo,
+                contextoGeneral: (auditoria as any).contextoGeneral,
+                declaracion: (auditoria as any).declaracion,
+                jefeOCI: (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
+                elaboro: (auditoria as any).elaboro || (typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre),
+                reviso: (auditoria as any).reviso || (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
+                aprobo: (auditoria as any).aprobo || (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
+              },
+              informe,
+              hallazgosParaPDF
+            );
+          }}
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Descargar Informe Final
+        </Button>
+        {!informe.generado && (
+          <Button
+            size="sm"
+            onClick={onGenerar}
+            disabled={hayBloqueo}
+            className="font-medium bg-green-600 hover:bg-green-700 text-white"
+          >
+            <FileCheck className="w-4 h-4 mr-2" />
+            Generar Informe Final de Auditoría
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ====================================
+// SECCIÓN 4: PLAN DE MEJORAMIENTO
+// ====================================
+
+const SeccionPlanMejoramiento: React.FC<{
+  auditoria: Auditoria;
+  planCreado: boolean;
+  planEstadisticas: { totalAcciones: number; accionesCompletadas: number; porcentajeAvance: number } | null;
+  planCompleto: boolean;
+  onCrearPlanMejoramiento: () => void;
+  hallazgosCount: number;
+  onIrAPlan: () => void;
+}> = ({ planCreado, planEstadisticas, planCompleto, onCrearPlanMejoramiento, hallazgosCount, onIrAPlan }) => {
+  return (
+    <div className="space-y-6">
+      {planCreado ? (
+        <div className={`p-6 rounded-lg flex items-center gap-4 border-2 ${planCompleto ? 'bg-green-50 border-green-300' : 'bg-amber-50 border-amber-300'}`}>
+          <div className="relative w-20 h-20 flex-shrink-0 flex items-center justify-center rounded-full bg-white border-2 border-gray-200">
+            <span className={`text-xl font-bold ${planCompleto ? 'text-green-600' : 'text-amber-600'}`}>
+              {planEstadisticas?.porcentajeAvance ?? 0}%
+            </span>
+          </div>
+          <div className="flex-1">
+            <p className={`font-bold text-lg ${planCompleto ? 'text-green-900' : 'text-amber-900'}`}>
+              Plan de Mejoramiento creado
+            </p>
+            <p className="text-sm text-gray-700 mt-1">
+              {planEstadisticas
+                ? `${planEstadisticas.accionesCompletadas}/${planEstadisticas.totalAcciones} acciones completadas. `
+                : ''}
+              {planCompleto
+                ? 'El plan cumple los requisitos. Puede finalizar la comunicación y pasar a Seguimiento.'
+                : 'Complete al menos una acción correctiva en el módulo de Planes de Mejoramiento para poder finalizar.'}
+            </p>
+            <Button variant="outline" size="sm" onClick={onIrAPlan} className="mt-3">
+              <ChevronRight className="w-4 h-4 mr-2" />
+              Ir a ver plan
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <CardSIGL>
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <Target className="w-5 h-5 text-amber-600" />
+              Crear Plan de Mejoramiento
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Con los hallazgos de esta auditoría debe crear un Plan de Mejoramiento. Las <strong>acciones correctivas</strong> para cada hallazgo se formularán en el módulo de Planes.
+            </p>
+            {hallazgosCount > 0 ? (
+              <Button
+                onClick={onCrearPlanMejoramiento}
+                className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
+              >
+                <Target className="w-4 h-4 mr-2" />
+                Crear Plan de Mejoramiento ({hallazgosCount} hallazgos)
+              </Button>
+            ) : (
+              <p className="text-amber-700 text-sm">
+                No hay hallazgos vinculados a esta auditoría. Gestione los hallazgos en la sección anterior.
+              </p>
+            )}
+          </div>
+        </CardSIGL>
+      )}
+    </div>
+  );
+};
+
+// ====================================
+// SECCIÓN 5: INFORME EJECUTIVO (AHORA EN SEGUIMIENTO)
+// ====================================
+
+const SeccionInformeEjecutivo: React.FC<{
+  auditoria: Auditoria;
+  hallazgos?: Hallazgo[];
+  informe: InformeFinal;
+  setInforme: React.Dispatch<React.SetStateAction<InformeFinal>>;
+  onGenerar: () => void;
+  onPreview: () => void;
+}> = ({ auditoria, hallazgos = [], informe, setInforme, onGenerar, onPreview }) => {
+  const calcularFechaLimiteEstimada = () => {
+    const dias = parseInt(informe.plazosPlanMejora || '30', 10) || 30;
+    const fechaBase = new Date();
+    const fechaLimite = new Date(fechaBase);
+    fechaLimite.setDate(fechaLimite.getDate() + dias);
+    return fechaLimite.toLocaleDateString('es-CO');
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Banner: Informe Ejecutivo ya terminado */}
+      {informe.generado && (
+        <div className="p-4 bg-green-50 border-2 border-green-300 rounded-lg flex items-center gap-3">
+          <CheckCircle2 className="w-8 h-8 text-green-600 flex-shrink-0" />
+          <div>
+            <p className="font-bold text-green-900 text-lg">Informe Ejecutivo ya terminado</p>
+            <p className="text-sm text-green-700">Aprobado como Jefe OCI. Notificado al Director Nacional.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Plazos Plan de Mejoramiento */}
+      <CardSIGL>
+        <div className="p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Plazos para Plan de Mejoramiento</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
                 Días para presentar Plan de Mejoramiento
               </label>
               <InputSIGL
@@ -1965,11 +1984,11 @@ const SeccionInformeFinal: React.FC<{
       {/* Observaciones Finales */}
       <CardSIGL>
         <div className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Observaciones Finales</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Observaciones Finales / Conclusiones</h3>
           <TextareaSIGL
             value={informe.observacionesFinales}
             onChange={(val) => setInforme(prev => ({ ...prev, observacionesFinales: val }))}
-            placeholder="Ingrese las observaciones finales que se incluirán en el informe final..."
+            placeholder="Ingrese las observaciones finales que se incluirán en el informe ejecutivo..."
             rows={6}
             disabled={informe.generado}
           />
@@ -2033,68 +2052,11 @@ const SeccionInformeFinal: React.FC<{
           <FileText className="w-4 h-4 mr-2" />
           Descargar Informe Ejecutivo OCI
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!informe.generado}
-          className="font-medium"
-          onClick={async () => {
-            if (!informe.generado) return;
-            const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
-            const hallazgosParaPDF = (hallazgos || []).map((h) => ({
-              codigo: h.codigo,
-              titulo: h.titulo,
-              gravedad: h.gravedad,
-              descripcion: h.descripcion || '',
-              criterioIncumplido: h.criterioIncumplido,
-              causas: h.causas,
-              efectos: h.efectos,
-              recomendaciones: h.recomendaciones,
-              estadoFinal: h.estado,
-              decisionAuditor: h.decisionAuditor,
-              fundamentacionTecnica: (h as any).fundamentacionTecnica,
-            }));
-            await exportarPDFInformeAuditoria(
-              'final',
-              {
-                codigo: auditoria.codigo,
-                nombre: auditoria.nombre,
-                proceso: auditoria.proceso,
-                auditorLider:
-                  typeof auditoria.auditorLider === 'string'
-                    ? auditoria.auditorLider
-                    : (auditoria as any).auditorLider?.nombre || 'No asignado',
-                tituloAuditoria: auditoria.nombre,
-                responsableUnidadAuditada: (auditoria as any).responsableUnidad || (auditoria as any).areaResponsable || '—',
-                lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).territorial || '—',
-                fechaEjecucionInicio: auditoria.fechaInicio,
-                fechaEjecucionFin: auditoria.fechaFin,
-                periodoAuditoria: (auditoria as any).periodoAuditadoTexto || (auditoria as any).periodoAuditado || (auditoria as any).periodoAuditoria || 'Vigencia correspondiente',
-                equipoAuditor: (auditoria as any).equipoAuditores,
-                objetivo: (auditoria as any).objetivo,
-                alcance: (auditoria as any).alcance,
-                marcoNormativo: (auditoria as any).marcoNormativo,
-                contextoGeneral: (auditoria as any).contextoGeneral,
-                declaracion: (auditoria as any).declaracion,
-                jefeOCI: (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
-                elaboro: (auditoria as any).elaboro || (typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre),
-                reviso: (auditoria as any).reviso || (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
-                aprobo: (auditoria as any).aprobo || (auditoria as any).jefeOCI || 'MARIO OSWALDO BERNAL RODRÍGUEZ',
-              },
-              informe,
-              hallazgosParaPDF
-            );
-          }}
-        >
-          <Download className="w-4 h-4 mr-2" />
-          Descargar Informe Ejecutivo (PDF)
-        </Button>
         {!informe.generado && (
           <Button
             size="sm"
             onClick={onGenerar}
-            disabled={hayBloqueo || !informe.observacionesFinales?.trim()}
-            title={hayBloqueo ? 'Resuelva las controversias en Gestión de Hallazgos' : !informe.observacionesFinales?.trim() ? 'Complete las observaciones finales' : undefined}
+            disabled={!informe.observacionesFinales?.trim()}
             className="font-medium bg-green-600 hover:bg-green-700 text-white"
           >
             <FileCheck className="w-4 h-4 mr-2" />
@@ -2107,80 +2069,7 @@ const SeccionInformeFinal: React.FC<{
 };
 
 // ====================================
-// SECCIÓN 4: PLAN DE MEJORAMIENTO
-// ====================================
-// Las acciones correctivas se definen en el Plan de Mejoramiento (módulo Planes),
-// no en el Informe Ejecutivo. Esta sección solo permite crear el plan con los
-// hallazgos de la auditoría para luego formular las acciones correctivas allí.
-
-const SeccionPlanMejoramiento: React.FC<{
-  auditoria: Auditoria;
-  planCreado: boolean;
-  planEstadisticas: { totalAcciones: number; accionesCompletadas: number; porcentajeAvance: number } | null;
-  planCompleto: boolean;
-  onCrearPlanMejoramiento: () => void;
-  hallazgosCount: number;
-  onIrAPlan: () => void;
-}> = ({ planCreado, planEstadisticas, planCompleto, onCrearPlanMejoramiento, hallazgosCount, onIrAPlan }) => {
-  return (
-    <div className="space-y-6">
-      {planCreado ? (
-        <div className={`p-6 rounded-lg flex items-center gap-4 border-2 ${planCompleto ? 'bg-green-50 border-green-300' : 'bg-amber-50 border-amber-300'}`}>
-          <div className="relative w-20 h-20 flex-shrink-0 flex items-center justify-center rounded-full bg-white border-2 border-gray-200">
-            <span className={`text-xl font-bold ${planCompleto ? 'text-green-600' : 'text-amber-600'}`}>
-              {planEstadisticas?.porcentajeAvance ?? 0}%
-            </span>
-          </div>
-          <div className="flex-1">
-            <p className={`font-bold text-lg ${planCompleto ? 'text-green-900' : 'text-amber-900'}`}>
-              Plan de Mejoramiento creado
-            </p>
-            <p className="text-sm text-gray-700 mt-1">
-              {planEstadisticas
-                ? `${planEstadisticas.accionesCompletadas}/${planEstadisticas.totalAcciones} acciones completadas. `
-                : ''}
-              {planCompleto
-                ? 'El plan cumple los requisitos. Puede finalizar la comunicación y pasar a Seguimiento.'
-                : 'Complete al menos una acción correctiva en el módulo de Planes de Mejoramiento para poder finalizar.'}
-            </p>
-            <Button variant="outline" size="sm" onClick={onIrAPlan} className="mt-3">
-              <ChevronRight className="w-4 h-4 mr-2" />
-              Ir a ver plan
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <CardSIGL>
-          <div className="p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-              <Target className="w-5 h-5 text-amber-600" />
-              Crear Plan de Mejoramiento
-            </h3>
-            <p className="text-gray-600 mb-4">
-              Con los hallazgos de esta auditoría debe crear un Plan de Mejoramiento. Las <strong>acciones correctivas</strong> para cada hallazgo se formularán en el módulo de Planes, no en el Informe Ejecutivo.
-            </p>
-            {hallazgosCount > 0 ? (
-              <Button
-                onClick={onCrearPlanMejoramiento}
-                className="bg-amber-600 hover:bg-amber-700 text-white font-medium"
-              >
-                <Target className="w-4 h-4 mr-2" />
-                Crear Plan de Mejoramiento ({hallazgosCount} hallazgos)
-              </Button>
-            ) : (
-              <p className="text-amber-700 text-sm">
-                No hay hallazgos vinculados a esta auditoría. Gestione los hallazgos en la sección anterior.
-              </p>
-            )}
-          </div>
-        </CardSIGL>
-      )}
-    </div>
-  );
-};
-
-// ====================================
-// SECCIÓN 5: VERIFICACIÓN DE CUMPLIMIENTO DEL PLAN DE MEJORAMIENTO (Cierre)
+// SECCIÓN 6: VERIFICACIÓN DE CUMPLIMIENTO DEL PLAN DE MEJORAMIENTO (Cierre)
 // ====================================
 
 const SeccionVerificacionCumplimiento: React.FC<{
@@ -2343,7 +2232,7 @@ const SeccionVerificacionCumplimiento: React.FC<{
 };
 
 // ====================================
-// SECCIÓN 6: INFORME DE CIERRE DE AUDITORÍA
+// SECCIÓN 7: INFORME DE CIERRE DE AUDITORÍA
 // ====================================
 
 const SeccionInformeCierre: React.FC<{
@@ -2817,7 +2706,7 @@ const ModalPreviewInforme: React.FC<{
   hallazgos?: Hallazgo[];
   onClose: () => void;
 }> = ({ tipo, auditoria, informe, onClose }) => {
-  const titulo = tipo === 'preliminar' ? 'Informe Preliminar' : tipo === 'final' ? 'Informe Ejecutivo' : 'Informe Ejecutivo';
+  const titulo = tipo === 'preliminar' ? 'Informe Preliminar' : tipo === 'final' ? 'Informe Final' : 'Informe Ejecutivo';
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
   const prepararDatosPDF = () => {
@@ -2833,7 +2722,7 @@ const ModalPreviewInforme: React.FC<{
             efectos: h.efectos,
             recomendaciones: h.recomendaciones,
           }))
-        : tipo === 'final' && auditoria.hallazgos?.length
+        : (tipo === 'final' || tipo === 'ejecutivo') && auditoria.hallazgos?.length
           ? auditoria.hallazgos.map((h: Hallazgo) => ({
               codigo: h.codigo,
               titulo: h.titulo,
@@ -2899,7 +2788,7 @@ const ModalPreviewInforme: React.FC<{
         const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
         const { auditoriaBase, informeParaPDF, hallazgosParaPDF } = prepararDatosPDF();
         const url = await exportarPDFInformeAuditoria(
-          tipo === 'preliminar' ? 'preliminar' : 'final',
+          tipo === 'preliminar' ? 'preliminar' : tipo === 'final' ? 'final' : 'ejecutivo',
           auditoriaBase,
           informeParaPDF,
           hallazgosParaPDF,
@@ -2920,7 +2809,7 @@ const ModalPreviewInforme: React.FC<{
     const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
     const { auditoriaBase, informeParaPDF, hallazgosParaPDF } = prepararDatosPDF();
     await exportarPDFInformeAuditoria(
-      tipo === 'preliminar' ? 'preliminar' : 'final',
+      tipo === 'preliminar' ? 'preliminar' : tipo === 'final' ? 'final' : 'ejecutivo',
       auditoriaBase,
       informeParaPDF,
       hallazgosParaPDF,

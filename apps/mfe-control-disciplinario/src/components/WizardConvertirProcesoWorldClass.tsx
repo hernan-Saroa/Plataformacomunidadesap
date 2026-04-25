@@ -100,6 +100,7 @@ export function WizardConvertirProcesoWorldClass({ noticia, onConfirmar, onCerra
         setProfesionales(data.map(p => ({
           ...p,
           nombre: p.nombreCompleto || p.nombre || p.email,
+          email: p.email,
           especialidad: p.especialidad || 'Derecho Disciplinario',
           territorial: p.territorial || 'Sede Central',
           procesosAsignados: p.procesosAsignados || 0,
@@ -137,17 +138,32 @@ export function WizardConvertirProcesoWorldClass({ noticia, onConfirmar, onCerra
   const handleConfirmar = async () => {
     if (!seleccionado) return;
     setEnviando(true);
-    await new Promise(r => setTimeout(r, 600));
-    onConfirmar({
-      tipoProceso: 'Disciplinario Ordinario',
-      faltaPresunta: 'Por determinar',
-      etapaInicial: 'Indagación Preliminar',
-      descripcionAdicional: '',
-      profesionalId: seleccionado.id,
-      profesionalNombre: seleccionado.nombre,
-      observaciones: comentario.trim(),
-    });
-    setEnviando(false);
+    try {
+      await new Promise(r => setTimeout(r, 600));
+      const observaciones = comentario.trim();
+      // Enviar correo automáticamente al profesional asignado
+      if (seleccionado.email) {
+        await disciplinaryService.sendEmail({
+          to: seleccionado.email,
+          subject: `Nueva asignación: Proceso ${noticia.numero}`,
+          body: `Se le ha asignado el proceso ${noticia.numero}.\n\n${observaciones ? `Observaciones: ${observaciones}\n\n` : ''}Hechos: ${noticia.hechos}\n\nDenunciado: ${noticia.denunciado.nombre}`,
+        });
+      }
+      onConfirmar({
+        tipoProceso: 'Disciplinario Ordinario',
+        faltaPresunta: 'Por determinar',
+        etapaInicial: 'Indagación Preliminar',
+        descripcionAdicional: '',
+        profesionalId: seleccionado.id,
+        profesionalNombre: seleccionado.nombre,
+        observaciones,
+      });
+    } catch (error) {
+      console.error('Error al confirmar conversión:', error);
+      // Podría mostrar toast de error
+    } finally {
+      setEnviando(false);
+    }
   };
 
   return createPortal(
@@ -366,13 +382,13 @@ export function WizardConvertirProcesoWorldClass({ noticia, onConfirmar, onCerra
           {/* ── Comentario ── */}
           <div>
             <label className="block text-sm font-bold text-gray-800 mb-2">
-              Comentario <span className="text-gray-400 font-normal text-xs">(opcional)</span>
+              Comentario <span className="text-gray-400 font-normal text-xs">(opcional - se enviará por correo)</span>
             </label>
             <textarea
               value={comentario}
               onChange={e => setComentario(e.target.value)}
               rows={3}
-              placeholder="Agrega una observación o instrucción para el profesional asignado..."
+              placeholder="Agrega una observación o instrucción para el profesional asignado (se enviará automáticamente por correo)..."
               className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-blue-400 resize-none"
             />
           </div>

@@ -38,6 +38,12 @@ export interface DisciplinaryNews {
         documento?: string;
         dependencia?: string;
         entidad?: string;
+        apoderado?: {
+            nombre: string;
+            cedula: string;
+            correo?: string;
+            celular?: string;
+        };
     };
     disciplinable?: {
         nombre: string;
@@ -47,6 +53,12 @@ export interface DisciplinaryNews {
         email?: string;
         telefono?: string;
         dependencia?: string;
+        apoderado?: {
+            nombre: string;
+            cedula: string;
+            correo?: string;
+            celular?: string;
+        };
     };
     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
     kanbanStage?: string;
@@ -1684,6 +1696,13 @@ class DisciplinaryService {
     restoreProcess = async (id: string): Promise<any> => {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/restore`, {});
     };
+
+    /**
+     * Enviar un correo electrónico
+     */
+    async sendEmail(data: { to: string; subject: string; body: string }): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/email/send`, data);
+    }
 
 }
 
