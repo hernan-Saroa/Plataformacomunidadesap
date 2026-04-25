@@ -1349,7 +1349,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                     <Card className="p-6 bg-amber-50 border-amber-200">
                       <div className="flex items-center gap-3 mb-4">
                         <AlertCircle className="w-6 h-6 text-amber-600" />
-                        <h3 className="font-bold text-gray-900">Redactar Concepto Jurídico</h3>
+                        <h3 className="font-bold text-gray-900">Envío de Respuesta</h3>
                       </div>
                       <div className="bg-blue-50 p-3 mb-4 rounded border border-blue-100 text-xs text-blue-800">
                         <p>Puede guardar un borrador tantas veces como necesite. Al enviar la respuesta, el caso quedará cerrado y se notificará al solicitante.</p>

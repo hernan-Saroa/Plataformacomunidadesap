@@ -29,11 +29,15 @@ RUN node scripts/build-frontend-app.mjs "${FRONTEND_APP_DIR}"
 
 FROM nginx:alpine AS production
 
-COPY nginx.frontend.static.conf /etc/nginx/conf.d/default.conf
+RUN mkdir -p /opt/esap-nginx
+COPY nginx.frontend.static.conf /opt/esap-nginx/http.conf
+COPY nginx.frontend.static.tls.conf.template /opt/esap-nginx/tls.conf.template
+COPY docker/nginx/40-esap-select-config.sh /docker-entrypoint.d/40-esap-select-config.sh
+RUN chmod +x /docker-entrypoint.d/40-esap-select-config.sh
 
 ARG FRONTEND_DIST_DIR
 COPY --from=builder ${FRONTEND_DIST_DIR} /usr/share/nginx/html
 
-EXPOSE 80
+EXPOSE 80 443
 
 CMD ["nginx", "-g", "daemon off;"]

@@ -70,7 +70,13 @@ export interface SolicitudCertificadoGraduado {
   validationCode?: string;
   validationExpiresAt?: string;
   isValidated: boolean;
-  status: "PENDING" | "VALIDATED" | "PROCESSING" | "COMPLETED" | "REJECTED";
+  status:
+    | "PENDING"
+    | "VALIDATED"
+    | "PROCESSING"
+    | "COMPLETED"
+    | "REJECTED"
+    | "EXPIRED";
   observations?: string;
   rejectionReason?: string;
   manualReview?: boolean;

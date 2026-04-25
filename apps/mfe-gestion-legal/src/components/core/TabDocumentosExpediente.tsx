@@ -464,33 +464,6 @@ export function TabDocumentosExpediente({
           </div>
         )}
 
-        {/* Resumen categorías */}
-        <Card className="p-4 bg-gray-50 border-2 border-gray-200 mt-2">
-          <h4 className="font-bold text-sm text-gray-700 mb-3 flex items-center gap-2">
-            <Filter className="w-4 h-4" />
-            Resumen por Categoría
-          </h4>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {CATEGORIAS_DOCUMENTOS.filter(c => c.id !== 'todos').map((cat) => {
-              const count = conteoCategoria(cat.id);
-              const CatIcon = cat.icono;
-              return (
-                <button
-                  key={cat.id}
-                  onClick={() => setFiltroDocTipo(cat.id)}
-                  className="flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-200 hover:border-blue-300 hover:shadow-sm transition-all text-left"
-                >
-                  <CatIcon className="w-4 h-4 flex-shrink-0" style={{ color: cat.color }} />
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-gray-700 truncate">{cat.nombre}</p>
-                    <p className="text-lg font-black" style={{ color: cat.color }}>{count}</p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </Card>
-
         {/* Banner plantillas — solo para Actas, Autos y Oficios */}
         {usaPlantillas && (
           <Card

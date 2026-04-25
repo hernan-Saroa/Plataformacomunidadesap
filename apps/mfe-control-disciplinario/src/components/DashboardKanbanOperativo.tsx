@@ -130,6 +130,12 @@ interface Persona {
   nombre: string;
   tipoIdentificacion: 'CC' | 'CE' | 'TI' | 'PA' | 'NIT';
   numeroIdentificacion: string;
+  apoderado: {
+    nombre: string;
+    cedula: string;
+    correo?: string;
+    celular?: string;
+  };
 }
 
 interface Noticia {
@@ -329,6 +335,8 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
 
   const [hoverReenviar, setHoverReenviar] = useState(false);
 
+  console.log(noticia);
+  
 
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
@@ -392,26 +400,43 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DTE</span>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
-                  {noticia.denunciante ? (typeof noticia.denunciante === 'string' ? noticia.denunciante : noticia.denunciante.nombre) : 'Sin información'}
+                  {String(noticia.denunciante ? (typeof noticia.denunciante === 'string' ? noticia.denunciante : noticia.denunciante.nombre) : 'Sin información')}
                 </p>
                 {noticia.denunciante && typeof noticia.denunciante !== 'string' && (
                   <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {noticia.denunciante.tipoIdentificacion} {noticia.denunciante.numeroIdentificacion}
+                    {noticia.denunciante.numeroIdentificacion}
                   </p>
                 )}
+                {(() => {
+                  
+                const apoderado = (typeof noticia.denunciante !== 'string' && noticia.denunciante?.apoderado) || noticia.denunciantes?.[0]?.apoderado;
+                return apoderado?.nombre ? (
+                  <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200 pt-1">
+                    Apoderado: {apoderado.nombre}
+                  </p>
+                ) : null;
+                })()}
               </div>
             </div>
             <div className="flex items-start gap-2.5">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DDO</span>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
-                  {noticia.denunciado ? (typeof noticia.denunciado === 'string' ? noticia.denunciado : noticia.denunciado.nombre) : 'Sin información'}
+                  {String(noticia.denunciado ? (typeof noticia.denunciado === 'string' ? noticia.denunciado : noticia.denunciado.nombre) : 'Sin información')}
                 </p>
                 {noticia.denunciado && typeof noticia.denunciado !== 'string' && (
                   <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {noticia.denunciado.tipoIdentificacion} {noticia.denunciado.numeroIdentificacion}
+                    {noticia.denunciado.numeroIdentificacion}
                   </p>
                 )}
+                {(() => {
+                const apoderado = (typeof noticia.denunciado !== 'string' && noticia.denunciado?.apoderado) || noticia.denunciados?.[0]?.apoderado;
+                return apoderado?.nombre ? (
+                  <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200 pt-1">
+                    Apoderado: {apoderado.nombre}
+                  </p>
+                ) : null;
+                })()}
               </div>
             </div>
             {/* Radicador */}
@@ -710,26 +735,28 @@ function TarjetaProceso({
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DTE</span>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
-                  {proceso.denunciante ? (typeof proceso.denunciante === 'string' ? proceso.denunciante : proceso.denunciante.nombre) : 'Sin información'}
+                  {String(proceso.denunciante ? (typeof proceso.denunciante === 'string' ? proceso.denunciante : proceso.denunciante.nombre) : 'Sin información')}
                 </p>
                 {proceso.denunciante && typeof proceso.denunciante !== 'string' && (
                   <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {proceso.denunciante.tipoIdentificacion} {proceso.denunciante.numeroIdentificacion}
+                    {proceso.denunciante.numeroIdentificacion}
                   </p>
                 )}
+
               </div>
             </div>
             <div className="flex items-start gap-2.5">
               <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DDO</span>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
-                  {proceso.denunciado ? (typeof proceso.denunciado === 'string' ? proceso.denunciado : proceso.denunciado.nombre) : 'Sin información'}
+                  {String(proceso.denunciado ? (typeof proceso.denunciado === 'string' ? proceso.denunciado : proceso.denunciado.nombre) : 'Sin información')}
                 </p>
                 {proceso.denunciado && typeof proceso.denunciado !== 'string' && (
                   <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {proceso.denunciado.tipoIdentificacion} {proceso.denunciado.numeroIdentificacion}
+                    {proceso.denunciado.numeroIdentificacion}
                   </p>
                 )}
+
               </div>
             </div>
           </KanbanCardInfoSection>
@@ -2550,7 +2577,13 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     email: rawItem.email,
     telefono: rawItem.telefono,
     direccion: rawItem.direccion,
-    entidad: rawItem.entidad
+    entidad: rawItem.entidad,
+    apoderado: {
+      nombre: rawItem.nombre,
+      cedula: rawItem.cedula,
+      correo: rawItem.correo,
+      celular: rawItem.celular,
+    }
   });
 
   const mapEstadoNoticia = (estado?: ApiNoticia['estado']) => {
@@ -2574,12 +2607,24 @@ export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
     denunciante: {
       nombre: denuncianteRaw.nombre || 'Sin denunciante',
       tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
-      numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.identificacion || denuncianteRaw.telefono || 'N/A'
+      numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.identificacion || denuncianteRaw.telefono || 'N/A',
+      apoderado: {
+        nombre: denuncianteRaw.nombre,
+        cedula: denuncianteRaw.cedula,
+        correo: denuncianteRaw.correo,
+        celular: denuncianteRaw.celular,
+      }
     },
     denunciado: {
       nombre: denunciadoRaw.nombre || 'Sin disciplinable',
       tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
-      numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || denunciadoRaw.identificacion || 'N/A'
+      numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || denuncianteRaw.identificacion || 'N/A',
+      apoderado: {
+        nombre: denunciadoRaw.nombre,
+        cedula: denunciadoRaw.cedula,
+        correo: denunciadoRaw.correo,
+        celular: denunciadoRaw.celular,
+      }
     },
     denunciantes: denuncianteList.map(mapDetalle),
     disciplinables: disciplinableList.map(mapDetalle),
@@ -2620,7 +2665,13 @@ export const normalizeNoticia = (raw: any): Noticia => {
     email: item.email,
     telefono: item.telefono,
     direccion: item.direccion,
-    entidad: item.entidad
+    entidad: item.entidad,
+    apoderado: {
+      nombre: item.nombre,
+      cedula: item.cedula,
+      correo: item.correo,
+      celular: item.celular,
+    }
   });
 
   return {
@@ -2634,13 +2685,25 @@ export const normalizeNoticia = (raw: any): Noticia => {
     denunciante: {
       nombre: denuncianteRaw.nombre || 'Sin nombre',
       tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
-      numeroIdentificacion: denuncianteRaw.numeroIdentificacion || denuncianteRaw.cedula || denuncianteRaw.identificacion || 'Sin identificacion'
+      numeroIdentificacion: denuncianteRaw.numeroIdentificacion || denuncianteRaw.cedula || denuncianteRaw.identificacion || 'Sin identificacion',
+      apoderado: {
+        nombre: denuncianteRaw.nombre,
+        cedula: denuncianteRaw.cedula,
+        correo: denuncianteRaw.correo,
+        celular: denuncianteRaw.celular,
+      }
     },
     denunciado: {
       nombre: denunciadoRaw.nombre || raw.disciplinable?.nombre || 'Sin nombre',
       tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
       numeroIdentificacion: denunciadoRaw.numeroIdentificacion || denunciadoRaw.cedula || denunciadoRaw.identificacion || raw.disciplinable?.cedula || 'Sin identificacion',
-      cargo: denunciadoRaw.cargo || raw.disciplinable?.cargo || 'Sin cargo'
+      cargo: denunciadoRaw.cargo || raw.disciplinable?.cargo || 'Sin cargo',
+      apoderado: {
+        nombre: denunciadoRaw.nombre,
+        cedula: denunciadoRaw.cedula,
+        correo: denunciadoRaw.correo,
+        celular: denunciadoRaw.celular,
+      }
     },
     hechos: raw.hechos || raw.descripcionHechos || '',
     conductas: raw.conductas || raw.conductasSeleccionadas || [],
@@ -2867,7 +2930,7 @@ export function DashboardKanbanOperativo({
   const [entidadesError, setEntidadesError] = useState<string | null>(null);
 
   // ✅ NUEVO: Estado para profesionales cargados desde el backend
-  const [profesionalesList, setProfesionalesList] = useState<{ id: string; nombre: string }[]>([]);
+  const [profesionalesList, setProfesionalesList] = useState<{ id: string; nombre: string; email?: string }[]>([]);
   const [profesionalesLoading, setProfesionalesLoading] = useState(true);
 
   // ✅ NUEVO: Estado para solicitudes de reasignación pendientes
@@ -2924,10 +2987,11 @@ export function DashboardKanbanOperativo({
       const profesionales = await disciplinaryService.getProfesionales();
       console.log('[DashboardKanban] Profesionales recibidos del backend:', profesionales);
 
-      // Mapear al formato esperado: { id, nombre }
+      // Mapear al formato esperado: { id, nombre, email }
       const profesionalesFormateados = profesionales.map((p: any) => ({
         id: p.id,
-        nombre: p.nombreCompleto || p.nombre || p.email || `Profesional ${p.id}`
+        nombre: p.nombreCompleto || p.nombre || p.email || `Profesional ${p.id}`,
+        email: p.email
       }));
 
       console.log('[DashboardKanban] Profesionales formateados:', profesionalesFormateados);
@@ -3192,12 +3256,19 @@ export function DashboardKanbanOperativo({
       denunciante: {
         nombre: denuncianteRaw.nombre || 'Sin denunciante',
         tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
-        numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.identificacion || 'N/A'
+        numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.identificacion || 'N/A',
+        apoderado: {
+          nombre: denuncianteRaw.nombre,
+          cedula: denuncianteRaw.cedula,
+          correo: denuncianteRaw.correo,
+          celular: denuncianteRaw.celular,
+        }
       },
       denunciado: {
         nombre: denunciadoRaw.nombre || 'Sin disciplinable',
         tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
-        numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || 'N/A'
+        numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || 'N/A',
+        apoderado: denunciadoRaw.apoderado
       },
       hechos: (noticia as any).hechos || '',
       estado: mapEstadoNoticia((noticia as any).estado) as any,
@@ -3245,13 +3316,25 @@ export function DashboardKanbanOperativo({
       denunciante: {
         nombre: denuncianteRaw.nombre || 'Sin nombre',
         tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
-        numeroIdentificacion: denuncianteRaw.numeroIdentificacion || denuncianteRaw.cedula || 'Sin identificacion'
+        numeroIdentificacion: denuncianteRaw.numeroIdentificacion || denuncianteRaw.cedula || 'Sin identificacion',
+        apoderado: {
+          nombre: denuncianteRaw.nombre,
+          cedula: denuncianteRaw.cedula,
+          correo: denuncianteRaw.correo,
+          celular: denuncianteRaw.celular,
+        }
       },
       denunciado: {
         nombre: denunciadoRaw.nombre || 'Sin nombre',
         tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
         numeroIdentificacion: denunciadoRaw.numeroIdentificacion || denunciadoRaw.cedula || 'Sin identificacion',
-        cargo: denunciadoRaw.cargo || 'Sin cargo'
+        cargo: denunciadoRaw.cargo || 'Sin cargo',
+        apoderado: {
+          nombre: denunciadoRaw.nombre,
+          cedula: denunciadoRaw.cedula,
+          correo: denunciadoRaw.correo,
+          celular: denunciadoRaw.celular,
+        }
       },
       hechos: raw.hechos || raw.descripcionHechos || '',
       conductas: raw.conductas || raw.conductasSeleccionadas || [],
@@ -3321,12 +3404,19 @@ export function DashboardKanbanOperativo({
       denunciante: {
         nombre: (proceso.news?.denunciante as any)?.nombre || 'Sin denunciante',
         tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso.news?.denunciante as any)?.cedula || 'N/A'
+        numeroIdentificacion: (proceso.news?.denunciante as any)?.cedula || 'N/A',
+        apoderado: {
+          nombre: (proceso.news?.denunciante as any)?.nombre,
+          cedula: (proceso.news?.denunciante as any)?.cedula,
+          correo: (proceso.news?.denunciante as any)?.correo,
+          celular: (proceso.news?.denunciante as any)?.celular,
+        }
       },
       denunciado: {
         nombre: (proceso.news?.disciplinable as any)?.nombre || 'Sin disciplinable',
         tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso.news?.disciplinable as any)?.cedula || 'N/A'
+        numeroIdentificacion: (proceso.news?.disciplinable as any)?.cedula || 'N/A',
+        apoderado: (proceso.news?.disciplinable as any)?.apoderado
       },
       cedula: (proceso.news?.disciplinable as any)?.cedula || 'N/A',
       etapaActual: etapa as any,
@@ -3625,7 +3715,14 @@ export function DashboardKanbanOperativo({
     // Extraer primer denunciado y denunciante para campos principales
     const primerDenunciado = data.denunciados?.[0] || data.denunciado;
     const primerDenunciante = data.denunciantes?.[0];
+    const apoderadoDenunciante = primerDenunciante?.apoderado || data.denunciante?.apoderado;
     const apoderadoDenunciado = primerDenunciado?.apoderado || data.denunciado?.apoderado;
+    console.log('[DashboardKanban] Fuente denunciante:', {
+      denunciantes: data.denunciantes,
+      denunciante: data.denunciante,
+      primerDenunciante,
+      apoderadoDenunciante,
+    });
     console.log('[DashboardKanban] Fuente disciplinable:', {
       denunciados: data.denunciados,
       denunciado: data.denunciado,
@@ -3722,6 +3819,16 @@ export function DashboardKanbanOperativo({
 
       if (!primerDenunciante) {
         newsData.denunciante = undefined;
+      }
+
+      if (apoderadoDenunciante?.nombre && newsData.denunciante) {
+        newsData.denunciante.apoderado = {
+          nombre: apoderadoDenunciante.nombre || '',
+          cedula: apoderadoDenunciante.cedula || '',
+          email: apoderadoDenunciante.correo || apoderadoDenunciante.email || '',
+          telefono: apoderadoDenunciante.celular || apoderadoDenunciante.telefono || '',
+          direccion: apoderadoDenunciante.direccion || ''
+        };
       }
 
       if (apoderadoDenunciado?.nombre && newsData.disciplinable) {
@@ -4507,7 +4614,7 @@ export function DashboardKanbanOperativo({
   };
 
   // ✅ NUEVO: Handler para aprobar reasignación (Jefe OCID)
-  const handleAprobarReasignacion = (solicitudId: string, observaciones: string) => {
+  const handleAprobarReasignacion = async (solicitudId: string, observaciones: string) => {
     const solicitud = solicitudesReasignacion.find(s => s.id === solicitudId);
     if (!solicitud) return;
 
@@ -4550,6 +4657,21 @@ export function DashboardKanbanOperativo({
     };
 
     console.log('📋 Trazabilidad - Aprobación de reasignación:', eventoTrazabilidad);
+
+    // Enviar correo al profesional nuevo
+    const profesionalNuevoObj = profesionalesList.find(p => p.id === solicitud.profesionalNuevo.id);
+    if (profesionalNuevoObj?.email) {
+      try {
+        await disciplinaryService.sendEmail({
+          to: profesionalNuevoObj.email,
+          subject: `Reasignación aprobada: Proceso ${solicitud.procesoNumero}`,
+          body: `Se le ha reasignado el proceso ${solicitud.procesoNumero}.\n\nFue reasignado de ${solicitud.profesionalActual.nombre} a usted.\n\nJustificación del Jefe OCID: ${solicitud.justificacion}\n\n${observaciones ? `Observaciones del Jefe OCID: ${observaciones}\n\n` : ''}Denunciado: ${solicitud.denunciado}\n\nEtapa: ${solicitud.etapaActual}`,
+        });
+      } catch (error) {
+        console.error('Error al enviar correo de reasignación:', error);
+        // No fallar la aprobación por error de correo
+      }
+    }
 
     toast.success('Reasignación Aprobada', {
       description: `${solicitud.procesoNumero} → ${solicitud.profesionalNuevo.nombre}`

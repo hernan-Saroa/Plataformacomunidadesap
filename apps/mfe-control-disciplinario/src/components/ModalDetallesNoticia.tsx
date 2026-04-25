@@ -35,8 +35,11 @@ import { Permissions } from '@esap-mfe/shared-types/permissions';
 interface Apoderado {
   nombre: string;
   cedula: string;
-  correo: string;
-  celular: string;
+  correo?: string;
+  celular?: string;
+  email?: string;
+  telefono?: string;
+  direccion?: string;
 }
 
 interface DenunciadoCompleto {
@@ -118,6 +121,9 @@ interface ModalDetallesNoticiaProps {
 }
 
 type TabNoticia = 'general' | 'personas' | 'hechos' | 'adjuntos';
+
+const getApoderadoCorreo = (apoderado?: Apoderado) => apoderado?.correo || apoderado?.email || '';
+const getApoderadoCelular = (apoderado?: Apoderado) => apoderado?.celular || apoderado?.telefono || '';
 
 // ═══════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -728,27 +734,29 @@ function TabPersonas({
 }) {
   const denunciados = n.denunciados && n.denunciados.length > 0
     ? n.denunciados
-    : [{
+    : (typeof n.denunciado !== 'string' && n.denunciado ? [{
         id: '1',
-        nombre: getDenunciadoNombre(),
-        identificacion: getDenunciadoId(),
+        nombre: n.denunciado.nombre,
+        identificacion: `${n.denunciado.tipoIdentificacion || 'CC'} ${n.denunciado.numeroIdentificacion}`,
         cargo: n.cargo || '',
         lugarHechos: n.dependencia || '',
-      }];
+        apoderado: n.denunciado.apoderado
+      }] : []);
 
   const denunciantes = n.denunciantes && n.denunciantes.length > 0
     ? n.denunciantes
-    : [{
+    : (typeof n.denunciante !== 'string' && n.denunciante ? [{
         id: '1',
-        nombre: getDenuncianteNombre(),
-        identificacion: getDenuncianteId(),
-        direccion: '',
-        telefono: '',
-        correo: '',
-        cargo: '',
-        entidad: '',
-        tipo: 'Denunciante' as const,
-      }];
+        nombre: n.denunciante.nombre,
+        identificacion: `${n.denunciante.tipoIdentificacion || 'CC'} ${n.denunciante.numeroIdentificacion}`,
+        direccion: n.denunciante.direccion || '',
+        telefono: n.denunciante.telefono || '',
+        correo: n.denunciante.correo || '',
+        cargo: n.denunciante.cargo || '',
+        entidad: n.denunciante.entidad || '',
+        tipo: n.denunciante.tipo || 'Denunciante' as const,
+        apoderado: n.denunciante.apoderado
+      }] : []);
 
   return (
     <div className="space-y-5">
@@ -793,20 +801,21 @@ function TabPersonas({
                   </div>
                 )}
               </div>
-              {d.apoderado && (
-                <div className="mt-3 pt-3 border-t border-orange-200">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Scale className="w-3.5 h-3.5 text-orange-600" />
-                    <span className="text-[10px] font-bold text-orange-600 uppercase">Apoderado</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                    <div><span className="text-gray-400 text-[10px] font-bold">NOMBRE</span><p className="font-semibold text-gray-700">{d.apoderado.nombre}</p></div>
-                    <div><span className="text-gray-400 text-[10px] font-bold">CÉDULA</span><p className="font-semibold text-gray-700">{d.apoderado.cedula}</p></div>
-                    <div><span className="text-gray-400 text-[10px] font-bold">CORREO</span><p className="font-semibold text-gray-700">{d.apoderado.correo}</p></div>
-                    <div><span className="text-gray-400 text-[10px] font-bold">CELULAR</span><p className="font-semibold text-gray-700">{d.apoderado.celular}</p></div>
-                  </div>
-                </div>
-              )}
+               {d.apoderado && (
+                 <div className="mt-3 pt-3 border-t border-orange-200">
+                   <div className="flex items-center gap-1.5 mb-2">
+                     <Scale className="w-3.5 h-3.5 text-orange-600" />
+                     <span className="text-[10px] font-bold text-orange-600 uppercase">Apoderado</span>
+                   </div>
+                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                     <div><span className="text-gray-400 text-[10px] font-bold">NOMBRE</span><p className="font-semibold text-gray-700">{d.apoderado.nombre}</p></div>
+                     <div><span className="text-gray-400 text-[10px] font-bold">CÉDULA</span><p className="font-semibold text-gray-700">{d.apoderado.cedula}</p></div>
+                     <div><span className="text-gray-400 text-[10px] font-bold">CORREO</span><p className="font-semibold text-gray-700">{getApoderadoCorreo(d.apoderado) || 'Sin información'}</p></div>
+                     <div><span className="text-gray-400 text-[10px] font-bold">CELULAR</span><p className="font-semibold text-gray-700">{getApoderadoCelular(d.apoderado) || 'Sin información'}</p></div>
+                     <div><span className="text-gray-400 text-[10px] font-bold">DIRECCIÓN</span><p className="font-semibold text-gray-700">{d.apoderado.direccion || 'Sin información'}</p></div>
+                   </div>
+                 </div>
+               )}
             </div>
           ))}
         </div>
@@ -895,11 +904,12 @@ function TabPersonas({
                     <Scale className="w-3.5 h-3.5 text-blue-600" />
                     <span className="text-[10px] font-bold text-blue-600 uppercase">Apoderado</span>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
                     <div><span className="text-gray-400 text-[10px] font-bold">NOMBRE</span><p className="font-semibold text-gray-700">{d.apoderado.nombre}</p></div>
                     <div><span className="text-gray-400 text-[10px] font-bold">CÉDULA</span><p className="font-semibold text-gray-700">{d.apoderado.cedula}</p></div>
-                    <div><span className="text-gray-400 text-[10px] font-bold">CORREO</span><p className="font-semibold text-gray-700">{d.apoderado.correo}</p></div>
-                    <div><span className="text-gray-400 text-[10px] font-bold">CELULAR</span><p className="font-semibold text-gray-700">{d.apoderado.celular}</p></div>
+                    <div><span className="text-gray-400 text-[10px] font-bold">CORREO</span><p className="font-semibold text-gray-700">{getApoderadoCorreo(d.apoderado) || 'Sin información'}</p></div>
+                    <div><span className="text-gray-400 text-[10px] font-bold">CELULAR</span><p className="font-semibold text-gray-700">{getApoderadoCelular(d.apoderado) || 'Sin información'}</p></div>
+                    <div><span className="text-gray-400 text-[10px] font-bold">DIRECCIÓN</span><p className="font-semibold text-gray-700">{d.apoderado.direccion || 'Sin información'}</p></div>
                   </div>
                 </div>
               )}
