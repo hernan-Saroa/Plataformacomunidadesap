@@ -9,6 +9,7 @@ import { Signer } from './signer.entity';
 import { TemplateConfig } from './template-config.entity';
 import { TemplateConfigChange } from './template-config-change.entity';
 import { GraduateFile } from './graduate-file.entity';
+import { GraduationRequestReviewFile } from './graduation-request-review-file.entity';
 import { GraduationCertificatesController } from './graduation-certificates.controller';
 import { GraduatesController } from './graduates.controller';
 import { GraduationCertificatesService } from './graduation-certificates.service';
@@ -28,6 +29,7 @@ import { GraduateOracleIntegrationService } from './graduate-oracle-integration.
       TemplateConfig,
       TemplateConfigChange,
       GraduateFile,
+      GraduationRequestReviewFile,
     ]),
   ],
   controllers: [

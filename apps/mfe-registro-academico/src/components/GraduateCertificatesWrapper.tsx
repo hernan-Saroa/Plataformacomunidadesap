@@ -4,12 +4,14 @@
  * - Tab 2: Certificados Generados (certificados con QR ya generados y activos)
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { FileSearch, Award, AlertCircle } from 'lucide-react';
 import { ReviewRequestsModule } from './ReviewRequestsModule';
+import { ApprovalRequestsModule } from './ApprovalRequestsModule';
 import { VerificationCertificatesModule } from './VerificationCertificatesModule';
 import { authService } from '../../services/api/authService';
+import graduadosService from '../../services/api/graduados.service';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 interface GraduateCertificatesWrapperProps {
@@ -19,6 +21,37 @@ interface GraduateCertificatesWrapperProps {
 export function GraduateCertificatesWrapper({ onPendingCountChange }: GraduateCertificatesWrapperProps) {
   const initial = authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_VIEW) ? 'certificates' : 'requests';
   const [activeTab, setActiveTab] = useState<'requests' | 'certificates'>(initial);
+  const canApproveRequests =
+    authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_APROBAR) ||
+    authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_RECHAZAR);
+  const [approvalPendingCount, setApprovalPendingCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    const loadApprovalPendingCount = async () => {
+      if (!canApproveRequests) {
+        setApprovalPendingCount(0);
+        return;
+      }
+
+      try {
+        const response = await graduadosService.solicitudes.contarAprobacionPendiente();
+        if (active) {
+          setApprovalPendingCount(response?.count || 0);
+        }
+      } catch {
+        if (active) {
+          setApprovalPendingCount(0);
+        }
+      }
+    };
+
+    loadApprovalPendingCount();
+
+    return () => {
+      active = false;
+    };
+  }, [canApproveRequests]);
 
   const tabs = [
     {
@@ -31,11 +64,12 @@ export function GraduateCertificatesWrapper({ onPendingCountChange }: GraduateCe
     },
     {
       id: 'requests' as const,
-      label: 'Solicitudes de Revisión',
-      subtitle: 'Casos no encontrados',
+      label: canApproveRequests ? 'Aprobaciones Pendientes' : 'Solicitudes de Revisión',
+      subtitle: canApproveRequests ? 'Conceptos por definir' : 'Casos no encontrados',
       icon: AlertCircle,
       color: '#F59E0B',
-      hasPermission: authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_VIEW)
+      hasPermission: authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_VIEW),
+      badge: canApproveRequests && approvalPendingCount > 0 ? approvalPendingCount : 0,
     }
   ];
 
@@ -99,12 +133,19 @@ export function GraduateCertificatesWrapper({ onPendingCountChange }: GraduateCe
                       />
                     </div>
                     <div className="flex-1">
-                      <p 
-                        className="font-semibold text-sm"
-                        style={{ color: isActive ? tab.color : '#1F2937' }}
-                      >
-                        {tab.label}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p
+                          className="font-semibold text-sm"
+                          style={{ color: isActive ? tab.color : '#1F2937' }}
+                        >
+                          {tab.label}
+                        </p>
+                        {'badge' in tab && tab.badge > 0 && (
+                          <span className="inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-[11px] font-bold text-white">
+                            {tab.badge}
+                          </span>
+                        )}
+                      </div>
                       <p 
                         className="text-xs"
                         style={{ color: '#6B7280' }}
@@ -127,7 +168,13 @@ export function GraduateCertificatesWrapper({ onPendingCountChange }: GraduateCe
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
       >
-        {activeTab === 'requests' && <ReviewRequestsModule />}
+        {activeTab === 'requests' && (
+          canApproveRequests ? (
+            <ApprovalRequestsModule onPendingCountChange={setApprovalPendingCount} />
+          ) : (
+            <ReviewRequestsModule />
+          )
+        )}
         {activeTab === 'certificates' && (
           <VerificationCertificatesModule onPendingCountChange={onPendingCountChange} />
         )}

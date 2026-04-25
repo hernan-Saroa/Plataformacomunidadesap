@@ -10,15 +10,26 @@ import {
   HttpCode,
   HttpStatus,
   Res,
+  UseInterceptors,
+  UploadedFiles,
+  BadRequestException,
 } from '@nestjs/common';
 import { GraduationCertificatesService } from './graduation-certificates.service';
 import { LandingCertificateRequestDto } from './dto/landing-certificate-request.dto';
 import { SearchGraduateCandidatesDto } from './dto/search-graduate-candidates.dto';
-import type { ApproveRequestDto } from './dto/approve-request.dto';
+import type {
+  ApproveRequestDto,
+  ResolveReviewApprovalDto,
+  SubmitReviewDecisionDto,
+} from './dto/approve-request.dto';
 import type { UpdateCertificateDto } from './dto/update-certificate.dto';
 import type { UpdateTemplateTextsDto } from './dto/update-template-texts.dto';
 import type { Request, Response } from 'express';
 import { Public } from '../auth/public.decorator';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import * as fs from 'fs';
 
 type ValidationGeoContext = {
   geoCountry?: string;
@@ -166,6 +177,20 @@ const getGeoContext = (req: Request): ValidationGeoContext => {
     ...(geoCity ? { geoCity } : {}),
     ...(geoTimezone ? { geoTimezone } : {}),
   };
+};
+
+const getFrontendBaseUrl = (req: Request): string | undefined => {
+  const origin =
+    typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
+  const referer =
+    typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
+  if (origin) return origin;
+  if (!referer) return undefined;
+  try {
+    return new URL(referer).origin;
+  } catch (_) {
+    return undefined;
+  }
 };
 
 @Controller('certificates')
@@ -435,12 +460,133 @@ export class GraduationCertificatesController {
   }
 
   /**
+   * GET /academic-registration/api/v1/certificates/solicitudes/aprobacion
+   * Listar conceptos de revision pendientes de aprobacion final
+   */
+  @Get('solicitudes/aprobacion')
+  async listarSolicitudesAprobacion() {
+    return await this.service.listarSolicitudesAprobacion();
+  }
+
+  /**
+   * GET /academic-registration/api/v1/certificates/solicitudes/aprobacion/pendientes-count
+   * Contar conceptos pendientes de aprobacion final
+   */
+  @Get('solicitudes/aprobacion/pendientes-count')
+  async contarSolicitudesAprobacionPendientes() {
+    return await this.service.contarSolicitudesAprobacionPendientes();
+  }
+
+  /**
    * GET /academic-registration/api/v1/certificates/solicitudes/:id
    * Obtener solicitud por ID
    */
   @Get('solicitudes/:id')
   async obtenerSolicitud(@Param('id') id: string) {
     return await this.service.obtenerSolicitud(id);
+  }
+
+  @Get('solicitudes/:id/revision-files')
+  async listarArchivosRevisionSolicitud(@Param('id') id: string) {
+    return await this.service.listarArchivosRevisionSolicitud(id);
+  }
+
+  @Get('solicitudes/:id/revision-files/:fileId/download')
+  async descargarArchivoRevisionSolicitud(
+    @Param('id') id: string,
+    @Param('fileId') fileId: string,
+    @Res() res: Response,
+  ) {
+    const { file, filePath } =
+      await this.service.obtenerArchivoRevisionSolicitudParaDescarga(
+        id,
+        fileId,
+      );
+    const safeName = (file.originalName || 'archivo').replace(/"/g, '');
+    const encodedName = encodeURIComponent(safeName);
+
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`,
+    );
+
+    return res.sendFile(filePath);
+  }
+
+  @Post('solicitudes/:id/revision-files')
+  @UseInterceptors(
+    FilesInterceptor('files', 5, {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const uploadDir = join(
+            process.cwd(),
+            'uploads',
+            'graduation-review-files',
+          );
+          if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+          }
+          cb(null, uploadDir);
+        },
+        filename: (_req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = extname(file.originalname);
+          cb(null, `review-${uniqueSuffix}${ext}`);
+        },
+      }),
+      fileFilter: (_req, file, cb) => {
+        const allowedExtensions = new Set([
+          '.pdf',
+          '.doc',
+          '.docx',
+          '.xls',
+          '.xlsx',
+          '.png',
+          '.jpg',
+          '.jpeg',
+          '.webp',
+        ]);
+        const allowedMimeTypes = new Set([
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'image/png',
+          'image/jpeg',
+          'image/webp',
+        ]);
+        const ext = extname(file.originalname || '').toLowerCase();
+        const isAllowed =
+          allowedExtensions.has(ext) || allowedMimeTypes.has(file.mimetype);
+        if (!isAllowed) {
+          return cb(new Error('Tipo de archivo no permitido'), false);
+        }
+        cb(null, true);
+      },
+      limits: {
+        files: 5,
+        fileSize: 10 * 1024 * 1024,
+      },
+    }),
+  )
+  async subirArchivosRevisionSolicitud(
+    @Param('id') id: string,
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body('uploadedBy') uploadedBy?: string,
+    @Body('uploadedByEmail') uploadedByEmail?: string,
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No se recibieron archivos');
+    }
+    return await this.service.subirArchivosRevisionSolicitud(
+      id,
+      files,
+      uploadedBy,
+      uploadedByEmail,
+    );
   }
 
   /**
@@ -451,27 +597,47 @@ export class GraduationCertificatesController {
   @HttpCode(HttpStatus.OK)
   async marcarEnRevision(
     @Param('id') id: string,
-    @Body() body: { reviewerName?: string; reviewerId?: string },
+    @Body()
+    body: { reviewerName?: string; reviewerId?: string; reviewerEmail?: string },
     @Req() req: Request,
   ) {
-    const origin =
-      typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
-    const referer =
-      typeof req.headers.referer === 'string' ? req.headers.referer : undefined;
-    let frontendBaseUrl = origin;
-    if (!frontendBaseUrl && referer) {
-      try {
-        frontendBaseUrl = new URL(referer).origin;
-      } catch (_) {
-        frontendBaseUrl = undefined;
-      }
-    }
-
     return await this.service.marcarEnRevision(
       id,
       body.reviewerName,
       body.reviewerId,
-      frontendBaseUrl,
+      body.reviewerEmail,
+      getFrontendBaseUrl(req),
+    );
+  }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/solicitudes/:id/decision-revision
+   * Enviar concepto del revisor para aprobacion final
+   */
+  @Post('solicitudes/:id/decision-revision')
+  @HttpCode(HttpStatus.OK)
+  async enviarDecisionRevision(
+    @Param('id') id: string,
+    @Body() body: SubmitReviewDecisionDto,
+  ) {
+    return await this.service.enviarDecisionRevision(id, body);
+  }
+
+  /**
+   * POST /academic-registration/api/v1/certificates/solicitudes/:id/resolver-aprobacion
+   * Resolver aprobacion final del concepto enviado por el revisor
+   */
+  @Post('solicitudes/:id/resolver-aprobacion')
+  @HttpCode(HttpStatus.OK)
+  async resolverDecisionAprobador(
+    @Param('id') id: string,
+    @Body() body: ResolveReviewApprovalDto,
+    @Req() req: Request,
+  ) {
+    return await this.service.resolverDecisionAprobador(
+      id,
+      body,
+      getFrontendBaseUrl(req),
     );
   }
 
