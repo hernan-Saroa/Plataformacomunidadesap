@@ -38,6 +38,12 @@ export interface DisciplinaryNews {
         documento?: string;
         dependencia?: string;
         entidad?: string;
+        apoderado?: {
+            nombre: string;
+            cedula: string;
+            correo?: string;
+            celular?: string;
+        };
     };
     disciplinable?: {
         nombre: string;
@@ -47,6 +53,12 @@ export interface DisciplinaryNews {
         email?: string;
         telefono?: string;
         dependencia?: string;
+        apoderado?: {
+            nombre: string;
+            cedula: string;
+            correo?: string;
+            celular?: string;
+        };
     };
     estado: 'RADICADA' | 'EN_VALORACION' | 'ASIGNADA' | 'DEVUELTA';
     kanbanStage?: string;
