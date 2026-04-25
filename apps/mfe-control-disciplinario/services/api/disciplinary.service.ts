@@ -1697,6 +1697,13 @@ class DisciplinaryService {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/restore`, {});
     };
 
+    /**
+     * Enviar un correo electrónico
+     */
+    async sendEmail(data: { to: string; subject: string; body: string }): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/email/send`, data);
+    }
+
 }
 
 const disciplinaryService = new DisciplinaryService();

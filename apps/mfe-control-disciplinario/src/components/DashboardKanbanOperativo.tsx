@@ -433,7 +433,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
                 const apoderado = (typeof noticia.denunciado !== 'string' && noticia.denunciado?.apoderado) || noticia.denunciados?.[0]?.apoderado;
                 return apoderado?.nombre ? (
                   <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200 pt-1">
-                    {apoderado.nombre}
+                    Apoderado: {apoderado.nombre}
                   </p>
                 ) : null;
                 })()}
@@ -739,7 +739,7 @@ function TarjetaProceso({
                 </p>
                 {proceso.denunciante && typeof proceso.denunciante !== 'string' && (
                   <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {proceso.denunciante.cedula}
+                    {proceso.denunciante.numeroIdentificacion}
                   </p>
                 )}
 
@@ -753,7 +753,7 @@ function TarjetaProceso({
                 </p>
                 {proceso.denunciado && typeof proceso.denunciado !== 'string' && (
                   <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {proceso.denunciado.cedula}
+                    {proceso.denunciado.numeroIdentificacion}
                   </p>
                 )}
 
@@ -2930,7 +2930,7 @@ export function DashboardKanbanOperativo({
   const [entidadesError, setEntidadesError] = useState<string | null>(null);
 
   // ✅ NUEVO: Estado para profesionales cargados desde el backend
-  const [profesionalesList, setProfesionalesList] = useState<{ id: string; nombre: string }[]>([]);
+  const [profesionalesList, setProfesionalesList] = useState<{ id: string; nombre: string; email?: string }[]>([]);
   const [profesionalesLoading, setProfesionalesLoading] = useState(true);
 
   // ✅ NUEVO: Estado para solicitudes de reasignación pendientes
@@ -2987,10 +2987,11 @@ export function DashboardKanbanOperativo({
       const profesionales = await disciplinaryService.getProfesionales();
       console.log('[DashboardKanban] Profesionales recibidos del backend:', profesionales);
 
-      // Mapear al formato esperado: { id, nombre }
+      // Mapear al formato esperado: { id, nombre, email }
       const profesionalesFormateados = profesionales.map((p: any) => ({
         id: p.id,
-        nombre: p.nombreCompleto || p.nombre || p.email || `Profesional ${p.id}`
+        nombre: p.nombreCompleto || p.nombre || p.email || `Profesional ${p.id}`,
+        email: p.email
       }));
 
       console.log('[DashboardKanban] Profesionales formateados:', profesionalesFormateados);
@@ -4613,7 +4614,7 @@ export function DashboardKanbanOperativo({
   };
 
   // ✅ NUEVO: Handler para aprobar reasignación (Jefe OCID)
-  const handleAprobarReasignacion = (solicitudId: string, observaciones: string) => {
+  const handleAprobarReasignacion = async (solicitudId: string, observaciones: string) => {
     const solicitud = solicitudesReasignacion.find(s => s.id === solicitudId);
     if (!solicitud) return;
 
@@ -4656,6 +4657,21 @@ export function DashboardKanbanOperativo({
     };
 
     console.log('📋 Trazabilidad - Aprobación de reasignación:', eventoTrazabilidad);
+
+    // Enviar correo al profesional nuevo
+    const profesionalNuevoObj = profesionalesList.find(p => p.id === solicitud.profesionalNuevo.id);
+    if (profesionalNuevoObj?.email) {
+      try {
+        await disciplinaryService.sendEmail({
+          to: profesionalNuevoObj.email,
+          subject: `Reasignación aprobada: Proceso ${solicitud.procesoNumero}`,
+          body: `Se le ha reasignado el proceso ${solicitud.procesoNumero}.\n\nFue reasignado de ${solicitud.profesionalActual.nombre} a usted.\n\nJustificación del Jefe OCID: ${solicitud.justificacion}\n\n${observaciones ? `Observaciones del Jefe OCID: ${observaciones}\n\n` : ''}Denunciado: ${solicitud.denunciado}\n\nEtapa: ${solicitud.etapaActual}`,
+        });
+      } catch (error) {
+        console.error('Error al enviar correo de reasignación:', error);
+        // No fallar la aprobación por error de correo
+      }
+    }
 
     toast.success('Reasignación Aprobada', {
       description: `${solicitud.procesoNumero} → ${solicitud.profesionalNuevo.nombre}`
