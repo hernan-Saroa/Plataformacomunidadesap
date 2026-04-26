@@ -161,7 +161,9 @@ export function ModuloAsesoriaJuridicaV3() {
         timeline: [],
         respuesta: c.respuesta || '',
         fechaRespuesta: c.fechaRespuesta || null,
-        estado: c.estado || ''
+        destinatariosAdicionales: c.destinatariosAdicionales || null,
+        estado: c.estado || '',
+        documentoRespuestaUrl: c.documentoRespuestaUrl || null
       }));
       setConsultas(mapped);
       // Sincronizar consultaSeleccionada con los datos frescos para que el modal expediente

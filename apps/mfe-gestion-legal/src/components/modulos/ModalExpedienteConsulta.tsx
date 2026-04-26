@@ -78,6 +78,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [respuestaTexto, setRespuestaTexto] = useState('');
+  const [destinatariosAdicionales, setDestinatariosAdicionales] = useState<string[]>([]);
+  const [nuevoDestinatario, setNuevoDestinatario] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Estados para workflow firmado/sin firmar
@@ -132,6 +134,30 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
   };
 
+  const handleAgregarDestinatario = () => {
+    const email = nuevoDestinatario.trim().toLowerCase();
+    if (!email) return;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast.error('Ingrese un correo electrónico válido');
+      return;
+    }
+    if (email === consulta?.emailSolicitante?.toLowerCase()) {
+      toast.error('Este correo ya es el destinatario principal');
+      return;
+    }
+    if (destinatariosAdicionales.includes(email)) {
+      toast.error('Este correo ya fue agregado');
+      return;
+    }
+    setDestinatariosAdicionales(prev => [...prev, email]);
+    setNuevoDestinatario('');
+  };
+
+  const handleEliminarDestinatario = (email: string) => {
+    setDestinatariosAdicionales(prev => prev.filter(e => e !== email));
+  };
+
   const handleEnviarRespuesta = async () => {
     if (!consulta?.uuid || !respuestaTexto.trim()) return;
 
@@ -141,10 +167,13 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       return;
     }
 
+    const todosDestinatarios = [consulta.emailSolicitante, ...destinatariosAdicionales];
+    const listaDestinatarios = todosDestinatarios.join(', ');
+
     // Reemplazo de confirmación nativa por personalizada
     const confirmado = await confirm({
       title: 'Plataforma ESAP',
-      description: `¿Está seguro de enviar esta respuesta por correo a ${consulta.emailSolicitante}?`,
+      description: `¿Está seguro de enviar esta respuesta por correo a: ${listaDestinatarios}?`,
       variant: 'info',
       confirmText: 'Aceptar',
       cancelText: 'Cancelar'
@@ -155,21 +184,28 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     try {
       toast.loading('Enviando respuesta por correo...', { id: 'send-response' });
 
-      // 1. Enviar correo al solicitante
+      // 1. Enviar correo al solicitante principal
       const asunto = `Respuesta a Consulta Jurídica ${consulta.id} - ${consulta.funcionarioSolicitante}`;
       await correosJuridicosService.sendEmail({
         to: consulta.emailSolicitante,
+        cc: destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined,
         subject: asunto,
         body: respuestaTexto
       });
 
       // 2. Guardar respuesta en BD y marcar como respondida
       const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
-      await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, true, usuarioNombre);
+      await legalService.guardarRespuestaConsulta(
+        consulta.uuid,
+        respuestaTexto,
+        true,
+        usuarioNombre,
+        destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined
+      );
 
       toast.success('✅ Respuesta enviada correctamente', {
         id: 'send-response',
-        description: `Correo enviado a ${consulta.emailSolicitante}`
+        description: `Correo enviado a ${listaDestinatarios}`
       });
 
       if (onUpdate) onUpdate();
@@ -1322,11 +1358,26 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
                       {/* Indicador de envío por correo */}
                       {consulta.emailSolicitante && (
-                        <div className="bg-blue-50 p-3 mb-4 rounded-lg border border-blue-200 flex items-center gap-3">
-                          <Mail className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                          <div>
+                        <div className="bg-blue-50 p-3 mb-4 rounded-lg border border-blue-200">
+                          <div className="flex items-center gap-3 mb-1">
+                            <Mail className="w-5 h-5 text-blue-600 flex-shrink-0" />
                             <p className="text-sm font-semibold text-blue-800">Respuesta enviada por correo</p>
-                            <p className="text-xs text-blue-600">Destinatario: {consulta.emailSolicitante}</p>
+                          </div>
+                          <div className="ml-8 space-y-1">
+                            <p className="text-xs text-blue-700 font-medium">Destinatario principal: <span className="font-normal">{consulta.emailSolicitante}</span></p>
+                            {consulta.destinatariosAdicionales && (() => {
+                              try {
+                                const adicionales: string[] = JSON.parse(consulta.destinatariosAdicionales);
+                                return adicionales.length > 0 ? (
+                                  <div>
+                                    <p className="text-xs text-blue-700 font-medium mb-1">Destinatarios adicionales:</p>
+                                    {adicionales.map((email: string) => (
+                                      <p key={email} className="text-xs text-blue-600 ml-2">• {email}</p>
+                                    ))}
+                                  </div>
+                                ) : null;
+                              } catch { return null; }
+                            })()}
                           </div>
                         </div>
                       )}
@@ -1354,9 +1405,57 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                       <div className="bg-blue-50 p-3 mb-4 rounded border border-blue-100 text-xs text-blue-800">
                         <p>Puede guardar un borrador tantas veces como necesite. Al enviar la respuesta, el caso quedará cerrado y se notificará al solicitante.</p>
                       </div>
+
+                      {/* Sección de destinatarios */}
+                      <div className="mb-4 p-3 bg-white rounded-lg border border-gray-200">
+                        <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                          <Mail className="w-3.5 h-3.5" /> Destinatarios del correo
+                        </p>
+                        {/* Destinatario principal (siempre presente) */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full flex-1 truncate">
+                            {consulta.emailSolicitante || 'Sin correo registrado'} <span className="text-blue-500">(principal)</span>
+                          </span>
+                        </div>
+                        {/* Destinatarios adicionales agregados */}
+                        {destinatariosAdicionales.map((email) => (
+                          <div key={email} className="flex items-center gap-2 mb-2">
+                            <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full flex-1 truncate">{email}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleEliminarDestinatario(email)}
+                              className="text-red-400 hover:text-red-600 flex-shrink-0 text-xs leading-none"
+                              title="Quitar destinatario"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                        {/* Input para agregar nuevo destinatario */}
+                        <div className="flex items-center gap-2 mt-2">
+                          <input
+                            type="email"
+                            value={nuevoDestinatario}
+                            onChange={(e) => setNuevoDestinatario(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAgregarDestinatario(); } }}
+                            placeholder="correo@ejemplo.com"
+                            className="flex-1 text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleAgregarDestinatario}
+                            className="text-xs h-7 px-2"
+                          >
+                            + Agregar destinatario
+                          </Button>
+                        </div>
+                      </div>
+
                       <Textarea
                         placeholder="Redacte aquí el concepto jurídico con fundamento en la normativa aplicable..."
-                        rows={12}
+                        rows={10}
                         className="mb-4 bg-white"
                         value={respuestaTexto}
                         onChange={(e) => setRespuestaTexto(e.target.value)}
