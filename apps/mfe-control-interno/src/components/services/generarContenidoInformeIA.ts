@@ -12,6 +12,19 @@ import type { AuditoriaBasicaPDF, HallazgoPDF } from './exportarPDFInformeAudito
 
 // ─── Tipos de respuesta estructurada ─────────────────────────────────────────
 
+export interface PlanAccionIA {
+  resumen?: string;
+  observaciones?: string[];
+  items: Array<{
+    actividad: string;
+    proceso: string;
+    indicador: string;
+    metaProgramada: string;
+    metaEjecutada: string;
+    cumplimiento: string;
+  }>;
+}
+
 export interface ProcesoAuditadoIA {
   idFoco?: string;
   categoria: string;
@@ -20,6 +33,7 @@ export interface ProcesoAuditadoIA {
   objetivo: string;
   riesgos: string[];
   componentes: Array<{ titulo: string; contenido: string }>;
+  planAccion?: PlanAccionIA;
   hallazgosIndices?: number[];
 }
 
@@ -61,7 +75,30 @@ function buildPrompt(auditoria: AuditoriaBasicaPDF, hallazgos: HallazgoPDF[], a�
     año
   }, null, 2);
 
-  return `Eres un auditor experto de la ESAP. Genera un objeto JSON con el contenido del informe para: ${auditoriaJson}`;
+  return `Eres un auditor experto de la Oficina de Control Interno de la ESAP.
+  Genera un objeto JSON profesional con el contenido para el Informe Preliminar de Auditoría de: ${auditoriaJson}.
+
+  REGLAS:
+  1. Genera contenido institucional, formal y propositivo.
+  2. Incluye una lista de procesos auditados con su objetivo y hallazgos relacionados.
+  3. Las fortalezas y recomendaciones deben ser coherentes con la auditoría.
+
+  El JSON debe seguir esta estructura:
+  {
+    "objetivo": "...",
+    "alcance": "...",
+    "procesosAuditados": [
+      {
+        "numero": 1,
+        "nombre": "...",
+        "objetivo": "...",
+        "hallazgosIndices": [0]
+      }
+    ],
+    "fortalezas": ["..."],
+    "recomendacionesPorCategoria": [{ "categoria": "...", "items": ["..."] }],
+    "conclusiones": "..."
+  }`;
 }
 
 // ─── Llamada a la API de Claude ───────────────────────────────────────────────
@@ -90,69 +127,31 @@ function contenidoPorDefecto(auditoria: AuditoriaBasicaPDF, hallazgos: HallazgoP
   const fin = auditoria.fechaEjecucionFin || `diciembre ${año}`;
   const lugar = auditoria.lugarEjecucion || 'Bogotá, D.C.';
 
-  // Lista maestra institucional para obtener objetivos y categorías por nombre de proceso
+  // Lista maestra institucional
   const procesosMaestros = [
-    { idFoco: 'direccionamiento_estrategico', categoria: 'I. ESTRATÉGICOS', numero: 1, nombre: 'DIRECCIONAMIENTO ESTRATÉGICO', objetivo: 'Establecer los lineamientos estratégicos, tácticos y operativos en la formulación, seguimiento, evaluación y mejora continua de la planeación estratégica y presupuestal de la entidad.' },
-    { idFoco: 'gestion_integrada', categoria: 'I. ESTRATÉGICOS', numero: 2, nombre: 'EFECTIVIDAD INSTITUCIONAL', objetivo: 'Establecer y administrar los lineamientos para el diseño, implementación, seguimiento, evaluación y mejora continua del Sistema Integrado de Gestión y Gestión Documental.' },
-    { idFoco: 'atencion_personas', categoria: 'I. ESTRATÉGICOS', numero: 3, nombre: 'RELACIONAMIENTO CON LA CIUDADANÍA', objetivo: 'Atender los requerimientos de los grupos de interés, garantizando el acceso efectivo, oportuno, transparente y pertinente a la información de la entidad.' },
-    { idFoco: 'gestion_tecnologica', categoria: 'I. ESTRATÉGICOS', numero: 4, nombre: 'TRANSFORMACIÓN DIGITAL', objetivo: 'Generar, desarrollar, monitorear los proyectos estratégicos de Tecnologías de la Información y las Comunicaciones.' },
-    { idFoco: 'formacion', categoria: 'II. MISIONALES', numero: 5, nombre: 'FORMACIÓN PARA LA VIDA', objetivo: 'Formar personas en conocimientos, competencias y valores en administración pública para satisfacer las necesidades de la comunidad académica.' },
-    { idFoco: 'capacitacion', categoria: 'II. MISIONALES', numero: 6, nombre: 'PROYECCIÓN Y EXTENSIÓN', objetivo: 'Desarrollar la proyección y extensión de la ESAP a través de programas de capacitación, asesorías y consultorías.' },
-    { idFoco: 'gestion_juridica', categoria: 'III. APOYO', numero: 7, nombre: 'GESTIÓN LEGAL', objetivo: 'Atender los asuntos legales internos y externos de la entidad, oportunamente, mediante la asesoría y la defensa jurídica.' },
-    { idFoco: 'gestion_contratacion', categoria: 'III. APOYO', numero: 8, nombre: 'ADQUISICIÓN DE BIENES Y SERVICIOS', objetivo: 'Gestionar de manera eficiente los procesos de contratación para garantizar la adquisición oportuna de bienes y servicios.' },
-    { idFoco: 'bienestar_universitario', categoria: 'III. APOYO', numero: 9, nombre: 'BIEN-ESTAR', objetivo: 'Fortalecer el bienestar universitario de la comunidad académica con el fin de generar condiciones para la formación integral.' },
-    { idFoco: 'gestion_financiera', categoria: 'III. APOYO', numero: 10, nombre: 'GESTIÓN FINANCIERA', objetivo: 'Administrar y disponer oportuna y eficientemente los recursos financieros necesarios para el cumplimiento de objetivos.' },
-    { idFoco: 'gestion_administrativa', categoria: 'III. APOYO', numero: 11, nombre: 'GESTIÓN ADMINISTRATIVA', objetivo: 'Administrar los bienes y servicios e infraestructura para el adecuado desarrollo de la gestión administrativa.' },
-    { idFoco: 'gestion_talento_humano', categoria: 'III. APOYO', numero: 12, nombre: 'GESTIÓN DEL TALENTO HUMANO', objetivo: 'Desarrollar planes, programas y proyectos de gestión del talento humano que promuevan el desarrollo y bienestar.' },
-    { idFoco: 'gestion_documental', categoria: 'I. ESTRATÉGICOS', numero: 13, nombre: 'GESTIÓN DOCUMENTAL', objetivo: 'Establecer los lineamientos para la gestión integral de los documentos de la entidad, garantizando su conservación y consulta.' },
-    { idFoco: 'gestion_comunicacion', categoria: 'I. ESTRATÉGICOS', numero: 14, nombre: 'GESTIÓN DE LA COMUNICACIÓN', objetivo: 'Fortalecer la imagen institucional y garantizar la comunicación efectiva con los grupos de interés.' },
-    { idFoco: 'gestion_entornos_virtuales', categoria: 'II. MISIONALES', numero: 15, nombre: 'GESTIÓN DE ENTORNOS VIRTUALES', objetivo: 'Administrar y fortalecer las plataformas virtuales para el apoyo a la formación y capacitación.' }
+    { idFoco: 'direccionamiento_estrategico', numero: 1, nombre: 'DIRECCIONAMIENTO ESTRATÉGICO', objetivo: 'Establecer los lineamientos estratégicos, tácticos y operativos...' },
+    { idFoco: 'formacion', numero: 2, nombre: 'FORMACIÓN PARA LA VIDA', objetivo: 'Formar personas en conocimientos, competencias y valores...' },
+    { idFoco: 'capacitacion', numero: 3, nombre: 'PROYECCIÓN Y EXTENSIÓN', objetivo: 'Desarrollar la proyección y extensión de la ESAP...' }
   ];
 
-  // Lógica de arrastre: Agrupar riesgosIdentificados por proceso
   const generarProcesosDinamicos = (): ProcesoAuditadoIA[] => {
-    const riesgosRaw = auditoria.riesgosIdentificados || (auditoria as any).riesgosAsociados || [];
-    const riesgos = Array.isArray(riesgosRaw) ? riesgosRaw : [];
-    
-    if (riesgos.length === 0) {
-      // Si no hay riesgos, usar focos o mostrar proceso principal
-      return procesosMaestros.filter(p => !auditoria.focos || auditoria.focos.length === 0 || auditoria.focos.includes(p.idFoco)).map(p => ({
+    const focalizados = auditoria.focos || [];
+    if (focalizados.length > 0) {
+      return procesosMaestros.filter(p => focalizados.includes(p.idFoco)).map(p => ({
         ...p,
-        riesgos: ['Riesgo asociado al proceso no especificado en la programación.'],
-        componentes: [{ titulo: 'EVALUACIÓN REALIZADA:', contenido: `Se evaluó la gestión del proceso ${p.nombre} en la ${unidad}.` }]
+        categoria: 'PROCESO AUDITADO',
+        riesgos: [],
+        componentes: []
       }));
     }
-
-    const mapaProcesos: Record<string, ProcesoAuditadoIA> = {};
-    riesgos.forEach(r => {
-      let nombreProc = auditoria.proceso || 'PROCESO GENERAL';
-      let descRiesgo = r;
-
-      if (r.includes(':')) {
-        const partes = r.split(':');
-        nombreProc = partes[0].trim().toUpperCase();
-        descRiesgo = partes.slice(1).join(':').trim();
-      }
-
-      if (!mapaProcesos[nombreProc]) {
-        // Buscar si el nombre coincide con un proceso maestro
-        const maestro = procesosMaestros.find(m => m.nombre === nombreProc || nombreProc.includes(m.nombre) || m.nombre.includes(nombreProc));
-        mapaProcesos[nombreProc] = {
-          categoria: maestro?.categoria || 'PROCESOS EVALUADOS',
-          numero: maestro?.numero || (Object.keys(mapaProcesos).length + 1),
-          nombre: nombreProc,
-          objetivo: maestro?.objetivo || `Evaluar la gestión y mitigación de riesgos en el proceso de ${nombreProc}.`,
-          riesgos: [],
-          componentes: [
-            { titulo: 'EVALUACIÓN REALIZADA:', contenido: `Se revisó la efectividad de los controles establecidos para mitigar los riesgos identificados en el proceso ${nombreProc}.` },
-            { titulo: 'EVIDENCIAS ANALIZADAS:', contenido: 'Documentación del proceso, soportes de ejecución y matrices de riesgo.' }
-          ]
-        };
-      }
-      mapaProcesos[nombreProc].riesgos.push(descRiesgo);
-    });
-
-    return Object.values(mapaProcesos);
+    return [{
+      categoria: 'PROCESO AUDITADO',
+      numero: 1,
+      nombre: auditoria.proceso || 'PROCESO GENERAL',
+      objetivo: 'Evaluar la gestión institucional.',
+      riesgos: [],
+      componentes: []
+    }];
   };
 
   const paginas: PaginaInformeIA[] = [{
@@ -185,11 +184,64 @@ function contenidoPorDefecto(auditoria: AuditoriaBasicaPDF, hallazgos: HallazgoP
     piePagina: 'Informe Preliminar de Auditoría Interna - Página 1'
   }];
 
+  // Extraer datos de reuniones (arrastre desde etapa de ejecución)
+  const reunionApertura = auditoria.reuniones?.find(r => 
+    r.tipo.toLowerCase().includes('apertura') || r.tipo.toLowerCase().includes('inicio')
+  );
+  const reunionCierre = auditoria.reuniones?.find(r => 
+    r.tipo.toLowerCase().includes('cierre') || r.tipo.toLowerCase().includes('final')
+  );
+
+  // Helper para formatear fechas de reuniones de forma elegante y organizada
+  const formatearFechaReunion = (reunion?: any, prefix: string = 'el día') => {
+    if (!reunion) return '';
+    const { fecha, hora } = reunion;
+    let fechaTxt = fecha;
+    let horaTxt = hora;
+
+    try {
+      // Intentar parsear la fecha (puede ser YYYY-MM-DD o ISO Full)
+      const d = new Date(fecha);
+      if (!isNaN(d.getTime())) {
+        // Usar UTC para evitar saltos de día por zona horaria si viene de DB
+        const day = d.getUTCDate();
+        const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+        const month = months[d.getUTCMonth()];
+        const year = d.getUTCFullYear();
+        fechaTxt = `${day} de ${month} de ${year}`;
+
+        // Si no hay hora pero el timestamp tiene hora, extraerla
+        if (!horaTxt && fecha.includes('T')) {
+          const h = d.getUTCHours();
+          const m = d.getUTCMinutes();
+          if (h !== 0 || m !== 0) {
+            const ampm = h >= 12 ? 'pm' : 'am';
+            const h12 = h % 12 || 12;
+            horaTxt = `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
+          }
+        }
+      }
+    } catch (e) { /* Fallback al original */ }
+    
+    const finalHora = horaTxt ? ` a las ${horaTxt}` : '';
+    return `${prefix} ${fechaTxt}${finalHora}`;
+  };
+
+  const txtReunionApertura = reunionApertura 
+    ? formatearFechaReunion(reunionApertura, 'el día')
+    : `el día 29 de julio de 2025 a las 11:30 am`;
+
+  const txtReunionCierre = reunionCierre
+    ? formatearFechaReunion(reunionCierre, 'el')
+    : `el 01 de agosto 2025 a las 11:00 pm`;
+
+  const modalidad = reunionCierre?.modalidad || reunionApertura?.modalidad || 'presencial';
+
   return {
     objetivo: `Evaluar el cumplimiento de las normas, directrices, procedimientos y regulaciones aplicables a los procesos al interior de la ${unidad} de la ESAP, mediante la auditoría interna basada en riesgos como actividad independiente y objetiva. Identificar los riesgos asociados a los procesos auditados, evaluar la eficacia de los controles establecidos y formular recomendaciones orientadas al fortalecimiento del Sistema de Control Interno Institucional para la ${periodo}.`,
     alcance: `La auditoría cubre la evaluación integral de los procesos estratégicos, misionales y de apoyo al interior de la ${unidad}, correspondiente al ${periodo}. El trabajo se desarrolló como auditoría de evaluación y seguimiento basada en riesgos, con metodología de muestreo aleatorio sobre expedientes, sistemas de información institucional (ISOLUCIÓN, Sistema Integrado de Gestión), reportes, intranet y documentación soporte.`,
     declaracion: `El equipo auditor declara que la auditoría se realizó conforme a las Normas Internacionales para el Ejercicio Profesional de la Auditoría Interna y el Código de Ética del Auditor Interno. La evaluación se basó en muestras representativas de la gestión adelantada, y la responsabilidad de la Oficina de Control Interno es expresar una opinión sobre el estado del sistema evaluado, mientras que la responsabilidad de la gestión y el control de los procesos recae sobre los líderes de la ${unidad}.`,
-    contextoGeneral: `Dentro de las competencias de la Oficina de Control Interno, enmarcadas en la Ley 87 de 1993, está evaluar la eficiencia, eficacia, y economía de los controles, asesorando a la Dirección General en la continuidad del proceso administrativo, la revaluación de los planes establecidos y en la introducción de los correctivos necesarios para el cumplimiento de las metas u objetivos previstos por la entidad.\n\nEs así, que de acuerdo con el programa de auditoria anual de la vigencia 2025, que hace parte de un componente del plan de acción de la Oficina de Control Interno, se programó, aprobó y ejecutó Auditoría Interna a los Procesos de estratégicos, misionales y de apoyo al interior de la ${unidad} de la Escuela Superior de Administración Pública – ESAP.\n\nLa verificación de los aspectos auditables se desarrolló en las fechas establecidas para la etapa de ejecución del proceso auditor, donde se realizó la reunión de inicio el día 29 de julio de 2025 a las 11:30 am y la reunión de cierre el 01 de agosto 2025 a las 11:00 pm, reunión presencial en la cual el equipo auditor dio a conocer a los responsables de los procesos las fortalezas, recomendaciones y posibles hallazgos evidenciados durante el ejercicio auditor y que se pormenorizan en el presente informe.\n\nNota: La Oficina de Control Interno está facultada para realizar recomendaciones durante las etapas de los procesos, su función es eminentemente preventiva para contrarrestar o advertir las posibles inconsistencias que pueda llegar a incurrir la entidad, sin que esta atribución implique autorizar o refrendar los procedimientos administrativos de la entidad, so pena de incurrir en coadministración.`,
+    contextoGeneral: `Dentro de las competencias de la Oficina de Control Interno, enmarcadas en la Ley 87 de 1993, está evaluar la eficiencia, eficacia, y economía de los controles, asesorando a la Dirección General en la continuidad del proceso administrativo, la revaluación de los planes establecidos y en la introducción de los correctivos necesarios para el cumplimiento de las metas u objetivos previstos por la entidad.\n\nEs así, que de acuerdo con el programa de auditoria anual de la vigencia ${año}, que hace parte de un componente del plan de acción de la Oficina de Control Interno, se programó, aprobó y ejecutó Auditoría Interna a los Procesos de estratégicos, misionales y de apoyo al interior de la ${unidad} de la Escuela Superior de Administración Pública – ESAP.\n\nLa verificación de los aspectos auditables se desarrolló en las fechas establecidas para la etapa de ejecución del proceso auditor, donde se realizó la reunión de inicio ${txtReunionApertura} y la reunión de cierre ${txtReunionCierre}, reunión ${modalidad} en la cual el equipo auditor dio a conocer a los responsables de los procesos las fortalezas, recomendaciones y posibles hallazgos evidenciados durante el ejercicio auditor y que se pormenorizan en el presente informe.\n\nNota: La Oficina de Control Interno está facultada para realizar recomendaciones durante las etapas de los procesos, su función es eminentemente preventiva para contrarrestar o advertir las posibles inconsistencias que pueda llegar a incurrir la entidad, sin que esta atribución implique autorizar o refrendar los procedimientos administrativos de la entidad, so pena de incurrir en coadministración.`,
     descripcionUnidad: `La ${unidad} hace parte de la estructura organizacional de la Escuela Superior de Administración Pública – ESAP, entidad adscrita al Departamento Administrativo de la Función Pública, creada mediante la Ley 19 de 1958. Su misión es brindar formación y capacitación en administración pública para el fortalecimiento de las capacidades del Estado colombiano.`,
     marcoNormativo: {
       generales: [
@@ -272,7 +324,7 @@ export function aplicarContenidoIA(auditoria: AuditoriaBasicaPDF, contenido: Con
     aspectosRelevantes: real(auditoria.aspectosRelevantes, contenido.aspectosRelevantes),
     evaluacionControlInterno: real(auditoria.evaluacionControlInterno, contenido.evaluacionControlInterno),
     marcoNormativo: realArr(auditoria.marcoNormativo as string[], contenido.marcoNormativo),
-    procesosAuditados: realArr(auditoria.procesosAuditados, contenido.procesosAuditados),
+    procesosAuditados: (contenido.procesosAuditados && contenido.procesosAuditados.length > 0) ? contenido.procesosAuditados : (auditoria.procesosAuditados || []),
     fortalezas: realArr(auditoria.fortalezas, contenido.fortalezas),
     recomendacionesPorCategoria: realArr(auditoria.recomendacionesPorCategoria, contenido.recomendacionesPorCategoria),
     // @ts-ignore
