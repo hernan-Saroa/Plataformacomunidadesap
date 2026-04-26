@@ -1456,5 +1456,88 @@ export async function respuestaConcertacionDocente(ptaId: string, aceptaPropuest
   }
 }
 
+// ═══ Banco de Docentes ════════════════════════════════════════════════
+
+const BD_BASE = `${SERVICE_BASE}/pta/banco-docentes`;
+
+export async function getBancoDocentes(filters?: {
+  territorial?: string;
+  dedicacion?: string;
+  estado?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}) {
+  try {
+    const raw = await apiClient.get<any>(BD_BASE, filters);
+    return normalizeResult<any>(raw, { data: [], total: 0, page: 1, limit: 50, pages: 1 });
+  } catch (error) {
+    console.error('[mfe-pta][getBancoDocentes] Error:', error);
+    return { success: false, data: { data: [], total: 0, page: 1, limit: 50, pages: 1 } };
+  }
+}
+
+export async function getBancoDocenteStats() {
+  try {
+    const raw = await apiClient.get<any>(`${BD_BASE}/stats`);
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    console.error('[mfe-pta][getBancoDocenteStats] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+export async function getBancoDocenteById(id: string) {
+  try {
+    const raw = await apiClient.get<any>(`${BD_BASE}/${id}`);
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    console.error('[mfe-pta][getBancoDocenteById] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+export async function createBancoDocente(body: any) {
+  try {
+    const raw = await apiClient.post<any>(BD_BASE, body);
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    console.error('[mfe-pta][createBancoDocente] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+export async function updateBancoDocente(id: string, body: any) {
+  try {
+    const raw = await apiClient.put<any>(`${BD_BASE}/${id}`, body);
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    console.error('[mfe-pta][updateBancoDocente] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+export async function toggleBancoDocenteEstado(id: string) {
+  try {
+    const raw = await apiClient.delete<any>(`${BD_BASE}/${id}`);
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    console.error('[mfe-pta][toggleBancoDocenteEstado] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+export async function bulkUploadBancoDocentes(file: File) {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const raw = await apiClient.upload<any>(`${BD_BASE}/bulk`, formData);
+    return normalizeResult<any>(raw, null);
+  } catch (error) {
+    console.error('[mfe-pta][bulkUploadBancoDocentes] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
 // ═══ Solicitudes PTA — Segundo PTA ═══════════════════════════════════
 

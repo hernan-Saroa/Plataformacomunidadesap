@@ -96,6 +96,7 @@ const MapeoSincronizacionPTA = React.lazy(() => import('./MapeoSincronizacionPTA
 const SaludSistemaPTA = React.lazy(() => import('./SaludSistemaPTA').then(m => ({ default: m.SaludSistemaPTA })));
 const ReconciliacionMasivaPTA = React.lazy(() => import('./ReconciliacionMasivaPTA').then(m => ({ default: m.ReconciliacionMasivaPTA })));
 const BancoDocentesView = React.lazy(() => import('../esap/BancoDocentesView').then(m => ({ default: m.BancoDocentesView })));
+const BancoDocentesPTA = React.lazy(() => import('./banco-docentes/BancoDocentesPTA').then(m => ({ default: m.BancoDocentesPTA })));
 
 const ESTADOS_FILTRO = [
   { key: '', label: 'Todos los estados' },
@@ -1651,6 +1652,7 @@ function PtaBackofficeModuleInner() {
     {
       type: 'direct' as const,
       items: [
+        { key: 'banco_docentes', label: 'Banco Docentes', icon: Users },
         { key: 'configuracion', label: 'Configuración', icon: Sliders },
       ],
     },
@@ -2289,6 +2291,8 @@ function PtaBackofficeModuleInner() {
         <PreferenciasNotificacionesPTA />
       ) : moduleView === 'verificacion_qr' ? (
         <VerificacionQRPublicaPTA embedded />
+      ) : moduleView === 'banco_docentes' ? (
+        <BancoDocentesPTA />
       ) : (
         /* ═══ GESTIÓN — Vista principal ═══ */
         <div className="py-6 px-2 max-w-none mx-auto flex flex-col gap-6 w-full">

@@ -83,6 +83,33 @@ export class DocenteEntity {
   @Column({ name: 'correoInstitucional', type: 'text', nullable: true })
   correoInstitucional: string | null;
 
+  @Column({ name: 'origenVinculacion', type: 'text', nullable: true })
+  origenVinculacion: string | null;
+
+  @Column({ name: 'actoAdministrativoVinculacion', type: 'text', nullable: true })
+  actoAdministrativoVinculacion: string | null;
+
+  @Column({ name: 'situacionAdministrativa', type: 'text', nullable: true })
+  situacionAdministrativa: string | null;
+
+  @Column({ name: 'ultimaEvaluacion', type: 'text', nullable: true })
+  ultimaEvaluacion: string | null;
+
+  @Column({ name: 'puntajeSalarial', type: 'float', nullable: true })
+  puntajeSalarial: number | null;
+
+  @Column({ name: 'fechaInicioVinculacion', type: 'timestamp', nullable: true })
+  fechaInicioVinculacion: Date | null;
+
+  @Column({ name: 'fechaFinVinculacion', type: 'timestamp', nullable: true })
+  fechaFinVinculacion: Date | null;
+
+  @Column({ name: 'edadReferencia', type: 'int', nullable: true })
+  edadReferencia: number | null;
+
+  @Column({ name: 'rangoEdad', type: 'text', nullable: true })
+  rangoEdad: string | null;
+
   @CreateDateColumn({ default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 
