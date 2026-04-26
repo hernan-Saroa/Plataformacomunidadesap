@@ -291,10 +291,12 @@ export const ComunicacionAuditoriaModule: React.FC<{
     if (!useAPI) return;
     try {
       setLoading(true);
-      const [hallazgosData, estadoData, audData] = await Promise.all([
+      const [hallazgosData, estadoData, audData, aperturaData, cierreData] = await Promise.all([
         controlInternoService.getHallazgosByAuditoria(id),
         controlInternoService.getEstadoComunicacion(id),
         controlInternoService.getAuditoriaById(id).catch(() => null),
+        controlInternoService.getReunionApertura(id).catch(() => null),
+        controlInternoService.getReunionCierre(id).catch(() => null),
       ]);
       const parseCausaEfecto = (obs: string | undefined) => {
         if (!obs) return { causas: [] as string[], efectos: [] as string[] };
@@ -381,6 +383,18 @@ export const ComunicacionAuditoriaModule: React.FC<{
           Array.isArray(arr) && arr.length > 0
             ? arr.map((o) => o.descripcion || o.objetivo || '').filter(Boolean).join(' ')
             : undefined;
+
+        const reunionesArr = [];
+        if (aperturaData) reunionesArr.push({ ...aperturaData, tipo: 'Reunión de Apertura' });
+        if (cierreData) reunionesArr.push({ ...cierreData, tipo: 'Reunión de Cierre' });
+        if (audData.reuniones && Array.isArray(audData.reuniones)) {
+          audData.reuniones.forEach((r: any) => {
+            if (!reunionesArr.some(existing => existing.tipo === r.tipo)) {
+              reunionesArr.push(r);
+            }
+          });
+        }
+
         setAuditoria(prev => ({
           ...prev,
           id: audData.id,
@@ -421,6 +435,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
           ...(audData.recomendacionesPorCategoria && { recomendacionesPorCategoria: audData.recomendacionesPorCategoria }),
           ...(audData.fechaReunionApertura && { fechaReunionApertura: audData.fechaReunionApertura }),
           ...(audData.fechaReunionCierre && { fechaReunionCierre: audData.fechaReunionCierre }),
+          reuniones: reunionesArr,
         }));
       }
     } catch (err: any) {
@@ -1364,8 +1379,6 @@ const SeccionInformePreliminar: React.FC<{
           </div>
         </CardSIGL>
       )}
-
-      {/* Lista de Hallazgos */}
       <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
         <div className={embedded ? 'p-4' : 'p-6'}>
           <h3 className="text-base font-semibold text-gray-900 mb-4">Detalle de Hallazgos</h3>
