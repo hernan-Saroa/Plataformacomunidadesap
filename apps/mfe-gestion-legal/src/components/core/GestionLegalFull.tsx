@@ -256,7 +256,7 @@ export function GestionLegalFull() {
       subtitle: 'Analítica y trazabilidad legal',
       icon: <BarChart3 className="w-5 h-5" />,
       color: '#003DA5',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_CONFIGURACIONES_MANAGE),
+      visible: authService.hasPermission(Permissions.GESTION_LEGAL_REPORTES_MANAGE),
     },
     {
       id: 'configuraciones',

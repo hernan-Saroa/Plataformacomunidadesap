@@ -739,21 +739,30 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       setReasignando(true);
       const id = expediente.uuid || expediente.id;
 
-      // Update expediente with new lawyer
-      // Assuming updateExpediente can take abogadoId or similar.
-      // Checking legal.service interface: updateExpediente(id, data: Partial<Expediente>)
-      // Expediente interface has `abogadoSustanciador`.
-
       await legalService.updateExpediente(id, {
         abogadoSustanciador: selectedAbogado
       });
 
+      // Obtener nombre del abogado seleccionado para actualizar las tareas
+      const abogadoObj = abogados.find(a => a.id === selectedAbogado);
+      const nuevoNombre = abogadoObj
+        ? (abogadoObj.nombreCompleto || `${abogadoObj.nombre || ''} ${abogadoObj.apellido || ''}`.trim() || abogadoObj.name || 'Sin asignar (Temporal)')
+        : 'Sin asignar (Temporal)';
+
+      // Reasignar solo las tareas pendientes/en proceso — las completadas se quedan como están
+      const tareasActuales = await legalService.getTareasByExpediente(id);
+      await Promise.all(
+        tareasActuales
+          .filter((t: any) => t.estado !== 'completada')
+          .map((t: any) => legalService.updateTarea(t.id, { responsableNombre: nuevoNombre }))
+      );
+
       toast.success('👨‍💼 Abogado reasignado', {
-        description: 'El expediente ha sido transferido correctamente'
+        description: `El expediente y sus tareas fueron transferidos a ${nuevoNombre}`
       });
 
       setShowReasignarModal(false);
-      // Refresh parent if needed
+      loadTareas(id);
       if (onUpdate) onUpdate();
 
     } catch (error) {
@@ -1391,16 +1400,18 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
             }
             actions={
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsEditModalOpen(true)}
-                  className="text-blue-600 border-blue-600 hover:bg-blue-50 bg-white shadow-sm flex-shrink-0"
-                >
-                  <Edit className="w-4 h-4 mr-2" />
-                  Editar Proceso
-                </Button>
-                {!(expediente as any).procesoPrincipalId && (!(expediente as any).procesosAnexados || (expediente as any).procesosAnexados.length === 0) && (
+                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditModalOpen(true)}
+                    className="text-blue-600 border-blue-600 hover:bg-blue-50 bg-white shadow-sm flex-shrink-0"
+                  >
+                    <Edit className="w-4 h-4 mr-2" />
+                    Editar Proceso
+                  </Button>
+                )}
+                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && !(expediente as any).procesoPrincipalId && (!(expediente as any).procesosAnexados || (expediente as any).procesosAnexados.length === 0) && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -1575,15 +1586,17 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         </div>
                       </div>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full text-xs font-bold"
-                      onClick={handleReasignarAbogado}
-                    >
-                      <User className="w-3 h-3 mr-1" />
-                      Reasignar Profesional
-                    </Button>
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ABOGADO_REASIGNAR) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs font-bold"
+                        onClick={handleReasignarAbogado}
+                      >
+                        <User className="w-3 h-3 mr-1" />
+                        Reasignar Profesional
+                      </Button>
+                    )}
                   </Card>
                 </div>
 
@@ -1873,7 +1886,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   profesionalAsignado={expediente.abogadoAsignado || 'Oficina Jurídica'}
                   tituloSeccion="Documentos del Expediente"
                   moduloContexto="defensa-judicial"
-                  onUploadDocument={handleUploadDocumentoDesdeTab}
+                  onUploadDocument={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD) ? handleUploadDocumentoDesdeTab : undefined}
                   onViewDocument={handleVerDocumento}
                   onDownloadDocument={handleDescargarDocumento}
                   onDownloadAll={handleDescargarTodos}
@@ -1885,13 +1898,13 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 <TabActuacionesExpediente
                   actuaciones={actuaciones}
                   botonesAccion={[
-                    {
+                    ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_CREATE) ? [{
                       label: 'Registrar',
                       icono: <Plus className="w-3 h-3 mr-1" />,
                       onClick: () => setModalRegistrarActuacionAbierto(true),
                       color: '#003DA5'
-                    },
-                    {
+                    }] : []),
+                    ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_AUDIENCIA_CREATE) ? [{
                       label: 'Programar Audiencia',
                       icono: <Calendar className="w-3 h-3 mr-1" />,
                       onClick: () => {
@@ -1899,14 +1912,14 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         setModalProgramarAudienciaAbierto(true);
                       },
                       color: '#7C3AED'
-                    }
+                    }] : [])
                   ]}
                   audienciasProgramadas={audienciasProgramadas}
-                  onReasignarAudiencia={(audiencia) => {
+                  onReasignarAudiencia={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUDIENCIA_EDIT) ? (audiencia) => {
                     setAudienciaAReasignar(audiencia);
                     setModalProgramarAudienciaAbierto(true);
-                  }}
-                  onEliminarAudiencia={(id) => handleEliminarAudiencia(id.toString())}
+                  } : undefined}
+                  onEliminarAudiencia={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUDIENCIA_DELETE) ? (id) => handleEliminarAudiencia(id.toString()) : undefined}
                   labelRegistrar="Registrar Primera Actuación"
                   onRegistrarPrimera={() => setModalRegistrarActuacionAbierto(true)}
                 />
@@ -1918,9 +1931,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   tareas={tareas}
                   setTareas={setTareas}
                   expedienteId={String(expediente.uuid || expediente.id)}
-                  onCrearTarea={() => setModalCrearTareaAbierto(true)}
-                  onEditarTarea={handleEditarTarea}
-                  onMarcarCompletada={(id) => handleMarcarCompletada(String(id))}
+                  onCrearTarea={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_CREATE) ? () => setModalCrearTareaAbierto(true) : undefined}
+                  onEditarTarea={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_TAREA_EDIT) ? handleEditarTarea : undefined}
+                  onMarcarCompletada={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_TAREA_COMPLETE) ? (id) => handleMarcarCompletada(String(id)) : undefined}
                 />
               </TabsContent>
 
@@ -1928,7 +1941,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
               <TabsContent value="notas" className="space-y-3">
                 <TabNotasExpediente
                   notas={notas}
-                  onAgregarNota={() => setModalAgregarNotaAbierto(true)}
+                  onAgregarNota={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_CREATE) ? () => setModalAgregarNotaAbierto(true) : undefined}
                 />
               </TabsContent>
 
@@ -2043,24 +2056,28 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   <Bell className="w-3.5 h-3.5 mr-1" />
                   Notificar
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleArchivar}
-                  className="font-bold text-xs text-orange-600 border-orange-300 hover:bg-orange-50"
-                >
-                  <Archive className="w-3.5 h-3.5 mr-1" />
-                  Archivar
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleEliminar}
-                  className="font-bold text-xs text-red-600 border-red-300 hover:bg-red-50"
-                >
-                  <Trash2 className="w-3.5 h-3.5 mr-1" />
-                  Eliminar
-                </Button>
+                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ARCHIVAR) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleArchivar}
+                    className="font-bold text-xs text-orange-600 border-orange-300 hover:bg-orange-50"
+                  >
+                    <Archive className="w-3.5 h-3.5 mr-1" />
+                    Archivar
+                  </Button>
+                )}
+                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleEliminar}
+                    className="font-bold text-xs text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1" />
+                    Eliminar
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -2253,7 +2270,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         onClose={() => setModalNotificarAbierto(false)
         }
         expediente={expediente}
-        abogadosDisponibles={abogadosDisponibles}
       />
       <ModalCompartir
         isOpen={modalCompartirAbierto}
@@ -2265,7 +2281,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         onClose={() => setModalCrearTareaAbierto(false)}
         expediente={expediente}
         onGuardar={handleCrearTarea}
-        abogadosDisponibles={abogadosDisponibles}
       />
       {
         tareaParaEditar && (
@@ -2279,7 +2294,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
             tareaInicial={tareaParaEditar}
             onGuardar={handleGuardarEdicionTarea}
             modoEdicion={true}
-            abogadosDisponibles={abogadosDisponibles}
           />
         )
       }

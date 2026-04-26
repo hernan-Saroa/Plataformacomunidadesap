@@ -12,10 +12,12 @@ import { Badge } from '@esap-mfe/shared-ui/badge';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import {
   FileText, Calendar, User, Clock, CheckCircle, AlertTriangle, Download, X,
-  MessageSquare, Send, Archive, Trash2
+  MessageSquare, Send, Archive, Trash2, Edit
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { ocService } from '../../../../services/api/legal.service';
+import { ocService, legalService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { ModalComentariosOrgano } from './ModalComentariosOrgano';
 import { ModalRespuestaOrgano } from './ModalRespuestaOrgano';
 import { usePermisos } from '../config/PermisosContext';
@@ -55,8 +57,39 @@ export function ModalVerRequerimientoOrgano({
   const [showRespuestaModal, setShowRespuestaModal] = useState(false);
   const [showArchivarModal, setShowArchivarModal] = useState(false);
   const [showEliminarModal, setShowEliminarModal] = useState(false);
+  const [editandoResponsable, setEditandoResponsable] = useState(false);
+  const [abogados, setAbogados] = useState<any[]>([]);
+  const [abogadoSeleccionado, setAbogadoSeleccionado] = useState('');
+  const [loadingAbogados, setLoadingAbogados] = useState(false);
   const { usuario } = usePermisos();
-  const esGestor = usuario?.rol === 'GESTOR_JURIDICO' || usuario?.rol === 'ADMIN';
+
+  useEffect(() => {
+    if (editandoResponsable && abogados.length === 0) {
+      setLoadingAbogados(true);
+      legalService.getAbogados()
+        .then(data => setAbogados(data || []))
+        .catch(() => toast.error('Error al cargar lista de profesionales'))
+        .finally(() => setLoadingAbogados(false));
+    }
+  }, [editandoResponsable, requerimiento]);
+
+  const handleGuardarResponsable = async () => {
+    if (!abogadoSeleccionado || !requerimiento) {
+      setEditandoResponsable(false);
+      return;
+    }
+    try {
+      toast.loading('Reasignando profesional...', { id: 'reasignar-oc' });
+      await ocService.updateRequerimientoOC(requerimiento.id, { funcionarioResponsableId: abogadoSeleccionado });
+      const abogado = abogados.find(a => a.id === abogadoSeleccionado);
+      toast.success(`Profesional reasignado: ${abogado?.nombreCompleto || 'Actualizado'}`, { id: 'reasignar-oc' });
+      setEditandoResponsable(false);
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al reasignar profesional', { id: 'reasignar-oc' });
+    }
+  };
 
   if (!requerimiento) return null;
 
@@ -247,10 +280,41 @@ export function ModalVerRequerimientoOrgano({
               </div>
               <div>
                 <label className="text-xs text-gray-500 uppercase font-bold">Responsable</label>
-                <div className="flex items-center gap-2">
-                  <User className="w-4 h-4 text-gray-400" />
-                  <p className="text-gray-900">{requerimiento.responsable}</p>
-                </div>
+                {!editandoResponsable ? (
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-gray-400" />
+                    <p className="text-gray-900">{requerimiento.responsable}</p>
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_ABOGADO_REASIGNAR) && (
+                      <button
+                        onClick={() => { setAbogadoSeleccionado(''); setEditandoResponsable(true); }}
+                        className="p-0.5 hover:bg-gray-200 rounded transition-colors"
+                        title="Reasignar profesional"
+                      >
+                        <Edit className="w-3.5 h-3.5 text-gray-500" />
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 mt-1">
+                    <select
+                      className="text-xs border border-gray-300 rounded p-1 flex-1 focus:outline-none focus:border-blue-500"
+                      value={abogadoSeleccionado}
+                      onChange={(e) => setAbogadoSeleccionado(e.target.value)}
+                      disabled={loadingAbogados}
+                    >
+                      <option value="">{loadingAbogados ? 'Cargando...' : 'Seleccionar...'}</option>
+                      {abogados.map(a => (
+                        <option key={a.id} value={a.id}>{a.nombreCompleto}</option>
+                      ))}
+                    </select>
+                    <button onClick={handleGuardarResponsable} className="p-1 hover:bg-green-100 rounded text-green-600" title="Confirmar">
+                      <CheckCircle className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => setEditandoResponsable(false)} className="p-1 hover:bg-red-100 rounded text-red-500" title="Cancelar">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
             <div className="space-y-4">
@@ -332,23 +396,27 @@ export function ModalVerRequerimientoOrgano({
             </Button>
 
 
-            <Button
-              variant="outline"
-              className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-              onClick={() => setShowArchivarModal(true)}
-            >
-              <Archive className="w-4 h-4 mr-2" />
-              Archivar
-            </Button>
+            {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DELETE) && (
+              <Button
+                variant="outline"
+                className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                onClick={() => setShowArchivarModal(true)}
+              >
+                <Archive className="w-4 h-4 mr-2" />
+                Archivar
+              </Button>
+            )}
 
-            <Button
-              variant="outline"
-              className="text-red-700 border-red-300 hover:bg-red-100 hover:text-red-800"
-              onClick={() => setShowEliminarModal(true)}
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Eliminar
-            </Button>
+            {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DELETE) && (
+              <Button
+                variant="outline"
+                className="text-red-700 border-red-300 hover:bg-red-100 hover:text-red-800"
+                onClick={() => setShowEliminarModal(true)}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Eliminar
+              </Button>
+            )}
 
 
             <Button style={{ background: '#003DA5' }} className="text-white" onClick={onClose}>

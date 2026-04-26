@@ -637,8 +637,8 @@ export function ModuloAsesoriaJuridicaV3() {
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Asesoría Jurídica"
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_CREATE) ? handleRestaurar : undefined}
+          onEliminarPermanente={authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_CREATE) ? handleEliminarPermanente : undefined}
         />
       )}
 
