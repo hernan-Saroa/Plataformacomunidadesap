@@ -106,7 +106,7 @@ export class TareasNotasService {
         `;
 
         await this.notificationClient.notifyByRoles(
-            ['JEFE_GESTION_LEGAL'],
+            ['JEFE_GESTION_LEGAL', 'SECRETARIADO_GESTION_LEGAL'],
             {
                 tipo_notificacion: 'TAREA_COMPLETADA',
                 titulo: '✅ Tarea completada',
