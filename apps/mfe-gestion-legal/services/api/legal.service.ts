@@ -1315,10 +1315,17 @@ export class CorreosJuridicosService {
     }
 
     /**
-     * Forward an email
+     * Forward an email.
+     * Original attachments are included automatically by Graph.
+     * Pass any user-uploaded attachments in `attachments` to send them alongside.
      */
-    async forwardEmail(correoId: string, to: string, comment: string): Promise<{ success: boolean; correo?: CorreoJuridico }> {
-        return apiClient.post(`${SERVICE_PREFIX}/correos/${correoId}/forward`, { to, comment });
+    async forwardEmail(
+        correoId: string,
+        to: string,
+        comment: string,
+        attachments?: { name: string; contentBytes: string; contentType: string }[],
+    ): Promise<{ success: boolean; correo?: CorreoJuridico }> {
+        return apiClient.post(`${SERVICE_PREFIX}/correos/${correoId}/forward`, { to, comment, attachments });
     }
 
     /**
