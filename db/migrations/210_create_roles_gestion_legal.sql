@@ -219,12 +219,17 @@ BEGIN
   SELECT id INTO v_resuelve_id    FROM auth.role WHERE code = 'RESUELVE_GESTION_LEGAL';
 
   -- ============================================================
-  -- PASO 3: Asignar permisos al JEFE (todos: resuelve + jefe-only)
+  -- PASO 3: Asignar permisos al JEFE (TODOS los de gestion-legal)
   -- ============================================================
+  -- Primero limpiar para garantizar estado actualizado
+  DELETE FROM auth.role_permissions WHERE id_rol = v_jefe_id
+    AND id_permission IN (SELECT id_permission FROM auth.permission WHERE code LIKE 'gestion-legal.%');
+
+  -- Luego asignar TODOS los permisos del módulo gestion-legal
   INSERT INTO auth.role_permissions (id_rol, id_permission)
   SELECT v_jefe_id, p.id_permission
   FROM auth.permission p
-  WHERE p.code = ANY(v_perms_resuelve || v_perms_jefe_only)
+  WHERE p.code LIKE 'gestion-legal.%'
   ON CONFLICT (id_rol, id_permission) DO NOTHING;
 
   -- ============================================================
