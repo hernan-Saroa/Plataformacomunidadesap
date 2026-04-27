@@ -803,7 +803,7 @@ export function ModuloDefensaJudicialV3() {
           expedientes={etapas.flatMap((e: any) => e.expedientes)}
           isMobile={isMobile}
           isTablet={isTablet}
-          onMoverExpediente={handleMoverExpediente}
+          onMoverExpediente={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) ? handleMoverExpediente : undefined}
         />
       )}
 
@@ -812,8 +812,8 @@ export function ModuloDefensaJudicialV3() {
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Defensa Judicial"
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ARCHIVAR) ? handleRestaurar : undefined}
+          onEliminarPermanente={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ARCHIVAR) ? handleEliminarPermanente : undefined}
         />
       )}
 
@@ -989,9 +989,12 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
   const procesoVencido = expediente.diasRestantes < 0;
   const ultimaActuacion = expediente.ultimaActuacion?.descripcion || `Expediente en etapa de ${expediente.etapa}`;
 
+  const canDrag = authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT);
+
   const [{ isDragging }, drag] = useDrag({
     type: ItemTypes.EXPEDIENTE,
     item: { id: expediente.id, etapa: etapaActual },
+    canDrag: () => canDrag,
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging(),
     }),
@@ -1000,7 +1003,7 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
   const opacity = isDragging ? 0.5 : 1;
 
   return (
-    <div ref={drag} style={{ opacity, cursor: 'move' }} className="h-[380px]">
+    <div ref={drag} style={{ opacity, cursor: canDrag ? 'move' : 'default' }} className="h-[380px]">
       <KanbanCard
         accentColor={ESAP_TOKENS.colors.primary}
         isDragging={isDragging}
@@ -1026,14 +1029,16 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
                   {expediente.diasRestantes < 0 ? `${Math.abs(expediente.diasRestantes)}d` : `${expediente.diasRestantes}d`}
                 </span>
               </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); setMotivoEliminar(''); setShowEliminarModal(true); }}
-                disabled={eliminando}
-                title="Eliminar demanda"
-                className="p-1 rounded-md transition-all bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 disabled:opacity-50"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setMotivoEliminar(''); setShowEliminarModal(true); }}
+                  disabled={eliminando}
+                  title="Eliminar demanda"
+                  className="p-1 rounded-md transition-all bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           }
         />

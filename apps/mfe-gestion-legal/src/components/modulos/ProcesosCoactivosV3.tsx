@@ -337,8 +337,8 @@ export function ModuloProcesosCoactivosV3() {
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Procesos Coactivos"
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) ? handleRestaurar : undefined}
+          onEliminarPermanente={authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) ? handleEliminarPermanente : undefined}
           onVolver={() => setVistaActual('activos')}
         />
       ) : (
@@ -367,17 +367,19 @@ export function ModuloProcesosCoactivosV3() {
                     </span>
                   )}
                 </button>
-                <button
-                  onClick={() => setModalNuevoProceso(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                  style={{
-                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                  }}
-                >
-                  <Plus className="w-4 h-4" />
-                  {!isMobile && 'Nuevo Proceso'}
-                </button>
+                {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_CREATE) && (
+                  <button
+                    onClick={() => setModalNuevoProceso(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                    style={{
+                      background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                      boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                    }}
+                  >
+                    <Plus className="w-4 h-4" />
+                    {!isMobile && 'Nuevo Proceso'}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -439,9 +441,9 @@ export function ModuloProcesosCoactivosV3() {
                   <TarjetaProceso
                     proceso={proceso}
                     onVerDetalle={handleVerDetalle}
-                    onEliminar={handleEliminarProceso} // Eliminar -> Soft Delete (Trash)
-                    onArchivar={handleArchivarProceso} // Archivar -> Archive
-                    onEditar={handleEditarProceso}
+                    onEliminar={authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) ? handleEliminarProceso : undefined}
+                    onArchivar={authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) ? handleArchivarProceso : undefined}
+                    onEditar={authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT) ? handleEditarProceso : undefined}
                     onPagar={handlePagar}
                     onHistorial={handleHistorial}
                   />
@@ -495,9 +497,10 @@ export function ModuloProcesosCoactivosV3() {
                 valorPagado: procesoParaPago.obligacion.valorPagado
               }}
               onRegistrarPago={() => {
-                loadProcesos(); // Recargar para actualizar saldos
+                loadProcesos();
                 setModalPagos(false);
               }}
+              canRegistrarPago={authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT)}
             />
           )}
 
@@ -585,11 +588,11 @@ function TarjetaProceso({
 }: {
   proceso: ProcesoCoactivo;
   onVerDetalle: (proceso: ProcesoCoactivo) => void;
-  onEliminar: (id: string) => void;
-  onEditar: (proceso: ProcesoCoactivo) => void;
+  onEliminar?: (id: string) => void;
+  onEditar?: (proceso: ProcesoCoactivo) => void;
   onPagar: (proceso: ProcesoCoactivo) => void;
   onHistorial: (proceso: ProcesoCoactivo) => void;
-  onArchivar: (proceso: ProcesoCoactivo) => void;
+  onArchivar?: (proceso: ProcesoCoactivo) => void;
 }) {
   const getEstadoConfig = (estado: ProcesoCoactivo['estado']) => {
     const configs = {
@@ -744,30 +747,35 @@ function TarjetaProceso({
             Historial
           </button>
 
-          <button
-            onClick={() => onEditar(proceso)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
-          >
-            <Edit className="w-4 h-4" />
-            Editar
-          </button>
-          <button
-            onClick={() => onArchivar(proceso)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-orange-200 text-orange-700 hover:bg-orange-50 transition-all"
-            title="Mover a Archivo"
-          >
-            <Archive className="w-4 h-4" />
-            Archivar
-          </button>
-
-          <button
-            onClick={() => onEliminar(proceso.id)}
-            className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
-            title="Mover a Papelera"
-          >
-            <Trash2 className="w-4 h-4" />
-            Eliminar
-          </button>
+          {onEditar && (
+            <button
+              onClick={() => onEditar(proceso)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+            >
+              <Edit className="w-4 h-4" />
+              Editar
+            </button>
+          )}
+          {onArchivar && (
+            <button
+              onClick={() => onArchivar(proceso)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-orange-200 text-orange-700 hover:bg-orange-50 transition-all"
+              title="Mover a Archivo"
+            >
+              <Archive className="w-4 h-4" />
+              Archivar
+            </button>
+          )}
+          {onEliminar && (
+            <button
+              onClick={() => onEliminar(proceso.id)}
+              className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
+              title="Mover a Papelera"
+            >
+              <Trash2 className="w-4 h-4" />
+              Eliminar
+            </button>
+          )}
         </div>
       </div>
     </div>

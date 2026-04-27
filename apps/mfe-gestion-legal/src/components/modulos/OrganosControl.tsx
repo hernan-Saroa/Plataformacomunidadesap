@@ -447,7 +447,7 @@ export function OrganosControl() {
           paginaActual={paginaActual}
           setPaginaActual={setPaginaActual}
           itemsPorPagina={itemsPorPagina}
-          onCambiarEtapa={handleMoverRequerimiento}
+          onCambiarEtapa={authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_ELABORAR) ? handleMoverRequerimiento : undefined}
           onVerRequerimiento={handleVerRequerimiento}
           onDocumentos={handleDocumentos}
           onRespuesta={handleRespuesta}
@@ -460,8 +460,8 @@ export function OrganosControl() {
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Órganos de Control"
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DELETE) ? handleRestaurar : undefined}
+          onEliminarPermanente={authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DELETE) ? handleEliminarPermanente : undefined}
         />
       )}
 
@@ -803,7 +803,7 @@ function VistaLista({
   paginaActual: number;
   setPaginaActual: (pagina: number) => void;
   itemsPorPagina: number;
-  onCambiarEtapa: (reqId: string, nuevaEtapa: 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO') => void;
+  onCambiarEtapa?: (reqId: string, nuevaEtapa: 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO') => void;
   onVerRequerimiento: (req: Requerimiento) => void;
   onDocumentos: (req: Requerimiento) => void;
   onRespuesta: (req: Requerimiento) => void;
@@ -937,10 +937,19 @@ function VistaLista({
                     </Badge>
                   </td>
                   <td className="px-4 py-3">
-                    <SelectorEtapa
-                      etapaActual={req.etapa}
-                      onChange={(nuevaEtapa) => onCambiarEtapa(req.id, nuevaEtapa)}
-                    />
+                    {onCambiarEtapa ? (
+                      <SelectorEtapa
+                        etapaActual={req.etapa}
+                        onChange={(nuevaEtapa) => onCambiarEtapa(req.id, nuevaEtapa)}
+                      />
+                    ) : (() => {
+                      const cfg = ETAPAS_CONFIG.find(e => e.valor === req.etapa) || ETAPAS_CONFIG[0];
+                      return (
+                        <span className="text-xs font-semibold rounded-lg pl-3 pr-3 py-1.5 border" style={{ color: cfg.color, backgroundColor: cfg.bg, borderColor: `${cfg.color}40` }}>
+                          {cfg.nombre}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-0.5">

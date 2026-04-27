@@ -11,7 +11,7 @@ import type { NotaExpediente } from './expedienteShared';
 
 interface TabNotasExpedienteProps {
   notas: NotaExpediente[];
-  onAgregarNota: () => void;
+  onAgregarNota?: () => void;
 }
 
 export function TabNotasExpediente({ notas, onAgregarNota }: TabNotasExpedienteProps) {
@@ -23,14 +23,16 @@ export function TabNotasExpediente({ notas, onAgregarNota }: TabNotasExpedienteP
             <Bookmark className="w-4 h-4 text-yellow-600" />
             Notas Internas del Expediente
           </h4>
-          <Button
-            size="sm"
-            className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
-            onClick={onAgregarNota}
-          >
-            <Plus className="w-3 h-3 mr-1" />
-            Agregar Nota
-          </Button>
+          {onAgregarNota && (
+            <Button
+              size="sm"
+              className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold"
+              onClick={onAgregarNota}
+            >
+              <Plus className="w-3 h-3 mr-1" />
+              Agregar Nota
+            </Button>
+          )}
         </div>
         <p className="text-xs text-gray-600 mt-2">
           Las notas internas son visibles solo para el equipo jurídico y no forman parte del expediente oficial

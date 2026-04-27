@@ -78,6 +78,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [respuestaTexto, setRespuestaTexto] = useState('');
+  const [destinatariosAdicionales, setDestinatariosAdicionales] = useState<string[]>([]);
+  const [nuevoDestinatario, setNuevoDestinatario] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Estados para workflow firmado/sin firmar
@@ -132,6 +134,30 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
   };
 
+  const handleAgregarDestinatario = () => {
+    const email = nuevoDestinatario.trim().toLowerCase();
+    if (!email) return;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast.error('Ingrese un correo electrónico válido');
+      return;
+    }
+    if (email === consulta?.emailSolicitante?.toLowerCase()) {
+      toast.error('Este correo ya es el destinatario principal');
+      return;
+    }
+    if (destinatariosAdicionales.includes(email)) {
+      toast.error('Este correo ya fue agregado');
+      return;
+    }
+    setDestinatariosAdicionales(prev => [...prev, email]);
+    setNuevoDestinatario('');
+  };
+
+  const handleEliminarDestinatario = (email: string) => {
+    setDestinatariosAdicionales(prev => prev.filter(e => e !== email));
+  };
+
   const handleEnviarRespuesta = async () => {
     if (!consulta?.uuid || !respuestaTexto.trim()) return;
 
@@ -141,10 +167,13 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       return;
     }
 
+    const todosDestinatarios = [consulta.emailSolicitante, ...destinatariosAdicionales];
+    const listaDestinatarios = todosDestinatarios.join(', ');
+
     // Reemplazo de confirmación nativa por personalizada
     const confirmado = await confirm({
       title: 'Plataforma ESAP',
-      description: `¿Está seguro de enviar esta respuesta por correo a ${consulta.emailSolicitante}?`,
+      description: `¿Está seguro de enviar esta respuesta por correo a: ${listaDestinatarios}?`,
       variant: 'info',
       confirmText: 'Aceptar',
       cancelText: 'Cancelar'
@@ -155,21 +184,28 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     try {
       toast.loading('Enviando respuesta por correo...', { id: 'send-response' });
 
-      // 1. Enviar correo al solicitante
+      // 1. Enviar correo al solicitante principal
       const asunto = `Respuesta a Consulta Jurídica ${consulta.id} - ${consulta.funcionarioSolicitante}`;
       await correosJuridicosService.sendEmail({
         to: consulta.emailSolicitante,
+        cc: destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined,
         subject: asunto,
         body: respuestaTexto
       });
 
       // 2. Guardar respuesta en BD y marcar como respondida
       const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
-      await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, true, usuarioNombre);
+      await legalService.guardarRespuestaConsulta(
+        consulta.uuid,
+        respuestaTexto,
+        true,
+        usuarioNombre,
+        destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined
+      );
 
       toast.success('✅ Respuesta enviada correctamente', {
         id: 'send-response',
-        description: `Correo enviado a ${consulta.emailSolicitante}`
+        description: `Correo enviado a ${listaDestinatarios}`
       });
 
       if (onUpdate) onUpdate();
@@ -784,32 +820,34 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
             subtitulo={consulta.temaJuridico}
             badgePrincipal={`${semaforo.icon} ${semaforo.label}`}
             actions={
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowEditarModal(true)}
-                className="flex items-center gap-1.5 text-blue-700 border-blue-300 hover:bg-blue-50"
-              >
-                <Edit className="w-3.5 h-3.5" />
-                Editar
-              </Button>
+              authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_CREATE) ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowEditarModal(true)}
+                  className="flex items-center gap-1.5 text-blue-700 border-blue-300 hover:bg-blue-50"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  Editar
+                </Button>
+              ) : undefined
             }
             badges={
               <>
                 <span className="inline-flex items-center rounded-md px-2 py-0.5 bg-blue-100 text-blue-700 border-blue-300 font-semibold text-xs border gap-1">
                   {consulta.etapa}
-                  <button
-                    onClick={() => {
-                      // Usar el estado original (ID) si existe, sino la etapa visual
-                      // Esto asegura que el Select seleccione la opción correcta si coincide con un ID de configuración
-                      setEtapaSeleccionada(consulta.estado || consulta.etapa);
-                      setEditandoEtapa(true);
-                    }}
-                    className="ml-1 p-0.5 hover:bg-blue-200 rounded-full transition-colors"
-                    title="Cambiar etapa"
-                  >
-                    <Edit className="w-3 h-3" />
-                  </button>
+                  {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_ETAPA_EDIT) && (
+                    <button
+                      onClick={() => {
+                        setEtapaSeleccionada(consulta.estado || consulta.etapa);
+                        setEditandoEtapa(true);
+                      }}
+                      className="ml-1 p-0.5 hover:bg-blue-200 rounded-full transition-colors"
+                      title="Cambiar etapa"
+                    >
+                      <Edit className="w-3 h-3" />
+                    </button>
+                  )}
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 bg-gray-100 text-gray-700 border-gray-300 font-semibold text-xs border">
                   <Clock className="w-3 h-3" />
@@ -856,15 +894,17 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                   {!editandoAbogado ? (
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-bold text-gray-900 truncate">{consulta.abogadoAsignado || 'Sin asignar'}</p>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => setEditandoAbogado(true)}
-                        title="Reasignar Abogado"
-                      >
-                        <Edit className="w-3 h-3 text-gray-500" />
-                      </Button>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_CREATE) && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => setEditandoAbogado(true)}
+                          title="Reasignar Abogado"
+                        >
+                          <Edit className="w-3 h-3 text-gray-500" />
+                        </Button>
+                      )}
                     </div>
                   ) : (
                     <div className="flex items-center gap-1 mt-1">
@@ -901,20 +941,20 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                       <Badge variant="outline" className="font-bold">
                         {consulta.etapa}
                       </Badge>
-                      {/* Permitir editar si no está finalizada (opcional, usuario no especificó restricción de editar si ya está enviada, pero dijo "menos a enviada") */}
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => {
-                          // Mapear etapa actual a valor backend si es necesario, o inicializar vacio
-                          setEtapaSeleccionada('');
-                          setEditandoEtapa(true);
-                        }}
-                        title="Cambiar Etapa"
-                      >
-                        <Edit className="w-3 h-3 text-gray-500" />
-                      </Button>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_ETAPA_EDIT) && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            setEtapaSeleccionada('');
+                            setEditandoEtapa(true);
+                          }}
+                          title="Cambiar Etapa"
+                        >
+                          <Edit className="w-3 h-3 text-gray-500" />
+                        </Button>
+                      )}
                     </div>
                   ) : (
                     <div className="flex items-center gap-1 mt-1">
@@ -1322,11 +1362,26 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
                       {/* Indicador de envío por correo */}
                       {consulta.emailSolicitante && (
-                        <div className="bg-blue-50 p-3 mb-4 rounded-lg border border-blue-200 flex items-center gap-3">
-                          <Mail className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                          <div>
+                        <div className="bg-blue-50 p-3 mb-4 rounded-lg border border-blue-200">
+                          <div className="flex items-center gap-3 mb-1">
+                            <Mail className="w-5 h-5 text-blue-600 flex-shrink-0" />
                             <p className="text-sm font-semibold text-blue-800">Respuesta enviada por correo</p>
-                            <p className="text-xs text-blue-600">Destinatario: {consulta.emailSolicitante}</p>
+                          </div>
+                          <div className="ml-8 space-y-1">
+                            <p className="text-xs text-blue-700 font-medium">Destinatario principal: <span className="font-normal">{consulta.emailSolicitante}</span></p>
+                            {consulta.destinatariosAdicionales && (() => {
+                              try {
+                                const adicionales: string[] = JSON.parse(consulta.destinatariosAdicionales);
+                                return adicionales.length > 0 ? (
+                                  <div>
+                                    <p className="text-xs text-blue-700 font-medium mb-1">Destinatarios adicionales:</p>
+                                    {adicionales.map((email: string) => (
+                                      <p key={email} className="text-xs text-blue-600 ml-2">• {email}</p>
+                                    ))}
+                                  </div>
+                                ) : null;
+                              } catch { return null; }
+                            })()}
                           </div>
                         </div>
                       )}
@@ -1354,31 +1409,84 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                       <div className="bg-blue-50 p-3 mb-4 rounded border border-blue-100 text-xs text-blue-800">
                         <p>Puede guardar un borrador tantas veces como necesite. Al enviar la respuesta, el caso quedará cerrado y se notificará al solicitante.</p>
                       </div>
+
+                      {/* Sección de destinatarios */}
+                      <div className="mb-4 p-3 bg-white rounded-lg border border-gray-200">
+                        <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                          <Mail className="w-3.5 h-3.5" /> Destinatarios del correo
+                        </p>
+                        {/* Destinatario principal (siempre presente) */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full flex-1 truncate">
+                            {consulta.emailSolicitante || 'Sin correo registrado'} <span className="text-blue-500">(principal)</span>
+                          </span>
+                        </div>
+                        {/* Destinatarios adicionales agregados */}
+                        {destinatariosAdicionales.map((email) => (
+                          <div key={email} className="flex items-center gap-2 mb-2">
+                            <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full flex-1 truncate">{email}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleEliminarDestinatario(email)}
+                              className="text-red-400 hover:text-red-600 flex-shrink-0 text-xs leading-none"
+                              title="Quitar destinatario"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                        {/* Input para agregar nuevo destinatario */}
+                        {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER) && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <input
+                              type="email"
+                              value={nuevoDestinatario}
+                              onChange={(e) => setNuevoDestinatario(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAgregarDestinatario(); } }}
+                              placeholder="correo@ejemplo.com"
+                              className="flex-1 text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={handleAgregarDestinatario}
+                              className="text-xs h-7 px-2"
+                            >
+                              + Agregar destinatario
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
                       <Textarea
                         placeholder="Redacte aquí el concepto jurídico con fundamento en la normativa aplicable..."
-                        rows={12}
+                        rows={10}
                         className="mb-4 bg-white"
                         value={respuestaTexto}
                         onChange={(e) => setRespuestaTexto(e.target.value)}
+                        disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER)}
                       />
-                      <div className="flex items-center gap-3">
-                        <Button
-                          onClick={handleEnviarRespuesta}
-                          disabled={!respuestaTexto.trim()}
-                          className="bg-green-600 hover:bg-green-700 text-white"
-                        >
-                          <Send className="w-4 h-4 mr-2" />
-                          Enviar Respuesta Final
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={handleGuardarBorrador}
-                          disabled={!respuestaTexto.trim()}
-                        >
-                          <Archive className="w-4 h-4 mr-2" />
-                          Guardar Borrador
-                        </Button>
-                      </div>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER) && (
+                        <div className="flex items-center gap-3">
+                          <Button
+                            onClick={handleEnviarRespuesta}
+                            disabled={!respuestaTexto.trim()}
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            <Send className="w-4 h-4 mr-2" />
+                            Enviar Respuesta Final
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={handleGuardarBorrador}
+                            disabled={!respuestaTexto.trim()}
+                          >
+                            <Archive className="w-4 h-4 mr-2" />
+                            Guardar Borrador
+                          </Button>
+                        </div>
+                      )}
                     </Card>
                   )}
                 </TabsContent>
@@ -1428,27 +1536,29 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                 {/* TAB: COMENTARIOS */}
                 <TabsContent value="comentarios" className="space-y-4 mt-0">
                   {/* Nuevo Comentario */}
-                  <Card className="p-4 bg-blue-50 border-blue-200">
-                    <div className="flex items-center gap-3 mb-3">
-                      <MessageSquare className="w-5 h-5 text-blue-600" />
-                      <h3 className="font-bold text-gray-900">Agregar Comentario</h3>
-                    </div>
-                    <Textarea
-                      placeholder="Escriba su comentario sobre la consulta..."
-                      rows={3}
-                      className="mb-3 bg-white"
-                      value={nuevoComentario}
-                      onChange={(e) => setNuevoComentario(e.target.value)}
-                    />
-                    <Button
-                      size="sm"
-                      onClick={handleAgregarComentario}
-                      disabled={!nuevoComentario.trim()}
-                    >
-                      <Send className="w-4 h-4 mr-2" />
-                      Publicar Comentario
-                    </Button>
-                  </Card>
+                  {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_COMENTARIO_CREATE) && (
+                    <Card className="p-4 bg-blue-50 border-blue-200">
+                      <div className="flex items-center gap-3 mb-3">
+                        <MessageSquare className="w-5 h-5 text-blue-600" />
+                        <h3 className="font-bold text-gray-900">Agregar Comentario</h3>
+                      </div>
+                      <Textarea
+                        placeholder="Escriba su comentario sobre la consulta..."
+                        rows={3}
+                        className="mb-3 bg-white"
+                        value={nuevoComentario}
+                        onChange={(e) => setNuevoComentario(e.target.value)}
+                      />
+                      <Button
+                        size="sm"
+                        onClick={handleAgregarComentario}
+                        disabled={!nuevoComentario.trim()}
+                      >
+                        <Send className="w-4 h-4 mr-2" />
+                        Publicar Comentario
+                      </Button>
+                    </Card>
+                  )}
 
                   {/* Comentarios Existentes */}
                   {loadingComentarios ? (
@@ -1499,19 +1609,20 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           {/* FOOTER CON ACCIONES */}
           <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
             <div className="flex items-center justify-end gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                className="text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
-                onClick={(e: React.MouseEvent) => {
-                  e.preventDefault();
-                  console.log('Click en Archivar');
-                  setShowArchivarModal(true);
-                }}
-              >
-                <Archive className="w-4 h-4 mr-2" />
-                Archivar
-              </Button>
+              {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_CREATE) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+                  onClick={(e: React.MouseEvent) => {
+                    e.preventDefault();
+                    setShowArchivarModal(true);
+                  }}
+                >
+                  <Archive className="w-4 h-4 mr-2" />
+                  Archivar
+                </Button>
+              )}
               <Button type="button" onClick={onClose}>
                 Cerrar
               </Button>
