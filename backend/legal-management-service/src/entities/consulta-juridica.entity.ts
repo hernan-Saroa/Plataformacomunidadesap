@@ -48,6 +48,9 @@ export class ConsultaJuridica {
     @Column({ name: 'abogado_asignado_id', nullable: true })
     abogadoAsignadoId: string;
 
+    @Column({ name: 'abogado_asignado_nombre', nullable: true, length: 500 })
+    abogadoAsignadoNombre: string;
+
     @ManyToOne(() => Abogado, { nullable: true })
     @JoinColumn({ name: 'abogado_asignado_id' })
     abogadoAsignado: Abogado;

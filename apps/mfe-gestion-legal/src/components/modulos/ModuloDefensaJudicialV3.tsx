@@ -88,6 +88,8 @@ export function ModuloDefensaJudicialV3() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
+  const [filtroAbogado, setFiltroAbogado] = useState<string>('TODOS');
+  const [abogadosList, setAbogadosList] = useState<{ id: string; nombre: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Estado local para manejar drag and drop
@@ -175,13 +177,18 @@ export function ModuloDefensaJudicialV3() {
         legalService.getAbogadosDashboard()
       ]);
 
-      // Crear mapa de abogados para búsqueda rápida
+      // Crear mapa de abogados para búsqueda rápida y poblar lista para filtro
       const abogadosMap = new Map();
       if (Array.isArray(abogadosData)) {
+        const lista: { id: string; nombre: string }[] = [];
         abogadosData.forEach((a: any) => {
           const nombre = a.nombreCompleto || `${a.nombre || ''} ${a.apellido || ''}`.trim();
-          if (a.id) abogadosMap.set(a.id, nombre);
+          if (a.id) {
+            abogadosMap.set(a.id, nombre);
+            lista.push({ id: a.id, nombre });
+          }
         });
+        setAbogadosList(lista);
       }
 
       // Mapear datos del backend al tipo ExpedienteJudicial del frontend
@@ -430,7 +437,7 @@ export function ModuloDefensaJudicialV3() {
       exp.juzgado?.toLowerCase().includes(busqueda.toLowerCase());
 
     // Filtro por Tipo de Proceso (Flexible: revisa tipo, medioControl y tipoAccion)
-    // Esto asegura que sirva tanto para "Nulidad y Restablecimiento" (Medio Control) 
+    // Esto asegura que sirva tanto para "Nulidad y Restablecimiento" (Medio Control)
     // como para "Tutela" (Tipo Acción)
     const matchTipo = filtroTipo === 'TODOS' ||
       exp.tipo === filtroTipo ||
@@ -438,7 +445,12 @@ export function ModuloDefensaJudicialV3() {
       exp.medioControl === filtroTipo ||
       (exp.medioControl && exp.medioControl.includes(filtroTipo)); // Parcial match por si acaso
 
-    return matchBusqueda && matchTipo;
+    // Filtro por Abogado (solo visible para Jefe/Secretariado)
+    const matchAbogado = filtroAbogado === 'TODOS' ||
+      exp.abogadoAsignado === filtroAbogado ||
+      exp.abogadoResponsable === filtroAbogado;
+
+    return matchBusqueda && matchTipo && matchAbogado;
   });
 
   // Función para normalizar strings (quitar acentos, mojibake y convertir a minúsculas)
@@ -744,7 +756,20 @@ export function ModuloDefensaJudicialV3() {
               { value: 'TODOS', label: 'Todos los tipos' },
               ...tiposProcesosActivos.map((t: any) => ({ value: t.id, label: t.nombre }))
             ]
-          }
+          },
+          ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ABOGADO_REASIGNAR)
+            ? [{
+                type: 'select' as const,
+                label: 'Abogado',
+                value: filtroAbogado,
+                onChange: setFiltroAbogado,
+                options: [
+                  { value: 'TODOS', label: 'Todos los abogados' },
+                  { value: 'Sin asignar', label: 'Sin abogado asignado' },
+                  ...abogadosList.map(a => ({ value: a.nombre, label: a.nombre }))
+                ]
+              }]
+            : [])
         ]}
         totalItems={totalExpedientes}
         filteredItems={expedientesVisibles.length}
@@ -752,6 +777,7 @@ export function ModuloDefensaJudicialV3() {
           setBusqueda('');
           setFiltroEtapa('TODAS');
           setFiltroTipo('TODOS');
+          setFiltroAbogado('TODOS');
         }}
       />
 

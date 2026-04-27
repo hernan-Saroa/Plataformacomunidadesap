@@ -381,9 +381,11 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
     try {
       toast.loading('Asignando abogado...', { id: 'assign-lawyer' });
-      await legalService.updateConsultaJuridica(consulta.uuid || '', { abogadoAsignadoId: abogadoSeleccionado });
-
       const abogado = abogados.find(a => a.id === abogadoSeleccionado);
+      await legalService.updateConsultaJuridica(consulta.uuid || '', {
+        abogadoAsignadoId: abogadoSeleccionado,
+        abogadoAsignadoNombre: abogado?.nombreCompleto || abogado?.nombre || '',
+      });
       toast.success(`Abogado reasignado a: ${abogado?.nombreCompleto || 'Desconocido'}`, { id: 'assign-lawyer' });
       setEditandoAbogado(false);
 
@@ -1346,7 +1348,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                       <div className="flex items-center gap-3 mb-4">
                         <CheckCircle className="w-6 h-6 text-green-600" />
                         <div>
-                          <h3 className="font-bold text-gray-900">Concepto Jurídico Emitido</h3>
+                          <h3 className="font-bold text-gray-900">Respuesta Enviada</h3>
                           {consulta.fechaRespuesta && (
                             <p className="text-sm text-gray-600">
                               {new Date(consulta.fechaRespuesta).toLocaleDateString('es-CO', {

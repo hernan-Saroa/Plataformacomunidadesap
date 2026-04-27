@@ -1,0 +1,2 @@
+ALTER TABLE internal_disciplinary_control.autos_configuration DROP CONSTRAINT autos_configuration_pkey;
+ALTER TABLE internal_disciplinary_control.autos_configuration DROP CONSTRAINT autos_configuration_tipo_key;

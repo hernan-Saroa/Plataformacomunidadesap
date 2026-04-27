@@ -15,6 +15,7 @@ import { DisciplinaryProfessional } from '../entities/disciplinary-professional.
 import { CreateReassignmentRequestDto } from '../dtos/create-reassignment-request.dto';
 import { ApproveReassignmentRequestDto } from '../dtos/approve-reassignment-request.dto';
 import { NotificationClientService } from './notification-client.service';
+import { DisciplinaryEmailService } from './disciplinary-email.service';
 
 @Injectable()
 export class DisciplinaryProcessReassignmentService {
@@ -26,6 +27,7 @@ export class DisciplinaryProcessReassignmentService {
     @InjectRepository(DisciplinaryProfessional)
     private professionalRepo: Repository<DisciplinaryProfessional>,
     private notificationClient: NotificationClientService,
+    private emailService: DisciplinaryEmailService,
   ) {}
 
   async createReassignmentRequest(
@@ -196,6 +198,19 @@ export class DisciplinaryProcessReassignmentService {
         texto_boton_accion: 'Ver proceso',
         datos_adicionales: { solicitudId: result.id, procesoId: result.processId },
       }).catch(() => {});
+
+      // Enviar correo electrónico al nuevo profesional
+      if (result.newProfessional?.email) {
+        this.emailService.sendReassignmentEmail(
+          result.newProfessional.email,
+          radicadoProceso,
+          result.newProfessional.nombreCompleto || 'Profesional',
+          result.justification,
+          dto.jefeObservations,
+        ).catch((err) => {
+          console.error(`Error al enviar correo de reasignación: ${err.message}`);
+        });
+      }
     }
 
     return result;

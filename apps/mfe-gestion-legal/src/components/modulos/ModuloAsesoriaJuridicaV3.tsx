@@ -153,7 +153,7 @@ export function ModuloAsesoriaJuridicaV3() {
         fechaRadicacion: new Date(c.fechaRecepcion),
         diasTotales: c.terminoLegalDias || 30,
         diasRestantes: c.diasRestantes || 30,
-        abogadoAsignado: c.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+        abogadoAsignado: c.abogadoAsignadoNombre || c.abogadoAsignado?.nombreCompleto || 'Sin asignar',
         abogadoAsignadoId: c.abogadoAsignadoId || c.abogadoAsignado?.id || '', // ID needed for Select
         prioridad: (c.prioridad || 'media').toUpperCase(),
         normativaAplicable: [],
