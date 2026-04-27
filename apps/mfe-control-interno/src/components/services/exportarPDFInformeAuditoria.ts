@@ -154,11 +154,12 @@ function checkPage(
   const pageHeight = doc.internal.pageSize.getHeight();
   if (y + needed > pageHeight - footerMargin) {
     doc.addPage();
+    const yStart = encabezadoInforme(doc, (doc as any)._tipoInforme, (doc as any)._procesoAuditado);
     dibujarPieInstitucional(doc as any, (doc as any).getNumberOfPages(), true);
     doc.setTextColor(0, 0, 0); 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10.5); // Restaurar tamaño base del cuerpo
-    return 20; 
+    return yStart + 5; 
   }
   return y;
 }
@@ -208,7 +209,7 @@ function filaTabla(
   // Nueva página si no cabe
   if (y + rowH > pageHeight - footerMargin) {
     doc.addPage();
-    y = encabezadoInforme(doc, (doc as any)._tipoInforme) + 4;
+    y = encabezadoInforme(doc, (doc as any)._tipoInforme, (doc as any)._procesoAuditado) + 5;
     dibujarPieInstitucional(doc as any, (doc as any).getNumberOfPages(), true);
   }
 
@@ -246,26 +247,27 @@ function tablaRiesgos(
   y = checkPage(doc, y, 10, footerMargin);
   doc.setFont('helvetica', 'bolditalic');
   doc.setFontSize(11);
-  doc.text(`Tabla ${numTabla} Riesgos Proceso ${nombreProceso}.`, margin, y);
+  doc.text(`Tabla ${numTabla}. Mapa de Riesgos ISOLUCIÓN - ${nombreProceso}.`, margin, y);
   y += 5;
 
   // Cabecera
-  const colNum = 8;
+  const colNum = 10;
   const colRiesgo = tableW - colNum;
   doc.setFillColor(230, 230, 230);
-  doc.rect(margin, y, tableW, 6, 'F');
+  doc.rect(margin, y, tableW, 7, 'F');
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.3);
-  doc.rect(margin, y, tableW, 6);
+  doc.rect(margin, y, tableW, 7);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text('Riesgos asociados al proceso', margin + tableW / 2, y + 4, { align: 'center' });
-  y += 6;
+  doc.text('No.', margin + colNum / 2, y + 5, { align: 'center' });
+  doc.text('Riesgos asociados al proceso', margin + colNum + (colRiesgo / 2), y + 5, { align: 'center' });
+  y += 7;
 
   // Filas riesgos
   riesgos.forEach((riesgo, i) => {
     const lineas = doc.splitTextToSize(riesgo, colRiesgo - 4);
-    const rh = Math.max(7, lineas.length * 4 + 3);
+    const rh = Math.max(8, lineas.length * 5 + 3);
     y = checkPage(doc, y, rh + 2, footerMargin);
     doc.setDrawColor(0, 0, 0);
     doc.rect(margin, y, tableW, rh);
@@ -274,15 +276,16 @@ function tablaRiesgos(
     doc.setFontSize(11);
     doc.text(String(i + 1), margin + colNum / 2, y + rh / 2 + 1.5, { align: 'center' });
     doc.setFont('helvetica', 'normal');
-    doc.text(lineas, margin + colNum + 2, y + 4);
+    doc.setFontSize(10.5);
+    doc.text(lineas, margin + colNum + 2, y + 5);
     y += rh;
   });
 
   // Fuente
   doc.setFont('helvetica', 'bolditalic');
   doc.setFontSize(11);
-  doc.text(`Fuente: ${fuente || 'ISOLUCIÓN ' + new Date().getFullYear()}.`, margin, y + 3);
-  y += 7;
+  doc.text(`Fuente: ${fuente || 'Mapa de Riesgos Institucional - ISOLUCIÓN ' + new Date().getFullYear()}.`, margin, y + 4);
+  y += 8;
   return y;
 }
 
@@ -297,7 +300,7 @@ function tablaComponentes(
 ): number {
   if (!componentes || componentes.length === 0) return y;
 
-  const colTitulo = 50;
+  const colTitulo = 55;
   const colContenido = tableW - colTitulo;
 
   // Cabecera
@@ -307,16 +310,16 @@ function tablaComponentes(
   doc.setLineWidth(0.3);
   doc.rect(margin, y, tableW, 7);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(10.5);
-  doc.text('COMPONENTE EVALUADO', margin + 2, y + 5);
-  doc.text('RESULTADO DE LA VERIFICACIÓN', margin + colTitulo + 2, y + 5);
+  doc.setFontSize(11);
+  doc.text('COMPONENTE EVALUADO', margin + (colTitulo / 2), y + 5, { align: 'center' });
+  doc.text('RESULTADO DE LA VERIFICACIÓN', margin + colTitulo + (colContenido / 2), y + 5, { align: 'center' });
   y += 7;
 
   // Filas
   componentes.forEach((comp) => {
     const lineasTitulo = doc.splitTextToSize(comp.titulo.toUpperCase(), colTitulo - 4);
     const lineasContenido = doc.splitTextToSize(comp.contenido, colContenido - 4);
-    const rh = Math.max(8, lineasTitulo.length * 4 + 3, lineasContenido.length * 4 + 3);
+    const rh = Math.max(9, lineasTitulo.length * 5 + 3, lineasContenido.length * 5 + 3);
     
     y = checkPage(doc, y, rh, footerMargin);
     doc.setDrawColor(0, 0, 0);
@@ -324,99 +327,84 @@ function tablaComponentes(
     doc.line(margin + colTitulo, y, margin + colTitulo, y + rh);
     
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.text(lineasTitulo, margin + 2, y + 4);
+    doc.setFontSize(10.5);
+    doc.text(lineasTitulo, margin + 2, y + 5);
     
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9.5);
-    doc.text(lineasContenido, margin + colTitulo + 2, y + 4);
+    doc.setFontSize(10.5);
+    doc.text(lineasContenido, margin + colTitulo + 2, y + 5);
     y += rh;
   });
 
-  y += 4;
+  y += 5;
   return y;
 }
 
-/** Dibuja tabla del Plan de Acción Institucional. Devuelve nueva Y. */
-function tablaPlanAccion(
+/** 
+ * Dibuja una tabla genérica con N columnas. 
+ * headers: Nombres de columnas
+ * colWidths: Pesos o anchos fijos de cada columna
+ * data: Matriz de strings [filas][columnas]
+ */
+function tablaGenerica(
   doc: JsPDFType,
   margin: number,
   y: number,
   tableW: number,
-  plan: NonNullable<NonNullable<AuditoriaBasicaPDF['procesosAuditados']>[0]['planAccion']>,
-  footerMargin: number
+  headers: string[],
+  colWidths: number[], // Proporciones (0.1 a 1.0)
+  data: string[][],
+  footerMargin: number,
+  fontSizeHead: number = 9,
+  fontSizeBody: number = 8.5
 ): number {
-  if (!plan || !plan.items || plan.items.length === 0) return y;
+  if (!headers || headers.length === 0) return y;
 
-  const colWidths = [
-    tableW * 0.35, // Actividades de seguimiento
-    tableW * 0.15, // Proceso ESAP
-    tableW * 0.20, // Indicador Anual
-    tableW * 0.10, // Meta PAA
-    tableW * 0.10, // Meta Ejec
-    tableW * 0.10  // % Cumpl
-  ];
+  // Calcular anchos reales
+  const actualWidths = colWidths.map(w => w * tableW);
 
   // Cabecera
   doc.setFillColor(230, 230, 230);
-  doc.rect(margin, y, tableW, 10, 'F');
+  doc.rect(margin, y, tableW, 9, 'F');
   doc.setDrawColor(0, 0, 0);
-  doc.rect(margin, y, tableW, 10);
+  doc.setLineWidth(0.3);
+  doc.rect(margin, y, tableW, 9);
   
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
+  doc.setFontSize(fontSizeHead);
   let curX = margin;
-  const headers = ['Actividades de seguimiento', 'Proceso ESAP', 'Indicador Anual', 'Meta PAA 2024', 'Meta Ejec 2024', '% Cumpl'];
-  
   headers.forEach((h, i) => {
-    const lH = doc.splitTextToSize(h, colWidths[i] - 2);
-    doc.text(lH, curX + 1, y + 4);
+    const lH = doc.splitTextToSize(h, actualWidths[i] - 2);
+    doc.text(lH, curX + 1, y + 5);
     if (i < headers.length - 1) {
-      curX += colWidths[i];
-      doc.line(curX, y, curX, y + 10);
+      curX += actualWidths[i];
+      doc.line(curX, y, curX, y + 9);
     }
   });
-  y += 10;
+  y += 9;
 
   // Filas
-  plan.items.forEach((item) => {
-    const linesAct = doc.splitTextToSize(item.actividad, colWidths[0] - 2);
-    const linesProc = doc.splitTextToSize(item.proceso, colWidths[1] - 2);
-    const linesInd = doc.splitTextToSize(item.indicador, colWidths[2] - 2);
+  data.forEach((row) => {
+    // Calcular altura de la fila basándose en la celda más larga
+    const splitRow = row.map((cell, i) => doc.splitTextToSize(cell || '', actualWidths[i] - 2));
+    const maxLines = Math.max(...splitRow.map(l => l.length));
+    const rh = Math.max(8, maxLines * (fontSizeBody * 0.4) + 2);
     
-    const rowH = Math.max(8, linesAct.length * 3.5 + 2, linesProc.length * 3.5 + 2, linesInd.length * 3.5 + 2);
-    
-    y = checkPage(doc, y, rowH, footerMargin);
-    doc.rect(margin, y, tableW, rowH);
+    y = checkPage(doc, y, rh, footerMargin);
+    doc.rect(margin, y, tableW, rh);
     
     let x = margin;
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7.5);
+    doc.setFontSize(fontSizeBody);
     
-    // Col 1: Actividad
-    doc.text(linesAct, x + 1, y + 3.5);
-    x += colWidths[0]; doc.line(x, y, x, y + rowH);
-    
-    // Col 2: Proceso
-    doc.text(linesProc, x + 1, y + 3.5);
-    x += colWidths[1]; doc.line(x, y, x, y + rowH);
-    
-    // Col 3: Indicador
-    doc.text(linesInd, x + 1, y + 3.5);
-    x += colWidths[2]; doc.line(x, y, x, y + rowH);
-    
-    // Col 4: Meta Prog
-    doc.text(item.metaProgramada, x + colWidths[3] / 2, y + 3.5, { align: 'center' });
-    x += colWidths[3]; doc.line(x, y, x, y + rowH);
-    
-    // Col 5: Meta Ejec
-    doc.text(item.metaEjecutada, x + colWidths[4] / 2, y + 3.5, { align: 'center' });
-    x += colWidths[4]; doc.line(x, y, x, y + rowH);
-    
-    // Col 6: % Cumpl
-    doc.text(item.cumplimiento, x + colWidths[5] / 2, y + 3.5, { align: 'center' });
-    
-    y += rowH;
+    splitRow.forEach((lines, i) => {
+      doc.text(lines, x + 1, y + 4);
+      if (i < splitRow.length - 1) {
+        x += actualWidths[i];
+        doc.line(x, y, x, y + rh);
+      }
+    });
+    y += rh;
   });
 
   return y;
@@ -634,14 +622,9 @@ export async function exportarPDFInformeAuditoria(
   (doc as any)._procesoAuditado = auditoria.proceso || 'EVALUACIÓN CONTROL Y MEJORA';
 
   // Margen superior inicial para el cuerpo del informe
-  let y = 20; 
+  let y = encabezadoInforme(doc, (doc as any)._tipoInforme, (doc as any)._procesoAuditado) + 5;
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(10.5);
-
-  // Si es la primera página del cuerpo (Página 2 si hay carta), podríamos poner un título pequeño
-  if (doc.getNumberOfPages() > 1) {
-    y = 25;
-  }
 
   // ─── DATOS FORMALES (tabla con bordes) ────────────────────────────────────
   let tituloInforme = '';
@@ -679,27 +662,25 @@ export async function exportarPDFInformeAuditoria(
     `${lugar} / ${fechEjIni} – ${fechEjFin}`, TABLA_OPTS);
 
   // Fila: PERIODO
-  y = filaTabla(doc, margin, y, tableW,
-    'PERIODO DE LA AUDITORIA:',
-    auditoria.periodoAuditadoTexto || 'Vigencia correspondiente.', TABLA_OPTS);
+  const periodoVal = auditoria.periodoAuditadoTexto || 
+                    auditoria.periodoAuditoria || 
+                    (auditoria as any).programaAnualMetadata?.periodoAuditado || 
+                    'Vigencia correspondiente.';
+  y = filaTabla(doc, margin, y, tableW, 'PERIODO DE LA AUDITORIA:', periodoVal, TABLA_OPTS);
 
-  // Filas: REUNIONES (Apertura / Cierre)
-  const reap = auditoria.reuniones?.find(r => r.tipo.includes('Apertura'));
-  if (reap) {
-    const txt = `${reap.fecha}${reap.hora ? ' - ' + reap.hora : ''} (${reap.modalidad || 'presencial'}${reap.lugar ? ' - ' + reap.lugar : ''})`;
-    y = filaTabla(doc, margin, y, tableW, 'REUNIÓN DE APERTURA:', txt, TABLA_OPTS);
-  } else if (auditoria.fechaReunionApertura) {
-    y = filaTabla(doc, margin, y, tableW, 'REUNIÓN DE APERTURA:', auditoria.fechaReunionApertura, TABLA_OPTS);
+  // Fila: EQUIPO AUDITOR
+  let equipoTxt = auditoria.auditorLider || 'Auditor Líder';
+  const equipoAdicional = auditoria.equipoAuditor || (auditoria as any).equipoAuditores;
+  
+  if (Array.isArray(equipoAdicional) && equipoAdicional.length > 0) {
+    const nombres = equipoAdicional.map(a => (typeof a === 'string' ? a : a.nombre || a.nombreCompleto)).filter(Boolean);
+    if (nombres.length > 0) {
+      equipoTxt += ` / ${nombres.join(' / ')}`;
+    }
+  } else if ((auditoria as any).equipoAuditorAdicional) {
+    equipoTxt += ` / ${(auditoria as any).equipoAuditorAdicional}`;
   }
-
-  const rcie = auditoria.reuniones?.find(r => r.tipo.includes('Cierre'));
-  if (rcie) {
-    const txt = `${rcie.fecha}${rcie.hora ? ' - ' + rcie.hora : ''} (${rcie.modalidad || 'presencial'}${rcie.lugar ? ' - ' + rcie.lugar : ''})`;
-    y = filaTabla(doc, margin, y, tableW, 'REUNIÓN DE CIERRE:', txt, TABLA_OPTS);
-  } else if (auditoria.fechaReunionCierre) {
-    y = filaTabla(doc, margin, y, tableW, 'REUNIÓN DE CIERRE:', auditoria.fechaReunionCierre, TABLA_OPTS);
-  }
-
+  y = filaTabla(doc, margin, y, tableW, 'EQUIPO AUDITOR:', equipoTxt.toUpperCase(), TABLA_OPTS);
 
   // Fila: OBJETIVO
   const obj = auditoria.objetivo ||
@@ -846,6 +827,96 @@ export async function exportarPDFInformeAuditoria(
     y = imprimirParrafo(doc, intro, margin, y, tableW, LH, FOOTER_MARGIN);
     y += SEC;
 
+    // --- RENDERIZADO DE PROCESOS ---
+    if (auditoria.procesosAuditados && auditoria.procesosAuditados.length > 0) {
+      let currentCat = '';
+      auditoria.procesosAuditados.forEach((proc, pIdx) => {
+        // Título de Categoría (I. ESTRATEGICOS, II. MISIONALES, etc.)
+        if (proc.categoria && proc.categoria !== currentCat) {
+          currentCat = proc.categoria;
+          y = checkPage(doc, y, 12, FOOTER_MARGIN);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(12);
+          doc.text(currentCat.toUpperCase(), margin, y);
+          y += LH + 2;
+        }
+
+        // Título del Proceso (1. DIRECCIONAMIENTO ESTRATEGICO, etc.)
+        y = checkPage(doc, y, 10, FOOTER_MARGIN);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text(`${proc.numero}. ${proc.nombre.toUpperCase()}`, margin, y);
+        y += LH + 1;
+
+        // Objetivo del Proceso
+        if (proc.objetivo) {
+          doc.setFont('helvetica', 'bold');
+          doc.text('Objetivo:', margin, y);
+          doc.setFont('helvetica', 'normal');
+          const linesObj = doc.splitTextToSize(proc.objetivo, tableW - 20);
+          doc.text(linesObj, margin + 20, y);
+          y += (linesObj.length * LH) + 2;
+        }
+
+        // 2. Tabla de Riesgos (ISOLUCIÓN)
+        if (proc.riesgos && proc.riesgos.length > 0) {
+          y = tablaRiesgos(doc, margin, y, tableW, proc.riesgos, {
+            numTabla: pIdx + 1,
+            nombreProceso: proc.nombre,
+            footerMargin: FOOTER_MARGIN
+          });
+        }
+
+        // 3. Componentes Verificados (Sub-secciones + Texto + Tablas específicas)
+        if (proc.componentes && proc.componentes.length > 0) {
+          proc.componentes.forEach((comp, cIdx) => {
+            const numComp = `${proc.numero}.${cIdx + 1}`;
+            y = checkPage(doc, y, 12, FOOTER_MARGIN);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.text(`${numComp} Componente - ${comp.titulo}`, margin, y);
+            y += LH + 1;
+
+            if (comp.contenido) {
+              doc.setFont('helvetica', 'normal');
+              doc.setFontSize(10.5);
+              y = imprimirParrafo(doc, comp.contenido, margin, y, tableW, LH, FOOTER_MARGIN);
+              y += 2;
+            }
+
+            // Tablas dentro del componente (ej: Plan de Acción, PQRSDF, etc.)
+            // @ts-ignore
+            if (comp.tabla) {
+              const infoTabla = (comp as any).tabla;
+              y = checkPage(doc, y, 10, FOOTER_MARGIN);
+              doc.setFont('helvetica', 'bolditalic');
+              doc.text(`${infoTabla.titulo || 'Tabla Técnica'}.`, margin, y);
+              y += 5;
+              
+              const h = infoTabla.headers || [];
+              const w = infoTabla.colWidths || [];
+              const d = infoTabla.data || [];
+              
+              // Si es el tipo antiguo 'planAccion', convertirlo
+              if (infoTabla.tipo === 'planAccion' && infoTabla.datos?.items) {
+                const heads = ['Actividades de seguimiento', 'Proceso ESAP', 'Indicador Anual', 'Meta PAA', 'Meta Ejec', '% Cumpl'];
+                const weights = [0.35, 0.15, 0.20, 0.10, 0.10, 0.10];
+                const rows = infoTabla.datos.items.map((it: any) => [
+                  it.actividad, it.proceso, it.indicador, it.metaProgramada, it.metaEjecutada, it.cumplimiento
+                ]);
+                y = tablaGenerica(doc, margin, y, tableW, heads, weights, rows, FOOTER_MARGIN, 8.5, 8);
+              } else {
+                y = tablaGenerica(doc, margin, y, tableW, h, w, d, FOOTER_MARGIN);
+              }
+              y += 4;
+            }
+          });
+        }
+
+        y += SEC;
+      });
+    }
+
     const listaH = hallazgosDetalle && hallazgosDetalle.length > 0 ? hallazgosDetalle : [];
     if (listaH.length > 0) {
       y = checkPage(doc, y, 14, FOOTER_MARGIN);
@@ -860,6 +931,13 @@ export async function exportarPDFInformeAuditoria(
         doc.setFontSize(11);
         y = imprimirParrafo(doc, titH, margin, y, tableW, LH, FOOTER_MARGIN);
         y += 1;
+
+        if (h.gravedad) {
+          doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('GRAVEDAD:', margin, y);
+          doc.setFont('helvetica', 'normal'); doc.text(h.gravedad.toUpperCase(), margin + 25, y);
+          y += LH + 1;
+        }
+
         if (h.descripcion) {
           doc.setFont('helvetica', 'bold'); doc.setFontSize(10.5); doc.text('CONDICIÓN:', margin, y); y += LH;
           doc.setFont('helvetica', 'normal');
@@ -897,34 +975,61 @@ export async function exportarPDFInformeAuditoria(
       doc.text('RESUMEN DE HALLAZGOS', margin, y);
       y += 6;
       {
-        const colsSum = [15, 115, 30, 20];
-        const rhSum = 8;
+        const colsSum = [12, 110, 30, 28]; // Total 180
+        const rhSum = 9;
         const headLabels = ['No.', 'HALLAZGO', isFinal ? 'ESTADO' : 'GRAVEDAD', 'REPETITIVO'];
-        doc.setFillColor(210, 210, 210);
+        
+        doc.setFillColor(230, 230, 230);
         doc.rect(margin, y, tableW, rhSum, 'F');
-        let cxs = margin;
-        headLabels.forEach((lbl, i) => {
-          doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
-          doc.text(lbl, cxs + 2, y + rhSum - 2);
-          if (i < headLabels.length - 1) doc.line(cxs + colsSum[i], y, cxs + colsSum[i], y + rhSum);
-          cxs += colsSum[i];
-        });
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.3);
         doc.rect(margin, y, tableW, rhSum);
+        
+        let cxs = margin;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        
+        headLabels.forEach((lbl, i) => {
+          if (i === 1) { // HALLAZGO alineado a la izquierda
+            doc.text(lbl, cxs + 2, y + 6);
+          } else { // Los demás centrados
+            doc.text(lbl, cxs + (colsSum[i] / 2), y + 6, { align: 'center' });
+          }
+          if (i < headLabels.length - 1) {
+            cxs += colsSum[i];
+            doc.line(cxs, y, cxs, y + rhSum);
+          }
+        });
         y += rhSum;
+
         listaH.forEach((h, i) => {
-          const cellTxt = h.titulo || h.descripcion?.substring(0, 90) || 'Sin título';
-          const linesCell = doc.splitTextToSize(cellTxt, colsSum[1] - 3);
-          const rh0 = Math.max(8, linesCell.length * 5 + 3);
+          const cellTxt = h.titulo || (h.descripcion?.length > 100 ? h.descripcion.substring(0, 97) + '...' : h.descripcion) || 'Sin título';
+          const linesCell = doc.splitTextToSize(cellTxt, colsSum[1] - 4);
+          const rh0 = Math.max(10, linesCell.length * 4.5 + 4);
+          
           y = checkPage(doc, y, rh0 + 2, FOOTER_MARGIN);
           doc.rect(margin, y, tableW, rh0);
+          
           let rx0 = margin;
-          doc.setFontSize(11);
-          doc.setFont('helvetica', 'normal'); doc.text(String(i + 1), rx0 + 2, y + 5);
-          doc.line(rx0 + colsSum[0], y, rx0 + colsSum[0], y + rh0); rx0 += colsSum[0];
+          doc.setFontSize(9.5);
+          doc.setFont('helvetica', 'normal'); 
+          
+          // Col 1: No.
+          doc.text(String(i + 1), rx0 + (colsSum[0] / 2), y + (rh0 / 2) + 1.5, { align: 'center' });
+          rx0 += colsSum[0]; doc.line(rx0, y, rx0, y + rh0);
+          
+          // Col 2: HALLAZGO
           doc.text(linesCell, rx0 + 2, y + 5);
-          doc.line(rx0 + colsSum[1], y, rx0 + colsSum[1], y + rh0); rx0 += colsSum[1];
-          doc.text(isFinal ? (h.estadoFinal || '—') : (h.gravedad || '—'), rx0 + 2, y + 5);
-          doc.line(rx0 + colsSum[2], y, rx0 + colsSum[2], y + rh0);
+          rx0 += colsSum[1]; doc.line(rx0, y, rx0, y + rh0);
+          
+          // Col 3: GRAVEDAD/ESTADO
+          const valGravedad = isFinal ? (h.estadoFinal || '—') : (h.gravedad || '—');
+          doc.text(valGravedad.toUpperCase(), rx0 + (colsSum[2] / 2), y + (rh0 / 2) + 1.5, { align: 'center' });
+          rx0 += colsSum[2]; doc.line(rx0, y, rx0, y + rh0);
+
+          // Col 4: REPETITIVO
+          doc.text('NO', rx0 + (colsSum[3] / 2), y + (rh0 / 2) + 1.5, { align: 'center' });
+          
           y += rh0;
         });
         y += SEC;
