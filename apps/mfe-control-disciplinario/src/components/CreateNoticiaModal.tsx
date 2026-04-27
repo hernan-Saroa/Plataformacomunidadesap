@@ -19,10 +19,10 @@ import {
   UserCheck,
   Pencil
 } from 'lucide-react';
-import { Button } from '../ui/button';
+import { Button } from '@esap-mfe/shared-ui/button';
 import { toast } from 'sonner';
-import { disciplinaryService, DisciplinaryBehavior } from '../../services/api/disciplinary.service';
-import { authService } from '../../services/api/authService';
+import { disciplinaryService, DisciplinaryBehavior } from '../../../services/api/disciplinary.service';
+import { authService } from '../../../services/api/authService';
 
 // ✅ NUEVO: Interface para Apoderado
 interface Apoderado {
@@ -1151,14 +1151,13 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                       {/* ✅ NUEVO: Campo de Dirección del Apoderado */}
                       <div className="col-span-2">
                         <label className="block text-xs font-medium text-gray-700 mb-1">
-                          <MapPin className="w-3 h-3 inline mr-1" />
                           Dirección
                         </label>
                         <input
                           type="text"
-                          value={apoderadoDenunciado.direccion || ''}
+                          value={apoderadoDenunciado.direccion}
                           onChange={(e) => setApoderadoDenunciado({ ...apoderadoDenunciado, direccion: e.target.value })}
-                          placeholder="Dirección de residencia u oficina"
+                          placeholder="Dirección completa"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
@@ -1166,116 +1165,77 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                   )}
                 </div>
 
-                <div className="mt-4">
-                  <Button
+                {/* Botón Agregar */}
+                <div className="flex justify-end mt-4">
+                  <button
                     onClick={handleAgregarDenunciado}
-                    variant="outline"
-                    className="w-full border-blue-600 text-blue-700 hover:bg-blue-50"
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
-                    {editingDenunciadoId ? <Pencil className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                    {editingDenunciadoId ? 'Actualizar Denunciado' : 'Agregar Denunciado'}
-                  </Button>
+                    <Plus className="w-4 h-4" />
+                    Agregar Denunciado
+                  </button>
                 </div>
               </div>
 
-              {/* Mensaje de error si no hay denunciados */}
-              {errors.denunciados && denunciados.length === 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                  <p className="text-xs text-red-600 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    {errors.denunciados}
-                  </p>
-                </div>
-              )}
-
               {/* Lista de denunciados agregados */}
               {denunciados.length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">
-                    Denunciados Registrados ({denunciados.length})
-                  </h3>
-                  <div className="space-y-2">
-                    {denunciados.map((denunciado, index) => (
-                      <div 
-                        key={denunciado.id} 
-                        className="bg-white border-2 border-blue-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <span 
-                                className="px-2.5 py-1 rounded-full text-xs font-bold text-white"
-                                style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
-                              >
-                                Denunciado {index + 1}
-                              </span>
-                              {denunciado.apoderado && (
-                                <span 
-                                  className="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-300 flex items-center gap-1"
-                                  title="Tiene apoderado asignado"
-                                >
-                                  <UserCheck className="w-3 h-3" />
-                                  Con apoderado
-                                </span>
-                              )}
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-gray-900">Denunciados Agregados</h3>
+                  {denunciados.map((denunciado) => (
+                    <div key={denunciado.id} className="p-4 bg-white border border-gray-200 rounded-lg">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Nombre Completo
+                              </label>
+                              <p className="text-sm text-gray-900">{denunciado.nombre}</p>
                             </div>
-                            <p className="font-semibold text-gray-900 mb-1">{denunciado.nombre}</p>
-                            <div className="grid grid-cols-2 gap-2 text-sm text-gray-600">
-                              <p>
-                                <span className="font-medium">Identificación:</span> {denunciado.identificacion}
-                              </p>
-                              {denunciado.cargo && (
-                                <p>
-                                  <span className="font-medium">Cargo:</span> {denunciado.cargo}
-                                </p>
-                              )}
-                              <p className="col-span-2">
-                                <span className="font-medium">Lugar de los Hechos:</span> {denunciado.lugarHechos}
-                              </p>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Identificación
+                              </label>
+                              <p className="text-sm text-gray-900">{denunciado.identificacion}</p>
                             </div>
-                            
-                            {/* ✅ NUEVO: Mostrar apoderado si existe */}
-                            {denunciado.apoderado && (
-                              <div className="mt-3 pt-3 border-t border-blue-200 bg-blue-50 rounded-lg p-3">
-                                <p className="text-xs font-bold text-blue-900 mb-2 flex items-center gap-1">
-                                  <UserCheck className="w-4 h-4" />
-                                  Apoderado
-                                </p>
-                                <div className="grid grid-cols-2 gap-2 text-xs text-blue-800">
-                                  <p><span className="font-semibold">Nombre:</span> {denunciado.apoderado.nombre}</p>
-                                  <p><span className="font-semibold">Cédula:</span> {denunciado.apoderado.cedula}</p>
-                                  <p><span className="font-semibold">Celular:</span> {denunciado.apoderado.celular}</p>
-                                  <p><span className="font-semibold">Correo:</span> {denunciado.apoderado.correo}</p>
-                                  {denunciado.apoderado.direccion && (
-                                    <p className="col-span-2"><span className="font-semibold">Dirección:</span> {denunciado.apoderado.direccion}</p>
-                                  )}
-                                </div>
-                              </div>
-                            )}
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Cargo
+                              </label>
+                              <p className="text-sm text-gray-900">{denunciado.cargo}</p>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Lugar de los Hechos
+                              </label>
+                              <p className="text-sm text-gray-900">{denunciado.lugarHechos}</p>
+                            </div>
                           </div>
+                          {denunciado.apoderado && (
+                            <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                              <p className="text-xs font-medium text-gray-700 mb-2">Apoderado:</p>
+                              <p className="text-sm text-gray-900">{denunciado.apoderado.nombre}</p>
+                              <p className="text-xs text-gray-600">Cédula: {denunciado.apoderado.cedula}</p>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
                           <button
                             onClick={() => handleEditarDenunciado(denunciado)}
-                            className="flex-shrink-0 p-2 rounded-lg hover:bg-blue-50 text-blue-600 hover:text-blue-700 transition-colors"
-                            title="Editar denunciado"
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleEliminarDenunciado(denunciado.id)}
-                            className="flex-shrink-0 p-2 rounded-lg hover:bg-red-50 text-red-600 hover:text-red-700 transition-colors"
-                            title="Eliminar denunciado"
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <p className="text-xs text-blue-800">
-                      <strong>✓ Trazabilidad:</strong> Se han registrado {denunciados.length} denunciado(s) en esta noticia disciplinaria.
-                    </p>
-                  </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -1284,82 +1244,22 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
           {/* PASO 3: Denunciantes */}
           {currentStep === 3 && (
             <div className="space-y-6 max-w-3xl mx-auto">
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <div className="flex gap-3">
-                  <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <User className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                   <div>
-                    <h3 className="font-semibold text-amber-900 mb-1">Denunciantes Opcionales</h3>
-                    <p className="text-sm text-amber-700">
-                      Puede agregar uno o varios denunciantes. Si el origen es "Anónimo", puede omitir esta sección.
+                    <h3 className="font-semibold text-green-900 mb-1">Denunciantes</h3>
+                    <p className="text-sm text-green-700">
+                      Agregue denunciantes si aplica. Este paso es opcional.
                     </p>
                   </div>
                 </div>
               </div>
 
               {/* Formulario para agregar denunciante */}
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+              <div className="border-2 border-dashed border-green-300 rounded-lg p-4 bg-green-50/30">
                 <h3 className="font-semibold text-gray-900 mb-4">Agregar Denunciante</h3>
                 <div className="grid grid-cols-2 gap-4">
-                  {/* ✅ NUEVO: Campo Tipo de Denunciante */}
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Tipo de Denunciante *
-                    </label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <label 
-                        className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                          currentDenunciante.tipo === 'Denunciante' 
-                            ? 'border-blue-600 bg-blue-50' 
-                            : 'border-gray-300 hover:border-gray-400'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="tipoDenunciante"
-                          checked={currentDenunciante.tipo === 'Denunciante'}
-                          onChange={() => setCurrentDenunciante({ ...currentDenunciante, tipo: 'Denunciante' })}
-                          className="w-4 h-4"
-                        />
-                        <div className="flex-1">
-                          <p className={`font-semibold text-sm ${
-                            currentDenunciante.tipo === 'Denunciante' ? 'text-blue-900' : 'text-gray-700'
-                          }`}>
-                            👤 Denunciante
-                          </p>
-                          <p className="text-xs text-gray-600 mt-0.5">
-                            Persona que reporta los hechos
-                          </p>
-                        </div>
-                      </label>
-
-                      <label 
-                        className={`flex items-center gap-3 p-3 border-2 rounded-lg cursor-pointer transition-all ${
-                          currentDenunciante.tipo === 'Víctima' 
-                            ? 'border-purple-600 bg-purple-50' 
-                            : 'border-gray-300 hover:border-gray-400'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="tipoDenunciante"
-                          checked={currentDenunciante.tipo === 'Víctima'}
-                          onChange={() => setCurrentDenunciante({ ...currentDenunciante, tipo: 'Víctima' })}
-                          className="w-4 h-4"
-                        />
-                        <div className="flex-1">
-                          <p className={`font-semibold text-sm ${
-                            currentDenunciante.tipo === 'Víctima' ? 'text-purple-900' : 'text-gray-700'
-                          }`}>
-                            🛡️ Víctima
-                          </p>
-                          <p className="text-xs text-gray-600 mt-0.5">
-                            Persona afectada por los hechos
-                          </p>
-                        </div>
-                      </label>
-                    </div>
-                  </div>
-
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label className="text-sm font-medium text-gray-700">
@@ -1558,10 +1458,10 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                 </div>
 
                 {/* ✅ NUEVO: Sección de Apoderado para Denunciante/Víctima */}
-                <div className="mt-6 pt-4 border-t border-gray-300">
+                <div className="mt-6 pt-4 border-t border-green-200">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                      <UserCheck className="w-4 h-4 text-blue-600" />
+                      <UserCheck className="w-4 h-4 text-green-600" />
                       Apoderado (Opcional)
                     </h4>
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -1569,7 +1469,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         type="checkbox"
                         checked={mostrarApoderadoDenunciante}
                         onChange={(e) => setMostrarApoderadoDenunciante(e.target.checked)}
-                        className="w-4 h-4 text-blue-600 rounded border-gray-300"
+                        className="w-4 h-4 text-green-600 rounded border-gray-300"
                       />
                       <span className="text-xs text-gray-600 font-medium">
                         Tiene apoderado
@@ -1578,7 +1478,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                   </div>
 
                   {mostrarApoderadoDenunciante && (
-                    <div className="grid grid-cols-2 gap-3 bg-gray-50 p-3 rounded-lg border border-gray-300">
+                    <div className="grid grid-cols-2 gap-3 bg-white p-3 rounded-lg border border-green-200">
                       <div className="col-span-2">
                         <label className="block text-xs font-medium text-gray-700 mb-1">
                           Nombre Completo del Apoderado
@@ -1647,98 +1547,94 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </div>
+                      {/* ✅ NUEVO: Campo de Dirección del Apoderado */}
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">
+                          Dirección
+                        </label>
+                        <input
+                          type="text"
+                          value={apoderadoDenunciante.direccion}
+                          onChange={(e) => setApoderadoDenunciante({ ...apoderadoDenunciante, direccion: e.target.value })}
+                          placeholder="Dirección completa"
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
                     </div>
                   )}
                 </div>
 
-                <div className="mt-4">
-                  <Button
+                {/* Botón Agregar */}
+                <div className="flex justify-end mt-4">
+                  <button
                     onClick={handleAgregarDenunciante}
-                    variant="outline"
-                    className="w-full border-blue-600 text-blue-700 hover:bg-blue-50"
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
                   >
-                    {editingDenuncianteId ? <Pencil className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
-                    {editingDenuncianteId ? 'Actualizar Denunciante' : 'Agregar Denunciante'}
-                  </Button>
+                    <Plus className="w-4 h-4" />
+                    Agregar Denunciante
+                  </button>
                 </div>
               </div>
 
               {/* Lista de denunciantes agregados */}
               {denunciantes.length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">
-                    Denunciantes Registrados ({denunciantes.length})
-                  </h3>
-                  <div className="space-y-2">
-                    {denunciantes.map(denunciante => (
-                      <div key={denunciante.id} className="bg-white border-2 border-gray-200 rounded-lg p-3 hover:shadow-md transition-shadow">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              {/* ✅ NUEVO: Badge distintivo según tipo */}
-                              <span 
-                                className={`px-2.5 py-1 rounded-full text-xs font-bold text-white ${
-                                  denunciante.tipo === 'Víctima' 
-                                    ? 'bg-gradient-to-r from-purple-600 to-purple-700' 
-                                    : 'bg-gradient-to-r from-blue-600 to-blue-700'
-                                }`}
-                              >
-                                {denunciante.tipo === 'Víctima' ? '🛡️ Víctima' : '👤 Denunciante'}
-                              </span>
-                              {denunciante.apoderado && (
-                                <span 
-                                  className="px-2 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-300 flex items-center gap-1"
-                                  title="Tiene apoderado asignado"
-                                >
-                                  <UserCheck className="w-3 h-3" />
-                                  Con apoderado
-                                </span>
-                              )}
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-gray-900">Denunciantes Agregados</h3>
+                  {denunciantes.map((denunciante) => (
+                    <div key={denunciante.id} className="p-4 bg-white border border-gray-200 rounded-lg">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Nombre Completo
+                              </label>
+                              <p className="text-sm text-gray-900">{denunciante.nombre}</p>
                             </div>
-                            <p className="font-semibold text-gray-900 mb-1">{denunciante.nombre}</p>
-                            <p className="text-sm text-gray-600">
-                              {denunciante.identificacion} • {denunciante.entidad || 'Sin entidad'}
-                            </p>
-                            
-                            {/* ✅ NUEVO: Mostrar apoderado si existe */}
-                            {denunciante.apoderado && (
-                              <div className="mt-3 pt-3 border-t border-gray-200 bg-gray-50 rounded-lg p-3">
-                                <p className="text-xs font-bold text-gray-900 mb-2 flex items-center gap-1">
-                                  <UserCheck className="w-4 h-4" />
-                                  Apoderado
-                                </p>
-                                <div className="grid grid-cols-2 gap-2 text-xs text-gray-700">
-                                  <p><span className="font-semibold">Nombre:</span> {denunciante.apoderado.nombre}</p>
-                                  <p><span className="font-semibold">Cédula:</span> {denunciante.apoderado.cedula}</p>
-                                  <p><span className="font-semibold">Celular:</span> {denunciante.apoderado.celular}</p>
-                                  <p><span className="font-semibold">Correo:</span> {denunciante.apoderado.correo}</p>
-                                </div>
-                              </div>
-                            )}
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Identificación
+                              </label>
+                              <p className="text-sm text-gray-900">{denunciante.identificacion}</p>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Cargo
+                              </label>
+                              <p className="text-sm text-gray-900">{denunciante.cargo}</p>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                                Entidad
+                              </label>
+                              <p className="text-sm text-gray-900">{denunciante.entidad}</p>
+                            </div>
                           </div>
+                          {denunciante.apoderado && (
+                            <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                              <p className="text-xs font-medium text-gray-700 mb-2">Apoderado:</p>
+                              <p className="text-sm text-gray-900">{denunciante.apoderado.nombre}</p>
+                              <p className="text-xs text-gray-600">Cédula: {denunciante.apoderado.cedula}</p>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
                           <button
                             onClick={() => handleEditarDenunciante(denunciante)}
-                            className="flex-shrink-0 p-2 rounded-lg hover:bg-blue-50 text-blue-600 hover:text-blue-700 transition-colors"
-                            title="Editar denunciante"
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleEliminarDenunciante(denunciante.id)}
-                            className="flex-shrink-0 p-2 rounded-lg hover:bg-red-50 text-red-600 hover:text-red-700 transition-colors"
-                            title="Eliminar denunciante"
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <p className="text-xs text-blue-800">
-                      <strong>✓ Trazabilidad:</strong> Se han registrado {denunciantes.length} denunciante(s) en esta noticia disciplinaria.
-                    </p>
-                  </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -1746,251 +1642,137 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
           {/* PASO 4: Hechos y Documentos */}
           {currentStep === 4 && (
-            <div className="space-y-6 max-w-2xl mx-auto">
-              {/* ✅ NUEVO SISTEMA: HECHOS DISCIPLINARIOS SEPARADOS */}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  <FileText className="w-4 h-4 inline mr-1" />
-                  Hechos Disciplinarios *
-                </label>
-                
-                {/* Formulario para agregar nuevo hecho */}
-                <div className="border-2 border-dashed border-blue-300 rounded-lg p-4 bg-blue-50/30 mb-4">
-                  <h3 className="font-semibold text-gray-900 mb-3 text-sm">Agregar Nuevo Hecho</h3>
-                  <textarea
-                    value={hechoActual}
-                    onChange={(e) => setHechoActual(e.target.value)}
-                    rows={4}
-                    placeholder="Ejemplo: La persona tuvo una conducta muy irregular con el estudiante en una sesión de clases..."
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                  />
-                  <div className="flex justify-between items-center mt-2">
-                    <p className="text-xs text-gray-500">
-                      {hechoActual.length} caracteres {hechoActual.length < 20 && hechoActual.length > 0 && `(mínimo 20 requeridos)`}
+            <div className="space-y-6 max-w-3xl mx-auto">
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <div className="flex gap-3">
+                  <FileText className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="font-semibold text-purple-900 mb-1">Hechos y Documentos</h3>
+                    <p className="text-sm text-purple-700">
+                      Describa los hechos disciplinarios y adjunte documentos de soporte.
                     </p>
-                    <Button
-                      onClick={handleAgregarHecho}
-                      variant="outline"
-                      size="sm"
-                      className="border-blue-600 text-blue-700 hover:bg-blue-50"
-                    >
-                      <Plus className="w-4 h-4 mr-1.5" />
-                      Agregar Hecho
-                    </Button>
                   </div>
                 </div>
+              </div>
 
-                {/* Mensaje de error si no hay hechos */}
-                {errors.hechos && hechosSeparados.length === 0 && (
-                  <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    {errors.hechos}
-                  </p>
-                )}
-
-                {/* Lista de hechos agregados */}
-                {hechosSeparados.length > 0 && (
-                  <div className="mt-4">
-                    <h3 className="font-semibold text-gray-900 mb-3 text-sm flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-blue-600" />
-                      Hechos Registrados ({hechosSeparados.length})
-                    </h3>
-                    <div className="space-y-3">
-                      {hechosSeparados.map((hecho, index) => (
-                        <div 
-                          key={hecho.id} 
-                          className="bg-white border-2 border-blue-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <span 
-                                  className="px-2.5 py-1 rounded-full text-xs font-bold text-white"
-                                  style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
-                                >
-                                  Hecho {index + 1}
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  {new Date(hecho.fecha || '').toLocaleDateString('es-CO', { 
-                                    day: '2-digit', 
-                                    month: 'short', 
-                                    year: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                  })}
-                                </span>
-                              </div>
-                              <p className="text-sm text-gray-800 leading-relaxed">{hecho.descripcion}</p>
-                              <p className="text-xs text-gray-500 mt-1">{hecho.descripcion.length} caracteres</p>
-                            </div>
-                            <button
-                              onClick={() => handleEliminarHecho(hecho.id)}
-                              className="flex-shrink-0 p-2 rounded-lg hover:bg-red-50 text-red-600 hover:text-red-700 transition-colors"
-                              title="Eliminar hecho"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+              {/* Hechos Separados */}
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-4">Hechos Disciplinarios</h3>
+                <div className="space-y-4">
+                  {hechosSeparados.map((hecho, index) => (
+                    <div key={hecho.id} className="p-4 bg-white border border-gray-200 rounded-lg">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h4 className="font-medium text-gray-900 mb-2">Hecho {index + 1}</h4>
+                          <p className="text-sm text-gray-700">{hecho.descripcion}</p>
+                          {hecho.fecha && (
+                            <p className="text-xs text-gray-500 mt-2">
+                              Registrado: {new Date(hecho.fecha).toLocaleString('es-CO')}
+                            </p>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                    <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <p className="text-xs text-blue-800">
-                        <strong>✓ Trazabilidad:</strong> Se han registrado {hechosSeparados.length} hecho(s) disciplinario(s) de forma separada para mantener la trazabilidad completa.
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Conducta Presuntamente Indisciplinaria *
-                </label>
-                <select
-                  value={conductaSeleccionada}
-                  onChange={(e) => {
-                    setConductaSeleccionada(e.target.value);
-                    if (e.target.value !== 'Otro') {
-                      setConductaPersonalizada(''); // Limpiar campo personalizado si no es "Otro"
-                    }
-                  }}
-                  disabled={loadingConductas}
-                  className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-100"
-                >
-                  <option value="">
-                    {loadingConductas ? 'Cargando conductas...' : 'Seleccione la conducta presuntamente indisciplinaria...'}
-                  </option>
-                  {conductasIndisciplinarias.map(conducta => (
-                    <option key={conducta.id} value={conducta.nombre}>
-                      {conducta.nombre}
-                    </option>
-                  ))}
-                </select>
-                {errors.conductas && (
-                  <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
-                    <AlertCircle className="w-3 h-3" />
-                    {errors.conductas}
-                  </p>
-                )}
-                
-                {/* ✅ NUEVO: Campo de texto para "Otro" */}
-                {conductaSeleccionada === 'Otro' && (
-                  <div className="mt-3 bg-blue-50 border-2 border-blue-300 rounded-lg p-4 animate-fadeIn">
-                    <label className="block text-xs font-semibold text-blue-900 mb-2 flex items-center gap-2">
-                      <FileText className="w-4 h-4" />
-                      Especifique la conducta indisciplinaria
-                    </label>
-                    <textarea
-                      value={conductaPersonalizada}
-                      onChange={(e) => setConductaPersonalizada(e.target.value)}
-                      placeholder="Ejemplo: Uso indebido de información privilegiada para beneficio personal..."
-                      rows={4}
-                      className="w-full px-3 py-2 text-sm border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white resize-none"
-                    />
-                    {conductaPersonalizada && conductaPersonalizada.trim().length > 10 ? (
-                      <div className="mt-2 p-2 bg-green-50 border border-green-300 rounded-lg">
-                        <p className="text-xs text-green-800 flex items-center gap-1">
-                          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                          Conducta personalizada registrada ({conductaPersonalizada.trim().length} caracteres)
-                        </p>
-                      </div>
-                    ) : conductaPersonalizada && (
-                      <p className="text-xs text-orange-600 mt-2">
-                        ⚠️ Por favor, proporcione una descripción más detallada (mínimo 10 caracteres)
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {conductaSeleccionada && conductaSeleccionada !== 'Otro' && (
-                  <div className="mt-2 p-2 bg-green-50 border border-green-300 rounded-lg">
-                    <p className="text-xs text-green-800 flex items-center gap-1">
-                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                      Conducta seleccionada: <strong>{conductaSeleccionada}</strong>
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* ✅ NUEVO: Resumen de Apoderados */}
-              {(denunciados.some(d => d.apoderado) || denunciantes.some(d => d.apoderado)) && (
-                <div className="bg-green-50 border-2 border-green-300 rounded-lg p-4">
-                  <h4 className="text-sm font-bold text-green-900 mb-3 flex items-center gap-2">
-                    <UserCheck className="w-5 h-5" />
-                    Apoderados Asignados en esta Noticia
-                  </h4>
-                  <div className="space-y-3">
-                    {denunciados.filter(d => d.apoderado).map((denunciado, idx) => (
-                      <div key={idx} className="bg-white border border-green-200 rounded p-3">
-                        <p className="text-xs font-bold text-gray-900 mb-1">
-                          Denunciado: {denunciado.nombre}
-                        </p>
-                        <p className="text-xs text-gray-700">
-                          Apoderado: <span className="font-semibold">{denunciado.apoderado!.nombre}</span> • 
-                          CC: {denunciado.apoderado!.cedula} • 
-                          Tel: {denunciado.apoderado!.celular}
-                          {denunciado.apoderado!.direccion && <> • Dir: {denunciado.apoderado!.direccion}</>}
-                        </p>
-                      </div>
-                    ))}
-                    {denunciantes.filter(d => d.apoderado).map((denunciante, idx) => (
-                      <div key={idx} className="bg-white border border-green-200 rounded p-3">
-                        <p className="text-xs font-bold text-gray-900 mb-1">
-                          {denunciante.tipo}: {denunciante.nombre}
-                        </p>
-                        <p className="text-xs text-gray-700">
-                          Apoderado: <span className="font-semibold">{denunciante.apoderado!.nombre}</span> • 
-                          CC: {denunciante.apoderado!.cedula} • 
-                          Tel: {denunciante.apoderado!.celular}
-                          {denunciante.apoderado!.direccion && <> • Dir: {denunciante.apoderado!.direccion}</>}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-green-700 mt-3 italic">
-                    ✓ Los apoderados podrán actuar en nombre de sus representados durante el proceso disciplinario.
-                  </p>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  <Upload className="w-4 h-4 inline mr-1" />
-                  Documentos Soporte
-                </label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-                  <input
-                    type="file"
-                    multiple
-                    onChange={handleFileChange}
-                    className="hidden"
-                    id="file-upload"
-                  />
-                  <label
-                    htmlFor="file-upload"
-                    className="cursor-pointer flex flex-col items-center"
-                  >
-                    <Upload className="w-8 h-8 text-gray-400 mb-2" />
-                    <p className="text-sm text-gray-600">
-                      Click para seleccionar archivos
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      PDF, Word, Excel, imágenes
-                    </p>
-                  </label>
-                </div>
-                {archivosAdjuntos.length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    {archivosAdjuntos.map((file, idx) => (
-                      <div key={idx} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                        <span className="text-sm text-gray-700">{file.name}</span>
                         <button
-                          onClick={() => setArchivosAdjuntos(archivosAdjuntos.filter((_, i) => i !== idx))}
-                          className="text-red-600"
+                          onClick={() => handleEliminarHecho(hecho.id)}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="border-2 border-dashed border-purple-300 rounded-lg p-4 bg-purple-50/30">
+                    <h4 className="font-medium text-gray-900 mb-3">Agregar Nuevo Hecho</h4>
+                    <textarea
+                      value={hechoActual}
+                      onChange={(e) => setHechoActual(e.target.value)}
+                      placeholder="Describa detalladamente el hecho disciplinario..."
+                      className="w-full h-24 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 resize-none"
+                    />
+                    <div className="flex justify-end mt-3">
+                      <button
+                        onClick={handleAgregarHecho}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Agregar Hecho
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Conducta Indisciplinaria */}
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-4">Conducta Indisciplinaria</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Conducta *
+                    </label>
+                    <select
+                      value={conductaSeleccionada}
+                      onChange={(e) => setConductaSeleccionada(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="">Seleccione una conducta...</option>
+                      {conductasIndisciplinarias.map((conducta) => (
+                        <option key={conducta.id} value={conducta.nombre}>
+                          {conducta.nombre}
+                        </option>
+                      ))}
+                      <option value="Otro">Otro (especificar)</option>
+                    </select>
+                  </div>
+                  {conductaSeleccionada === 'Otro' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Especificar Conducta *
+                      </label>
+                      <input
+                        type="text"
+                        value={conductaPersonalizada}
+                        onChange={(e) => setConductaPersonalizada(e.target.value)}
+                        placeholder="Describa la conducta indisciplinaria"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Archivos Adjuntos */}
+              <div>
+                <h3 className="font-semibold text-gray-900 mb-4">Documentos de Soporte</h3>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
+                  <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <label className="cursor-pointer">
+                    <span className="text-sm font-semibold text-blue-600 hover:text-blue-700">
+                      Click para adjuntar archivos
+                    </span>
+                    <input
+                      type="file"
+                      multiple
+                      onChange={handleFileChange}
+                      className="hidden"
+                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                    />
+                  </label>
+                  <p className="text-xs text-gray-500 mt-1">
+                    PDF, Word, Imágenes (Máx. 10MB c/u)
+                  </p>
+                </div>
+
+                {/* Lista de archivos */}
+                {archivosAdjuntos.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {archivosAdjuntos.map((archivo, idx) => (
+                      <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+                        <FileText className="w-4 h-4 text-gray-500" />
+                        <span className="text-sm text-gray-700 flex-1">{archivo.name}</span>
+                        <span className="text-xs text-gray-500">
+                          {(archivo.size / 1024 / 1024).toFixed(2)} MB
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -2001,29 +1783,39 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-gray-200 flex justify-between bg-gray-50">
-          <Button
-            onClick={currentStep === 1 ? onClose : () => setCurrentStep(currentStep - 1)}
-            variant="outline"
-          >
-            {currentStep === 1 ? 'Cancelar' : 'Anterior'}
-          </Button>
-          
-          {currentStep < 4 ? (
-            <Button
-              onClick={handleNextStep}
-              style={{ background: '#003DA5', color: '#FFFFFF' }}
-            >
-              Siguiente
-            </Button>
-          ) : (
-            <Button
-              onClick={handleSave}
-              style={{ background: '#10B981', color: '#FFFFFF' }}
-            >
-              Guardar Noticia
-            </Button>
-          )}
+        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
+          <div className="text-sm text-gray-600">
+            Paso {currentStep} de 4
+          </div>
+          <div className="flex gap-3">
+            {currentStep > 1 && (
+              <button
+                onClick={() => setCurrentStep(currentStep - 1)}
+                className="px-6 py-3 border-2 border-gray-300 rounded-xl font-semibold hover:bg-gray-50 transition-colors"
+              >
+                Anterior
+              </button>
+            )}
+            {currentStep < 4 ? (
+              <button
+                onClick={handleNextStep}
+                className="px-6 py-3 rounded-xl font-semibold text-white flex items-center gap-2"
+                style={{ background: '#003DA5' }}
+              >
+                Siguiente
+                <AlertCircle className="w-4 h-4" />
+              </button>
+            ) : (
+              <button
+                onClick={handleSave}
+                className="px-6 py-3 rounded-xl font-semibold text-white flex items-center gap-2"
+                style={{ background: '#10B981' }}
+              >
+                <Save className="w-4 h-4" />
+                {isEditMode ? 'Actualizar Noticia' : 'Guardar Noticia'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

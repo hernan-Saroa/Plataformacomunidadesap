@@ -510,14 +510,14 @@ function ModalFormularioProceso({
                   <label className="block text-sm font-semibold mb-2" style={{ color: '#4B5563' }}>
                     Nombre del Denunciante
                   </label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
-                    style={{ borderColor: '#E5E7EB' }}
-                    value={formData.denuncianteNombre}
-                    onChange={(e) => setFormData({ ...formData, denuncianteNombre: e.target.value })}
-                    placeholder="Nombre del denunciante (opcional si anónimo)"
-                  />
+                    <input
+                      type="text"
+                      className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
+                      style={{ borderColor: '#E5E7EB' }}
+                      value={formData.denuncianteNombre}
+                      onChange={(e) => setFormData({ ...formData, denuncianteNombre: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
+                      placeholder="Nombre del denunciante (opcional si anónimo)"
+                    />
                 </div>
               </div>
             </div>
@@ -539,7 +539,7 @@ function ModalFormularioProceso({
                   className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
                   style={{ borderColor: '#E5E7EB' }}
                   value={formData.disciplinable}
-                  onChange={(e) => setFormData({ ...formData, disciplinable: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, disciplinable: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                   placeholder="Ej: Juan Carlos Pérez López"
                 />
               </div>
@@ -577,7 +577,7 @@ function ModalFormularioProceso({
                   className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
                   style={{ borderColor: '#E5E7EB' }}
                   value={formData.cargo}
-                  onChange={(e) => setFormData({ ...formData, cargo: e.target.value })}
+                  onChange={(e) => setFormData({ ...formData, cargo: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                   placeholder="Ej: Profesional Universitario"
                 />
               </div>
