@@ -28,6 +28,8 @@ import { FormField, FormSection, FormProgress } from '../design-system/FormField
 import { ModalHeaderClean } from './ModalHeaderClean';
 import type { TemaJuridico, PrioridadConsulta, ConsultaJuridica } from '../core/types';
 import { legalService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ✅ Importar hooks responsive
 import { useIsMobile } from '@esap-mfe/shared-hooks/useIsMobile';
@@ -175,11 +177,21 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
     }
   }, [isOpen, modoEdicion, consultaInicial]);
 
+  // Auto-asignar si el usuario es abogado resuelve (por rol), no jefe ni admin
+  const esAbogadoResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
+
   const loadAbogados = async () => {
     setLoadingAbogados(true);
     try {
       const data = await legalService.getAbogados();
       setAbogados(data || []);
+      // Si el usuario es abogado (resuelve) y estamos en creación, auto-asignarse
+      if (!modoEdicion && esAbogadoResuelve) {
+        const currentUser = authService.getCurrentUser();
+        if (currentUser?.id) {
+          updateField('abogadoAsignadoId', currentUser.id);
+        }
+      }
     } catch (error) {
       console.error('Error cargando abogados:', error);
       // Usar lista por defecto si falla
@@ -469,7 +481,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
 
                 <FormField
                   name="abogadoAsignadoId"
-                  label="Abogado Asignado"
+                  label={esAbogadoResuelve ? 'Abogado Asignado (Auto-asignado)' : 'Abogado Asignado'}
                   type="select"
                   value={formData.abogadoAsignadoId}
                   onChange={(val) => handleUpdate('abogadoAsignadoId', val)}
@@ -483,7 +495,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
                       label: abogado.nombreCompleto
                     }))
                   ]}
-                  disabled={loadingAbogados}
+                  disabled={loadingAbogados || esAbogadoResuelve}
                   icon={<User className="w-4 h-4" />}
                 />
               </div>
