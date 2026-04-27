@@ -1019,6 +1019,13 @@ class DisciplinaryService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/versions`);
     }
 
+    async uploadDocumentoRevision(id: string, file: File, comentario: string): Promise<any> {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (comentario) formData.append('comentario', comentario);
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
+    }
+
     // --- TÉRMINOS PROCESALES ---
 
     async getTerminos(params?: { estado?: string; search?: string; page?: number; limit?: number }): Promise<{ terminos: any[]; stats: any }> {
@@ -1471,6 +1478,20 @@ class DisciplinaryService {
      */
     async deleteOficioConfiguration(id: string): Promise<void> {
         return apiClient.delete<void>(`${SERVICE_PREFIX}/oficios-configuration/${id}`);
+    }
+
+    /**
+     * Reordenar comportamientos disciplinarios
+     */
+    async reorderDisciplinaryBehaviors(ids: string[]): Promise<void> {
+        return apiClient.post(`${SERVICE_PREFIX}/disciplinary-behaviors/reorder`, { ids });
+    }
+
+    /**
+     * Enviar correo electrónico
+     */
+    async sendEmail(emailData: { to: string; subject: string; body?: string; html?: string }): Promise<{ success: boolean; message: string }> {
+        return apiClient.post<{ success: boolean; message: string }>(`${SERVICE_PREFIX}/disciplinary-processes/send-email`, emailData);
     }
 
     /**

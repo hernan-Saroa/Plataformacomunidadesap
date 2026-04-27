@@ -13,6 +13,12 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+// Función para validar email
+const validarEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
 // ============================================================================
 // INTERFACES
 // ============================================================================
@@ -556,7 +562,12 @@ export function WizardNuevoTermino({ isOpen, onClose, onCrearTermino, procesos =
                         <input
                           type="email"
                           value={responsableEmail}
-                          onChange={(e) => setResponsableEmail(e.target.value)}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '' || validarEmail(value)) {
+                              setResponsableEmail(value);
+                            }
+                          }}
                           placeholder="correo@esap.edu.co"
                           className="w-full pl-11 pr-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5] transition-colors"
                           style={{ borderColor: '#E5E7EB' }}

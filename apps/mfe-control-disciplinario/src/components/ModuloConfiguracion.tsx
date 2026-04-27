@@ -1058,7 +1058,7 @@ export function ModuloConfiguracion() {
                       <input
                         type="text"
                         value={cargo.nombre}
-                        onChange={(e) => actualizarCargo(cargo.id, { nombre: e.target.value.toUpperCase() })}
+                        onChange={(e) => actualizarCargo(cargo.id, { nombre: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '').toUpperCase() })}
                         className="w-full px-3 py-1.5 text-sm font-bold uppercase border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         placeholder="Nombre del cargo"
                       />

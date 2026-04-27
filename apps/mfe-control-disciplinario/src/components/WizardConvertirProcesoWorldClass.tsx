@@ -7,7 +7,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { X, Check, PlusCircle, FileText, Search, AlertTriangle, CheckCircle, AlertCircle, Briefcase, MapPin, Users } from 'lucide-react';
-import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { disciplinaryService } from '../services/api/disciplinary.service';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
