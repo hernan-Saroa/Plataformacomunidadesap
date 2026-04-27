@@ -1776,11 +1776,11 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                       multiple
                       onChange={handleFileChange}
                       className="hidden"
-                      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.mp4,.avi,.mov,.mkv,.webm"
                     />
                   </label>
                   <p className="text-xs text-gray-500 mt-1">
-                    PDF, Word, Imágenes (Máx. 10MB c/u)
+                    PDF, Word, Excel, Imágenes, Videos (Máx. 10MB c/u)
                   </p>
                 </div>
 
