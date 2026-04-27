@@ -266,6 +266,7 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
     try {
       if (modoEdicion && consultaInicial) {
         // MODO EDICIÓN: PATCH con JSON
+        const abogadoEdit = abogados.find(a => a.id === formData.abogadoAsignadoId);
         const editPayload = {
           tipoSolicitud: formData.tipoSolicitud,
           canalEntrada: formData.canalEntrada,
@@ -279,11 +280,13 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
           antecedentes: formData.antecedentes,
           prioridad: formData.prioridad.toLowerCase(),
           abogadoAsignadoId: formData.abogadoAsignadoId,
+          abogadoAsignadoNombre: abogadoEdit?.nombreCompleto || '',
         };
         const id = (consultaInicial as any).uuid || consultaInicial.id;
         await legalService.updateConsultaJuridica(id, editPayload);
       } else {
         // MODO CREACIÓN: FormData con posible archivo
+        const abogadoCreate = abogados.find(a => a.id === formData.abogadoAsignadoId);
         const payload = {
           ...formData,
           dependenciaSolicitante: formData.solicitante,
@@ -291,7 +294,8 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
           cargoSolicitante: formData.cargo,
           descripcion: formData.consulta,
           materiaJuridica: formData.temaJuridico,
-          terminoLegalDias: 30
+          terminoLegalDias: 30,
+          abogadoAsignadoNombre: abogadoCreate?.nombreCompleto || '',
         };
 
         const formDataToSend = new FormData();

@@ -381,9 +381,11 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
     try {
       toast.loading('Asignando abogado...', { id: 'assign-lawyer' });
-      await legalService.updateConsultaJuridica(consulta.uuid || '', { abogadoAsignadoId: abogadoSeleccionado });
-
       const abogado = abogados.find(a => a.id === abogadoSeleccionado);
+      await legalService.updateConsultaJuridica(consulta.uuid || '', {
+        abogadoAsignadoId: abogadoSeleccionado,
+        abogadoAsignadoNombre: abogado?.nombreCompleto || abogado?.nombre || '',
+      });
       toast.success(`Abogado reasignado a: ${abogado?.nombreCompleto || 'Desconocido'}`, { id: 'assign-lawyer' });
       setEditandoAbogado(false);
 

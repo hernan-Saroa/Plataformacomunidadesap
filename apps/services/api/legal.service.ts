@@ -938,8 +938,8 @@ class OCService {
         return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/${id}`);
     }
 
-    async reasignarRequerimiento(id: string, nuevoAbogadoId: string): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}/reasignar`, { nuevoAbogadoId });
+    async reasignarRequerimiento(id: string, nuevoAbogadoId: string, nuevoAbogadoNombre?: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/${id}/reasignar`, { nuevoAbogadoId, nuevoAbogadoNombre });
     }
 
     // Sistema de Archivo
