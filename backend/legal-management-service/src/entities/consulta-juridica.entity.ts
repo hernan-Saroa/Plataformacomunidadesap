@@ -85,6 +85,9 @@ export class ConsultaJuridica {
     @Column({ type: 'text', nullable: true })
     respuesta: string;
 
+    @Column({ name: 'destinatarios_adicionales', type: 'text', nullable: true })
+    destinatariosAdicionales: string; // JSON array de emails adicionales
+
     @Column({ type: 'text', nullable: true })
     observaciones: string;
 

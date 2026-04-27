@@ -83,6 +83,9 @@ export function ReviewRequestsModule() {
     numLibro: '',
   });
   const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
+  const [existingApprovalFiles, setExistingApprovalFiles] = useState<
+    NonNullable<ReviewRequest['reviewFiles']>
+  >([]);
   const [approvalUploadProgress, setApprovalUploadProgress] = useState({
     totalFiles: 0,
     processedFiles: 0,
@@ -138,8 +141,15 @@ export function ReviewRequestsModule() {
   };
   const resolveReviewerId = (user: any): string | undefined =>
     user?.id || user?.id_user || user?.userId || undefined;
+  const resolveReviewerEmail = (user: any): string | undefined => {
+    const email = typeof user?.email === 'string' ? user.email.trim() : '';
+    if (email) return email;
+    const personEmail = typeof user?.person?.email === 'string' ? user.person.email.trim() : '';
+    return personEmail || undefined;
+  };
   const reviewerName = resolveReviewerName(currentUser);
   const reviewerId = resolveReviewerId(currentUser);
+  const reviewerEmail = resolveReviewerEmail(currentUser);
   const PROGRAMAS_ESAP = [
     'ADMINISTRACIÓN PÚBLICA',
     'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
@@ -388,6 +398,12 @@ export function ReviewRequestsModule() {
     });
   };
 
+  const formatBytes = (bytes?: number) => {
+    if (!bytes) return '0 KB';
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   const toDateInputValue = (value?: string | Date | null) => {
     if (!value) return '';
 
@@ -526,7 +542,8 @@ export function ReviewRequestsModule() {
       return;
     }
     const nextFiles = [...approvalFiles, ...selected];
-    if (nextFiles.length > MAX_APPROVAL_FILES) {
+    const currentPersistedFiles = existingApprovalFiles.length;
+    if (currentPersistedFiles + nextFiles.length > MAX_APPROVAL_FILES) {
       toast.error(`Solo puedes adjuntar máximo ${MAX_APPROVAL_FILES} archivos`);
       event.target.value = '';
       return;
@@ -550,6 +567,26 @@ export function ReviewRequestsModule() {
   };
   const handleRemoveApprovalFile = (index: number) => {
     setApprovalFiles((prev) => prev.filter((_, idx) => idx !== index));
+  };
+  const handleRemoveExistingApprovalFile = async (fileId: string) => {
+    if (!selectedRequest) {
+      return;
+    }
+
+    try {
+      await graduadosService.solicitudes.eliminarArchivoRevision(
+        selectedRequest.id,
+        fileId,
+      );
+      setExistingApprovalFiles((prev) =>
+        prev.filter((file) => file.id !== fileId),
+      );
+      toast.success('Archivo retirado de la solicitud');
+    } catch (error: any) {
+      toast.error('No se pudo retirar el archivo', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    }
   };
   const resetApprovalUploadProgress = () => {
     setApprovalUploadProgress({
@@ -621,6 +658,18 @@ export function ReviewRequestsModule() {
       reviewNotes: request.reviewNotes || request.rejectionReason,
       resolution: request.reviewResolution as ReviewRequest['resolution'],
       certificateGenerated: request.status === 'COMPLETED',
+      approvalStatus: request.approvalStatus,
+      reviewRecommendation: request.reviewRecommendation,
+      reviewRecommendationReason: request.reviewRecommendationReason,
+      reviewPayload: request.reviewPayload,
+      reviewSubmittedAt: request.reviewSubmittedAt,
+      reviewSubmittedByName: request.reviewSubmittedByName,
+      approverDecision: request.approverDecision,
+      approverNotes: request.approverNotes,
+      approvedAt: request.approvedAt,
+      approverName: request.approverName,
+      reviewTimeline: request.reviewTimeline || [],
+      reviewFiles: request.reviewFiles || [],
     };
   };
 
@@ -891,15 +940,64 @@ export function ReviewRequestsModule() {
     setShowConfirmModal(true);
   };
 
+  const getPayloadText = (
+    payload: Record<string, unknown>,
+    key: keyof ApprovalForm,
+  ) => {
+    const value = payload[key];
+    return value === null || value === undefined ? '' : String(value).trim();
+  };
+
+  const mergeSavedReviewPayload = (
+    baseForm: ApprovalForm,
+    payload: Record<string, unknown>,
+  ): ApprovalForm => ({
+    fullName: getPayloadText(payload, 'fullName') || baseForm.fullName,
+    idNumber:
+      sanitizeDigits(
+        getPayloadText(payload, 'idNumber') || baseForm.idNumber,
+        DOCUMENT_MAX_LENGTH,
+      ) || baseForm.idNumber,
+    email: getPayloadText(payload, 'email') || baseForm.email,
+    programName:
+      getPayloadText(payload, 'programName') || baseForm.programName,
+    graduationDate:
+      toDateInputValue(getPayloadText(payload, 'graduationDate')) ||
+      baseForm.graduationDate,
+    campus: getPayloadText(payload, 'campus') || baseForm.campus,
+    seccionalName:
+      getPayloadText(payload, 'seccionalName') || baseForm.seccionalName,
+    numRegistro:
+      sanitizeDigits(
+        getPayloadText(payload, 'numRegistro') || baseForm.numRegistro,
+        REGISTRY_FIELD_MAX_LENGTH,
+      ) || baseForm.numRegistro,
+    numFolio:
+      sanitizeDigits(
+        getPayloadText(payload, 'numFolio') || baseForm.numFolio,
+        REGISTRY_FIELD_MAX_LENGTH,
+      ) || baseForm.numFolio,
+    numLibro:
+      sanitizeDigits(
+        getPayloadText(payload, 'numLibro') || baseForm.numLibro,
+        REGISTRY_FIELD_MAX_LENGTH,
+      ) || baseForm.numLibro,
+  });
+
   const handleOpenReviewModal = async (
     request: ReviewRequest,
     action: 'approve' | 'reject'
   ) => {
     setSelectedRequest(request);
     setReviewAction(action);
-    setReviewNotes('');
+    setReviewNotes(
+      action === 'approve'
+        ? request.reviewRecommendationReason || request.reviewNotes || ''
+        : '',
+    );
     setShowReviewModal(true);
     setApprovalFiles([]);
+    setExistingApprovalFiles(action === 'approve' ? request.reviewFiles || [] : []);
     resetApprovalUploadProgress();
 
     if (action !== 'approve') {
@@ -909,6 +1007,7 @@ export function ReviewRequestsModule() {
     setIsLoadingApprovalData(true);
     try {
       const detail = await graduadosService.solicitudes.obtenerPorId(request.id);
+      setExistingApprovalFiles(detail.reviewFiles || request.reviewFiles || []);
       const graduationDate = toDateInputValue(
         detail.graduationDate || request.graduationDate
       );
@@ -991,7 +1090,21 @@ export function ReviewRequestsModule() {
         }
       }
 
-      setApprovalForm(nextForm);
+      const savedPayload =
+        detail.reviewPayload && typeof detail.reviewPayload === 'object'
+          ? (detail.reviewPayload as Record<string, unknown>)
+          : request.reviewPayload && typeof request.reviewPayload === 'object'
+            ? (request.reviewPayload as Record<string, unknown>)
+            : {};
+
+      setApprovalForm(mergeSavedReviewPayload(nextForm, savedPayload));
+      setReviewNotes(
+        detail.reviewRecommendationReason ||
+          request.reviewRecommendationReason ||
+          detail.reviewNotes ||
+          request.reviewNotes ||
+          '',
+      );
     } catch (error) {
       console.error('Error cargando solicitud:', error);
       toast.error('No se pudo cargar la solicitud para aprobar');
@@ -1004,7 +1117,11 @@ export function ReviewRequestsModule() {
     const trimmedReviewNotes = reviewNotes.trim();
 
     if (!trimmedReviewNotes) {
-      toast.error('Por favor ingresa notas de revision');
+      toast.error(
+        reviewAction === 'approve'
+          ? 'Por favor ingresa notas de revision'
+          : 'Por favor ingresa la descripcion del rechazo',
+      );
       return;
     }
     if (trimmedReviewNotes.length > REVIEW_NOTES_MAX_LENGTH) {
@@ -1130,26 +1247,17 @@ export function ReviewRequestsModule() {
           confirmAction.request.id,
           reviewerName,
           reviewerId,
+          reviewerEmail,
         );
         toast.success('Solicitud marcada como en revision', {
           description:
             'Se envio un correo de actualizacion sobre el proceso al solicitante.',
         });
-      } else if (confirmAction.type === 'approve') {
-        const approvalPayload = {
-          reviewNotes: confirmAction.notes || 'Aprobado por revision manual',
-          reviewerName,
-          reviewerId,
-          ...(confirmAction.approvalDetails || {}),
-        };
-        const approvalResponse = await graduadosService.solicitudes.aprobar(
-          confirmAction.request.id,
-          approvalPayload
-        );
-        const graduateId =
-          approvalResponse?.request?.graduateId ||
-          (approvalResponse as any)?.request?.graduate?.id;
-        if (graduateId && approvalFiles.length > 0) {
+      } else if (
+        confirmAction.type === 'approve' ||
+        confirmAction.type === 'reject'
+      ) {
+        if (approvalFiles.length > 0) {
           const totalFiles = approvalFiles.length;
           setApprovalUploadProgress({
             totalFiles,
@@ -1168,10 +1276,11 @@ export function ReviewRequestsModule() {
             }));
             try {
               // Subir archivo por archivo evita errores 413 por payload acumulado.
-              await graduadosService.graduados.subirArchivos(
-                graduateId,
+              await graduadosService.solicitudes.subirArchivosRevision(
+                confirmAction.request.id,
                 [file],
                 reviewerName,
+                reviewerEmail,
                 (progress) => {
                   setApprovalUploadProgress((prev) => ({
                     ...prev,
@@ -1182,7 +1291,7 @@ export function ReviewRequestsModule() {
                 },
               );
             } catch (uploadError: any) {
-              console.error('Error subiendo archivo del graduado:', uploadError);
+              console.error('Error subiendo archivo de revision:', uploadError);
               if (isPayloadTooLargeError(uploadError)) {
                 toast.error('El archivo es muy pesado', {
                   description: `El archivo "${file.name}" supera el límite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
@@ -1192,6 +1301,7 @@ export function ReviewRequestsModule() {
                   description: uploadError?.response?.data?.message || uploadError?.message,
                 });
               }
+              throw uploadError;
             }
             const processedFiles = currentIndex + 1;
             setApprovalUploadProgress((prev) => ({
@@ -1202,21 +1312,29 @@ export function ReviewRequestsModule() {
             }));
           }
         }
-        toast.success('Solicitud aprobada y certificado generado');
-      } else if (confirmAction.type === 'reject') {
-        await graduadosService.solicitudes.rechazar(
+        await graduadosService.solicitudes.enviarDecisionRevision(
           confirmAction.request.id,
-          confirmAction.notes || 'Solicitud rechazada',
-          reviewerName,
-          reviewerId,
+          {
+            decision: confirmAction.type === 'approve' ? 'APPROVED' : 'REJECTED',
+            reason: confirmAction.notes || 'Concepto registrado por revision manual',
+            reviewNotes: confirmAction.notes || 'Concepto registrado por revision manual',
+            reviewerName,
+            reviewerId,
+            reviewerEmail,
+            ...(confirmAction.approvalDetails || {}),
+          },
         );
-        toast.success('Solicitud rechazada');
+        toast.success('Concepto enviado a aprobacion final', {
+          description:
+            'El aprobador definira la respuesta definitiva antes de enviar correos o certificados.',
+        });
       }
 
       setSelectedRequest(null);
       setConfirmAction(null);
       setShowConfirmModal(false);
       setApprovalFiles([]);
+      setExistingApprovalFiles([]);
       resetApprovalUploadProgress();
       await loadRequests();
     } catch (error: any) {
@@ -1238,13 +1356,104 @@ export function ReviewRequestsModule() {
     setCurrentPage(1);
   };
 
-  const reviewActionLabel = reviewAction === 'approve' ? 'Aprobar' : 'Rechazar';
+  const reviewActionLabel =
+    reviewAction === 'approve'
+      ? 'Cargar informacion revisada'
+      : 'Registrar novedad de rechazo';
   const confirmActionLabel =
     confirmAction?.type === 'start_review'
       ? 'Enviar a revisión'
       : confirmAction?.type === 'approve'
-        ? 'Aprobar solicitud'
-        : 'Rechazar solicitud';
+        ? 'Cargar informacion revisada'
+        : 'Registrar novedad de rechazo';
+
+  const formatTimelineActor = (
+    actorName?: string,
+    actorEmail?: string,
+    actorId?: string,
+  ) => {
+    const name = (actorName || '').trim();
+    const email = (actorEmail || '').trim();
+    const id = (actorId || '').trim();
+
+    if (name && email && name.toLowerCase() !== email.toLowerCase()) {
+      return `${name} (${email})`;
+    }
+    return name || email || (id ? `Usuario ${id}` : '');
+  };
+
+  const formatRequesterTimelineActor = (request: ReviewRequest) =>
+    formatTimelineActor(request.requester.name, request.requester.email);
+
+  const getTimelineFileCount = (notes?: string) => {
+    const match = String(notes || '').match(/(\d+)/);
+    return match ? Number(match[1]) || 0 : 0;
+  };
+
+  const compactReviewTimeline = (
+    events: NonNullable<ReviewRequest['reviewTimeline']>,
+  ) =>
+    events.reduce<NonNullable<ReviewRequest['reviewTimeline']>>(
+      (acc, event) => {
+        const previous = acc[acc.length - 1];
+        const previousTime = previous?.createdAt
+          ? new Date(previous.createdAt).getTime()
+          : Number.NaN;
+        const currentTime = event.createdAt
+          ? new Date(event.createdAt).getTime()
+          : Number.NaN;
+        const sameActor =
+          (previous?.actorEmail || '') === (event.actorEmail || '') &&
+          (previous?.actorName || '') === (event.actorName || '');
+        const withinUploadWindow =
+          !Number.isNaN(previousTime) &&
+          !Number.isNaN(currentTime) &&
+          Math.abs(currentTime - previousTime) <= 15 * 60 * 1000;
+
+        if (
+          previous?.type === 'review_files_uploaded' &&
+          event.type === 'review_files_uploaded' &&
+          sameActor &&
+          withinUploadWindow
+        ) {
+          const nextCount =
+            getTimelineFileCount(previous.notes) + getTimelineFileCount(event.notes);
+          acc[acc.length - 1] = {
+            ...previous,
+            label: 'Archivos de soporte cargados',
+            notes: `${nextCount || 1} archivo(s) adjunto(s)`,
+            createdAt: event.createdAt || previous.createdAt,
+          };
+          return acc;
+        }
+
+        acc.push(
+          event.type === 'review_files_uploaded'
+            ? { ...event, label: 'Archivos de soporte cargados' }
+            : event,
+        );
+        return acc;
+      },
+      [],
+    );
+
+  const reviewDecisionLabel = (decision?: string | null) => {
+    if (decision === 'APPROVED') return 'Aprobar';
+    if (decision === 'REJECTED') return 'Rechazar';
+    if (decision === 'OBSERVATION') return 'Observacion';
+    return 'Sin concepto';
+  };
+
+  const getLatestApproverEvent = (request: ReviewRequest) =>
+    [...compactReviewTimeline(request.reviewTimeline || [])]
+      .reverse()
+      .find((event) =>
+        [
+          'approver_decision',
+          'certificate_generated',
+          'final_rejection_notified',
+        ].includes(event.type),
+      );
 
   return (
     <div className="space-y-6">
@@ -1641,6 +1850,16 @@ export function ReviewRequestsModule() {
                       <div className="space-y-1.5">
                         {getStatusBadge(request.status)}
                         {getRequesterTypeBadge(request.requester.type)}
+                        {request.approvalStatus === 'PENDING_APPROVAL' && (
+                          <Badge className="bg-orange-100 text-orange-800 border-orange-200 border text-xs">
+                            Pendiente aprobador
+                          </Badge>
+                        )}
+                        {request.approvalStatus === 'OBSERVATION' && (
+                          <Badge className="bg-amber-100 text-amber-800 border-amber-200 border text-xs">
+                            Con observacion
+                          </Badge>
+                        )}
                       </div>
                     </div>
 
@@ -1705,20 +1924,25 @@ export function ReviewRequestsModule() {
                               <DropdownMenuSeparator />
                             </>
                           )}
-                          {request.status === 'under_review' && (
+                          {request.status === 'under_review' && request.approvalStatus === 'PENDING_APPROVAL' && (
                             <>
-                              {authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_APROBAR) && (
+                              <DropdownMenuItem disabled>
+                                <Clock className="w-4 h-4 mr-2" />
+                                Pendiente de aprobador
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                            </>
+                          )}
+                          {request.status === 'under_review' && request.approvalStatus !== 'PENDING_APPROVAL' && authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_REVIEW) && (
+                            <>
                               <DropdownMenuItem onClick={() => handleOpenReviewModal(request, 'approve')}>
                                 <CheckCircle className="w-4 h-4 mr-2" />
-                                Aprobar
+                                Cargar informacion revisada
                               </DropdownMenuItem>
-                              )}
-                              {authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_RECHAZAR) && (
                               <DropdownMenuItem onClick={() => handleOpenReviewModal(request, 'reject')}>
                                 <XCircle className="w-4 h-4 mr-2" />
-                                Rechazar
+                                Registrar novedad de rechazo
                               </DropdownMenuItem>
-                              )}
                               <DropdownMenuSeparator />
                             </>
                           )}
@@ -1873,7 +2097,7 @@ export function ReviewRequestsModule() {
                             Acciones Rápidas
                           </h4>
                           <div className="flex flex-wrap gap-2">
-                            {request.status === 'pending' && (
+                            {request.status === 'pending' && authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_REVIEW) && (
                               <button
                                 onClick={() => handleStartReview(request)}
                                 className="px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
@@ -1930,31 +2154,45 @@ export function ReviewRequestsModule() {
                         </div>
 
                         {/* Detalles de Revisión */}
-                        {request.reviewedAt && (
+                        {(request.reviewRecommendation || request.reviewedAt) && (
                           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                             <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
                               <MessageSquare className="w-4 h-4 text-gray-700" />
-                              Detalles de Revisión
+                              Concepto del revisor
                             </h4>
                             <div className="space-y-2 text-sm">
-                              {request.reviewerName && (
+                              {(request.reviewSubmittedByName || request.reviewerName) && (
                                 <div>
-                                  <span className="text-gray-600">Revisado por:</span>
-                                  <span className="ml-2 font-semibold text-gray-900">{request.reviewerName}</span>
+                                  <span className="text-gray-600">Revisor:</span>
+                                  <span className="ml-2 font-semibold text-gray-900">
+                                    {request.reviewSubmittedByName || request.reviewerName}
+                                  </span>
                                 </div>
                               )}
                               <div>
                                 <span className="text-gray-600">Fecha:</span>
-                                <span className="ml-2 font-semibold text-gray-900">{formatDate(request.reviewedAt)}</span>
+                                <span className="ml-2 font-semibold text-gray-900">
+                                  {formatDate(request.reviewSubmittedAt || request.reviewedAt)}
+                                </span>
                               </div>
-                              {request.resolution && (
+                              {request.reviewRecommendation ? (
+                                <div className="mt-2">
+                                  <Badge className="bg-blue-100 text-blue-800 border-blue-200 border">
+                                    {reviewDecisionLabel(request.reviewRecommendation)}
+                                  </Badge>
+                                </div>
+                              ) : request.resolution && request.approvalStatus !== 'OBSERVATION' && (
                                 <div className="mt-2">
                                   {getResolutionBadge(request.resolution)}
                                 </div>
                               )}
-                              {request.reviewNotes && (
+                              {(request.reviewRecommendationReason ||
+                                (!request.reviewRecommendation && request.reviewNotes)) && (
                                 <div className="mt-2 p-2 bg-white rounded border border-gray-200">
-                                  <p className="text-xs text-gray-700">{request.reviewNotes}</p>
+                                  <p className="text-xs text-gray-700">
+                                    {request.reviewRecommendationReason ||
+                                      request.reviewNotes}
+                                  </p>
                                 </div>
                               )}
                               {request.certificateGenerated && request.certificateId && (
@@ -1969,6 +2207,55 @@ export function ReviewRequestsModule() {
                           </div>
                         )}
 
+                        {(request.approverDecision || request.approverNotes) && (() => {
+                          const approverEvent = getLatestApproverEvent(request);
+                          const approverLabel =
+                            formatTimelineActor(
+                              approverEvent?.actorName || request.approverName,
+                              approverEvent?.actorEmail,
+                              approverEvent?.actorId,
+                            ) || request.approverName || 'No registrado';
+
+                          return (
+                            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                              <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <MessageSquare className="w-4 h-4 text-orange-700" />
+                                Respuesta del aprobador
+                              </h4>
+                              <div className="space-y-2 text-sm">
+                                <div>
+                                  <span className="text-gray-600">Aprobador:</span>
+                                  <span className="ml-2 font-semibold text-gray-900">
+                                    {approverLabel}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-gray-600">Resultado:</span>
+                                  <span className="ml-2 font-semibold text-gray-900">
+                                    {reviewDecisionLabel(request.approverDecision)}
+                                  </span>
+                                </div>
+                                {request.approvedAt && (
+                                  <div>
+                                    <span className="text-gray-600">Fecha:</span>
+                                    <span className="ml-2 font-semibold text-gray-900">
+                                      {formatDate(request.approvedAt)}
+                                    </span>
+                                  </div>
+                                )}
+                                {request.approverNotes && (
+                                  <div className="mt-2 p-2 bg-white rounded border border-orange-200">
+                                    <p className="text-xs font-semibold text-orange-800 mb-1">
+                                      Nota del aprobador
+                                    </p>
+                                    <p className="text-xs text-gray-700">{request.approverNotes}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         {/* Timeline */}
                         <div className="bg-white border border-gray-200 rounded-lg p-4">
                           <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
@@ -1976,9 +2263,14 @@ export function ReviewRequestsModule() {
                             Línea de Tiempo
                           </h4>
                           <div className="space-y-2 text-xs">
-                            <div className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                              <span className="text-gray-600">Solicitud creada</span>
-                              <span className="font-semibold text-gray-900">
+                            <div className="flex items-start justify-between gap-3 p-3 bg-gray-50 rounded">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-gray-800">Solicitud creada</p>
+                                <p className="mt-0.5 text-gray-600">
+                                  Solicitante: {formatRequesterTimelineActor(request)}
+                                </p>
+                              </div>
+                              <span className="font-semibold text-gray-900 whitespace-nowrap">
                                 {formatDate(request.createdAt)}
                               </span>
                             </div>
@@ -1992,24 +2284,61 @@ export function ReviewRequestsModule() {
                               }
 
                               return (
-                                <div className="flex items-center justify-between p-2 bg-red-50 rounded">
-                                  <span className="text-red-700">
-                                    Solicitud expirada por superar 15 días hábiles
-                                  </span>
-                                  <span className="font-semibold text-red-800">
+                                <div className="flex items-start justify-between gap-3 p-3 bg-red-50 rounded">
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-red-800">
+                                      Solicitud expirada por superar 15 días hábiles
+                                    </p>
+                                    <p className="mt-0.5 text-red-700">
+                                      Sistema de vencimiento automatico
+                                    </p>
+                                  </div>
+                                  <span className="font-semibold text-red-800 whitespace-nowrap">
                                     {formatDate(expiredAt)}
                                   </span>
                                 </div>
                               );
                             })()}
-                            {request.reviewedAt && request.status !== 'expired' && (
-                              <div className="flex items-center justify-between p-2 bg-green-50 rounded">
-                                <span className="text-gray-600">Revisión completada</span>
-                                <span className="font-semibold text-gray-900">
+                            {request.reviewedAt &&
+                              request.status !== 'expired' &&
+                              compactReviewTimeline(request.reviewTimeline || []).length === 0 && (
+                              <div className="flex items-start justify-between gap-3 p-3 bg-green-50 rounded">
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-green-900">Revisión completada</p>
+                                  {request.reviewerName && (
+                                    <p className="mt-0.5 text-green-800">
+                                      Revisor: {request.reviewerName}
+                                    </p>
+                                  )}
+                                </div>
+                                <span className="font-semibold text-gray-900 whitespace-nowrap">
                                   {formatDate(request.reviewedAt)}
                                 </span>
                               </div>
                             )}
+                            {compactReviewTimeline(request.reviewTimeline || []).map((event, eventIndex) => (
+                              <div
+                                key={`${request.id}-timeline-${eventIndex}`}
+                                className="flex items-start justify-between gap-3 p-3 bg-blue-50 rounded"
+                              >
+                                <div className="min-w-0 text-blue-900">
+                                  <p className="font-semibold">{event.label}</p>
+                                  {formatTimelineActor(event.actorName, event.actorEmail, event.actorId) && (
+                                    <p className="mt-0.5 text-blue-800">
+                                      Usuario: {formatTimelineActor(event.actorName, event.actorEmail, event.actorId)}
+                                    </p>
+                                  )}
+                                  {event.notes && (
+                                    <p className="mt-1 text-blue-800">
+                                      Nota: {event.notes}
+                                    </p>
+                                  )}
+                                </div>
+                                <span className="font-semibold text-blue-900 whitespace-nowrap">
+                                  {formatDate(event.createdAt)}
+                                </span>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       </div>
@@ -2039,17 +2368,27 @@ export function ReviewRequestsModule() {
       )}
 
       {/* Modal: Revisar Solicitud */}
-      <Dialog open={showReviewModal} onOpenChange={setShowReviewModal}>
+      <Dialog
+        open={showReviewModal}
+        onOpenChange={(open) => {
+          setShowReviewModal(open);
+          if (!open) {
+            setApprovalFiles([]);
+            setExistingApprovalFiles([]);
+            resetApprovalUploadProgress();
+          }
+        }}
+      >
         <DialogContent
           className="review-approval-dialog w-[92vw] max-w-4xl !p-0 !top-1/2 !-translate-y-1/2 !max-h-[calc(100vh-1.25rem)] !overflow-hidden !flex !flex-col"
         >
           <DialogHeader className="px-6 pt-3 pb-1">
             <DialogTitle className="flex items-center gap-2">
               <Eye className="w-5 h-5 text-blue-600" />
-              {reviewActionLabel} Solicitud
+              {reviewActionLabel}
             </DialogTitle>
             <DialogDescription>
-              Confirma los detalles antes de {reviewActionLabel.toLowerCase()} la solicitud
+              Registra el concepto del revisor para que el aprobador tome la decision final
             </DialogDescription>
           </DialogHeader>
 
@@ -2084,14 +2423,41 @@ export function ReviewRequestsModule() {
               </div>
             </div>
 
+            {reviewAction === 'approve' &&
+              selectedRequest?.approvalStatus === 'OBSERVATION' &&
+              selectedRequest.approverNotes && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <MessageSquare className="mt-0.5 h-5 w-5 text-amber-700" />
+                    <div className="text-sm">
+                      <p className="font-semibold text-amber-900">
+                        Observacion del aprobador
+                      </p>
+                      <p className="mt-1 text-amber-800">
+                        {selectedRequest.approverNotes}
+                      </p>
+                      <p className="mt-2 text-xs text-amber-700">
+                        Los datos y archivos cargados previamente se conservan.
+                        Corrige solo lo necesario y vuelve a enviar.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
-                Notas de Revisión<span className="text-red-500"> *</span>
+                {reviewAction === 'approve' ? 'Notas de Revisión' : 'Descripción del rechazo'}
+                <span className="text-red-500"> *</span>
               </label>
               <textarea
                 value={reviewNotes}
                 onChange={(e) => setReviewNotes(e.target.value.slice(0, REVIEW_NOTES_MAX_LENGTH))}
-                placeholder="Describe los hallazgos de la revisión..."
+                placeholder={
+                  reviewAction === 'approve'
+                    ? 'Describe la informacion revisada y los soportes cargados...'
+                    : 'Describe la novedad encontrada para que el aprobador la evalúe...'
+                }
                 className="review-approval-input w-full p-3 border-2 border-gray-300 rounded-lg text-sm resize-none focus:border-[#003DA5]"
                 style={{ minHeight: '120px' }}
                 maxLength={REVIEW_NOTES_MAX_LENGTH}
@@ -2322,16 +2688,26 @@ export function ReviewRequestsModule() {
                         accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
                         onChange={handleApprovalFilesChange}
                         className="sr-only"
-                        disabled={isLoadingApprovalData || approvalFiles.length >= MAX_APPROVAL_FILES}
+                        disabled={
+                          isLoadingApprovalData ||
+                          existingApprovalFiles.length + approvalFiles.length >=
+                            MAX_APPROVAL_FILES
+                        }
                       />
                       <label
                         htmlFor="approval-files-input"
                         className={`inline-flex items-center rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                          isLoadingApprovalData || approvalFiles.length >= MAX_APPROVAL_FILES
+                          isLoadingApprovalData ||
+                          existingApprovalFiles.length + approvalFiles.length >=
+                            MAX_APPROVAL_FILES
                             ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
                             : 'cursor-pointer border-[#003DA5] bg-[#EFF6FF] text-[#003DA5] hover:bg-[#DBEAFE]'
                         }`}
-                        aria-disabled={isLoadingApprovalData || approvalFiles.length >= MAX_APPROVAL_FILES}
+                        aria-disabled={
+                          isLoadingApprovalData ||
+                          existingApprovalFiles.length + approvalFiles.length >=
+                            MAX_APPROVAL_FILES
+                        }
                       >
                         Elegir archivos
                       </label>
@@ -2340,6 +2716,45 @@ export function ReviewRequestsModule() {
                       {`Archivos del título (opcional, máx. ${MAX_APPROVAL_FILES}, ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo)`}
                     </label>
                   </div>
+                  {existingApprovalFiles.length > 0 && (
+                    <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+                      <p className="mb-2 text-xs font-semibold text-blue-900">
+                        Archivos ya cargados por el revisor
+                      </p>
+                      <div className="space-y-2">
+                        {existingApprovalFiles.map((file) => (
+                          <div
+                            key={file.id}
+                            className="flex items-center justify-between gap-3 rounded-md border border-blue-100 bg-white px-3 py-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-gray-900">
+                                {file.originalName}
+                              </p>
+                              <p className="text-gray-500">
+                                {formatBytes(file.sizeBytes)}
+                                {file.uploadedAt
+                                  ? ` - ${formatDate(file.uploadedAt)}`
+                                  : ''}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExistingApprovalFile(file.id)}
+                              className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 font-semibold text-red-600 hover:bg-red-50"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              Quitar
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-xs text-blue-800">
+                        Si un archivo estaba mal, quitalo y adjunta la version
+                        corregida. Los demas se conservaran.
+                      </p>
+                    </div>
+                  )}
                   {approvalFiles.length > 0 ? (
                     <>
                       <p className="text-xs text-gray-600">
@@ -2376,11 +2791,11 @@ export function ReviewRequestsModule() {
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 mt-0.5 text-amber-600" />
                 <div className="text-xs text-amber-800">
-                  <p className="font-semibold mb-1">Al completar la revisión:</p>
+                  <p className="font-semibold mb-1">Al enviar el concepto:</p>
                   <ul className="list-disc list-inside space-y-0.5">
-                    <li>Se notificará al solicitante</li>
-                    <li>El estado cambiará según la resolución</li>
-                    <li>Esta acción quedará registrada en auditoría</li>
+                    <li>No se genera certificado ni correo final todavia</li>
+                    <li>La solicitud queda pendiente de aprobacion final</li>
+                    <li>Esta accion queda registrada en la linea de tiempo</li>
                   </ul>
                 </div>
               </div>

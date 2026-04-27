@@ -248,24 +248,28 @@ export class ConsultasJuridicasService implements OnModuleInit {
         return this.consultaRepository.save(consulta);
     }
 
-    async updateRespuesta(id: string, respuesta: string, enviar: boolean, usuario: string = 'Sistema'): Promise<ConsultaJuridica> {
+    async updateRespuesta(id: string, respuesta: string, enviar: boolean, usuario: string = 'Sistema', destinatariosAdicionales?: string[]): Promise<ConsultaJuridica> {
         const consulta = await this.findOne(id);
         const estadoAnterior = consulta.estado;
 
         consulta.respuesta = respuesta;
 
+        if (destinatariosAdicionales && destinatariosAdicionales.length > 0) {
+            consulta.destinatariosAdicionales = JSON.stringify(destinatariosAdicionales);
+        }
+
         if (enviar) {
             consulta.fechaRespuesta = new Date();
             consulta.estado = 'respondido';
-            consulta.tipoRespuesta = consulta.tipoRespuesta || 'favorable'; // Default si no se especifica
+            consulta.tipoRespuesta = consulta.tipoRespuesta || 'favorable';
 
-            // Log events for send action
+            const usuarioLog = usuario || 'Sistema';
             await this.registrarEvento(
                 id,
                 'RESPUESTA',
                 'Respuesta enviada (desde editor)',
                 'Respuesta enviada directamente desde el editor de texto',
-                'Sistema' // TODO: Pass user here if possible
+                usuarioLog
             );
 
             if (estadoAnterior !== consulta.estado) {
@@ -274,7 +278,7 @@ export class ConsultasJuridicasService implements OnModuleInit {
                     'CAMBIO_ETAPA',
                     `Cambio de etapa: ${estadoAnterior} -> ${consulta.estado}`,
                     'Cierre automático por envío de respuesta',
-                    'Sistema'
+                    usuarioLog
                 );
             }
         }

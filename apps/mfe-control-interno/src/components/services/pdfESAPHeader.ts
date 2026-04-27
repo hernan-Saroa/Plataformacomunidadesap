@@ -244,7 +244,7 @@ export function dibujarPieInstitucional(
 
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
-  doc.setTextColor(80, 80, 80);
+  doc.setTextColor(0, 0, 0);
 
   if (incluirContacto) {
     // Línea separadora

@@ -161,7 +161,9 @@ export function ModuloAsesoriaJuridicaV3() {
         timeline: [],
         respuesta: c.respuesta || '',
         fechaRespuesta: c.fechaRespuesta || null,
-        estado: c.estado || ''
+        destinatariosAdicionales: c.destinatariosAdicionales || null,
+        estado: c.estado || '',
+        documentoRespuestaUrl: c.documentoRespuestaUrl || null
       }));
       setConsultas(mapped);
       // Sincronizar consultaSeleccionada con los datos frescos para que el modal expediente
@@ -635,8 +637,8 @@ export function ModuloAsesoriaJuridicaV3() {
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Asesoría Jurídica"
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_CREATE) ? handleRestaurar : undefined}
+          onEliminarPermanente={authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_CREATE) ? handleEliminarPermanente : undefined}
         />
       )}
 

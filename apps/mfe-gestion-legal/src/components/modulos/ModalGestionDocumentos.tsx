@@ -18,7 +18,7 @@ import {
 import { toast } from 'sonner';
 import { ocService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
-
+import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 interface DocumentoSeleccionado {
@@ -485,14 +485,16 @@ export function ModalGestionDocumentos({
                       >
                         <Download className="w-4 h-4" />
                       </Button> */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEliminarCargado(doc.id)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_ELABORAR) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEliminarCargado(doc.id)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}

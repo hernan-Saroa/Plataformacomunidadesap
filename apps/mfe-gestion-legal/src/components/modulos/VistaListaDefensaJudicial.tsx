@@ -502,29 +502,39 @@ function FilaExpedienteTabla({ expediente, semaforo, etapaConfig, index, estados
 
         {/* Etapa */}
         <td className="px-4 py-3">
-          <Select
-            value={expediente.etapa}
-            onValueChange={(value: string) => onMoverExpediente && onMoverExpediente(expediente.id, value)}
-          >
-            <SelectTrigger
-              className="h-auto py-1 px-2.5 border rounded-full font-semibold focus:ring-0 w-fit text-xs"
-              style={{
-                backgroundColor: etapaConfig.bg,
-                borderColor: etapaConfig.border,
-                color: etapaConfig.text
-              }}
+          {onMoverExpediente ? (
+            <Select
+              value={expediente.etapa}
+              onValueChange={(value: string) => onMoverExpediente(expediente.id, value)}
             >
-              <div className="flex items-center gap-1.5 flex-1 min-w-0 pr-2">
-                {etapaConfig.icono}
-                <SelectValue />
-              </div>
-            </SelectTrigger>
-            <SelectContent className="z-[100000]">
-              {estadosActivos.map(estado => (
-                <SelectItem key={estado.id} value={estado.nombre}>{estado.nombre}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              <SelectTrigger
+                className="h-auto py-1 px-2.5 border rounded-full font-semibold focus:ring-0 w-fit text-xs"
+                style={{
+                  backgroundColor: etapaConfig.bg,
+                  borderColor: etapaConfig.border,
+                  color: etapaConfig.text
+                }}
+              >
+                <div className="flex items-center gap-1.5 flex-1 min-w-0 pr-2">
+                  {etapaConfig.icono}
+                  <SelectValue />
+                </div>
+              </SelectTrigger>
+              <SelectContent className="z-[100000]">
+                {estadosActivos.map(estado => (
+                  <SelectItem key={estado.id} value={estado.nombre}>{estado.nombre}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <span
+              className="inline-flex items-center gap-1.5 py-1 px-2.5 border rounded-full font-semibold text-xs"
+              style={{ backgroundColor: etapaConfig.bg, borderColor: etapaConfig.border, color: etapaConfig.text }}
+            >
+              {etapaConfig.icono}
+              {expediente.etapa}
+            </span>
+          )}
         </td>
 
         {/* Profesional */}
@@ -733,29 +743,39 @@ function FilaExpedienteMobile({ expediente, semaforo, etapaConfig, estadosActivo
                 <p className="text-xs text-gray-600 truncate">{expediente.medioControl}</p>
               </div>
             </div>
-            <Select
-              value={expediente.etapa}
-              onValueChange={(value: string) => onMoverExpediente && onMoverExpediente(expediente.id, value)}
-            >
-              <SelectTrigger
-                className="h-auto py-1 px-2.5 border rounded-full font-semibold focus:ring-0 flex-shrink-0 text-xs w-auto min-w-[120px]"
-                style={{
-                  backgroundColor: etapaConfig.bg,
-                  borderColor: etapaConfig.border,
-                  color: etapaConfig.text
-                }}
+            {onMoverExpediente ? (
+              <Select
+                value={expediente.etapa}
+                onValueChange={(value: string) => onMoverExpediente(expediente.id, value)}
               >
-                <div className="flex items-center gap-1 flex-1 pr-1">
-                  {etapaConfig.icono}
-                  <SelectValue />
-                </div>
-              </SelectTrigger>
-              <SelectContent className="z-[100000]">
-                {estadosActivos.map(estado => (
-                  <SelectItem key={estado.id} value={estado.nombre}>{estado.nombre}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                <SelectTrigger
+                  className="h-auto py-1 px-2.5 border rounded-full font-semibold focus:ring-0 flex-shrink-0 text-xs w-auto min-w-[120px]"
+                  style={{
+                    backgroundColor: etapaConfig.bg,
+                    borderColor: etapaConfig.border,
+                    color: etapaConfig.text
+                  }}
+                >
+                  <div className="flex items-center gap-1 flex-1 pr-1">
+                    {etapaConfig.icono}
+                    <SelectValue />
+                  </div>
+                </SelectTrigger>
+                <SelectContent className="z-[100000]">
+                  {estadosActivos.map(estado => (
+                    <SelectItem key={estado.id} value={estado.nombre}>{estado.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <span
+                className="inline-flex items-center gap-1 py-1 px-2.5 border rounded-full font-semibold flex-shrink-0 text-xs"
+                style={{ backgroundColor: etapaConfig.bg, borderColor: etapaConfig.border, color: etapaConfig.text }}
+              >
+                {etapaConfig.icono}
+                {expediente.etapa}
+              </span>
+            )}
           </div>
 
           {/* Demandante */}

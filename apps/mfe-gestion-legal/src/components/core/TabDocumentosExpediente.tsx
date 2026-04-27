@@ -316,7 +316,7 @@ export function TabDocumentosExpediente({
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            {usaPlantillas ? (
+            {usaPlantillas && onUploadDocument ? (
               <Button
                 size="sm"
                 onClick={() => setModalPlantillas(true)}
@@ -326,7 +326,7 @@ export function TabDocumentosExpediente({
                 <Library className="w-4 h-4 mr-1.5" />
                 Plantillas
               </Button>
-            ) : (
+            ) : !usaPlantillas && onUploadDocument ? (
               <Button
                 size="sm"
                 onClick={handleSubirDocumento}
@@ -336,7 +336,7 @@ export function TabDocumentosExpediente({
                 <FolderOpen className="w-4 h-4 mr-1.5" />
                 Subir Documento
               </Button>
-            )}
+            ) : null}
             <Button
               size="sm"
               variant="outline"
@@ -465,7 +465,7 @@ export function TabDocumentosExpediente({
         )}
 
         {/* Banner plantillas — solo para Actas, Autos y Oficios */}
-        {usaPlantillas && (
+        {usaPlantillas && onUploadDocument && (
           <Card
             className="p-3 border-2 cursor-pointer hover:shadow-md transition-all"
             style={{ borderColor: '#2962FF30', background: 'linear-gradient(135deg, #2962FF08 0%, #003DA510 100%)' }}
@@ -666,20 +666,22 @@ export function TabDocumentosExpediente({
                                 >
                                   <Download className="w-4 h-4" />
                                 </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-8 px-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 gap-1"
-                                  title="Subir PDF diligenciado al expediente"
-                                  onClick={() => handleSubirAlExpediente(plantilla)}
-                                  disabled={subiendoAlExpediente}
-                                >
-                                  {subiendoAlExpediente
-                                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                    : <BookOpen className="w-3.5 h-3.5" />
-                                  }
-                                  Subir
-                                </Button>
+                                {onUploadDocument && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 px-2.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 gap-1"
+                                    title="Subir PDF diligenciado al expediente"
+                                    onClick={() => handleSubirAlExpediente(plantilla)}
+                                    disabled={subiendoAlExpediente}
+                                  >
+                                    {subiendoAlExpediente
+                                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      : <BookOpen className="w-3.5 h-3.5" />
+                                    }
+                                    Subir
+                                  </Button>
+                                )}
                               </div>
                             </div>
                           </Card>
@@ -713,19 +715,21 @@ export function TabDocumentosExpediente({
                       <Download className="w-4 h-4 mr-1.5" />
                       Descargar Plantilla
                     </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => handleSubirAlExpediente(plantillaDetalle)}
-                      className="font-semibold"
-                      style={{ background: '#003DA5', color: '#FFFFFF' }}
-                      disabled={subiendoAlExpediente}
-                    >
-                      {subiendoAlExpediente
-                        ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
-                        : <BookOpen className="w-4 h-4 mr-1.5" />
-                      }
-                      Subir al Expediente
-                    </Button>
+                    {onUploadDocument && (
+                      <Button
+                        size="sm"
+                        onClick={() => handleSubirAlExpediente(plantillaDetalle)}
+                        className="font-semibold"
+                        style={{ background: '#003DA5', color: '#FFFFFF' }}
+                        disabled={subiendoAlExpediente}
+                      >
+                        {subiendoAlExpediente
+                          ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                          : <BookOpen className="w-4 h-4 mr-1.5" />
+                        }
+                        Subir al Expediente
+                      </Button>
+                    )}
                   </>
                 )}
               </div>

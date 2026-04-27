@@ -29,7 +29,6 @@ interface ModalCrearTareaProps {
   tareaInicial?: any;
   onGuardar?: (tarea: any) => void;
   modoEdicion?: boolean;
-  abogadosDisponibles?: { nombre: string; rol: string }[];
 }
 
 export function ModalCrearTarea({
@@ -39,7 +38,6 @@ export function ModalCrearTarea({
   tareaInicial,
   onGuardar,
   modoEdicion = false,
-  abogadosDisponibles = []
 }: ModalCrearTareaProps) {
   const [titulo, setTitulo] = useState('');
   const [descripcion, setDescripcion] = useState('');
@@ -49,6 +47,8 @@ export function ModalCrearTarea({
   const [estado, setEstado] = useState<'Pendiente' | 'En proceso'>('Pendiente');
   const [enviandoTarea, setEnviandoTarea] = useState(false);
 
+  const abogadoDelProceso = expediente.abogadoAsignado || 'Sin asignar (Temporal)';
+
   // Limpiar campos al abrir el modal (o cargar datos si es edición)
   useEffect(() => {
     if (isOpen) {
@@ -57,51 +57,19 @@ export function ModalCrearTarea({
         setDescripcion(tareaInicial.descripcion || '');
         setFechaVencimiento(tareaInicial.vencimiento || '');
         setPrioridad(tareaInicial.prioridad || 'Media');
-        setResponsableSeleccionado(tareaInicial.responsable || '');
         setEstado(tareaInicial.estado === 'Completado' ? 'Pendiente' : (tareaInicial.estado || 'Pendiente'));
       } else {
         setTitulo('');
         setDescripcion('');
         setFechaVencimiento('');
         setPrioridad('Media');
-        setResponsableSeleccionado('');
         setEstado('Pendiente');
       }
+      // El responsable siempre es el abogado a cargo del proceso
+      setResponsableSeleccionado(abogadoDelProceso);
       setEnviandoTarea(false);
     }
   }, [isOpen, modoEdicion, tareaInicial]);
-
-  // Usuarios disponibles para asignar
-  const usuariosDisponibles = [
-    {
-      id: '1',
-      nombre: expediente.abogadoAsignado,
-      cargo: 'Abogado Defensor',
-      avatar: expediente.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2),
-      email: `${expediente.abogadoAsignado.toLowerCase().replace(/ /g, '.')}@esap.edu.co`
-    },
-    {
-      id: '2',
-      nombre: 'María Fernanda Rodríguez',
-      cargo: 'Auxiliar Jurídico',
-      avatar: 'MR',
-      email: 'maria.rodriguez@esap.edu.co'
-    },
-    {
-      id: '3',
-      nombre: 'Carlos Eduardo Méndez',
-      cargo: 'Coordinador Jurídico',
-      avatar: 'CM',
-      email: 'carlos.mendez@esap.edu.co'
-    },
-    {
-      id: '4',
-      nombre: 'Ana Patricia López',
-      cargo: 'Abogada Defensa',
-      avatar: 'AL',
-      email: 'ana.lopez@esap.edu.co'
-    }
-  ];
 
   const handleCrear = async () => {
     // Validación
@@ -122,13 +90,6 @@ export function ModalCrearTarea({
     if (!fechaVencimiento) {
       toast.error('❌ Campo requerido', {
         description: 'La fecha de vencimiento es obligatoria'
-      });
-      return;
-    }
-
-    if (!responsableSeleccionado) {
-      toast.error('❌ Selecciona un responsable', {
-        description: 'Debes asignar la tarea a un miembro del equipo'
       });
       return;
     }
@@ -414,42 +375,21 @@ export function ModalCrearTarea({
             </div>
           )}
 
-          {/* Asignar responsable */}
+          {/* Responsable — siempre el abogado a cargo del proceso */}
           <div>
             <Label className="text-sm font-bold text-gray-700 mb-3 block">
-              👤 Asignar responsable <span className="text-red-500">*</span>
+              👤 Responsable
             </Label>
-            <div className="w-full">
-              {abogadosDisponibles.length > 0 ? (
-                <>
-                  <select
-                    value={responsableSeleccionado}
-                    onChange={(e) => setResponsableSeleccionado(e.target.value)}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  >
-                    <option value="">Selecciona un responsable...</option>
-                    {abogadosDisponibles.map((abogado, idx) => (
-                      <option key={`${abogado.nombre}-${idx}`} value={abogado.nombre}>
-                        {abogado.nombre} — {abogado.rol}
-                      </option>
-                    ))}
-                  </select>
-                  {responsableSeleccionado && (
-                    <p className="text-xs text-green-600 mt-1.5 flex items-center gap-1">
-                      <CheckCircle className="w-3 h-3" />
-                      {abogadosDisponibles.find(a => a.nombre === responsableSeleccionado)?.rol || 'Responsable seleccionado'}
-                    </p>
-                  )}
-                </>
-              ) : (
-                <Input
-                  value={responsableSeleccionado}
-                  onChange={(e) => setResponsableSeleccionado(e.target.value)}
-                  placeholder="Escribe el nombre del responsable..."
-                  className="text-sm"
-                />
-              )}
-            </div>
+            <Card className="p-3 bg-gray-50 border-gray-200 flex items-center gap-3">
+              <div className="p-2 rounded-full bg-blue-100">
+                <User className="w-4 h-4 text-blue-700" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-gray-900">{abogadoDelProceso}</p>
+                <p className="text-xs text-gray-500">Abogado a cargo del proceso</p>
+              </div>
+              <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+            </Card>
           </div>
 
           {/* Alerta informativa */}

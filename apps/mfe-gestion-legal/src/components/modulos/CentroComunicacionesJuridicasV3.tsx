@@ -447,6 +447,9 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   // Estado para reply pre-populate
   const [replyData, setReplyData] = useState<{ to: string; subject: string; body: string } | null>(null);
 
+  // Filtro adicional: Medios de Control (filtra correos cuyo origen es un órgano de control)
+  const [filtroMedioControl, setFiltroMedioControl] = useState<string>('todos');
+
   // Estado para el nuevo modal de responder
   const [modalResponderOpen, setModalResponderOpen] = useState(false);
   const [correoParaResponder, setCorreoParaResponder] = useState<CorreoOriginalData | null>(null);
@@ -637,6 +640,22 @@ export function ModuloCentroComunicacionesJuridicasV3() {
         break;
     }
 
+    // Filtrar por Medios de Control (solo aplica en tab 'correos')
+    if (tabActiva === 'correos' && filtroMedioControl !== 'todos') {
+      const ORGANOS_CONTROL_KEYWORDS: Record<string, string[]> = {
+        contraloria: ['contralor', 'cgr', 'contraloría', 'contraloria'],
+        procuraduria: ['procuradur', 'pgn', 'procuraduría'],
+        personeria: ['personero', 'personería', 'personeria'],
+        defensoria: ['defensor', 'defensoría', 'defensoria del pueblo'],
+        fiscalia: ['fiscal', 'fiscalía', 'fiscalia'],
+      };
+      const keywords = ORGANOS_CONTROL_KEYWORDS[filtroMedioControl] || [];
+      resultado = resultado.filter(c => {
+        const haystack = `${c.remitente} ${c.remitenteEmail || ''} ${c.moduloSugerido || ''}`.toLowerCase();
+        return keywords.some(kw => haystack.includes(kw));
+      });
+    }
+
     // Filtrar por búsqueda
     if (busqueda) {
       resultado = resultado.filter(c =>
@@ -652,7 +671,7 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     return resultado.sort((a, b) => {
       return b.fechaRadicacion.getTime() - a.fechaRadicacion.getTime();
     });
-  }, [comunicaciones, tabActiva, busqueda]);
+  }, [comunicaciones, tabActiva, busqueda, filtroMedioControl]);
 
   // ✨ Aplicar paginación
   const totalPaginas = Math.ceil(comunicacionesFiltradas.length / ITEMS_POR_PAGINA);
@@ -662,9 +681,10 @@ export function ModuloCentroComunicacionesJuridicasV3() {
     return comunicacionesFiltradas.slice(inicio, fin);
   }, [comunicacionesFiltradas, paginaActual, ITEMS_POR_PAGINA]);
 
-  // Resetear página cuando cambian filtros
+  // Resetear página y filtros adicionales cuando cambia el tab
   useEffect(() => {
     setPaginaActual(1);
+    setFiltroMedioControl('todos');
   }, [tabActiva, busqueda]);
 
   // Calcular estadísticas
@@ -1088,6 +1108,25 @@ export function ModuloCentroComunicacionesJuridicasV3() {
               className="pl-10"
             />
           </div>
+          {/* Filtro Medios de Control — visible solo en tab Correos */}
+          {tabActiva === 'correos' && (
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
+              <select
+                value={filtroMedioControl}
+                onChange={(e) => setFiltroMedioControl(e.target.value)}
+                className="text-sm border border-gray-300 rounded-md px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                aria-label="Filtrar por medio de control"
+              >
+                <option value="todos">Todos los remitentes</option>
+                <option value="contraloria">Contraloría General</option>
+                <option value="procuraduria">Procuraduría General</option>
+                <option value="personeria">Personería</option>
+                <option value="defensoria">Defensoría del Pueblo</option>
+                <option value="fiscalia">Fiscalía General</option>
+              </select>
+            </div>
+          )}
           {seleccionadas.size > 0 && (
             <div className="flex gap-2">
               <Button

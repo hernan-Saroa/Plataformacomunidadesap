@@ -7,7 +7,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DeepPartial, Raw, Repository } from 'typeorm';
+import { DeepPartial, In, Raw, Repository } from 'typeorm';
 import { Graduate } from './graduate.entity';
 import { GraduationCertificateRequest } from './graduation-certificate-request.entity';
 import { GraduationCertificate } from './graduation-certificate.entity';
@@ -17,9 +17,15 @@ import { Signer } from './signer.entity';
 import { TemplateConfig } from './template-config.entity';
 import { TemplateConfigChange } from './template-config-change.entity';
 import { GraduateFile } from './graduate-file.entity';
+import { GraduationRequestReviewFile } from './graduation-request-review-file.entity';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { LandingCertificateRequestDto } from './dto/landing-certificate-request.dto';
-import { ApproveRequestDto } from './dto/approve-request.dto';
+import {
+  ApproveRequestDto,
+  ResolveReviewApprovalDto,
+  ReviewDecision,
+  SubmitReviewDecisionDto,
+} from './dto/approve-request.dto';
 import { UpdateGraduateDto } from './dto/update-graduate.dto';
 import { UpdateCertificateDto } from './dto/update-certificate.dto';
 import { UpdateTemplateTextsDto } from './dto/update-template-texts.dto';
@@ -102,6 +108,8 @@ export class GraduationCertificatesService {
     private templateConfigChangeRepository: Repository<TemplateConfigChange>,
     @InjectRepository(GraduateFile)
     private graduateFileRepository: Repository<GraduateFile>,
+    @InjectRepository(GraduationRequestReviewFile)
+    private reviewFileRepository: Repository<GraduationRequestReviewFile>,
     private pdfGeneratorService: PdfGeneratorService,
     private graduateOracleIntegrationService: GraduateOracleIntegrationService,
   ) {}
@@ -127,6 +135,207 @@ export class GraduationCertificatesService {
     if (value === null || value === undefined) return null;
     const text = String(value).trim();
     return text || null;
+  }
+
+  private getMojibakeScore(value: string) {
+    return (value.match(/[ÃÂ�]/g) || []).length;
+  }
+
+  private normalizeOriginalFileName(value?: string | null) {
+    const original =
+      path
+        .basename(String(value || 'archivo'))
+        .replace(/[\u0000-\u001F\u007F]/g, '')
+        .trim() || 'archivo';
+
+    if (!this.getMojibakeScore(original)) {
+      return original;
+    }
+
+    const decoded = Buffer.from(original, 'latin1').toString('utf8').trim();
+    if (
+      decoded &&
+      !decoded.includes('�') &&
+      this.getMojibakeScore(decoded) < this.getMojibakeScore(original)
+    ) {
+      return decoded;
+    }
+
+    return original;
+  }
+
+  private normalizeReviewFilesForResponse<
+    T extends { reviewFiles?: GraduationRequestReviewFile[] },
+  >(item: T) {
+    if (Array.isArray(item.reviewFiles)) {
+      item.reviewFiles.forEach((file) => {
+        file.originalName = this.normalizeOriginalFileName(file.originalName);
+      });
+    }
+    return item;
+  }
+
+  private appendReviewTimeline(
+    request: GraduationCertificateRequest,
+    entry: {
+      type: string;
+      label: string;
+      notes?: string;
+      actorId?: string;
+      actorName?: string;
+      actorEmail?: string;
+      createdAt?: Date;
+    },
+  ) {
+    const currentTimeline = Array.isArray(request.reviewTimeline)
+      ? request.reviewTimeline
+      : [];
+
+    request.reviewTimeline = [
+      ...currentTimeline,
+      {
+        type: entry.type,
+        label: entry.label,
+        ...(entry.notes ? { notes: entry.notes } : {}),
+        ...(entry.actorId ? { actorId: entry.actorId } : {}),
+        ...(entry.actorName ? { actorName: entry.actorName } : {}),
+        ...(entry.actorEmail ? { actorEmail: entry.actorEmail } : {}),
+        createdAt: (entry.createdAt || new Date()).toISOString(),
+      },
+    ];
+  }
+
+  private getTimelineFileCount(notes?: string) {
+    const match = String(notes || '').match(/(\d+)/);
+    return match ? Number(match[1]) || 0 : 0;
+  }
+
+  private appendOrMergeReviewFileUploadTimeline(
+    request: GraduationCertificateRequest,
+    entry: {
+      fileCount: number;
+      actorName?: string;
+      actorEmail?: string;
+      createdAt?: Date;
+    },
+  ) {
+    const currentTimeline = Array.isArray(request.reviewTimeline)
+      ? request.reviewTimeline
+      : [];
+    const lastEvent = currentTimeline[currentTimeline.length - 1];
+    const now = entry.createdAt || new Date();
+    const lastEventTime = lastEvent?.createdAt
+      ? new Date(lastEvent.createdAt).getTime()
+      : Number.NaN;
+    const sameActor =
+      (lastEvent?.actorEmail || '') === (entry.actorEmail || '') &&
+      (lastEvent?.actorName || '') === (entry.actorName || '');
+    const withinUploadWindow =
+      !Number.isNaN(lastEventTime) &&
+      Math.abs(now.getTime() - lastEventTime) <= 15 * 60 * 1000;
+
+    if (
+      lastEvent?.type === 'review_files_uploaded' &&
+      sameActor &&
+      withinUploadWindow
+    ) {
+      const nextTimeline = [...currentTimeline];
+      const nextCount =
+        this.getTimelineFileCount(lastEvent.notes) + entry.fileCount;
+      nextTimeline[nextTimeline.length - 1] = {
+        ...lastEvent,
+        label: 'Archivos de soporte cargados',
+        notes: `${nextCount} archivo(s) adjunto(s)`,
+        createdAt: now.toISOString(),
+      };
+      request.reviewTimeline = nextTimeline;
+      return;
+    }
+
+    this.appendReviewTimeline(request, {
+      type: 'review_files_uploaded',
+      label: 'Archivos de soporte cargados',
+      notes: `${entry.fileCount} archivo(s) adjunto(s)`,
+      actorName: entry.actorName,
+      actorEmail: entry.actorEmail,
+      createdAt: now,
+    });
+  }
+
+  private buildReviewPayload(payload: ApproveRequestDto) {
+    const keys: Array<keyof ApproveRequestDto> = [
+      'fullName',
+      'idNumber',
+      'email',
+      'phone',
+      'programName',
+      'programType',
+      'degreeTitle',
+      'graduationDate',
+      'campus',
+      'seccionalName',
+      'numRegistro',
+      'numFolio',
+      'numLibro',
+    ];
+
+    const reviewPayload: Record<string, unknown> = {};
+    for (const key of keys) {
+      const value = payload[key];
+      if (value === undefined || value === null) continue;
+      reviewPayload[key] =
+        value instanceof Date ? value.toISOString() : String(value).trim();
+    }
+
+    return reviewPayload;
+  }
+
+  private buildApprovePayloadFromReview(
+    request: GraduationCertificateRequest,
+    fallbackReason?: string,
+  ): ApproveRequestDto {
+    const savedPayload =
+      request.reviewPayload && typeof request.reviewPayload === 'object'
+        ? (request.reviewPayload as Record<string, unknown>)
+        : {};
+
+    return {
+      reviewNotes:
+        request.reviewRecommendationReason ||
+        fallbackReason ||
+        request.reviewNotes ||
+        'Aprobado por revision manual',
+      reviewerName: request.reviewSubmittedByName || request.reviewerName,
+      reviewerId: request.reviewSubmittedBy || request.reviewedBy,
+      fullName: this.toNullableText(savedPayload.fullName) || undefined,
+      idNumber: this.toNullableText(savedPayload.idNumber) || undefined,
+      email: this.toNullableText(savedPayload.email) || undefined,
+      phone: this.toNullableText(savedPayload.phone) || undefined,
+      programName: this.toNullableText(savedPayload.programName) || undefined,
+      programType: this.toNullableText(savedPayload.programType) || undefined,
+      degreeTitle: this.toNullableText(savedPayload.degreeTitle) || undefined,
+      graduationDate:
+        this.toNullableText(savedPayload.graduationDate) || undefined,
+      campus: this.toNullableText(savedPayload.campus) || undefined,
+      seccionalName:
+        this.toNullableText(savedPayload.seccionalName) || undefined,
+      numRegistro: this.toNullableText(savedPayload.numRegistro) || undefined,
+      numFolio: this.toNullableText(savedPayload.numFolio) || undefined,
+      numLibro: this.toNullableText(savedPayload.numLibro) || undefined,
+    };
+  }
+
+  private getReviewDecisionLabel(decision: ReviewDecision) {
+    switch (decision) {
+      case 'APPROVED':
+        return 'Concepto del revisor: aprobar';
+      case 'REJECTED':
+        return 'Concepto del revisor: rechazar';
+      case 'OBSERVATION':
+        return 'Concepto del revisor: observacion';
+      default:
+        return 'Concepto del revisor';
+    }
   }
 
   private compareGraduateValue(
@@ -2619,6 +2828,7 @@ export class GraduationCertificatesService {
     });
     return files.map((file) => ({
       ...file,
+      originalName: this.normalizeOriginalFileName(file.originalName),
       url: `/uploads/graduate-files/${file.storedName}`,
     }));
   }
@@ -2658,6 +2868,7 @@ export class GraduationCertificatesService {
       throw new NotFoundException('Archivo no encontrado en almacenamiento');
     }
 
+    file.originalName = this.normalizeOriginalFileName(file.originalName);
     return { file, filePath };
   }
 
@@ -2714,7 +2925,7 @@ export class GraduationCertificatesService {
     const records = files.map((file) =>
       this.graduateFileRepository.create({
         graduateId: graduate.id,
-        originalName: file.originalname,
+        originalName: this.normalizeOriginalFileName(file.originalname),
         storedName: file.filename,
         mimeType: file.mimetype,
         sizeBytes: file.size,
@@ -2725,6 +2936,7 @@ export class GraduationCertificatesService {
     const saved = await this.graduateFileRepository.save(records);
     return saved.map((file) => ({
       ...file,
+      originalName: this.normalizeOriginalFileName(file.originalName),
       url: `/uploads/graduate-files/${file.storedName}`,
     }));
   }
@@ -2760,6 +2972,220 @@ export class GraduationCertificatesService {
   /**
    * ADMIN: Buscar graduado por cédula
    */
+  async listarArchivosRevisionSolicitud(requestId: string) {
+    const request = await this.requestRepository.findOne({
+      where: { id: requestId },
+    });
+    if (!request) {
+      throw new NotFoundException('Solicitud no encontrada');
+    }
+
+    const files = await this.reviewFileRepository.find({
+      where: { requestId },
+      order: { uploadedAt: 'DESC' },
+    });
+
+    return files.map((file) => ({
+      ...file,
+      originalName: this.normalizeOriginalFileName(file.originalName),
+      url: `/uploads/graduation-review-files/${file.storedName}`,
+    }));
+  }
+
+  async obtenerArchivoRevisionSolicitudParaDescarga(
+    requestId: string,
+    fileId: string,
+  ) {
+    const file = await this.reviewFileRepository.findOne({
+      where: { id: fileId, requestId },
+    });
+    if (!file) {
+      throw new NotFoundException('Archivo no encontrado');
+    }
+
+    const storageDir = path.join(
+      process.cwd(),
+      'uploads',
+      'graduation-review-files',
+    );
+    const filePath = path.join(storageDir, file.storedName);
+
+    if (!fs.existsSync(filePath)) {
+      this.logger.warn(
+        `Archivo fisico de revision no encontrado para requestId=${requestId}, fileId=${fileId}, storedName=${file.storedName}`,
+      );
+      throw new NotFoundException('Archivo no encontrado en almacenamiento');
+    }
+
+    file.originalName = this.normalizeOriginalFileName(file.originalName);
+    return { file, filePath };
+  }
+
+  async eliminarArchivoRevisionSolicitud(requestId: string, fileId: string) {
+    const request = await this.requestRepository.findOne({
+      where: { id: requestId },
+    });
+    if (!request) {
+      throw new NotFoundException('Solicitud no encontrada');
+    }
+
+    await this.expireManualReviewRequestIfNeeded(request);
+    this.ensureManualReviewRequestIsActionable(request);
+
+    if (
+      ['PENDING_APPROVAL', 'APPROVED_FINAL', 'REJECTED_FINAL'].includes(
+        request.approvalStatus || '',
+      )
+    ) {
+      throw new BadRequestException(
+        'No se pueden modificar archivos en el estado actual de la solicitud',
+      );
+    }
+
+    const file = await this.reviewFileRepository.findOne({
+      where: { id: fileId, requestId },
+    });
+    if (!file) {
+      throw new NotFoundException('Archivo no encontrado');
+    }
+
+    const filePath = path.join(
+      process.cwd(),
+      'uploads',
+      'graduation-review-files',
+      file.storedName,
+    );
+
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (error) {
+        this.logger.warn(
+          `No se pudo eliminar el archivo fisico de revision ${filePath}: ${error}`,
+        );
+      }
+    }
+
+    await this.reviewFileRepository.delete({ id: fileId, requestId });
+    return { mensaje: 'Archivo eliminado correctamente' };
+  }
+
+  async subirArchivosRevisionSolicitud(
+    requestId: string,
+    files: Express.Multer.File[],
+    uploadedBy?: string,
+    uploadedByEmail?: string,
+  ) {
+    const request = await this.requestRepository.findOne({
+      where: { id: requestId },
+    });
+    if (!request) {
+      throw new NotFoundException('Solicitud no encontrada');
+    }
+    await this.expireManualReviewRequestIfNeeded(request);
+    this.ensureManualReviewRequestIsActionable(request);
+    if (
+      ['PENDING_APPROVAL', 'APPROVED_FINAL', 'REJECTED_FINAL'].includes(
+        request.approvalStatus || '',
+      )
+    ) {
+      throw new BadRequestException(
+        'No se pueden cargar archivos en el estado actual de la solicitud',
+      );
+    }
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No se recibieron archivos para cargar');
+    }
+
+    const existingCount = await this.reviewFileRepository.count({
+      where: { requestId },
+    });
+    if (existingCount + files.length > 5) {
+      throw new BadRequestException('Solo se permiten maximo 5 archivos');
+    }
+
+    const records = files.map((file) =>
+      this.reviewFileRepository.create({
+        requestId,
+        originalName: this.normalizeOriginalFileName(file.originalname),
+        storedName: file.filename,
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+        uploadedBy: uploadedBy || undefined,
+      }),
+    );
+
+    const saved = await this.reviewFileRepository.save(records);
+    this.appendOrMergeReviewFileUploadTimeline(request, {
+      fileCount: saved.length,
+      actorName: uploadedBy,
+      actorEmail: uploadedByEmail,
+    });
+    await this.requestRepository.save(request);
+
+    return saved.map((file) => ({
+      ...file,
+      originalName: this.normalizeOriginalFileName(file.originalName),
+      url: `/uploads/graduation-review-files/${file.storedName}`,
+    }));
+  }
+
+  private async copyReviewFilesToGraduate(
+    requestId: string,
+    graduateId: string,
+    uploadedBy?: string,
+  ) {
+    const reviewFiles = await this.reviewFileRepository.find({
+      where: { requestId },
+      order: { uploadedAt: 'ASC' },
+    });
+
+    if (!reviewFiles.length) {
+      return [];
+    }
+
+    const sourceDir = path.join(
+      process.cwd(),
+      'uploads',
+      'graduation-review-files',
+    );
+    const targetDir = path.join(process.cwd(), 'uploads', 'graduate-files');
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    const records: GraduateFile[] = [];
+    for (const file of reviewFiles) {
+      const sourcePath = path.join(sourceDir, file.storedName);
+      if (!fs.existsSync(sourcePath)) {
+        this.logger.warn(
+          `Archivo de revision no encontrado al copiar a graduado: ${sourcePath}`,
+        );
+        continue;
+      }
+
+      const ext = path.extname(file.storedName || file.originalName || '');
+      const targetName = `graduate-review-${Date.now()}-${Math.round(
+        Math.random() * 1e9,
+      )}${ext}`;
+      const targetPath = path.join(targetDir, targetName);
+      fs.copyFileSync(sourcePath, targetPath);
+
+      records.push(
+        this.graduateFileRepository.create({
+          graduateId,
+          originalName: this.normalizeOriginalFileName(file.originalName),
+          storedName: targetName,
+          mimeType: file.mimeType,
+          sizeBytes: file.sizeBytes,
+          uploadedBy: uploadedBy || file.uploadedBy || undefined,
+        }),
+      );
+    }
+
+    return records.length ? this.graduateFileRepository.save(records) : [];
+  }
+
   async buscarGraduadoPorCedula(idNumber: string) {
     const graduate = await this.graduateRepository.findOne({
       where: { idNumber: idNumber.trim() },
@@ -3252,14 +3678,15 @@ export class GraduationCertificatesService {
   async obtenerSolicitud(id: string) {
     const request = await this.requestRepository.findOne({
       where: { id },
-      relations: ['graduate'],
+      relations: ['graduate', 'reviewFiles'],
     });
 
     if (!request) {
       throw new NotFoundException('Solicitud no encontrada');
     }
 
-    return this.expireManualReviewRequestIfNeeded(request);
+    const currentRequest = await this.expireManualReviewRequestIfNeeded(request);
+    return this.normalizeReviewFilesForResponse(currentRequest);
   }
 
   /**
@@ -3268,11 +3695,245 @@ export class GraduationCertificatesService {
   async listarSolicitudesRevision() {
     await this.expireOverdueManualReviewRequests();
 
-    return await this.requestRepository.find({
+    const requests = await this.requestRepository.find({
       where: { manualReview: true },
-      relations: ['graduate'],
+      relations: ['graduate', 'reviewFiles'],
       order: { requestDate: 'DESC' },
     });
+
+    return requests.map((request) =>
+      this.normalizeReviewFilesForResponse(request),
+    );
+  }
+
+  async listarSolicitudesAprobacion() {
+    await this.expireOverdueManualReviewRequests();
+
+    const requests = await this.requestRepository.find({
+      where: {
+        manualReview: true,
+        approvalStatus: In([
+          'PENDING_APPROVAL',
+          'APPROVED_FINAL',
+          'REJECTED_FINAL',
+          'OBSERVATION',
+        ]),
+      },
+      relations: ['graduate', 'reviewFiles'],
+      order: { reviewSubmittedAt: 'DESC', requestDate: 'DESC' },
+    });
+
+    return requests.map((request) =>
+      this.normalizeReviewFilesForResponse(request),
+    );
+  }
+
+  async contarSolicitudesAprobacionPendientes() {
+    await this.expireOverdueManualReviewRequests();
+
+    return {
+      count: await this.requestRepository.count({
+        where: { manualReview: true, approvalStatus: 'PENDING_APPROVAL' },
+      }),
+    };
+  }
+
+  async enviarDecisionRevision(
+    id: string,
+    payload: SubmitReviewDecisionDto,
+  ) {
+    const request = await this.requestRepository.findOne({
+      where: { id },
+      relations: ['graduate', 'reviewFiles'],
+    });
+
+    if (!request) {
+      throw new NotFoundException('Solicitud no encontrada');
+    }
+
+    await this.expireManualReviewRequestIfNeeded(request);
+    this.ensureManualReviewRequestIsActionable(request);
+
+    const decision = payload?.decision;
+    if (!['APPROVED', 'REJECTED'].includes(decision)) {
+      throw new BadRequestException('Decision de revision invalida');
+    }
+
+    const reason = (
+      payload.reason ||
+      payload.reviewNotes ||
+      (decision === 'APPROVED'
+        ? 'Concepto favorable del revisor'
+        : 'Concepto registrado por el revisor')
+    ).trim();
+
+    if (!reason) {
+      throw new BadRequestException('Las notas de revision son obligatorias');
+    }
+
+    const reviewPayload = this.buildReviewPayload(payload);
+    const now = new Date();
+
+    request.status = 'PROCESSING';
+    request.approvalStatus = 'PENDING_APPROVAL';
+    request.reviewRecommendation = decision;
+    request.reviewRecommendationReason = reason;
+    request.reviewPayload = reviewPayload;
+    request.reviewSubmittedAt = now;
+    request.reviewSubmittedBy = payload.reviewerId || request.reviewedBy;
+    request.reviewSubmittedByName =
+      payload.reviewerName || request.reviewerName;
+    request.reviewedAt = now;
+    request.reviewedBy = payload.reviewerId || request.reviewedBy;
+    request.reviewerName = payload.reviewerName || request.reviewerName;
+    request.reviewNotes = reason;
+    request.reviewResolution =
+      decision === 'APPROVED'
+        ? 'graduate_found'
+        : 'graduate_not_found';
+    request.approverDecision = null;
+    request.approverNotes = null;
+    request.approvedAt = null;
+    request.approvedBy = null;
+    request.approverName = null;
+
+    this.appendReviewTimeline(request, {
+      type: 'review_decision_submitted',
+      label: this.getReviewDecisionLabel(decision),
+      notes: reason,
+      actorId: payload.reviewerId,
+      actorName: payload.reviewerName,
+      actorEmail: payload.reviewerEmail,
+      createdAt: now,
+    });
+
+    return await this.requestRepository.save(request);
+  }
+
+  async resolverDecisionAprobador(
+    id: string,
+    payload: ResolveReviewApprovalDto,
+    frontendBaseUrl?: string,
+  ) {
+    const request = await this.requestRepository.findOne({
+      where: { id },
+      relations: ['graduate', 'reviewFiles'],
+    });
+
+    if (!request) {
+      throw new NotFoundException('Solicitud no encontrada');
+    }
+
+    await this.expireManualReviewRequestIfNeeded(request);
+    this.ensureManualReviewRequestIsActionable(request);
+
+    if (request.approvalStatus !== 'PENDING_APPROVAL') {
+      throw new BadRequestException(
+        'La solicitud no tiene una decision de revisor pendiente de aprobacion',
+      );
+    }
+
+    const decision = payload?.decision;
+    if (!['APPROVED', 'REJECTED', 'OBSERVATION'].includes(decision)) {
+      throw new BadRequestException('Decision de aprobacion invalida');
+    }
+
+    const reason = (payload.reason || '').trim();
+    if ((decision === 'REJECTED' || decision === 'OBSERVATION') && !reason) {
+      throw new BadRequestException(
+        'Debes registrar una justificacion para esta decision',
+      );
+    }
+
+    const now = new Date();
+    request.approverDecision = decision;
+    request.approverNotes = reason || payload.reason || null;
+    request.approvedAt = now;
+    request.approvedBy = payload.approverId || request.approvedBy;
+    request.approverName = payload.approverName || request.approverName;
+
+    this.appendReviewTimeline(request, {
+      type: 'approver_decision',
+      label:
+        decision === 'APPROVED'
+          ? 'Aprobacion final'
+          : decision === 'REJECTED'
+            ? 'Rechazo final'
+            : 'Observacion del aprobador',
+      notes: reason || undefined,
+      actorId: payload.approverId,
+      actorName: payload.approverName,
+      actorEmail: payload.approverEmail,
+      createdAt: now,
+    });
+
+    if (decision === 'OBSERVATION') {
+      request.status = 'PROCESSING';
+      request.approvalStatus = 'OBSERVATION';
+      return await this.requestRepository.save(request);
+    }
+
+    if (decision === 'REJECTED') {
+      await this.requestRepository.save(request);
+
+      const rejected = await this.rechazarSolicitud(
+        id,
+        reason,
+        request.reviewSubmittedByName || request.reviewerName || undefined,
+        request.reviewSubmittedBy || request.reviewedBy || undefined,
+        frontendBaseUrl,
+      );
+      rejected.approvalStatus = 'REJECTED_FINAL';
+      rejected.approverDecision = decision;
+      rejected.approverNotes = reason;
+      rejected.approvedAt = now;
+      rejected.approvedBy = payload.approverId || rejected.approvedBy;
+      rejected.approverName = payload.approverName || rejected.approverName;
+      this.appendReviewTimeline(rejected, {
+        type: 'final_rejection_notified',
+        label: 'Rechazo final notificado al solicitante',
+        notes: reason,
+        actorId: payload.approverId,
+        actorName: payload.approverName,
+        actorEmail: payload.approverEmail,
+      });
+      return await this.requestRepository.save(rejected);
+    }
+
+    await this.requestRepository.save(request);
+
+    const approved = await this.aprobarSolicitud(
+      id,
+      this.buildApprovePayloadFromReview(request, reason),
+      frontendBaseUrl,
+    );
+    approved.request.approvalStatus = 'APPROVED_FINAL';
+    approved.request.approverDecision = decision;
+    approved.request.approverNotes = reason || null;
+    approved.request.approvedAt = now;
+    approved.request.approvedBy =
+      payload.approverId || approved.request.approvedBy;
+    approved.request.approverName =
+      payload.approverName || approved.request.approverName;
+    this.appendReviewTimeline(approved.request, {
+      type: 'certificate_generated',
+      label: 'Certificado generado y enviado al solicitante',
+      notes: reason || undefined,
+      actorId: payload.approverId,
+      actorName: payload.approverName,
+      actorEmail: payload.approverEmail,
+    });
+
+    await this.requestRepository.save(approved.request);
+    if (approved.request.graduateId) {
+      await this.copyReviewFilesToGraduate(
+        approved.request.id,
+        approved.request.graduateId,
+        payload.approverName || request.reviewSubmittedByName || undefined,
+      );
+    }
+
+    return approved;
   }
 
   /**
@@ -3282,6 +3943,7 @@ export class GraduationCertificatesService {
     id: string,
     reviewerName?: string,
     reviewerId?: string,
+    reviewerEmail?: string,
     frontendBaseUrl?: string,
   ) {
     const request = await this.requestRepository.findOne({
@@ -3299,6 +3961,13 @@ export class GraduationCertificatesService {
     request.status = 'PROCESSING';
     request.reviewerName = reviewerName || request.reviewerName;
     request.reviewedBy = reviewerId || request.reviewedBy;
+    this.appendReviewTimeline(request, {
+      type: 'review_started',
+      label: 'Solicitud enviada a revision',
+      actorId: reviewerId,
+      actorName: reviewerName,
+      actorEmail: reviewerEmail,
+    });
     const updatedRequest = await this.requestRepository.save(request);
 
     try {
@@ -3523,6 +4192,13 @@ export class GraduationCertificatesService {
     request.reviewerName = payload?.reviewerName || request.reviewerName;
     request.reviewedBy = payload?.reviewerId || request.reviewedBy;
     request.completionDate = new Date();
+    this.appendReviewTimeline(request, {
+      type: 'manual_review_approved',
+      label: 'Solicitud aprobada por revision manual',
+      notes: reviewNotes,
+      actorId: payload?.reviewerId,
+      actorName: payload?.reviewerName || request.reviewerName,
+    });
 
     await this.requestRepository.save(request);
 
@@ -3587,6 +4263,13 @@ export class GraduationCertificatesService {
     request.reviewerName = reviewerName || request.reviewerName;
     request.reviewedBy = reviewerId || request.reviewedBy;
     request.completionDate = new Date();
+    this.appendReviewTimeline(request, {
+      type: 'manual_review_rejected',
+      label: 'Solicitud rechazada por revision manual',
+      notes: reason,
+      actorId: reviewerId,
+      actorName: reviewerName || request.reviewerName,
+    });
 
     await this.requestRepository.save(request);
 
