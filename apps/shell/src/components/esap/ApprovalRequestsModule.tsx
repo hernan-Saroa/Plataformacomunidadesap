@@ -94,6 +94,14 @@ const normalizeDisplayText = (value?: string | null) => {
   return text;
 };
 
+const getFileType = (fileName: string): 'image' | 'pdf' | 'office' | 'other' => {
+  const ext = (fileName.split('.').pop() || '').toLowerCase();
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) return 'image';
+  if (ext === 'pdf') return 'pdf';
+  if (['doc', 'docx', 'xls', 'xlsx'].includes(ext)) return 'office';
+  return 'other';
+};
+
 const getCurrentUserName = () => {
   const user = authService.getCurrentUser() as any;
   const personName = user?.person?.full_name || '';
@@ -192,6 +200,11 @@ export function ApprovalRequestsModule({
   const [notes, setNotes] = useState('');
   const [isResolving, setIsResolving] = useState(false);
   const [activeView, setActiveView] = useState<'pending' | 'managed'>('pending');
+  const [previewState, setPreviewState] = useState<{
+    url: string;
+    name: string;
+    fileType: 'image' | 'pdf' | 'office' | 'other';
+  } | null>(null);
 
   const pendingRequests = useMemo(
     () =>
@@ -281,6 +294,35 @@ export function ApprovalRequestsModule({
       URL.revokeObjectURL(url);
     } catch (error: any) {
       toast.error('No se pudo descargar el archivo', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    }
+  };
+
+  const closePreview = () => {
+    if (previewState?.url) URL.revokeObjectURL(previewState.url);
+    setPreviewState(null);
+  };
+
+  const handlePreviewFile = async (
+    request: SolicitudCertificadoGraduado,
+    fileId: string,
+    fileName: string,
+  ) => {
+    const fileType = getFileType(fileName);
+    if (fileType === 'office' || fileType === 'other') {
+      setPreviewState({ url: '', name: normalizeDisplayText(fileName) || fileName, fileType });
+      return;
+    }
+    try {
+      const blob = await graduadosService.solicitudes.descargarArchivoRevision(
+        request.id,
+        fileId,
+      );
+      const url = URL.createObjectURL(blob);
+      setPreviewState({ url, name: normalizeDisplayText(fileName) || fileName, fileType });
+    } catch (error: any) {
+      toast.error('No se pudo cargar el archivo para visualización', {
         description: error?.response?.data?.message || error?.message,
       });
     }
@@ -611,19 +653,34 @@ export function ApprovalRequestsModule({
                                           {formatBytes(file.sizeBytes)} - {formatDate(file.uploadedAt)}
                                         </p>
                                       </div>
-                                      <button
-                                        onClick={() =>
-                                          handleDownloadFile(
-                                            request,
-                                            file.id,
-                                            normalizeDisplayText(file.originalName),
-                                          )
-                                        }
-                                        className="rounded-lg bg-gray-100 p-2 text-gray-700 hover:bg-gray-200"
-                                        title="Descargar archivo"
-                                      >
-                                        <Download className="w-4 h-4" />
-                                      </button>
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          onClick={() =>
+                                            handlePreviewFile(
+                                              request,
+                                              file.id,
+                                              normalizeDisplayText(file.originalName),
+                                            )
+                                          }
+                                          className="rounded-lg bg-blue-50 p-2 text-blue-600 hover:bg-blue-100"
+                                          title="Visualizar archivo"
+                                        >
+                                          <Eye className="w-4 h-4" />
+                                        </button>
+                                        <button
+                                          onClick={() =>
+                                            handleDownloadFile(
+                                              request,
+                                              file.id,
+                                              normalizeDisplayText(file.originalName),
+                                            )
+                                          }
+                                          className="rounded-lg bg-gray-100 p-2 text-gray-700 hover:bg-gray-200"
+                                          title="Descargar archivo"
+                                        >
+                                          <Download className="w-4 h-4" />
+                                        </button>
+                                      </div>
                                     </div>
                                   ))
                                 )}
@@ -735,6 +792,100 @@ export function ApprovalRequestsModule({
             >
               <CheckCircle className="w-4 h-4" />
               {isResolving ? 'Procesando...' : 'Confirmar'}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de visualización de archivos */}
+      <Dialog open={!!previewState} onOpenChange={(open) => !open && closePreview()}>
+        <DialogContent
+          size="xl"
+          className="flex flex-col gap-0 p-0 overflow-hidden rounded-xl border border-gray-200 shadow-xl"
+          style={{ width: 'min(90vw, 860px)', maxHeight: '88vh' }}
+        >
+          {/* Header estilo plataforma */}
+          <DialogHeader className="flex-shrink-0 px-5 pt-5 pb-4 border-b border-gray-200 bg-gradient-to-r from-[#1e5da8]/5 to-white">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm ${
+                previewState?.fileType === 'pdf'    ? 'bg-red-50'         :
+                previewState?.fileType === 'image'  ? 'bg-blue-50'        :
+                previewState?.fileType === 'office' ? 'bg-[#1e5da8]/10'   : 'bg-gray-100'
+              }`}>
+                <FileText className={`w-5 h-5 ${
+                  previewState?.fileType === 'pdf'    ? 'text-red-600'   :
+                  previewState?.fileType === 'image'  ? 'text-blue-600'  :
+                  previewState?.fileType === 'office' ? 'text-[#1e5da8]' : 'text-gray-500'
+                }`} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="text-sm font-semibold text-gray-900 truncate leading-snug">
+                  {previewState?.name}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-gray-500 mt-0.5">
+                  {previewState?.fileType === 'pdf'    ? 'Documento PDF'   :
+                   previewState?.fileType === 'image'  ? 'Imagen'          :
+                   previewState?.fileType === 'office' ? 'Documento Office' : 'Archivo adjunto'}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {/* Área de contenido con scroll */}
+          <div className="flex-1 overflow-auto min-h-0 bg-gray-50">
+            {previewState?.fileType === 'image' && (
+              <div className="flex items-center justify-center p-5 min-h-[260px]">
+                <img
+                  src={previewState.url}
+                  alt={previewState.name}
+                  className="max-w-full object-contain rounded-lg shadow-md"
+                  style={{ maxHeight: '58vh' }}
+                />
+              </div>
+            )}
+
+            {previewState?.fileType === 'pdf' && (
+              <iframe
+                src={previewState.url}
+                className="w-full border-0 block"
+                style={{ height: 'clamp(320px, 60vh, 680px)' }}
+                title={previewState?.name}
+              />
+            )}
+
+            {(previewState?.fileType === 'office' || previewState?.fileType === 'other') && (
+              <div className="flex flex-col items-center justify-center gap-5 px-8 py-12 text-center min-h-[280px]">
+                <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
+                  <FileText className="w-8 h-8 text-gray-400" />
+                </div>
+                <div>
+                  <p className="text-gray-800 font-semibold mb-1 text-sm">
+                    Este archivo no puede visualizarse en el navegador
+                  </p>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Los archivos Word y Excel requieren una aplicación de escritorio.<br />
+                    Descárgalo para abrirlo correctamente.
+                  </p>
+                </div>
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${
+                  previewState?.fileType === 'office'
+                    ? 'bg-[#1e5da8]/10 text-[#1e5da8]'
+                    : 'bg-gray-100 text-gray-600'
+                }`}>
+                  <Download className="w-3.5 h-3.5" />
+                  Usa el botón de descarga
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Footer estilo plataforma */}
+          <DialogFooter className="flex-shrink-0 px-5 py-3 border-t border-gray-200 bg-gray-50">
+            <button
+              onClick={closePreview}
+              className="px-5 py-2 text-sm font-medium rounded-lg bg-[#1e5da8] text-white hover:bg-[#154a85] active:bg-[#123f75] transition-colors shadow-sm"
+            >
+              Cerrar
             </button>
           </DialogFooter>
         </DialogContent>

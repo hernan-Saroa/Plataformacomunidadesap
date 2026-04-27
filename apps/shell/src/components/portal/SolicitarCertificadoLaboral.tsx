@@ -30,7 +30,7 @@ import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoF
 // import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
 import { PublicNavbar } from './PublicNavbar';
 // import { LOGO_ESAP_BLUE_SVG } from '../assets/TempAssets';
-import { ESAPLogoSVG } from '../assets/ESAPLogoSVG';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 interface SolicitarCertificadoLaboralProps {
   onBack: () => void;
@@ -2126,10 +2126,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           <div className="flex flex-col md:flex-row justify-between items-start mb-10 pb-8 border-b border-white/20">
             {/* Logo y Descripción */}
             <div className="mb-6 md:mb-0 flex items-start gap-4">
-              {/* <img src={LOGO_ESAP_BLUE_SVG} alt="ESAP" className="h-14" /> */}
-              <ESAPLogoSVG
-                variant="white"
-              />
+              <ESAPLogo variant="white" className="h-14" />
               <div>
                 <h3 className="text-xl font-bold mb-1">Escuela Superior de Administración Pública</h3>
                 <p className="text-sm text-blue-100 mb-2">Formando líderes de excelencia al servicio del Estado y la sociedad colombiana desde 1958.</p>
