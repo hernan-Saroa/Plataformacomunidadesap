@@ -11,6 +11,12 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+// Función para validar email
+const validarEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
 interface Termino {
   id: string;
   procesoId: string;
@@ -276,7 +282,12 @@ export function ModalNuevaAlerta({ isOpen, onClose, terminos, onCrear }: ModalNu
                       <input
                         type="email"
                         value={emailDestinatario}
-                        onChange={(e) => setEmailDestinatario(e.target.value)}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value === '' || validarEmail(value)) {
+                            setEmailDestinatario(value);
+                          }
+                        }}
                         placeholder="correo@esap.edu.co"
                         className="w-full pl-11 pr-4 py-3 rounded-xl border-2 focus:outline-none focus:border-[#003DA5] transition-colors"
                         style={{ borderColor: '#E5E7EB' }}

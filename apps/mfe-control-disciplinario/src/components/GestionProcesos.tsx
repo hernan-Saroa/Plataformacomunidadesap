@@ -20,6 +20,12 @@ import { disciplinaryService, DisciplinaryProcess, DisciplinaryNews } from '../.
 import { authService } from '../../../services/api';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
+// Función para validar email
+const validarEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
 // ==================== TIPOS ====================
 interface Proceso {
   id: string;
@@ -609,7 +615,12 @@ function ModalFormularioProceso({
                   className="w-full px-4 py-2.5 rounded-xl border-2 focus:outline-none focus:border-[#003DA5]"
                   style={{ borderColor: '#E5E7EB' }}
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === '' || validarEmail(value)) {
+                      setFormData({ ...formData, email: value });
+                    }
+                  }}
                   placeholder="ejemplo@esap.edu.co"
                 />
               </div>

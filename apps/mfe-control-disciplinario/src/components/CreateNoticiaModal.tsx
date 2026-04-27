@@ -125,6 +125,12 @@ const ORIGEN_DB_A_LABEL: Record<string, string> = {
   POR_DETERMINAR: 'Por determinar',
 };
 
+// Función para validar email
+const validarEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
 export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode }: CreateNoticiaModalProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [conductasIndisciplinarias, setConductasIndisciplinarias] = useState<DisciplinaryBehavior[]>([]);
@@ -1143,7 +1149,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         <input
                           type="email"
                           value={apoderadoDenunciado.correo}
-                          onChange={(e) => setApoderadoDenunciado({ ...apoderadoDenunciado, correo: e.target.value })}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '' || validarEmail(value)) {
+                              setApoderadoDenunciado({ ...apoderadoDenunciado, correo: value });
+                            }
+                          }}
                           placeholder="apoderado@ejemplo.com"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
@@ -1400,7 +1411,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     <input
                       type="email"
                       value={currentDenunciante.correo}
-                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, correo: e.target.value })}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === '' || validarEmail(value)) {
+                          setCurrentDenunciante({ ...currentDenunciante, correo: value });
+                        }
+                      }}
                       disabled={porDeterminar.denuncianteCorreo}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denuncianteCorreo ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     />
@@ -1542,7 +1558,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         <input
                           type="email"
                           value={apoderadoDenunciante.correo}
-                          onChange={(e) => setApoderadoDenunciante({ ...apoderadoDenunciante, correo: e.target.value })}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '' || validarEmail(value)) {
+                              setApoderadoDenunciante({ ...apoderadoDenunciante, correo: value });
+                            }
+                          }}
                           placeholder="apoderado@ejemplo.com"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
