@@ -59,9 +59,7 @@ export class AuthController {
   ) {
     const identifier = this.extractLoginIdentifier(dto);
     const ipAddress = this.extractClientIp(req);
-    const rateLimitState = this.loginProtectionService.consumeRateLimit(
-      ipAddress,
-    );
+    const rateLimitState = this.loginProtectionService.consumeRateLimit(ipAddress);
     const loginUser = await this.findLoginUser(identifier);
     const accountKeys = this.loginProtectionService.buildAccountKeys(
       loginUser?.id_user,
@@ -95,6 +93,7 @@ export class AuthController {
     try {
       const response = await this.authService.login(dto);
       this.loginProtectionService.clearFailedAttempts(accountKeys);
+      this.loginProtectionService.clearIpRateLimit(ipAddress);
       this.applyRateLimitHeaders(res, rateLimitState);
       return response;
     } catch (error) {
@@ -113,6 +112,16 @@ export class AuthController {
             HttpStatus.TOO_MANY_REQUESTS,
           );
         }
+
+        const remaining = failedState.remainingAttempts;
+        const attemptsText =
+          remaining !== undefined && remaining > 0
+            ? ` Te ${remaining === 1 ? 'queda' : 'quedan'} ${remaining} intento${remaining === 1 ? '' : 's'}.`
+            : '';
+        this.applyRateLimitHeaders(res, rateLimitState);
+        throw new UnauthorizedException(
+          `Correo o contrasena incorrectos.${attemptsText}`,
+        );
       }
 
       this.applyRateLimitHeaders(res, rateLimitState);
