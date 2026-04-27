@@ -41,6 +41,10 @@ import {
   GraduateOracleIntegrationService,
   type OracleGraduateRecord,
 } from './graduate-oracle-integration.service';
+import {
+  GraduateMysqlIntegrationService,
+  MysqlGraduateRecord,
+} from './graduate-mysql-integration.service';
 import * as nodemailer from 'nodemailer';
 import * as geoip from 'geoip-lite';
 import * as fs from 'fs';
@@ -111,6 +115,7 @@ export class GraduationCertificatesService {
     @InjectRepository(GraduationRequestReviewFile)
     private reviewFileRepository: Repository<GraduationRequestReviewFile>,
     private pdfGeneratorService: PdfGeneratorService,
+    private graduateMysqlIntegrationService: GraduateMysqlIntegrationService,
     private graduateOracleIntegrationService: GraduateOracleIntegrationService,
   ) {}
 
@@ -422,6 +427,7 @@ export class GraduationCertificatesService {
   private buildGraduatePayloadFromOracle(
     record: OracleGraduateRecord,
     existing?: Graduate | null,
+    source = 'oracle:sinu',
   ): Partial<Graduate> | null {
     const idNumber = this.toNullableText(record.idNumber);
     const fullName =
@@ -476,27 +482,58 @@ export class GraduationCertificatesService {
         this.toNullableText(record.territorial) ?? existing?.seccionalName,
       status: 'ACTIVE',
       isVerified: true,
-      updatedBy: 'oracle:sinu',
+      updatedBy: source,
     };
 
     if (!existing) {
       payload.personId = randomUUID();
       payload.programId = randomUUID();
       payload.enrollmentDate = graduationDate;
-      payload.createdBy = 'oracle:sinu';
+      payload.createdBy = source;
     }
 
     return payload;
   }
 
+  private mapMysqlRecordToOracle(
+    record: MysqlGraduateRecord,
+  ): OracleGraduateRecord {
+    return {
+      idNumber: String(record.IDENTIFICACION || ''),
+      firstName: null,
+      lastName: null,
+      fullName: record.ESTUDIANTE,
+      email: null,
+      personalEmail: null,
+      phone: null,
+      programCode: null,
+      programName: record.TITULO,
+      programType: null,
+      degreeTitle: record.TITULO,
+      territorial: null,
+      campus: null,
+      numLibro: record.LIBRO,
+      numFolio: null,
+      numRegistro: record.REGISTRO,
+      diplomaNumber: record.DIPLOMA,
+      graduationDate: record.FECHAREGISTRO,
+      numActa: record.ACTA,
+    };
+  }
+
   private async upsertGraduateFromOracle(
     record: OracleGraduateRecord,
     existing?: Graduate | null,
+    source = 'oracle:sinu',
   ): Promise<{
     graduate: Graduate | null;
     action: 'created' | 'updated' | 'unchanged' | 'skipped';
   }> {
-    const payload = this.buildGraduatePayloadFromOracle(record, existing);
+    const payload = this.buildGraduatePayloadFromOracle(
+      record,
+      existing,
+      source,
+    );
     if (!payload) {
       return { graduate: null, action: 'skipped' };
     }
@@ -578,6 +615,82 @@ export class GraduationCertificatesService {
       }
 
       const sync = await this.upsertGraduateFromOracle(record, existing);
+      if (sync.action === 'created') {
+        result.created += 1;
+        if (sync.graduate) {
+          localGraduates.push(sync.graduate);
+        }
+      } else if (sync.action === 'updated') {
+        result.updated += 1;
+      } else if (sync.action === 'unchanged') {
+        result.unchanged += 1;
+      }
+    }
+
+    result.synced = result.created > 0 || result.updated > 0;
+    return result;
+  }
+
+  private async syncGraduatesFromMysqlByIdNumber(
+    idNumber: string,
+  ): Promise<OracleGraduateSyncResult> {
+    if (!this.graduateMysqlIntegrationService.isEnabled()) {
+      return {
+        enabled: false,
+        found: false,
+        synced: false,
+        created: 0,
+        updated: 0,
+        unchanged: 0,
+      };
+    }
+
+    const mysqlGraduates =
+      await this.graduateMysqlIntegrationService.findGraduatesByDocument(
+        idNumber,
+        100,
+      );
+    console.log('Graduados MySQL', mysqlGraduates);
+    if (!mysqlGraduates.length) {
+      return {
+        enabled: true,
+        found: false,
+        synced: false,
+        created: 0,
+        updated: 0,
+        unchanged: 0,
+      };
+    }
+
+    const localGraduates = await this.findActiveGraduatesByIdNumber(idNumber);
+    console.log('localGraduates', localGraduates);
+    const usedGraduateIds = new Set<string>();
+    const result: OracleGraduateSyncResult = {
+      enabled: true,
+      found: true,
+      synced: false,
+      created: 0,
+      updated: 0,
+      unchanged: 0,
+    };
+
+    for (const mysqlRecord of mysqlGraduates) {
+      const record = this.mapMysqlRecordToOracle(mysqlRecord);
+      const existing = this.findMatchingGraduateForOracleRecord(
+        record,
+        localGraduates,
+        usedGraduateIds,
+      ) ?? undefined;
+
+      if (existing) {
+        usedGraduateIds.add(existing.id);
+      }
+
+      const sync = await this.upsertGraduateFromOracle(
+        record,
+        existing,
+        'mysql:graduados',
+      );
       if (sync.action === 'created') {
         result.created += 1;
         if (sync.graduate) {
@@ -751,36 +864,42 @@ export class GraduationCertificatesService {
     const gradDate = graduationDate
       ? this.normalizeDateString(graduationDate)
       : null;
-
+    console.log('Buscar Coincidencias Graduado', idNumber, graduationDate, lastName);
     if (graduationDate && !gradDate) {
       throw new BadRequestException('Fecha de graduación inválida');
     }
 
-    const oracleSync = await this.syncGraduatesFromOracleByIdNumber(idNumber);
-    if (oracleSync.enabled && !oracleSync.found) {
-      return {
-        hasMatches: false,
-        totalMatches: 0,
-        suggestions: [],
-        fuente: 'oracle-sinu',
-        oracleSync,
-        message:
-          'No encontramos graduados con ese número de documento en Oracle SINU.',
-      };
+    const disabledSync: OracleGraduateSyncResult = {
+      enabled: false,
+      found: false,
+      synced: false,
+      created: 0,
+      updated: 0,
+      unchanged: 0,
+    };
+    const mysqlSync = await this.syncGraduatesFromMysqlByIdNumber(idNumber);
+    let oracleSync = disabledSync;
+
+    if (!mysqlSync.found) {
+      oracleSync = await this.syncGraduatesFromOracleByIdNumber(idNumber);
     }
 
     const graduates = await this.findActiveGraduatesByIdNumber(idNumber);
+    const fuente = mysqlSync.found
+      ? 'mysql'
+      : oracleSync.found
+        ? 'oracle-sinu'
+        : 'postgres';
+
     if (!graduates.length) {
       return {
         hasMatches: false,
         totalMatches: 0,
         suggestions: [],
-        fuente: oracleSync.enabled ? 'oracle-sinu' : 'postgres',
+        fuente,
+        mysqlSync,
         oracleSync,
-        message:
-          oracleSync.enabled && !oracleSync.found
-            ? 'No encontramos graduados con ese número de documento en Oracle SINU.'
-            : 'No encontramos graduados activos con ese número de documento.',
+        message: 'No encontramos graduados activos con ese número de documento.',
       };
     }
 
@@ -794,7 +913,8 @@ export class GraduationCertificatesService {
       hasMatches: suggestions.length > 0,
       totalMatches: graduates.length,
       suggestions,
-      fuente: oracleSync.enabled ? 'oracle-sinu' : 'postgres',
+      fuente,
+      mysqlSync,
       oracleSync,
       message:
         'Selecciona la persona correcta para continuar con la generación del certificado.',
