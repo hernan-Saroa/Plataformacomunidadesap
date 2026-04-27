@@ -3,6 +3,7 @@ import { X, Lock, CheckCircle, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PasswordStrengthInput, usePasswordStrength, validatePassword } from './PasswordStrengthInput';
 import { toast } from 'sonner';
+import { usersService } from '../../services/usersService';
 
 interface ModalCambiarContrasenaProps {
   isOpen: boolean;
@@ -72,11 +73,7 @@ export function ModalCambiarContrasena({
     setIsSubmitting(true);
 
     try {
-      // Simular llamada a API
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      // En producción:
-      // await changePassword({ userId: user.id, currentPassword, newPassword: password });
+      await usersService.resetUserPassword(user.id, password);
 
       toast.success('Contraseña Actualizada', {
         description: `La contraseña de ${user.firstName} ${user.lastName} ha sido cambiada exitosamente.`,

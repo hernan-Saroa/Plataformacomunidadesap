@@ -1208,4 +1208,18 @@ export class UsersService {
 
     return userToUpdate;
   }
+
+  async adminResetPassword(id: string, newPassword: string): Promise<void> {
+    if (!newPassword || newPassword.length < 6) {
+      throw new BadRequestException('La contraseña debe tener al menos 6 caracteres');
+    }
+
+    const user = await this.findUserByApiIdentifier(id, [], false);
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    user.password_hash = await bcrypt.hash(newPassword, 10);
+    await this.userRepo.save(user);
+  }
 }
