@@ -592,4 +592,61 @@ export class BancoDocentesService {
       .getRawMany();
     return { total, activos, inactivos: total - activos, por_dedicacion: porDedicacion, por_territorial: porTerritorial };
   }
+
+  async syncToAuthService(authServiceUrl: string) {
+    const docentes = await this.docenteRepo.find({
+      relations: ['persona', 'persona.usuario'],
+    });
+
+    let created = 0;
+    let skipped = 0;
+    let failed = 0;
+    const errors: { email: string; error: string }[] = [];
+
+    for (const docente of docentes) {
+      const persona = docente.persona;
+      const usuario = persona?.usuario;
+      if (!usuario?.email) { skipped++; continue; }
+
+      const firstName = persona?.primer_nombre || usuario.nombre?.split(' ')[0] || 'Docente';
+      const lastName = persona?.primer_apellido || usuario.nombre?.split(' ').slice(1).join(' ') || 'ESAP';
+      const documentNumber = persona?.identificacion || docente.id;
+      const email = usuario.email.toLowerCase().trim();
+
+      try {
+        const res = await fetch(`${authServiceUrl}/new-person`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            firstName,
+            lastName,
+            documentNumber,
+            email,
+            username: email,
+            password: 'changeme123',
+            roles: ['USER'],
+          }),
+        });
+
+        if (res.ok) {
+          created++;
+        } else {
+          const body = await res.json().catch(() => ({}));
+          const msg = (body as any)?.message || res.statusText;
+          // 409 = ya existe — no es un error, es idempotente
+          if (res.status === 409 || String(msg).includes('ya existe') || String(msg).includes('already')) {
+            skipped++;
+          } else {
+            failed++;
+            errors.push({ email, error: msg });
+          }
+        }
+      } catch (err: any) {
+        failed++;
+        errors.push({ email, error: err?.message || 'fetch error' });
+      }
+    }
+
+    return { total: docentes.length, created, skipped, failed, errors: errors.slice(0, 20) };
+  }
 }

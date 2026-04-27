@@ -50,6 +50,9 @@ export class DocenteEntity {
   @Column({ name: 'dedicacionDisplay', type: 'text', nullable: true })
   dedicacionDisplay: string | null;
 
+  @Column({ name: 'escalafon', type: 'text', nullable: true })
+  escalafon: string | null;
+
   @Column({ name: 'nucleoTematico', type: 'text', nullable: true })
   nucleoTematico: string | null;
 

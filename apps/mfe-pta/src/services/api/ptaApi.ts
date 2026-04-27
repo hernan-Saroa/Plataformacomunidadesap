@@ -1469,8 +1469,12 @@ export async function getBancoDocentes(filters?: {
   limit?: number;
 }) {
   try {
+    // El backend devuelve { success, items:[...], total, pages } sin wrapper "data"
+    // para que el apiClient no desenvuelva y descarte la paginación.
     const raw = await apiClient.get<any>(BD_BASE, filters);
-    return normalizeResult<any>(raw, { data: [], total: 0, page: 1, limit: 50, pages: 1 });
+    const r = raw && typeof raw === 'object' ? raw : {};
+    const items = Array.isArray(r.items) ? r.items : (Array.isArray(r.data) ? r.data : (Array.isArray(raw) ? raw : []));
+    return { success: true, data: { data: items, total: r.total ?? items.length, page: r.page ?? 1, pages: r.pages ?? 1 } };
   } catch (error) {
     console.error('[mfe-pta][getBancoDocentes] Error:', error);
     return { success: false, data: { data: [], total: 0, page: 1, limit: 50, pages: 1 } };

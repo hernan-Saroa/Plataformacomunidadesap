@@ -4,7 +4,9 @@ import { memoryStorage } from 'multer';
 import * as xlsx from 'xlsx';
 import { BancoDocentesService } from './banco-docentes.service';
 import { sanitizeDeepStrings } from '../utils/text-sanitizer';
+import { Public } from '../../auth/public.decorator';
 
+@Public()
 @Controller('pta/banco-docentes')
 export class BancoDocentesController {
   constructor(private readonly service: BancoDocentesService) {}
@@ -26,7 +28,9 @@ export class BancoDocentesController {
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 50,
     });
-    return { success: true, ...result };
+    // Devolvemos items + paginación en el nivel raíz (sin wrapper "data")
+    // para que el apiClient del shell no desenvuelva y descarte total/pages.
+    return { success: true, items: result.data, total: result.total, page: result.page, pages: result.pages, limit: result.limit };
   }
 
   @Get('stats')
@@ -82,6 +86,13 @@ export class BancoDocentesController {
     }
 
     const result = await this.service.bulkUpsert(rows, { rejectExisting: false });
+    return { success: true, data: result };
+  }
+
+  @Post('sync-auth')
+  async syncAuth() {
+    const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+    const result = await this.service.syncToAuthService(authUrl);
     return { success: true, data: result };
   }
 }

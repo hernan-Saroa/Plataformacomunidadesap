@@ -2,6 +2,7 @@
 -- academic_work_plan schema
 
 ALTER TABLE academic_work_plan."Docente"
+  ADD COLUMN IF NOT EXISTS "escalafon"                      TEXT,
   ADD COLUMN IF NOT EXISTS "origenVinculacion"              TEXT,
   ADD COLUMN IF NOT EXISTS "actoAdministrativoVinculacion"  TEXT,
   ADD COLUMN IF NOT EXISTS "situacionAdministrativa"        TEXT,

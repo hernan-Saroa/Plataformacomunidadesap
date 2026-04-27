@@ -18,16 +18,16 @@ const TERRITORIALES_FILTER = [
   'Quindío-Risaralda-Caldas', 'Santander', 'Tolima', 'Valle del Cauca-Cauca',
 ];
 
-const BADGE_COLORS: Record<string, string> = {
-  TC: 'background:#dbeafe;color:#1d4ed8',
-  MT: 'background:#fef3c7;color:#b45309',
-  HC: 'background:#f3e8ff;color:#7c3aed',
-  ACTIVO: 'background:#dcfce7;color:#15803d',
-  INACTIVO: 'background:#fee2e2;color:#dc2626',
+const BADGE_STYLES: Record<string, { background: string; color: string }> = {
+  TC:      { background: '#dbeafe', color: '#1d4ed8' },
+  MT:      { background: '#fef3c7', color: '#b45309' },
+  HC:      { background: '#f3e8ff', color: '#7c3aed' },
+  ACTIVO:  { background: '#dcfce7', color: '#15803d' },
+  INACTIVO:{ background: '#fee2e2', color: '#dc2626' },
 };
 
 function Badge({ label, code }: { label: string; code: string }) {
-  const style = BADGE_COLORS[code] || 'background:#f1f5f9;color:#475569';
+  const { background, color } = BADGE_STYLES[code] || { background: '#f1f5f9', color: '#475569' };
   return (
     <span style={{
       display: 'inline-block',
@@ -35,7 +35,8 @@ function Badge({ label, code }: { label: string; code: string }) {
       borderRadius: 999,
       fontSize: '0.7rem',
       fontWeight: 600,
-      ...Object.fromEntries(style.split(';').map(s => s.split(':') as [string, string])),
+      background,
+      color,
     }}>
       {label}
     </span>
@@ -52,7 +53,7 @@ export function BancoDocentesPTA() {
   const [search, setSearch] = useState('');
   const [filterTerritorial, setFilterTerritorial] = useState('');
   const [filterDedicacion, setFilterDedicacion] = useState('');
-  const [filterEstado, setFilterEstado] = useState('ACTIVO');
+  const [filterEstado, setFilterEstado] = useState('');
   const [selectedDocente, setSelectedDocente] = useState<any>(null);
   const [editDocente, setEditDocente] = useState<any>(null);
   const [showBulkPanel, setShowBulkPanel] = useState(false);

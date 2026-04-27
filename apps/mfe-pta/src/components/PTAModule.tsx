@@ -14,11 +14,9 @@ export type PTAModuleProps = {
   userName?: string;
   userEmail?: string;
   userRoles?: string[];
-  /**
-   * Cuando el MFE se renderiza embebido dentro del Shell (Backoffice ESAP),
-   * ocultamos el "chrome" propio (header/toggles) para evitar UI duplicada.
-   */
   embedded?: boolean;
+  /** Vista inicial al montar el módulo (ej: 'banco_docentes') */
+  initialView?: string;
 };
 
 function deriveIsSuperUser(userRoles?: string[]) {
@@ -32,6 +30,7 @@ export function PTAModule({
   userEmail,
   userRoles,
   embedded = false,
+  initialView,
 }: PTAModuleProps) {
   const title = useMemo(() => 'Backoffice PTA', []);
   const isSuperUser = deriveIsSuperUser(userRoles);
@@ -60,7 +59,7 @@ export function PTAModule({
           )}
 
           <div className={embedded ? undefined : 'mx-auto max-w-[1400px]'}>
-            <PtaBackofficeModule />
+            <PtaBackofficeModule initialView={initialView} />
           </div>
         </div>
       </NotificationsProvider>

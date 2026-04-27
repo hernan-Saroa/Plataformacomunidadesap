@@ -109,9 +109,9 @@ export class PtaService {
         ${personasHasIdPerson ? 'p.id_person::text' : 'NULL'} as person_id,
         ${personasHasIdTercero ? 'p.id_tercero::text' : 'NULL'} as tercero_id,
         p.dir_email as email,
-        p.nom_tercero as primer_nombre, 
-        p.seg_nombre as segundo_nombre, 
-        p.pri_apellido as primer_apellido, 
+        p.nom_tercero as primer_nombre,
+        NULL as segundo_nombre,
+        p.pri_apellido as primer_apellido,
         p.seg_apellido as segundo_apellido
       FROM auth.personas p
       JOIN auth."user" u ON ${joinUserPersonas}
