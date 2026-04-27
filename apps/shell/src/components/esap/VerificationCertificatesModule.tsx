@@ -3215,8 +3215,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
       {/* Modal: Ver Código QR Único */}
       <Dialog open={isQrModalOpen} onOpenChange={setIsQrModalOpen}>
-        <DialogContent className="w-[calc(100vw-1rem)] sm:w-[92vw] max-w-2xl max-h-[calc(100vh-1rem)] sm:max-h-[90vh] overflow-hidden top-2 sm:top-1/2 sm:-translate-y-1/2 grid-rows-[auto,minmax(0,1fr),auto] p-3 sm:p-6">
-          <DialogHeader>
+        <DialogContent className="w-[calc(100vw-1rem)] sm:w-[92vw] max-w-2xl max-h-[calc(100vh-1rem)] sm:max-h-[90vh] overflow-hidden top-2 sm:top-1/2 sm:-translate-y-1/2 flex flex-col gap-0 p-0">
+          <DialogHeader className="flex-shrink-0 px-4 pt-4 pb-3 sm:px-6 sm:pt-6 sm:pb-4 border-b border-gray-200">
             <DialogTitle className="flex items-center gap-2 pr-8 text-base leading-snug sm:text-lg">
               <QrCode className="w-5 h-5 text-amber-600" />
               Código QR Único - Validación Pública
@@ -3226,7 +3226,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             </DialogDescription>
           </DialogHeader>
 
-          <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain pr-1 py-2 sm:py-4">
+          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overscroll-contain px-4 sm:px-6 py-3 sm:py-5">
             {/* QR Placeholder + Estado */}
             <div className={`${qrPreviewCertificate?.status === 'active' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-4 sm:p-6`}>
               <div className="flex flex-col items-center text-center">
@@ -3458,7 +3458,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0 px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 bg-gray-50">
             <button
               onClick={() => setIsQrModalOpen(false)}
               className="px-4 py-2 text-sm font-medium rounded-lg border-2"
