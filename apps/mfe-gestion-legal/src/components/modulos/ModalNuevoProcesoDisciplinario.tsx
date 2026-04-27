@@ -14,7 +14,6 @@ import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { toast } from 'sonner';
 
-import { disciplinaryService } from '../../../../services/api/disciplinary.service';
 import { legalService } from '../../../../services/api/legal.service';
 import {
   Gavel, User, FileText, AlertTriangle, Calendar,
@@ -121,17 +120,15 @@ export function ModalNuevoProcesoDisciplinario({
 
   useEffect(() => {
     if (isOpen) {
-      // Cargar profesionales
-      disciplinaryService.getProfesionales()
+      // Cargar abogados con rol RESUELVE_GESTION_LEGAL desde auth-service
+      legalService.getAbogados()
         .then((data: any[]) => {
           setProfesionales(
-            data
-              .filter((p: any) => (p.estado || 'ACTIVO').toUpperCase() === 'ACTIVO')
-              .map((p: any) => ({
-                id: p.id,
-                nombreCompleto: p.nombreCompleto || p.nombre || p.email || 'Sin nombre',
-                especialidad: p.especialidad || p.cargo || 'General'
-              }))
+            data.map((p: any) => ({
+              id: p.id,
+              nombreCompleto: p.nombreCompleto || p.nombre || p.email || 'Sin nombre',
+              especialidad: p.email || 'Abogado'
+            }))
           );
         })
         .catch((err: any) => {

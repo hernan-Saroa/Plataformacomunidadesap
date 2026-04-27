@@ -44,7 +44,7 @@ import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import { mapStageToUi } from '../../../services/api/esapDataService';
 import autoTable from 'jspdf-autotable';
-import { CreateNoticiaModal } from '../CreateNoticiaModal';
+import { CreateNoticiaModal } from './CreateNoticiaModal';
 import { FlujoNoticiasDisciplinarias } from './FlujoNoticiasDisciplinarias';
 import { ModalDetallesNoticia } from './ModalDetallesNoticia';
 import { ModalArchivarNoticia } from './ModalArchivarNoticia';
