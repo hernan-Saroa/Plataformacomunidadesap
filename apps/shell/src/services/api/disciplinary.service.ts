@@ -1866,13 +1866,15 @@ class DisciplinaryService {
     }
 
     /**
-     * Reordena las conductas disciplinarias
+     * Reordenar comportamientos disciplinarios
      */
     async reorderDisciplinaryBehaviors(ids: string[]): Promise<void> {
         return apiClient.post(`${SERVICE_PREFIX}/disciplinary-behaviors/reorder`, { ids });
     }
 
 }
+
+
 
 const disciplinaryService = new DisciplinaryService();
 export default disciplinaryService;
