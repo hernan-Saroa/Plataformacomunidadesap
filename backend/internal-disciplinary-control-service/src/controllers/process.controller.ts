@@ -1419,4 +1419,48 @@ export class ProcessController {
       );
     }
   }
+
+  /**
+   * Enviar correo electrónico
+   */
+  @Post('send-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Enviar Correo Electrónico',
+    description: 'Envía un correo electrónico usando el servicio de notificaciones',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Correo enviado exitosamente',
+  })
+  @ApiResponse({ status: 400, description: 'Datos inválidos' })
+  @ApiResponse({ status: 500, description: 'Error interno del servidor' })
+  async sendEmail(@Body() emailData: { to: string; subject: string; body?: string; html?: string }) {
+    try {
+      const notificationsServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
+
+      const emailPayload = {
+        to: emailData.to,
+        subject: emailData.subject,
+        text: emailData.body,
+        html: emailData.html,
+      };
+
+      console.log('📧 [ProcessController] Enviando correo a:', emailData.to);
+
+      const response = await firstValueFrom(
+        this.httpService.post(`${notificationsServiceUrl}/api/v1/emails/send`, emailPayload),
+      );
+
+      console.log('📧 [ProcessController] Correo enviado exitosamente:', response.data);
+
+      return { success: true, message: 'Correo enviado exitosamente' };
+    } catch (error) {
+      console.error('📧 [ProcessController] Error al enviar correo:', error);
+      throw new HttpException(
+        `Error al enviar correo: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }

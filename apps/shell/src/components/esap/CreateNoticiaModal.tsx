@@ -958,7 +958,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     <input
                       type="text"
                       value={currentDenunciado.nombre}
-                      onChange={(e) => setCurrentDenunciado({ ...currentDenunciado, nombre: e.target.value })}
+                      onChange={(e) => setCurrentDenunciado({ ...currentDenunciado, nombre: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                       placeholder="Nombres y apellidos completos"
                       disabled={porDeterminar.denunciadoNombre}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denunciadoNombre ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
@@ -1020,7 +1020,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     <input
                       type="text"
                       value={currentDenunciado.cargo}
-                      onChange={(e) => setCurrentDenunciado({ ...currentDenunciado, cargo: e.target.value })}
+                      onChange={(e) => setCurrentDenunciado({ ...currentDenunciado, cargo: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                       placeholder="Cargo del denunciado"
                       disabled={porDeterminar.denunciadoCargo}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denunciadoCargo ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
@@ -1087,7 +1087,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         <input
                           type="text"
                           value={apoderadoDenunciado.nombre}
-                          onChange={(e) => setApoderadoDenunciado({ ...apoderadoDenunciado, nombre: e.target.value })}
+                          onChange={(e) => setApoderadoDenunciado({ ...apoderadoDenunciado, nombre: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                           placeholder="Nombres y apellidos del apoderado"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
@@ -1380,7 +1380,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     <input
                       type="text"
                       value={currentDenunciante.nombre}
-                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, nombre: e.target.value })}
+                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, nombre: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                       disabled={porDeterminar.denuncianteNombre}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denuncianteNombre ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     />
@@ -1525,7 +1525,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     <input
                       type="text"
                       value={currentDenunciante.cargo}
-                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, cargo: e.target.value })}
+                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, cargo: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                       disabled={porDeterminar.denuncianteCargo}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denuncianteCargo ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     />
@@ -1586,7 +1586,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         <input
                           type="text"
                           value={apoderadoDenunciante.nombre}
-                          onChange={(e) => setApoderadoDenunciante({ ...apoderadoDenunciante, nombre: e.target.value })}
+                          onChange={(e) => setApoderadoDenunciante({ ...apoderadoDenunciante, nombre: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                           placeholder="Nombres y apellidos del apoderado"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />

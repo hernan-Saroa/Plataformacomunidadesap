@@ -2259,54 +2259,60 @@ export class GraduationCertificatesService {
       subject: `Certificado de verificación de título - ${certificate.certificateNumber}`,
       text: `Adjunto encontrarás el certificado de verificación de título solicitado.\n\nCódigo de verificación: ${certificate.verificationCode}\nURL de validación: ${validationUrl}${reviewNotesText}`,
       html: `
-        <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
-          <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
-            <tr>
-              <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
-                Certificados ESAP
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-                Certificado de verificación de título
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-                Adjunto encontrarás el certificado de verificación de título solicitado.
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-                <strong>Código de verificación:</strong> ${certificate.verificationCode}
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 0 24px 18px 24px; font-size: 14px; color: #4b5563;">
-                <strong>URL de validacion:</strong> <a href="${validationUrl}" style="color: #0b68d1;">${validationUrl}</a>
-              </td>
-            </tr>
-            ${
-              trimmedReviewNotes
-                ? `<tr>
-              <td style="padding: 0 24px 18px 24px; font-size: 14px; color: #4b5563;">
-                <strong>Notas de revisión:</strong>
-                <div style="margin-top: 6px; white-space: pre-line;">${safeReviewNotes}</div>
-              </td>
-            </tr>`
-                : ''
-            }
-            <tr>
-              <td style="padding: 0 24px 18px 24px; font-size: 13px; color: #6b7280;">
-                Archivo adjunto: <strong>${attachment.filename}</strong>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
-                ESAP - Escuela Superior de Administracion Publica
-              </td>
-            </tr>
-          </table>
+        <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
+          <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+            <table cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #dde3ed;">
+              <tr>
+                <td style="background-image:linear-gradient(135deg,#003DA5 0%,#1565C0 100%);background-color:#003DA5;padding:0;">
+                  <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                    <tr><td style="height:4px;background-color:#818CF8;font-size:0;line-height:0;">&nbsp;</td></tr>
+                    <tr><td style="padding:22px 28px 18px 28px;">
+                      <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+                        <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                        <td align="right"><span style="background-color:rgba(255,255,255,0.18);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Verificación de Título</span></td>
+                      </tr></table>
+                    </td></tr>
+                  </table>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:32px 28px 8px 28px;">
+                  <h1 style="margin:0 0 6px 0;font-size:22px;font-weight:700;color:#111827;">Certificado de verificación de título</h1>
+                  <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Adjunto encontrarás el certificado solicitado. Guarda los siguientes datos para futuras consultas o validaciones.</p>
+                  <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:16px;">
+                    <tr><td style="padding:16px 20px;">
+                      <p style="margin:0 0 12px 0;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.6px;">Datos de verificación</p>
+                      <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                        <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;">
+                          <span style="font-size:12px;color:#6b7280;">Código de verificación</span><br>
+                          <span style="font-size:15px;font-weight:700;color:#1d4ed8;letter-spacing:1px;">${certificate.verificationCode}</span>
+                        </td></tr>
+                        <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;">
+                          <span style="font-size:12px;color:#6b7280;">URL de validación</span><br>
+                          <a href="${validationUrl}" style="font-size:13px;color:#2563eb;text-decoration:underline;">${validationUrl}</a>
+                        </td></tr>
+                        <tr><td style="padding:8px 0;">
+                          <span style="font-size:12px;color:#6b7280;">Archivo adjunto</span><br>
+                          <span style="font-size:14px;font-weight:600;color:#374151;">${attachment.filename}</span>
+                        </td></tr>
+                      </table>
+                    </td></tr>
+                  </table>
+                  ${
+                    trimmedReviewNotes
+                      ? `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:16px;"><tr><td style="padding:14px 16px;"><p style="margin:0 0 4px 0;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.5px;">Notas de revisión</p><p style="margin:0;font-size:13px;color:#78350f;white-space:pre-line;line-height:1.6;">${safeReviewNotes}</p></td></tr></table>`
+                      : ''
+                  }
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:14px 28px 18px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                  <p style="margin:0;font-size:12px;color:#9ca3af;">ESAP — Escuela Superior de Administración Pública</p>
+                  
+                </td>
+              </tr>
+            </table>
+          </td></tr></table>
         </div>
       `,
       attachmentName: attachment.filename,
@@ -2402,69 +2408,56 @@ export class GraduationCertificatesService {
     const safeCertificateNumber = safe(certificateNumber);
     const safeFormattedDate = safe(formattedDate);
     const nitHtmlRow = companyNit
-      ? `
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-              <strong>NIT:</strong> ${safeCompanyNit}
-            </td>
-          </tr>`
+      ? `<tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">NIT</span><br><span style="font-size:14px;font-weight:600;color:#374151;">${safeCompanyNit}</span></td></tr>`
       : '';
 
     const html = `
-      <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
-        <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
-          <tr>
-            <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
-              Certificados ESAP
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-              Notificacion de solicitud de certificado
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-              Hola <strong>${safeGraduateName}</strong>, una empresa solicito un certificado de egresado a tu nombre.
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-              <strong>Empresa:</strong> ${safeCompanyName}
-            </td>
-          </tr>
-          ${nitHtmlRow}
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-              <strong>Persona de contacto:</strong> ${safeContactPerson}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-              <strong>Correo de contacto:</strong> ${safeContactEmail}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-              <strong>Fecha y hora:</strong> ${safeFormattedDate}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 18px 24px; font-size: 14px; color: #4b5563;">
-              <strong>Número de certificado:</strong> ${safeCertificateNumber}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 18px 24px; font-size: 13px; color: #6b7280;">
-              Si no reconoces esta solicitud, por favor contacta a ESAP para verificar la informacion.
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
-              ESAP - Escuela Superior de Administracion Publica
-            </td>
-          </tr>
-        </table>
+      <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
+        <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+          <table cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #dde3ed;">
+            <tr>
+              <td style="background-image:linear-gradient(135deg,#003DA5 0%,#1565C0 100%);background-color:#003DA5;padding:0;">
+                <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr><td style="height:4px;background-color:#FCD34D;font-size:0;line-height:0;">&nbsp;</td></tr>
+                  <tr><td style="padding:22px 28px 18px 28px;">
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                      <td align="right"><span style="background-color:rgba(252,211,77,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Aviso de solicitud</span></td>
+                    </tr></table>
+                  </td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 28px 8px 28px;">
+                <h1 style="margin:0 0 6px 0;font-size:22px;font-weight:700;color:#111827;">Una empresa solicitó tu certificado</h1>
+                <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Hola <strong style="color:#374151;">${safeGraduateName}</strong>, te informamos que una empresa solicitó verificar tu información de egresado de la ESAP.</p>
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:16px;">
+                  <tr><td style="padding:16px 20px;">
+                    <p style="margin:0 0 12px 0;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.6px;">Datos de la solicitud</p>
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Empresa</span><br><span style="font-size:14px;font-weight:700;color:#111827;">${safeCompanyName}</span></td></tr>
+                      ${nitHtmlRow}
+                      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Persona de contacto</span><br><span style="font-size:14px;font-weight:600;color:#374151;">${safeContactPerson}</span></td></tr>
+                      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Correo de contacto</span><br><span style="font-size:14px;color:#374151;">${safeContactEmail}</span></td></tr>
+                      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Fecha y hora</span><br><span style="font-size:14px;color:#374151;">${safeFormattedDate}</span></td></tr>
+                      <tr><td style="padding:8px 0;"><span style="font-size:12px;color:#6b7280;">Número de certificado</span><br><span style="font-size:15px;font-weight:700;color:#1d4ed8;">${safeCertificateNumber}</span></td></tr>
+                    </table>
+                  </td></tr>
+                </table>
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:24px;">
+                  <tr><td style="padding:12px 16px;font-size:13px;color:#92400e;line-height:1.5;">&#9888; Si no reconoces esta solicitud, contacta a ESAP para verificar la información.</td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 28px 18px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;font-size:12px;color:#9ca3af;">ESAP — Escuela Superior de Administración Pública</p>
+                
+              </td>
+            </tr>
+          </table>
+        </td></tr></table>
       </div>
     `;
 
@@ -4343,54 +4336,50 @@ export class GraduationCertificatesService {
     const safeFormattedUpdateDate = safe(formattedUpdateDate);
 
     const html = `
-      <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
-        <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
-          <tr>
-            <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
-              Certificados ESAP
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-              Actualización de solicitud de revisión
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-              Hola <strong>${safeRequesterName}</strong>, tu solicitud avanzo en el proceso.
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-              <strong>Solicitud:</strong> ${safeRequestNumber}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-              <strong>Estado actual:</strong> En revisión
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-              <strong>Documento consultado:</strong> ${safeIdNumber}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;">
-              <strong>Fecha de actualización:</strong> ${safeFormattedUpdateDate}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 18px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-              Nuestro equipo se encuentra validando la informacion. Te notificaremos el siguiente avance al mismo correo.
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
-              ESAP - Escuela Superior de Administracion Publica
-            </td>
-          </tr>
-        </table>
+      <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
+        <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+          <table cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #dde3ed;">
+            <tr>
+              <td style="background-image:linear-gradient(135deg,#003DA5 0%,#1565C0 100%);background-color:#003DA5;padding:0;">
+                <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr><td style="height:4px;background-color:#FCD34D;font-size:0;line-height:0;">&nbsp;</td></tr>
+                  <tr><td style="padding:22px 28px 18px 28px;">
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                      <td align="right"><span style="background-color:rgba(252,211,77,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">En revisión</span></td>
+                    </tr></table>
+                  </td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 28px 8px 28px;">
+                <h1 style="margin:0 0 6px 0;font-size:22px;font-weight:700;color:#111827;">Tu solicitud está siendo revisada</h1>
+                <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Hola <strong style="color:#374151;">${safeRequesterName}</strong>, tu solicitud avanzó en el proceso. Nuestro equipo está validando la información.</p>
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:16px;">
+                  <tr><td style="padding:16px 20px;">
+                    <p style="margin:0 0 12px 0;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.6px;">Estado de la solicitud</p>
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Número de solicitud</span><br><span style="font-size:15px;font-weight:700;color:#111827;">${safeRequestNumber}</span></td></tr>
+                      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Estado actual</span><br><span style="font-size:14px;font-weight:600;color:#d97706;">&#9679; En revisión</span></td></tr>
+                      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;"><span style="font-size:12px;color:#6b7280;">Documento consultado</span><br><span style="font-size:14px;color:#374151;">${safeIdNumber}</span></td></tr>
+                      <tr><td style="padding:8px 0;"><span style="font-size:12px;color:#6b7280;">Fecha de actualización</span><br><span style="font-size:14px;color:#374151;">${safeFormattedUpdateDate}</span></td></tr>
+                    </table>
+                  </td></tr>
+                </table>
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:24px;">
+                  <tr><td style="padding:12px 16px;font-size:13px;color:#92400e;line-height:1.5;">&#128336; Te notificaremos el siguiente avance al mismo correo electrónico.</td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 28px 18px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;font-size:12px;color:#9ca3af;">ESAP — Escuela Superior de Administración Pública</p>
+                
+              </td>
+            </tr>
+          </table>
+        </td></tr></table>
       </div>
     `;
 
@@ -4450,39 +4439,52 @@ export class GraduationCertificatesService {
       `Puedes realizar una nueva solicitud en ${portalUrl}.`;
 
     const html = `
-      <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
-        <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #ef4444; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
-          <tr>
-            <td style="background: linear-gradient(135deg, #b91c1c 0%, #ef4444 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
-              Certificados ESAP
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-              Solicitud rechazada
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-              Tu solicitud <strong>${request.requestNumber}</strong> fue rechazada.
-            </td>
-          </tr>
-          ${
-            request.rejectionReason
-              ? `<tr><td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563;"><strong>Motivo:</strong> ${request.rejectionReason}</td></tr>`
-              : ''
-          }
-          <tr>
-            <td style="padding: 0 24px 18px 24px; font-size: 14px; color: #4b5563;">
-              Si deseas intentar de nuevo, puedes hacer una nueva solicitud desde <a href="${portalUrl}" style="color: #0b68d1;">${portalUrl}</a>.
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
-              ESAP - Escuela Superior de Administracion Publica
-            </td>
-          </tr>
-        </table>
+      <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
+        <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+          <table cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #fecaca;">
+            <tr>
+              <td style="background-image:linear-gradient(135deg,#991B1B 0%,#DC2626 100%);background-color:#991B1B;padding:0;">
+                <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr><td style="height:4px;background-color:#FCA5A5;font-size:0;line-height:0;">&nbsp;</td></tr>
+                  <tr><td style="padding:22px 28px 18px 28px;">
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Registro Académico</div></td>
+                      <td align="right"><span style="background-color:rgba(255,255,255,0.18);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Solicitud rechazada</span></td>
+                    </tr></table>
+                  </td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 28px 8px 28px;">
+                <h1 style="margin:0 0 6px 0;font-size:22px;font-weight:700;color:#111827;">Tu solicitud fue rechazada</h1>
+                <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Lamentamos informarte que la solicitud <strong style="color:#374151;">${request.requestNumber}</strong> no pudo ser aprobada.</p>
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:16px;">
+                  <tr><td style="padding:16px 20px;">
+                    <p style="margin:0 0 12px 0;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.6px;">Detalle de la solicitud</p>
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr><td style="padding:8px 0;${request.rejectionReason ? 'border-bottom:1px solid #f1f5f9;' : ''}"><span style="font-size:12px;color:#6b7280;">Número de solicitud</span><br><span style="font-size:15px;font-weight:700;color:#111827;">${request.requestNumber}</span></td></tr>
+                      ${
+                        request.rejectionReason
+                          ? `<tr><td style="padding:8px 0;"><span style="font-size:12px;color:#6b7280;">Motivo del rechazo</span><br><span style="font-size:14px;color:#374151;line-height:1.5;">${request.rejectionReason}</span></td></tr>`
+                          : ''
+                      }
+                    </table>
+                  </td></tr>
+                </table>
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#fef2f2;border:1px solid #fecaca;border-radius:8px;margin-bottom:24px;">
+                  <tr><td style="padding:12px 16px;font-size:13px;color:#991b1b;line-height:1.5;">Si deseas intentar de nuevo, puedes hacer una nueva solicitud desde <a href="${portalUrl}" style="color:#dc2626;font-weight:600;">${portalUrl}</a></td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 28px 18px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;font-size:12px;color:#9ca3af;">ESAP — Escuela Superior de Administración Pública</p>
+                
+              </td>
+            </tr>
+          </table>
+        </td></tr></table>
       </div>
     `;
 

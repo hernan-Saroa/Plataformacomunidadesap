@@ -13,6 +13,12 @@ import { entidadesRemisionService, EntidadRemision } from '../../../../services/
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
+// Función para validar email
+const validarEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
 const ENTIDADES_REMISION_DEFECTO: EntidadRemision[] = [
   { id: 'procuraduria', nombre: 'Procuraduría General de la Nación', correo: 'contacto@procuraduria.gov.co', activo: true },
   { id: 'contraloria', nombre: 'Contraloría General de la República', correo: 'info@contraloria.gov.co', activo: true },
@@ -369,7 +375,12 @@ export function ConfiguracionEntidadesRemision() {
                 <input
                   type="email"
                   value={formEntidad.correo}
-                  onChange={(e) => setFormEntidad({ ...formEntidad, correo: e.target.value })}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === '' || validarEmail(value)) {
+                      setFormEntidad({ ...formEntidad, correo: e.target.value });
+                    }
+                  }}
                   className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 ${
                     erroresForm.correo ? 'border-red-500 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
                   }`}

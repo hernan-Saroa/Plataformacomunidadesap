@@ -156,6 +156,10 @@ export const usersService = {
     return apiClient.put<User>(`${SERVICE_PREFIX}/users/${id}/status`, { is_active: isActive });
   },
 
+  async resetUserPassword(id: string, newPassword: string): Promise<void> {
+    return apiClient.put(`${SERVICE_PREFIX}/users/${id}/password`, { new_password: newPassword });
+  },
+
   /**
    * Buscar usuarios por término de búsqueda
    */

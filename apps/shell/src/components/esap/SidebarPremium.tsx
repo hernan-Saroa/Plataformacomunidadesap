@@ -811,6 +811,14 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                         ]
                       )}
 
+                      {/* Banco de Docentes PTA */}
+                      {renderMenuItem(
+                        'banco-docentes-pta',
+                        <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                        'Banco de Docentes',
+                        'Gestión y carga masiva'
+                      )}
+
                       {/* Estructura Organizacional - NUEVO MÓDULO */}
                       {renderMenuItem(
                         'estructura-organizacional',
@@ -1076,6 +1084,14 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                         subtitle: 'Documentos del usuario'
                       }
                     ]
+                  )}
+
+                  {/* Banco de Docentes PTA */}
+                  {renderMenuItem(
+                    'banco-docentes-pta',
+                    <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                    'Banco de Docentes',
+                    'Gestión y carga masiva'
                   )}
 
                   {/* Estructura Organizacional - NUEVO MÓDULO */}

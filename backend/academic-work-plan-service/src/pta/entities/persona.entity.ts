@@ -52,6 +52,9 @@ export class PersonaEntity {
   @Column({ type: 'text', nullable: true })
   tipo_usuario: string | null;
 
+  @Column({ type: 'timestamp', nullable: true })
+  fecha_fin_contrato: Date | null;
+
   @CreateDateColumn({ default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 

@@ -418,13 +418,11 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
       });
   }, []);
 
-  // Cargar abogados activos desde legal_management.abogados al montar
+  // Cargar abogados con rol resuelve desde el servicio de auth
   useEffect(() => {
     legalService.getAbogados()
       .then((data: any[]) => {
-        const activos = (data || [])
-          .filter((a: any) => a.estado === 'ACTIVO')
-          .map((a: any) => ({ id: a.id, nombre: a.nombreCompleto }));
+        const activos = (data || []).map((a: any) => ({ id: a.id, nombre: a.nombreCompleto || a.nombre }));
         setAbogadosAPI(activos);
       })
       .catch(() => { });

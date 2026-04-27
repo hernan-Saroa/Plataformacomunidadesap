@@ -180,4 +180,14 @@ export class UsersController {
 
     return this.toPersonResponseDto(user, exposeInternalIds);
   }
+
+  @Put(':id/password')
+  @Roles(...AUTH_MANAGE_ROLES)
+  async adminResetPassword(
+    @Param('id') id: string,
+    @Body('new_password') newPassword: string,
+  ) {
+    await this.usersService.adminResetPassword(id, newPassword);
+    return { message: 'Contraseña actualizada exitosamente' };
+  }
 }

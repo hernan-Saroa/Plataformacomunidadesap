@@ -52,6 +52,8 @@ const ItemTypes = {
 };
 
 import { legalService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ... (previous imports)
 
@@ -459,15 +461,17 @@ export function ModuloJuzgamientoDisciplinarioV3() {
             { label: 'Archivados', icon: <Archive className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
-        buttons={[
-          {
-            label: 'Nuevo Proceso',
-            labelMobile: 'Nuevo',
-            icon: <Plus className="w-4 h-4" />,
-            onClick: () => setModalNuevoProcesoOpen(true),
-            variant: 'primary'
-          }
-        ]}
+        buttons={
+          authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT)
+            ? [{
+                label: 'Nuevo Proceso',
+                labelMobile: 'Nuevo',
+                icon: <Plus className="w-4 h-4" />,
+                onClick: () => setModalNuevoProcesoOpen(true),
+                variant: 'primary'
+              }]
+            : []
+        }
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Juzgamiento Disciplinario"

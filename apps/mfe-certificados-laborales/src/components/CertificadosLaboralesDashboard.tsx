@@ -35,6 +35,7 @@ import { GenerarCertificadoModal } from './GenerarCertificadoModal';
 import { CertificadoDetallePanel } from './CertificadoDetallePanel';
 import { ModalHistorialCertificados } from './ModalHistorialCertificados';
 import { PrimaTecnicaModal } from './PrimaTecnicaModal';
+import { VisorPDFCertificado } from './VisorPDFCertificado';
 import React from 'react';
 import { certificadosService } from '../../services/api/certificados.service';
 import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
@@ -339,6 +340,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   const [isHistorialOpen, setIsHistorialOpen] = useState(false);
   const [isPrimaTecnicaOpen, setIsPrimaTecnicaOpen] = useState(false);
   const [expandedCertId, setExpandedCertId] = useState<string | null>(null);
+  const [downloadCert, setDownloadCert] = useState<CertificadoLaboral | null>(null);
 
   // Estado para certificados y loading
   const [certificados, setCertificados] = useState<CertificadoLaboral[]>([]);
@@ -612,6 +614,8 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     setTipoVinculacionFilter('');
   };
 
+  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+
   const handleVerDetalle = (cert: CertificadoLaboral) => {
     // Toggle panel desplegable
     if (expandedCertId === cert.id) {
@@ -619,6 +623,34 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     } else {
       setExpandedCertId(cert.id);
     }
+  };
+
+  const handleReenviarEmail = async (cert: CertificadoLaboral) => {
+    if (processingIds.has(cert.id)) return;
+    setProcessingIds(prev => new Set(prev).add(cert.id));
+    toast.loading('Reenviando certificado...', { id: `reenviar-${cert.id}` });
+    try {
+      const response = await certificadosService.laborales.reenviar(cert.id, {
+        publicBaseUrl: window.location.origin,
+      });
+      toast.success('Certificado reenviado', {
+        id: `reenviar-${cert.id}`,
+        description: `Enviado a ${response?.email || 'correo registrado'}`,
+      });
+    } catch (error: any) {
+      toast.error('No se pudo reenviar el certificado', {
+        id: `reenviar-${cert.id}`,
+        description: error?.message || 'Intenta nuevamente',
+      });
+    } finally {
+      setProcessingIds(prev => { const n = new Set(prev); n.delete(cert.id); return n; });
+    }
+  };
+
+  const handleDescargarPDF = (cert: CertificadoLaboral) => {
+    if (downloadCert) return;
+    toast.loading('Generando PDF...', { id: `descargar-${cert.id}` });
+    setDownloadCert(cert);
   };
 
   const getEstadoBadge = (estado: string) => {
@@ -1303,34 +1335,28 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                                 <button
                                   onClick={(e) => e.stopPropagation()}
                                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                  disabled={processingIds.has(cert.id)}
                                 >
                                   <MoreVertical className="w-5 h-5 text-gray-600" />
                                 </button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-48">
-                                <DropdownMenuItem onClick={() => toast.info('Descargar PDF')}>
-                                  <Download className="w-4 h-4 mr-2" />
-                                  Descargar PDF
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => toast.info('Ver QR')}>
-                                  <QrCode className="w-4 h-4 mr-2" />
-                                  Ver código QR
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => toast.info('Reenviar email')}>
-                                  <Mail className="w-4 h-4 mr-2" />
-                                  Reenviar email
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  onClick={() => toast.warning('Revocar certificado')}
-                                  className="text-red-600"
+                                  onClick={(e) => { e.stopPropagation(); handleDescargarPDF(cert); }}
+                                  disabled={downloadCert !== null}
                                 >
-                                  <XCircle className="w-4 h-4 mr-2" />
-                                  Revocar
+                                  <Download className="w-4 h-4 mr-2" />
+                                  Descargar certificado
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => { e.stopPropagation(); handleReenviarEmail(cert); }}
+                                  disabled={processingIds.has(cert.id)}
+                                >
+                                  <Mail className="w-4 h-4 mr-2" />
+                                  Reenviar certificado
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
-
                           </div>
                         </td>
                       </tr>
@@ -1419,6 +1445,25 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         isOpen={isPrimaTecnicaOpen}
         onClose={() => setIsPrimaTecnicaOpen(false)}
       />
+
+      {downloadCert && (
+        <VisorPDFCertificado
+          isOpen={true}
+          hiddenMode={true}
+          autoAction="download"
+          onClose={() => setDownloadCert(null)}
+          onAutoActionComplete={(action, success) => {
+            const id = `descargar-${downloadCert.id}`;
+            setDownloadCert(null);
+            if (success) {
+              toast.success('PDF descargado', { id });
+            } else {
+              toast.error('No se pudo generar el PDF', { id, description: 'Intenta nuevamente' });
+            }
+          }}
+          certificado={downloadCert}
+        />
+      )}
 
     </div>
   );

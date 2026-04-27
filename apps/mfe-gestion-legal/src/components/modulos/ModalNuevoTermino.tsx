@@ -8,7 +8,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
-import { disciplinaryService } from '../../../../services/api/disciplinary.service';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { Plus, Calendar, User, FileText, AlertTriangle, Briefcase } from 'lucide-react';
 
@@ -50,10 +49,8 @@ export function ModalNuevoTermino({ open, onOpenChange, onSuccess }: ModalNuevoT
     // Cargar profesionales
     useEffect(() => {
         if (open) {
-            disciplinaryService.getProfesionales().then((res: any) => {
-                const data = res?.data || res || [];
-                const activos = Array.isArray(data) ? data : [];
-                setProfesionales(activos);
+            legalService.getAbogados().then((data: any[]) => {
+                setProfesionales(Array.isArray(data) ? data : []);
             }).catch(() => {
                 // Silently fail, dropdown will just be empty
             });

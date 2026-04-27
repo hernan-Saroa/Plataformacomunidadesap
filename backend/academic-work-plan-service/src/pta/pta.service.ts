@@ -109,9 +109,9 @@ export class PtaService {
         ${personasHasIdPerson ? 'p.id_person::text' : 'NULL'} as person_id,
         ${personasHasIdTercero ? 'p.id_tercero::text' : 'NULL'} as tercero_id,
         p.dir_email as email,
-        p.nom_tercero as primer_nombre, 
-        p.seg_nombre as segundo_nombre, 
-        p.pri_apellido as primer_apellido, 
+        p.nom_tercero as primer_nombre,
+        NULL as segundo_nombre,
+        p.pri_apellido as primer_apellido,
         p.seg_apellido as segundo_apellido
       FROM auth.personas p
       JOIN auth."user" u ON ${joinUserPersonas}
@@ -153,6 +153,32 @@ export class PtaService {
     if (email) {
       const byCorreo = await this.docenteRepo.findOne({ where: { correoInstitucional: email } as any });
       if (byCorreo) return { personId: byCorreo.id, email, fullName };
+
+      // Buscar por email en academic_work_plan."Usuario" → "Persona" → "Docente"
+      const byUsuarioEmail = await this.docenteRepo
+        .createQueryBuilder('d')
+        .innerJoin('d.persona', 'p')
+        .innerJoin('p.usuario', 'u')
+        .where('LOWER(u.email) = LOWER(:email)', { email })
+        .getOne();
+      if (byUsuarioEmail) return { personId: byUsuarioEmail.id, email, fullName };
+    }
+
+    // Buscar por num_identificacion en auth.personas vs identificacion en academic_work_plan."Persona"
+    const authPersonaRows = await this.ptaRepo.manager.query(
+      `SELECT p.num_identificacion FROM auth.personas p WHERE p.id_person = $1 LIMIT 1`,
+      [personId],
+    );
+    if (authPersonaRows?.length > 0) {
+      const numId = authPersonaRows[0]?.num_identificacion;
+      if (numId) {
+        const byDoc = await this.docenteRepo
+          .createQueryBuilder('d')
+          .innerJoin('d.persona', 'p')
+          .where('p.identificacion = :numId', { numId })
+          .getOne();
+        if (byDoc) return { personId: byDoc.id, email, fullName };
+      }
     }
 
     // Si no existe, auto-aprovisionamos el docente para no violar la FK al guardar el PTA

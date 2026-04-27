@@ -127,6 +127,7 @@ export class AuthController {
     return this.authService.loginWithMicrosoft(dto);
   }
 
+  @Public()
   @Post('new-person')
   newPerson(@Body() dto: NewPersonDto) {
     return this.authService.newPerson(dto);
