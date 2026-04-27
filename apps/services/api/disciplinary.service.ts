@@ -1474,6 +1474,20 @@ class DisciplinaryService {
     }
 
     /**
+     * Reordenar comportamientos disciplinarios
+     */
+    async reorderDisciplinaryBehaviors(ids: string[]): Promise<void> {
+        return apiClient.post(`${SERVICE_PREFIX}/disciplinary-behaviors/reorder`, { ids });
+    }
+
+    /**
+     * Enviar correo electrónico
+     */
+    async sendEmail(emailData: { to: string; subject: string; body?: string; html?: string }): Promise<{ success: boolean; message: string }> {
+        return apiClient.post<{ success: boolean; message: string }>(`${SERVICE_PREFIX}/disciplinary-processes/send-email`, emailData);
+    }
+
+    /**
      * Activar/desactivar configuración de oficio
      */
     async toggleOficioConfigurationEstado(id: string): Promise<OficioConfiguration> {
