@@ -45,8 +45,7 @@ import { toast } from 'sonner';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Input } from '@esap-mfe/shared-ui/input';
 import { Card, CardContent } from '@esap-mfe/shared-ui/card';
-import esapLogo from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
 
 // Tipos de datos
 interface EmpleadoDB {
@@ -353,7 +352,7 @@ export function SolicitarCertificadoPublico({ onBack }: SolicitarCertificadoPubl
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <div className="flex items-center gap-3">
-              <img src={esapLogo} alt="ESAP" className="h-10" />
+              <ESAPLogo variant="white" className="h-10" />
             </div>
 
             {/* Navegación */}
@@ -793,7 +792,7 @@ export function SolicitarCertificadoPublico({ onBack }: SolicitarCertificadoPubl
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
             {/* Brand */}
             <div>
-              <img src={esapLogoWhite} alt="ESAP" className="h-10 mb-4" />
+              <ESAPLogo variant="white" className="h-10 mb-4" />
               <p className="text-sm text-gray-400 leading-relaxed mb-4">
                 Transformando la educación pública en Colombia con tecnología de clase mundial.
               </p>

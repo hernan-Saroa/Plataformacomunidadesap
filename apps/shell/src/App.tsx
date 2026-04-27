@@ -324,22 +324,30 @@ export default function App() {
           ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
             'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
         );
+        const hasGestionLegal = roles.some((role: string) =>
+          ['GESTION_LEGAL', 'JEFE_GESTION_LEGAL', 'MONITOREO_GESTION_LEGAL',
+            'SECRETARIADO_GESTION_LEGAL', 'RESUELVE_GESTION_LEGAL'].includes(role)
+        );
 
         module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
-          : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+          : hasGestionLegal ? 'gestion-legal'
             : hasDisciplinaryAccess(roles) ? 'control-disciplinario'
               : hasControlInterno ? 'control-interno'
                 : 'users-persons';
         const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
-          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
-            : hasDisciplinaryAccess(roles) ? 'Control Disciplinario'
-              : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
-                : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
-                  : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
-                    : roles.includes('CONSULTA') ? 'Consulta Control Interno'
-                      : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
-                        : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
-                          : 'Control Interno';
+          : roles.includes('JEFE_GESTION_LEGAL') ? 'Jefe Gestión Legal'
+            : roles.includes('MONITOREO_GESTION_LEGAL') ? 'Monitoreo Gestión Legal'
+              : roles.includes('SECRETARIADO_GESTION_LEGAL') ? 'Secretariado Gestión Legal'
+                : roles.includes('RESUELVE_GESTION_LEGAL') ? 'Resuelve Gestión Legal'
+                  : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+                    : hasDisciplinaryAccess(roles) ? 'Control Disciplinario'
+                      : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
+                        : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
+                          : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
+                            : roles.includes('CONSULTA') ? 'Consulta Control Interno'
+                              : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
+                                : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
+                                  : 'Control Interno';
         portalRoles.push(rolStr);
       } else {
         if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
@@ -637,21 +645,29 @@ export default function App() {
             ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
               'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
           );
+          const hasGestionLegal = roles.some((role: string) =>
+            ['GESTION_LEGAL', 'JEFE_GESTION_LEGAL', 'MONITOREO_GESTION_LEGAL',
+              'SECRETARIADO_GESTION_LEGAL', 'RESUELVE_GESTION_LEGAL'].includes(role)
+          );
           const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
-            : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+            : hasGestionLegal ? 'gestion-legal'
               : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
                 : user.modules.length > 0 ? user.modules[0]
                   : 'control-interno';
         const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
-          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
-            : hasDisciplinaryAccess(roles) ? 'Control Disciplinario'
-              : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
-                : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
-                  : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
-                    : roles.includes('CONSULTA') ? 'Consulta Control Interno'
-                      : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
-                        : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
-                          : 'Control Interno';
+          : roles.includes('JEFE_GESTION_LEGAL') ? 'Jefe Gestión Legal'
+            : roles.includes('MONITOREO_GESTION_LEGAL') ? 'Monitoreo Gestión Legal'
+              : roles.includes('SECRETARIADO_GESTION_LEGAL') ? 'Secretariado Gestión Legal'
+                : roles.includes('RESUELVE_GESTION_LEGAL') ? 'Resuelve Gestión Legal'
+                  : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+                    : hasDisciplinaryAccess(roles) ? 'Control Disciplinario'
+                      : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
+                        : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
+                          : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
+                            : roles.includes('CONSULTA') ? 'Consulta Control Interno'
+                              : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
+                                : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
+                                  : 'Control Interno';
           const userDataToSave = {
             name: userName,
             email: userEmail,

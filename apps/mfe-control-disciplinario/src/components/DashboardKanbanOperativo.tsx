@@ -3094,10 +3094,12 @@ export function DashboardKanbanOperativo({
       // Separar noticias archivadas de las activas. Excluir ASIGNADA porque ya tienen proceso asociado
       const noticiasActivas = noticiasFiltradas.filter(n => {
         const estado = (n as any).estado;
-        // No se muestran noticias devueltas a menos que el usuario sea jefe o sean suyas propias
+        console.log(estado);
+        // No se muestran noticias devueltas a menos que el usuario tenga permiso para ver devueltas
         if (estado === 'DEVUELTA') {
-          const isOwner = (n as any).radicador === currentUserId;
-          if (!esJefe && !isOwner) {
+          const canViewDevueltas = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DEVUELTAS) || authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_MIS_DEVUELTAS);
+          console.log(canViewDevueltas);
+          if (!canViewDevueltas) {
             return false;
           }
         }

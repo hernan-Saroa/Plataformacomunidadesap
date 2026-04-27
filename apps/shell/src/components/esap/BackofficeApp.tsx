@@ -188,6 +188,39 @@ function shouldUseAcademicLayout(userData: any, userRoles?: string[]) {
   return hasOnlyAcademicCodes || hasOnlyAcademicLabels;
 }
 
+const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
+  'executive': 'dashboard',
+  'users-management': 'users-persons',
+  'carpeta-digital': 'carpeta-digital',
+  'roles-administration': 'roles-permissions',
+  'audit': 'audit',
+  'reports': 'reports',
+  'graduates': 'graduates',
+  'graduates-management': 'graduates',
+  'graduates-verification': 'graduates',
+  'graduates-certificates': 'verification-certificates',
+  'graduates-review-requests': 'certificate-requests',
+  'community': 'community-posts',
+  'community-posts': 'community-posts',
+  'community-events': 'community-events',
+  'community-announcements': 'community-announcements',
+  'certificate-requests': 'certificate-requests',
+  'job-board': 'job-board',
+  'certificados-laborales': 'certificados-laborales',
+  'estructura-organizacional': 'estructura-organizacional',
+  'programas-academicos': 'programas-academicos',
+  'firma-electronica': 'firma-electronica',
+  'control-interno': 'control-interno',
+  'control-disciplinario': 'control-disciplinario',
+  'gestion-legal': 'gestion-legal',
+  'pta': 'pta',
+  'banco-docentes-pta': 'banco-docentes-pta',
+  'gestion-passwords': 'gestion-passwords',
+  'gestion-profesoral': 'gestion-profesoral',
+  'registro-academico': 'graduates',
+  'users-persons': 'users-persons',
+};
+
 export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, usuario, userData, userRoles }: BackofficeAppProps = {}) {
   console.log('BackofficeApp', userData, userRoles)
   const currentUser = userData || {
@@ -226,6 +259,30 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     );
   }
 
+  // Compute first accessible module respecting sidebar display order (not backend array order)
+  const moduleFromArray: ModuleView | undefined = (() => {
+    const mods = (userData?.modules || []) as string[];
+    if (mods.length === 0) return undefined;
+    // Collect all accessible views from the user's modules
+    const accessibleViews = new Set<ModuleView>();
+    for (const m of mods) {
+      const view = SIDEBAR_TO_MODULE[m];
+      if (view) accessibleViews.add(view);
+    }
+    // Return the first accessible view in sidebar top-to-bottom order
+    const sidebarOrder: ModuleView[] = [
+      'users-persons', 'carpeta-digital', 'estructura-organizacional', 'programas-academicos',
+      'roles-permissions', 'audit', 'reports',
+      'graduates', 'verification-certificates', 'gestion-profesoral', 'pta',
+      'certificados-laborales', 'firma-electronica',
+      'control-interno', 'control-disciplinario', 'gestion-legal', 'gestion-passwords',
+    ];
+    for (const view of sidebarOrder) {
+      if (accessibleViews.has(view)) return view;
+    }
+    return undefined;
+  })();
+
   const initialModule = userData?.module === 'control-interno' ? 'control-interno'
     : userData?.module === 'control-disciplinario' ? 'control-disciplinario'
       : userData?.module === 'registro-academico' ? 'graduates'
@@ -239,7 +296,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
                   : userData?.module === 'estructura-organizacional' ? 'estructura-organizacional'
                     : userData?.module === 'firma-electronica' ? 'firma-electronica'
                       : userData?.roles?.some((r: string) => r.toLowerCase().includes('jefe') || r.toLowerCase().includes('auditor')) ? 'control-interno'
-                        : 'dashboard'; // Si no tiene módulo específico, enviarlo al dashboard principal
+                        : moduleFromArray ?? 'dashboard'; // Fallback: primer módulo asignado, luego dashboard
 
   // Asegurarnos de que el Jefe OCI o Auditores NUNCA aterricen en users-persons
   const userRoleString = ((userData?.roles || []) as string[]).join(',').toLowerCase();
@@ -254,9 +311,16 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   // 🚀 RECUPERAR MÓDULO PREVIO: Mantener la sesión del usuario donde estaba
   const [currentModule, setCurrentModule] = useState<ModuleView>(() => {
     const saved = localStorage.getItem('esap-last-module');
-    // Si hay un módulo guardado, lo restauramos para mantener el contexto
-    if (saved) return saved as ModuleView;
-    // Si es la primera vez, cargamos el módulo por defecto según sus permisos
+    // Validar que el módulo guardado sea accesible para este usuario
+    if (saved) {
+      const hasAll = (userData?.modules as string[] | undefined)?.includes('all');
+      const userModules = (userData?.modules as string[] | undefined) || [];
+      // Si tiene todos los módulos o si el módulo guardado está entre los asignados, restaurarlo
+      if (hasAll || userModules.length === 0 || userModules.some(m => SIDEBAR_TO_MODULE[m] === saved || m === saved)) {
+        return saved as ModuleView;
+      }
+    }
+    // Si es la primera vez (o el módulo guardado no es accesible), usar el módulo por defecto según permisos
     return finalInitialModule as ModuleView;
   });
 
@@ -302,35 +366,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   const [showProfile, setShowProfile] = useState(false);
 
   const mapSidebarToModule = (sidebarModule: string): ModuleView => {
-    const mappings: Record<string, ModuleView> = {
-      'executive': 'dashboard',
-      'users-management': 'users-persons',
-      'carpeta-digital': 'carpeta-digital',
-      'roles-administration': 'roles-permissions',
-      'audit': 'audit',
-      'reports': 'reports',
-      'graduates-verification': 'graduates',
-      'graduates-certificates': 'verification-certificates',
-      'graduates-review-requests': 'certificate-requests',
-      'community': 'community-posts', // Por defecto abre Posts
-      'community-posts': 'community-posts',
-      'community-events': 'community-events',
-      'community-announcements': 'community-announcements',
-      'certificate-requests': 'certificate-requests', // Certificados Académicos (dentro de Comunidad en sidebar)
-      'job-board': 'job-board',
-      'certificados-laborales': 'certificados-laborales',
-      'estructura-organizacional': 'estructura-organizacional',
-      'programas-academicos': 'programas-academicos',
-      'firma-electronica': 'firma-electronica',
-      'control-interno': 'control-interno',
-      'control-disciplinario': 'control-disciplinario',
-      'gestion-legal': 'gestion-legal',
-      'pta': 'pta',
-      'banco-docentes-pta': 'banco-docentes-pta',
-      'gestion-passwords': 'gestion-passwords',
-      'gestion-profesoral': 'gestion-profesoral'
-    };
-    return (mappings[sidebarModule] as ModuleView) || 'dashboard';
+    return (SIDEBAR_TO_MODULE[sidebarModule] as ModuleView) || 'dashboard';
   };
 
   // Extraer nombre del usuario, priorizando userData.name, luego usuario.nombre

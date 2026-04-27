@@ -805,7 +805,22 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
 
   const [paso, setPaso] = useState(draft?.paso || 1);
   const [lastSaved, setLastSaved] = useState<Date | null>(draft ? new Date() : null);
-  const [vigencia, setVigencia] = useState(planAEditar?.vigencia || draft?.vigencia || new Date().getFullYear());
+  // Calcular años disponibles (no usados por planes existentes, excluyendo el plan en edición)
+  const vigenciasOcupadas = (planesExistentes || [])
+    .filter((p: any) => !planAEditar || p.id !== planAEditar.id)
+    .map((p: any) => p.vigencia);
+  const anioActual = new Date().getFullYear();
+  const vigenciasDisponibles = Array.from({ length: (anioActual + 10) - 2020 + 1 }, (_, i) => 2020 + i)
+    .filter(y => !vigenciasOcupadas.includes(y));
+
+  const [vigencia, setVigencia] = useState(() => {
+    if (planAEditar?.vigencia) return planAEditar.vigencia;
+    // Si hay draft, usarlo SOLO si la vigencia sigue disponible
+    if (draft?.vigencia && !vigenciasOcupadas.includes(draft.vigencia)) return draft.vigencia;
+    
+    // Auto-seleccionar el primer año disponible
+    return vigenciasDisponibles[0] || anioActual;
+  });
   
   // Extraer fechas del plan a editar si existen, asegurando formato YYYY-MM-DD
   const getInitialFecha = (fechaStr: string | undefined, defaultDate: string) => {
@@ -822,11 +837,11 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
   
   // Buscar fecha inicio mínima y fin máxima en las actividades, o usar defaults
   const [fechaInicio, setFechaInicio] = useState(() => {
-    return draft?.fechaInicio || planAEditar?.fecha_inicio || planAEditar?.fechaInicio || `${planAEditar?.vigencia || new Date().getFullYear()}-01-01`;
+    return draft?.fechaInicio || planAEditar?.fecha_inicio || planAEditar?.fechaInicio || `${planAEditar?.vigencia || vigencia}-01-01`;
   });
   
   const [fechaFin, setFechaFin] = useState(() => {
-    return draft?.fechaFin || planAEditar?.fecha_fin || planAEditar?.fechaFin || `${planAEditar?.vigencia || new Date().getFullYear()}-12-31`;
+    return draft?.fechaFin || planAEditar?.fecha_fin || planAEditar?.fechaFin || `${planAEditar?.vigencia || vigencia}-12-31`;
   });
 
   const [comiteAprobacion, setComiteAprobacion] = useState<Auditor[]>(() => {
@@ -950,19 +965,15 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
           // ═══ FECHAS DINÁMICAS: siempre reflejan la vigencia del plan ═══
           fechaInicio: `${año}-01-01`,
           fechaFin: `${año}-12-31`,
-          fechaCorte: `${año}-09-30`,
-          puntosControl: [
-            { ...act.puntosControl[0], fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31` },
-            { ...act.puntosControl[1], fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30` },
-            { ...act.puntosControl[2], fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30` },
-          ]
+          fechaCorte: `${año}-12-31`,
+          // No sobreescribir puntosControl: se regeneran desde el modal al configurar
         };
       }),
       actividadesCustom: (rol.actividadesCustom || []).map(act => ({
         ...act,
         fechaInicio: `${vigencia}-01-01`,
         fechaFin: `${vigencia}-12-31`,
-        fechaCorte: `${vigencia}-09-30`,
+        fechaCorte: `${vigencia}-12-31`,
       }))
     })));
   }, [vigencia]);
@@ -1038,7 +1049,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       // ⚡ Auto-generar 3 puntos de control trimestrales por actividad (Mar, Jun, Sep)
       const actividadesConPuntos = actividades.map((act, idx) => {
         const uniqueId = `rol-${rol.numero}-act-${idx}`; // ⚡ ID único por rol e índice
-        const añoInicial = new Date().getFullYear();
+        const añoInicial = vigencia || new Date().getFullYear();
         const puntosDefault: PuntoControl[] = [
           { id: `pc-${uniqueId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${añoInicial}-03-31`, fechaSeguimiento: `${añoInicial}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
           { id: `pc-${uniqueId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${añoInicial}-06-30`, fechaSeguimiento: `${añoInicial}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
@@ -1048,6 +1059,8 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
           ...act,
           id: uniqueId,
           tipoEvidencia: 'SOLO_CHECK' as const,
+          fechaInicio: `${añoInicial}-01-01`,
+          fechaFin: `${añoInicial}-12-31`,
           fechaCorte: `${añoInicial}-09-30`,
           puntosControl: puntosDefault,
           frecuenciaPuntosControl: 'trimestral' as const,
@@ -1381,6 +1394,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
                 cargandoAuditores={cargandoAuditores}
                 onRecargarAuditores={cargarAuditores}
                 vigenciasExistentes={planesExistentes.filter(p => !planAEditar || p.id !== planAEditar.id).map(p => p.vigencia)}
+                vigenciasDisponibles={vigenciasDisponibles}
               />
             )}
             {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={setRolesConfig} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} jefeOCI={jefeSeleccionado} />}
@@ -1461,48 +1475,59 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
 }
 
 // Paso 1: Configuración básica
-function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores, vigenciasExistentes = [] }: any) {
-  // Validaciones de fechas - Extraer año directamente del string YYYY-MM-DD para evitar problemas de zona horaria
+function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores, vigenciasExistentes = [], vigenciasDisponibles = [] }: any) {
   const anioFechaInicio = fechaInicio ? parseInt(fechaInicio.split('-')[0], 10) : vigencia;
   const anioFechaFin = fechaFin ? parseInt(fechaFin.split('-')[0], 10) : vigencia;
-  
-  // Comparar fechas como strings (formato YYYY-MM-DD se compara correctamente alfabéticamente)
   const errorFechaFinAnterior = fechaFin && fechaInicio && fechaFin < fechaInicio;
   const errorVigenciaNoCoincide = (anioFechaInicio !== vigencia || anioFechaFin !== vigencia);
   
-  // Handler para fecha inicio que ajusta automáticamente la fecha fin si es necesario
   const handleFechaInicioChange = (nuevaFechaInicio: string) => {
     onFechaInicioChange(nuevaFechaInicio);
-    // Si la fecha fin es anterior a la nueva fecha inicio, ajustar automáticamente
-    if (fechaFin && fechaFin < nuevaFechaInicio) {
-      onFechaFinChange(nuevaFechaInicio);
-    }
+    if (fechaFin && fechaFin < nuevaFechaInicio) onFechaFinChange(nuevaFechaInicio);
   };
 
-  // Handler para vigencia que ajusta las fechas automáticamente
-  const handleVigenciaChange = (nuevaVigencia: number) => {
+  const handleVigenciaSelect = (nuevaVigencia: number) => {
     if (isNaN(nuevaVigencia)) return;
-    // Permitir valores intermedios mientras se escribe (sin clamping)
     onVigenciaChange(nuevaVigencia);
-    // Solo ajustar fechas si el año ya es válido
     if (nuevaVigencia >= 2020 && nuevaVigencia <= 2100) {
       onFechaInicioChange(`${nuevaVigencia}-01-01`);
       onFechaFinChange(`${nuevaVigencia}-12-31`);
     }
   };
 
-  // Al salir del campo, clampear al rango válido
-  const handleVigenciaBlur = () => {
-    const v = vigencia || new Date().getFullYear();
-    if (isNaN(v) || v < 2020 || v > 2100) {
-      const clamped = Math.min(Math.max(isNaN(v) ? 2020 : v, 2020), 2100);
-      onVigenciaChange(clamped);
-      onFechaInicioChange(`${clamped}-01-01`);
-      onFechaFinChange(`${clamped}-12-31`);
-    }
+  // Combobox state
+  const [inputText, setInputText] = useState(String(vigencia));
+  const [showDropdown, setShowDropdown] = useState(false);
+  const comboRef = useRef<HTMLDivElement>(null);
+
+  const filteredOptions = vigenciasDisponibles.filter((y: number) => String(y).includes(inputText));
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (comboRef.current && !comboRef.current.contains(e.target as Node)) setShowDropdown(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => { setInputText(String(vigencia)); }, [vigencia]);
+
+  const handleInputChange = (val: string) => {
+    setInputText(val);
+    setShowDropdown(true);
+    const num = parseInt(val);
+    if (!isNaN(num)) handleVigenciaSelect(num);
+  };
+
+  const handleOptionClick = (y: number) => {
+    handleVigenciaSelect(y);
+    setInputText(String(y));
+    setShowDropdown(false);
   };
 
   const vigenciaInvalida = !vigencia || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100;
+  const vigenciaOcupada = !vigenciaInvalida && vigenciasExistentes.includes(vigencia);
+  const vigenciaDisponible = !vigenciaInvalida && !vigenciaOcupada;
 
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
@@ -1514,37 +1539,52 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
       <div className="bg-white rounded-xl border-2 border-gray-200 p-8 space-y-6">
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-2">Vigencia <span className="text-red-500">*</span></label>
-          <div className="relative">
+          <div className="relative" ref={comboRef}>
             <input 
-              type="number" 
-              value={vigencia} 
-              onChange={(e) => handleVigenciaChange(parseInt(e.target.value))} 
-              onBlur={handleVigenciaBlur}
-              min={2020}
-              max={2100}
-              className={`w-full px-4 py-3 border-2 rounded-lg text-lg font-bold focus:outline-none pr-28 ${
-                vigenciaInvalida || vigenciasExistentes.includes(vigencia)
-                  ? 'border-red-500 bg-red-50 focus:border-red-500'
-                  : 'border-gray-300 focus:border-blue-500'
+              type="text"
+              inputMode="numeric"
+              value={inputText} 
+              onChange={(e) => handleInputChange(e.target.value)}
+              onFocus={() => setShowDropdown(true)}
+              placeholder="Escribe o selecciona un año..."
+              className={`w-full px-4 py-3 border-2 rounded-lg text-lg font-bold focus:outline-none pr-32 ${
+                vigenciaOcupada ? 'border-red-500 bg-red-50 focus:border-red-500'
+                : vigenciaDisponible ? 'border-green-500 bg-green-50 focus:border-green-500'
+                : 'border-gray-300 focus:border-blue-500'
               }`}
             />
-            {vigenciasExistentes.includes(vigencia) && !vigenciaInvalida && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded-full border border-red-300">
-                ⚠️ Ya existe
-              </span>
+            <button type="button" onClick={() => setShowDropdown(!showDropdown)} className="absolute right-24 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+              <svg className={`w-5 h-5 transition-transform ${showDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            {vigenciaDisponible && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded-full border border-green-300">✅ Disponible</span>
             )}
-            {vigenciaInvalida && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded-full border border-red-300">
-                ⚠️ Año inválido
-              </span>
+            {vigenciaOcupada && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded-full border border-red-300">⚠️ Ya existe</span>
+            )}
+            {showDropdown && (
+              <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                {filteredOptions.length > 0 ? filteredOptions.map((y: number) => (
+                  <button key={y} type="button" onClick={() => handleOptionClick(y)}
+                    className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
+                      y === vigencia ? 'bg-blue-50 text-blue-700 font-bold' : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="text-lg font-bold">{y}</span>
+                    {y === vigencia && <span className="ml-2 text-blue-500 text-xs">← seleccionado</span>}
+                  </button>
+                )) : (
+                  <div className="px-4 py-3 text-sm text-gray-500 italic">No hay años disponibles que coincidan</div>
+                )}
+              </div>
             )}
           </div>
-          {vigenciaInvalida ? (
-            <p className="text-xs text-red-600 mt-1 font-medium">Ingresa un año válido entre 2020 y 2100.</p>
-          ) : vigenciasExistentes.includes(vigencia) ? (
-            <p className="text-xs text-red-600 mt-1 font-medium">Ya existe un plan para la vigencia {vigencia}. Selecciona otro año.</p>
+          {vigenciaOcupada ? (
+            <p className="text-xs text-red-600 mt-1 font-medium">Ya existe un plan para {vigencia}. Selecciona otro año del listado.</p>
+          ) : vigenciaDisponible ? (
+            <p className="text-xs text-green-600 mt-1 font-medium">✓ Año {vigencia} disponible. Las fechas se ajustan automáticamente.</p>
           ) : (
-            <p className="text-xs text-gray-500 mt-1">Al cambiar la vigencia, las fechas se ajustarán automáticamente</p>
+            <p className="text-xs text-gray-500 mt-1">Escribe un año o despliega la lista para ver los disponibles.</p>
           )}
         </div>
 
@@ -1678,8 +1718,8 @@ function Paso2({
   const [nuevaActividad, setNuevaActividad] = useState<ActividadBase>({
     nombre: '',
     descripcion: '',
-    fechaInicio: new Date().toISOString().split('T')[0],
-    fechaFin: new Date().toISOString().split('T')[0],
+    fechaInicio: fechaInicio,
+    fechaFin: fechaFin,
     control: 'Seguimiento trimestral',
     evaluacion: '0% avance',
     seguimiento: 'Por definir'
@@ -1808,8 +1848,8 @@ function Paso2({
     setNuevaActividad({
       nombre: '',
       descripcion: '',
-      fechaInicio: new Date().toISOString().split('T')[0],
-      fechaFin: new Date().toISOString().split('T')[0],
+      fechaInicio: fechaInicio,
+      fechaFin: fechaFin,
       control: 'Seguimiento trimestral',
       evaluacion: '0% avance',
       seguimiento: 'Por definir'
@@ -2360,61 +2400,96 @@ function Paso2({
                                       </div>
                                     </label>
 
-                                    {/* Selector de tipo de evidencia - VERSIÓN COMPACTA */}
-                                    <div className="p-2 bg-blue-50/50 rounded-lg">
-                                      <label className="block text-xs font-semibold text-gray-900 mb-2">
-                                        📋 Requisitos para completar
-                                      </label>
-                                      <div className="flex flex-col gap-1.5">
-                                        <label className="flex items-center gap-2 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors">
-                                          <input
-                                            type="checkbox"
-                                            checked={actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO'}
-                                            onChange={(e) => {
-                                              e.stopPropagation();
-                                              const requiereAdjuntos = actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO';
-                                              const requiereObservaciones = e.target.checked;
-                                              
-                                              if (requiereObservaciones && requiereAdjuntos) {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'COMPLETO');
-                                              } else if (requiereObservaciones) {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'OBSERVACIONES');
-                                              } else if (requiereAdjuntos) {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'ADJUNTOS');
-                                              } else {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'SOLO_CHECK');
-                                              }
-                                            }}
-                                            className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
-                                          />
+                                    {/* Selector de tipo de evidencia - Switches que propagan a todas las tareas */}
+                                    <div className="p-2 bg-blue-50/50 rounded-lg" onClick={e => e.stopPropagation()}>
+                                      <div className="block text-xs font-semibold text-gray-900 mb-1">
+                                        📋 Requisitos para todas las tareas de seguimiento
+                                      </div>
+                                      <p className="text-[10px] text-gray-500 mb-2">Al activar, se habilita en todas las tareas de esta actividad.</p>
+                                      <div className="flex flex-col gap-2">
+                                        {/* Switch: Observaciones */}
+                                        <div 
+                                          className="flex items-center gap-2.5 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors"
+                                          onClick={() => {
+                                            const obsActivo = actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO';
+                                            const adjActivo = actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO';
+                                            const nuevoObs = !obsActivo;
+                                            const nuevoTipo = (nuevoObs && adjActivo) ? 'COMPLETO'
+                                              : nuevoObs ? 'OBSERVACIONES'
+                                              : adjActivo ? 'ADJUNTOS'
+                                              : 'SOLO_CHECK';
+                                            onRolesChange(rolesConfig.map(r => ({
+                                              ...r,
+                                              actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                a.id === idActividadEnEstado ? {
+                                                  ...a,
+                                                  tipoEvidencia: nuevoTipo,
+                                                  tareasSeguimiento: (a.tareasSeguimiento || []).map(t => ({ ...t, requiereObservaciones: nuevoObs }))
+                                                } : a
+                                              )
+                                            })));
+                                          }}
+                                        >
+                                          <div style={{
+                                            width: 32, height: 18, borderRadius: 9999, position: 'relative', flexShrink: 0, cursor: 'pointer',
+                                            backgroundColor: (actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO') ? '#3b82f6' : '#d1d5db',
+                                            transition: 'background-color 0.2s'
+                                          }}>
+                                            <div style={{
+                                              width: 14, height: 14, borderRadius: 9999, backgroundColor: '#fff', position: 'absolute', top: 2,
+                                              left: (actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO') ? 15 : 2,
+                                              transition: 'left 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                                            }} />
+                                          </div>
                                           <FileText className="w-3.5 h-3.5 text-blue-600" />
-                                          <span className="text-xs text-gray-900">Requiere observaciones</span>
-                                        </label>
+                                          <span style={{
+                                            fontSize: 12,
+                                            color: (actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO') ? '#1d4ed8' : '#6b7280',
+                                            fontWeight: (actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO') ? 600 : 400
+                                          }}>Requiere observaciones en cada tarea</span>
+                                        </div>
 
-                                        <label className="flex items-center gap-2 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors">
-                                          <input
-                                            type="checkbox"
-                                            checked={actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO'}
-                                            onChange={(e) => {
-                                              e.stopPropagation();
-                                              const requiereObservaciones = actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO';
-                                              const requiereAdjuntos = e.target.checked;
-                                              
-                                              if (requiereObservaciones && requiereAdjuntos) {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'COMPLETO');
-                                              } else if (requiereAdjuntos) {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'ADJUNTOS');
-                                              } else if (requiereObservaciones) {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'OBSERVACIONES');
-                                              } else {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'SOLO_CHECK');
-                                              }
-                                            }}
-                                            className="w-3.5 h-3.5 text-purple-600 rounded border-gray-300 focus:ring-2 focus:ring-purple-500"
-                                          />
+                                        {/* Switch: Adjuntos */}
+                                        <div 
+                                          className="flex items-center gap-2.5 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors"
+                                          onClick={() => {
+                                            const obsActivo = actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO';
+                                            const adjActivo = actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO';
+                                            const nuevoAdj = !adjActivo;
+                                            const nuevoTipo = (obsActivo && nuevoAdj) ? 'COMPLETO'
+                                              : nuevoAdj ? 'ADJUNTOS'
+                                              : obsActivo ? 'OBSERVACIONES'
+                                              : 'SOLO_CHECK';
+                                            onRolesChange(rolesConfig.map(r => ({
+                                              ...r,
+                                              actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                a.id === idActividadEnEstado ? {
+                                                  ...a,
+                                                  tipoEvidencia: nuevoTipo,
+                                                  tareasSeguimiento: (a.tareasSeguimiento || []).map(t => ({ ...t, requiereAdjuntos: nuevoAdj }))
+                                                } : a
+                                              )
+                                            })));
+                                          }}
+                                        >
+                                          <div style={{
+                                            width: 32, height: 18, borderRadius: 9999, position: 'relative', flexShrink: 0, cursor: 'pointer',
+                                            backgroundColor: (actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO') ? '#a855f7' : '#d1d5db',
+                                            transition: 'background-color 0.2s'
+                                          }}>
+                                            <div style={{
+                                              width: 14, height: 14, borderRadius: 9999, backgroundColor: '#fff', position: 'absolute', top: 2,
+                                              left: (actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO') ? 15 : 2,
+                                              transition: 'left 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                                            }} />
+                                          </div>
                                           <Paperclip className="w-3.5 h-3.5 text-purple-600" />
-                                          <span className="text-xs text-gray-900">Requiere archivos adjuntos</span>
-                                        </label>
+                                          <span style={{
+                                            fontSize: 12,
+                                            color: (actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO') ? '#7e22ce' : '#6b7280',
+                                            fontWeight: (actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO') ? 600 : 400
+                                          }}>Requiere archivos adjuntos en cada tarea</span>
+                                        </div>
                                       </div>
                                     </div>
 
@@ -2497,14 +2572,14 @@ function Paso2({
                                                     <div className="flex items-center gap-1.5">
                                                       <Calendar className="w-3 h-3 text-orange-500 flex-shrink-0" />
                                                       <span className="text-[11px] text-gray-700">
-                                                        <span className="text-[9px] text-gray-400 uppercase">Corte: </span>
+                                                        <span className="text-[9px] text-gray-400 uppercase">Inicio: </span>
                                                         <span className="font-semibold">{new Date(pc.fechaProgramada + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                                                       </span>
                                                     </div>
                                                     <div className="flex items-center gap-1.5">
                                                       <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
                                                       <span className="text-[11px] text-gray-700">
-                                                        <span className="text-[9px] text-gray-400 uppercase">Seguimiento: </span>
+                                                        <span className="text-[9px] text-gray-400 uppercase">Fin: </span>
                                                         <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
                                                       </span>
                                                     </div>
@@ -2524,43 +2599,7 @@ function Paso2({
                                       )}
                                     </div>
 
-                                    {/* Selector de responsables por actividad */}
-                                    <div className="mt-2" onClick={e => e.stopPropagation()}>
-                                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
-                                        <Users className="w-3 h-3" />
-                                        Responsables de esta actividad
-                                      </p>
-                                      <div className="flex flex-col gap-1">
-                                        {/* Chips de responsables asignados */}
-                                        {(actividadData?.responsables || []).map(r => (
-                                          <div key={r.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
-                                            <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">
-                                              {r.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                                            </div>
-                                            <span className="text-xs font-medium text-gray-900 flex-1">{r.nombre}</span>
-                                            <button
-                                              type="button"
-                                              onClick={e => { e.stopPropagation(); quitarResponsableActividad(idActividadEnEstado, r.id); }}
-                                              className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[10px] transition-colors flex-shrink-0"
-                                            >✕</button>
-                                          </div>
-                                        ))}
-                                        {/* Dropdown punteado */}
-                                        {(actividadData?.responsables || []).length === 0 && (
-                                          <SelectorProfesional
-                                            auditores={auditores.filter(a => !(actividadData?.responsables || []).some(r => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
-                                            onSelect={(id) => {
-                                              if (!id) return;
-                                              const auditor = auditores.find(a => a.id === id);
-                                              if (auditor) agregarResponsableActividad(idActividadEnEstado, auditor);
-                                            }}
-                                          />
-                                        )}
-                                        {(actividadData?.responsables || []).length === 0 && (
-                                          <p className="text-[10px] text-red-500 flex items-center gap-1">⚠ Requerido</p>
-                                        )}
-                                      </div>
-                                    </div>
+
 
                                     {/* ✅ Tareas de seguimiento — World-class design */}
                                     <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm" onClick={e => e.stopPropagation()}>
@@ -2978,14 +3017,14 @@ function Paso2({
                                                   <div className="flex items-center gap-1.5">
                                                     <Calendar className="w-3 h-3 text-orange-500 flex-shrink-0" />
                                                     <span className="text-[11px] text-gray-700">
-                                                      <span className="text-[9px] text-gray-400 uppercase">Corte: </span>
+                                                      <span className="text-[9px] text-gray-400 uppercase">Inicio: </span>
                                                       <span className="font-semibold">{new Date(pc.fechaProgramada + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
                                                     </span>
                                                   </div>
                                                   <div className="flex items-center gap-1.5">
                                                     <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
                                                     <span className="text-[11px] text-gray-700">
-                                                      <span className="text-[9px] text-gray-400 uppercase">Seguimiento: </span>
+                                                      <span className="text-[9px] text-gray-400 uppercase">Fin: </span>
                                                       <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
                                                     </span>
                                                   </div>
@@ -3005,41 +3044,7 @@ function Paso2({
                                     )}
                                   </div>
 
-                                  {/* Selector de responsables por actividad personalizada */}
-                                  <div className="mt-2" onClick={e => e.stopPropagation()}>
-                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
-                                      <Users className="w-3 h-3" />
-                                      Responsables de esta actividad
-                                    </p>
-                                    <div className="flex flex-col gap-1">
-                                      {(actividad.responsables || []).map(r => (
-                                        <div key={r.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
-                                          <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">
-                                            {r.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                                          </div>
-                                          <span className="text-xs font-medium text-gray-900 flex-1">{r.nombre}</span>
-                                          <button
-                                            type="button"
-                                            onClick={e => { e.stopPropagation(); quitarResponsableCustom(rol.numero, index, r.id); }}
-                                            className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[10px] transition-colors flex-shrink-0"
-                                          >✕</button>
-                                        </div>
-                                      ))}
-                                      {(actividad.responsables || []).length === 0 && (
-                                        <SelectorProfesional
-                                          auditores={auditores.filter(a => !(actividad.responsables || []).some(r => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
-                                          onSelect={(id) => {
-                                            if (!id) return;
-                                            const auditor = auditores.find(a => a.id === id);
-                                            if (auditor) agregarResponsableCustom(rol.numero, index, auditor);
-                                          }}
-                                        />
-                                      )}
-                                      {(actividad.responsables || []).length === 0 && (
-                                        <p className="text-[10px] text-red-500 flex items-center gap-1">⚠ Requerido</p>
-                                      )}
-                                    </div>
-                                  </div>
+
 
                                   {/* ✅ Tareas de seguimiento — World-class design (custom) */}
                                   <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm" onClick={e => e.stopPropagation()}>

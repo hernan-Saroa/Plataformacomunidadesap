@@ -52,8 +52,8 @@ export interface ItemArchivado {
 interface VistaArchivadosProps {
   items: ItemArchivado[];
   moduloNombre: string;
-  onRestaurar: (itemId: string) => Promise<void>;
-  onEliminarPermanente: (itemId: string) => Promise<void>;
+  onRestaurar?: (itemId: string) => Promise<void>;
+  onEliminarPermanente?: (itemId: string) => Promise<void>;
   permisoRequerido?: string; // Permiso necesario para acceder
   usuarioActual?: {
     nombre: string;
@@ -353,7 +353,7 @@ export function VistaArchivados({
                       <Eye className="w-3 h-3" />
                     </Button>
 
-                    {puedeRestar && (
+                    {onRestaurar && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -367,7 +367,7 @@ export function VistaArchivados({
                       </Button>
                     )}
 
-                    {puedeEliminarPermanente && (
+                    {onEliminarPermanente && (
                       <Button
                         variant="outline"
                         size="sm"
