@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Body,
   Param,
   Query,
@@ -512,6 +513,14 @@ export class GraduationCertificatesController {
     );
 
     return res.sendFile(filePath);
+  }
+
+  @Delete('solicitudes/:id/revision-files/:fileId')
+  async eliminarArchivoRevisionSolicitud(
+    @Param('id') id: string,
+    @Param('fileId') fileId: string,
+  ) {
+    return await this.service.eliminarArchivoRevisionSolicitud(id, fileId);
   }
 
   @Post('solicitudes/:id/revision-files')

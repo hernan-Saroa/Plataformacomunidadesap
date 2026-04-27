@@ -109,6 +109,7 @@ import { SmartClassificationService } from './services/smart-classification.serv
 import { OficiosService } from './services/oficios.service';
 import { TasaReferenciaService } from './services/tasa-referencia.service';
 import { PlantillasService } from './services/plantillas.service';
+import { NotificationClientService } from './services/notification-client.service';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -249,7 +250,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     // Oficios
     OficiosService,
     TasaReferenciaService,
-    PlantillasService
+    PlantillasService,
+    // Notificaciones
+    NotificationClientService
   ],
 })
 export class AppModule { }

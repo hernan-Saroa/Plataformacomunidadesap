@@ -521,8 +521,8 @@ export class LegalService {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/respuesta`, respuestaData);
     }
 
-    async guardarRespuestaConsulta(id: string, respuesta: string, enviar: boolean, usuario?: string): Promise<any> {
-        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/gestionar-respuesta`, { respuesta, enviar, usuario });
+    async guardarRespuestaConsulta(id: string, respuesta: string, enviar: boolean, usuario?: string, destinatariosAdicionales?: string[]): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/gestionar-respuesta`, { respuesta, enviar, usuario, destinatariosAdicionales });
     }
 
     async getComentariosConsulta(consultaId: string): Promise<any[]> {

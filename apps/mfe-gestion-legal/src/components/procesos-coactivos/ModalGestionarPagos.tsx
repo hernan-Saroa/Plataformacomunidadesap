@@ -20,6 +20,7 @@ interface ModalGestionarPagosProps {
     valorPagado: number;
   };
   onRegistrarPago?: (pago: any) => void;
+  canRegistrarPago?: boolean;
 }
 
 const formatCurrency = (value: number) =>
@@ -36,7 +37,8 @@ export function ModalGestionarPagos({
   isOpen,
   onClose,
   proceso,
-  onRegistrarPago
+  onRegistrarPago,
+  canRegistrarPago = true
 }: ModalGestionarPagosProps) {
   const [tipoPago, setTipoPago] = useState<'TOTAL' | 'PARCIAL'>('PARCIAL');
   const [valorPago, setValorPago] = useState('');
@@ -275,17 +277,27 @@ export function ModalGestionarPagos({
                             className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-full transition-colors" title="Ver detalles">
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button type="button" onClick={() => setConfirmDeleteId(pago.id)}
-                            disabled={deletingPagoId === pago.id}
-                            className="p-1.5 text-red-500 hover:bg-red-50 rounded-full transition-colors disabled:opacity-50" title="Eliminar">
-                            {deletingPagoId === pago.id
-                              ? <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
-                              : <Trash2 className="w-4 h-4" />}
-                          </button>
+                          {canRegistrarPago && (
+                            <button type="button" onClick={() => setConfirmDeleteId(pago.id)}
+                              disabled={deletingPagoId === pago.id}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-full transition-colors disabled:opacity-50" title="Eliminar">
+                              {deletingPagoId === pago.id
+                                ? <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+                                : <Trash2 className="w-4 h-4" />}
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {/* Empty state solo lectura */}
+              {pagos.length === 0 && !canRegistrarPago && (
+                <div className="text-center py-8 text-gray-400">
+                  <CreditCard className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                  <p className="text-sm font-medium text-gray-500">Aún no hay pagos registrados</p>
                 </div>
               )}
 
@@ -296,7 +308,7 @@ export function ModalGestionarPagos({
                   <p className="text-base font-bold text-green-800">Obligación Completamente Pagada</p>
                   <p className="text-sm text-green-700 mt-1">Total abonado: {formatCurrency(totalPagado)}</p>
                 </div>
-              ) : (
+              ) : canRegistrarPago ? (
                 <form id="pago-form" onSubmit={handleSubmit} className="space-y-4">
 
                   {/* Tipo de pago */}
@@ -479,7 +491,7 @@ export function ModalGestionarPagos({
                     </p>
                   </div>
                 </form>
-              )}
+              ) : null}
             </div>
 
             {/* Footer */}
@@ -488,7 +500,7 @@ export function ModalGestionarPagos({
                 className="px-4 py-2 border-2 border-gray-300 rounded-lg font-semibold text-sm hover:bg-white transition-all disabled:opacity-50">
                 Cancelar
               </button>
-              {saldoPendiente > 0 && (
+              {saldoPendiente > 0 && canRegistrarPago && (
                 <button type="submit" form="pago-form" disabled={isSubmitting}
                   className="px-5 py-2 bg-green-600 text-white rounded-lg font-semibold text-sm hover:bg-green-700 transition-all disabled:opacity-50 flex items-center gap-2">
                   {isSubmitting ? (

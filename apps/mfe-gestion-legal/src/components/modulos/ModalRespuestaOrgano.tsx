@@ -107,7 +107,8 @@ export function ModalRespuestaOrgano({
   const [archivosSeleccionados, setArchivosSeleccionados] = useState<DocumentoSeleccionado[]>([]);
   const [categoriaActual, setCategoriaActual] = useState<'Requerimiento' | 'Respuesta' | 'Soporte' | 'Interno'>('Respuesta');
   const [enviando, setEnviando] = useState(false);
-  const [isReadOnly, setIsReadOnly] = useState(false);
+  const [isReadOnly, setIsReadOnly] = useState(!authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_ELABORAR));
+  const [isAlreadySent, setIsAlreadySent] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -125,6 +126,7 @@ export function ModalRespuestaOrgano({
           // Bloquear si ya fue enviado o cerrado
           if (reqData.estado === 'ENVIADO' || reqData.estado === 'CERRADO') {
             setIsReadOnly(true);
+            setIsAlreadySent(true);
             const fechaRespuestaStr = reqData.fechaRespuesta ? new Date(reqData.fechaRespuesta).toLocaleDateString() : 'fecha desconocida';
             toast.info(`Requerimiento ya respondido el ${fechaRespuestaStr}`, { duration: 5000 });
           }
@@ -407,7 +409,7 @@ Escuela Superior de Administración Pública - ESAP`;
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
 
           {/* INFORMACIÓN DEL REQUERIMIENTO */}
-          {isReadOnly && (
+          {isAlreadySent && (
             <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg flex items-center gap-3">
               <CheckCircle className="w-5 h-5 text-orange-600" />
               <div>

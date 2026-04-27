@@ -83,6 +83,9 @@ export function ReviewRequestsModule() {
     numLibro: '',
   });
   const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
+  const [existingApprovalFiles, setExistingApprovalFiles] = useState<
+    NonNullable<ReviewRequest['reviewFiles']>
+  >([]);
   const [approvalUploadProgress, setApprovalUploadProgress] = useState({
     totalFiles: 0,
     processedFiles: 0,
@@ -395,6 +398,12 @@ export function ReviewRequestsModule() {
     });
   };
 
+  const formatBytes = (bytes?: number) => {
+    if (!bytes) return '0 KB';
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
   const toDateInputValue = (value?: string | Date | null) => {
     if (!value) return '';
 
@@ -533,7 +542,8 @@ export function ReviewRequestsModule() {
       return;
     }
     const nextFiles = [...approvalFiles, ...selected];
-    if (nextFiles.length > MAX_APPROVAL_FILES) {
+    const currentPersistedFiles = existingApprovalFiles.length;
+    if (currentPersistedFiles + nextFiles.length > MAX_APPROVAL_FILES) {
       toast.error(`Solo puedes adjuntar máximo ${MAX_APPROVAL_FILES} archivos`);
       event.target.value = '';
       return;
@@ -557,6 +567,26 @@ export function ReviewRequestsModule() {
   };
   const handleRemoveApprovalFile = (index: number) => {
     setApprovalFiles((prev) => prev.filter((_, idx) => idx !== index));
+  };
+  const handleRemoveExistingApprovalFile = async (fileId: string) => {
+    if (!selectedRequest) {
+      return;
+    }
+
+    try {
+      await graduadosService.solicitudes.eliminarArchivoRevision(
+        selectedRequest.id,
+        fileId,
+      );
+      setExistingApprovalFiles((prev) =>
+        prev.filter((file) => file.id !== fileId),
+      );
+      toast.success('Archivo retirado de la solicitud');
+    } catch (error: any) {
+      toast.error('No se pudo retirar el archivo', {
+        description: error?.response?.data?.message || error?.message,
+      });
+    }
   };
   const resetApprovalUploadProgress = () => {
     setApprovalUploadProgress({
@@ -910,15 +940,64 @@ export function ReviewRequestsModule() {
     setShowConfirmModal(true);
   };
 
+  const getPayloadText = (
+    payload: Record<string, unknown>,
+    key: keyof ApprovalForm,
+  ) => {
+    const value = payload[key];
+    return value === null || value === undefined ? '' : String(value).trim();
+  };
+
+  const mergeSavedReviewPayload = (
+    baseForm: ApprovalForm,
+    payload: Record<string, unknown>,
+  ): ApprovalForm => ({
+    fullName: getPayloadText(payload, 'fullName') || baseForm.fullName,
+    idNumber:
+      sanitizeDigits(
+        getPayloadText(payload, 'idNumber') || baseForm.idNumber,
+        DOCUMENT_MAX_LENGTH,
+      ) || baseForm.idNumber,
+    email: getPayloadText(payload, 'email') || baseForm.email,
+    programName:
+      getPayloadText(payload, 'programName') || baseForm.programName,
+    graduationDate:
+      toDateInputValue(getPayloadText(payload, 'graduationDate')) ||
+      baseForm.graduationDate,
+    campus: getPayloadText(payload, 'campus') || baseForm.campus,
+    seccionalName:
+      getPayloadText(payload, 'seccionalName') || baseForm.seccionalName,
+    numRegistro:
+      sanitizeDigits(
+        getPayloadText(payload, 'numRegistro') || baseForm.numRegistro,
+        REGISTRY_FIELD_MAX_LENGTH,
+      ) || baseForm.numRegistro,
+    numFolio:
+      sanitizeDigits(
+        getPayloadText(payload, 'numFolio') || baseForm.numFolio,
+        REGISTRY_FIELD_MAX_LENGTH,
+      ) || baseForm.numFolio,
+    numLibro:
+      sanitizeDigits(
+        getPayloadText(payload, 'numLibro') || baseForm.numLibro,
+        REGISTRY_FIELD_MAX_LENGTH,
+      ) || baseForm.numLibro,
+  });
+
   const handleOpenReviewModal = async (
     request: ReviewRequest,
     action: 'approve' | 'reject'
   ) => {
     setSelectedRequest(request);
     setReviewAction(action);
-    setReviewNotes('');
+    setReviewNotes(
+      action === 'approve'
+        ? request.reviewRecommendationReason || request.reviewNotes || ''
+        : '',
+    );
     setShowReviewModal(true);
     setApprovalFiles([]);
+    setExistingApprovalFiles(action === 'approve' ? request.reviewFiles || [] : []);
     resetApprovalUploadProgress();
 
     if (action !== 'approve') {
@@ -928,6 +1007,7 @@ export function ReviewRequestsModule() {
     setIsLoadingApprovalData(true);
     try {
       const detail = await graduadosService.solicitudes.obtenerPorId(request.id);
+      setExistingApprovalFiles(detail.reviewFiles || request.reviewFiles || []);
       const graduationDate = toDateInputValue(
         detail.graduationDate || request.graduationDate
       );
@@ -1010,7 +1090,21 @@ export function ReviewRequestsModule() {
         }
       }
 
-      setApprovalForm(nextForm);
+      const savedPayload =
+        detail.reviewPayload && typeof detail.reviewPayload === 'object'
+          ? (detail.reviewPayload as Record<string, unknown>)
+          : request.reviewPayload && typeof request.reviewPayload === 'object'
+            ? (request.reviewPayload as Record<string, unknown>)
+            : {};
+
+      setApprovalForm(mergeSavedReviewPayload(nextForm, savedPayload));
+      setReviewNotes(
+        detail.reviewRecommendationReason ||
+          request.reviewRecommendationReason ||
+          detail.reviewNotes ||
+          request.reviewNotes ||
+          '',
+      );
     } catch (error) {
       console.error('Error cargando solicitud:', error);
       toast.error('No se pudo cargar la solicitud para aprobar');
@@ -1240,6 +1334,7 @@ export function ReviewRequestsModule() {
       setConfirmAction(null);
       setShowConfirmModal(false);
       setApprovalFiles([]);
+      setExistingApprovalFiles([]);
       resetApprovalUploadProgress();
       await loadRequests();
     } catch (error: any) {
@@ -2273,7 +2368,17 @@ export function ReviewRequestsModule() {
       )}
 
       {/* Modal: Revisar Solicitud */}
-      <Dialog open={showReviewModal} onOpenChange={setShowReviewModal}>
+      <Dialog
+        open={showReviewModal}
+        onOpenChange={(open) => {
+          setShowReviewModal(open);
+          if (!open) {
+            setApprovalFiles([]);
+            setExistingApprovalFiles([]);
+            resetApprovalUploadProgress();
+          }
+        }}
+      >
         <DialogContent
           className="review-approval-dialog w-[92vw] max-w-4xl !p-0 !top-1/2 !-translate-y-1/2 !max-h-[calc(100vh-1.25rem)] !overflow-hidden !flex !flex-col"
         >
@@ -2317,6 +2422,28 @@ export function ReviewRequestsModule() {
                 </div>
               </div>
             </div>
+
+            {reviewAction === 'approve' &&
+              selectedRequest?.approvalStatus === 'OBSERVATION' &&
+              selectedRequest.approverNotes && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <MessageSquare className="mt-0.5 h-5 w-5 text-amber-700" />
+                    <div className="text-sm">
+                      <p className="font-semibold text-amber-900">
+                        Observacion del aprobador
+                      </p>
+                      <p className="mt-1 text-amber-800">
+                        {selectedRequest.approverNotes}
+                      </p>
+                      <p className="mt-2 text-xs text-amber-700">
+                        Los datos y archivos cargados previamente se conservan.
+                        Corrige solo lo necesario y vuelve a enviar.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
@@ -2561,16 +2688,26 @@ export function ReviewRequestsModule() {
                         accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
                         onChange={handleApprovalFilesChange}
                         className="sr-only"
-                        disabled={isLoadingApprovalData || approvalFiles.length >= MAX_APPROVAL_FILES}
+                        disabled={
+                          isLoadingApprovalData ||
+                          existingApprovalFiles.length + approvalFiles.length >=
+                            MAX_APPROVAL_FILES
+                        }
                       />
                       <label
                         htmlFor="approval-files-input"
                         className={`inline-flex items-center rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                          isLoadingApprovalData || approvalFiles.length >= MAX_APPROVAL_FILES
+                          isLoadingApprovalData ||
+                          existingApprovalFiles.length + approvalFiles.length >=
+                            MAX_APPROVAL_FILES
                             ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
                             : 'cursor-pointer border-[#003DA5] bg-[#EFF6FF] text-[#003DA5] hover:bg-[#DBEAFE]'
                         }`}
-                        aria-disabled={isLoadingApprovalData || approvalFiles.length >= MAX_APPROVAL_FILES}
+                        aria-disabled={
+                          isLoadingApprovalData ||
+                          existingApprovalFiles.length + approvalFiles.length >=
+                            MAX_APPROVAL_FILES
+                        }
                       >
                         Elegir archivos
                       </label>
@@ -2579,6 +2716,45 @@ export function ReviewRequestsModule() {
                       {`Archivos del título (opcional, máx. ${MAX_APPROVAL_FILES}, ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo)`}
                     </label>
                   </div>
+                  {existingApprovalFiles.length > 0 && (
+                    <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
+                      <p className="mb-2 text-xs font-semibold text-blue-900">
+                        Archivos ya cargados por el revisor
+                      </p>
+                      <div className="space-y-2">
+                        {existingApprovalFiles.map((file) => (
+                          <div
+                            key={file.id}
+                            className="flex items-center justify-between gap-3 rounded-md border border-blue-100 bg-white px-3 py-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-gray-900">
+                                {file.originalName}
+                              </p>
+                              <p className="text-gray-500">
+                                {formatBytes(file.sizeBytes)}
+                                {file.uploadedAt
+                                  ? ` - ${formatDate(file.uploadedAt)}`
+                                  : ''}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExistingApprovalFile(file.id)}
+                              className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 font-semibold text-red-600 hover:bg-red-50"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              Quitar
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-xs text-blue-800">
+                        Si un archivo estaba mal, quitalo y adjunta la version
+                        corregida. Los demas se conservaran.
+                      </p>
+                    </div>
+                  )}
                   {approvalFiles.length > 0 ? (
                     <>
                       <p className="text-xs text-gray-600">

@@ -15,8 +15,8 @@ interface TabTareasExpedienteProps {
   tareas: TareaExpediente[];
   setTareas: React.Dispatch<React.SetStateAction<TareaExpediente[]>>;
   expedienteId: string;
-  onCrearTarea: () => void;
-  onEditarTarea: (tarea: TareaExpediente) => void;
+  onCrearTarea?: () => void;
+  onEditarTarea?: (tarea: TareaExpediente) => void;
   onMarcarCompletada?: (tareaId: string | number) => void;
 }
 
@@ -66,14 +66,16 @@ export function TabTareasExpediente({
             <Target className="w-4 h-4 text-orange-600" />
             Tareas y Pendientes del Expediente
           </h4>
-          <Button
-            size="sm"
-            className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
-            onClick={onCrearTarea}
-          >
-            <Plus className="w-3 h-3 mr-1" />
-            Nueva Tarea
-          </Button>
+          {onCrearTarea && (
+            <Button
+              size="sm"
+              className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
+              onClick={onCrearTarea}
+            >
+              <Plus className="w-3 h-3 mr-1" />
+              Nueva Tarea
+            </Button>
+          )}
         </div>
       </Card>
 
@@ -156,28 +158,32 @@ export function TabTareasExpediente({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs flex-1 font-bold"
-                    onClick={() => handleMarcarCompletada(tarea.id)}
-                    disabled={tarea.estado === 'Completado'}
-                    style={{
-                      opacity: tarea.estado === 'Completado' ? 0.5 : 1,
-                      cursor: tarea.estado === 'Completado' ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    {tarea.estado === 'Completado' ? 'Completada' : 'Marcar Completada'}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs font-bold"
-                    onClick={() => onEditarTarea(tarea)}
-                  >
-                    <Edit className="w-3 h-3" />
-                  </Button>
+                  {onMarcarCompletada && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs flex-1 font-bold"
+                      onClick={() => handleMarcarCompletada(tarea.id)}
+                      disabled={tarea.estado === 'Completado'}
+                      style={{
+                        opacity: tarea.estado === 'Completado' ? 0.5 : 1,
+                        cursor: tarea.estado === 'Completado' ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      {tarea.estado === 'Completado' ? 'Completada' : 'Marcar Completada'}
+                    </Button>
+                  )}
+                  {onEditarTarea && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs font-bold"
+                      onClick={() => onEditarTarea(tarea)}
+                    >
+                      <Edit className="w-3 h-3" />
+                    </Button>
+                  )}
                 </div>
               </Card>
             );
