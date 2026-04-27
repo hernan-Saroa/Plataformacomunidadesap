@@ -35,19 +35,48 @@ interface ApprovalRequestsModuleProps {
   onPendingCountChange?: (count: number) => void;
 }
 
+const reviewConceptLabel = (decision?: string | null) => {
+  if (decision === 'APPROVED') return 'Revisor: favorable';
+  if (decision === 'REJECTED') return 'Revisor: desfavorable';
+  if (decision === 'OBSERVATION') return 'Revisor: observación';
+  return null;
+};
+
+const reviewConceptBadgeClass = (decision?: string | null) => {
+  if (decision === 'APPROVED') return 'bg-green-50 text-green-700 border border-green-200 text-xs';
+  if (decision === 'REJECTED') return 'bg-red-50 text-red-700 border border-red-200 text-xs';
+  if (decision === 'OBSERVATION') return 'bg-amber-50 text-amber-700 border border-amber-200 text-xs';
+  return 'bg-gray-50 text-gray-500 border border-gray-200 text-xs';
+};
+
+const approverDecisionLabel = (decision?: string | null) => {
+  if (decision === 'APPROVED') return 'Aprobó definitivamente';
+  if (decision === 'REJECTED') return 'Rechazó definitivamente';
+  if (decision === 'OBSERVATION') return 'Devolvió con observación';
+  return 'Sin decisión registrada';
+};
+
 const decisionLabel = (decision?: string | null) => {
-  if (decision === 'APPROVED') return 'Aprobar';
-  if (decision === 'REJECTED') return 'Rechazar';
-  if (decision === 'OBSERVATION') return 'Observacion';
+  if (decision === 'APPROVED') return 'Favorable (recomienda aprobar)';
+  if (decision === 'REJECTED') return 'Desfavorable (recomienda rechazar)';
+  if (decision === 'OBSERVATION') return 'Con observación';
   return 'Sin concepto';
 };
 
 const approvalStatusLabel = (status?: string | null) => {
-  if (status === 'PENDING_APPROVAL') return 'Pendiente aprobador';
-  if (status === 'APPROVED_FINAL') return 'Aprobada final';
-  if (status === 'REJECTED_FINAL') return 'Rechazada final';
-  if (status === 'OBSERVATION') return 'Devuelta con observacion';
+  if (status === 'PENDING_APPROVAL') return 'Pendiente';
+  if (status === 'APPROVED_FINAL') return 'Aprobada';
+  if (status === 'REJECTED_FINAL') return 'Rechazada';
+  if (status === 'OBSERVATION') return 'Con observación';
   return 'Sin estado';
+};
+
+const approvalStatusBadgeClass = (status?: string | null) => {
+  if (status === 'PENDING_APPROVAL') return 'bg-orange-50 text-orange-700 border border-orange-200 text-xs';
+  if (status === 'APPROVED_FINAL') return 'bg-green-50 text-green-700 border border-green-200 text-xs';
+  if (status === 'REJECTED_FINAL') return 'bg-red-50 text-red-700 border border-red-200 text-xs';
+  if (status === 'OBSERVATION') return 'bg-amber-50 text-amber-700 border border-amber-200 text-xs';
+  return 'bg-gray-50 text-gray-500 border border-gray-200 text-xs';
 };
 
 const formatDate = (value?: string | null) => {
@@ -100,6 +129,15 @@ const getFileType = (fileName: string): 'image' | 'pdf' | 'office' | 'other' => 
   if (ext === 'pdf') return 'pdf';
   if (['doc', 'docx', 'xls', 'xlsx'].includes(ext)) return 'office';
   return 'other';
+};
+
+const getFileExtStyle = (fileName: string): { color: string; bg: string; border: string } => {
+  const ext = (fileName.split('.').pop() || '').toLowerCase();
+  if (ext === 'pdf') return { color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' };
+  if (['doc', 'docx'].includes(ext)) return { color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' };
+  if (['xls', 'xlsx'].includes(ext)) return { color: '#16A34A', bg: '#F0FDF4', border: '#BBF7D0' };
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) return { color: '#7C3AED', bg: '#F5F3FF', border: '#DDD6FE' };
+  return { color: '#6B7280', bg: '#F9FAFB', border: '#E5E7EB' };
 };
 
 const getCurrentUserName = () => {
@@ -380,13 +418,13 @@ export function ApprovalRequestsModule({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-orange-800">
-                Pendientes de aprobador
+                Esperando tu decisión
               </p>
               <p className="mt-2 text-3xl font-bold text-orange-900">
                 {pendingCount}
               </p>
               <p className="mt-2 text-xs text-orange-700">
-                Conceptos enviados por revisores
+                El revisor ya emitió su concepto
               </p>
             </div>
             <ShieldCheck className="w-10 h-10 text-orange-600" />
@@ -396,13 +434,13 @@ export function ApprovalRequestsModule({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-green-800">
-                Favorables pendientes
+                Con concepto favorable
               </p>
               <p className="mt-2 text-3xl font-bold text-green-900">
                 {favorablePendingCount}
               </p>
               <p className="mt-2 text-xs text-green-700">
-                Por validar por aprobador
+                El revisor recomienda aprobar
               </p>
             </div>
             <CheckCircle className="w-10 h-10 text-green-600" />
@@ -412,13 +450,13 @@ export function ApprovalRequestsModule({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-red-800">
-                Rechazos pendientes
+                Con concepto desfavorable
               </p>
               <p className="mt-2 text-3xl font-bold text-red-900">
                 {rejectionPendingCount}
               </p>
               <p className="mt-2 text-xs text-red-700">
-                Por validar por aprobador
+                El revisor recomienda rechazar
               </p>
             </div>
             <XCircle className="w-10 h-10 text-red-600" />
@@ -511,12 +549,14 @@ export function ApprovalRequestsModule({
                         <h3 className="font-semibold text-gray-900">
                           {request.requestNumber}
                         </h3>
-                        <Badge className="bg-orange-100 text-orange-800 border-orange-200 border">
+                        <Badge className={approvalStatusBadgeClass(request.approvalStatus)}>
                           {approvalStatusLabel(request.approvalStatus)}
                         </Badge>
-                        <Badge className="bg-blue-100 text-blue-800 border-blue-200 border">
-                          {decisionLabel(request.reviewRecommendation)}
-                        </Badge>
+                        {reviewConceptLabel(request.reviewRecommendation) && (
+                          <Badge className={reviewConceptBadgeClass(request.reviewRecommendation)}>
+                            {reviewConceptLabel(request.reviewRecommendation)}
+                          </Badge>
+                        )}
                       </div>
                       <p className="mt-1 text-sm text-gray-600">
                         Documento: <strong>{request.idNumber}</strong>
@@ -618,9 +658,9 @@ export function ApprovalRequestsModule({
                               </div>
                               {request.approverDecision && (
                                 <div className="rounded bg-white p-3 border border-orange-200">
-                                  <p className="text-xs text-orange-700">Decision del aprobador</p>
+                                  <p className="text-xs text-orange-700">Decisión del aprobador</p>
                                   <p className="font-semibold text-gray-900">
-                                    {decisionLabel(request.approverDecision)}
+                                    {approverDecisionLabel(request.approverDecision)}
                                   </p>
                                   {request.approverName && (
                                     <p className="mt-1 text-xs text-gray-600">
@@ -640,18 +680,29 @@ export function ApprovalRequestsModule({
                                     El revisor no cargo archivos.
                                   </p>
                                 ) : (
-                                  files.map((file) => (
+                                  files.map((file) => {
+                                    const extStyle = getFileExtStyle(normalizeDisplayText(file.originalName));
+                                    const ext = (normalizeDisplayText(file.originalName).split('.').pop() || '').toUpperCase();
+                                    return (
                                     <div
                                       key={file.id}
                                       className="flex items-center justify-between gap-3 rounded bg-white p-2 border border-gray-200"
                                     >
-                                      <div className="min-w-0">
-                                        <p className="truncate text-sm font-semibold text-gray-900">
-                                          {normalizeDisplayText(file.originalName)}
-                                        </p>
-                                        <p className="text-xs text-gray-500">
-                                          {formatBytes(file.sizeBytes)} - {formatDate(file.uploadedAt)}
-                                        </p>
+                                      <div className="min-w-0 flex items-center gap-2">
+                                        <span
+                                          className="flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide"
+                                          style={{ color: extStyle.color, background: extStyle.bg, border: `1px solid ${extStyle.border}` }}
+                                        >
+                                          {ext}
+                                        </span>
+                                        <div className="min-w-0">
+                                          <p className="truncate text-sm font-semibold" style={{ color: extStyle.color }}>
+                                            {normalizeDisplayText(file.originalName)}
+                                          </p>
+                                          <p className="text-xs text-gray-400">
+                                            {formatBytes(file.sizeBytes)} · {formatDate(file.uploadedAt)}
+                                          </p>
+                                        </div>
                                       </div>
                                       <div className="flex items-center gap-1">
                                         <button
@@ -682,44 +733,67 @@ export function ApprovalRequestsModule({
                                         </button>
                                       </div>
                                     </div>
-                                  ))
+                                  );
+                                  })
                                 )}
                               </div>
                             </div>
                           </div>
                         </div>
-                        {compactReviewTimeline(request.reviewTimeline || []).length > 0 && (
-                          <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
-                            <h4 className="mb-3 text-sm font-semibold text-gray-900">
-                              Linea de tiempo
-                            </h4>
-                            <div className="space-y-2 text-xs">
-                              {compactReviewTimeline(request.reviewTimeline || []).map((event, index) => (
-                                <div
-                                  key={`${request.id}-${index}`}
-                                  className="flex items-start justify-between gap-3 rounded bg-gray-50 p-3"
-                                >
-                                  <div className="min-w-0 text-gray-800">
-                                    <p className="font-semibold">{event.label}</p>
-                                    {formatTimelineActor(event.actorName, event.actorEmail, event.actorId) && (
-                                      <p className="mt-0.5 text-gray-600">
-                                        Usuario: {formatTimelineActor(event.actorName, event.actorEmail, event.actorId)}
-                                      </p>
-                                    )}
-                                    {event.notes && (
-                                      <p className="mt-1 text-gray-600">
-                                        Nota: {event.notes}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <span className="font-semibold text-gray-900 whitespace-nowrap">
-                                    {formatDate(event.createdAt)}
-                                  </span>
+                        {compactReviewTimeline(request.reviewTimeline || []).length > 0 && (() => {
+                          const timelineEvents = compactReviewTimeline(request.reviewTimeline || []);
+                          const getDot = (label: string) => {
+                            const l = label.toLowerCase();
+                            if (l.includes('aprobar') || l.includes('aprobado')) return { ring: '#DCFCE7', dot: '#16A34A' };
+                            if (l.includes('rechaz')) return { ring: '#FEE2E2', dot: '#DC2626' };
+                            if (l.includes('observac')) return { ring: '#FEF3C7', dot: '#D97706' };
+                            if (l.includes('archivo') || l.includes('soporte')) return { ring: '#DBEAFE', dot: '#2563EB' };
+                            return { ring: '#F3F4F6', dot: '#9CA3AF' };
+                          };
+                          return (
+                            <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
+                              <h4 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-700">
+                                <Clock className="w-4 h-4 text-gray-400" />
+                                Línea de tiempo
+                              </h4>
+                              <div className="relative">
+                                <div className="absolute left-3 top-1 bottom-1 w-px bg-gray-200" />
+                                <div className="space-y-1">
+                                  {timelineEvents.map((event, index) => {
+                                    const { ring, dot } = getDot(event.label || '');
+                                    const actor = formatTimelineActor(event.actorName, event.actorEmail, event.actorId);
+                                    return (
+                                      <div key={`${request.id}-tl-${index}`} className="flex gap-3 relative">
+                                        <div
+                                          className="relative z-10 mt-1 flex-shrink-0 flex items-center justify-center w-6 h-6 rounded-full"
+                                          style={{ background: ring }}
+                                        >
+                                          <div className="w-2 h-2 rounded-full" style={{ background: dot }} />
+                                        </div>
+                                        <div className="flex-1 pb-4 min-w-0">
+                                          <div className="flex items-start justify-between gap-4">
+                                            <div className="min-w-0">
+                                              <p className="text-xs font-semibold text-gray-900">{event.label}</p>
+                                              {actor && (
+                                                <p className="mt-0.5 text-xs text-gray-500">{actor}</p>
+                                              )}
+                                              {event.notes && (
+                                                <p className="mt-0.5 text-xs text-gray-500 italic">{event.notes}</p>
+                                              )}
+                                            </div>
+                                            <span className="flex-shrink-0 text-xs font-medium whitespace-nowrap" style={{ color: '#2563EB' }}>
+                                              {formatDate(event.createdAt)}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                       </motion.div>
                     )}
                   </AnimatePresence>
