@@ -682,6 +682,16 @@ const graduadosService = {
       );
     },
 
+    eliminarArchivoRevision: async (
+      requestId: string,
+      fileId: string,
+    ): Promise<{ mensaje: string }> => {
+      const response = await apiClient.delete(
+        `${SERVICE_PREFIX}/certificates/solicitudes/${requestId}/revision-files/${fileId}`,
+      );
+      return response;
+    },
+
     enviarDecisionRevision: async (
       id: string,
       payload: EnviarDecisionRevisionPayload,

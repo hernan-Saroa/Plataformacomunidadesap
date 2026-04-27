@@ -3021,6 +3021,55 @@ export class GraduationCertificatesService {
     return { file, filePath };
   }
 
+  async eliminarArchivoRevisionSolicitud(requestId: string, fileId: string) {
+    const request = await this.requestRepository.findOne({
+      where: { id: requestId },
+    });
+    if (!request) {
+      throw new NotFoundException('Solicitud no encontrada');
+    }
+
+    await this.expireManualReviewRequestIfNeeded(request);
+    this.ensureManualReviewRequestIsActionable(request);
+
+    if (
+      ['PENDING_APPROVAL', 'APPROVED_FINAL', 'REJECTED_FINAL'].includes(
+        request.approvalStatus || '',
+      )
+    ) {
+      throw new BadRequestException(
+        'No se pueden modificar archivos en el estado actual de la solicitud',
+      );
+    }
+
+    const file = await this.reviewFileRepository.findOne({
+      where: { id: fileId, requestId },
+    });
+    if (!file) {
+      throw new NotFoundException('Archivo no encontrado');
+    }
+
+    const filePath = path.join(
+      process.cwd(),
+      'uploads',
+      'graduation-review-files',
+      file.storedName,
+    );
+
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (error) {
+        this.logger.warn(
+          `No se pudo eliminar el archivo fisico de revision ${filePath}: ${error}`,
+        );
+      }
+    }
+
+    await this.reviewFileRepository.delete({ id: fileId, requestId });
+    return { mensaje: 'Archivo eliminado correctamente' };
+  }
+
   async subirArchivosRevisionSolicitud(
     requestId: string,
     files: Express.Multer.File[],
@@ -3032,6 +3081,17 @@ export class GraduationCertificatesService {
     });
     if (!request) {
       throw new NotFoundException('Solicitud no encontrada');
+    }
+    await this.expireManualReviewRequestIfNeeded(request);
+    this.ensureManualReviewRequestIsActionable(request);
+    if (
+      ['PENDING_APPROVAL', 'APPROVED_FINAL', 'REJECTED_FINAL'].includes(
+        request.approvalStatus || '',
+      )
+    ) {
+      throw new BadRequestException(
+        'No se pueden cargar archivos en el estado actual de la solicitud',
+      );
     }
     if (!files || files.length === 0) {
       throw new BadRequestException('No se recibieron archivos para cargar');

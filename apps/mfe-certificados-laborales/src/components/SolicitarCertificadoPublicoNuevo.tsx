@@ -23,8 +23,7 @@ import {
   MapPin,
   Phone
 } from 'lucide-react';
-import esapLogo from 'figma:asset/1a688049d0ee8e121a6f2fff3a4cd08b5a2451ba.png';
-import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
+import { ESAPLogo } from '../assets/ESAPLogo';
 import { buildApiUrl } from '../../config/environment';
 
 // Base de datos mock de empleados
@@ -251,7 +250,7 @@ export function SolicitarCertificadoPublicoNuevo({ onBack }: Props) {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white border-b shadow-sm">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <img src={esapLogo} alt="ESAP" className="h-10" />
+          <ESAPLogo variant="white" className="h-10" />
           
           <nav className="hidden md:flex gap-8">
             <button className="flex items-center gap-2 text-gray-700 hover:text-[#003DA5] font-medium">
@@ -620,7 +619,7 @@ export function SolicitarCertificadoPublicoNuevo({ onBack }: Props) {
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div>
-              <img src={esapLogoWhite} alt="ESAP" className="h-10 mb-4" />
+              <ESAPLogo variant="white" className="h-10 mb-4" />
               <p className="text-sm text-gray-400">
                 Transformando la educación pública en Colombia
               </p>

@@ -951,6 +951,10 @@ export const ComunicacionAuditoriaModule: React.FC<{
                       (msg) => toast.loading(msg, { id: 'pdf-gen' })
                     );
                     auditoriaFinal = aplicarContenidoIA(auditoriaBase, contenidoIA);
+                    // Si la IA generó hallazgos (o usamos los por defecto) y no tenemos en el estado, usarlos
+                    if ((auditoriaFinal as any).hallazgos && hallazgosParaPDF.length === 0) {
+                      hallazgosParaPDF = (auditoriaFinal as any).hallazgos;
+                    }
                     // Usar conclusiones generadas si no hay observaciones propias
                     if (!informePreliminar.observaciones && contenidoIA.conclusiones) {
                       informeFinal = { ...informeFinal, observaciones: contenidoIA.conclusiones };
