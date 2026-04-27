@@ -260,6 +260,29 @@ class AuthService {
   async getProfesionales(): Promise<ProfesionalUser[]> {
     return apiClient.get<ProfesionalUser[]>(`${API_ENDPOINTS.AUTH.BASE}/users`);
   }
+
+  async getAbogadosRolResuelve(): Promise<AbogadoResuelve[]> {
+    const response = await apiClient.get<{ data: any[]; meta: any } | any[]>(
+      '/auth/api/v1/users',
+      { status: 'active', limit: 1000 }
+    );
+    const users = Array.isArray(response) ? response : (response?.data ?? []);
+    return users
+      .filter((u: any) => {
+        const roles: any[] = u.user?.roles ?? u.roles ?? [];
+        return roles.some((r: any) => {
+          const code = (r.code ?? '').toLowerCase();
+          const name = (r.name ?? '').toLowerCase();
+          return code.includes('resuelve') || name.includes('resuelve');
+        });
+      })
+      .map((u: any) => ({
+        id: u.user?.id_user ?? u.id_user ?? u.id,
+        nombreCompleto: u.full_name ?? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim(),
+        nombre: u.full_name ?? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim(),
+        email: u.email ?? '',
+      }));
+  }
 }
 
 // Tipo para profesionales/usuarios en asignación de procesos disciplinarios
@@ -278,6 +301,13 @@ export interface ProfesionalUser {
 
 // Alias para compatibilidad con código existente
 export type User = ProfesionalUser;
+
+export interface AbogadoResuelve {
+  id: string;
+  nombreCompleto: string;
+  nombre: string;
+  email: string;
+}
 
 export const authService = new AuthService();
 export default authService;

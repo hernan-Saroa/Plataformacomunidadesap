@@ -246,7 +246,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         });
       } else if (statusCode === 401) {
         toast.error('Credenciales incorrectas', {
-          description: 'El correo electrónico o contraseña son incorrectos.',
+          description: errorMessage,
           duration: 5000,
         });
         setErrors({

@@ -605,7 +605,7 @@ export function ModuloPlanAccionV4() {
 
   const addBtnsPermission = () => {
     const arrayBtns: any[] = [];
-    if (authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_CREATE)) {
+    if (authService.hasPermission(Permissions.GESTION_LEGAL_PLAN_ACCION_CREATE)) {
       arrayBtns.push({
         label: 'Nuevo Indicador',
         labelMobile: 'Nuevo',
