@@ -1700,9 +1700,9 @@ class DisciplinaryService {
     /**
      * Enviar un correo electrónico
      */
-    async sendEmail(data: { to: string; subject: string; body: string }): Promise<any> {
-        return apiClient.post(`${SERVICE_PREFIX}/email/send`, data);
-    }
+    sendEmail = async (data: { to: string; subject: string; body: string }): Promise<any> => {
+        return apiClient.post(`${SERVICE_PREFIX}/disciplinary-processes/send-email`, data);
+    };
 
 }
 
