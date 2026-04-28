@@ -37,6 +37,7 @@ import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalGestionDocumentos } from './ModalGestionDocumentos';
 import { ModalNuevaDemandaRESTAURADO } from './ModalNuevaDemandaRESTAURADO';
 import { ModalAnexarProceso } from './ModalAnexarProceso';
+import { ModalProvisionContable } from './ModalProvisionContable';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
 import { copyToClipboard } from '../../../../utils/clipboard';
 import { legalService, correosJuridicosService } from '../../../../services/api/legal.service';
@@ -76,6 +77,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [modalProgramarAudienciaAbierto, setModalProgramarAudienciaAbierto] = useState(false);
   const [modalAnexarAbierto, setModalAnexarAbierto] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
 
   // Estado para visor de documentos inline
   const [visorAbierto, setVisorAbierto] = useState(false);
@@ -1411,6 +1413,29 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     Editar Proceso
                   </Button>
                 )}
+                {(() => {
+                  const currentUser = authService.getCurrentUser() as any;
+                  const currentUserName = (
+                    currentUser?.fullName ||
+                    currentUser?.person?.full_name ||
+                    `${currentUser?.person?.first_name ?? ''} ${currentUser?.person?.last_name ?? ''}`.trim()
+                  )?.toLowerCase().trim();
+                  const esAbogadoResponsable =
+                    !!currentUserName && currentUserName === expediente.abogadoAsignado?.toLowerCase().trim();
+                  return (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsProvisionModalOpen(true)}
+                      disabled={!esAbogadoResponsable}
+                      title={!esAbogadoResponsable ? 'Solo el abogado responsable puede registrar la provisión contable' : 'Registrar valoración y provisión contable'}
+                      className="text-amber-600 border-amber-600 hover:bg-amber-50 bg-white shadow-sm flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <DollarSign className="w-4 h-4 mr-2" />
+                      Provisión Contable
+                    </Button>
+                  );
+                })()}
                 {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && !(expediente as any).procesoPrincipalId && (!(expediente as any).procesosAnexados || (expediente as any).procesosAnexados.length === 0) && (
                   <Button
                     variant="outline"
@@ -2425,6 +2450,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
           onClose={() => setIsEditModalOpen(false)}
           onSave={handleGuardarEdicion}
           expedienteEdit={expediente}
+        />
+      )}
+
+      {/* Modal de Valoración y Provisión Contable */}
+      {isProvisionModalOpen && (
+        <ModalProvisionContable
+          isOpen={isProvisionModalOpen}
+          onClose={() => setIsProvisionModalOpen(false)}
+          expediente={expediente}
+          onUpdate={onUpdate}
         />
       )}
 
