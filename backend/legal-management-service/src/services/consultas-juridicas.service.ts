@@ -290,13 +290,17 @@ export class ConsultasJuridicasService implements OnModuleInit {
         return this.consultaRepository.save(consulta);
     }
 
-    async enviarAJefe(id: string, respuesta: string, usuario: string = 'Sistema'): Promise<ConsultaJuridica> {
+    async enviarAJefe(id: string, respuesta: string, usuario: string = 'Sistema', destinatariosAdicionales?: string[]): Promise<ConsultaJuridica> {
         const consulta = await this.findOne(id);
         const estadoAnterior = consulta.estado;
 
         consulta.respuesta = respuesta;
         consulta.estado = 'pendiente_revision_jefe';
         consulta.comentarioDevolucionJefe = null as any;
+
+        if (destinatariosAdicionales && destinatariosAdicionales.length > 0) {
+            consulta.destinatariosAdicionales = JSON.stringify(destinatariosAdicionales);
+        }
 
         await this.registrarEvento(
             id,

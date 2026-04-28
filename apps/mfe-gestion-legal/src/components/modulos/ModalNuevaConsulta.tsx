@@ -177,8 +177,11 @@ export function ModalNuevaConsulta({ isOpen, onClose, onSuccess, modoEdicion = f
     }
   }, [isOpen, modoEdicion, consultaInicial]);
 
-  // Auto-asignar si el usuario es abogado resuelve (por rol), no jefe ni admin
-  const esAbogadoResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
+  // JEFE tiene prioridad: si el usuario es jefe, no se auto-asigna ni se deshabilita el select
+  const esJefe = authService.hasRole('JEFE_GESTION_LEGAL')
+    || authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_APROBAR_RESPUESTA);
+  // Auto-asignar solo si es RESUELVE puro (no jefe ni admin)
+  const esAbogadoResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL') && !esJefe;
 
   const loadAbogados = async () => {
     setLoadingAbogados(true);

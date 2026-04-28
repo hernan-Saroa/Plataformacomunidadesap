@@ -1358,10 +1358,6 @@ export function ExpedienteAuditoriaCompleto({
 
             {/* ACCIONES SECUNDARIAS - SEGÚN ESTÁNDAR */}
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" className="font-bold text-xs" onClick={exportarExpedienteExcel}>
-                <Download className="w-3.5 h-3.5 mr-1" />
-                Exportar Excel
-              </Button>
               <Button 
                 size="sm"
                 style={{ background: '#003DA5', color: '#FFFFFF' }}
@@ -2455,46 +2451,6 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
 
       {/* Botones descarga — Preliminar, Final, Cierre y Ejecutivo se generan por la plataforma */}
       <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200">
-        {docCierre ? (
-          <Button variant="outline" className="border-green-600 text-green-700 hover:bg-green-50" onClick={() => descargarDoc(docCierre)}>
-            <Download className="w-4 h-4 mr-2" />
-            Informe de Cierre
-          </Button>
-        ) : (
-          <>
-            <Button
-              variant="outline"
-              className="border-green-600 text-green-700 hover:bg-green-50"
-              onClick={async () => {
-                try {
-                  const { exportarPDFInformeCierre } = await import('./services/exportarPDFInformeCierreEjecutivo');
-                  const datos = {
-                    auditoria: construirAuditoriaPdfData(),
-                    resumen: resumen ? { ...resumen, leccionesAprendidas: resumen.leccionesAprendidas, recomendacionesFuturasAuditorias: resumen.recomendacionesFuturasAuditorias } : null,
-                    planes: planes,
-                    hallazgos: hallazgos.map((h: any) => ({
-                      id: h.id,
-                      codigo: h.codigo,
-                      titulo: h.titulo,
-                      descripcion: h.descripcion || '',
-                      gravedad: h.gravedad,
-                      decisionAuditor: h.decisionAuditor,
-                      estado: h.estado,
-                      fundamentacionTecnica: h.fundamentacionTecnica,
-                    })),
-                  };
-                  await exportarPDFInformeCierre(datos);
-                  toast.success('Informe de cierre descargado');
-                } catch (e: any) {
-                  toast.error(e?.message || 'Error al generar el PDF');
-                }
-              }}
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              Generar / Descargar Informe de Cierre
-            </Button>
-          </>
-        )}
         {docEjecutivo ? (
           <Button variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50" onClick={() => descargarDoc(docEjecutivo)}>
             <Download className="w-4 h-4 mr-2" />
