@@ -602,7 +602,7 @@ export class UsersService {
           normalizedDocument,
         );
 
-        const passwordHash = await bcrypt.hash(dto.password, 10);
+        const passwordHash = await bcrypt.hash(dto.password || '123456', 10);
         const person = await this.savePerson(manager, {
           firstName: dto.firstName,
           lastName: dto.lastName,

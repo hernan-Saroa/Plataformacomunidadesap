@@ -39,7 +39,7 @@ export class LoginProtectionService {
   );
   private readonly accountLockThreshold = this.readPositiveInt(
     'AUTH_LOGIN_ACCOUNT_LOCK_THRESHOLD',
-    5,
+    10,
   );
   private readonly accountLockMs = this.readPositiveInt(
     'AUTH_LOGIN_ACCOUNT_LOCK_MS',

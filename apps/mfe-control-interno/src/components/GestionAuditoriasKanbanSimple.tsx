@@ -2231,8 +2231,9 @@ export function GestionAuditoriasKanbanSimple() {
 
   // Filtrar auditorías
   const auditoriasFiltradas = auditorias.filter(aud => {
-    const cumpleBusqueda = aud.titulo.toLowerCase().includes(busqueda.toLowerCase()) ||
-                           aud.codigo.toLowerCase().includes(busqueda.toLowerCase());
+    const terminoBusqueda = String(busqueda || '').toLowerCase();
+    const cumpleBusqueda = String(aud.titulo || '').toLowerCase().includes(terminoBusqueda) ||
+                           String(aud.codigo || '').toLowerCase().includes(terminoBusqueda);
     const cumpleTerritorial = filtroTerritorial === 'Todas las Territoriales' || aud.territorial === filtroTerritorial;
     
     // ✅ FILTRO DE VISIBILIDAD DE USUARIO: Solo ve las suyas a menos que tenga permisos de análisis
@@ -2246,7 +2247,13 @@ export function GestionAuditoriasKanbanSimple() {
                       (aud.auditorLider?.nombre && currentName && aud.auditorLider.nombre.includes(currentName));
       const isAsignado = aud.auditorAsignado?.numeroIdentificacion === currentDoc || 
                          (aud.auditorAsignado?.nombre && currentName && aud.auditorAsignado.nombre.includes(currentName));
-      const isInEquipo = aud.equipoAuditores?.some(r => r.includes(currentName));
+      const isInEquipo = Array.isArray(aud.equipoAuditores) && aud.equipoAuditores.some(r => {
+        const nombreEquipo = typeof r === 'string'
+          ? r
+          : ((r as any)?.nombre || (r as any)?.nombreCompleto || (r as any)?.persona?.nombre || (r as any)?.persona?.nombreCompleto || '');
+
+        return currentName && String(nombreEquipo).includes(currentName);
+      });
       
       cumpleUsuario = !!(isLider || isAsignado || isInEquipo);
     }

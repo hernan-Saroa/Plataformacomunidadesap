@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, TrendingUp, Sparkles, ArrowLeft, ChevronDown } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, TrendingUp, Sparkles, ArrowLeft, ChevronDown, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { ESAPLogo } from '../assets/ESAPLogo';
 import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
@@ -41,6 +41,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
   const [showRecuperarModal, setShowRecuperarModal] = useState(false);
   const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
@@ -255,6 +256,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
       console.log('🔄 [7] Calling onLogin handler with user data');
       // Pasar los datos del usuario autenticado al handler de login (igual que el LoginPage de esap)
+      setRemainingAttempts(null);
       onLogin(response.user, response.accessToken, rememberMe);
       console.log('✅ [8] onLogin handler completed');
     } catch (error: any) {
@@ -281,6 +283,9 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
             duration: 10000,
           });
         } else {
+          const match = errorMessage.match(/Te (?:queda|quedan) (\d+) intento/);
+          const parsed = match ? parseInt(match[1], 10) : null;
+          if (parsed !== null && parsed <= 3) setRemainingAttempts(parsed);
           toast.error('Credenciales incorrectas', {
             description: errorMessage,
             duration: 5000,
@@ -488,6 +493,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                         onChange={(e) => {
                           setEmail(e.target.value);
                           setErrors({ ...errors, email: undefined });
+                          setRemainingAttempts(null);
                         }}
                         placeholder="correo@esap.edu.co"
                         className={`w-full pl-12 pr-4 py-2.5 border-2 rounded-xl transition-all outline-none ${
@@ -547,6 +553,21 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                       >
                         {errors.password}
                       </motion.p>
+                    )}
+                    {remainingAttempts !== null && remainingAttempts > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-2 p-2.5 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2"
+                      >
+                        <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                        <p className="text-red-600 text-xs leading-snug">
+                          <span className="font-semibold">
+                            Te {remainingAttempts === 1 ? 'queda' : 'quedan'} {remainingAttempts} intento{remainingAttempts === 1 ? '' : 's'}.
+                          </span>{' '}
+                          Tu cuenta será bloqueada temporalmente por 15 minutos o deberás restablecer tu contraseña.
+                        </p>
+                      </motion.div>
                     )}
                   </div>
 
