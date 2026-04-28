@@ -556,14 +556,36 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       newErrors.denunciados = 'Debe agregar al menos un denunciado';
     }
 
+    // Validar email del apoderado del denunciado si existe
+    if (mostrarApoderadoDenunciado && apoderadoDenunciado.correo) {
+      if (apoderadoDenunciado.correo !== 'Por determinar' && !validarEmail(apoderadoDenunciado.correo)) {
+        newErrors.apoderadoDenunciadoEmail = 'El email del apoderado debe ser válido o estar vacío';
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const validateStep3 = () => {
-    // El paso 3 (denunciantes) es opcional, no requiere validación
-    // Los denunciantes pueden agregarse opcionalmente
-    return true;
+    const newErrors: Record<string, string> = {};
+
+    // Validar email del denunciante si existe
+    if (currentDenunciante.correo && !porDeterminar.denuncianteCorreo) {
+      if (currentDenunciante.correo !== 'Por determinar' && !validarEmail(currentDenunciante.correo)) {
+        newErrors.denuncianteEmail = 'El email del denunciante debe ser válido o estar vacío';
+      }
+    }
+
+    // Validar email del apoderado del denunciante si existe
+    if (mostrarApoderadoDenunciante && apoderadoDenunciante.correo) {
+      if (apoderadoDenunciante.correo !== 'Por determinar' && !validarEmail(apoderadoDenunciante.correo)) {
+        newErrors.apoderadoDenuncianteEmail = 'El email del apoderado debe ser válido o estar vacío';
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const validateStep4 = () => {
@@ -614,8 +636,19 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   };
 
   const handleSave = () => {
-    const valid = validateStep4();
-    if (!valid) return;
+    // Validar todos los pasos antes de guardar
+    const step1Valid = validateStep1();
+    const step2Valid = validateStep2();
+    const step3Valid = validateStep3();
+    const step4Valid = validateStep4();
+
+    if (!step1Valid || !step2Valid || !step3Valid || !step4Valid) {
+      // Encontrar el primer paso con errores y navegar a él
+      if (!step1Valid) setCurrentStep(1);
+      else if (!step2Valid) setCurrentStep(2);
+      else if (!step3Valid) setCurrentStep(3);
+      return;
+    }
 
     const currentUser = authService.getCurrentUser();
     const dataToSave = {
@@ -1158,6 +1191,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                           placeholder="apoderado@ejemplo.com"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
+                        {errors.apoderadoDenunciadoEmail && (
+                          <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            {errors.apoderadoDenunciadoEmail}
+                          </p>
+                        )}
                       </div>
                       {/* ✅ NUEVO: Campo de Dirección del Apoderado */}
                       <div className="col-span-2">
@@ -1420,6 +1459,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                       disabled={porDeterminar.denuncianteCorreo}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denuncianteCorreo ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     />
+                    {errors.denuncianteEmail && (
+                      <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />
+                        {errors.denuncianteEmail}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
@@ -1567,6 +1612,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                           placeholder="apoderado@ejemplo.com"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
+                        {errors.apoderadoDenuncianteEmail && (
+                          <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3" />
+                            {errors.apoderadoDenuncianteEmail}
+                          </p>
+                        )}
                       </div>
                       {/* ✅ NUEVO: Campo de Dirección del Apoderado */}
                       <div className="col-span-2">

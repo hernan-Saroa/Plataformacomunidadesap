@@ -190,17 +190,18 @@ export class RequerimientosOCService {
         await this.requerimientoRepo.remove(req);
     }
 
-    async reasignar(id: string, nuevoAbogadoId: string): Promise<RequerimientoOC> {
+    async reasignar(id: string, nuevoAbogadoId: string, nuevoAbogadoNombre?: string): Promise<RequerimientoOC> {
         // 1. Get current requerimiento
         const req = await this.findOne(id);
         const responsableAnterior = req.funcionarioResponsable || req.abogadoAsignado?.nombreCompleto || 'Sin asignar';
 
-        // 2. Fetch the new lawyer directly from DB
-        const nuevoAbogado = await this.abogadoRepo.findOne({ where: { id: nuevoAbogadoId } });
-        if (!nuevoAbogado) {
-            throw new NotFoundException(`Abogado ${nuevoAbogadoId} no encontrado`);
+        // 2. Resolve lawyer name — prefer the name passed from frontend (auth-service users),
+        //    fall back to local abogados table for backward compatibility.
+        let nuevoResponsable = nuevoAbogadoNombre || '';
+        if (!nuevoResponsable) {
+            const abogado = await this.abogadoRepo.findOne({ where: { id: nuevoAbogadoId } });
+            nuevoResponsable = abogado?.nombreCompleto || nuevoAbogadoId;
         }
-        const nuevoResponsable = nuevoAbogado.nombreCompleto;
 
         // 3. Update the requerimiento with new lawyer ID AND name
         await this.requerimientoRepo.update(id, {

@@ -84,7 +84,7 @@ export function ModalReasignar({
 
     try {
       // Llamar al API para reasignar
-      await ocService.reasignarRequerimiento(requerimientoId, responsableSeleccionado.id);
+      await ocService.reasignarRequerimiento(requerimientoId, responsableSeleccionado.id, responsableSeleccionado.nombreCompleto);
 
       toast.success(`✅ Requerimiento reasignado a ${responsableSeleccionado.nombreCompleto}`);
 

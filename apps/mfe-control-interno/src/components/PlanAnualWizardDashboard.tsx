@@ -282,6 +282,62 @@ interface ActividadBase {
   // ✅ NUEVO: Configuración de puntos de control
   puntosControl?: PuntoControl[];
   frecuenciaPuntosControl?: FrecuenciaPuntoControl;
+  /** Si es `false`, la actividad no entra en el plan guardado pero se conserva lo configurado hasta volver a marcarla. */
+  incluidaEnPlan?: boolean;
+}
+
+/** Actividades desmarcadas en el checklist conservan datos; solo `incluidaEnPlan === false` las excluye del envío al backend. */
+function actividadIncluidaEnPlan(a: ActividadBase): boolean {
+  return a.incluidaEnPlan !== false;
+}
+
+/**
+ * Interruptores del Paso 2 usan `tipoEvidencia`. Al abrir un plan cargado desde el dashboard,
+ * la config viene como `adjuntosRequeridos` / `observacionRequerida` (sin `documentos`/`observaciones`),
+ * por lo que la inferencia antigua devolvía siempre SOLO_CHECK y el switch grande quedaba apagado.
+ * Coincide con el mapeo que envía `handleCrearPlan` (OBLIGATORIO = caso wizard).
+ */
+function inferirTipoEvidenciaParaWizard(act: ActividadBase & { configuracionEvidencias?: any }): NonNullable<ActividadBase['tipoEvidencia']> {
+  if (act.tipoEvidencia) return act.tipoEvidencia;
+  const c = act.configuracionEvidencias;
+  let desdeConfig: NonNullable<ActividadBase['tipoEvidencia']> | null = null;
+  if (c) {
+    if (typeof c.documentos === 'boolean' || typeof c.observaciones === 'boolean') {
+      const doc = !!c.documentos;
+      const obs = !!c.observaciones;
+      if (doc && obs) desdeConfig = 'COMPLETO';
+      else if (doc) desdeConfig = 'ADJUNTOS';
+      else if (obs) desdeConfig = 'OBSERVACIONES';
+      else desdeConfig = 'SOLO_CHECK';
+    } else if (c.adjuntosRequeridos !== undefined || c.observacionRequerida !== undefined) {
+      const adj = c.adjuntosRequeridos ?? 'NO_REQUERIDO';
+      const obs = c.observacionRequerida ?? 'NO_REQUERIDO';
+      const adjOb = adj === 'OBLIGATORIO';
+      const obsOb = obs === 'OBLIGATORIO';
+      if (adjOb && obsOb) desdeConfig = 'COMPLETO';
+      else if (adjOb && !obsOb) desdeConfig = 'ADJUNTOS';
+      else if (obsOb && !adjOb) desdeConfig = 'OBSERVACIONES';
+      else desdeConfig = 'SOLO_CHECK';
+    }
+  }
+  if (desdeConfig && desdeConfig !== 'SOLO_CHECK') return desdeConfig;
+
+  const tareas = act.tareasSeguimiento;
+  if (Array.isArray(tareas) && tareas.length > 0) {
+    const anyObs = tareas.some((t) => t.requiereObservaciones);
+    const anyAdj = tareas.some((t) => t.requiereAdjuntos);
+    const allObs = tareas.every((t) => t.requiereObservaciones);
+    const allAdj = tareas.every((t) => t.requiereAdjuntos);
+    if (allObs && allAdj && (anyObs || anyAdj)) return 'COMPLETO';
+    if (allAdj && !anyObs) return 'ADJUNTOS';
+    if (allObs && !anyAdj) return 'OBSERVACIONES';
+  }
+
+  return desdeConfig ?? 'SOLO_CHECK';
+}
+
+function contarActividadesIncluidas(rol: RolConfig): number {
+  return rol.actividadesSeleccionadas.filter(actividadIncluidaEnPlan).length;
 }
 
 interface RolConfig extends Omit<Rol, 'actividades'> {
@@ -810,7 +866,8 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     .filter((p: any) => !planAEditar || p.id !== planAEditar.id)
     .map((p: any) => p.vigencia);
   const anioActual = new Date().getFullYear();
-  const vigenciasDisponibles = Array.from({ length: (anioActual + 10) - 2020 + 1 }, (_, i) => 2020 + i)
+  // Mismo rango que la validación de vigencia en el wizard (2020–2100)
+  const vigenciasDisponibles = Array.from({ length: 2100 - 2020 + 1 }, (_, i) => 2020 + i)
     .filter(y => !vigenciasOcupadas.includes(y));
 
   const [vigencia, setVigencia] = useState(() => {
@@ -1008,10 +1065,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
         // Mapear actividades del plan existente
         const actividadesConfiguradas = rolEdit.actividades.map((act) => ({
           ...act,
-          // Mantener compatibilidad con el wizard
-          tipoEvidencia: act.configuracionEvidencias?.documentos && act.configuracionEvidencias?.observaciones ? 'COMPLETO' :
-                         act.configuracionEvidencias?.documentos ? 'ADJUNTOS' :
-                         act.configuracionEvidencias?.observaciones ? 'OBSERVACIONES' : 'SOLO_CHECK',
+          tipoEvidencia: inferirTipoEvidenciaParaWizard(act as ActividadBase & { configuracionEvidencias?: any }),
         }));
 
         // Separar entre seleccionadas (del template) y custom (creadas manualmente)
@@ -1140,9 +1194,9 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
   };
 
   const validarPaso2 = () => {
-    // Validar que hay actividades seleccionadas
+    // Validar que hay actividades seleccionadas (incluidas en el plan, no solo guardadas por soft-uncheck)
     const tieneActividades = rolesConfig.some(rol => 
-      rol.actividadesSeleccionadas.length > 0 || rol.actividadesCustom.length > 0
+      contarActividadesIncluidas(rol) > 0 || rol.actividadesCustom.length > 0
     );
     if (!tieneActividades) {
       toast.error('Debe seleccionar al menos una actividad en algún rol');
@@ -1151,7 +1205,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     
     // ⚠️ VALIDACIÓN OBLIGATORIA: Todos los roles con actividades DEBEN tener responsables
     const rolesConActividades = rolesConfig.filter(rol => 
-      (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0) > 0
+      contarActividadesIncluidas(rol) + (rol.actividadesCustom?.length || 0) > 0
     );
     const rolesSinResponsables = rolesConActividades.filter(rol => (rol.responsables?.length || 0) === 0);
     
@@ -1167,7 +1221,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     // Validar que cada actividad tenga al menos un responsable
     const actividadesSinResponsable: string[] = [];
     for (const rol of rolesConActividades) {
-      for (const act of (rol.actividadesSeleccionadas || [])) {
+      for (const act of (rol.actividadesSeleccionadas || []).filter(actividadIncluidaEnPlan)) {
         if (!act.responsables || act.responsables.length === 0) {
           actividadesSinResponsable.push(`"${act.nombre.slice(0, 40)}" (Rol ${rol.numero})`);
         }
@@ -1189,7 +1243,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     // Validar que cada actividad tenga fecha de corte
     const actividadesSinFechaCorte: string[] = [];
     for (const rol of rolesConActividades) {
-      for (const act of (rol.actividadesSeleccionadas || [])) {
+      for (const act of (rol.actividadesSeleccionadas || []).filter(actividadIncluidaEnPlan)) {
         if (!act.fechaCorte) {
           actividadesSinFechaCorte.push(`"${act.nombre.slice(0, 40)}" (Rol ${rol.numero})`);
         }
@@ -1210,7 +1264,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     
     // Contar total de actividades y responsables
     const totalActividades = rolesConActividades.reduce((sum, rol) => 
-      sum + (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0), 0
+      sum + contarActividadesIncluidas(rol) + (rol.actividadesCustom?.length || 0), 0
     );
     const totalResponsables = rolesConActividades.reduce((sum, rol) => 
       sum + (rol.responsables?.length || 0), 0
@@ -1233,7 +1287,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     const handleFinalizar = async () => {
     // Validación final de seguridad antes de crear el plan
     const rolesConActividades = rolesConfig.filter(rol => 
-      (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0) > 0
+      contarActividadesIncluidas(rol) + (rol.actividadesCustom?.length || 0) > 0
     );
     const totalResponsables = rolesConActividades.reduce((sum, rol) => 
       sum + (rol.responsables?.length || 0), 0
@@ -1439,11 +1493,11 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
               onClick={avanzarPaso} 
               disabled={
                 (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
-                (paso === 2 && rolesConfig.some(r => ((r.actividadesSeleccionadas?.length || 0) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
+                (paso === 2 && rolesConfig.some(r => (contarActividadesIncluidas(r) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
               }
               className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${
                 (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
-                (paso === 2 && rolesConfig.some(r => ((r.actividadesSeleccionadas?.length || 0) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
+                (paso === 2 && rolesConfig.some(r => (contarActividadesIncluidas(r) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
                   : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
               }`}
@@ -1742,49 +1796,66 @@ function Paso2({
 
   const toggleActividad = (numeroRol: number, actId: string, nombreActividad: string) => {
     const nuevaConfig = rolesConfig.map(rol => {
-      if (rol.numero === numeroRol) {
-        const yaSeleccionada = rol.actividadesSeleccionadas.some(a => a.id === actId || a.nombre === nombreActividad);
-        if (yaSeleccionada) {
-          // Deseleccionar
+      if (rol.numero !== numeroRol) return rol;
+
+      const idx = rol.actividadesSeleccionadas.findIndex(a => a.id === actId || a.nombre === nombreActividad);
+      const existente = idx >= 0 ? rol.actividadesSeleccionadas[idx] : undefined;
+
+      if (existente) {
+        if (actividadIncluidaEnPlan(existente)) {
+          // Desmarcar sin borrar: se conserva evidencias, puntos de control, etc.
           return {
             ...rol,
-            actividadesSeleccionadas: rol.actividadesSeleccionadas.filter(a => a.id !== actId && a.nombre !== nombreActividad)
+            actividadesSeleccionadas: rol.actividadesSeleccionadas.map((a, i) =>
+              i === idx ? { ...a, incluidaEnPlan: false } : a
+            ),
           };
-        } else {
-          // Seleccionar
-          const actividadBase = getActividadesPorRol(numeroRol)?.find(a => a.nombre === nombreActividad);
-          if (actividadBase) {
-            // Auto-asignar primer responsable del rol si existe
-            const primerResponsable = rol.responsables?.[0];
-            // Auto-generar 3 puntos de control trimestrales (31 Mar, 30 Jun, 30 Sep)
-            const año = fechaInicio ? fechaInicio.split('-')[0] : new Date().getFullYear().toString();
-            const puntosDefault: PuntoControl[] = [
-              { id: `pc-${actId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-              { id: `pc-${actId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-              { id: `pc-${actId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-            ];
-            return {
-              ...rol,
-              actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
-                ...actividadBase,
-                id: actId,
-                tipoEvidencia: 'SOLO_CHECK' as const,
-                fechaCorte: `${año}-09-30`,
-                responsables: primerResponsable ? [primerResponsable] : [],
-                puntosControl: puntosDefault,
-                frecuenciaPuntosControl: 'trimestral' as const,
-              }]
-            };
-          }
         }
+        // Reactivar entrada existente
+        return {
+          ...rol,
+          actividadesSeleccionadas: rol.actividadesSeleccionadas.map((a, i) =>
+            i === idx ? { ...a, incluidaEnPlan: true } : a
+          ),
+        };
       }
-      return rol;
+
+      // Primera vez en el plan: alta nueva con valores por defecto
+      const actividadBase = getActividadesPorRol(numeroRol)?.find(a => a.nombre === nombreActividad);
+      if (!actividadBase) return rol;
+
+      const primerResponsable = rol.responsables?.[0];
+      const año = fechaInicio ? fechaInicio.split('-')[0] : new Date().getFullYear().toString();
+      const puntosDefault: PuntoControl[] = [
+        { id: `pc-${actId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+        { id: `pc-${actId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+        { id: `pc-${actId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
+      ];
+      return {
+        ...rol,
+        actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
+          ...actividadBase,
+          id: actId,
+          incluidaEnPlan: true,
+          tipoEvidencia: 'SOLO_CHECK' as const,
+          fechaCorte: `${año}-09-30`,
+          responsables: primerResponsable ? [primerResponsable] : [],
+          puntosControl: puntosDefault,
+          frecuenciaPuntosControl: 'trimestral' as const,
+        }]
+      };
     });
     onRolesChange(nuevaConfig);
   };
 
   const estaSeleccionada = (actId: string, nombreActividad?: string) => {
-    return rolesConfig.some(rol => rol.actividadesSeleccionadas.some(a => a.id === actId || (nombreActividad && a.nombre === nombreActividad)));
+    return rolesConfig.some(rol =>
+      rol.actividadesSeleccionadas.some(
+        a =>
+          (a.id === actId || (!!nombreActividad && a.nombre === nombreActividad)) &&
+          actividadIncluidaEnPlan(a)
+      )
+    );
   };
 
   const toggleAutorizacionJefeOCI = (actId: string) => {
@@ -2053,7 +2124,7 @@ function Paso2({
   };
 
   const totalActividades = rolesConfig.reduce((sum, rol) => 
-    sum + rol.actividadesSeleccionadas.length + rol.actividadesCustom.length, 0
+    sum + contarActividadesIncluidas(rol) + rol.actividadesCustom.length, 0
   );
 
   return (
@@ -2079,7 +2150,7 @@ function Paso2({
         {[...rolesConfig].sort((a, b) => a.numero - b.numero).map((rol) => {
           const isExpanded = rolExpandido === rol.numero;
           const actividadesBase = getActividadesPorRol(rol.numero);
-          const totalRol = rol.actividadesSeleccionadas.length + rol.actividadesCustom.length;
+          const totalRol = contarActividadesIncluidas(rol) + rol.actividadesCustom.length;
           const faltaResponsable = totalRol > 0 && rol.responsables.length === 0;
 
           return (
@@ -2097,7 +2168,7 @@ function Paso2({
                     <h3 className="font-bold text-gray-900">Rol {rol.numero}: {rol.nombre}</h3>
                     <p className="text-sm text-gray-600">
                       {totalRol} actividades • {(() => {
-                        const totalTareas = [...rol.actividadesSeleccionadas, ...rol.actividadesCustom]
+                        const totalTareas = [...rol.actividadesSeleccionadas.filter(actividadIncluidaEnPlan), ...rol.actividadesCustom]
                           .reduce((sum, a) => sum + (a.tareasSeguimiento?.length || 0), 0);
                         return totalTareas > 0 ? `${totalTareas} tareas • ` : '';
                       })()}{rol.responsables.length} responsables
@@ -3392,7 +3463,8 @@ function Paso3({
   setDraggedAprobadorIndex
 }: any) {
   const totalActividades = rolesConfig.reduce((total: number, rol: any) => {
-    return total + (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0);
+    const sel = (rol.actividadesSeleccionadas || []).filter((a: ActividadBase) => actividadIncluidaEnPlan(a)).length;
+    return total + sel + (rol.actividadesCustom?.length || 0);
   }, 0);
 
   const totalResponsables = rolesConfig.reduce((total: number, rol: any) => {
@@ -3430,7 +3502,8 @@ function Paso3({
           </div>
           {(() => {
             const totalTareas = rolesConfig.reduce((sum: number, rol: any) => {
-              return sum + [...(rol.actividadesSeleccionadas || []), ...(rol.actividadesCustom || [])]
+              const incl = (rol.actividadesSeleccionadas || []).filter((a: ActividadBase) => actividadIncluidaEnPlan(a));
+              return sum + [...incl, ...(rol.actividadesCustom || [])]
                 .reduce((s: number, a: any) => s + (a.tareasSeguimiento?.length || 0), 0);
             }, 0);
             return totalTareas > 0 ? (
