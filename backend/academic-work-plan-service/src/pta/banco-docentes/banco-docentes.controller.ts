@@ -95,4 +95,11 @@ export class BancoDocentesController {
     const result = await this.service.syncToAuthService(authUrl);
     return { success: true, data: result };
   }
+
+  @Post('sync-from-auth')
+  async syncFromAuth() {
+    const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+    const result = await this.service.syncFromAuthService(authUrl);
+    return { success: true, data: result };
+  }
 }
