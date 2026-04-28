@@ -78,7 +78,7 @@ export class PtaService {
     return Array.isArray(rows) && rows.length > 0;
   }
 
-  private async fetchAuthDocenteInfo(docenteKey: string): Promise<{ personId: string, email: string | null, fullName: string }> {
+  private async fetchAuthDocenteInfo(docenteKey: string, options?: { adminEdit?: boolean }): Promise<{ personId: string, email: string | null, fullName: string }> {
     const key = coalesceString(docenteKey);
     if (!key) throw new BadRequestException('docente_id es requerido');
 
@@ -104,6 +104,11 @@ export class PtaService {
       `u.id_user::text = $1`,
     ].filter(Boolean);
 
+    const roleFilter = options?.adminEdit
+      ? ''
+      : `JOIN auth.user_roles ur ON ur.id_user = u.id_user AND COALESCE(ur.is_active, true) = true
+      JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true AND r.code = 'DOCENTE'`;
+
     const sql = `
       SELECT
         ${personasHasIdPerson ? 'p.id_person::text' : 'NULL'} as person_id,
@@ -115,16 +120,19 @@ export class PtaService {
         p.seg_apellido as segundo_apellido
       FROM auth.personas p
       JOIN auth."user" u ON ${joinUserPersonas}
-      JOIN auth.user_roles ur ON ur.id_user = u.id_user AND COALESCE(ur.is_active, true) = true
-      JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
-      WHERE r.code = 'DOCENTE'
-        AND (${keyPredicates.join(' OR ')})
+      ${roleFilter}
+      WHERE (${keyPredicates.join(' OR ')})
       LIMIT 1
     `;
 
     const rows = await this.ptaRepo.query(sql, [key]);
     const authRow = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
     if (!authRow) {
+      if (options?.adminEdit) {
+        // No está en auth.personas pero es una edición admin: usar el key directamente
+        // para que resolveDocenteCompleto lo busque en academic_work_plan."Docente"
+        return { personId: key, email: null, fullName: 'Docente ESAP' };
+      }
       throw new BadRequestException('La persona no tiene el rol DOCENTE (auth.role.code) o no existe en auth.personas.');
     }
 
@@ -140,8 +148,8 @@ export class PtaService {
     return { personId, email, fullName };
   }
 
-  private async resolveDocenteCompleto(docenteKey: string, options?: { fallbackTerritorial?: string }): Promise<{ personId: string, email: string | null, fullName: string }> {
-    const { personId, email, fullName } = await this.fetchAuthDocenteInfo(docenteKey);
+  private async resolveDocenteCompleto(docenteKey: string, options?: { fallbackTerritorial?: string; adminEdit?: boolean }): Promise<{ personId: string, email: string | null, fullName: string }> {
+    const { personId, email, fullName } = await this.fetchAuthDocenteInfo(docenteKey, { adminEdit: options?.adminEdit });
 
     // Mapear a academic_work_plan."Docente" (para mantener compatibilidad con FK de PTA).
     const byId = await this.docenteRepo.findOne({ where: { id: personId } as any });
@@ -428,8 +436,9 @@ export class PtaService {
       input?.docente?.personaId,
     );
     const fallbackTerritorial = Array.isArray(input?.asignaturas) && input.asignaturas.length > 0 ? input.asignaturas[0].territorial_id : undefined;
-    const { personId: docenteId, fullName: dbName } = await this.resolveDocenteCompleto(docenteKey || '', { fallbackTerritorial });
-    
+    const isAdminEdit = Boolean(input?._adminEdit);
+    const { personId: docenteId, fullName: dbName } = await this.resolveDocenteCompleto(docenteKey || '', { fallbackTerritorial, adminEdit: isAdminEdit });
+
     // Enrich identity if missing
     if (!input.docente_nombre) {
       input.docente_nombre = dbName;
@@ -437,10 +446,9 @@ export class PtaService {
 
     const periodo = coalesceString(input?.periodo) || '2026-1';
     let estado = coalesceString(input?.estado) || 'BORRADOR';
-    
+
     // Normalize state case
     if (estado.toLowerCase() === 'borrador') estado = 'Borrador';
-    const isAdminEdit = Boolean(input?._adminEdit);
 
     // Regla legacy: máximo 1 PTA activo salvo solicitud aprobada.
     if (!id && !isAdminEdit) {
@@ -628,31 +636,52 @@ export class PtaService {
     if (existing.estado === 'Pendiente Jefatura' && (a === 'aprobar' || a === 'devolver')) {
       const aprobaciones = await this.aprobacionJefaturaRepo.find({ where: { ptaId } });
 
-      if (aprobaciones.length > 0) {
+      // Limpiar filas huérfanas: si hay >1 fila para la misma territorial, borrar duplicadas
+      const byTerritorial = new Map<string, typeof aprobaciones>();
+      for (const ap of aprobaciones) {
+        const key = ap.territorialId || '__sin_territorial__';
+        if (!byTerritorial.has(key)) byTerritorial.set(key, []);
+        byTerritorial.get(key)!.push(ap);
+      }
+      for (const [, filas] of byTerritorial.entries()) {
+        if (filas.length <= 1) continue;
+        // Conservar la aprobada si existe, si no la última; borrar el resto
+        const keeper = filas.find(f => f.decision !== 'pendiente') || filas[filas.length - 1];
+        const toDelete = filas.filter(f => f.id !== keeper.id);
+        if (toDelete.length > 0) {
+          await this.aprobacionJefaturaRepo.delete(toDelete.map(f => f.id));
+        }
+      }
+
+      // Releer post-limpieza
+      const aprobacionesLimpias = await this.aprobacionJefaturaRepo.find({ where: { ptaId } });
+      const territoriales = [...new Set(aprobacionesLimpias.map(ap => ap.territorialId).filter(Boolean))];
+      const aprobacionesPendientes = aprobacionesLimpias.filter(ap => ap.decision === 'pendiente');
+
+      // Solo aplica flujo multi-jefatura si hay 2+ territoriales DISTINTAS pendientes
+      if (territoriales.length >= 2 && aprobacionesPendientes.length >= 2) {
         const actorId = coalesceString(body?.actorId, body?.actor_id);
         const isSuperUser = !!body?.isSuperUser;
+        const aprobarTodas = !!body?.aprobarTodas;
         const observaciones = coalesceString(body?.observaciones, body?.comentarios);
         const hayCambios = body?.camposModificados && Object.keys(body.camposModificados).length > 0;
 
-        // Resolver territorialId del actor (buscar en Docente)
-        let actorTerritorialId: string | null = null;
-        if (body?.actorTerritorialId && !String(body.actorTerritorialId).startsWith('ter-')) {
-          actorTerritorialId = body.actorTerritorialId;
-        }
+        // Resolver territorialId del actor
+        let actorTerritorialId: string | null = coalesceString(body?.actorTerritorialId);
         if (!actorTerritorialId && actorId) {
           const docenteRow = await this.docenteRepo.findOne({ where: { id: actorId } as any });
           if ((docenteRow as any)?.territorialId) actorTerritorialId = (docenteRow as any).territorialId;
         }
         if (!actorTerritorialId && actorId) {
-          const prevAprobacion = aprobaciones.find(ap => ap.jefaturaUserId === actorId);
+          const prevAprobacion = aprobacionesLimpias.find(ap => ap.jefaturaUserId === actorId);
           if (prevAprobacion) actorTerritorialId = prevAprobacion.territorialId;
         }
 
         if (a === 'devolver') {
           // Una devolución devuelve todas las aprobaciones
           const toUpdate = actorTerritorialId
-            ? aprobaciones.filter(ap => ap.territorialId === actorTerritorialId)
-            : aprobaciones;
+            ? aprobacionesLimpias.filter(ap => ap.territorialId === actorTerritorialId)
+            : aprobacionesLimpias;
           for (const ap of toUpdate) {
             await this.aprobacionJefaturaRepo.save({ ...ap, decision: 'devuelto', jefaturaUserId: actorId || '', comentarios: observaciones });
           }
@@ -660,17 +689,18 @@ export class PtaService {
         } else {
           // aprobar
           const decision = hayCambios ? 'aprobado_con_cambios' : 'aprobado';
-          if (isSuperUser && !actorTerritorialId) {
-            // Super admin sin territorial → aprueba todas las pendientes
-            for (const ap of aprobaciones.filter(x => x.decision === 'pendiente')) {
-              await this.aprobacionJefaturaRepo.save({ ...ap, decision, jefaturaUserId: actorId || '', comentarios: observaciones || 'Aprobado por Super Admin' });
+          if (isSuperUser || aprobarTodas || !actorTerritorialId) {
+            // Sin territorial asignada o superuser → aprueba todas las pendientes
+            for (const ap of aprobacionesLimpias.filter(x => x.decision === 'pendiente')) {
+              await this.aprobacionJefaturaRepo.save({ ...ap, decision, jefaturaUserId: actorId || '', comentarios: observaciones || `Aprobado por ${actorId}` });
             }
           } else if (actorTerritorialId) {
-            const apRow = aprobaciones.find(ap => ap.territorialId === actorTerritorialId && ap.decision === 'pendiente');
+            // Buscar por territorial exacta, o por usuario si ya registró antes
+            const apRow = aprobacionesLimpias.find(ap => ap.decision === 'pendiente' && (ap.territorialId === actorTerritorialId || ap.jefaturaUserId === actorId));
             if (apRow) await this.aprobacionJefaturaRepo.save({ ...apRow, decision, jefaturaUserId: actorId || '', comentarios: observaciones });
           } else {
-            // Fallback: aprobar el primero pendiente sin jefatura asignada
-            const primero = aprobaciones.find(ap => ap.decision === 'pendiente' && !ap.jefaturaUserId);
+            // Fallback: aprobar la primera pendiente (con o sin jefatura asignada)
+            const primero = aprobacionesLimpias.find(ap => ap.decision === 'pendiente');
             if (primero) await this.aprobacionJefaturaRepo.save({ ...primero, decision, jefaturaUserId: actorId || '', comentarios: observaciones });
           }
 

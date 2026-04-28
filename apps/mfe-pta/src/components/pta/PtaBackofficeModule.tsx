@@ -3879,7 +3879,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               </motion.div>
             </div>
           )}
-          {selectedPTA && !showReporteR01 && !showFirmaDigital && (
+          {selectedPTA && !showReporteR01 && (
             <PTADetallePanelBackoffice
               pta={selectedPTA}
               onClose={() => { setSelectedPTA(null); setShowReporteR01(false); setShowApproval(false); setShowDevolucion(false); }}
