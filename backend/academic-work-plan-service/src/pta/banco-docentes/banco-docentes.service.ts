@@ -10,7 +10,7 @@ import { SedeEntity } from '../entities/sede.entity';
 import { sanitizeText } from '../utils/text-sanitizer';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../catalogos/territoriales-cetaps-esap';
 
-const DEFAULT_PASSWORD = 'changeme123';
+const DEFAULT_PASSWORD = '123456';
 const DEFAULT_EMAIL_DOMAIN = 'esap.local';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -623,8 +623,8 @@ export class BancoDocentesService {
             documentNumber,
             email,
             username: email,
-            password: 'changeme123',
-            roles: ['USER'],
+            password: '123456',
+            roles: ['DOCENTE'],
           }),
         });
 
@@ -633,8 +633,25 @@ export class BancoDocentesService {
         } else {
           const body = await res.json().catch(() => ({}));
           const msg = (body as any)?.message || res.statusText;
-          // 409 = ya existe — no es un error, es idempotente
-          if (res.status === 409 || String(msg).includes('ya existe') || String(msg).includes('already')) {
+          const alreadyExists = res.status === 409 || String(msg).includes('ya existe') || String(msg).includes('already');
+          if (alreadyExists) {
+            // Usuario ya existe: buscar su id y resetear contraseña a 123456
+            try {
+              const findRes = await fetch(`${authServiceUrl}/api/v1/users?search=${encodeURIComponent(email)}&limit=1`, {
+                headers: { 'Content-Type': 'application/json' },
+              });
+              if (findRes.ok) {
+                const findBody = await findRes.json().catch(() => ({}));
+                const userId = findBody?.data?.data?.[0]?.user?.id_user || findBody?.data?.[0]?.user?.id_user;
+                if (userId) {
+                  await fetch(`${authServiceUrl}/api/v1/users/${userId}/password`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ new_password: '123456' }),
+                  });
+                }
+              }
+            } catch { /* best-effort */ }
             skipped++;
           } else {
             failed++;
@@ -648,5 +665,60 @@ export class BancoDocentesService {
     }
 
     return { total: docentes.length, created, skipped, failed, errors: errors.slice(0, 20) };
+  }
+
+  async syncFromAuthService(authServiceUrl: string): Promise<{ total: number; created: number; skipped: number; failed: number }> {
+    // Traer todos los usuarios con rol DOCENTE desde auth-service
+    let page = 1;
+    const allUsers: any[] = [];
+    while (true) {
+      const res = await fetch(`${authServiceUrl}/api/v1/users?role=DOCENTE&limit=100&page=${page}`);
+      if (!res.ok) break;
+      const body = await res.json().catch(() => ({}));
+      const items: any[] = body?.data?.data || body?.data || [];
+      allUsers.push(...items);
+      const meta = body?.data?.meta || body?.meta || {};
+      if (page >= (meta.totalPages ?? 1) || items.length === 0) break;
+      page++;
+    }
+
+    let created = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const item of allUsers) {
+      const person = item.person || item;
+      const email = (person.email || '').toLowerCase().trim();
+      const identification = person.identification_number || '';
+      if (!email && !identification) { skipped++; continue; }
+
+      // ¿Ya existe en banco de docentes?
+      const existing = await this.docenteRepo
+        .createQueryBuilder('d')
+        .innerJoin('d.persona', 'p')
+        .innerJoin('p.usuario', 'u')
+        .where('LOWER(u.email) = LOWER(:email)', { email })
+        .getOne();
+      if (existing) { skipped++; continue; }
+
+      // Crear con datos mínimos
+      try {
+        const fullName = `${person.first_name || ''} ${person.last_name || ''}`.trim() || email;
+        await this.upsertDocente({
+          documento_identidad: identification || email,
+          nombre_completo: fullName,
+          correo_institucional: email,
+          territorial: 'Sede Central',
+          vinculacion: 'Ocasional',
+          dedicacion: 'TC',
+          estado: 'ACTIVO',
+        }, { rejectExisting: false });
+        created++;
+      } catch {
+        failed++;
+      }
+    }
+
+    return { total: allUsers.length, created, skipped, failed };
   }
 }
