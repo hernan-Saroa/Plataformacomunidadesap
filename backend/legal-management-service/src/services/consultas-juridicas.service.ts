@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
 import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
@@ -6,11 +6,14 @@ import { ConsultaJuridicaHistorial } from '../entities/consulta-juridica-histori
 import { TerminosService } from './terminos.service';
 import { DiasHabilesService } from './dias-habiles.service';
 import { DocumentosConsultaService } from './documentos-consulta.service';
+import { NotificationClientService } from './notification-client.service';
 
 import { OnModuleInit } from '@nestjs/common';
 
 @Injectable()
 export class ConsultasJuridicasService implements OnModuleInit {
+    private readonly logger = new Logger(ConsultasJuridicasService.name);
+
     constructor(
         @InjectRepository(ConsultaJuridica)
         private readonly consultaRepository: Repository<ConsultaJuridica>,
@@ -18,7 +21,8 @@ export class ConsultasJuridicasService implements OnModuleInit {
         private readonly historialRepository: Repository<ConsultaJuridicaHistorial>,
         private readonly terminosService: TerminosService,
         private readonly diasHabilesService: DiasHabilesService,
-        private readonly documentosService: DocumentosConsultaService
+        private readonly documentosService: DocumentosConsultaService,
+        private readonly notificationClient: NotificationClientService
     ) { }
 
     async onModuleInit() {
@@ -281,6 +285,183 @@ export class ConsultasJuridicasService implements OnModuleInit {
                     usuarioLog
                 );
             }
+        }
+
+        return this.consultaRepository.save(consulta);
+    }
+
+    async enviarAJefe(id: string, respuesta: string, usuario: string = 'Sistema', destinatariosAdicionales?: string[]): Promise<ConsultaJuridica> {
+        const consulta = await this.findOne(id);
+        const estadoAnterior = consulta.estado;
+
+        consulta.respuesta = respuesta;
+        consulta.estado = 'pendiente_revision_jefe';
+        consulta.comentarioDevolucionJefe = null as any;
+
+        if (destinatariosAdicionales && destinatariosAdicionales.length > 0) {
+            consulta.destinatariosAdicionales = JSON.stringify(destinatariosAdicionales);
+        }
+
+        await this.registrarEvento(
+            id,
+            'ENVIADO_A_JEFE',
+            'Respuesta enviada al jefe para revisión',
+            `Borrador enviado por: ${usuario}`,
+            usuario
+        );
+
+        if (estadoAnterior !== consulta.estado) {
+            await this.registrarEvento(
+                id,
+                'CAMBIO_ETAPA',
+                `Cambio de etapa: ${estadoAnterior} -> pendiente_revision_jefe`,
+                'Pendiente aprobación del jefe',
+                usuario
+            );
+        }
+
+        const saved = await this.consultaRepository.save(consulta);
+
+        // Notificar al jefe de gestión legal (in-app + email)
+        this.notificarJefeRevisionPendiente(saved, usuario).catch(err =>
+            this.logger.warn(`Error enviando notificación al jefe: ${err?.message}`)
+        );
+
+        return saved;
+    }
+
+    private async notificarJefeRevisionPendiente(consulta: ConsultaJuridica, enviador: string): Promise<void> {
+        const radicado = consulta.numeroRadicado || consulta.id;
+        const linkConsulta = `${process.env.FRONTEND_URL || 'http://localhost:4200'}/gestion-legal/asesoria-juridica`;
+
+        const emailHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                <h2 style="color: #003DA5;">Respuesta Pendiente de Revisión - Asesoría Jurídica</h2>
+                <p>El abogado <strong>${enviador}</strong> ha enviado una respuesta para su revisión y aprobación.</p>
+
+                <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee; width: 35%;"><strong>Radicado:</strong></td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">${radicado}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;"><strong>Solicitante:</strong></td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">${consulta.nombreSolicitante || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;"><strong>Materia Jurídica:</strong></td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">${consulta.materiaJuridica || 'N/A'}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;"><strong>Enviado por:</strong></td>
+                        <td style="padding: 10px; border-bottom: 1px solid #eee;">${enviador}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px;"><strong>Fecha:</strong></td>
+                        <td style="padding: 10px;">${new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' })}</td>
+                    </tr>
+                </table>
+
+                <p>Por favor ingrese a la plataforma para revisar la respuesta y aprobarla o devolverla con comentarios.</p>
+
+                <div style="text-align: center; margin-top: 30px;">
+                    <a href="${linkConsulta}" style="background-color: #003DA5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">Revisar Respuesta</a>
+                </div>
+
+                <p style="font-size: 12px; color: #666; margin-top: 30px;">
+                    Este es un mensaje automatizado desde la Plataforma Integrada ESAP. Por favor, no responda a este correo.
+                </p>
+            </div>
+        `;
+
+        await this.notificationClient.notifyByRoles(
+            ['JEFE_GESTION_LEGAL'],
+            {
+                tipo_notificacion: 'RESPUESTA_PENDIENTE_REVISION',
+                titulo: 'Respuesta pendiente de revisión',
+                mensaje: `${enviador} ha enviado la respuesta del radicado ${radicado} para su revisión y aprobación.`,
+                descripcion_corta: `Radicado ${radicado} pendiente de aprobación`,
+                icono: 'FileCheck',
+                color: '#F59E0B',
+                prioridad: 'Alta',
+                categoria: 'gestion-legal',
+                tiene_accion: true,
+                texto_boton_accion: 'Revisar respuesta',
+                url_accion: linkConsulta,
+                datos_adicionales: {
+                    consultaId: consulta.id,
+                    numeroRadicado: radicado,
+                    enviado_por: enviador,
+                    solicitante: consulta.nombreSolicitante,
+                    materiaJuridica: consulta.materiaJuridica
+                }
+            },
+            {
+                subject: `Revisión pendiente: Radicado ${radicado} - Asesoría Jurídica`,
+                html: emailHtml
+            }
+        );
+
+        this.logger.log(`Notificación de revisión pendiente enviada al jefe — Radicado: ${radicado}, Enviado por: ${enviador}`);
+    }
+
+    async aprobarRespuesta(id: string, usuario: string = 'Sistema', destinatariosAdicionales?: string[]): Promise<ConsultaJuridica> {
+        const consulta = await this.findOne(id);
+        const estadoAnterior = consulta.estado;
+
+        consulta.estado = 'respondido';
+        consulta.fechaRespuesta = new Date();
+        consulta.tipoRespuesta = consulta.tipoRespuesta || 'favorable';
+        consulta.comentarioDevolucionJefe = null as any;
+
+        if (destinatariosAdicionales && destinatariosAdicionales.length > 0) {
+            consulta.destinatariosAdicionales = JSON.stringify(destinatariosAdicionales);
+        }
+
+        await this.registrarEvento(
+            id,
+            'RESPUESTA',
+            'Respuesta aprobada y enviada por el jefe',
+            `Enviada por: ${usuario}`,
+            usuario
+        );
+
+        if (estadoAnterior !== consulta.estado) {
+            await this.registrarEvento(
+                id,
+                'CAMBIO_ETAPA',
+                `Cambio de etapa: ${estadoAnterior} -> respondido`,
+                'Aprobada y enviada al solicitante',
+                usuario
+            );
+        }
+
+        return this.consultaRepository.save(consulta);
+    }
+
+    async devolverRespuesta(id: string, comentario: string, usuario: string = 'Sistema'): Promise<ConsultaJuridica> {
+        const consulta = await this.findOne(id);
+        const estadoAnterior = consulta.estado;
+
+        consulta.estado = 'devuelta_por_jefe';
+        consulta.comentarioDevolucionJefe = comentario;
+
+        await this.registrarEvento(
+            id,
+            'DEVUELTA_POR_JEFE',
+            'Respuesta devuelta al abogado por el jefe',
+            `Motivo: ${comentario}`,
+            usuario
+        );
+
+        if (estadoAnterior !== consulta.estado) {
+            await this.registrarEvento(
+                id,
+                'CAMBIO_ETAPA',
+                `Cambio de etapa: ${estadoAnterior} -> devuelta_por_jefe`,
+                'Requiere correcciones del abogado',
+                usuario
+            );
         }
 
         return this.consultaRepository.save(consulta);

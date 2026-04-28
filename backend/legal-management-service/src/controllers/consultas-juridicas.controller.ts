@@ -119,6 +119,32 @@ export class ConsultasJuridicasController {
         return this.consultasService.updateRespuesta(id, body.respuesta, enviar, body.usuario, body.destinatariosAdicionales);
     }
 
+    // --- Endpoints de Workflow Revisión Jefe ---
+
+    @Patch(':id/enviar-a-jefe')
+    async enviarAJefe(
+        @Param('id') id: string,
+        @Body() body: { respuesta: string; usuario?: string; destinatariosAdicionales?: string[] }
+    ) {
+        return this.consultasService.enviarAJefe(id, body.respuesta, body.usuario, body.destinatariosAdicionales);
+    }
+
+    @Patch(':id/aprobar-respuesta')
+    async aprobarRespuesta(
+        @Param('id') id: string,
+        @Body() body: { usuario?: string; destinatariosAdicionales?: string[] }
+    ) {
+        return this.consultasService.aprobarRespuesta(id, body.usuario, body.destinatariosAdicionales);
+    }
+
+    @Patch(':id/devolver-respuesta')
+    async devolverRespuesta(
+        @Param('id') id: string,
+        @Body() body: { comentario: string; usuario?: string }
+    ) {
+        return this.consultasService.devolverRespuesta(id, body.comentario, body.usuario);
+    }
+
     // --- Endpoints de Archivo ---
 
     @Get('archivadas/lista')

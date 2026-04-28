@@ -57,6 +57,8 @@ export enum Permissions {
   GESTION_LEGAL_ASESORIA_JURIDICA_ETAPA_EDIT = 'gestion-legal.asesoria-juridica.etapa.edit',
   GESTION_LEGAL_ASESORIA_JURIDICA_COMENTARIO_CREATE = 'gestion-legal.asesoria-juridica.comentario.create',
   GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER = 'gestion-legal.asesoria-juridica.responder',
+  GESTION_LEGAL_ASESORIA_JURIDICA_APROBAR_RESPUESTA = 'gestion-legal.asesoria-juridica.aprobar-respuesta',
+  GESTION_LEGAL_ASESORIA_JURIDICA_DEVOLVER_RESPUESTA = 'gestion-legal.asesoria-juridica.devolver-respuesta',
 
   // Gestión Legal - Centro de Comunicaciones
   GESTION_LEGAL_COMUNICACIONES_MANAGE = 'gestion-legal.comunicaciones.manage',

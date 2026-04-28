@@ -162,6 +162,7 @@ export function ModuloAsesoriaJuridicaV3() {
         respuesta: c.respuesta || '',
         fechaRespuesta: c.fechaRespuesta || null,
         destinatariosAdicionales: c.destinatariosAdicionales || null,
+        comentarioDevolucionJefe: c.comentarioDevolucionJefe || '',
         estado: c.estado || '',
         documentoRespuestaUrl: c.documentoRespuestaUrl || null
       }));

@@ -287,6 +287,7 @@ export interface ConsultaJuridica {
   respuesta?: string;
   fechaRespuesta?: Date;
   destinatariosAdicionales?: string;
+  comentarioDevolucionJefe?: string;
 
   // Documentos
   documentosAdjuntos: Documento[];
