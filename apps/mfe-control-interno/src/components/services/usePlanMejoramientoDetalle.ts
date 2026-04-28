@@ -287,18 +287,32 @@ function transformarPlanDetalle(planBackend: any): PlanMejoramientoDetalle {
   
   // Acciones (primero) para poder calcular hallazgos con estados normalizados
   const accionesBackend = planBackend.acciones || [];
-  const acciones: AccionCorrectiva[] = accionesBackend.map((a: any) => ({
-    id: a.id,
-    hallazgoId: a.hallazgoId || a.hallazgo_id || '',
-    descripcion: a.descripcion || a.titulo || 'Sin descripción',
-    responsable: a.responsable || 'Sin asignar',
-    fechaInicio: a.fechaInicio || a.fecha_inicio || a.createdAt?.split('T')[0] || '',
-    fechaVencimiento: a.fechaVencimiento || a.fecha_vencimiento || a.fechaLimite || '',
-    estado: mapearEstadoAccion(a.estado),
-    progreso: Number(a.progreso ?? a.porcentajeAvance ?? 0) || 0,
-    evidencias: a.evidencias?.length || a.evidenciasCount || 0,
-    observaciones: a.observaciones || a.comentarios || ''
-  }));
+  const acciones: AccionCorrectiva[] = accionesBackend.map((a: any) => {
+    const progreso = Number(a.progreso ?? a.porcentajeAvance ?? 0) || 0;
+    const estadoMapeado = mapearEstadoAccion(a.estado);
+
+    // Derivar estado efectivo igual que backend.determinarEstadoAccionReal
+    // Esto garantiza coherencia aunque el estado en BD esté desactualizado
+    const estadoEfectivo = ((): AccionCorrectiva['estado'] => {
+      if (progreso >= 100) return 'COMPLETADA';
+      if (estadoMapeado === 'VENCIDA') return 'VENCIDA';
+      if (progreso > 0) return 'EN_EJECUCION';
+      return 'PENDIENTE';
+    })();
+
+    return {
+      id: a.id,
+      hallazgoId: a.hallazgoId || a.hallazgo_id || '',
+      descripcion: a.descripcion || a.titulo || 'Sin descripción',
+      responsable: a.responsable || 'Sin asignar',
+      fechaInicio: a.fechaInicio || a.fecha_inicio || a.createdAt?.split('T')[0] || '',
+      fechaVencimiento: a.fechaVencimiento || a.fecha_vencimiento || a.fechaFin || a.fechaLimite || '',
+      estado: estadoEfectivo,
+      progreso,
+      evidencias: a.evidencias?.length || a.evidenciasCount || 0,
+      observaciones: a.observaciones || a.comentarios || ''
+    };
+  });
 
   /** Progreso del hallazgo = % de acciones completadas (misma regla que filtros en Vista Acciones) */
   const hallazgos: HallazgoDetalle[] = hallazgosBackend.map((h: any) => {
@@ -546,18 +560,18 @@ export function usePlanMejoramientoDetalle(planId: string) {
       
       const response = await controlInternoService.crearAccionPlanMejoramiento(plan.id, data);
       
-      // Agregar acción localmente
+      // Agregar acción localmente usando la respuesta del backend (que ya trae el estado calculado)
       const nuevaAccion: AccionCorrectiva = {
-        id: response.id || `acc-${Date.now()}`,
-        hallazgoId: data.hallazgoId,
-        descripcion: data.descripcion,
-        responsable: data.responsable,
-        fechaInicio: data.fechaInicio,
-        fechaVencimiento: data.fechaVencimiento,
-        estado: 'PENDIENTE',
-        progreso: 0,
-        evidencias: 0,
-        observaciones: data.observaciones
+        id: response.id,
+        hallazgoId: response.hallazgoId || data.hallazgoId,
+        descripcion: response.descripcion,
+        responsable: response.responsable,
+        fechaInicio: response.fechaInicio,
+        fechaVencimiento: response.fechaFin || response.fechaVencimiento,
+        estado: mapearEstadoAccion(response.estado),
+        progreso: Number(response.porcentajeAvance ?? response.progreso ?? 0),
+        evidencias: response.evidencias?.length || 0,
+        observaciones: response.observaciones
       };
       
       setPlan(prev => {
@@ -633,10 +647,10 @@ export function usePlanMejoramientoDetalle(planId: string) {
       
       console.log('📤 [usePlanMejoramientoDetalle] Datos enviados al backend:', datosBackend);
       
-      await controlInternoService.actualizarAccionPlanMejoramiento(plan.id, accionId, datosBackend);
+      const response = await controlInternoService.actualizarAccionPlanMejoramiento(plan.id, accionId, datosBackend);
       
-      // Actualizar estado local (completada también si progreso ≥ 100)
-      const accionCompleta = (a: { estado: string; progreso: number }) =>
+      // Función para verificar si una acción está completa (mismo criterio que backend)
+      const accionCompleta = (a: any) =>
         a.estado === 'COMPLETADA' || (a.progreso ?? 0) >= 100;
 
       setPlan(prev => {
@@ -644,20 +658,14 @@ export function usePlanMejoramientoDetalle(planId: string) {
 
         const accionesActualizadas = prev.acciones.map(a => {
           if (a.id !== accionId) return a;
-          let next: typeof a = {
+          // Combinar estado local con respuesta del backend
+          return {
             ...a,
-            ...(data.descripcion && { descripcion: data.descripcion }),
-            ...(data.responsable && { responsable: data.responsable }),
-            ...(data.fechaInicio && { fechaInicio: data.fechaInicio }),
-            ...(data.fechaVencimiento && { fechaVencimiento: data.fechaVencimiento }),
-            ...(data.estado && { estado: mapearEstadoAccion(data.estado) }),
-            ...(data.progreso !== undefined && { progreso: data.progreso }),
-            ...(data.observaciones !== undefined && { observaciones: data.observaciones }),
+            ...response,
+            estado: mapearEstadoAccion(response.estado),
+            progreso: Number(response.porcentajeAvance ?? response.progreso ?? a.progreso),
+            fechaVencimiento: response.fechaFin || response.fechaVencimiento || a.fechaVencimiento
           };
-          if ((next.progreso ?? 0) >= 100) {
-            next = { ...next, estado: 'COMPLETADA', progreso: 100 };
-          }
-          return next;
         });
 
         const hallazgosActualizados = prev.hallazgos.map(h => {
