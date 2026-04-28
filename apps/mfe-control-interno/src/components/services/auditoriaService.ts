@@ -251,6 +251,8 @@ export function mapBackendToUI(auditoria: AuditoriaResponse): AuditoriaUI {
     horasReales: 0,
     hallazgosCount: 0,
     riesgosAsociados: (auditoria as any).riesgosAsociados || [],
+    supervisorAsignadoId: (auditoria as any).supervisorAsignadoId || (auditoria as any).supervisorId,
+    supervisorAsignado: (auditoria as any).supervisorAsignado || (auditoria as any).supervisor,
   };
 }
 
@@ -282,6 +284,8 @@ export interface AuditoriaUI {
   planMejoramientoId?: string;
   procesoId?: string;
   riesgosAsociados?: Array<{ id: string; proceso: string; riesgo: string }>;
+  supervisorAsignadoId?: string | number;
+  supervisorAsignado?: string;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
