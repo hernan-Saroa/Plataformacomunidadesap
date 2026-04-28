@@ -859,6 +859,22 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     draft = draftStr ? JSON.parse(draftStr) : null;
   } catch(e) {}
 
+  const normalizarResponsables = (roles: RolConfig[]): RolConfig[] =>
+    (roles || []).map((rol) => ({
+      ...rol,
+      // Regla de negocio: un solo responsable principal por rol.
+      responsables: Array.isArray(rol.responsables) ? rol.responsables.slice(0, 1) : [],
+      // Regla de negocio: una sola persona responsable principal por actividad.
+      actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map((act) => ({
+        ...act,
+        responsables: Array.isArray(act.responsables) ? act.responsables.slice(0, 1) : []
+      })),
+      actividadesCustom: (rol.actividadesCustom || []).map((act) => ({
+        ...act,
+        responsables: Array.isArray(act.responsables) ? act.responsables.slice(0, 1) : []
+      }))
+    }));
+
   const [paso, setPaso] = useState(draft?.paso || 1);
   const [lastSaved, setLastSaved] = useState<Date | null>(draft ? new Date() : null);
   // Calcular años disponibles (no usados por planes existentes, excluyendo el plan en edición)
@@ -1037,7 +1053,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
   const [rolesConfig, setRolesConfig] = useState<RolConfig[]>(() => {
     // 1. Si existe un borrador, recuperar configuracion de roles (PRIORIDAD: progreso más reciente)
     if (draft && draft.rolesConfig) {
-      return draft.rolesConfig;
+      return normalizarResponsables(draft.rolesConfig as RolConfig[]);
     }
 
     // 2. Si no hay borrador pero hay un plan para editar, mapearlo desde el backend
@@ -1075,17 +1091,13 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
         const actividadesSeleccionadas = actividadesConfiguradas.filter(a => nombresTemplate.includes(a.nombre));
         const actividadesCustom = actividadesConfiguradas.filter(a => !nombresTemplate.includes(a.nombre));
 
-        // Determinar responsables del rol basándonos en las actividades (podemos dejar vacío y que se derive)
-        const responsablesMap = new Map();
-        actividadesConfiguradas.forEach(act => {
-          const lista = Array.isArray(act.responsables) ? act.responsables : [];
-          if (lista.length > 0) {
-            lista.forEach(resp => responsablesMap.set(resp.id, resp));
-          } else if (act.responsable && typeof act.responsable === 'object') {
-            responsablesMap.set(act.responsable.id, act.responsable);
-          }
-        });
-        const responsablesRol = Array.from(responsablesMap.values());
+        // Tomar responsable del rol solo desde el propio rol (nunca desde actividades)
+        // para evitar mezclar "responsable de actividad" con "responsable del rol".
+        const responsablesDelRolBackend = Array.isArray((rolEdit as any).responsables)
+          ? (rolEdit as any).responsables
+          : ((rolEdit as any).responsable ? [(rolEdit as any).responsable] : []);
+        // Regla de negocio: solo un responsable principal por rol.
+        const responsablesRol = responsablesDelRolBackend.slice(0, 1);
 
         return {
           ...rolDef,
@@ -1129,6 +1141,21 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       };
     })
   });
+
+  // Refuerzo de integridad para datos heredados: nunca permitir más de 1 responsable por rol/actividad.
+  useEffect(() => {
+    const hayMultiples = rolesConfig.some((rol) =>
+      (rol.responsables?.length || 0) > 1 ||
+      (rol.actividadesSeleccionadas || []).some((act) => (act.responsables?.length || 0) > 1) ||
+      (rol.actividadesCustom || []).some((act) => (act.responsables?.length || 0) > 1)
+    );
+    if (!hayMultiples) return;
+    setRolesConfig((prev) => normalizarResponsables(prev));
+  }, [rolesConfig]);
+
+  const handleRolesChange = (config: RolConfig[]) => {
+    setRolesConfig(normalizarResponsables(config));
+  };
 
   // Autoguardado de borradores en localStorage.
   useEffect(() => {
@@ -1451,7 +1478,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
                 vigenciasDisponibles={vigenciasDisponibles}
               />
             )}
-            {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={setRolesConfig} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} jefeOCI={jefeSeleccionado} />}
+            {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={handleRolesChange} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} jefeOCI={jefeSeleccionado} />}
             {paso === 3 && (
               <Paso3 
                 key="paso3" 
@@ -2151,7 +2178,11 @@ function Paso2({
           const isExpanded = rolExpandido === rol.numero;
           const actividadesBase = getActividadesPorRol(rol.numero);
           const totalRol = contarActividadesIncluidas(rol) + rol.actividadesCustom.length;
-          const faltaResponsable = totalRol > 0 && rol.responsables.length === 0;
+          const responsablesRol = Array.isArray(rol.responsables)
+            ? rol.responsables.filter((resp): resp is Auditor => Boolean(resp))
+            : [];
+          const responsablePrincipal = responsablesRol[0] || null;
+          const faltaResponsable = totalRol > 0 && !responsablePrincipal;
 
           return (
             <div key={rol.numero} className="bg-white rounded-xl border-2 border-gray-200 overflow-hidden">
@@ -2171,29 +2202,22 @@ function Paso2({
                         const totalTareas = [...rol.actividadesSeleccionadas.filter(actividadIncluidaEnPlan), ...rol.actividadesCustom]
                           .reduce((sum, a) => sum + (a.tareasSeguimiento?.length || 0), 0);
                         return totalTareas > 0 ? `${totalTareas} tareas • ` : '';
-                      })()}{rol.responsables.length} responsables
+                      })()}{responsablePrincipal ? 1 : 0} responsables
                     </p>
                     {/* Avatar chips for assigned responsibles */}
-                    {rol.responsables.length > 0 && (
+                    {responsablePrincipal && (
                       <div className="flex items-center gap-1.5 mt-1.5">
                         <div className="flex -space-x-1">
-                          {rol.responsables.slice(0, 4).map((r: Auditor) => (
-                            <div
-                              key={r.id}
-                              title={r.nombre}
-                              className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-white text-[9px] font-bold"
-                              style={{ backgroundColor: rol.color }}
-                            >
-                              {r.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                            </div>
-                          ))}
-                          {rol.responsables.length > 4 && (
-                            <div className="w-5 h-5 rounded-full bg-gray-400 border-2 border-white flex items-center justify-center text-white text-[9px] font-bold">
-                              +{rol.responsables.length - 4}
-                            </div>
-                          )}
+                          <div
+                            key={responsablePrincipal.id}
+                            title={responsablePrincipal.nombre}
+                            className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-white text-[9px] font-bold"
+                            style={{ backgroundColor: rol.color }}
+                          >
+                            {responsablePrincipal.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                          </div>
                         </div>
-                        <span className="text-xs text-gray-500">{rol.responsables.slice(0, 2).map((r: Auditor) => r.nombre.split(' ')[0]).join(', ')}{rol.responsables.length > 2 ? ` +${rol.responsables.length - 2}` : ''}</span>
+                        <span className="text-xs text-gray-500">{responsablePrincipal.nombre.split(' ')[0]}</span>
                       </div>
                     )}
                   </div>
@@ -2232,7 +2256,7 @@ function Paso2({
                         </p>
                         <div className="flex flex-col gap-1.5">
                           {/* Chips de responsables asignados */}
-                          {rol.responsables.map((auditor: Auditor) => (
+                          {(responsablePrincipal ? [responsablePrincipal] : []).map((auditor: Auditor) => (
                             <div key={auditor.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
                               <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ backgroundColor: rol.color }}>
                                 {auditor.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
@@ -2261,16 +2285,17 @@ function Paso2({
                             </div>
                           ))}
                           {/* Dropdown para agregar — solo si no hay responsables */}
-                          {rol.responsables.length === 0 && (
+                          {!responsablePrincipal && (
                             <SelectorProfesional
-                              auditores={auditores.filter(a => !rol.responsables.some((r: any) => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
+                              auditores={auditores.filter(a => !responsablesRol.some((r: any) => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
                               onSelect={(id) => {
                                 if (!id) return;
                                 const auditor = auditores.find(a => a.id === id);
                                 if (auditor) {
                                   const nuevaConfig = rolesConfig.map(r => {
                                     if (r.numero === rol.numero) {
-                                      const nuevosResponsables = [...(r.responsables || []), auditor];
+                                      // Regla: el rol conserva solo un responsable principal
+                                      const nuevosResponsables = [auditor];
                                       return {
                                         ...r,
                                         responsables: nuevosResponsables,
@@ -2437,6 +2462,52 @@ function Paso2({
                                             📅 Corte: {actividadData.fechaCorte}
                                           </span>
                                         )}
+                                        <div className="w-full mt-1.5 p-2 bg-indigo-50/60 border border-indigo-100 rounded-lg" onClick={(e) => e.stopPropagation()}>
+                                          <p className="text-[10px] font-semibold text-indigo-800 mb-1">Responsable de esta actividad</p>
+                                          <div className="flex items-center gap-2">
+                                            <SelectorProfesional
+                                              auditores={auditores}
+                                              placeholder={(actividadData.responsables && actividadData.responsables.length > 0) ? 'Cambiar responsable…' : '+ Asignar responsable…'}
+                                              onSelect={(id) => {
+                                                if (!id) return;
+                                                const auditor = auditores.find(a => a.id === id);
+                                                if (!auditor) return;
+                                                const nuevaConfig = rolesConfig.map(r => {
+                                                  if (r.numero !== rol.numero) return r;
+                                                  return {
+                                                    ...r,
+                                                    actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                      a.id === idActividadEnEstado ? { ...a, responsables: [auditor] } : a
+                                                    )
+                                                  };
+                                                });
+                                                onRolesChange(nuevaConfig);
+                                              }}
+                                            />
+                                            {(actividadData.responsables && actividadData.responsables.length > 0) && (
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                  const nuevaConfig = rolesConfig.map(r => {
+                                                    if (r.numero !== rol.numero) return r;
+                                                    return {
+                                                      ...r,
+                                                      actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                        a.id === idActividadEnEstado ? { ...a, responsables: [] } : a
+                                                      )
+                                                    };
+                                                  });
+                                                  onRolesChange(nuevaConfig);
+                                                }}
+                                                className="px-2 py-1 text-[10px] font-semibold rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 transition-colors"
+                                              >
+                                                Quitar
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
                                       </div>
                                     )}
                                   </div>
@@ -2906,6 +2977,52 @@ function Paso2({
                                           📅 Corte: {actividad.fechaCorte}
                                         </span>
                                       )}
+                                      <div className="w-full mt-1.5 p-2 bg-indigo-50/60 border border-indigo-100 rounded-lg" onClick={(e) => e.stopPropagation()}>
+                                        <p className="text-[10px] font-semibold text-indigo-800 mb-1">Responsable de esta actividad</p>
+                                        <div className="flex items-center gap-2">
+                                          <SelectorProfesional
+                                            auditores={auditores}
+                                            placeholder={(actividad.responsables && actividad.responsables.length > 0) ? 'Cambiar responsable…' : '+ Asignar responsable…'}
+                                            onSelect={(id) => {
+                                              if (!id) return;
+                                              const auditor = auditores.find(a => a.id === id);
+                                              if (!auditor) return;
+                                              const nuevaConfig = rolesConfig.map(r => {
+                                                if (r.numero !== rol.numero) return r;
+                                                return {
+                                                  ...r,
+                                                  actividadesCustom: r.actividadesCustom.map((act, i) =>
+                                                    i === index ? { ...act, responsables: [auditor] } : act
+                                                  )
+                                                };
+                                              });
+                                              onRolesChange(nuevaConfig);
+                                            }}
+                                          />
+                                          {(actividad.responsables && actividad.responsables.length > 0) && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                const nuevaConfig = rolesConfig.map(r => {
+                                                  if (r.numero !== rol.numero) return r;
+                                                  return {
+                                                    ...r,
+                                                    actividadesCustom: r.actividadesCustom.map((act, i) =>
+                                                      i === index ? { ...act, responsables: [] } : act
+                                                    )
+                                                  };
+                                                });
+                                                onRolesChange(nuevaConfig);
+                                              }}
+                                              className="px-2 py-1 text-[10px] font-semibold rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 transition-colors"
+                                            >
+                                              Quitar
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
                                     </div>
                                   </div>
                                   <button
@@ -3941,32 +4058,34 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         if (!valor || typeof valor !== 'string') return '-';
         const limpio = valor.trim();
         if (!limpio || limpio === '-') return '-';
-        const fecha = new Date(limpio);
+        const soloFecha = /^\d{4}-\d{2}-\d{2}$/.test(limpio);
+        const isoConHora = /^\d{4}-\d{2}-\d{2}T/.test(limpio);
+        const fechaBase = soloFecha
+          ? limpio
+          : (isoConHora ? limpio.slice(0, 10) : limpio);
+        const fecha = new Date(/^\d{4}-\d{2}-\d{2}$/.test(fechaBase) ? `${fechaBase}T12:00:00` : fechaBase);
         if (Number.isNaN(fecha.getTime())) return limpio;
         return fecha.toLocaleDateString('es-CO');
       };
 
       const obtenerFechaTareaExport = (tarea: any, actividad: any): string => {
-        // En BD (tareas_seguimiento) el campo oficial de fecha es fechaLimite.
-        const fechaLimite = tarea?.fechaLimite || tarea?.fecha_limite;
+        // Prioridad: fecha real de seguimiento/evaluación de la tarea.
+        const fechaSeguimiento =
+          tarea?.fechaSeguimiento
+          || tarea?.fecha_seguimiento
+          || tarea?.fechaEvaluacion
+          || tarea?.fecha_evaluacion
+          || tarea?.fechaCompletado
+          || tarea?.fechaCompletada
+          || tarea?.fecha_completada;
+        if (fechaSeguimiento) return formatearFechaExportacion(fechaSeguimiento);
+
+        // Fallback: fecha objetivo/límite.
+        const fechaLimite = tarea?.fechaLimite || tarea?.fecha_limite || tarea?.fechaEntrega;
         if (fechaLimite) return formatearFechaExportacion(fechaLimite);
         const tieneDatosTarea = !!tarea && typeof tarea === 'object' && Object.keys(tarea).length > 0;
         if (tieneDatosTarea) return '-';
 
-        const planDates = plan as any;
-        const pdfFechaInicio = planDates.fecha_inicio || planDates.fechaInicio || '';
-        const pdfFechaFin = planDates.fecha_fin || planDates.fechaFin || '';
-        const pdfFechaCreacion = planDates.fecha_creacion || planDates.fechaCreacion || '';
-
-        const infoData = [
-          ['Vigencia', vigencia.toString()],
-          ['Estado', estadoLabel],
-          ['Jefe OCI', plan.jefeOCI?.nombre || ''],
-          ['Cargo', plan.jefeOCI?.cargo || ''],
-          ['Fecha Inicio', pdfFechaInicio ? new Date(pdfFechaInicio).toLocaleDateString('es-CO') : ''],
-          ['Fecha Fin', pdfFechaFin ? new Date(pdfFechaFin).toLocaleDateString('es-CO') : ''],
-          ['Fecha Creación', pdfFechaCreacion ? new Date(pdfFechaCreacion).toLocaleDateString('es-CO') : '']
-        ];
         const puntosControl = actividad?.puntosControl || actividad?.puntos_control || [];
         if (Array.isArray(puntosControl) && puntosControl.length > 0) {
           const fechas = puntosControl
@@ -3992,6 +4111,24 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         return '-';
       };
 
+      const obtenerResponsableActividadExport = (actividad: any): string => {
+        const candidatos: string[] = [];
+        if (Array.isArray(actividad?.responsables)) {
+          candidatos.push(
+            ...actividad.responsables
+              .map((r: any) => (typeof r === 'string' ? r : r?.nombre || r?.name || ''))
+              .filter(Boolean)
+          );
+        }
+        if (actividad?.responsable) {
+          const principal = typeof actividad.responsable === 'string'
+            ? actividad.responsable
+            : actividad.responsable?.nombre || actividad.responsable?.name || '';
+          if (principal) candidatos.push(principal);
+        }
+        return candidatos.length ? Array.from(new Set(candidatos)).join(', ') : 'No asignado';
+      };
+
       // Definición de columnas solicitadas
       const tableHead = [[
         'Rol / Macroproceso',
@@ -4003,7 +4140,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         'Est.',
         'Resp. Tarea',
         'Seguimiento y evaluación tareas',
-        'Fecha',
+        'Fecha de seguimiento',
         'Eval.'
       ]];
 
@@ -4020,8 +4157,9 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
                              : (act.entradasSeguimiento && act.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(act) : 0);
           totalAvanceSuma += pctActividad;
 
-          const fInicio = act.fechaInicio ? new Date(act.fechaInicio).toLocaleDateString('es-CO') : '';
-          const fFin = act.fechaFin ? new Date(act.fechaFin).toLocaleDateString('es-CO') : '';
+          const fInicio = act.fechaInicio ? formatearFechaExportacion(act.fechaInicio) : '';
+          const fFin = act.fechaFin ? formatearFechaExportacion(act.fechaFin) : '';
+          const responsableActividad = obtenerResponsableActividadExport(act);
           
           const tareas = act.tareasSeguimiento || [];
           
@@ -4033,7 +4171,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               act.nombre,
               fInicio,
               fFin,
-              act.responsable?.nombre || 'Solicitado',
+              responsableActividad,
               act.control || 'Seguimiento periódico',
               `${pctActividad}%`,
               '-',
@@ -4042,22 +4180,22 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               '0%'
             ]);
           } else {
-            // Una fila por cada tarea de seguimiento
+            // Una fila por tarea (celdas separadas)
             tareas.forEach((tarea) => {
               const fEntrega = obtenerFechaTareaExport(tarea, act);
               const respTarea = obtenerResponsableTareaExport(tarea);
               const pctTarea = tarea.completada ? '100%' : '0%';
-              
+
               tableBody.push([
                 `${rol.numero}. ${rol.nombre}`,
                 act.nombre,
                 fInicio,
                 fFin,
-                act.responsable?.nombre || 'Solicitado',
+                responsableActividad,
                 act.control || 'Seguimiento',
                 `${pctActividad}%`,
                 respTarea,
-                tarea.descripcion,
+                tarea.descripcion || '-',
                 fEntrega,
                 pctTarea
               ]);
@@ -4872,7 +5010,8 @@ function SeccionGestionYSeguimiento({
       return;
     }
     
-    const nuevosResponsables = [...responsablesActuales, auditor];
+    // Regla de negocio: solo un responsable principal por actividad
+    const nuevosResponsables = [auditor];
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -4886,7 +5025,7 @@ function SeccionGestionYSeguimiento({
     
     try {
       const res = await actividadesApi.update(String(actividadId), { responsable: nuevosResponsables[0].nombre, responsables: nuevosResponsables });
-      if (res.success) { toast.success('Responsable agregado'); onRefetchPlan?.(); } else { toast.error('Error', { description: res.error }); }
+      if (res.success) { toast.success('Responsable actualizado'); onRefetchPlan?.(); } else { toast.error('Error', { description: res.error }); }
     } catch (e) { toast.error('Error al guardar en el servidor'); }
     finally { setAsignandoId(null); }
   };
@@ -5892,7 +6031,7 @@ function SeccionGestionYSeguimiento({
                 idPerson: u?.person?.id || u?.idPerson || currentUser?.idPerson,
               };
               return result;
-            } catch { return currentUser; }
+            } catch (_e) { return currentUser; }
           })();
           if (!user) return false;
           
@@ -6141,9 +6280,36 @@ function SeccionGestionYSeguimiento({
                               </div>
                             </div>
                             {/* Responsables: editable SOLO en BORRADOR */}
-                            {puedeAsignarActividades && plan.estado === 'BORRADOR' ? (
+                            {(() => {
+                              // Normalizar responsables de actividad para soportar:
+                              // - actividad.responsables: Auditor[]
+                              // - actividad.responsable: Auditor | string (nombre legacy)
+                              const responsablesActividadRaw = actividad.responsables?.length
+                                ? actividad.responsables
+                                : (actividad.responsable ? [actividad.responsable as any] : []);
+                              const responsablesActividadNormalizados = (responsablesActividadRaw || [])
+                                .map((resp: any, idx: number) => {
+                                  if (!resp) return null;
+                                  if (typeof resp === 'string') {
+                                    const nombre = resp.trim();
+                                    if (!nombre) return null;
+                                    return { id: `legacy-resp-${actividad.id}-${idx}`, nombre } as Auditor;
+                                  }
+                                  const nombre = (resp.nombre || resp.name || '').toString().trim();
+                                  if (!nombre) return null;
+                                  return {
+                                    ...resp,
+                                    id: resp.id || `legacy-resp-${actividad.id}-${idx}`,
+                                    nombre
+                                  } as Auditor;
+                                })
+                                .filter(Boolean)
+                                .slice(0, 1) as Auditor[];
+
+                              if (puedeAsignarActividades && plan.estado === 'BORRADOR') {
+                                return (
                               <div className="flex flex-col gap-1.5 min-w-[220px]" onClick={(e) => e.stopPropagation()}>
-                                {((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).map((resp) => (
+                                {responsablesActividadNormalizados.map((resp) => (
                                   <div key={resp.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
                                     <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                                       {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
@@ -6159,7 +6325,7 @@ function SeccionGestionYSeguimiento({
                                 ))}
                                 <SelectorProfesional
                                   disabled={cargandoAuditores || asignandoId === actividad.id}
-                                  auditores={auditores.filter(a => !((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).some(r => r.id === a.id))}
+                                  auditores={auditores.filter(a => !responsablesActividadNormalizados.some(r => r.id === a.id))}
                                   onSelect={(id) => {
                                     if (!id) return;
                                     const auditor = auditores.find(a => a.id === id);
@@ -6167,9 +6333,11 @@ function SeccionGestionYSeguimiento({
                                   }}
                                 />
                               </div>
-                            ) : (
+                                );
+                              }
+                              return (
                               <div className="flex flex-col gap-1.5 min-w-[180px]">
-                                {((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).map((resp) => (
+                                {responsablesActividadNormalizados.map((resp) => (
                                   <div key={resp.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
                                     <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                                       {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
@@ -6177,11 +6345,11 @@ function SeccionGestionYSeguimiento({
                                     <span className="text-sm font-medium text-gray-900 whitespace-nowrap">{resp.nombre}</span>
                                   </div>
                                 ))}
-                                {((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).length === 0 && (
+                                {responsablesActividadNormalizados.length === 0 && (
                                   /* Fallback: mostrar responsable(s) del rol */
                                   (rol as any).responsables && (rol as any).responsables.length > 0 ? (
                                     <>
-                                      {(rol as any).responsables.map((resp: Auditor) => (
+                                      {(rol as any).responsables.slice(0, 1).map((resp: Auditor) => (
                                         <div key={resp.id} className="flex items-center gap-1.5 bg-teal-50 border border-teal-200 rounded-full px-3 py-1">
                                           <div className="w-5 h-5 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                                             {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
@@ -6196,7 +6364,8 @@ function SeccionGestionYSeguimiento({
                                   )
                                 )}
                               </div>
-                            )}
+                              );
+                            })()}
                           </div>
 
                           {/* ══ DETALLES DE LA PROGRAMACIÓN Y OBSERVACIONES ══ */}
