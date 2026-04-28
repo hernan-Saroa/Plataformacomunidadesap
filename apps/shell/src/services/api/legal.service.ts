@@ -1,5 +1,6 @@
 import { apiClient } from './apiClient';
 import { API_MODE, MICROSERVICE_URLS, getServiceUrl, buildApiUrl } from '../../config/environment';
+import { authService } from './authService';
 
 // Prefijo del servicio legal en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
@@ -219,7 +220,7 @@ export class LegalService {
 
     // ==================== ABOGADOS ====================
     async getAbogados(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/abogados`);
+        return authService.getAbogadosRolResuelve();
     }
 
     // ==================== ARCHIVADO/ELIMINADO DE EXPEDIENTES ====================
@@ -337,7 +338,7 @@ export class LegalService {
 
     // Abogados
     async getAbogadosDashboard(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/abogados`);
+        return authService.getAbogadosRolResuelve();
     }
 
     async getStatsGeneral(): Promise<any> {
@@ -523,6 +524,18 @@ export class LegalService {
 
     async guardarRespuestaConsulta(id: string, respuesta: string, enviar: boolean, usuario?: string, destinatariosAdicionales?: string[]): Promise<any> {
         return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/gestionar-respuesta`, { respuesta, enviar, usuario, destinatariosAdicionales });
+    }
+
+    async enviarRespuestaAJefe(id: string, respuesta: string, usuario?: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/enviar-a-jefe`, { respuesta, usuario });
+    }
+
+    async aprobarRespuestaConsulta(id: string, usuario?: string, destinatariosAdicionales?: string[]): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/aprobar-respuesta`, { usuario, destinatariosAdicionales });
+    }
+
+    async devolverRespuestaConsulta(id: string, comentario: string, usuario?: string): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/consultas-juridicas/${id}/devolver-respuesta`, { comentario, usuario });
     }
 
     async getComentariosConsulta(consultaId: string): Promise<any[]> {

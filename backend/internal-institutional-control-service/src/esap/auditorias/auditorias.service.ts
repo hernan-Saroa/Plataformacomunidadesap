@@ -328,6 +328,11 @@ export class AuditoriasService {
    * Obtiene una auditoría por ID
    */
   async findOne(id: string): Promise<Auditoria> {
+    // Validar que el ID sea un UUID antes de consultar la BD
+    if (!this.isValidUUID(id)) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada (formato inválido)`);
+    }
+
     const auditoria = await this.auditoriaRepository.findOne({
       where: { id },
       relations: ['objetivos', 'criterios', 'equipoAuditores'],

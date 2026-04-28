@@ -67,9 +67,10 @@ export class RequerimientosOCController {
     @Patch(':id/reasignar')
     async reasignar(
         @Param('id') id: string,
-        @Body('nuevoAbogadoId') nuevoAbogadoId: string
+        @Body('nuevoAbogadoId') nuevoAbogadoId: string,
+        @Body('nuevoAbogadoNombre') nuevoAbogadoNombre?: string
     ): Promise<RequerimientoOC> {
-        return this.service.reasignar(id, nuevoAbogadoId);
+        return this.service.reasignar(id, nuevoAbogadoId, nuevoAbogadoNombre);
     }
 
     // ============================================

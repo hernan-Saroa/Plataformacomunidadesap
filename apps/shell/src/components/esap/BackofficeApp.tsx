@@ -146,6 +146,7 @@ type ModuleView =
   | 'gestion-passwords'
   | 'demo-pta-motor'
   | 'pta'
+  | 'banco-docentes-pta'
   | 'gestion-profesoral';
 
 interface BackofficeAppProps {
@@ -213,6 +214,7 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'control-disciplinario': 'control-disciplinario',
   'gestion-legal': 'gestion-legal',
   'pta': 'pta',
+  'banco-docentes-pta': 'banco-docentes-pta',
   'gestion-passwords': 'gestion-passwords',
   'gestion-profesoral': 'gestion-profesoral',
   'registro-academico': 'graduates',
@@ -562,6 +564,20 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
               </Suspense>
             </div>
           </div>
+        );
+
+      case 'banco-docentes-pta':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <PTAModule
+              userPersonId={currentUser.personId}
+              userName={currentUser.name}
+              userEmail={currentUser.email}
+              userRoles={userRoles || []}
+              embedded
+              initialView="banco_docentes"
+            />
+          </Suspense>
         );
 
       case 'certificados-laborales':

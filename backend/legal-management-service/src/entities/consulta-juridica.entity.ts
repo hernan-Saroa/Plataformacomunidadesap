@@ -48,6 +48,9 @@ export class ConsultaJuridica {
     @Column({ name: 'abogado_asignado_id', nullable: true })
     abogadoAsignadoId: string;
 
+    @Column({ name: 'abogado_asignado_nombre', nullable: true, length: 500 })
+    abogadoAsignadoNombre: string;
+
     @ManyToOne(() => Abogado, { nullable: true })
     @JoinColumn({ name: 'abogado_asignado_id' })
     abogadoAsignado: Abogado;
@@ -87,6 +90,9 @@ export class ConsultaJuridica {
 
     @Column({ name: 'destinatarios_adicionales', type: 'text', nullable: true })
     destinatariosAdicionales: string; // JSON array de emails adicionales
+
+    @Column({ name: 'comentario_devolucion_jefe', type: 'text', nullable: true })
+    comentarioDevolucionJefe: string;
 
     @Column({ type: 'text', nullable: true })
     observaciones: string;

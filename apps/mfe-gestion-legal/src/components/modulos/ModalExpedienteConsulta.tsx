@@ -158,10 +158,45 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     setDestinatariosAdicionales(prev => prev.filter(e => e !== email));
   };
 
-  const handleEnviarRespuesta = async () => {
+  // Estado para devolver respuesta (jefe)
+  const [showDevolverModal, setShowDevolverModal] = useState(false);
+  const [comentarioDevolucion, setComentarioDevolucion] = useState('');
+
+  // Detección de rol: jefe = JEFE_GESTION_LEGAL o tiene el permiso de aprobar (post-migración)
+  const esJefe = authService.hasRole('JEFE_GESTION_LEGAL')
+    || authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_APROBAR_RESPUESTA);
+  const esAbogadoResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL')
+    || (!esJefe && authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER));
+
+  const handleEnviarAJefe = async () => {
     if (!consulta?.uuid || !respuestaTexto.trim()) return;
 
-    // Validar que tenga email del solicitante
+    const confirmado = await confirm({
+      title: 'Plataforma ESAP',
+      description: '¿Enviar esta respuesta al jefe para su revisión y aprobación?',
+      variant: 'info',
+      confirmText: 'Enviar al Jefe',
+      cancelText: 'Cancelar'
+    });
+
+    if (!confirmado) return;
+
+    try {
+      toast.loading('Enviando al jefe para revisión...', { id: 'send-jefe' });
+      const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
+      await legalService.enviarRespuestaAJefe(consulta.uuid, respuestaTexto, usuarioNombre);
+      toast.success('✅ Respuesta enviada al jefe para revisión', { id: 'send-jefe' });
+      if (onUpdate) onUpdate();
+      onClose();
+    } catch (error) {
+      console.error('Error enviando al jefe:', error);
+      toast.error('Error al enviar al jefe', { id: 'send-jefe' });
+    }
+  };
+
+  const handleAprobarYEnviar = async () => {
+    if (!consulta?.uuid) return;
+
     if (!consulta.emailSolicitante) {
       toast.error('No se puede enviar: el solicitante no tiene correo electrónico registrado');
       return;
@@ -170,49 +205,62 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     const todosDestinatarios = [consulta.emailSolicitante, ...destinatariosAdicionales];
     const listaDestinatarios = todosDestinatarios.join(', ');
 
-    // Reemplazo de confirmación nativa por personalizada
     const confirmado = await confirm({
       title: 'Plataforma ESAP',
-      description: `¿Está seguro de enviar esta respuesta por correo a: ${listaDestinatarios}?`,
+      description: `¿Aprobar y enviar esta respuesta al solicitante (${listaDestinatarios})?`,
       variant: 'info',
-      confirmText: 'Aceptar',
+      confirmText: 'Aprobar y Enviar',
       cancelText: 'Cancelar'
     });
 
     if (!confirmado) return;
 
     try {
-      toast.loading('Enviando respuesta por correo...', { id: 'send-response' });
+      toast.loading('Aprobando y enviando respuesta...', { id: 'approve-response' });
 
-      // 1. Enviar correo al solicitante principal
       const asunto = `Respuesta a Consulta Jurídica ${consulta.id} - ${consulta.funcionarioSolicitante}`;
       await correosJuridicosService.sendEmail({
         to: consulta.emailSolicitante,
         cc: destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined,
         subject: asunto,
-        body: respuestaTexto
+        body: consulta.respuesta || respuestaTexto
       });
 
-      // 2. Guardar respuesta en BD y marcar como respondida
       const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
-      await legalService.guardarRespuestaConsulta(
+      await legalService.aprobarRespuestaConsulta(
         consulta.uuid,
-        respuestaTexto,
-        true,
         usuarioNombre,
         destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined
       );
 
-      toast.success('✅ Respuesta enviada correctamente', {
-        id: 'send-response',
+      toast.success('✅ Respuesta aprobada y enviada al solicitante', {
+        id: 'approve-response',
         description: `Correo enviado a ${listaDestinatarios}`
       });
 
       if (onUpdate) onUpdate();
       onClose();
     } catch (error) {
-      console.error('Error enviando respuesta:', error);
-      toast.error('Error al enviar la respuesta', { id: 'send-response' });
+      console.error('Error aprobando respuesta:', error);
+      toast.error('Error al aprobar y enviar la respuesta', { id: 'approve-response' });
+    }
+  };
+
+  const handleDevolverRespuesta = async () => {
+    if (!consulta?.uuid || !comentarioDevolucion.trim()) return;
+
+    try {
+      toast.loading('Devolviendo respuesta...', { id: 'devolver-response' });
+      const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
+      await legalService.devolverRespuestaConsulta(consulta.uuid, comentarioDevolucion, usuarioNombre);
+      toast.success('Respuesta devuelta al abogado con comentarios', { id: 'devolver-response' });
+      setShowDevolverModal(false);
+      setComentarioDevolucion('');
+      if (onUpdate) onUpdate();
+      onClose();
+    } catch (error) {
+      console.error('Error devolviendo respuesta:', error);
+      toast.error('Error al devolver la respuesta', { id: 'devolver-response' });
     }
   };
 
@@ -381,9 +429,11 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
     try {
       toast.loading('Asignando abogado...', { id: 'assign-lawyer' });
-      await legalService.updateConsultaJuridica(consulta.uuid || '', { abogadoAsignadoId: abogadoSeleccionado });
-
       const abogado = abogados.find(a => a.id === abogadoSeleccionado);
+      await legalService.updateConsultaJuridica(consulta.uuid || '', {
+        abogadoAsignadoId: abogadoSeleccionado,
+        abogadoAsignadoNombre: abogado?.nombreCompleto || abogado?.nombre || '',
+      });
       toast.success(`Abogado reasignado a: ${abogado?.nombreCompleto || 'Desconocido'}`, { id: 'assign-lawyer' });
       setEditandoAbogado(false);
 
@@ -1341,26 +1391,23 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
                 {/* TAB: RESPUESTA */}
                 <TabsContent value="respuesta" className="space-y-4 mt-0">
-                  {(consulta.estado === 'respondido' || consulta.estado === 'Respondida') ? (
+
+                  {/* ESTADO: RESPONDIDO — Solo lectura */}
+                  {(consulta.estado === 'respondido' || consulta.estado === 'Respondida') && (
                     <Card className="p-6 bg-green-50 border-green-200">
                       <div className="flex items-center gap-3 mb-4">
                         <CheckCircle className="w-6 h-6 text-green-600" />
                         <div>
-                          <h3 className="font-bold text-gray-900">Concepto Jurídico Emitido</h3>
+                          <h3 className="font-bold text-gray-900">Respuesta Enviada</h3>
                           {consulta.fechaRespuesta && (
                             <p className="text-sm text-gray-600">
                               {new Date(consulta.fechaRespuesta).toLocaleDateString('es-CO', {
-                                weekday: 'long',
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
+                                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
                               })}
                             </p>
                           )}
                         </div>
                       </div>
-
-                      {/* Indicador de envío por correo */}
                       {consulta.emailSolicitante && (
                         <div className="bg-blue-50 p-3 mb-4 rounded-lg border border-blue-200">
                           <div className="flex items-center gap-3 mb-1">
@@ -1385,11 +1432,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                           </div>
                         </div>
                       )}
-
                       <div className="bg-white p-6 rounded-lg border border-green-200">
-                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                          {consulta.respuesta}
-                        </p>
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{consulta.respuesta}</p>
                       </div>
                       {consulta.documentoRespuestaUrl && (
                         <div className="mt-4">
@@ -1400,63 +1444,164 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                         </div>
                       )}
                     </Card>
-                  ) : (
-                    <Card className="p-6 bg-amber-50 border-amber-200">
+                  )}
+
+                  {/* ESTADO: PENDIENTE REVISIÓN JEFE — Vista del jefe para aprobar o devolver */}
+                  {consulta.estado === 'pendiente_revision_jefe' && esJefe && (
+                    <Card className="p-6 bg-purple-50 border-purple-200">
                       <div className="flex items-center gap-3 mb-4">
-                        <AlertCircle className="w-6 h-6 text-amber-600" />
-                        <h3 className="font-bold text-gray-900">Envío de Respuesta</h3>
-                      </div>
-                      <div className="bg-blue-50 p-3 mb-4 rounded border border-blue-100 text-xs text-blue-800">
-                        <p>Puede guardar un borrador tantas veces como necesite. Al enviar la respuesta, el caso quedará cerrado y se notificará al solicitante.</p>
+                        <Gavel className="w-6 h-6 text-purple-600" />
+                        <div>
+                          <h3 className="font-bold text-gray-900">Revisión del Jefe — Borrador Pendiente</h3>
+                          <p className="text-sm text-gray-600">El abogado ha enviado la siguiente respuesta para su aprobación.</p>
+                        </div>
                       </div>
 
-                      {/* Sección de destinatarios */}
+                      <div className="bg-white p-4 rounded-lg border border-purple-200 mb-4">
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{consulta.respuesta}</p>
+                      </div>
+
+                      {/* Destinatarios para cuando el jefe apruebe */}
                       <div className="mb-4 p-3 bg-white rounded-lg border border-gray-200">
                         <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
-                          <Mail className="w-3.5 h-3.5" /> Destinatarios del correo
+                          <Mail className="w-3.5 h-3.5" /> Se enviará al solicitante
                         </p>
-                        {/* Destinatario principal (siempre presente) */}
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full flex-1 truncate">
                             {consulta.emailSolicitante || 'Sin correo registrado'} <span className="text-blue-500">(principal)</span>
                           </span>
                         </div>
-                        {/* Destinatarios adicionales agregados */}
                         {destinatariosAdicionales.map((email) => (
                           <div key={email} className="flex items-center gap-2 mb-2">
                             <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full flex-1 truncate">{email}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleEliminarDestinatario(email)}
-                              className="text-red-400 hover:text-red-600 flex-shrink-0 text-xs leading-none"
-                              title="Quitar destinatario"
-                            >
-                              ✕
-                            </button>
+                            <button type="button" onClick={() => handleEliminarDestinatario(email)} className="text-red-400 hover:text-red-600 flex-shrink-0 text-xs leading-none" title="Quitar destinatario">✕</button>
                           </div>
                         ))}
-                        {/* Input para agregar nuevo destinatario */}
-                        {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER) && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <input
-                              type="email"
-                              value={nuevoDestinatario}
-                              onChange={(e) => setNuevoDestinatario(e.target.value)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAgregarDestinatario(); } }}
-                              placeholder="correo@ejemplo.com"
-                              className="flex-1 text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                            />
+                        <div className="flex items-center gap-2 mt-2">
+                          <input
+                            type="email"
+                            value={nuevoDestinatario}
+                            onChange={(e) => setNuevoDestinatario(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAgregarDestinatario(); } }}
+                            placeholder="Agregar destinatario adicional..."
+                            className="flex-1 text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          />
+                          <Button type="button" variant="outline" size="sm" onClick={handleAgregarDestinatario} className="text-xs h-7 px-2">+ Agregar</Button>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <Button
+                          onClick={handleAprobarYEnviar}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          Aprobar y Enviar al Solicitante
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowDevolverModal(true)}
+                          className="border-red-300 text-red-700 hover:bg-red-50"
+                        >
+                          <AlertCircle className="w-4 h-4 mr-2" />
+                          Devolver con Comentarios
+                        </Button>
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* ESTADO: PENDIENTE REVISIÓN JEFE — Vista del abogado (solo lectura, esperando) */}
+                  {consulta.estado === 'pendiente_revision_jefe' && !esJefe && (
+                    <Card className="p-6 bg-purple-50 border-purple-200">
+                      <div className="flex items-center gap-3 mb-4">
+                        <Clock className="w-6 h-6 text-purple-600" />
+                        <div>
+                          <h3 className="font-bold text-gray-900">Pendiente de Aprobación</h3>
+                          <p className="text-sm text-gray-600">La respuesta fue enviada al jefe y está esperando su revisión.</p>
+                        </div>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg border border-purple-200">
+                        <p className="text-xs text-gray-500 mb-2 font-medium">Borrador enviado:</p>
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{consulta.respuesta}</p>
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* ESTADO: DEVUELTA POR JEFE */}
+                  {consulta.estado === 'devuelta_por_jefe' && (
+                    <>
+                      {/* Comentario del jefe — visible para todos */}
+                      <Card className="p-4 bg-red-50 border-red-200">
+                        <div className="flex items-center gap-3 mb-2">
+                          <AlertTriangle className="w-5 h-5 text-red-600" />
+                          <h3 className="font-bold text-red-800">Respuesta devuelta por el Jefe</h3>
+                        </div>
+                        <div className="bg-white p-3 rounded border border-red-200">
+                          <p className="text-xs text-red-700 font-medium mb-1">Motivo / Comentarios:</p>
+                          <p className="text-sm text-red-800 whitespace-pre-wrap">
+                            {consulta.comentarioDevolucionJefe || <span className="italic text-red-400">Sin comentario registrado</span>}
+                          </p>
+                        </div>
+                      </Card>
+
+                      {/* Jefe: solo lectura — espera a que el abogado reenvíe */}
+                      {esJefe && (
+                        <Card className="p-4 bg-gray-50 border-gray-200">
+                          <div className="flex items-center gap-3">
+                            <Clock className="w-5 h-5 text-gray-400" />
+                            <p className="text-sm text-gray-500">Esperando correcciones del abogado. No hay acción disponible hasta que reenvíe la respuesta.</p>
+                          </div>
+                        </Card>
+                      )}
+
+                      {/* Abogado: editor para corregir y reenviar */}
+                      {esAbogadoResuelve && (
+                        <Card className="p-6 bg-amber-50 border-amber-200">
+                          <div className="flex items-center gap-3 mb-4">
+                            <Edit className="w-6 h-6 text-amber-600" />
+                            <h3 className="font-bold text-gray-900">Corregir y Reenviar al Jefe</h3>
+                          </div>
+                          <Textarea
+                            placeholder="Corrija el concepto jurídico según las indicaciones del jefe..."
+                            rows={10}
+                            className="mb-4 bg-white"
+                            value={respuestaTexto}
+                            onChange={(e) => setRespuestaTexto(e.target.value)}
+                          />
+                          <div className="flex items-center gap-3">
                             <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={handleAgregarDestinatario}
-                              className="text-xs h-7 px-2"
+                              onClick={handleEnviarAJefe}
+                              disabled={!respuestaTexto.trim()}
+                              className="bg-purple-600 hover:bg-purple-700 text-white"
                             >
-                              + Agregar destinatario
+                              <Send className="w-4 h-4 mr-2" />
+                              Reenviar al Jefe para Revisión
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={handleGuardarBorrador}
+                              disabled={!respuestaTexto.trim()}
+                            >
+                              <Archive className="w-4 h-4 mr-2" />
+                              Guardar Borrador
                             </Button>
                           </div>
-                        )}
+                        </Card>
+                      )}
+                    </>
+                  )}
+
+                  {/* ESTADO: EN EDICIÓN — solo abogados (resuelve), no jefes */}
+                  {consulta.estado !== 'respondido' && consulta.estado !== 'Respondida' &&
+                   consulta.estado !== 'pendiente_revision_jefe' && consulta.estado !== 'devuelta_por_jefe' &&
+                   !esJefe && (
+                    <Card className="p-6 bg-amber-50 border-amber-200">
+                      <div className="flex items-center gap-3 mb-4">
+                        <AlertCircle className="w-6 h-6 text-amber-600" />
+                        <h3 className="font-bold text-gray-900">Redactar Respuesta</h3>
+                      </div>
+                      <div className="bg-blue-50 p-3 mb-4 rounded border border-blue-100 text-xs text-blue-800">
+                        <p>Redacte la respuesta y envíela al jefe para revisión. El jefe la aprobará y la enviará al solicitante, o la devolverá con comentarios.</p>
                       </div>
 
                       <Textarea
@@ -1470,12 +1615,12 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                       {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER) && (
                         <div className="flex items-center gap-3">
                           <Button
-                            onClick={handleEnviarRespuesta}
+                            onClick={handleEnviarAJefe}
                             disabled={!respuestaTexto.trim()}
-                            className="bg-green-600 hover:bg-green-700 text-white"
+                            className="bg-purple-600 hover:bg-purple-700 text-white"
                           >
                             <Send className="w-4 h-4 mr-2" />
-                            Enviar Respuesta Final
+                            Enviar al Jefe para Revisión
                           </Button>
                           <Button
                             variant="outline"
@@ -1489,6 +1634,26 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                       )}
                     </Card>
                   )}
+
+                  {/* JEFE: Sin borrador pendiente — card informativo bloqueado */}
+                  {consulta.estado !== 'respondido' && consulta.estado !== 'Respondida' &&
+                   consulta.estado !== 'pendiente_revision_jefe' && consulta.estado !== 'devuelta_por_jefe' &&
+                   esJefe && (
+                    <Card className="p-6 bg-gray-50 border-gray-200">
+                      <div className="flex items-center gap-3 mb-3">
+                        <Clock className="w-6 h-6 text-gray-400" />
+                        <div>
+                          <h3 className="font-bold text-gray-600">Sin respuesta pendiente de revisión</h3>
+                          <p className="text-sm text-gray-500">El abogado aún no ha enviado la respuesta para su aprobación.</p>
+                        </div>
+                      </div>
+                      <div className="bg-white p-4 rounded border border-dashed border-gray-300 text-center">
+                        <Gavel className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                        <p className="text-sm text-gray-400">Cuando el abogado complete la respuesta y la envíe al jefe, aparecerá aquí para su revisión.</p>
+                      </div>
+                    </Card>
+                  )}
+
                 </TabsContent>
 
                 {/* TAB: TIMELINE */}
@@ -1753,6 +1918,39 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           if (onUpdate) onUpdate();
         }}
       />
+
+      {/* MODAL: Devolver respuesta con comentarios (jefe) */}
+      <Dialog open={showDevolverModal} onOpenChange={setShowDevolverModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Devolver Respuesta al Abogado</DialogTitle>
+            <DialogDescription>
+              Indique los comentarios o correcciones necesarias. El abogado los verá antes de reenviar la respuesta.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Textarea
+              placeholder="Describa qué debe corregirse o mejorar en la respuesta..."
+              value={comentarioDevolucion}
+              onChange={(e) => setComentarioDevolucion(e.target.value)}
+              className="min-h-[120px]"
+            />
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => { setShowDevolverModal(false); setComentarioDevolucion(''); }}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleDevolverRespuesta}
+              disabled={!comentarioDevolucion.trim()}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              <AlertCircle className="w-4 h-4 mr-2" />
+              Devolver con Comentarios
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* VISOR INLINE DE DOCUMENTOS */}
       {docParaVisor && (
