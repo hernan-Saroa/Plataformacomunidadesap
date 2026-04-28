@@ -71,10 +71,13 @@ export class PlanesMejoramientoService {
 
     const estadoKanban = this.normalizarTexto(String(auditoria.estadoKanban || ''));
     const fase = this.normalizarTexto(String(auditoria.fase || ''));
-    const enComunicacion = estadoKanban === 'comunicacion' || fase === 'comunicacion';
+    const faseValida = 
+      estadoKanban === 'comunicacion' || fase === 'comunicacion' ||
+      estadoKanban === 'seguimiento' || fase === 'seguimiento' ||
+      estadoKanban === 'finalizada' || fase === 'finalizada';
 
-    if (!enComunicacion) {
-      throw new BadRequestException('El Plan de Mejoramiento solo puede crearse cuando la auditoría está en la etapa Comunicación');
+    if (!faseValida) {
+      throw new BadRequestException('El Plan de Mejoramiento solo puede crearse cuando la auditoría está en etapa Comunicación, Seguimiento o Finalizada');
     }
   }
 
@@ -248,6 +251,57 @@ export class PlanesMejoramientoService {
   }
 
   /**
+   * Determina el estado real/actual de un plan basado en sus acciones, fechas y avance.
+   * Esto garantiza una distribución automática y coherente en el Kanban.
+   */
+  private determinarEstadoReal(plan: PlanMejoramiento, totalAcciones: number, porcentajeAvance: number): PlanMejoramientoEstado {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const fechaLimite = new Date(plan.fechaLimite);
+    fechaLimite.setHours(0, 0, 0, 0);
+
+    const esVencido = fechaLimite < hoy && porcentajeAvance < 100;
+
+    // 1. Si está completado al 100%, el estado es siempre COMPLETADO
+    if (porcentajeAvance >= 100) {
+      return PlanMejoramientoEstado.COMPLETADO;
+    }
+
+    // 2. Si la fecha límite ya pasó y no está completado, es VENCIDO (Con Retraso en FE)
+    if (esVencido) {
+      return PlanMejoramientoEstado.VENCIDO;
+    }
+
+    // 3. Estados de flujo de aprobación
+    if (plan.estado === PlanMejoramientoEstado.RECHAZADO) {
+      return PlanMejoramientoEstado.RECHAZADO;
+    }
+
+    if (plan.estado === PlanMejoramientoEstado.REVISION) {
+      return PlanMejoramientoEstado.REVISION;
+    }
+
+    // 4. Si no tiene acciones, está en FORMULACION (Borrador)
+    if (totalAcciones === 0) {
+      return PlanMejoramientoEstado.BORRADOR;
+    }
+
+    // 5. Si está aprobado y tiene acciones
+    if (plan.estado === PlanMejoramientoEstado.APROBADO || plan.estado === PlanMejoramientoEstado.EN_EJECUCION) {
+      // Si ya tiene algún avance reportado, está en ejecución
+      if (porcentajeAvance > 0) {
+        return PlanMejoramientoEstado.EN_EJECUCION;
+      }
+      // Si no tiene avance pero ya fue aprobado, sigue en APROBADO
+      return PlanMejoramientoEstado.APROBADO;
+    }
+
+    // Por defecto, mantener el estado que tenga en DB o caer a BORRADOR
+    return plan.estado || PlanMejoramientoEstado.BORRADOR;
+  }
+
+  /**
    * Cuenta acciones terminadas (misma lógica que el Kanban / frontend)
    */
   private contarAccionesCompletadas(acciones: AccionCorrectiva[]): number {
@@ -290,6 +344,34 @@ export class PlanesMejoramientoService {
   }
 
   /**
+   * Determina el estado real de una acción basado en su progreso y fecha de fin
+   */
+  private determinarEstadoAccionReal(accion: AccionCorrectiva): AccionCorrectivaEstado {
+    const progreso = Math.min(100, Math.max(0, Number(accion.porcentajeAvance ?? 0)));
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const fechaFin = accion.fechaFin ? new Date(accion.fechaFin) : null;
+
+    // Si ya está completada por porcentaje
+    if (progreso >= 100) {
+      return AccionCorrectivaEstado.COMPLETADA;
+    }
+
+    // Si está vencida (fecha fin menor a hoy)
+    if (fechaFin && fechaFin < hoy) {
+      return AccionCorrectivaEstado.VENCIDA;
+    }
+
+    // Si tiene progreso pero no está al 100%
+    if (progreso > 0) {
+      return AccionCorrectivaEstado.EN_PROGRESO;
+    }
+
+    // Por defecto, programada
+    return AccionCorrectivaEstado.PROGRAMADA;
+  }
+
+  /**
    * Serializa un plan de mejoramiento para la respuesta JSON
    * Evita referencias circulares (accion.plan → plan) y expone totales para listados/Kanban
    */
@@ -300,10 +382,15 @@ export class PlanesMejoramientoService {
     const porcentajeAvance = this.promedioPorcentajeAvanceAcciones(accionesRaw);
     const totalHallazgos = this.contarHallazgosParaKanban(plan, accionesRaw);
 
+    // Determinar el estado automático basado en las condiciones actuales
+    const estadoCalculado = this.determinarEstadoReal(plan, totalAcciones, porcentajeAvance);
+
     const acciones = accionesRaw.map((accion) => {
       const { plan: _omitPlan, ...rest } = accion as AccionCorrectiva & { plan?: PlanMejoramiento };
+      const estadoCalculado = this.determinarEstadoAccionReal(accion);
       return {
         ...rest,
+        estado: estadoCalculado, // Usar el estado calculado dinámicamente
         fechaInicio: this.serializeDate(accion.fechaInicio),
         fechaFin: this.serializeDate(accion.fechaFin),
       };
@@ -323,6 +410,7 @@ export class PlanesMejoramientoService {
 
     return {
       ...plan,
+      estado: estadoCalculado, // Usar el estado calculado dinámicamente
       fechaLimite: this.serializeDate(plan.fechaLimite),
       fechaAprobacion: this.serializeDate(plan.fechaAprobacion),
       acciones,
@@ -1009,6 +1097,7 @@ export class PlanesMejoramientoService {
     // Serializar fechas para evitar problemas de zona horaria
     return {
       ...saved,
+      estado: this.determinarEstadoAccionReal(saved),
       fechaInicio: this.serializeDate(saved.fechaInicio),
       fechaFin: this.serializeDate(saved.fechaFin),
     } as any;
@@ -1090,6 +1179,7 @@ export class PlanesMejoramientoService {
     // Serializar fechas para evitar problemas de zona horaria
     return {
       ...saved,
+      estado: this.determinarEstadoAccionReal(saved),
       fechaInicio: this.serializeDate(saved.fechaInicio),
       fechaFin: this.serializeDate(saved.fechaFin),
     } as any;

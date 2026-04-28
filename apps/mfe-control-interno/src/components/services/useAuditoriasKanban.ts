@@ -232,6 +232,52 @@ function generarIniciales(nombre: string): string {
   return nombre.substring(0, 2).toUpperCase();
 }
 
+function resolverNombreEquipoAuditor(auditorData: any, auditoresDisponibles?: AuditorDisponible[]): string | null {
+  if (!auditorData) return null;
+
+  if (typeof auditorData === 'string') {
+    const valor = auditorData.trim();
+    if (!valor) return null;
+
+    if (esIdNoNombre(valor)) {
+      const auditorEncontrado = auditoresDisponibles?.find(a => String(a.id) === valor);
+      return auditorEncontrado?.nombre || null;
+    }
+
+    return valor;
+  }
+
+  if (typeof auditorData === 'object') {
+    const nombre =
+      auditorData.nombre ||
+      auditorData.nombreCompleto ||
+      auditorData.persona?.nombre ||
+      auditorData.persona?.nombreCompleto ||
+      auditorData.usuario?.nombre ||
+      auditorData.usuario?.nombreCompleto;
+
+    if (typeof nombre === 'string' && nombre.trim() && !esIdNoNombre(nombre)) {
+      return nombre.trim();
+    }
+
+    const id = auditorData.personaId || auditorData.auditorId || auditorData.usuarioId || auditorData.id;
+    if (id !== undefined && id !== null) {
+      const auditorEncontrado = auditoresDisponibles?.find(a => String(a.id) === String(id));
+      return auditorEncontrado?.nombre || null;
+    }
+  }
+
+  return null;
+}
+
+function normalizarEquipoAuditores(equipoAuditores: any, auditoresDisponibles?: AuditorDisponible[]): string[] {
+  if (!Array.isArray(equipoAuditores)) return [];
+
+  return equipoAuditores
+    .map(auditor => resolverNombreEquipoAuditor(auditor, auditoresDisponibles))
+    .filter((nombre): nombre is string => Boolean(nombre));
+}
+
 /**
  * Formatea fecha al formato DD/MM/YYYY (sin problemas de timezone)
  */
@@ -426,7 +472,7 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     prioridad: (auditoriaBackend.prioridadKanban as Prioridad) || mapearPrioridad(auditoriaBackend.prioridad, auditoriaBackend.nivelRiesgo),
     areaObjetivo: auditoriaBackend.areaObjetivo || auditoriaBackend.procesoAuditado || '',
     permiteCambiarObjetivos: auditoriaBackend.permiteCambiarObjetivos ?? true,
-    equipoAuditores: auditoriaBackend.equipoAuditores || [],
+    equipoAuditores: normalizarEquipoAuditores(auditoriaBackend.equipoAuditores, auditoresDisponibles),
     territorialInfo: auditoriaBackend.territorial ? {
       nombre: auditoriaBackend.territorial,
       ciudad: '',

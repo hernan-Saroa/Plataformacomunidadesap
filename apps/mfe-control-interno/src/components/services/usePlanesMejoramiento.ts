@@ -77,6 +77,8 @@ function mapearEstado(estado: string): EstadoPlan {
     formulando: 'FORMULACION',
     borrador: 'FORMULACION',
     en_formulacion: 'FORMULACION',
+    revision: 'FORMULACION',
+    rechazado: 'FORMULACION',
     // Aprobado
     aprobado: 'APROBADO',
     aprobacion: 'APROBADO',
@@ -272,20 +274,7 @@ function transformarPlan(planBackend: any): PlanMejoramientoKanban {
   const estadoBackend = String(planBackend.estado || '').trim().toLowerCase().replace(/-/g, '_');
   const explicitamenteSuspendido = ['suspendido', 'pausado'].includes(estadoBackend);
 
-  let estadoPlan: EstadoPlan;
-  if (explicitamenteSuspendido) {
-    estadoPlan = 'SUSPENDIDO';
-  } else if (totalAccionesCalc === 0) {
-    estadoPlan = 'FORMULACION';
-  } else if (porcentajeAvance >= 100) {
-    estadoPlan = 'COMPLETADO';
-  } else if (diasRestantes < 0) {
-    estadoPlan = 'CON_RETRASO';
-  } else if (accionesCompletadas === 0 && accionesEnProceso === 0) {
-    estadoPlan = 'APROBADO';
-  } else {
-    estadoPlan = 'EN_EJECUCION';
-  }
+  const estadoPlan = mapearEstado(planBackend.estado);
 
   return {
     id: planBackend.id,
@@ -386,9 +375,10 @@ export function usePlanesMejoramiento() {
       console.log('✅ [usePlanesMejoramiento] Plan creado:', response);
       
       const planTransformado = transformarPlan(response);
-      setPlanes(prev => [planTransformado, ...prev]);
       
-      // Toast removido - lo muestra el componente que llama
+      // Refrescar lista completa para asegurar sincronización total con el backend
+      await fetchPlanes();
+      
       return planTransformado;
     } catch (err) {
       const mensaje = err instanceof Error ? err.message : 'Error al crear plan';

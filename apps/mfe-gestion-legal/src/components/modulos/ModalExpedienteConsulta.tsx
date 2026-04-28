@@ -92,14 +92,17 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   useEffect(() => {
     if (isOpen && consulta?.uuid) {
       loadDocumentos();
-      // Cargar respuesta existente si hay
-      if (consulta.respuesta) {
-        setRespuestaTexto(consulta.respuesta);
-      } else {
-        setRespuestaTexto('');
+      setRespuestaTexto(consulta.respuesta || '');
+      try {
+        const adicionales = consulta.destinatariosAdicionales
+          ? JSON.parse(consulta.destinatariosAdicionales)
+          : [];
+        setDestinatariosAdicionales(Array.isArray(adicionales) ? adicionales : []);
+      } catch {
+        setDestinatariosAdicionales([]);
       }
     }
-  }, [isOpen, consulta?.uuid, consulta?.respuesta]);
+  }, [isOpen, consulta?.uuid, consulta?.respuesta, consulta?.destinatariosAdicionales]);
 
   const loadDocumentos = async () => {
     if (!consulta?.uuid) return;
@@ -120,7 +123,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
     try {
       toast.loading('Guardando borrador...');
-      await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, false);
+      const usuarioNombreBorrador = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
+      await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, false, usuarioNombreBorrador, destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined);
       toast.dismiss();
       toast.success('Borrador guardado correctamente');
       // Recargar datos para reflejar el borrador guardado
@@ -184,7 +188,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     try {
       toast.loading('Enviando al jefe para revisión...', { id: 'send-jefe' });
       const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
-      await legalService.enviarRespuestaAJefe(consulta.uuid, respuestaTexto, usuarioNombre);
+      await legalService.enviarRespuestaAJefe(consulta.uuid, respuestaTexto, usuarioNombre, destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined);
       toast.success('✅ Respuesta enviada al jefe para revisión', { id: 'send-jefe' });
       if (onUpdate) onUpdate();
       onClose();
@@ -1612,6 +1616,36 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                         onChange={(e) => setRespuestaTexto(e.target.value)}
                         disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER)}
                       />
+
+                      {/* Destinatarios adicionales — el jefe podrá editarlos antes de aprobar */}
+                      <div className="mb-4 p-3 bg-white rounded-lg border border-gray-200">
+                        <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                          <Mail className="w-3.5 h-3.5" /> Destinatarios adicionales (CC)
+                        </p>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full flex-1 truncate">
+                            {consulta.emailSolicitante || 'Sin correo registrado'} <span className="text-blue-500">(principal)</span>
+                          </span>
+                        </div>
+                        {destinatariosAdicionales.map((email) => (
+                          <div key={email} className="flex items-center gap-2 mb-2">
+                            <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full flex-1 truncate">{email}</span>
+                            <button type="button" onClick={() => handleEliminarDestinatario(email)} className="text-red-400 hover:text-red-600 flex-shrink-0 text-xs leading-none" title="Quitar destinatario">✕</button>
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-2 mt-2">
+                          <input
+                            type="email"
+                            value={nuevoDestinatario}
+                            onChange={(e) => setNuevoDestinatario(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAgregarDestinatario(); } }}
+                            placeholder="Agregar destinatario adicional..."
+                            className="flex-1 text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          />
+                          <Button type="button" variant="outline" size="sm" onClick={handleAgregarDestinatario} className="text-xs h-7 px-2">+ Agregar</Button>
+                        </div>
+                      </div>
+
                       {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER) && (
                         <div className="flex items-center gap-3">
                           <Button
