@@ -139,7 +139,7 @@ export async function generarPDFPlanAnual(plan: PlanAnual, configuracion: Config
     'Est.',
     'Resp. Tarea',
     'Seguimiento y evaluación tareas',
-    'Fecha Tarea',
+    'Fecha de seguimiento',
     'Eval.'
   ]];
 
@@ -151,8 +151,13 @@ export async function generarPDFPlanAnual(plan: PlanAnual, configuracion: Config
     (rol.actividades || []).forEach((act) => {
       currentActivityId++;
       
-      const fInicio = act.fechaInicio ? new Date(act.fechaInicio).toLocaleDateString('es-CO') : '';
-      const fFin = act.fechaFin ? new Date(act.fechaFin).toLocaleDateString('es-CO') : '';
+      // Parseo seguro: extraer YYYY-MM-DD y usar T12:00:00 para evitar desfase timezone
+      const safeParseDate = (d: string) => {
+        const m = String(d).trim().match(/^(\d{4}-\d{2}-\d{2})/);
+        return m ? new Date(`${m[1]}T12:00:00`) : new Date(d);
+      };
+      const fInicio = act.fechaInicio ? safeParseDate(act.fechaInicio).toLocaleDateString('es-CO') : '';
+      const fFin = act.fechaFin ? safeParseDate(act.fechaFin).toLocaleDateString('es-CO') : '';
       
       const actAny = act as any;
       const tareas = actAny.tareasSeguimiento || actAny.tareas_seguimiento || [];
@@ -175,11 +180,28 @@ export async function generarPDFPlanAnual(plan: PlanAnual, configuracion: Config
         ]);
       } else {
         tareas.forEach((tarea: any) => {
-          // Extraer fecha de la tarea (priorizando fechaEntrega o similares)
+          // Extraer fecha de seguimiento real de la tarea (no solo fecha límite)
           let fTarea = '-';
-          const rawFecha = tarea.fechaEntrega || tarea.fecha_entrega || tarea.fechaLimite || tarea.fechaFin;
+          const rawFecha =
+            tarea.fechaSeguimiento
+            || tarea.fecha_seguimiento
+            || tarea.fechaEvaluacion
+            || tarea.fecha_evaluacion
+            || tarea.fechaCompletado
+            || tarea.fechaCompletada
+            || tarea.fecha_completada
+            || tarea.fechaEntrega
+            || tarea.fecha_entrega
+            || tarea.fechaLimite
+            || tarea.fecha_limite
+            || tarea.fechaFin;
           if (rawFecha && rawFecha !== '-') {
-            fTarea = new Date(rawFecha).toLocaleDateString('es-CO');
+            const raw = String(rawFecha).trim();
+            // Siempre extraer la porción YYYY-MM-DD y usar T12:00:00
+            // para evitar desfase de timezone (UTC-5 Colombia)
+            const matchFecha = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+            const fechaBase = matchFecha ? matchFecha[1] : raw;
+            fTarea = new Date(`${fechaBase}T12:00:00`).toLocaleDateString('es-CO');
           }
 
           // Responsables de la tarea (ahora en su propia columna)

@@ -141,7 +141,11 @@ export const COLUMNAS_DISPONIBLES: ColumnaExcel[] = [
   { key: 'evaluacion', label: 'Evaluación', defaultVisible: true },
   { key: 'seguimiento', label: 'Seguimiento', defaultVisible: true },
   { key: 'observaciones', label: 'Observaciones', defaultVisible: true },
-  { key: 'tareas', label: 'Tareas', defaultVisible: true },
+  { key: 'descripcionTarea', label: 'Tarea', defaultVisible: true },
+  { key: 'responsableTarea', label: 'Resp. Tarea', defaultVisible: true },
+  { key: 'fechaLimiteTarea', label: 'Fecha Límite Tarea', defaultVisible: true },
+  { key: 'estadoTarea', label: 'Est. Tarea', defaultVisible: true },
+  { key: 'fechaSeguimientoTareas', label: 'Fecha de seguimiento', defaultVisible: true },
   { key: 'obsTareas', label: 'Obs. Tareas', defaultVisible: false },
   { key: 'evidencias', label: 'Evidencias', defaultVisible: true },
 ];
@@ -341,9 +345,10 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
       rol: 22, numero: 5, actividad: 35, descripcion: 30, responsable: 22,
       fechaInicio: 12, fechaFin: 12, fechaCorte: 12, estado: 13, avance: 10,
       control: 25, evaluacion: 25, seguimiento: 35,
-      observaciones: 35, tareas: 35, obsTareas: 30, evidencias: 28,
+      observaciones: 35, descripcionTarea: 35, responsableTarea: 20, fechaLimiteTarea: 14, estadoTarea: 10,
+      fechaSeguimientoTareas: 14, obsTareas: 30, evidencias: 28,
     };
-    const TEXT_COLUMNS = new Set(['actividad', 'descripcion', 'control', 'evaluacion', 'seguimiento', 'observaciones', 'tareas', 'obsTareas', 'evidencias']);
+    const TEXT_COLUMNS = new Set(['actividad', 'descripcion', 'control', 'evaluacion', 'seguimiento', 'observaciones', 'descripcionTarea', 'responsableTarea', 'obsTareas', 'evidencias']);
 
     const headerRow = ws.getRow(7);
     activeColumns.forEach((col, idx) => {
@@ -380,7 +385,6 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
       
       for (let i = 0; i < actividades.length; i++) {
         const a = actividades[i];
-        const dataRow = ws.getRow(rowNum);
         const isEven = (rowNum - 8) % 2 === 0;
 
         // ═══════════════════════════════════════════════════════════════════
@@ -447,7 +451,7 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
         const obsData = actAny.observacionesCumplimiento;
         if (Array.isArray(obsData) && obsData.length > 0) {
           obsTexto = obsData.map((ob: any, idx: number) => {
-            const fecha = ob.fechaRegistro ? new Date(ob.fechaRegistro).toLocaleDateString('es-CO') : '';
+            const fecha = ob.fechaRegistro ? safeParse(ob.fechaRegistro).toLocaleDateString('es-CO') : '';
             const autor = ob.registradoPor || '';
             return `${idx + 1}. ${ob.texto || ''}${autor ? ' — ' + autor : ''}${fecha ? ' (' + fecha + ')' : ''}`;
           }).join('\n');
@@ -457,23 +461,32 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
 
         // Tareas de seguimiento
         const tareas: TareaSeg[] = actAny.tareasSeguimiento || [];
-        let tareasTexto = '';
-        let obsTareasTexto = '';
-        if (tareas.length > 0) {
-          tareasTexto = tareas.map((t, idx) => {
-            const estado = t.completada ? '✓' : '✗';
-            const fechaLim = t.fechaEntrega ? new Date(t.fechaEntrega).toLocaleDateString('es-CO') : 'Sin fecha';
-            const resp = t.responsables?.join(', ') || '';
-            return `${idx + 1}. [${estado}] ${t.descripcion} | Límite: ${fechaLim}${resp ? ' | ' + resp : ''}`;
-          }).join('\n');
-          // Observaciones de tareas
-          const tareasConObs = tareas.filter(t => t.observaciones?.trim());
-          if (tareasConObs.length > 0) {
-            obsTareasTexto = tareasConObs.map((t, idx) => {
-              return `${idx + 1}. ${t.descripcion}: ${t.observaciones}`;
-            }).join('\n');
-          }
-        }
+        const filasTarea = tareas.length > 0
+          ? tareas.map((t) => {
+              const estadoTarea = t.completada ? '✓ Completada' : '✗ Pendiente';
+              const fechaLimRaw = t.fechaEntrega || (t as any).fechaLimite || (t as any).fecha_limite;
+              const fechaLim = fechaLimRaw ? safeParse(fechaLimRaw).toLocaleDateString('es-CO') : 'Sin fecha';
+              const resp = Array.isArray(t.responsables) ? t.responsables.join(', ') : '';
+              const fechaSeg = (t as any).fechaSeguimiento
+                || (t as any).fecha_seguimiento
+                || (t as any).fechaEvaluacion
+                || (t as any).fecha_evaluacion
+                || t.fechaCompletado
+                || (t as any).fechaCompletada
+                || (t as any).fecha_completada
+                || t.fechaEntrega
+                || (t as any).fechaLimite
+                || (t as any).fecha_limite;
+              return {
+                descripcionTarea: t.descripcion || '',
+                responsableTarea: resp || '-',
+                fechaLimiteTarea: fechaLim,
+                estadoTarea: estadoTarea,
+                fechaSeguimiento: fechaSeg ? safeParse(fechaSeg).toLocaleDateString('es-CO') : 'Sin fecha',
+                obsTarea: t.observaciones?.trim() || '',
+              };
+            })
+          : [{ descripcionTarea: '', responsableTarea: '', fechaLimiteTarea: '', estadoTarea: '', fechaSeguimiento: '', obsTarea: '' }];
 
         // Evidencias (archivos adjuntos)
         const adjuntos = actAny.adjuntos || [];
@@ -483,72 +496,73 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
           ? todosAdjuntos.map((n: string) => `✓ ${n}`).join('\n')
           : 'Sin evidencia';
 
-        // Map key → value for all possible columns
-        const allValues: Record<string, any> = {
-          rol: rol.nombre,
-          numero: i + 1,
-          actividad: a.nombre,
-          descripcion: actAny.descripcion || '',
-          responsable: responsableNombre,
-          fechaInicio: fechaInicio,
-          fechaFin: fechaFin,
-          fechaCorte: fechaCorte,
-          estado: actAny.estado || '',
-          avance: porcentaje,
-          control: actAny.control || '',
-          evaluacion: actAny.evaluacion || '',
-          seguimiento: actAny.seguimiento || '',
-          observaciones: obsTexto,
-          tareas: tareasTexto,
-          obsTareas: obsTareasTexto,
-          evidencias: evidenciasTexto,
-        };
-
-        // Only output selected columns
-        activeColumns.forEach((col, colIdx) => {
-          const cell = dataRow.getCell(colIdx + 1);
-          let value = allValues[col.key] ?? '';
-
-          // Formato porcentaje
-          if (col.key === 'avance') value = `${value}%`;
-
-          cell.value = value;
-          cell.font = { name: 'Calibri', size: 10, color: { argb: EXCEL_COLORS.textDark } };
-          const isTextCol = TEXT_COLUMNS.has(col.key);
-          cell.alignment = {
-            horizontal: isTextCol ? 'left' : 'center',
-            vertical: 'top',
-            wrapText: isTextCol
-          };
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: isEven ? 'FFFFFFFF' : 'FFF8FAFC' }
-          };
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FFDDDDDD' } },
-            bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } },
-            left: { style: 'thin', color: { argb: 'FFDDDDDD' } },
-            right: { style: 'thin', color: { argb: 'FFDDDDDD' } }
+        for (const filaTarea of filasTarea) {
+          const dataRow = ws.getRow(rowNum);
+          // Map key → value for all possible columns (una fila por tarea)
+          const allValues: Record<string, any> = {
+            rol: rol.nombre,
+            numero: i + 1,
+            actividad: a.nombre,
+            descripcion: actAny.descripcion || '',
+            responsable: responsableNombre,
+            fechaInicio: fechaInicio,
+            fechaFin: fechaFin,
+            fechaCorte: fechaCorte,
+            estado: actAny.estado || '',
+            avance: porcentaje,
+            control: actAny.control || '',
+            evaluacion: actAny.evaluacion || '',
+            seguimiento: actAny.seguimiento || '',
+            observaciones: obsTexto,
+            descripcionTarea: filaTarea.descripcionTarea,
+            responsableTarea: filaTarea.responsableTarea,
+            fechaLimiteTarea: filaTarea.fechaLimiteTarea,
+            estadoTarea: filaTarea.estadoTarea,
+            fechaSeguimientoTareas: filaTarea.fechaSeguimiento,
+            obsTareas: filaTarea.obsTarea,
+            evidencias: evidenciasTexto,
           };
 
-          // Color especial para estado
-          if (col.key === 'estado' && value) {
-            const estado = String(value).toUpperCase();
-            if (estado === 'COMPLETADA') {
-              cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.success } };
-            } else if (estado === 'EN_EJECUCION' || estado === 'EN EJECUCIÓN') {
-              cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.warning } };
-            } else if (estado === 'PENDIENTE') {
-              cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.info } };
+          activeColumns.forEach((col, colIdx) => {
+            const cell = dataRow.getCell(colIdx + 1);
+            let value = allValues[col.key] ?? '';
+            if (col.key === 'avance') value = `${value}%`;
+
+            cell.value = value;
+            cell.font = { name: 'Calibri', size: 10, color: { argb: EXCEL_COLORS.textDark } };
+            const isTextCol = TEXT_COLUMNS.has(col.key);
+            cell.alignment = {
+              horizontal: isTextCol ? 'left' : 'center',
+              vertical: 'top',
+              wrapText: isTextCol
+            };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: isEven ? 'FFFFFFFF' : 'FFF8FAFC' }
+            };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+              bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+              left: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+              right: { style: 'thin', color: { argb: 'FFDDDDDD' } }
+            };
+
+            if (col.key === 'estado' && value) {
+              const estado = String(value).toUpperCase();
+              if (estado === 'COMPLETADA') {
+                cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.success } };
+              } else if (estado === 'EN_EJECUCION' || estado === 'EN EJECUCIÓN') {
+                cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.warning } };
+              } else if (estado === 'PENDIENTE') {
+                cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.info } };
+              }
             }
-          }
-        });
+          });
 
-        // Auto-height: más alto si hay tareas/observaciones
-        const maxLines = Math.max(1, tareasTexto.split('\n').length, obsTexto.split('\n').length);
-        dataRow.height = Math.max(25, maxLines * 14);
-        rowNum++;
+          dataRow.height = Math.max(25, obsTexto ? obsTexto.split('\n').length * 14 : 25);
+          rowNum++;
+        }
       }
       
       // ═══════════════════════════════════════════════════════════════════════
