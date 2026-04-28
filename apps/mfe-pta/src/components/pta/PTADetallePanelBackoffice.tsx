@@ -472,6 +472,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       actorId,
       actorTerritorialId: jefaturaTerritorialId,
       isSuperUser: isSuperUser || false,
+      // Si el aprobador no tiene territorial asignada, aprobar todas las pendientes
+      aprobarTodas: !jefaturaTerritorialId || isSuperUser || false,
     } as any);
     setProcesandoAprobacion(false);
     if (!res.success) {
@@ -1650,18 +1652,18 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     </div>
                   ) : (
                   <button
-                    onClick={pctCarga === 100 ? handleAprobar : () => toast.error(`Circular 003: El PTA debe alcanzar exactamente el 100% de carga para ser aprobado (Actual: ${pctCarga}%). Ajuste los componentes en la pestaña Componentes.`)}
+                    onClick={handleAprobar}
                     disabled={procesandoAprobacion}
                     style={{
                       width: '100%', padding: '12px 18px', borderRadius: 10,
-                      border: 'none', background: pctCarga === 100 && !procesandoAprobacion ? '#003DA5' : '#D1D5DB', color: 'white',
+                      border: 'none', background: !procesandoAprobacion ? '#003DA5' : '#D1D5DB', color: 'white',
                       fontWeight: 700, fontSize: '0.88rem',
-                      cursor: pctCarga === 100 && !procesandoAprobacion ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      opacity: pctCarga === 100 ? 1 : 0.7,
+                      cursor: !procesandoAprobacion ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                      opacity: 1,
                     }}
                   >
                     <CheckCircle style={{ width: 15, height: 15 }} />
-                    {procesandoAprobacion ? 'Procesando...' : pctCarga === 100 ? getNextStateLabel(pta.estado, !!(pta.camposModificadosPorRevisor && Object.keys(pta.camposModificadosPorRevisor).length > 0)) : 'Aprobación Bloqueada (Circular 003)'}
+                    {procesandoAprobacion ? 'Procesando...' : getNextStateLabel(pta.estado, !!(pta.camposModificadosPorRevisor && Object.keys(pta.camposModificadosPorRevisor).length > 0))}
                   </button>
                   )}
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -1810,17 +1812,17 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     </div>
                   ) : (
                   <button
-                    onClick={pctCarga === 100 ? handleAprobar : () => toast.error(`Circular 003: El PTA debe alcanzar exactamente el 100% de carga para ser aprobado (Actual: ${pctCarga}%). Ajuste los componentes en la pestaña Componentes.`)}
+                    onClick={handleAprobar}
                     disabled={procesandoAprobacion}
                     style={{
                       padding: '7px 18px', borderRadius: 8,
-                      border: 'none', background: pctCarga === 100 && !procesandoAprobacion ? '#003DA5' : '#D1D5DB', color: 'white',
+                      border: 'none', background: !procesandoAprobacion ? '#003DA5' : '#D1D5DB', color: 'white',
                       fontWeight: 700, fontSize: '0.78rem',
-                      cursor: pctCarga === 100 && !procesandoAprobacion ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 5,
+                      cursor: !procesandoAprobacion ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: 5,
                     }}
                   >
                     <CheckCircle style={{ width: 13, height: 13 }} />
-                    {procesandoAprobacion ? 'Procesando...' : pctCarga === 100 ? getNextStateLabel(pta.estado, !!(pta.camposModificadosPorRevisor && Object.keys(pta.camposModificadosPorRevisor).length > 0)) : 'Progreso Incompleto'}
+                    {procesandoAprobacion ? 'Procesando...' : getNextStateLabel(pta.estado, !!(pta.camposModificadosPorRevisor && Object.keys(pta.camposModificadosPorRevisor).length > 0))}
                   </button>
                   )}
                 </div>

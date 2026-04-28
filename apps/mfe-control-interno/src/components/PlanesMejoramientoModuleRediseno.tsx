@@ -370,7 +370,7 @@ const COLUMNAS_KANBAN = [
 export function PlanesMejoramientoModuleRediseno() {
   // ✅ HOOK DE BACKEND - Planes de mejoramiento
   const {
-    planes: planesBackend,
+    planes,
     loading: cargandoBackend,
     error: errorBackend,
     fetchPlanes,
@@ -380,48 +380,9 @@ export function PlanesMejoramientoModuleRediseno() {
     rechazarPlan
   } = usePlanesMejoramiento();
 
-  // Estado local sincronizado con backend
-  const [planes, setPlanes] = useState<PlanMejoramiento[]>([]);
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
 
-  // Sincronizar planes del backend con estado local
-  useEffect(() => {
-    if (!cargandoBackend && planesBackend.length > 0) {
-      // Transformar PlanMejoramientoKanban a PlanMejoramiento local
-      const planesLocales: PlanMejoramiento[] = planesBackend.map(p => ({
-        id: p.id,
-        codigo: p.codigo,
-        auditoria: p.auditoria,
-        area: p.area,
-        responsable: p.responsable,
-        cargoResponsable: p.cargoResponsable,
-        fechaCreacion: p.fechaCreacion,
-        fechaAprobacion: p.fechaAprobacion,
-        fechaInicio: p.fechaInicio,
-        fechaFin: p.fechaFin,
-        estado: p.estado,
-        semaforo: p.semaforo,
-        totalHallazgos: p.totalHallazgos,
-        totalAcciones: p.totalAcciones,
-        accionesCompletadas: p.accionesCompletadas,
-        accionesEnProceso: p.accionesEnProceso,
-        accionesPendientes: p.accionesPendientes,
-        porcentajeAvance: p.porcentajeAvance,
-        hallazgosCriticos: p.hallazgosCriticos,
-        hallazgosModerados: p.hallazgosModerados,
-        hallazgosLeves: p.hallazgosLeves,
-        ultimaActualizacion: p.ultimaActualizacion,
-        alertas: p.alertas,
-        diasRestantes: p.diasRestantes
-      }));
-      setPlanes(planesLocales);
-      console.log('✅ [PlanesMejoramiento] Sincronizados', planesLocales.length, 'planes del backend');
-    } else if (!cargandoBackend && planesBackend.length === 0) {
-      // Sin planes en backend - mostrar lista vacía
-      console.log('ℹ️ [PlanesMejoramiento] Sin planes en backend');
-      setPlanes([]);
-    }
-  }, [planesBackend, cargandoBackend]);
+
 
   // Integración con Auditorías
   const { 
@@ -438,12 +399,12 @@ export function PlanesMejoramientoModuleRediseno() {
 
   // Plan a abrir cuando viene de "Ir a ver plan" (plan ya existe)
   const planIdParaAbrir = useMemo(() => {
-    if (!auditoriaIdParaVerPlan || planesBackend.length === 0) return null;
-    const plan = planesBackend.find(
+    if (!auditoriaIdParaVerPlan || planes.length === 0) return null;
+    const plan = planes.find(
       (p: any) => (p.auditoriaId || p.auditoria_id || p.auditoria?.id) === auditoriaIdParaVerPlan
     );
     return plan?.id ?? null;
-  }, [auditoriaIdParaVerPlan, planesBackend]);
+  }, [auditoriaIdParaVerPlan, planes]);
 
   // Auto-abrir modal CREAR solo si viene desde auditorías para crear (no para ver)
   useEffect(() => {
@@ -493,47 +454,8 @@ export function PlanesMejoramientoModuleRediseno() {
       return;
     }
 
-    // Fallback: crear localmente si falla el backend
-    if (!planCreado) {
-      const nuevoPlan: PlanMejoramiento = {
-        id: `plan-${Date.now()}`,
-        codigo: `PM-${new Date().getFullYear()}-${String(planes.length + 1).padStart(3, '0')}`,
-        auditoria: auditoria.nombre,
-        area: auditoria.areaResponsable,
-        responsable: auditoria.responsable,
-        cargoResponsable: auditoria.cargo,
-        fechaCreacion: new Date().toISOString().split('T')[0],
-        fechaFin: auditoria.fechaLimitePlan || calcularFechaLimite(),
-        estado: 'FORMULACION',
-        semaforo: 'amarillo',
-        totalHallazgos: auditoria.hallazgos.length,
-        totalAcciones: 0,
-        accionesCompletadas: 0,
-        accionesEnProceso: 0,
-        accionesPendientes: 0,
-        porcentajeAvance: 0,
-        hallazgosCriticos: auditoria.hallazgos.filter((h: any) => h.gravedad === 'GRAVE').length,
-        hallazgosModerados: auditoria.hallazgos.filter((h: any) => h.gravedad === 'MODERADO').length,
-        hallazgosLeves: auditoria.hallazgos.filter((h: any) => h.gravedad === 'LEVE').length,
-        ultimaActualizacion: new Date().toISOString().split('T')[0],
-        alertas: 0,
-        diasRestantes: 365
-      };
-
-      setPlanes(prev => [nuevoPlan, ...prev]);
-
-      // Actualizar contexto
-      crearPlanContext({
-        auditoriaId: auditoria.id,
-        codigoAuditoria: auditoria.codigo,
-        fechaCreacion: nuevoPlan.fechaCreacion,
-        estado: 'EN_FORMULACION',
-        accionesCreadas: 0,
-        progresoGeneral: 0
-      });
-
-      toast.success(`Plan ${nuevoPlan.codigo} creado exitosamente`);
-    }
+    // En caso de que no se haya podido crear en el backend, el hook ya manejará el error y mostrará el toast.
+    // Ya no usamos el fallback local para evitar inconsistencias de estado.
 
     setModalCrearPlanOpen(false);
     limpiarSeleccion();
@@ -576,15 +498,8 @@ export function PlanesMejoramientoModuleRediseno() {
       return;
     }
 
-    // Actualizar localmente
-    const planActualizado: PlanMejoramiento = {
-      ...plan,
-      estado: 'COMPLETADO',
-      semaforo: 'verde',
-      ultimaActualizacion: new Date().toISOString().split('T')[0]
-    };
-
-    setPlanes(prev => prev.map(p => p.id === plan.id ? planActualizado : p));
+    // La actualización se reflejará a través del hook tras el refresco
+    await fetchPlanes();
 
     // 4. Generar expediente automáticamente
     const expediente = {
@@ -671,7 +586,6 @@ export function PlanesMejoramientoModuleRediseno() {
         {/* Contenido Principal */}
         <SeguimientoView 
           planes={planes} 
-          setPlanes={setPlanes}
           onAbrirCrearPlan={() => setModalCrearPlanOpen(true)}
           auditoriasDisponibles={auditoriasConHallazgos}
           onCompletarPlan={handleCompletarPlan}
@@ -720,7 +634,7 @@ interface SeguimientoViewProps {
   fetchPlanes?: () => void | Promise<void>;
 }
 
-function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDisponibles, onCompletarPlan, planIdParaAbrir, onPlanAbiertoParaVer, fetchPlanes }: SeguimientoViewProps) {
+function SeguimientoView({ planes, onAbrirCrearPlan, auditoriasDisponibles, onCompletarPlan, planIdParaAbrir, onPlanAbiertoParaVer, fetchPlanes }: SeguimientoViewProps) {
   const [vistaTablero, setVistaTablero] = useState<'kanban' | 'lista'>('lista');
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<EstadoPlan | 'TODOS'>('TODOS');
@@ -795,12 +709,7 @@ function SeguimientoView({ planes, setPlanes, onAbrirCrearPlan, auditoriasDispon
   }, [planes]);
 
   const handleMoverPlan = async (planId: string, nuevoEstado: EstadoPlan) => {
-    // Actualizar localmente primero (optimistic update)
-    setPlanes(prev => prev.map(p => 
-      p.id === planId ? { ...p, estado: nuevoEstado } : p
-    ));
-    
-    // ✅ Sincronizar con backend
+    // Sincronizar con backend (el hook ya maneja la actualización del estado local)
     const actualizado = await actualizarEstadoPlan(planId, nuevoEstado);
     if (!actualizado) {
       // Revertir si falla
