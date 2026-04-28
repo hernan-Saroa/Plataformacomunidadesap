@@ -1666,15 +1666,19 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       console.log(`   Fechas: ${fechaInicio} → ${fechaFin}`);
       console.log(`   Roles configurados: ${rolesConfig.length}`);
       
+      /** Solo actividades con checkbox marcado en el wizard (`incluidaEnPlan !== false`). */
+      const actividadesTemplateIncluidas = (rc: any) =>
+        (rc.actividadesSeleccionadas || []).filter((a: any) => a?.incluidaEnPlan !== false);
+
       let totalActividadesEsperadas = 0;
       let totalTareasEsperadas = 0;
       for (const rc of rolesConfig) {
-        const actSel = rc.actividadesSeleccionadas?.length || 0;
+        const actSel = actividadesTemplateIncluidas(rc).length;
         const actCus = rc.actividadesCustom?.length || 0;
         const totalAct = actSel + actCus;
         totalActividadesEsperadas += totalAct;
         
-        const todasActs = [...(rc.actividadesSeleccionadas || []), ...(rc.actividadesCustom || [])];
+        const todasActs = [...actividadesTemplateIncluidas(rc), ...(rc.actividadesCustom || [])];
         const tareasEnRol = todasActs.reduce((sum: number, a: any) => sum + (a.tareasSeguimiento?.length || 0), 0);
         totalTareasEsperadas += tareasEnRol;
         
@@ -1708,7 +1712,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
 
           // Además de los datos generales del plan, sincronizar SOLO actividades modificadas.
           const todasActividadesEdicion = rolesConfig.flatMap((rc: any) => [
-            ...(rc.actividadesSeleccionadas || []),
+            ...(rc.actividadesSeleccionadas || []).filter((a: any) => a?.incluidaEnPlan !== false),
             ...(rc.actividadesCustom || []),
           ]);
           const actividadesOriginales = (planAEditar?.roles || []).flatMap((r: any) => r.actividades || []);
@@ -1867,14 +1871,14 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         const rolBackend = planCreado.roles.find((r: any) => r.rol_numero === rolConfig.numero);
         
         if (rolBackend) {
-          // Combinar actividades seleccionadas y custom
+          // Combinar actividades seleccionadas (solo incluidas en plan) y custom
           const todasActividades = [
-            ...(rolConfig.actividadesSeleccionadas || []),
+            ...(rolConfig.actividadesSeleccionadas || []).filter((a: any) => a?.incluidaEnPlan !== false),
             ...(rolConfig.actividadesCustom || [])
           ];
 
           console.log(`📦 [handleCrearPlan] Rol ${rolBackend.rol_numero}:`, {
-            actividadesSeleccionadas: rolConfig.actividadesSeleccionadas?.length || 0,
+            actividadesSeleccionadas: (rolConfig.actividadesSeleccionadas || []).filter((a: any) => a?.incluidaEnPlan !== false).length,
             actividadesCustom: rolConfig.actividadesCustom?.length || 0,
             primeraActividad: todasActividades[0]?.nombre,
             tieneTareas: !!todasActividades[0]?.tareasSeguimiento,
@@ -1973,15 +1977,21 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               configuracionEvidencias: configuracionEvidencias,
               puntos_control: act.puntosControl && act.puntosControl.length > 0 ? act.puntosControl : undefined,
               frecuencia_puntos_control: act.frecuenciaPuntosControl || undefined,
-              // Tareas de seguimiento (sub-tareas de la actividad)
+              // Tareas de seguimiento — mismo shape que en edición (`construirPayloadActividad`)
+              // para que requiereObservaciones / requiereAdjuntos no se pierdan al crear el plan.
               tareas_seguimiento: act.tareasSeguimiento && act.tareasSeguimiento.length > 0 
                 ? act.tareasSeguimiento.map((t: any) => ({
                     id: t.id,
                     descripcion: t.descripcion,
                     completada: false,
                     responsables: t.responsables || [],
-                    // Compatibilidad: en varios flujos UI la fecha viene como fechaEntrega.
-                    fechaLimite: t.fechaLimite || t.fechaEntrega || t.fecha_limite || t.fecha_entrega || undefined,
+                    fechaLimite: t.fechaEntrega || t.fechaLimite || t.fecha_limite || t.fecha_entrega || null,
+                    fechaCompletada: undefined,
+                    completadaPor: undefined,
+                    requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
+                    requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
+                    observaciones: t.observaciones || '',
+                    adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
                   }))
                 : undefined,
             });
