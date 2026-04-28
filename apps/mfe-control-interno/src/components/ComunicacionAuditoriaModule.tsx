@@ -33,6 +33,7 @@ import { InputSIGL, TextareaSIGL } from '../gestion-legal/design-system/InputSIG
 import { toast } from 'sonner';
 import controlInternoService from '../../../services/api/controlInternoService';
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
+import { exportarPDFInformeCierre } from './services/exportarPDFInformeCierreEjecutivo';
 
 // ====================================
 // TIPOS Y DATOS
@@ -1074,7 +1075,6 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 onRecomendacionesChange={setRecomendacionesFuturas}
                 onDescargarPDF={async () => {
                   try {
-                    const { exportarPDFInformeCierre } = await import('./services/exportarPDFInformeCierreEjecutivo');
                     const totalHallazgos = hallazgos.length;
                     const hallazgosCriticos = hallazgos.filter((h) => String(h.gravedad || '').toUpperCase() === 'CRITICO').length;
                     const hallazgosMayores = hallazgos.filter((h) => String(h.gravedad || '').toUpperCase() === 'GRAVE').length;
