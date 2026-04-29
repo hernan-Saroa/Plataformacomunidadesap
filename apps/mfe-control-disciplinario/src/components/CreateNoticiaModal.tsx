@@ -439,6 +439,19 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       toast.success('Denunciante agregado');
     }
 
+    // Reset form to normal state: checkboxes unchecked and inputs empty for new entry
+    // Reset denunciante "Por determinar" checkboxes to false (unchecked) for clean state
+    setPorDeterminar(prev => ({
+      ...prev,
+      denuncianteNombre: false,
+      denuncianteIdentificacion: false,
+      denuncianteDireccion: false,
+      denuncianteTelefono: false,
+      denuncianteCorreo: false,
+      denuncianteCargo: false,
+      denuncianteEntidad: false
+    }));
+    // Then reset form fields to empty values
     setCurrentDenunciante({ id: '', nombre: '', identificacion: '', direccion: '', telefono: '', correo: '', cargo: '', entidad: '', tipo: 'Denunciante' });
     setMostrarApoderadoDenunciante(false);
     setApoderadoDenunciante({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
@@ -451,6 +464,17 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       setMostrarApoderadoDenunciante(true);
       setApoderadoDenunciante(denunciante.apoderado);
     }
+    // Set "Por determinar" checkboxes based on current values
+    setPorDeterminar(prev => ({
+      ...prev,
+      denuncianteNombre: denunciante.nombre === 'Por determinar',
+      denuncianteIdentificacion: denunciante.identificacion === 'Por determinar',
+      denuncianteDireccion: denunciante.direccion === 'Por determinar',
+      denuncianteTelefono: denunciante.telefono === 'Por determinar',
+      denuncianteCorreo: denunciante.correo === 'Por determinar',
+      denuncianteCargo: denunciante.cargo === 'Por determinar',
+      denuncianteEntidad: denunciante.entidad === 'Por determinar'
+    }));
   };
 
   const handleEliminarDenunciante = (id: string) => {
@@ -482,6 +506,16 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       toast.success('Denunciado agregado');
     }
 
+    // Reset form to normal state: checkboxes unchecked and inputs empty for new entry
+    // Reset denunciado "Por determinar" checkboxes to false (unchecked) for clean state
+    setPorDeterminar(prev => ({
+      ...prev,
+      denunciadoNombre: false,
+      denunciadoIdentificacion: false,
+      denunciadoCargo: false,
+      denunciadoLugarHechos: false
+    }));
+    // Then reset form fields to empty values
     setCurrentDenunciado({ id: '', nombre: '', identificacion: '', cargo: '', lugarHechos: '' });
     setMostrarApoderadoDenunciado(false);
     setApoderadoDenunciado({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
@@ -494,6 +528,14 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       setMostrarApoderadoDenunciado(true);
       setApoderadoDenunciado(denunciado.apoderado);
     }
+    // Set "Por determinar" checkboxes based on current values
+    setPorDeterminar(prev => ({
+      ...prev,
+      denunciadoNombre: denunciado.nombre === 'Por determinar',
+      denunciadoIdentificacion: denunciado.identificacion === 'Por determinar',
+      denunciadoCargo: denunciado.cargo === 'Por determinar',
+      denunciadoLugarHechos: denunciado.lugarHechos === 'Por determinar'
+    }));
   };
 
   const handleEliminarDenunciado = (id: string) => {
@@ -678,10 +720,10 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
         >
           <div>
             <h2 className="text-xl font-bold text-white">
-              {isEditMode ? 'Editar Noticia Disciplinaria' : 'Nueva Noticia Disciplinaria'}
+              {isEditMode ? 'Editar Noticia Disciplinaria' : 'Nueva Noticia Disciplinariass'}
             </h2>
             <p className="text-sm text-white/80 mt-1">
-              {isEditMode ? `Noticia ${noticiaToEdit?.numero || ''}` : 'RF001 – Sistema de radicación automática'}
+              {isEditMode ? `Noticia ${noticiaToEdit?.numero || ''}` : 'RF0012 – Sistema de radicación automática'}
             </p>
           </div>
           <button
@@ -696,7 +738,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
           <div className="flex items-center justify-between max-w-2xl mx-auto">
             {[
-              { num: 1, label: 'Datos Básicos' },
+              { num: 1, label: 'Datos Básicossssssssss' },
               { num: 2, label: 'Denunciados (Múltiples)' },
               { num: 3, label: 'Denunciantes' },
               { num: 4, label: 'Hechos y Documentos' }
