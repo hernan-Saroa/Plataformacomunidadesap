@@ -3785,15 +3785,16 @@ export function DashboardKanbanOperativo({
           nombre: primerDenunciante.nombre,
           cedula: primerDenunciante.identificacion || '',
           telefono: primerDenunciante.telefono || '',
-          email: primerDenunciante.correo || '',
+          email: (primerDenunciante.correo && primerDenunciante.correo !== 'Por determinar') ? primerDenunciante.correo : undefined,
           direccion: primerDenunciante.direccion || '',
           entidad: primerDenunciante.entidad || '',
           cargo: primerDenunciante.cargo || '',
           ...(primerDenunciante.apoderado?.nombre ? {
             apoderado: {
               nombre: primerDenunciante.apoderado.nombre || '',
+
               cedula: primerDenunciante.apoderado.cedula || '',
-              email: primerDenunciante.apoderado.correo || '',
+              email: (primerDenunciante.apoderado.correo && primerDenunciante.apoderado.correo !== 'Por determinar') ? primerDenunciante.apoderado.correo : undefined,
               telefono: primerDenunciante.apoderado.celular || '',
               direccion: primerDenunciante.apoderado.direccion || ''
             }
@@ -3811,7 +3812,7 @@ export function DashboardKanbanOperativo({
             apoderado: {
               nombre: primerDenunciado.apoderado.nombre || '',
               cedula: primerDenunciado.apoderado.cedula || '',
-              email: primerDenunciado.apoderado.correo || '',
+              email: (primerDenunciado.apoderado.correo && primerDenunciado.apoderado.correo !== 'Por determinar') ? primerDenunciado.apoderado.correo : undefined,
               telefono: primerDenunciado.apoderado.celular || '',
               direccion: primerDenunciado.apoderado.direccion || ''
             }
@@ -3827,7 +3828,7 @@ export function DashboardKanbanOperativo({
         newsData.denunciante.apoderado = {
           nombre: apoderadoDenunciante.nombre || '',
           cedula: apoderadoDenunciante.cedula || '',
-          email: apoderadoDenunciante.correo || apoderadoDenunciante.email || '',
+          email: (apoderadoDenunciante.correo && apoderadoDenunciante.correo !== 'Por determinar') || (apoderadoDenunciante.email && apoderadoDenunciante.email !== 'Por determinar') ? (apoderadoDenunciante.correo || apoderadoDenunciante.email) : undefined,
           telefono: apoderadoDenunciante.celular || apoderadoDenunciante.telefono || '',
           direccion: apoderadoDenunciante.direccion || ''
         };
@@ -3837,7 +3838,7 @@ export function DashboardKanbanOperativo({
         newsData.disciplinable.apoderado = {
           nombre: apoderadoDenunciado.nombre || '',
           cedula: apoderadoDenunciado.cedula || '',
-          email: apoderadoDenunciado.correo || apoderadoDenunciado.email || '',
+          email: (apoderadoDenunciado.correo && apoderadoDenunciado.correo !== 'Por determinar') || (apoderadoDenunciado.email && apoderadoDenunciado.email !== 'Por determinar') ? (apoderadoDenunciado.correo || apoderadoDenunciado.email) : undefined,
           telefono: apoderadoDenunciado.celular || apoderadoDenunciado.telefono || '',
           direccion: apoderadoDenunciado.direccion || ''
         };
