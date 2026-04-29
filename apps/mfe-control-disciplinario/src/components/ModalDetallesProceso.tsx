@@ -227,12 +227,6 @@ const MOCK_ACTUACIONES: ActuacionItem[] = [
   { id: 'a4', fecha: '2026-01-15', descripcion: 'Recepci�n de la noticia disciplinaria', tipo: 'recepcion', responsable: 'Secretar�a OCID', etapa: 'Recepci�n', observaciones: 'Ingreso inicial del asunto en el sistema disciplinario.' },
 ];
 
-const HISTORIAL_ETAPAS = [
-  { id: 'h1', desde: '—',           hacia: 'Recepción',    fecha: '2026-01-10', responsable: 'Secretaría OCID',  motivo: 'Registro de noticia disciplinaria en el sistema'                      },
-  { id: 'h2', desde: 'Recepción',   hacia: 'Valoración',   fecha: '2026-01-20', responsable: 'Jefe OCID',        motivo: 'Competencia verificada, se ordena valoración de la noticia'           },
-  { id: 'h3', desde: 'Valoración',  hacia: 'Indagación',   fecha: '2026-02-05', responsable: 'Dr. Andrés Moreno', motivo: 'Mérito suficiente para abrir indagación preliminar (Auto ID-2026-042)' },
-];
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getNombre(p: Persona | string | null | undefined): string {
@@ -3069,6 +3063,27 @@ export function ModalDetallesProceso({
     return acc;
   }, {});
 
+  // ═══ Historial real de cambios de etapa (derivado de actuaciones) ═══
+  const historialEtapas = actuaciones
+    .filter(a => a.tipo === 'cambio_etapa')
+    .slice()
+    .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+    .map((a, idx, arr) => {
+      // Extraer etapa anterior desde la descripción "Etapa anterior: X."
+      const matchDesde = a.descripcion.match(/[Ee]tapa anterior[:\s]+([^.]+)/);
+      const desde = matchDesde
+        ? normalizarEtapaActuacion(matchDesde[1].trim())
+        : (idx > 0 ? arr[idx - 1].etapa : '—');
+      return {
+        id: a.id,
+        desde,
+        hacia: a.etapa,
+        fecha: a.fecha,
+        responsable: a.responsable,
+        motivo: a.descripcion,
+      };
+    });
+
   // ═══ Tareas: etapas, filtrado y agrupación ═══
   const etapasTareas = Array.from(new Set(tareas.map(t => t.etapa).filter(Boolean)));
   const etapasTarOrdenadas = etapasTareas.sort((a, b) => {
@@ -3221,10 +3236,10 @@ export function ModalDetallesProceso({
     // ── Sección 5: Historial de Etapas
     lines.push('═══ HISTORIAL DE CAMBIOS DE ETAPA ═══');
     lines.push(['Fecha', 'Desde', 'Hacia', 'Responsable', 'Motivo'].join(sep));
-    HISTORIAL_ETAPAS.forEach(h => {
+    historialEtapas.forEach(h => {
       lines.push([h.fecha, h.desde, h.hacia, h.responsable, `"${h.motivo.replace(/"/g, '""')}"`].join(sep));
     });
-    lines.push(`Total Transiciones: ${HISTORIAL_ETAPAS.length}`);
+    lines.push(`Total Transiciones: ${historialEtapas.length}`);
     lines.push('');
 
     // ── Resumen por Etapa
@@ -4688,7 +4703,7 @@ export function ModalDetallesProceso({
                           Historial de Cambios de Etapa
                         </span>
                         <span className="ml-auto text-[9px] font-bold px-2 py-0.5 rounded-full text-white bg-purple-500">
-                          {HISTORIAL_ETAPAS.length} transiciones
+                          {historialEtapas.length} transiciones
                         </span>
                       </div>
                       <div className="p-3 bg-white">
@@ -4696,10 +4711,10 @@ export function ModalDetallesProceso({
                           {/* Línea vertical de timeline */}
                           <div className="absolute left-[9px] top-2 bottom-2 w-px bg-gradient-to-b from-purple-300 via-blue-300 to-green-300" />
                           <div className="space-y-3">
-                            {HISTORIAL_ETAPAS.map((h, idx) => {
+                            {historialEtapas.map((h, idx) => {
                               const epcHacia = etapaColor(h.hacia);
                               const epcDesde = h.desde !== '—' ? etapaColor(h.desde) : null;
-                              const isLast = idx === HISTORIAL_ETAPAS.length - 1;
+                              const isLast = idx === historialEtapas.length - 1;
                               return (
                                 <div key={h.id} className="flex items-start gap-3 relative pl-6">
                                   {/* Nodo del timeline */}
