@@ -13,6 +13,7 @@ import {
   configuracionesProfesionalesOCIApi,
   type ConfiguracionProfesionalOCI as ConfigBackend 
 } from './api';
+import { auditoriaService } from './auditoriaService';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -60,6 +61,7 @@ export interface ProfesionalOCI {
     auditoriasTotales: number;
     auditoriasComoLider: number;
     auditoriasComoEquipo: number;
+    auditoriasComoSupervisor: number;
     cargaPonderada: number;
     porcentajeCarga: number;
     horasAsignadas: number;
@@ -263,18 +265,21 @@ export function useConfiguracionProfesionales() {
       const configuraciones = (responseConfigs.data || []).map(convertirConfigBackendALocal);
       setConfiguracionesOCI(configuraciones);
 
-      // 4. Cargar auditorías para estadísticas (Kanban trae todas las activas)
+      // 4. Cargar auditorías para estadísticas (Usamos el servicio centralizado que coincide con el Programa Anual)
       setCargandoAuditorias(true);
-      const respAuditorias = await auditoriasApi.getAllKanban();
-      if (respAuditorias.success && respAuditorias.data) {
-        setAuditorias(respAuditorias.data);
+      try {
+        const auditoriasData = await auditoriaService.listar();
+        setAuditorias(auditoriasData || []);
+      } catch (err) {
+        console.error('Error cargando auditorías para estadísticas:', err);
+        setAuditorias([]);
       }
       setCargandoAuditorias(false);
       
       console.log('✅ Profesionales y Auditorías cargados:', {
         usuariosCandidatos: usuarios.length,
         configuracionesOCI: configuraciones.length,
-        auditorias: (respAuditorias.data || []).length
+        auditorias: (auditoriasData || []).length
       });
     } catch (err) {
       const mensaje = err instanceof Error ? err.message : 'Error al cargar profesionales';
@@ -298,13 +303,13 @@ export function useConfiguracionProfesionales() {
     const extraerNombre = (val: any): string => {
       if (!val) return '';
       if (typeof val === 'string') return val.toLowerCase().trim();
-      return (val.nombre || val.nombreCompleto || '').toLowerCase().trim();
+      return (val.nombre || val.nombreCompleto || val.nombre_completo || '').toLowerCase().trim();
     };
 
     const extraerId = (val: any): string => {
       if (!val) return '';
-      if (typeof val === 'string') return val;
-      return val.id || val.usuarioId || val.idTercero || '';
+      if (typeof val === 'string' || typeof val === 'number') return String(val).trim();
+      return String(val.id || val.usuarioId || val.idTercero || val.personaId || '').trim();
     };
 
     return configuracionesOCI
@@ -337,38 +342,106 @@ export function useConfiguracionProfesionales() {
 
         // --- CÁLCULO DE ESTADÍSTICAS REALES ---
         const nombreBusqueda = usuario.nombre.toLowerCase().trim();
-        const idTercero = String(config.idTercero);
-        const configId = config.id || '';
+        const idTercero = String(config.idTercero).trim();
+        const configId = String(config.id || '').trim();
+        const identificacion = String(usuario.identificacion || '').trim();
+
+        /**
+         * Helper para verificar si un profesional coincide con los datos de una auditoría
+         */
+        const esMismoProfesional = (pId: string, pNombre: string): boolean => {
+          // 1. Coincidencia por ID (UUID de tercero, ID de configuración o CC/Identificación)
+          if (pId) {
+            const idNorm = pId.trim();
+            if (idNorm === idTercero || idNorm === configId || (identificacion && idNorm === identificacion)) {
+              return true;
+            }
+          }
+
+          // 2. Coincidencia por Nombre
+          if (pNombre && nombreBusqueda) {
+            const nombreNorm = pNombre.toLowerCase().trim();
+            if (nombreNorm === nombreBusqueda) return true;
+            
+            // Coincidencias parciales significativas
+            if (nombreNorm.includes(nombreBusqueda) || nombreBusqueda.includes(nombreNorm)) {
+              return true;
+            }
+
+            // Coincidencia por tokens (ej: "Mario Bernal" coincide con "Mario Oswaldo Bernal Rodríguez")
+            const tokensBusqueda = nombreBusqueda.split(/\s+/).filter(t => t.length > 2);
+            const tokensNombre = nombreNorm.split(/\s+/).filter(t => t.length > 2);
+            const comunes = tokensBusqueda.filter(t => tokensNombre.includes(t));
+            
+            // Si coinciden al menos 2 palabras significativas, lo consideramos el mismo profesional
+            if (comunes.length >= 2) return true;
+          }
+
+          return false;
+        };
 
         // Auditorías donde es líder
         const comoLider = auditorias.filter(a => {
           const liderNombre = extraerNombre(a.auditorLider);
           const liderId = extraerId(a.auditorLiderId || a.auditorLider);
-          return liderNombre === nombreBusqueda || liderId === idTercero || liderId === configId;
+          
+          return esMismoProfesional(liderId, liderNombre);
         });
 
         // Auditorías donde está en el equipo (sin contar doble si es líder)
         const comoEquipo = auditorias.filter(a => {
+          // Si ya es líder, no lo sumamos como equipo para no duplicar carga
           if (comoLider.some(l => l.id === a.id)) return false;
-          const equipo = a.equipoAuditor || a.equipo || [];
+          
+          const equipo = a.equipo || a.equipoAuditor || [];
           const equipoIds = a.equipoAuditorIds || [];
           
-          return equipo.some((e: any) => extraerNombre(e) === nombreBusqueda || extraerId(e) === idTercero || extraerId(e) === configId) ||
-                 equipoIds.some((id: any) => String(id) === idTercero || String(id) === configId);
+          // Verificar en nombres del equipo
+          const matchNombre = equipo.some((e: any) => esMismoProfesional(extraerId(e), extraerNombre(e)));
+          // Verificar en IDs del equipo (respaldo)
+          const matchId = equipoIds.some((id: any) => esMismoProfesional(String(id), ''));
+          
+          return matchNombre || matchId;
         });
 
-        const auditoriasTotales = comoLider.length + comoEquipo.length;
-        const horasAsignadas = auditoriasTotales * 40; // Estimación simple si no hay horas en auditoría
+        // Auditorías donde es supervisor (Rol típico del Jefe OCI)
+        const comoSupervisor = auditorias.filter(a => {
+          if (comoLider.some(l => l.id === a.id) || comoEquipo.some(e => e.id === a.id)) return false;
+          
+          const supervisorNombre = a.supervisorAsignado || '';
+          const supervisorId = String(a.supervisorAsignadoId || '').trim();
+          
+          return esMismoProfesional(supervisorId, supervisorNombre);
+        });
+
+        const auditoriasTotales = comoLider.length + comoEquipo.length + comoSupervisor.length;
+        
+        // Calcular horas asignadas sumando las horas de cada auditoría
+        const horasAsignadas = [...comoLider, ...comoEquipo, ...comoSupervisor].reduce((total, a) => {
+          // Si la auditoría tiene horas estimadas, usarlas; de lo contrario usar un promedio de 40h
+          const horas = a.horasEstimadas || 40;
+          return total + horas;
+        }, 0);
 
         // ✅ Normalización anual (para coincidir con UniversoAuditableUnificado)
         const MESES_VIGENCIA = 12;
-        const capacidadAnual = (config.capacidadMaximaAuditorias || 4) * MESES_VIGENCIA;
-        const horasAnuales = (config.horasMensualesDisponibles || 150) * MESES_VIGENCIA;
+        const capacidadMensual = config.capacidadMaximaAuditorias || 4;
+        const capacidadAnual = capacidadMensual * MESES_VIGENCIA;
+        const horasMensualesDisponibles = config.horasMensualesDisponibles || 150;
+        const horasAnualesDisponibles = horasMensualesDisponibles * MESES_VIGENCIA;
         
-        // El porcentaje se basa en auditorías activas vs capacidad ANUAL (porque las auditorías son hitos del plan anual)
-        const porcentajeCarga = capacidadAnual > 0 
+        // 1. Porcentaje por cantidad de auditorías
+        const porcentajePorAuditorias = capacidadAnual > 0 
           ? Math.round((auditoriasTotales / capacidadAnual) * 100) 
           : 0;
+
+        // 2. Porcentaje por carga horaria
+        const porcentajePorHoras = horasAnualesDisponibles > 0 
+          ? Math.round((horasAsignadas / horasAnualesDisponibles) * 100) 
+          : 0;
+        
+        // El porcentaje de carga real es el mayor de los dos (mismo criterio que TabProfesionales)
+        const porcentajeCarga = Math.max(porcentajePorAuditorias, porcentajePorHoras);
 
         return {
           usuario,
@@ -377,7 +450,8 @@ export function useConfiguracionProfesionales() {
             auditoriasTotales,
             auditoriasComoLider: comoLider.length,
             auditoriasComoEquipo: comoEquipo.length,
-            cargaPonderada: auditoriasTotales,
+            auditoriasComoSupervisor: comoSupervisor.length,
+            cargaPonderada: (porcentajeCarga / 100) * capacidadMensual, // Carga en unidades de auditoría (ponderada por horas)
             porcentajeCarga: Math.min(porcentajeCarga, 100),
             horasAsignadas
           }

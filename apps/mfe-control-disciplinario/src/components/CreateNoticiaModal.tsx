@@ -57,7 +57,7 @@ interface Denunciado {
 
 interface CreateNoticiaModalProps {
   onClose: () => void;
-  onSave: (data: any) => void;
+  onSave: (data: any) => Promise<void>;
   noticiaToEdit?: any; // ✅ NUEVO: Noticia a editar (opcional)
   isEditMode?: boolean; // ✅ NUEVO: Modo edición
 }
@@ -168,13 +168,13 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     fechaHechos: noticiaToEdit?.fechaHechos || '',
     territorial: noticiaToEdit?.territorial || '',
     denunciado: {
-      nombre: noticiaToEdit?.denunciado?.nombre || '',
-      identificacion: noticiaToEdit?.denunciado?.numeroIdentificacion || '',
-      cargo: noticiaToEdit?.cargo || '',
-      dependencia: noticiaToEdit?.dependencia || ''
+      nombre: noticiaToEdit?.denunciado?.nombre || noticiaToEdit?.disciplinable?.nombre || '',
+      identificacion: noticiaToEdit?.denunciado?.numeroIdentificacion || noticiaToEdit?.disciplinable?.cedula || noticiaToEdit?.disciplinable?.documento || '',
+      cargo: noticiaToEdit?.cargo || noticiaToEdit?.disciplinable?.cargo || '',
+      dependencia: noticiaToEdit?.dependencia || noticiaToEdit?.disciplinable?.dependencia || ''
     },
     descripcionHechos: noticiaToEdit?.hechos || '',
-    conductasSeleccionadas: noticiaToEdit?.conductasSeleccionadas || [] as string[],
+    conductasSeleccionadas: noticiaToEdit?.conductasSeleccionadas || noticiaToEdit?.conductas || [] as string[],
     procesosRelacionados: noticiaToEdit?.procesosRelacionados || [] as string[]
   });
 
@@ -196,7 +196,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
   // ✅ NUEVO: Estado para conducta seleccionada y campo personalizado
   const [conductaSeleccionada, setConductaSeleccionada] = useState<string>(
-    noticiaToEdit?.conductaSeleccionada || ''
+    noticiaToEdit?.conductaSeleccionada || noticiaToEdit?.conductas?.[0] || ''
   );
   const [conductaPersonalizada, setConductaPersonalizada] = useState<string>(
     noticiaToEdit?.conductaPersonalizada || ''
@@ -231,18 +231,26 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   // ✅ NUEVO: Estado para múltiples denunciados
   const [denunciados, setDenunciados] = useState<Denunciado[]>(() => {
     if (!isEditMode || !noticiaToEdit) return [];
-    const denunciadoObj = noticiaToEdit.denunciado && typeof noticiaToEdit.denunciado !== 'string'
-      ? noticiaToEdit.denunciado
-      : null;
-    const nombre = denunciadoObj?.nombre || '';
-    if (!nombre || nombre === 'Sin denunciado') return [];
-    return [{
-      id: 'edit-0',
-      nombre,
-      identificacion: denunciadoObj?.numeroIdentificacion || '',
-      cargo: noticiaToEdit.cargo || '',
-      lugarHechos: noticiaToEdit.dependencia || ''
-    }];
+
+    // Handle both single object and array formats
+    let denunciadoData: any[] = [];
+    if (noticiaToEdit.denunciados && Array.isArray(noticiaToEdit.denunciados)) {
+      denunciadoData = noticiaToEdit.denunciados;
+    } else if (noticiaToEdit.denunciado && typeof noticiaToEdit.denunciado !== 'string') {
+      denunciadoData = [noticiaToEdit.denunciado];
+    } else if (noticiaToEdit.disciplinable) {
+      denunciadoData = [noticiaToEdit.disciplinable];
+    }
+
+    return denunciadoData
+      .filter(d => d?.nombre && d.nombre !== 'Sin denunciado')
+      .map((d, index) => ({
+        id: `edit-${index}`,
+        nombre: d.nombre || '',
+        identificacion: d.numeroIdentificacion || d.cedula || d.documento || d.identificacion || '',
+        cargo: d.cargo || noticiaToEdit.cargo || '',
+        lugarHechos: d.lugarHechos || d.dependencia || noticiaToEdit.dependencia || ''
+      }));
   });
   const [currentDenunciado, setCurrentDenunciado] = useState<Denunciado>({
     id: '',
@@ -255,22 +263,30 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
   const [denunciantes, setDenunciantes] = useState<Denunciante[]>(() => {
     if (!isEditMode || !noticiaToEdit) return [];
-    const denuncianteObj = noticiaToEdit.denunciante && typeof noticiaToEdit.denunciante !== 'string'
-      ? noticiaToEdit.denunciante
-      : null;
-    const nombre = denuncianteObj?.nombre || '';
-    if (!nombre || nombre === 'Sin denunciante' || nombre === 'Anonimo') return [];
-    return [{
-      id: 'edit-0',
-      nombre,
-      identificacion: denuncianteObj?.numeroIdentificacion || '',
-      direccion: '',
-      telefono: '',
-      correo: '',
-      cargo: '',
-      entidad: '',
-      tipo: 'Denunciante' as const
-    }];
+
+    // Handle both single object and array formats
+    let denuncianteData: any[] = [];
+    if (noticiaToEdit.denunciantes && Array.isArray(noticiaToEdit.denunciantes)) {
+      denuncianteData = noticiaToEdit.denunciantes;
+    } else if (noticiaToEdit.denunciante && typeof noticiaToEdit.denunciante !== 'string') {
+      denuncianteData = [noticiaToEdit.denunciante];
+    } else if (noticiaToEdit.denunciante) {
+      denuncianteData = [noticiaToEdit.denunciante];
+    }
+
+    return denuncianteData
+      .filter(d => d?.nombre && d.nombre !== 'Sin denunciante' && d.nombre !== 'Anonimo')
+      .map((d, index) => ({
+        id: `edit-${index}`,
+        nombre: d.nombre || '',
+        identificacion: d.numeroIdentificacion || d.cedula || d.documento || d.identificacion || '',
+        direccion: d.direccion || '',
+        telefono: d.telefono || '',
+        correo: d.email || d.correo || '',
+        cargo: d.cargo || '',
+        entidad: d.entidad || d.dependencia || '',
+        tipo: (d.tipo as 'Denunciante' | 'Víctima') || 'Denunciante'
+      }));
   });
   const [currentDenunciante, setCurrentDenunciante] = useState<Denunciante>({
     id: '',
@@ -439,6 +455,19 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       toast.success('Denunciante agregado');
     }
 
+    // Reset form to normal state: checkboxes unchecked and inputs empty for new entry
+    // Reset denunciante "Por determinar" checkboxes to false (unchecked) for clean state
+    setPorDeterminar(prev => ({
+      ...prev,
+      denuncianteNombre: false,
+      denuncianteIdentificacion: false,
+      denuncianteDireccion: false,
+      denuncianteTelefono: false,
+      denuncianteCorreo: false,
+      denuncianteCargo: false,
+      denuncianteEntidad: false
+    }));
+    // Then reset form fields to empty values
     setCurrentDenunciante({ id: '', nombre: '', identificacion: '', direccion: '', telefono: '', correo: '', cargo: '', entidad: '', tipo: 'Denunciante' });
     setMostrarApoderadoDenunciante(false);
     setApoderadoDenunciante({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
@@ -451,6 +480,17 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       setMostrarApoderadoDenunciante(true);
       setApoderadoDenunciante(denunciante.apoderado);
     }
+    // Set "Por determinar" checkboxes based on current values
+    setPorDeterminar(prev => ({
+      ...prev,
+      denuncianteNombre: denunciante.nombre === 'Por determinar',
+      denuncianteIdentificacion: denunciante.identificacion === 'Por determinar',
+      denuncianteDireccion: denunciante.direccion === 'Por determinar',
+      denuncianteTelefono: denunciante.telefono === 'Por determinar',
+      denuncianteCorreo: denunciante.correo === 'Por determinar',
+      denuncianteCargo: denunciante.cargo === 'Por determinar',
+      denuncianteEntidad: denunciante.entidad === 'Por determinar'
+    }));
   };
 
   const handleEliminarDenunciante = (id: string) => {
@@ -482,6 +522,16 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       toast.success('Denunciado agregado');
     }
 
+    // Reset form to normal state: checkboxes unchecked and inputs empty for new entry
+    // Reset denunciado "Por determinar" checkboxes to false (unchecked) for clean state
+    setPorDeterminar(prev => ({
+      ...prev,
+      denunciadoNombre: false,
+      denunciadoIdentificacion: false,
+      denunciadoCargo: false,
+      denunciadoLugarHechos: false
+    }));
+    // Then reset form fields to empty values
     setCurrentDenunciado({ id: '', nombre: '', identificacion: '', cargo: '', lugarHechos: '' });
     setMostrarApoderadoDenunciado(false);
     setApoderadoDenunciado({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
@@ -494,6 +544,14 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       setMostrarApoderadoDenunciado(true);
       setApoderadoDenunciado(denunciado.apoderado);
     }
+    // Set "Por determinar" checkboxes based on current values
+    setPorDeterminar(prev => ({
+      ...prev,
+      denunciadoNombre: denunciado.nombre === 'Por determinar',
+      denunciadoIdentificacion: denunciado.identificacion === 'Por determinar',
+      denunciadoCargo: denunciado.cargo === 'Por determinar',
+      denunciadoLugarHechos: denunciado.lugarHechos === 'Por determinar'
+    }));
   };
 
   const handleEliminarDenunciado = (id: string) => {
@@ -635,7 +693,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // Validar todos los pasos antes de guardar
     const step1Valid = validateStep1();
     const step2Valid = validateStep2();
@@ -665,7 +723,13 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       conductaPersonalizada: conductaSeleccionada === 'Otro' ? conductaPersonalizada : null
     };
 
-    onSave(dataToSave);
+    try {
+      await onSave(dataToSave);
+      onClose();
+    } catch (error) {
+      // Error is handled by the parent, but ensure modal stays open
+      console.error('Error saving noticia:', error);
+    }
   };
 
   return (
@@ -678,10 +742,10 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
         >
           <div>
             <h2 className="text-xl font-bold text-white">
-              {isEditMode ? 'Editar Noticia Disciplinaria' : 'Nueva Noticia Disciplinaria'}
+              {isEditMode ? 'Editar Noticia Disciplinaria' : 'Nueva Noticia Disciplinariass'}
             </h2>
             <p className="text-sm text-white/80 mt-1">
-              {isEditMode ? `Noticia ${noticiaToEdit?.numero || ''}` : 'RF001 – Sistema de radicación automática'}
+              {isEditMode ? `Noticia ${noticiaToEdit?.numero || ''}` : 'RF0012 – Sistema de radicación automática'}
             </p>
           </div>
           <button
@@ -696,7 +760,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
           <div className="flex items-center justify-between max-w-2xl mx-auto">
             {[
-              { num: 1, label: 'Datos Básicos' },
+              { num: 1, label: 'Datos Básicossssssssss' },
               { num: 2, label: 'Denunciados (Múltiples)' },
               { num: 3, label: 'Denunciantes' },
               { num: 4, label: 'Hechos y Documentos' }

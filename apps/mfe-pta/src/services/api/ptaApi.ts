@@ -1543,5 +1543,25 @@ export async function bulkUploadBancoDocentes(file: File) {
   }
 }
 
+export async function exportBancoDocentes(): Promise<Blob> {
+  const token = localStorage.getItem('esap_auth_token') || localStorage.getItem('esap_access_token') || '';
+  const baseUrl = (apiClient as any).baseURL || '';
+  const res = await fetch(`${baseUrl}${BD_BASE}/export`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Error al exportar');
+  return res.blob();
+}
+
+export async function downloadBancoDocentesTemplate(): Promise<Blob> {
+  const token = localStorage.getItem('esap_auth_token') || localStorage.getItem('esap_access_token') || '';
+  const baseUrl = (apiClient as any).baseURL || '';
+  const res = await fetch(`${baseUrl}${BD_BASE}/template`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Plantilla no disponible');
+  return res.blob();
+}
+
 // ═══ Solicitudes PTA — Segundo PTA ═══════════════════════════════════
 

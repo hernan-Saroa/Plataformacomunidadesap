@@ -1141,30 +1141,79 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
     };
 
     return profesionalesOCI.map(p => {
-      const nombre = p.usuario.nombre.toLowerCase().trim();
-      const configId = p.configuracion.id || '';
-      const idTercero = String(p.configuracion.idTercero);
+      const nombreBusqueda = p.usuario.nombre.toLowerCase().trim();
+      const configId = String(p.configuracion.id || '').trim();
+      const idTercero = String(p.configuracion.idTercero).trim();
+      const identificacion = String(p.usuario.identificacion || '').trim();
 
-      // Auditorías donde este profesional es líder (match por nombre, id config, o idTercero)
+      /**
+       * Helper para verificar si un profesional coincide con los datos de una auditoría
+       */
+      const esMismoProfesional = (pId: string, pNombre: string): boolean => {
+        // 1. Coincidencia por ID (UUID de tercero, ID de configuración o CC/Identificación)
+        if (pId) {
+          const idNorm = pId.trim();
+          if (idNorm === idTercero || idNorm === configId || (identificacion && idNorm === identificacion)) {
+            return true;
+          }
+        }
+
+        // 2. Coincidencia por Nombre
+        if (pNombre && nombreBusqueda) {
+          const nombreNorm = pNombre.toLowerCase().trim();
+          if (nombreNorm === nombreBusqueda) return true;
+          
+          // Coincidencias parciales significativas
+          if (nombreNorm.includes(nombreBusqueda) || nombreBusqueda.includes(nombreNorm)) {
+            return true;
+          }
+
+          // Coincidencia por tokens (ej: "Mario Bernal" coincide con "Mario Oswaldo Bernal Rodríguez")
+          const tokensBusqueda = nombreBusqueda.split(/\s+/).filter(t => t.length > 2);
+          const tokensNombre = nombreNorm.split(/\s+/).filter(t => t.length > 2);
+          const comunes = tokensBusqueda.filter(t => tokensNombre.includes(t));
+          
+          if (comunes.length >= 2) return true;
+        }
+
+        return false;
+      };
+
+      // Auditorías donde este profesional es líder
       const comoLider = auditorias.filter(a => {
-        const lider = (a.auditorLider || '').toLowerCase().trim();
-        return lider === nombre || a.auditorLider === configId || a.auditorLider === idTercero;
+        const liderNombre = typeof a.auditorLider === 'string' ? a.auditorLider : (a.auditorLider as any)?.nombre || '';
+        const liderId = typeof a.auditorLider === 'string' ? a.auditorLider : (a.auditorLider as any)?.id || (a.auditorLider as any)?.idTercero || '';
+        
+        return esMismoProfesional(liderId, liderNombre);
       });
 
       // Auditorías donde este profesional está en el equipo
       const comoEquipo = auditorias.filter(a => {
         if (comoLider.some(l => l.id === a.id)) return false; // No contar doble
-        return a.equipo.some(e => {
+        
+        const equipo = a.equipo || [];
+        return equipo.some(e => {
           const miembroNombre = extraerNombre(e);
           const miembroId = extraerId(e);
-          return miembroNombre === nombre || miembroId === configId || miembroId === idTercero;
+          return esMismoProfesional(miembroId, miembroNombre);
         });
       });
 
-      const auditoriasTotales = comoLider.length + comoEquipo.length;
-      const horasLider = comoLider.reduce((sum, a) => sum + (a.horasEstimadas || 0), 0);
-      const horasEquipo = comoEquipo.reduce((sum, a) => sum + (a.horasEstimadas || 0), 0);
-      const horasAsignadas = horasLider + horasEquipo;
+      // Auditorías donde este profesional es supervisor (Rol típico del Jefe OCI)
+      const comoSupervisor = auditorias.filter(a => {
+        if (comoLider.some(l => l.id === a.id) || comoEquipo.some(e => e.id === a.id)) return false;
+        
+        const supervisorNombre = (a as any).supervisorAsignado || '';
+        const supervisorId = String((a as any).supervisorAsignadoId || '').trim();
+        
+        return esMismoProfesional(supervisorId, supervisorNombre);
+      });
+
+      const auditoriasTotales = comoLider.length + comoEquipo.length + comoSupervisor.length;
+      const horasAsignadas = [...comoLider, ...comoEquipo, ...comoSupervisor].reduce((total, a) => {
+        const horas = a.horasEstimadas || 40;
+        return total + horas;
+      }, 0);
 
       // ✅ FIX: El programa es ANUAL (Vigencia), pero la configuración es MENSUAL.
       // Debemos comparar totales anuales contra capacidad anual (mensual * 12).
@@ -1189,7 +1238,8 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
           auditoriasTotales,
           auditoriasComoLider: comoLider.length,
           auditoriasComoEquipo: comoEquipo.length,
-          cargaPonderada: porcentajeCarga,
+          auditoriasComoSupervisor: comoSupervisor.length,
+          cargaPonderada: (porcentajeCarga / 100) * capacidadMensual,
           porcentajeCarga,
           horasAsignadas,
           capacidadAnual,

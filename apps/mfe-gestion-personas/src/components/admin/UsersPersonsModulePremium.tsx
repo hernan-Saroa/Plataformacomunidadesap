@@ -659,6 +659,15 @@ export function UsersPersonsModulePremium() {
     });
   };
 
+  const triggerBancoDocentesSync = async () => {
+    try {
+      const ptaBase = import.meta.env.VITE_API_MODE === 'direct'
+        ? 'http://localhost:3003'
+        : (import.meta.env.VITE_API_URL || window.location.origin + '/services') + '/pta/api/v1';
+      await fetch(`${ptaBase}/pta/banco-docentes/sync-from-auth`, { method: 'POST' });
+    } catch { /* best-effort, no bloqueamos al usuario */ }
+  };
+
   const handleSaveAssignedRoles = async () => {
     if (!selectedUser) return;
     if (selectedRoleIds.size === 0) {
@@ -673,6 +682,12 @@ export function UsersPersonsModulePremium() {
       await usersService.updateUser(selectedUser.id_user || selectedUser.id, {
         roleIds: Array.from(selectedRoleIds)
       });
+
+      // Si se asignó rol DOCENTE, sincronizar con banco de docentes
+      const assignedRoles = availableRoles.filter(r => selectedRoleIds.has(r.id));
+      const hasDocente = assignedRoles.some(r => r.code === 'DOCENTE');
+      if (hasDocente) triggerBancoDocentesSync();
+
       toast.success('Roles asignados', {
         description: `Se actualizaron los roles de ${selectedUser.firstName} ${selectedUser.lastName}`
       });
@@ -763,12 +778,17 @@ export function UsersPersonsModulePremium() {
 
       const newUser = await usersService.createUser(createUserData);
 
+      // Si se creó con rol DOCENTE, sincronizar con banco de docentes
+      if (createUserData.roleIds?.length) {
+        const assignedRoles = availableRoles.filter(r => createUserData.roleIds!.includes(r.id));
+        if (assignedRoles.some(r => r.code === 'DOCENTE')) triggerBancoDocentesSync();
+      }
+
       toast.success('Usuario Creado Exitosamente', {
         description: `${userData.firstName} ${userData.lastName} ha sido registrado.`
       });
 
       setShowCreateModal(false);
-      // Refetch users
       await loadUsers();
     } catch (error: any) {
       console.error('Error al crear usuario:', error);

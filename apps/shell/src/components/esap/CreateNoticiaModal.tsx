@@ -57,7 +57,7 @@ interface Denunciado {
 
 interface CreateNoticiaModalProps {
   onClose: () => void;
-  onSave: (data: any) => void;
+  onSave: (data: any) => Promise<void>;
   noticiaToEdit?: any; // ✅ NUEVO: Noticia a editar (opcional)
   isEditMode?: boolean; // ✅ NUEVO: Modo edición
 }
@@ -126,6 +126,12 @@ const ORIGEN_DB_A_LABEL: Record<string, string> = {
 };
 
 export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode }: CreateNoticiaModalProps) {
+  // Función para validar email
+  const validarEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const [currentStep, setCurrentStep] = useState(1);
   const [conductasIndisciplinarias, setConductasIndisciplinarias] = useState<DisciplinaryBehavior[]>([]);
   const [loadingConductas, setLoadingConductas] = useState(true);
@@ -162,13 +168,13 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     fechaHechos: noticiaToEdit?.fechaHechos || '',
     territorial: noticiaToEdit?.territorial || '',
     denunciado: {
-      nombre: noticiaToEdit?.denunciado?.nombre || '',
-      identificacion: noticiaToEdit?.denunciado?.numeroIdentificacion || '',
-      cargo: noticiaToEdit?.cargo || '',
-      dependencia: noticiaToEdit?.dependencia || ''
+      nombre: noticiaToEdit?.denunciado?.nombre || noticiaToEdit?.disciplinable?.nombre || '',
+      identificacion: noticiaToEdit?.denunciado?.numeroIdentificacion || noticiaToEdit?.disciplinable?.cedula || noticiaToEdit?.disciplinable?.documento || '',
+      cargo: noticiaToEdit?.cargo || noticiaToEdit?.disciplinable?.cargo || '',
+      dependencia: noticiaToEdit?.dependencia || noticiaToEdit?.disciplinable?.dependencia || ''
     },
     descripcionHechos: noticiaToEdit?.hechos || '',
-    conductasSeleccionadas: noticiaToEdit?.conductasSeleccionadas || [] as string[],
+    conductasSeleccionadas: noticiaToEdit?.conductasSeleccionadas || noticiaToEdit?.conductas || [] as string[],
     procesosRelacionados: noticiaToEdit?.procesosRelacionados || [] as string[]
   });
 
@@ -190,7 +196,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
   // ✅ NUEVO: Estado para conducta seleccionada y campo personalizado
   const [conductaSeleccionada, setConductaSeleccionada] = useState<string>(
-    noticiaToEdit?.conductaSeleccionada || ''
+    noticiaToEdit?.conductaSeleccionada || noticiaToEdit?.conductas?.[0] || ''
   );
   const [conductaPersonalizada, setConductaPersonalizada] = useState<string>(
     noticiaToEdit?.conductaPersonalizada || ''
@@ -225,18 +231,26 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   // ✅ NUEVO: Estado para múltiples denunciados
   const [denunciados, setDenunciados] = useState<Denunciado[]>(() => {
     if (!isEditMode || !noticiaToEdit) return [];
-    const denunciadoObj = noticiaToEdit.denunciado && typeof noticiaToEdit.denunciado !== 'string'
-      ? noticiaToEdit.denunciado
-      : null;
-    const nombre = denunciadoObj?.nombre || '';
-    if (!nombre || nombre === 'Sin denunciado') return [];
-    return [{
-      id: 'edit-0',
-      nombre,
-      identificacion: denunciadoObj?.numeroIdentificacion || '',
-      cargo: noticiaToEdit.cargo || '',
-      lugarHechos: noticiaToEdit.dependencia || ''
-    }];
+
+    // Handle both single object and array formats
+    let denunciadoData: any[] = [];
+    if (noticiaToEdit.denunciados && Array.isArray(noticiaToEdit.denunciados)) {
+      denunciadoData = noticiaToEdit.denunciados;
+    } else if (noticiaToEdit.denunciado && typeof noticiaToEdit.denunciado !== 'string') {
+      denunciadoData = [noticiaToEdit.denunciado];
+    } else if (noticiaToEdit.disciplinable) {
+      denunciadoData = [noticiaToEdit.disciplinable];
+    }
+
+    return denunciadoData
+      .filter(d => d?.nombre && d.nombre !== 'Sin denunciado')
+      .map((d, index) => ({
+        id: `edit-${index}`,
+        nombre: d.nombre || '',
+        identificacion: d.numeroIdentificacion || d.cedula || d.documento || d.identificacion || '',
+        cargo: d.cargo || noticiaToEdit.cargo || '',
+        lugarHechos: d.lugarHechos || d.dependencia || noticiaToEdit.dependencia || ''
+      }));
   });
   const [currentDenunciado, setCurrentDenunciado] = useState<Denunciado>({
     id: '',
@@ -249,22 +263,30 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
   const [denunciantes, setDenunciantes] = useState<Denunciante[]>(() => {
     if (!isEditMode || !noticiaToEdit) return [];
-    const denuncianteObj = noticiaToEdit.denunciante && typeof noticiaToEdit.denunciante !== 'string'
-      ? noticiaToEdit.denunciante
-      : null;
-    const nombre = denuncianteObj?.nombre || '';
-    if (!nombre || nombre === 'Sin denunciante' || nombre === 'Anonimo') return [];
-    return [{
-      id: 'edit-0',
-      nombre,
-      identificacion: denuncianteObj?.numeroIdentificacion || '',
-      direccion: '',
-      telefono: '',
-      correo: '',
-      cargo: '',
-      entidad: '',
-      tipo: 'Denunciante' as const
-    }];
+
+    // Handle both single object and array formats
+    let denuncianteData: any[] = [];
+    if (noticiaToEdit.denunciantes && Array.isArray(noticiaToEdit.denunciantes)) {
+      denuncianteData = noticiaToEdit.denunciantes;
+    } else if (noticiaToEdit.denunciante && typeof noticiaToEdit.denunciante !== 'string') {
+      denuncianteData = [noticiaToEdit.denunciante];
+    } else if (noticiaToEdit.denunciante) {
+      denuncianteData = [noticiaToEdit.denunciante];
+    }
+
+    return denuncianteData
+      .filter(d => d?.nombre && d.nombre !== 'Sin denunciante' && d.nombre !== 'Anonimo')
+      .map((d, index) => ({
+        id: `edit-${index}`,
+        nombre: d.nombre || '',
+        identificacion: d.numeroIdentificacion || d.cedula || d.documento || d.identificacion || '',
+        direccion: d.direccion || '',
+        telefono: d.telefono || '',
+        correo: d.email || d.correo || '',
+        cargo: d.cargo || '',
+        entidad: d.entidad || d.dependencia || '',
+        tipo: (d.tipo as 'Denunciante' | 'Víctima') || 'Denunciante'
+      }));
   });
   const [currentDenunciante, setCurrentDenunciante] = useState<Denunciante>({
     id: '',
@@ -418,6 +440,26 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       return;
     }
 
+    // Validar email del denunciante
+    if (currentDenunciante.correo && !porDeterminar.denuncianteCorreo) {
+      if (currentDenunciante.correo !== 'Por determinar' && !validarEmail(currentDenunciante.correo)) {
+        setErrors(prev => ({ ...prev, denuncianteEmail: 'El email del denunciante debe ser válido' }));
+        return;
+      }
+    } else {
+      setErrors(prev => ({ ...prev, denuncianteEmail: '' }));
+    }
+
+    // Validar email del apoderado del denunciante
+    if (mostrarApoderadoDenunciante && apoderadoDenunciante.correo) {
+      if (apoderadoDenunciante.correo !== 'Por determinar' && !validarEmail(apoderadoDenunciante.correo)) {
+        setErrors(prev => ({ ...prev, apoderadoDenuncianteEmail: 'El email del apoderado debe ser válido' }));
+        return;
+      }
+    } else {
+      setErrors(prev => ({ ...prev, apoderadoDenuncianteEmail: '' }));
+    }
+
     const denuncianteData: Denunciante = {
       ...currentDenunciante,
       id: editingDenuncianteId || Date.now().toString(),
@@ -433,6 +475,19 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       toast.success('Denunciante agregado');
     }
 
+    // Reset form to normal state: checkboxes unchecked and inputs empty for new entry
+    // Reset denunciante "Por determinar" checkboxes to false (unchecked) for clean state
+    setPorDeterminar(prev => ({
+      ...prev,
+      denuncianteNombre: false,
+      denuncianteIdentificacion: false,
+      denuncianteDireccion: false,
+      denuncianteTelefono: false,
+      denuncianteCorreo: false,
+      denuncianteCargo: false,
+      denuncianteEntidad: false
+    }));
+    // Then reset form fields to empty values
     setCurrentDenunciante({ id: '', nombre: '', identificacion: '', direccion: '', telefono: '', correo: '', cargo: '', entidad: '', tipo: 'Denunciante' });
     setMostrarApoderadoDenunciante(false);
     setApoderadoDenunciante({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
@@ -461,6 +516,16 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       return;
     }
 
+    // Validar email del apoderado del denunciado
+    if (mostrarApoderadoDenunciado && apoderadoDenunciado.correo) {
+      if (apoderadoDenunciado.correo !== 'Por determinar' && !validarEmail(apoderadoDenunciado.correo)) {
+        setErrors(prev => ({ ...prev, apoderadoDenunciadoEmail: 'El email del apoderado debe ser válido' }));
+        return;
+      }
+    } else {
+      setErrors(prev => ({ ...prev, apoderadoDenunciadoEmail: '' }));
+    }
+
     const denunciadoData: Denunciado = {
       ...currentDenunciado,
       id: editingDenunciadoId || Date.now().toString(),
@@ -476,6 +541,16 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       toast.success('Denunciado agregado');
     }
 
+    // Reset form to normal state: checkboxes unchecked and inputs empty for new entry
+    // Reset denunciado "Por determinar" checkboxes to false (unchecked) for clean state
+    setPorDeterminar(prev => ({
+      ...prev,
+      denunciadoNombre: false,
+      denunciadoIdentificacion: false,
+      denunciadoCargo: false,
+      denunciadoLugarHechos: false
+    }));
+    // Then reset form fields to empty values
     setCurrentDenunciado({ id: '', nombre: '', identificacion: '', cargo: '', lugarHechos: '' });
     setMostrarApoderadoDenunciado(false);
     setApoderadoDenunciado({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
@@ -550,6 +625,13 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       newErrors.denunciados = 'Debe agregar al menos un denunciado';
     }
 
+    // Validar email del apoderado del denunciado si existe
+    if (mostrarApoderadoDenunciado && apoderadoDenunciado.correo) {
+      if (apoderadoDenunciado.correo !== 'Por determinar' && !validarEmail(apoderadoDenunciado.correo)) {
+        newErrors.apoderadoDenunciadoEmail = 'El email del apoderado debe ser válido o estar vacío';
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -607,7 +689,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const valid = validateStep4();
     if (!valid) return;
 
@@ -626,7 +708,13 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       conductaPersonalizada: conductaSeleccionada === 'Otro' ? conductaPersonalizada : null
     };
 
-    onSave(dataToSave);
+    try {
+      await onSave(dataToSave);
+      onClose();
+    } catch (error) {
+      // Error is handled by the parent, but ensure modal stays open
+      console.error('Error saving noticia:', error);
+    }
   };
 
   return (
@@ -1143,10 +1231,16 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         <input
                           type="email"
                           value={apoderadoDenunciado.correo}
-                          onChange={(e) => setApoderadoDenunciado({ ...apoderadoDenunciado, correo: e.target.value })}
+                          onChange={(e) => {
+                            setApoderadoDenunciado({ ...apoderadoDenunciado, correo: e.target.value });
+                            setErrors(prev => ({ ...prev, apoderadoDenunciadoEmail: '' }));
+                          }}
                           placeholder="apoderado@ejemplo.com"
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.apoderadoDenunciadoEmail ? 'border-red-500' : 'border-gray-300'}`}
                         />
+                        {errors.apoderadoDenunciadoEmail && (
+                          <p className="text-xs text-red-600 mt-1">{errors.apoderadoDenunciadoEmail}</p>
+                        )}
                       </div>
                       {/* ✅ NUEVO: Campo de Dirección del Apoderado */}
                       <div className="col-span-2">
@@ -1500,10 +1594,16 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     <input
                       type="email"
                       value={currentDenunciante.correo}
-                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, correo: e.target.value })}
+                      onChange={(e) => {
+                        setCurrentDenunciante({ ...currentDenunciante, correo: e.target.value });
+                        setErrors(prev => ({ ...prev, denuncianteEmail: '' }));
+                      }}
                       disabled={porDeterminar.denuncianteCorreo}
-                      className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denuncianteCorreo ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.denuncianteEmail ? 'border-red-500' : 'border-gray-300'} ${porDeterminar.denuncianteCorreo ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     />
+                    {errors.denuncianteEmail && (
+                      <p className="text-xs text-red-600 mt-1">{errors.denuncianteEmail}</p>
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
@@ -1642,10 +1742,16 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         <input
                           type="email"
                           value={apoderadoDenunciante.correo}
-                          onChange={(e) => setApoderadoDenunciante({ ...apoderadoDenunciante, correo: e.target.value })}
+                          onChange={(e) => {
+                            setApoderadoDenunciante({ ...apoderadoDenunciante, correo: e.target.value });
+                            setErrors(prev => ({ ...prev, apoderadoDenuncianteEmail: '' }));
+                          }}
                           placeholder="apoderado@ejemplo.com"
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.apoderadoDenuncianteEmail ? 'border-red-500' : 'border-gray-300'}`}
                         />
+                        {errors.apoderadoDenuncianteEmail && (
+                          <p className="text-xs text-red-600 mt-1">{errors.apoderadoDenuncianteEmail}</p>
+                        )}
                       </div>
                     </div>
                   )}

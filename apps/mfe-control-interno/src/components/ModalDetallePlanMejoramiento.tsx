@@ -515,9 +515,15 @@
                                               const accionesCompletadas = plan.acciones.filter(
                                                 (a) => a.estado === 'COMPLETADA' || (a.progreso ?? 0) >= 100
                                               ).length;
-                                              const accionesEnEjecucion = plan.acciones.filter(a => a.estado === 'EN_EJECUCION').length;
-                                              const accionesPendientes = plan.acciones.filter(a => a.estado === 'PENDIENTE').length;
-                                              const accionesVencidas = plan.acciones.filter(a => a.estado === 'VENCIDA').length;
+                                              const accionesEnEjecucion = plan.acciones.filter(
+                                                (a) => a.estado === 'EN_EJECUCION' || ((a.progreso ?? 0) > 0 && (a.progreso ?? 0) < 100)
+                                              ).length;
+                                              const accionesPendientes = plan.acciones.filter(
+                                                (a) => a.estado === 'PENDIENTE' && (a.progreso ?? 0) === 0
+                                              ).length;
+                                              const accionesVencidas = plan.acciones.filter(
+                                                (a) => a.estado === 'VENCIDA' && (a.progreso ?? 0) < 100
+                                              ).length;
 
                                               const totalHallazgos = plan.hallazgos.length;
                                               const hallazgosResueltos = plan.hallazgos.filter(h => h.progreso === 100).length;
@@ -1532,29 +1538,53 @@
                                           }
 
                                           // ════════════════════════════════════════════════════════════════════════════
-                                          // TAB: ACCIONES — filtros por avance del HALLAZGO (0% / 1–99% / 100%)
+                                          // TAB: ACCIONES — filtros por ESTADO EFECTIVO del hallazgo
+                                          // H_PENDIENTE  : todas sus acciones están pendientes (progreso = 0)
+                                          // H_EJECUCION  : al menos una acción en progreso O estados mixtos
+                                          // H_COMPLETADA : TODAS las acciones están completadas (progreso ≥ 100)
                                           // ════════════════════════════════════════════════════════════════════════════
 
-                                          /** % de avance del hallazgo = proporción de acciones completadas (alineado con backend) */
+                                          type FiltroHallazgoAcciones = 'TODOS' | 'H_PENDIENTE' | 'H_EJECUCION' | 'H_COMPLETADA';
+
+                                          /** Calcula el estado efectivo de una acción (igual que backend determinarEstadoAccionReal) */
+                                          function estadoEfectivoAccion(a: AccionCorrectiva): 'COMPLETADA' | 'VENCIDA' | 'EN_EJECUCION' | 'PENDIENTE' {
+                                            const prog = a.progreso ?? 0;
+                                            if (prog >= 100) return 'COMPLETADA';
+                                            if (a.estado === 'VENCIDA') return 'VENCIDA';
+                                            if (prog > 0) return 'EN_EJECUCION';
+                                            return 'PENDIENTE';
+                                          }
+
+                                          /**
+                                           * Determina el bucket del hallazgo basándose en los estados efectivos de sus acciones:
+                                           * - H_COMPLETADA : TODAS completadas
+                                           * - H_PENDIENTE  : TODAS pendientes (sin progreso)
+                                           * - H_EJECUCION  : cualquier mezcla (en ejecución, completadas + pendientes, etc.)
+                                           */
+                                          function bucketHallazgoPorEstados(
+                                            plan: PlanMejoramientoDetalle,
+                                            hallazgoId: string
+                                          ): Exclude<FiltroHallazgoAcciones, 'TODOS'> {
+                                            const accs = plan.acciones.filter((a) => a.hallazgoId === hallazgoId);
+                                            if (accs.length === 0) return 'H_PENDIENTE'; // sin acciones = pendiente
+                                            const estados = accs.map(estadoEfectivoAccion);
+                                            const todasCompletadas = estados.every((e) => e === 'COMPLETADA');
+                                            if (todasCompletadas) return 'H_COMPLETADA';
+                                            const todasPendientes = estados.every((e) => e === 'PENDIENTE');
+                                            if (todasPendientes) return 'H_PENDIENTE';
+                                            // Mezcla de cualquier tipo → En ejecución
+                                            return 'H_EJECUCION';
+                                          }
+
+                                          /** % de avance visual del hallazgo (para mostrar en la cabecera de grupo) */
                                           function progresoHallazgoDesdeAcciones(
                                             plan: PlanMejoramientoDetalle,
                                             hallazgoId: string
                                           ): number {
                                             const accs = plan.acciones.filter((a) => a.hallazgoId === hallazgoId);
                                             if (accs.length === 0) return 0;
-                                            const completadas = accs.filter(
-                                              (a) =>
-                                                a.estado === 'COMPLETADA' || (a.progreso ?? 0) >= 100
-                                            ).length;
-                                            return Math.round((completadas / accs.length) * 100);
-                                          }
-
-                                          type FiltroHallazgoAcciones = 'TODOS' | 'H_PENDIENTE' | 'H_EJECUCION' | 'H_COMPLETADA';
-
-                                          function bucketHallazgoPorPct(pct: number): Exclude<FiltroHallazgoAcciones, 'TODOS'> {
-                                            if (pct <= 0) return 'H_PENDIENTE';
-                                            if (pct >= 100) return 'H_COMPLETADA';
-                                            return 'H_EJECUCION';
+                                            const sum = accs.reduce((s, a) => s + Math.min(100, Math.max(0, a.progreso ?? 0)), 0);
+                                            return Math.round(sum / accs.length);
                                           }
 
                                           interface TabAccionesProps {
@@ -1569,28 +1599,35 @@
                                             const [filtroHallazgo, setFiltroHallazgo] = useState<FiltroHallazgoAcciones>('TODOS');
                                             const [modalCrearAccion, setModalCrearAccion] = useState(false);
 
+                                            // ── Contadores por ACCIÓN individual (no por hallazgo) ─────────────────
                                             const conteosPorBucket = useMemo(() => {
                                               let pend = 0;
                                               let ejec = 0;
                                               let comp = 0;
-                                              for (const h of plan.hallazgos) {
-                                                const pct = progresoHallazgoDesdeAcciones(plan, h.id);
-                                                const b = bucketHallazgoPorPct(pct);
-                                                if (b === 'H_PENDIENTE') pend += 1;
-                                                else if (b === 'H_EJECUCION') ejec += 1;
-                                                else comp += 1;
+                                              for (const a of plan.acciones) {
+                                                const e = estadoEfectivoAccion(a);
+                                                if (e === 'COMPLETADA') comp += 1;
+                                                else if (e === 'EN_EJECUCION') ejec += 1;
+                                                else pend += 1; // PENDIENTE o VENCIDA se cuentan en pendientes
                                               }
                                               return { pend, ejec, comp };
-                                            }, [plan.hallazgos, plan.acciones]);
+                                            }, [plan.acciones]);
 
+                                            // ── Filtrar hallazgos que tengan AL MENOS 1 acción en el estado seleccionado ──
                                             const hallazgosFiltrados = useMemo(() => {
+                                              if (filtroHallazgo === 'TODOS') return plan.hallazgos;
                                               return plan.hallazgos.filter((h) => {
-                                                const pct = progresoHallazgoDesdeAcciones(plan, h.id);
-                                                const b = bucketHallazgoPorPct(pct);
-                                                if (filtroHallazgo === 'TODOS') return true;
-                                                return b === filtroHallazgo;
+                                                const accs = plan.acciones.filter((a) => a.hallazgoId === h.id);
+                                                return accs.some((a) => {
+                                                  const e = estadoEfectivoAccion(a);
+                                                  if (filtroHallazgo === 'H_COMPLETADA') return e === 'COMPLETADA';
+                                                  if (filtroHallazgo === 'H_EJECUCION') return e === 'EN_EJECUCION';
+                                                  if (filtroHallazgo === 'H_PENDIENTE') return e === 'PENDIENTE' || e === 'VENCIDA';
+                                                  return false;
+                                                });
                                               });
                                             }, [plan.hallazgos, plan.acciones, filtroHallazgo]);
+
 
                                             const accionesFiltradas = useMemo(() => {
                                               const ids = new Set(hallazgosFiltrados.map((h) => h.id));
@@ -1604,10 +1641,10 @@
                                                     <div>
                                                       <h3 className="text-base font-medium text-gray-900">Acciones correctivas por hallazgo</h3>
                                                       <p className="text-sm text-gray-600">
-                                                        Filtros según avance del hallazgo:{' '}
-                                                        <span className="font-medium text-gray-800">0% pendiente</span>,{' '}
-                                                        <span className="font-medium text-gray-800">1–99% en ejecución</span>,{' '}
-                                                        <span className="font-medium text-gray-800">100% completado</span>
+                                                        Filtros por estado de acción:{' '}
+                                                        <span className="font-medium text-gray-800">Pendiente</span>,{' '}
+                                                        <span className="font-medium text-gray-800">En Ejecución</span>,{' '}
+                                                        <span className="font-medium text-gray-800">Completada</span>
                                                       </p>
                                                       <p className="text-xs text-gray-500 mt-1">
                                                         {hallazgosFiltrados.length} hallazgo(s) · {accionesFiltradas.length} acción(es)
@@ -1627,12 +1664,12 @@
                                                     <FiltroButton
                                                       active={filtroHallazgo === 'TODOS'}
                                                       onClick={() => setFiltroHallazgo('TODOS')}
-                                                      label={`Todas (${plan.hallazgos.length})`}
+                                                      label={`Todas (${plan.acciones.length})`}
                                                     />
                                                     <FiltroButton
                                                       active={filtroHallazgo === 'H_PENDIENTE'}
                                                       onClick={() => setFiltroHallazgo('H_PENDIENTE')}
-                                                      label={`Pendientes 0% (${conteosPorBucket.pend})`}
+                                                      label={`Pendientes (${conteosPorBucket.pend})`}
                                                       color="gray"
                                                     />
                                                     <FiltroButton
@@ -1667,9 +1704,17 @@
                                                 ) : (
                                                   hallazgosFiltrados.map((hallazgo) => {
                                                     const pct = progresoHallazgoDesdeAcciones(plan, hallazgo.id);
-                                                    const accsDeH = plan.acciones.filter((a) => a.hallazgoId === hallazgo.id);
+                                                    const accsDeH = plan.acciones.filter((a) => {
+                                                      if (a.hallazgoId !== hallazgo.id) return false;
+                                                      if (filtroHallazgo === 'TODOS') return true;
+                                                      const e = estadoEfectivoAccion(a);
+                                                      if (filtroHallazgo === 'H_COMPLETADA') return e === 'COMPLETADA';
+                                                      if (filtroHallazgo === 'H_EJECUCION') return e === 'EN_EJECUCION';
+                                                      if (filtroHallazgo === 'H_PENDIENTE') return e === 'PENDIENTE' || e === 'VENCIDA';
+                                                      return false;
+                                                    });
                                                     const desc = (hallazgo.descripcion || '').trim();
-                                                    const bucket = bucketHallazgoPorPct(pct);
+                                                    const bucket = bucketHallazgoPorEstados(plan, hallazgo.id);
                                                     const bucketLabel =
                                                       bucket === 'H_PENDIENTE'
                                                         ? 'Pendiente'
@@ -1801,7 +1846,17 @@
                                               VENCIDA: { bg: 'bg-red-100', text: 'text-red-700', label: 'Vencida', icon: XCircle }
                                             };
 
-                                            const config = estadoConfig[accion.estado];
+                                            // Calcular estado efectivo igual que el backend (determinarEstadoAccionReal)
+                                            // Esto garantiza que el badge sea coherente aunque el estado en BD esté desactualizado
+                                            const estadoEfectivo = ((): 'PENDIENTE' | 'EN_EJECUCION' | 'COMPLETADA' | 'VENCIDA' => {
+                                              const prog = accion.progreso ?? 0;
+                                              if (prog >= 100) return 'COMPLETADA';
+                                              if (accion.estado === 'VENCIDA') return 'VENCIDA';
+                                              if (prog > 0) return 'EN_EJECUCION';
+                                              return 'PENDIENTE';
+                                            })();
+
+                                            const config = estadoConfig[estadoEfectivo];
                                             const Icon = config.icon;
                                             const hallazgo = plan.hallazgos.find(h => h.id === accion.hallazgoId);
 
@@ -1815,8 +1870,8 @@
                                             };
 
                                             const handleMarcarCompletada = async () => {
-                                              // Validar que no esté ya completada
-                                              if (accion.estado === 'COMPLETADA') {
+                                              // Validar que no esté ya completada (usar estadoEfectivo para coherencia con badge)
+                                              if (estadoEfectivo === 'COMPLETADA') {
                                                 toast.warning('Acción ya completada', {
                                                   description: 'Esta acción ya se encuentra en estado completado',
                                                 });
@@ -1966,7 +2021,7 @@
                                                         <Upload className="w-3.5 h-3.5" />
                                                         Cargar Evidencia
                                                       </button>
-                                                      {accion.estado !== 'COMPLETADA' && (
+                                                      {estadoEfectivo !== 'COMPLETADA' && (
                                                         <button 
                                                           onClick={handleMarcarCompletada}
                                                           className="px-3 py-1.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded text-sm hover:shadow transition-all flex items-center gap-1.5"

@@ -61,6 +61,7 @@ interface DenunciadoCompleto {
   identificacion: string;
   cargo: string;
   lugarHechos: string;
+  dependencia?: string;
   apoderado?: Apoderado;
 }
 
@@ -3989,7 +3990,6 @@ export function ModalDetallesProceso({
                     f.setFullYear(f.getFullYear() + 5);
                     return f.toISOString().split('T')[0];
                   })() : null;
-
                   return (
                   <div className="space-y-3">
                     {/* Datos del Proceso */}
@@ -4104,6 +4104,13 @@ export function ModalDetallesProceso({
                           <p className="text-xs text-gray-500 mt-0.5">{getId(proceso.denunciado)}</p>
                         )}
                         {cargo && <p className="text-xs text-gray-600 mt-1">{cargo}</p>}
+                        {proceso.denunciados?.[0]?.dependencia && <p className="text-xs text-gray-600 mt-1">{proceso.denunciados[0].dependencia}</p>}
+                        {proceso.denunciados?.[0]?.lugarHechos && (
+                          <p className="text-xs text-gray-600 mt-1 flex items-start gap-1">
+                            <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                            {proceso.denunciados[0].lugarHechos}
+                          </p>
+                        )}
                         {proceso.denunciados?.[0]?.apoderado && (
                           <div className="mt-2 pt-2 border-t border-orange-200">
                             <div className="flex items-center gap-1 mb-1">
@@ -4127,6 +4134,8 @@ export function ModalDetallesProceso({
                                 <div>
                                   <p className="text-xs font-semibold text-gray-800">{d.nombre}</p>
                                   {d.cargo && <p className="text-[10px] text-gray-500">{d.cargo}</p>}
+                                  {d.dependencia && <p className="text-[10px] text-gray-500">{d.dependencia}</p>}
+                                  {d.lugarHechos && <p className="text-[10px] text-gray-500 flex items-start gap-1"><MapPin className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />{d.lugarHechos}</p>}
                                 </div>
                               </div>
                             ))}
@@ -4149,6 +4158,16 @@ export function ModalDetallesProceso({
                         {getId(proceso.denunciante) && (
                           <p className="text-xs text-gray-500 mt-0.5">{getId(proceso.denunciante)}</p>
                         )}
+                        {proceso.denunciantes?.[0] && (
+                          <div className="mt-1 space-y-0.5">
+                            {proceso.denunciantes[0].tipo && <p className="text-xs text-blue-600 font-medium">{proceso.denunciantes[0].tipo}</p>}
+                            {proceso.denunciantes[0].direccion && <p className="text-xs text-gray-600 flex items-start gap-1"><MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />{proceso.denunciantes[0].direccion}</p>}
+                            {proceso.denunciantes[0].telefono && <p className="text-xs text-gray-600 flex items-start gap-1"><Phone className="w-3 h-3 mt-0.5 flex-shrink-0" />{proceso.denunciantes[0].telefono}</p>}
+                            {proceso.denunciantes[0].correo && <p className="text-xs text-gray-600 flex items-start gap-1"><Mail className="w-3 h-3 mt-0.5 flex-shrink-0" />{proceso.denunciantes[0].correo}</p>}
+                            {proceso.denunciantes[0].cargo && <p className="text-xs text-gray-600">{proceso.denunciantes[0].cargo}</p>}
+                            {proceso.denunciantes[0].entidad && <p className="text-xs text-gray-600">{proceso.denunciantes[0].entidad}</p>}
+                          </div>
+                        )}
                         {proceso.denunciantes?.[0]?.apoderado && (
                           <div className="mt-2 pt-2 border-t border-gray-200">
                             <div className="flex items-center gap-1 mb-1">
@@ -4169,9 +4188,16 @@ export function ModalDetallesProceso({
                             {proceso.denunciantes.slice(1).map((d, i) => (
                               <div key={d.id || i} className="flex items-center gap-2">
                                 <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{ backgroundColor: '#003DA5' }}>{i + 2}</div>
-                                <div>
+                                <div className="flex-1 min-w-0">
                                   <p className="text-xs font-semibold text-gray-800">{d.nombre}</p>
-                                  {d.tipo && <span className="text-[9px] text-blue-600 font-medium">{d.tipo}</span>}
+                                  <div className="text-[9px] text-gray-600 space-y-0.5 mt-0.5">
+                                    {d.tipo && <p className="text-blue-600 font-medium">{d.tipo}</p>}
+                                    {d.direccion && <p className="flex items-start gap-1"><MapPin className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />{d.direccion}</p>}
+                                    {d.telefono && <p className="flex items-start gap-1"><Phone className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />{d.telefono}</p>}
+                                    {d.correo && <p className="flex items-start gap-1"><Mail className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />{d.correo}</p>}
+                                    {d.cargo && <p>{d.cargo}</p>}
+                                    {d.entidad && <p>{d.entidad}</p>}
+                                  </div>
                                 </div>
                               </div>
                             ))}

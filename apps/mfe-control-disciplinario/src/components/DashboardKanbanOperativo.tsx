@@ -742,6 +742,22 @@ function TarjetaProceso({
                     {proceso.denunciante.numeroIdentificacion}
                   </p>
                 )}
+                {proceso.denunciantes?.[0] && (
+                  <div className="text-[11px] text-gray-500 mt-0.5 space-y-0.5">
+                    {proceso.denunciantes[0].tipo && <p className="text-blue-600 font-medium">{proceso.denunciantes[0].tipo}</p>}
+                    {proceso.denunciantes[0].correo && <p className="truncate flex items-start gap-1"><Mail className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />{proceso.denunciantes[0].correo}</p>}
+                    {proceso.denunciantes[0].cargo && <p className="truncate">{proceso.denunciantes[0].cargo}</p>}
+                    {proceso.denunciantes[0].entidad && <p className="truncate">{proceso.denunciantes[0].entidad}</p>}
+                  </div>
+                )}
+                {(() => {
+                const apoderado = (typeof proceso.denunciante !== 'string' && proceso.denunciante?.apoderado) || proceso.denunciantes?.[0]?.apoderado;
+                return apoderado?.nombre ? (
+                  <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200 pt-1">
+                    Apoderado: {apoderado.nombre}
+                  </p>
+                ) : null;
+                })()}
 
               </div>
             </div>
@@ -756,6 +772,20 @@ function TarjetaProceso({
                     {proceso.denunciado.numeroIdentificacion}
                   </p>
                 )}
+                {proceso.denunciados?.[0]?.lugarHechos && (
+                  <p className="text-[11px] text-gray-500 truncate mt-0.5 flex items-start gap-1">
+                    <MapPin className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />
+                    {proceso.denunciados[0].lugarHechos}
+                  </p>
+                )}
+                {(() => {
+                const apoderado = (typeof proceso.denunciado !== 'string' && proceso.denunciado?.apoderado) || proceso.denunciados?.[0]?.apoderado;
+                return apoderado?.nombre ? (
+                  <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200 pt-1">
+                    Apoderado: {apoderado.nombre}
+                  </p>
+                ) : null;
+                })()}
 
               </div>
             </div>
@@ -2751,6 +2781,28 @@ export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = [])
   const denuncianteData = Array.isArray(proceso.news?.denunciante) ? proceso.news?.denunciante?.[0] : proceso.news?.denunciante;
   const disciplinableData = Array.isArray(proceso.news?.disciplinable) ? proceso.news?.disciplinable?.[0] : proceso.news?.disciplinable;
 
+  // Map single objects to arrays for consistency with frontend expectations
+  const denunciados: DenunciadoCompleto[] = disciplinableData ? [{
+    id: '1',
+    nombre: (disciplinableData as any)?.nombre || 'Sin disciplinable',
+    identificacion: (disciplinableData as any)?.cedula || (disciplinableData as any)?.documento || '',
+    cargo: (disciplinableData as any)?.cargo || '',
+    lugarHechos: (disciplinableData as any)?.dependencia || '',
+    dependencia: (disciplinableData as any)?.dependencia || ''
+  }] : [];
+
+  const denunciantes: DenuncianteCompleto[] = denuncianteData ? [{
+    id: '1',
+    nombre: (denuncianteData as any)?.nombre || 'Sin denunciante',
+    identificacion: (denuncianteData as any)?.cedula || (denuncianteData as any)?.documento || '',
+    direccion: (denuncianteData as any)?.direccion || '',
+    telefono: (denuncianteData as any)?.telefono || '',
+    correo: (denuncianteData as any)?.email || '',
+    cargo: (denuncianteData as any)?.cargo || '',
+    entidad: (denuncianteData as any)?.dependencia || (denuncianteData as any)?.entidad || '',
+    tipo: 'Denunciante' as const
+  }] : [];
+
   return {
     id: proceso.id,
     numeroProceso: proceso.radicadoProceso,
@@ -2791,6 +2843,18 @@ export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = [])
     procesoAsociadoFecha: proceso.procesoAsociadoFecha,
     procesoAsociadoJustificacion: proceso.procesoAsociadoJustificacion,
     profesionalAsignadoId: proceso.abogadoAsignadoId,
+    // Add the missing fields from news
+    territorial: proceso.news?.territorial,
+    fechaHechos: proceso.news?.fechaHechos,
+    conductaSeleccionada: proceso.news?.conductas?.[0] || '',
+    conductaPersonalizada: '',
+    denunciados,
+    denunciantes,
+    hechosSeparados: [],
+    archivosAdjuntos: [],
+    origenNoticia: proceso.news?.origen,
+    fechaRecepcionNoticia: proceso.news?.fechaRecepcion,
+    prioridadNoticia: proceso.news?.estado === 'ALTA' ? 'alta' : proceso.news?.estado === 'MEDIA' ? 'media' : 'baja'
   };
 };
 
@@ -3438,6 +3502,49 @@ export function DashboardKanbanOperativo({
       fechaCreacion: fechaCreacion.toISOString().split('T')[0],
       tipo: 'proceso' as const,
       hechos: proceso.news?.hechos,
+      cargo: proceso.news?.disciplinable?.cargo || '',
+      dependencia: proceso.news?.disciplinable?.dependencia || '',
+      // ═══ Campos heredados de la Noticia disciplinaria ═══
+      territorial: proceso.news?.territorial || '',
+      fechaHechos: proceso.news?.fechaHechos || '',
+      conductaSeleccionada: proceso.news?.conductas?.[0] || '',
+      conductaPersonalizada: '',
+      denunciados: proceso.news?.disciplinable ? [{
+        id: proceso.news.disciplinable.cedula || proceso.news.disciplinable.documento || proceso.id,
+        nombre: proceso.news.disciplinable.nombre || '',
+        identificacion: proceso.news.disciplinable.cedula || proceso.news.disciplinable.documento || '',
+        cargo: proceso.news.disciplinable.cargo || '',
+        lugarHechos: proceso.news.disciplinable.lugarHechos || '',
+        dependencia: proceso.news.disciplinable.dependencia || '',
+        apoderado: proceso.news.disciplinable.apoderado ? {
+          nombre: proceso.news.disciplinable.apoderado.nombre,
+          cedula: proceso.news.disciplinable.apoderado.cedula,
+          correo: proceso.news.disciplinable.apoderado.correo,
+          celular: proceso.news.disciplinable.apoderado.celular,
+        } : undefined,
+      }] : [],
+      denunciantes: proceso.news?.denunciante ? [{
+        id: proceso.news.denunciante.cedula || proceso.news.denunciante.documento || proceso.id,
+        nombre: proceso.news.denunciante.nombre || '',
+        identificacion: proceso.news.denunciante.cedula || proceso.news.denunciante.documento || '',
+        direccion: proceso.news.denunciante.direccion || '',
+        telefono: proceso.news.denunciante.telefono || '',
+        correo: proceso.news.denunciante.email || '',
+        cargo: proceso.news.denunciante.cargo || '',
+        entidad: proceso.news.denunciante.entidad || '',
+        tipo: proceso.news.denunciante.tipo || 'Denunciante',
+        apoderado: proceso.news.denunciante.apoderado ? {
+          nombre: proceso.news.denunciante.apoderado.nombre,
+          cedula: proceso.news.denunciante.apoderado.cedula,
+          correo: proceso.news.denunciante.apoderado.correo,
+          celular: proceso.news.denunciante.apoderado.celular,
+        } : undefined,
+      }] : [],
+      hechosSeparados: [],
+      archivosAdjuntos: [],
+      origenNoticia: proceso.news?.origen || '',
+      fechaRecepcionNoticia: proceso.news?.fechaRecepcion || proceso.news?.createdAt || '',
+      prioridadNoticia: proceso.news?.prioridad || 'media',
       // ✅ NUEVO: Incluir campos de asociación
       procesoAsociadoId,
       procesoAsociadoNumero,
@@ -3785,15 +3892,16 @@ export function DashboardKanbanOperativo({
           nombre: primerDenunciante.nombre,
           cedula: primerDenunciante.identificacion || '',
           telefono: primerDenunciante.telefono || '',
-          email: primerDenunciante.correo || '',
+          email: (primerDenunciante.correo && primerDenunciante.correo !== 'Por determinar') ? primerDenunciante.correo : undefined,
           direccion: primerDenunciante.direccion || '',
           entidad: primerDenunciante.entidad || '',
           cargo: primerDenunciante.cargo || '',
           ...(primerDenunciante.apoderado?.nombre ? {
             apoderado: {
               nombre: primerDenunciante.apoderado.nombre || '',
+
               cedula: primerDenunciante.apoderado.cedula || '',
-              email: primerDenunciante.apoderado.correo || '',
+              email: (primerDenunciante.apoderado.correo && primerDenunciante.apoderado.correo !== 'Por determinar') ? primerDenunciante.apoderado.correo : undefined,
               telefono: primerDenunciante.apoderado.celular || '',
               direccion: primerDenunciante.apoderado.direccion || ''
             }
@@ -3811,7 +3919,7 @@ export function DashboardKanbanOperativo({
             apoderado: {
               nombre: primerDenunciado.apoderado.nombre || '',
               cedula: primerDenunciado.apoderado.cedula || '',
-              email: primerDenunciado.apoderado.correo || '',
+              email: (primerDenunciado.apoderado.correo && primerDenunciado.apoderado.correo !== 'Por determinar') ? primerDenunciado.apoderado.correo : undefined,
               telefono: primerDenunciado.apoderado.celular || '',
               direccion: primerDenunciado.apoderado.direccion || ''
             }
@@ -3827,7 +3935,7 @@ export function DashboardKanbanOperativo({
         newsData.denunciante.apoderado = {
           nombre: apoderadoDenunciante.nombre || '',
           cedula: apoderadoDenunciante.cedula || '',
-          email: apoderadoDenunciante.correo || apoderadoDenunciante.email || '',
+          email: (apoderadoDenunciante.correo && apoderadoDenunciante.correo !== 'Por determinar') || (apoderadoDenunciante.email && apoderadoDenunciante.email !== 'Por determinar') ? (apoderadoDenunciante.correo || apoderadoDenunciante.email) : undefined,
           telefono: apoderadoDenunciante.celular || apoderadoDenunciante.telefono || '',
           direccion: apoderadoDenunciante.direccion || ''
         };
@@ -3837,7 +3945,7 @@ export function DashboardKanbanOperativo({
         newsData.disciplinable.apoderado = {
           nombre: apoderadoDenunciado.nombre || '',
           cedula: apoderadoDenunciado.cedula || '',
-          email: apoderadoDenunciado.correo || apoderadoDenunciado.email || '',
+          email: (apoderadoDenunciado.correo && apoderadoDenunciado.correo !== 'Por determinar') || (apoderadoDenunciado.email && apoderadoDenunciado.email !== 'Por determinar') ? (apoderadoDenunciado.correo || apoderadoDenunciado.email) : undefined,
           telefono: apoderadoDenunciado.celular || apoderadoDenunciado.telefono || '',
           direccion: apoderadoDenunciado.direccion || ''
         };
@@ -3874,48 +3982,10 @@ export function DashboardKanbanOperativo({
     } catch (error: any) {
       console.error('[DashboardKanban] Error al crear noticia en backend:', error);
 
-      // ✅ Fallback: crear localmente si el backend falla
-      console.log('[DashboardKanban] Creando noticia localmente como fallback...');
-
-      const nuevaNoticiaLocal: Noticia = {
-        id: `n${Date.now()}`,
-        numero: `NOT-2026-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
-        fechaRecepcion: data.fechaQueja || new Date().toISOString().split('T')[0],
-        fechaRegistro: new Date().toISOString(),
-        radicador: data.radicador || 'Usuario Actual',
-        origen: data.origen || 'Denuncia Ciudadana',
-        territorial: data.territorial || undefined,
-        fechaHechos: data.fechaHechos || undefined,
-        cargo: primerDenunciado?.cargo || data.denunciado?.cargo || undefined,
-        dependencia: primerDenunciado?.lugarHechos || data.denunciado?.dependencia || undefined,
-        conductaSeleccionada: data.conductaSeleccionada || undefined,
-        conductaPersonalizada: data.conductaPersonalizada || undefined,
-        denunciante: denunciantePersona,
-        denunciado: denunciadoPersona,
-        denunciados: data.denunciados || [],
-        denunciantes: data.denunciantes || [],
-        hechos: data.descripcionHechos || '',
-        hechosSeparados: data.hechosSeparados || [],
-        archivosAdjuntos: archivosMetadata,
-        estado: 'pendiente',
-        prioridad: 'media',
-        diasPendientes: 0,
-        tipo: 'noticia',
-        etapaActual: etapaInicial // ✅ Usar etapa desde configuración
-      };
-
-      setItems(prev => [...prev, nuevaNoticiaLocal]);
-
-      // Persistir en Supabase como fallback secundario
-      noticiasService.create(nuevaNoticiaLocal).catch(err => {
-        console.error('[DashboardKanban] Error al guardar noticia en Supabase:', err);
-      });
-
-      toast.warning('Noticia creada localmente', {
+      toast.error('Error al crear la noticia', {
         id: toastId,
-        description: 'No se pudo guardar en el servidor. La noticia se guardó localmente.'
+        description: error.message || 'Ocurrió un error al guardar en el servidor. La noticia no se creó.'
       });
-      setModalActivo(null);
     }
   };
 

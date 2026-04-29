@@ -124,9 +124,9 @@ export class ConsultasJuridicasController {
     @Patch(':id/enviar-a-jefe')
     async enviarAJefe(
         @Param('id') id: string,
-        @Body() body: { respuesta: string; usuario?: string }
+        @Body() body: { respuesta: string; usuario?: string; destinatariosAdicionales?: string[] }
     ) {
-        return this.consultasService.enviarAJefe(id, body.respuesta, body.usuario);
+        return this.consultasService.enviarAJefe(id, body.respuesta, body.usuario, body.destinatariosAdicionales);
     }
 
     @Patch(':id/aprobar-respuesta')

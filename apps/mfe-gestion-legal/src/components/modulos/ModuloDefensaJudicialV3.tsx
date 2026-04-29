@@ -315,6 +315,7 @@ export function ModuloDefensaJudicialV3() {
 
             return 'Sin asignar';
           })(),
+          abogadoSustanciador: exp.abogadoSustanciador, // UUID del abogado para comparación de identidad
           hechos: '',
           pretensiones: exp.pretensionDemandante || '',
           pretensionDemandante: exp.pretensionDemandante,
