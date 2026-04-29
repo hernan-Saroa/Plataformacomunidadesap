@@ -61,6 +61,7 @@ interface DenunciadoCompleto {
   identificacion: string;
   cargo: string;
   lugarHechos: string;
+  dependencia?: string;
   apoderado?: Apoderado;
 }
 
@@ -3989,7 +3990,6 @@ export function ModalDetallesProceso({
                     f.setFullYear(f.getFullYear() + 5);
                     return f.toISOString().split('T')[0];
                   })() : null;
-
                   return (
                   <div className="space-y-3">
                     {/* Datos del Proceso */}
@@ -4104,6 +4104,7 @@ export function ModalDetallesProceso({
                           <p className="text-xs text-gray-500 mt-0.5">{getId(proceso.denunciado)}</p>
                         )}
                         {cargo && <p className="text-xs text-gray-600 mt-1">{cargo}</p>}
+                        {proceso.denunciados?.[0]?.dependencia && <p className="text-xs text-gray-600 mt-1">{proceso.denunciados[0].dependencia}</p>}
                         {proceso.denunciados?.[0]?.lugarHechos && (
                           <p className="text-xs text-gray-600 mt-1 flex items-start gap-1">
                             <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />
@@ -4133,6 +4134,7 @@ export function ModalDetallesProceso({
                                 <div>
                                   <p className="text-xs font-semibold text-gray-800">{d.nombre}</p>
                                   {d.cargo && <p className="text-[10px] text-gray-500">{d.cargo}</p>}
+                                  {d.dependencia && <p className="text-[10px] text-gray-500">{d.dependencia}</p>}
                                   {d.lugarHechos && <p className="text-[10px] text-gray-500 flex items-start gap-1"><MapPin className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />{d.lugarHechos}</p>}
                                 </div>
                               </div>
