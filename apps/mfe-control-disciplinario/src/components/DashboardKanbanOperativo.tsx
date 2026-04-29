@@ -8,7 +8,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { createPortal } from 'react-dom';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, FileText, FolderOpen, AlertTriangle, Clock, Calendar,
   User, MoreVertical, Eye, Edit, Send, X, Check, Ban, Forward,
@@ -19,7 +19,7 @@ import {
   MapPin, Info, ExternalLink, RefreshCw, Paperclip, UserCheck,
   List, Columns3, Menu, Edit2, FileSignature, History,
   ChevronsDown, ChevronsUp, ChevronUp, ChevronLeft, ChevronRight, Zap, Link2, UserCog, MessageCircle,
-  ClipboardList, FileEdit, Loader2, CornerDownLeft
+  ClipboardList, FileEdit, Loader2
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -49,7 +49,19 @@ import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
 import { ModalAsociarProcesoAProceso } from './ModalAsociarProcesoAProceso'; // ✅ NUEVO: Modal para asociar proceso disciplinario a otro proceso
 import { convertirProcesoABorrador } from './utils-aprobacion'; // ✅ NUEVO: Utilidades de conversión
 import { obtenerAccionesPorEtapa, obtenerDescripcionEtapa, type EtapaProceso } from './accionesPorEtapa'; // ✅ NUEVO: Acciones por etapa
-import { useResponsive } from './hooks/useResponsive'; // ✅ Hook responsive simplificado
+import { useResponsive } from './hooks/useResponsive';
+
+// ==================== HELPERS GLOBALES ====================
+const getNombre = (p: any): string => {
+  if (!p) return 'Sin información';
+  return typeof p === 'string' ? p : (p.nombre || 'Sin información');
+};
+
+const getId = (p: any): string => {
+  if (!p || typeof p === 'string') return '';
+  return p.numeroIdentificacion ? `${p.tipoIdentificacion}: ${p.numeroIdentificacion}` : '';
+};
+
 import { ModalDetallesProceso } from './ModalDetallesProceso'; // ✅ Modal World Class con pestañas
 import { ModalDetallesAsociacion } from './ModalDetallesAsociacion'; // ✅ Modal para ver detalles de asociación de procesos
 import { WizardConvertirProcesoWorldClass } from './WizardConvertirProcesoWorldClass'; // ✅ Wizard conversión con disponibilidad de profesionales
@@ -85,6 +97,8 @@ function normalizeText(text: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 }
+
+
 
 /** Busca si `query` (ya normalizado) aparece en algún campo textual del item */
 function itemMatchesSearch(item: Item, normalizedQuery: string): boolean {
@@ -270,6 +284,8 @@ interface Proceso {
   };
 }
 
+
+
 type Item = Noticia | Proceso;
 type ModalType =
   | 'crear-noticia'
@@ -396,48 +412,90 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
 
           {/* Partes: Denunciante y Denunciado — KanbanCardInfoSection */}
           <KanbanCardInfoSection>
-            <div className="flex items-start gap-2.5">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DTE</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
-                  {String(noticia.denunciante ? (typeof noticia.denunciante === 'string' ? noticia.denunciante : noticia.denunciante.nombre) : 'Sin información')}
-                </p>
-                {noticia.denunciante && typeof noticia.denunciante !== 'string' && (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {noticia.denunciante.numeroIdentificacion}
-                  </p>
-                )}
-                {(() => {
-                  
-                const apoderado = (typeof noticia.denunciante !== 'string' && noticia.denunciante?.apoderado) || noticia.denunciantes?.[0]?.apoderado;
-                return apoderado?.nombre ? (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200 pt-1">
-                    Apoderado: {apoderado.nombre}
-                  </p>
-                ) : null;
-                })()}
-              </div>
+            {/* Denunciantes */}
+            <div className="space-y-2">
+              {noticia.denunciantes && noticia.denunciantes.length > 0 ? (
+                noticia.denunciantes.map((d, idx) => (
+                  <div key={d.id || idx} className="flex items-start gap-2.5">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
+                      {idx === 0 ? 'DTE' : `DTE ${idx + 1}`}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                        {d.nombre}
+                      </p>
+                      {d.identificacion && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                          {d.identificacion}
+                        </p>
+                      )}
+                      {d.apoderado?.nombre && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-100 pt-1">
+                          Ap: {d.apoderado.nombre}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-start gap-2.5">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DTE</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                      {getNombre(noticia.denunciante)}
+                    </p>
+                    {getId(noticia.denunciante) && (
+                      <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                        {getId(noticia.denunciante)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex items-start gap-2.5">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DDO</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
-                  {String(noticia.denunciado ? (typeof noticia.denunciado === 'string' ? noticia.denunciado : noticia.denunciado.nombre) : 'Sin información')}
-                </p>
-                {noticia.denunciado && typeof noticia.denunciado !== 'string' && (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {noticia.denunciado.numeroIdentificacion}
-                  </p>
-                )}
-                {(() => {
-                const apoderado = (typeof noticia.denunciado !== 'string' && noticia.denunciado?.apoderado) || noticia.denunciados?.[0]?.apoderado;
-                return apoderado?.nombre ? (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200 pt-1">
-                    Apoderado: {apoderado.nombre}
-                  </p>
-                ) : null;
-                })()}
-              </div>
+            {/* Denunciados */}
+            <div className="space-y-2 pt-1 border-t border-gray-50">
+              {noticia.denunciados && noticia.denunciados.length > 0 ? (
+                noticia.denunciados.map((d, idx) => (
+                  <div key={d.id || idx} className="flex items-start gap-2.5">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
+                      {idx === 0 ? 'DDO' : `DDO ${idx + 1}`}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                        {d.nombre}
+                      </p>
+                      {d.identificacion && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                          {d.identificacion}
+                        </p>
+                      )}
+                      {d.cargo && (
+                        <p className="text-[10px] text-gray-400 truncate">{d.cargo}</p>
+                      )}
+                      {d.apoderado?.nombre && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-100 pt-1">
+                          Ap: {d.apoderado.nombre}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-start gap-2.5">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DDO</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                      {getNombre(noticia.denunciado)}
+                    </p>
+                    {getId(noticia.denunciado) && (
+                      <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                        {getId(noticia.denunciado)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
             {/* Radicador */}
             {(noticia.radicador || noticia.radicadorId) && (
@@ -731,63 +789,103 @@ function TarjetaProceso({
 
           {/* Partes: Denunciante y Denunciado — KanbanCardInfoSection */}
           <KanbanCardInfoSection>
-            <div className="flex items-start gap-2.5">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DTE</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
-                  {String(proceso.denunciante ? (typeof proceso.denunciante === 'string' ? proceso.denunciante : proceso.denunciante.nombre) : 'Sin información')}
-                </p>
-                {proceso.denunciante && typeof proceso.denunciante !== 'string' && (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {proceso.denunciante.numeroIdentificacion}
-                  </p>
-                )}
-                {proceso.denunciantes?.[0] && (
-                  <div className="text-[11px] text-gray-500 mt-0.5 space-y-0.5">
-                    {proceso.denunciantes[0].tipo && <p className="text-blue-600 font-medium">{proceso.denunciantes[0].tipo}</p>}
-                    {proceso.denunciantes[0].correo && <p className="truncate flex items-start gap-1"><Mail className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />{proceso.denunciantes[0].correo}</p>}
-                    {proceso.denunciantes[0].cargo && <p className="truncate">{proceso.denunciantes[0].cargo}</p>}
-                    {proceso.denunciantes[0].entidad && <p className="truncate">{proceso.denunciantes[0].entidad}</p>}
+            {/* Denunciantes */}
+            <div className="space-y-2">
+              {proceso.denunciantes && proceso.denunciantes.length > 0 ? (
+                proceso.denunciantes.map((d, idx) => (
+                  <div key={d.id || idx} className="flex items-start gap-2.5">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
+                      {idx === 0 ? 'DTE' : `DTE ${idx + 1}`}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                        {d.nombre}
+                      </p>
+                      {d.identificacion && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                          {d.identificacion}
+                        </p>
+                      )}
+                      <div className="text-[10px] text-gray-500 mt-0.5 space-y-0.5">
+                        {d.tipo && <p className="text-blue-600 font-medium">{d.tipo}</p>}
+                        {d.correo && <p className="truncate flex items-start gap-1"><Mail className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />{d.correo}</p>}
+                        {d.cargo && <p className="truncate">{d.cargo}</p>}
+                        {d.entidad && <p className="truncate">{d.entidad}</p>}
+                      </div>
+                      {d.apoderado?.nombre && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-100 pt-1">
+                          Ap: {d.apoderado.nombre}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                )}
-                {(() => {
-                const apoderado = (typeof proceso.denunciante !== 'string' && proceso.denunciante?.apoderado) || proceso.denunciantes?.[0]?.apoderado;
-                return apoderado?.nombre ? (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200 pt-1">
-                    Apoderado: {apoderado.nombre}
-                  </p>
-                ) : null;
-                })()}
-
-              </div>
+                ))
+              ) : (
+                <div className="flex items-start gap-2.5">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DTE</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                      {getNombre(proceso.denunciante)}
+                    </p>
+                    {getId(proceso.denunciante) && (
+                      <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                        {getId(proceso.denunciante)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex items-start gap-2.5">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DDO</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
-                  {String(proceso.denunciado ? (typeof proceso.denunciado === 'string' ? proceso.denunciado : proceso.denunciado.nombre) : 'Sin información')}
-                </p>
-                {proceso.denunciado && typeof proceso.denunciado !== 'string' && (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {proceso.denunciado.numeroIdentificacion}
-                  </p>
-                )}
-                {proceso.denunciados?.[0]?.lugarHechos && (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5 flex items-start gap-1">
-                    <MapPin className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />
-                    {proceso.denunciados[0].lugarHechos}
-                  </p>
-                )}
-                {(() => {
-                const apoderado = (typeof proceso.denunciado !== 'string' && proceso.denunciado?.apoderado) || proceso.denunciados?.[0]?.apoderado;
-                return apoderado?.nombre ? (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200 pt-1">
-                    Apoderado: {apoderado.nombre}
-                  </p>
-                ) : null;
-                })()}
 
-              </div>
+            {/* Denunciados */}
+            <div className="space-y-2 pt-1 border-t border-gray-50">
+              {proceso.denunciados && proceso.denunciados.length > 0 ? (
+                proceso.denunciados.map((d, idx) => (
+                  <div key={d.id || idx} className="flex items-start gap-2.5">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
+                      {idx === 0 ? 'DDO' : `DDO ${idx + 1}`}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                        {d.nombre}
+                      </p>
+                      {d.identificacion && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                          {d.identificacion}
+                        </p>
+                      )}
+                      {d.cargo && (
+                        <p className="text-[10px] text-gray-400 truncate">{d.cargo}</p>
+                      )}
+                      {d.lugarHechos && (
+                        <p className="text-[10px] text-gray-500 truncate flex items-start gap-1">
+                          <MapPin className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />
+                          {d.lugarHechos}
+                        </p>
+                      )}
+                      {d.apoderado?.nombre && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-100 pt-1">
+                          Ap: {d.apoderado.nombre}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-start gap-2.5">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DDO</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                      {getNombre(proceso.denunciado)}
+                    </p>
+                    {getId(proceso.denunciado) && (
+                      <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                        {getId(proceso.denunciado)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </KanbanCardInfoSection>
 
