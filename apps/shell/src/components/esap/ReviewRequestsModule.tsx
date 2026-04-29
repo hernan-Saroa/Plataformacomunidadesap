@@ -150,6 +150,26 @@ export function ReviewRequestsModule() {
   const reviewerName = resolveReviewerName(currentUser);
   const reviewerId = resolveReviewerId(currentUser);
   const reviewerEmail = resolveReviewerEmail(currentUser);
+  const canManageApprovalConcepts = authService.hasPermission(
+    Permissions.GRADUATES_SOLICITUDE_APROBAR,
+  );
+  const canWorkReviewRequests =
+    authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_REVIEW) ||
+    canManageApprovalConcepts ||
+    authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_RECHAZAR);
+  const isReviewWorkLocked = (request: ReviewRequest) =>
+    [
+      'PENDING_APPROVAL',
+      'PENDING_HEAD_APPROVAL',
+      'APPROVED_FINAL',
+      'REJECTED_FINAL',
+    ].includes(request.approvalStatus || '');
+  const canEditReviewWork = (request: ReviewRequest) =>
+    canWorkReviewRequests &&
+    request.status === 'under_review' &&
+    !isReviewWorkLocked(request) &&
+    (request.approvalStatus !== 'HEAD_OBSERVATION' ||
+      canManageApprovalConcepts);
   const PROGRAMAS_ESAP = [
     'ADMINISTRACIÓN PÚBLICA',
     'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
@@ -668,8 +688,13 @@ export function ReviewRequestsModule() {
       approverNotes: request.approverNotes,
       approvedAt: request.approvedAt,
       approverName: request.approverName,
+      headDecision: request.headDecision,
+      headNotes: request.headNotes,
+      headReviewedAt: request.headReviewedAt,
+      headReviewerName: request.headReviewerName,
       reviewTimeline: request.reviewTimeline || [],
       reviewFiles: request.reviewFiles || [],
+      updatedAt: request.updatedAt,
     };
   };
 
@@ -888,7 +913,20 @@ export function ReviewRequestsModule() {
   const getRequestSortTime = (request: ReviewRequest) => {
     const createdAt = parseDateSafe(request.createdAt)?.getTime() ?? 0;
     const reviewedAt = parseDateSafe(request.reviewedAt)?.getTime() ?? 0;
-    return createdAt || reviewedAt;
+    const reviewSubmittedAt =
+      parseDateSafe(request.reviewSubmittedAt)?.getTime() ?? 0;
+    const approvedAt = parseDateSafe(request.approvedAt)?.getTime() ?? 0;
+    const headReviewedAt =
+      parseDateSafe(request.headReviewedAt)?.getTime() ?? 0;
+    const updatedAt = parseDateSafe(request.updatedAt)?.getTime() ?? 0;
+    return Math.max(
+      updatedAt,
+      headReviewedAt,
+      approvedAt,
+      reviewSubmittedAt,
+      reviewedAt,
+      createdAt,
+    );
   };
 
   const orderedRequests = useMemo(
@@ -1855,9 +1893,19 @@ export function ReviewRequestsModule() {
                             Pendiente aprobador
                           </Badge>
                         )}
+                        {request.approvalStatus === 'PENDING_HEAD_APPROVAL' && (
+                          <Badge className="bg-sky-100 text-sky-800 border-sky-200 border text-xs">
+                            Pendiente jefe
+                          </Badge>
+                        )}
                         {request.approvalStatus === 'OBSERVATION' && (
                           <Badge className="bg-amber-100 text-amber-800 border-amber-200 border text-xs">
-                            Con observacion
+                            Observacion aprobador
+                          </Badge>
+                        )}
+                        {request.approvalStatus === 'HEAD_OBSERVATION' && (
+                          <Badge className="bg-amber-100 text-amber-800 border-amber-200 border text-xs">
+                            Observacion jefe
                           </Badge>
                         )}
                       </div>
@@ -1915,7 +1963,7 @@ export function ReviewRequestsModule() {
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {request.status === 'pending' && authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_REVIEW) && (
+                          {request.status === 'pending' && canWorkReviewRequests && (
                             <>
                               <DropdownMenuItem onClick={() => handleStartReview(request)}>
                                 <RefreshCw className="w-4 h-4 mr-2" />
@@ -1924,16 +1972,16 @@ export function ReviewRequestsModule() {
                               <DropdownMenuSeparator />
                             </>
                           )}
-                          {request.status === 'under_review' && request.approvalStatus === 'PENDING_APPROVAL' && (
+                          {request.status === 'under_review' && isReviewWorkLocked(request) && (
                             <>
                               <DropdownMenuItem disabled>
                                 <Clock className="w-4 h-4 mr-2" />
-                                Pendiente de aprobador
+                                Pendiente de validacion
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                             </>
                           )}
-                          {request.status === 'under_review' && request.approvalStatus !== 'PENDING_APPROVAL' && authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_REVIEW) && (
+                          {canEditReviewWork(request) && (
                             <>
                               <DropdownMenuItem onClick={() => handleOpenReviewModal(request, 'approve')}>
                                 <CheckCircle className="w-4 h-4 mr-2" />
@@ -2097,7 +2145,7 @@ export function ReviewRequestsModule() {
                             Acciones Rápidas
                           </h4>
                           <div className="flex flex-wrap gap-2">
-                            {request.status === 'pending' && authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_REVIEW) && (
+                            {request.status === 'pending' && canWorkReviewRequests && (
                               <button
                                 onClick={() => handleStartReview(request)}
                                 className="px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2"
@@ -2424,17 +2472,24 @@ export function ReviewRequestsModule() {
             </div>
 
             {reviewAction === 'approve' &&
-              selectedRequest?.approvalStatus === 'OBSERVATION' &&
-              selectedRequest.approverNotes && (
+              selectedRequest &&
+              ['OBSERVATION', 'HEAD_OBSERVATION'].includes(
+                selectedRequest.approvalStatus || '',
+              ) &&
+              (selectedRequest.approverNotes || selectedRequest.headNotes) && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                   <div className="flex items-start gap-3">
                     <MessageSquare className="mt-0.5 h-5 w-5 text-amber-700" />
                     <div className="text-sm">
                       <p className="font-semibold text-amber-900">
-                        Observacion del aprobador
+                        {selectedRequest.approvalStatus === 'HEAD_OBSERVATION'
+                          ? 'Observacion del jefe'
+                          : 'Observacion del aprobador'}
                       </p>
                       <p className="mt-1 text-amber-800">
-                        {selectedRequest.approverNotes}
+                        {selectedRequest.approvalStatus === 'HEAD_OBSERVATION'
+                          ? selectedRequest.headNotes
+                          : selectedRequest.approverNotes}
                       </p>
                       <p className="mt-2 text-xs text-amber-700">
                         Los datos y archivos cargados previamente se conservan.

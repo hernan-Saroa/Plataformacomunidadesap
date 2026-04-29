@@ -221,6 +221,73 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'users-persons': 'users-persons',
 };
 
+const SIDEBAR_VIEW_ORDER: ModuleView[] = [
+  'users-persons',
+  'carpeta-digital',
+  'estructura-organizacional',
+  'programas-academicos',
+  'roles-permissions',
+  'audit',
+  'reports',
+  'graduates',
+  'verification-certificates',
+  'gestion-profesoral',
+  'pta',
+  'certificados-laborales',
+  'firma-electronica',
+  'control-interno',
+  'control-disciplinario',
+  'gestion-legal',
+  'gestion-passwords',
+];
+
+const MODULE_TO_DEFAULT_SIDEBAR: Partial<Record<ModuleView, string>> = {
+  dashboard: 'executive',
+  'users-persons': 'users-management',
+  'carpeta-digital': 'carpeta-digital',
+  'roles-permissions': 'roles-administration',
+  reports: 'reports',
+  audit: 'audit',
+  graduates: 'graduates-verification',
+  'certificate-requests': 'graduates-review-requests',
+  'verification-certificates': 'graduates-certificates',
+  'firma-electronica': 'firma-electronica',
+  'control-interno': 'control-interno',
+  'control-disciplinario': 'control-disciplinario',
+  'gestion-legal': 'gestion-legal',
+  'certificados-laborales': 'certificados-laborales',
+  'estructura-organizacional': 'estructura-organizacional',
+  'programas-academicos': 'programas-academicos',
+  'gestion-passwords': 'gestion-passwords',
+  pta: 'pta',
+  'banco-docentes-pta': 'banco-docentes-pta',
+  'gestion-profesoral': 'gestion-profesoral',
+};
+
+const CONTROL_INTERNO_ROLE_CODES = new Set([
+  'CONTROL_INTERNO',
+  'JEFE_OCI',
+  'PROFESIONAL_AUDITOR',
+  'AUXILIAR_AUDITORIA',
+  'CONSULTA',
+  'JEFE_CONTROL_INTERNO',
+  'AUDITOR_LIDER',
+]);
+
+function normalizeRoleCode(role: string) {
+  return role
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+}
+
+function resolveModuleView(module?: string): ModuleView | undefined {
+  if (!module) return undefined;
+  return SIDEBAR_TO_MODULE[module] || (SIDEBAR_VIEW_ORDER.includes(module as ModuleView) ? module as ModuleView : undefined);
+}
+
 export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange, usuario, userData, userRoles }: BackofficeAppProps = {}) {
   console.log('BackofficeApp', userData, userRoles)
   const currentUser = userData || {
@@ -260,28 +327,24 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   }
 
   // Compute first accessible module respecting sidebar display order (not backend array order)
-  const moduleFromArray: ModuleView | undefined = (() => {
-    const mods = (userData?.modules || []) as string[];
-    if (mods.length === 0) return undefined;
-    // Collect all accessible views from the user's modules
-    const accessibleViews = new Set<ModuleView>();
-    for (const m of mods) {
-      const view = SIDEBAR_TO_MODULE[m];
-      if (view) accessibleViews.add(view);
-    }
-    // Return the first accessible view in sidebar top-to-bottom order
-    const sidebarOrder: ModuleView[] = [
-      'users-persons', 'carpeta-digital', 'estructura-organizacional', 'programas-academicos',
-      'roles-permissions', 'audit', 'reports',
-      'graduates', 'verification-certificates', 'gestion-profesoral', 'pta',
-      'certificados-laborales', 'firma-electronica',
-      'control-interno', 'control-disciplinario', 'gestion-legal', 'gestion-passwords',
-    ];
-    for (const view of sidebarOrder) {
-      if (accessibleViews.has(view)) return view;
-    }
-    return undefined;
-  })();
+  const assignedModuleCodes = ((userData?.modules || []) as string[]).filter(Boolean);
+  const hasAllAssignedModules = assignedModuleCodes.includes('all');
+  const accessibleViews = new Set<ModuleView>();
+
+  for (const moduleCode of assignedModuleCodes) {
+    const view = resolveModuleView(moduleCode);
+    if (view) accessibleViews.add(view);
+  }
+
+  const isViewAccessible = (view?: ModuleView) => {
+    if (!view) return false;
+    if (hasAllAssignedModules) return true;
+    // Sesiones antiguas o mock pueden no traer modules. En ese caso se respeta el module explicito.
+    if (assignedModuleCodes.length === 0) return true;
+    return accessibleViews.has(view);
+  };
+
+  const moduleFromArray: ModuleView | undefined = SIDEBAR_VIEW_ORDER.find((view) => accessibleViews.has(view));
 
   const initialModule = userData?.module === 'control-interno' ? 'control-interno'
     : userData?.module === 'control-disciplinario' ? 'control-disciplinario'
@@ -295,16 +358,17 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
                 : userData?.module === 'carpeta-digital' ? 'carpeta-digital'
                   : userData?.module === 'estructura-organizacional' ? 'estructura-organizacional'
                     : userData?.module === 'firma-electronica' ? 'firma-electronica'
-                      : userData?.roles?.some((r: string) => r.toLowerCase().includes('jefe') || r.toLowerCase().includes('auditor')) ? 'control-interno'
-                        : moduleFromArray ?? 'dashboard'; // Fallback: primer módulo asignado, luego dashboard
-
+                      : moduleFromArray ?? 'dashboard'; // Fallback: primer modulo asignado, luego dashboard
   // Asegurarnos de que el Jefe OCI o Auditores NUNCA aterricen en users-persons
-  const userRoleString = ((userData?.roles || []) as string[]).join(',').toLowerCase();
-  const esRolAuditOTipoJefe = userRoleString.includes('jefe') || userRoleString.includes('auditor') || userRoleString.includes('aprobador');
+  const esRolAuditOTipoJefe = ((userData?.roles || []) as string[])
+    .map(normalizeRoleCode)
+    .some((role) => CONTROL_INTERNO_ROLE_CODES.has(role));
   
-  const finalInitialModule = esRolAuditOTipoJefe && initialModule === 'dashboard' 
-    ? 'control-interno' 
-    : initialModule;
+  const finalInitialModule = isViewAccessible(initialModule as ModuleView)
+    ? initialModule
+    : moduleFromArray ?? (esRolAuditOTipoJefe ? 'control-interno' : 'dashboard');
+
+  const getDefaultSidebarModule = (view: ModuleView) => MODULE_TO_DEFAULT_SIDEBAR[view] || '';
 
   console.log('📋 Inicial module:', finalInitialModule);
 
@@ -313,11 +377,10 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     const saved = localStorage.getItem('esap-last-module');
     // Validar que el módulo guardado sea accesible para este usuario
     if (saved) {
-      const hasAll = (userData?.modules as string[] | undefined)?.includes('all');
-      const userModules = (userData?.modules as string[] | undefined) || [];
+      const savedView = resolveModuleView(saved);
       // Si tiene todos los módulos o si el módulo guardado está entre los asignados, restaurarlo
-      if (hasAll || userModules.length === 0 || userModules.some(m => SIDEBAR_TO_MODULE[m] === saved || m === saved)) {
-        return saved as ModuleView;
+      if (isViewAccessible(savedView)) {
+        return savedView as ModuleView;
       }
     }
     // Si es la primera vez (o el módulo guardado no es accesible), usar el módulo por defecto según permisos
@@ -326,8 +389,8 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
   const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(() => {
     const saved = localStorage.getItem('esap-last-sidebar-module');
-    if (saved) return saved;
-    return '';
+    if (saved && isViewAccessible(resolveModuleView(saved))) return saved;
+    return getDefaultSidebarModule(finalInitialModule as ModuleView);
   });
 
   // Guardar el módulo actual cada vez que cambie

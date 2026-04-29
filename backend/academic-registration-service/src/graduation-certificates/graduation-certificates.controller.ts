@@ -14,6 +14,7 @@ import {
   UseInterceptors,
   UploadedFiles,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { GraduationCertificatesService } from './graduation-certificates.service';
 import { LandingCertificateRequestDto } from './dto/landing-certificate-request.dto';
@@ -37,6 +38,59 @@ type ValidationGeoContext = {
   geoRegion?: string;
   geoCity?: string;
   geoTimezone?: string;
+};
+
+type AuthenticatedRequest = Request & {
+  user?: {
+    roles?: unknown[];
+    internalService?: boolean;
+  };
+};
+
+const normalizeRoleCode = (value: string): string =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+
+const getNormalizedRoles = (roles: unknown[] | undefined): Set<string> => {
+  const normalized = new Set<string>();
+
+  for (const role of roles || []) {
+    if (typeof role === 'string') {
+      normalized.add(normalizeRoleCode(role));
+      continue;
+    }
+
+    if (role && typeof role === 'object') {
+      const candidate = role as { code?: string; name?: string };
+      if (candidate.code) normalized.add(normalizeRoleCode(candidate.code));
+      if (candidate.name) normalized.add(normalizeRoleCode(candidate.name));
+    }
+  }
+
+  return normalized;
+};
+
+const assertCanMakeFinalReviewDecision = (req: AuthenticatedRequest) => {
+  if (req.user?.internalService) {
+    return;
+  }
+
+  const roles = getNormalizedRoles(req.user?.roles);
+  if (
+    roles.has('SUPER_ADMIN') ||
+    roles.has('JEFE_REGISTRO_ACADEMICO')
+  ) {
+    return;
+  }
+
+  throw new ForbiddenException(
+    'Solo el Jefe de Registro Academico puede emitir la decision final.',
+  );
 };
 
 const isIpLike = (value: string): boolean => {
@@ -474,8 +528,8 @@ export class GraduationCertificatesController {
    * Contar conceptos pendientes de aprobacion final
    */
   @Get('solicitudes/aprobacion/pendientes-count')
-  async contarSolicitudesAprobacionPendientes() {
-    return await this.service.contarSolicitudesAprobacionPendientes();
+  async contarSolicitudesAprobacionPendientes(@Query('stage') stage?: string) {
+    return await this.service.contarSolicitudesAprobacionPendientes(stage);
   }
 
   /**
@@ -641,8 +695,12 @@ export class GraduationCertificatesController {
   async resolverDecisionAprobador(
     @Param('id') id: string,
     @Body() body: ResolveReviewApprovalDto,
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
   ) {
+    if (body?.finalDecision === true) {
+      assertCanMakeFinalReviewDecision(req);
+    }
+
     return await this.service.resolverDecisionAprobador(
       id,
       body,

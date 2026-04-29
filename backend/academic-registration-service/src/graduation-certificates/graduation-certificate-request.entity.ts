@@ -166,6 +166,21 @@ export class GraduationCertificateRequest {
   @Column({ name: 'approver_name', type: 'varchar', length: 255, nullable: true })
   approverName: string | null;
 
+  @Column({ name: 'head_decision', type: 'varchar', length: 50, nullable: true })
+  headDecision: string | null;
+
+  @Column({ name: 'head_notes', type: 'text', nullable: true })
+  headNotes: string | null;
+
+  @Column({ name: 'head_reviewed_at', type: 'timestamp', nullable: true })
+  headReviewedAt: Date | null;
+
+  @Column({ name: 'head_reviewed_by', type: 'varchar', length: 100, nullable: true })
+  headReviewedBy: string | null;
+
+  @Column({ name: 'head_reviewer_name', type: 'varchar', length: 255, nullable: true })
+  headReviewerName: string | null;
+
   @Column({ name: 'review_timeline', type: 'jsonb', default: () => "'[]'::jsonb" })
   reviewTimeline: GraduationReviewTimelineEntry[];
 

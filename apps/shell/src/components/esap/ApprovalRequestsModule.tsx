@@ -30,9 +30,11 @@ import graduadosService, {
 import { authService } from '../../services/api/authService';
 
 type ApprovalAction = 'APPROVED' | 'REJECTED' | 'OBSERVATION';
+type ApprovalMode = 'approver' | 'head';
 
 interface ApprovalRequestsModuleProps {
   onPendingCountChange?: (count: number) => void;
+  mode?: ApprovalMode;
 }
 
 const reviewConceptLabel = (decision?: string | null) => {
@@ -49,11 +51,32 @@ const reviewConceptBadgeClass = (decision?: string | null) => {
   return 'bg-gray-50 text-gray-500 border border-gray-200 text-xs';
 };
 
+const approverConceptLabel = (decision?: string | null) => {
+  if (decision === 'APPROVED') return 'Aprobador: preaprobado';
+  if (decision === 'REJECTED') return 'Aprobador: prerechazado';
+  if (decision === 'OBSERVATION') return 'Aprobador: observación';
+  return null;
+};
+
+const approverConceptBadgeClass = (decision?: string | null) => {
+  if (decision === 'APPROVED') return 'bg-blue-50 text-blue-700 border border-blue-200 text-xs';
+  if (decision === 'REJECTED') return 'bg-orange-50 text-orange-700 border border-orange-200 text-xs';
+  if (decision === 'OBSERVATION') return 'bg-cyan-50 text-cyan-700 border border-cyan-200 text-xs';
+  return 'bg-gray-50 text-gray-500 border border-gray-200 text-xs';
+};
+
 const approverDecisionLabel = (decision?: string | null) => {
-  if (decision === 'APPROVED') return 'Aprobó definitivamente';
-  if (decision === 'REJECTED') return 'Rechazó definitivamente';
-  if (decision === 'OBSERVATION') return 'Devolvió con observación';
-  return 'Sin decisión registrada';
+  if (decision === 'APPROVED') return 'Preaprobo la solicitud';
+  if (decision === 'REJECTED') return 'Prerechazo la solicitud';
+  if (decision === 'OBSERVATION') return 'Devolvio con observacion al revisor';
+  return 'Sin preconcepto registrado';
+};
+
+const headDecisionLabel = (decision?: string | null) => {
+  if (decision === 'APPROVED') return 'Aprobo definitivamente';
+  if (decision === 'REJECTED') return 'Rechazo definitivamente';
+  if (decision === 'OBSERVATION') return 'Devolvio con observacion al aprobador';
+  return 'Sin decision final registrada';
 };
 
 const decisionLabel = (decision?: string | null) => {
@@ -64,18 +87,22 @@ const decisionLabel = (decision?: string | null) => {
 };
 
 const approvalStatusLabel = (status?: string | null) => {
-  if (status === 'PENDING_APPROVAL') return 'Pendiente';
+  if (status === 'PENDING_APPROVAL') return 'Pendiente aprobador';
+  if (status === 'PENDING_HEAD_APPROVAL') return 'Pendiente jefe';
   if (status === 'APPROVED_FINAL') return 'Aprobada';
   if (status === 'REJECTED_FINAL') return 'Rechazada';
-  if (status === 'OBSERVATION') return 'Con observación';
+  if (status === 'OBSERVATION') return 'Devuelta a revisor';
+  if (status === 'HEAD_OBSERVATION') return 'Devuelta a aprobador';
   return 'Sin estado';
 };
 
 const approvalStatusBadgeClass = (status?: string | null) => {
   if (status === 'PENDING_APPROVAL') return 'bg-orange-50 text-orange-700 border border-orange-200 text-xs';
+  if (status === 'PENDING_HEAD_APPROVAL') return 'bg-sky-50 text-sky-700 border border-sky-200 text-xs';
   if (status === 'APPROVED_FINAL') return 'bg-green-50 text-green-700 border border-green-200 text-xs';
   if (status === 'REJECTED_FINAL') return 'bg-red-50 text-red-700 border border-red-200 text-xs';
   if (status === 'OBSERVATION') return 'bg-amber-50 text-amber-700 border border-amber-200 text-xs';
+  if (status === 'HEAD_OBSERVATION') return 'bg-amber-50 text-amber-700 border border-amber-200 text-xs';
   return 'bg-gray-50 text-gray-500 border border-gray-200 text-xs';
 };
 
@@ -228,6 +255,7 @@ const compactReviewTimeline = (
 
 export function ApprovalRequestsModule({
   onPendingCountChange,
+  mode = 'approver',
 }: ApprovalRequestsModuleProps) {
   const [requests, setRequests] = useState<SolicitudCertificadoGraduado[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -244,35 +272,62 @@ export function ApprovalRequestsModule({
     fileType: 'image' | 'pdf' | 'office' | 'other';
   } | null>(null);
 
+  const isHeadMode = mode === 'head';
+  const pendingStatuses = useMemo(
+    () =>
+      isHeadMode
+        ? ['PENDING_HEAD_APPROVAL']
+        : ['PENDING_APPROVAL', 'HEAD_OBSERVATION'],
+    [isHeadMode],
+  );
   const pendingRequests = useMemo(
     () =>
-      requests.filter(
-        (request) => request.approvalStatus === 'PENDING_APPROVAL',
+      requests.filter((request) =>
+        pendingStatuses.includes(request.approvalStatus || ''),
       ),
-    [requests],
+    [requests, pendingStatuses],
   );
   const managedRequests = useMemo(
     () =>
       requests.filter(
-        (request) => request.approvalStatus !== 'PENDING_APPROVAL',
+        (request) => !pendingStatuses.includes(request.approvalStatus || ''),
       ),
-    [requests],
+    [requests, pendingStatuses],
   );
   const pendingCount = pendingRequests.length;
   const managedCount = managedRequests.length;
   const favorablePendingCount = pendingRequests.filter(
-    (item) => item.reviewRecommendation === 'APPROVED',
+    (item) =>
+      (isHeadMode ? item.approverDecision : item.reviewRecommendation) ===
+      'APPROVED',
   ).length;
   const rejectionPendingCount = pendingRequests.filter(
-    (item) => item.reviewRecommendation === 'REJECTED',
+    (item) =>
+      (isHeadMode ? item.approverDecision : item.reviewRecommendation) ===
+      'REJECTED',
   ).length;
+
+  const getRequestActivityTime = (request: SolicitudCertificadoGraduado) => {
+    const values = [
+      request.updatedAt,
+      request.headReviewedAt,
+      request.approvedAt,
+      request.reviewSubmittedAt,
+      request.completionDate,
+      request.requestDate,
+    ];
+    return Math.max(
+      ...values.map((value) => {
+        const time = value ? new Date(value).getTime() : 0;
+        return Number.isNaN(time) ? 0 : time;
+      }),
+    );
+  };
 
   const sortedRequests = useMemo(
     () =>
       [...(activeView === 'pending' ? pendingRequests : managedRequests)].sort((a, b) => {
-        const aTime = new Date(a.reviewSubmittedAt || a.requestDate).getTime();
-        const bTime = new Date(b.reviewSubmittedAt || b.requestDate).getTime();
-        return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime);
+        return getRequestActivityTime(b) - getRequestActivityTime(a);
       }),
     [activeView, pendingRequests, managedRequests],
   );
@@ -284,7 +339,9 @@ export function ApprovalRequestsModule({
       setRequests(Array.isArray(data) ? data : []);
       onPendingCountChange?.(
         Array.isArray(data)
-          ? data.filter((item) => item.approvalStatus === 'PENDING_APPROVAL').length
+          ? data.filter((item) =>
+              pendingStatuses.includes(item.approvalStatus || ''),
+            ).length
           : 0,
       );
     } catch (error: any) {
@@ -385,14 +442,21 @@ export function ApprovalRequestsModule({
           approverName: getCurrentUserName(),
           approverId: getCurrentUserId(),
           approverEmail: getCurrentUserEmail(),
+          finalDecision: isHeadMode,
         },
       );
       toast.success(
-        action === 'APPROVED'
-          ? 'Solicitud aprobada definitivamente'
-          : action === 'REJECTED'
-            ? 'Solicitud rechazada definitivamente'
-            : 'Observacion enviada al revisor',
+        isHeadMode
+          ? action === 'APPROVED'
+            ? 'Solicitud aprobada definitivamente'
+            : action === 'REJECTED'
+              ? 'Solicitud rechazada definitivamente'
+              : 'Observacion enviada al aprobador'
+          : action === 'APPROVED'
+            ? 'Solicitud enviada al jefe con preaprobacion'
+            : action === 'REJECTED'
+              ? 'Solicitud enviada al jefe con prerechazo'
+              : 'Observacion enviada al revisor',
       );
       setSelectedRequest(null);
       setActiveView('managed');
@@ -418,13 +482,15 @@ export function ApprovalRequestsModule({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-orange-800">
-                Esperando tu decisión
+                {isHeadMode ? 'Pendientes de decision final' : 'Esperando tu preconcepto'}
               </p>
               <p className="mt-2 text-3xl font-bold text-orange-900">
                 {pendingCount}
               </p>
               <p className="mt-2 text-xs text-orange-700">
-                El revisor ya emitió su concepto
+                {isHeadMode
+                  ? 'El aprobador ya emitio su preconcepto'
+                  : 'El revisor ya emitio su concepto'}
               </p>
             </div>
             <ShieldCheck className="w-10 h-10 text-orange-600" />
@@ -434,13 +500,15 @@ export function ApprovalRequestsModule({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-green-800">
-                Con concepto favorable
+                {isHeadMode ? 'Preaprobadas' : 'Con concepto favorable'}
               </p>
               <p className="mt-2 text-3xl font-bold text-green-900">
                 {favorablePendingCount}
               </p>
               <p className="mt-2 text-xs text-green-700">
-                El revisor recomienda aprobar
+                {isHeadMode
+                  ? 'Listas para aprobacion final'
+                  : 'El revisor recomienda aprobar'}
               </p>
             </div>
             <CheckCircle className="w-10 h-10 text-green-600" />
@@ -450,13 +518,15 @@ export function ApprovalRequestsModule({
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-red-800">
-                Con concepto desfavorable
+                {isHeadMode ? 'Prerechazadas' : 'Con concepto desfavorable'}
               </p>
               <p className="mt-2 text-3xl font-bold text-red-900">
                 {rejectionPendingCount}
               </p>
               <p className="mt-2 text-xs text-red-700">
-                El revisor recomienda rechazar
+                {isHeadMode
+                  ? 'Requieren decision final'
+                  : 'El revisor recomienda rechazar'}
               </p>
             </div>
             <XCircle className="w-10 h-10 text-red-600" />
@@ -468,10 +538,12 @@ export function ApprovalRequestsModule({
         <div className="flex items-center justify-between p-5 border-b border-[#E5E7EB]">
           <div>
             <h2 className="text-lg font-semibold text-[#1F2937]">
-              Aprobaciones de Revision
+              {isHeadMode ? 'Decision Final de Revision' : 'Aprobaciones de Revision'}
             </h2>
             <p className="text-sm text-[#6B7280]">
-              Revisa datos, concepto y archivos cargados por el revisor.
+              {isHeadMode
+                ? 'Define la aprobacion final, rechazo final u observacion al aprobador.'
+                : 'Revisa datos, concepto y archivos cargados por el revisor.'}
             </p>
           </div>
           <button
@@ -524,8 +596,12 @@ export function ApprovalRequestsModule({
             </p>
             <p className="text-sm text-gray-500">
               {activeView === 'pending'
-                ? 'Cuando un revisor envie un concepto, aparecera aqui.'
-                : 'Cuando el aprobador apruebe, rechace o devuelva con observacion, aparecera aqui.'}
+                ? isHeadMode
+                  ? 'Cuando un aprobador envie un preconcepto, aparecera aqui.'
+                  : 'Cuando un revisor envie un concepto, aparecera aqui.'
+                : isHeadMode
+                  ? 'Cuando el jefe apruebe, rechace o devuelva con observacion, aparecera aqui.'
+                  : 'Cuando el aprobador preapruebe, prerechace o devuelva con observacion, aparecera aqui.'}
             </p>
           </div>
         ) : (
@@ -534,7 +610,9 @@ export function ApprovalRequestsModule({
               const payload = (request.reviewPayload || {}) as Record<string, unknown>;
               const files = request.reviewFiles || [];
               const isExpanded = expandedId === request.id;
-              const isPendingApproval = request.approvalStatus === 'PENDING_APPROVAL';
+              const isPendingApproval = pendingStatuses.includes(
+                request.approvalStatus || '',
+              );
 
               return (
                 <motion.div
@@ -555,6 +633,11 @@ export function ApprovalRequestsModule({
                         {reviewConceptLabel(request.reviewRecommendation) && (
                           <Badge className={reviewConceptBadgeClass(request.reviewRecommendation)}>
                             {reviewConceptLabel(request.reviewRecommendation)}
+                          </Badge>
+                        )}
+                        {approverConceptLabel(request.approverDecision) && (
+                          <Badge className={approverConceptBadgeClass(request.approverDecision)}>
+                            {approverConceptLabel(request.approverDecision)}
                           </Badge>
                         )}
                       </div>
@@ -594,14 +677,14 @@ export function ApprovalRequestsModule({
                             className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
                           >
                             <XCircle className="w-4 h-4" />
-                            Rechazar
+                            {isHeadMode ? 'Rechazar final' : 'Prerechazar'}
                           </button>
                           <button
                             onClick={() => openActionModal(request, 'APPROVED')}
                             className="inline-flex items-center gap-2 rounded-lg bg-[#003DA5] px-3 py-2 text-sm font-semibold text-white hover:bg-[#002E7D]"
                           >
                             <Award className="w-4 h-4" />
-                            Aprobar
+                            {isHeadMode ? 'Aprobar final' : 'Preaprobar'}
                           </button>
                         </>
                       )}
@@ -657,8 +740,20 @@ export function ApprovalRequestsModule({
                                 </p>
                               </div>
                               {request.approverDecision && (
-                                <div className="rounded bg-white p-3 border border-orange-200">
-                                  <p className="text-xs text-orange-700">Decisión del aprobador</p>
+                                <div className={`rounded bg-white p-3 border ${
+                                  request.approverDecision === 'APPROVED'
+                                    ? 'border-blue-200'
+                                    : request.approverDecision === 'REJECTED'
+                                      ? 'border-orange-200'
+                                      : 'border-cyan-200'
+                                }`}>
+                                  <p className={`text-xs ${
+                                    request.approverDecision === 'APPROVED'
+                                      ? 'text-blue-700'
+                                      : request.approverDecision === 'REJECTED'
+                                        ? 'text-orange-700'
+                                        : 'text-cyan-700'
+                                  }`}>Preconcepto del aprobador</p>
                                   <p className="font-semibold text-gray-900">
                                     {approverDecisionLabel(request.approverDecision)}
                                   </p>
@@ -670,6 +765,24 @@ export function ApprovalRequestsModule({
                                   {request.approverNotes && (
                                     <p className="mt-2 text-sm text-gray-800">
                                       {request.approverNotes}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                              {request.headDecision && (
+                                <div className="rounded bg-white p-3 border border-sky-200">
+                                  <p className="text-xs text-sky-700">Decision del jefe</p>
+                                  <p className="font-semibold text-gray-900">
+                                    {headDecisionLabel(request.headDecision)}
+                                  </p>
+                                  {request.headReviewerName && (
+                                    <p className="mt-1 text-xs text-gray-600">
+                                      Jefe: {request.headReviewerName}
+                                    </p>
+                                  )}
+                                  {request.headNotes && (
+                                    <p className="mt-2 text-sm text-gray-800">
+                                      {request.headNotes}
                                     </p>
                                   )}
                                 </div>
@@ -744,6 +857,15 @@ export function ApprovalRequestsModule({
                           const timelineEvents = compactReviewTimeline(request.reviewTimeline || []);
                           const getDot = (label: string) => {
                             const l = label.toLowerCase();
+                            // approver events — must be checked before generic patterns
+                            if (l.includes('preaprob')) return { ring: '#DBEAFE', dot: '#1D4ED8' };
+                            if (l.includes('prerechaz')) return { ring: '#FFEDD5', dot: '#EA580C' };
+                            if (l.includes('preconcepto') || l.includes('concepto del aprobador')) return { ring: '#CFFAFE', dot: '#0891B2' };
+                            // head events
+                            if (l.includes('decision final') || l.includes('aprobacion final')) return { ring: '#DCFCE7', dot: '#15803D' };
+                            if (l.includes('rechazo final')) return { ring: '#FEE2E2', dot: '#B91C1C' };
+                            if (l.includes('devuelto al aprobador') || l.includes('observacion al aprobador')) return { ring: '#CFFAFE', dot: '#0891B2' };
+                            // generic events
                             if (l.includes('aprobar') || l.includes('aprobado')) return { ring: '#DCFCE7', dot: '#16A34A' };
                             if (l.includes('rechaz')) return { ring: '#FEE2E2', dot: '#DC2626' };
                             if (l.includes('observac')) return { ring: '#FEF3C7', dot: '#D97706' };
@@ -809,14 +931,22 @@ export function ApprovalRequestsModule({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-[#003DA5]" />
-              {action === 'APPROVED'
-                ? 'Aprobar definitivamente'
-                : action === 'REJECTED'
-                  ? 'Rechazar definitivamente'
-                  : 'Enviar observacion'}
+              {isHeadMode
+                ? action === 'APPROVED'
+                  ? 'Aprobar definitivamente'
+                  : action === 'REJECTED'
+                    ? 'Rechazar definitivamente'
+                    : 'Enviar observacion al aprobador'
+                : action === 'APPROVED'
+                  ? 'Enviar preaprobacion'
+                  : action === 'REJECTED'
+                    ? 'Enviar prerechazo'
+                    : 'Enviar observacion al revisor'}
             </DialogTitle>
             <DialogDescription>
-              Esta decision queda registrada en la trazabilidad de la solicitud.
+              {isHeadMode
+                ? 'Esta decision final queda registrada en la trazabilidad de la solicitud.'
+                : 'Este preconcepto queda registrado y pasara al jefe cuando aplique.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -830,11 +960,19 @@ export function ApprovalRequestsModule({
                   Concepto del revisor:{' '}
                   <strong>{decisionLabel(selectedRequest.reviewRecommendation)}</strong>
                 </p>
+                {selectedRequest.approverDecision && (
+                  <p>
+                    Preconcepto del aprobador:{' '}
+                    <strong>{decisionLabel(selectedRequest.approverDecision)}</strong>
+                  </p>
+                )}
               </div>
               <div>
                 <label className="mb-2 block text-sm font-semibold text-gray-900">
                   {action === 'APPROVED'
-                    ? 'Comentario final (opcional)'
+                    ? isHeadMode
+                      ? 'Comentario final (opcional)'
+                      : 'Comentario de preaprobacion (opcional)'
                     : 'Justificacion (obligatoria)'}
                 </label>
                 <textarea
@@ -843,7 +981,9 @@ export function ApprovalRequestsModule({
                   className="min-h-[120px] w-full resize-none rounded-lg border-2 border-gray-300 p-3 text-sm focus:border-[#003DA5]"
                   placeholder={
                     action === 'APPROVED'
-                      ? 'Agrega una nota interna si aplica...'
+                      ? isHeadMode
+                        ? 'Agrega una nota interna si aplica...'
+                        : 'Agrega una nota para el jefe si aplica...'
                       : 'Describe el motivo de la decision...'
                   }
                 />

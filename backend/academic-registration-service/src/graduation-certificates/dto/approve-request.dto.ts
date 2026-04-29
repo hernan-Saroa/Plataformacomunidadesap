@@ -32,4 +32,5 @@ export interface ResolveReviewApprovalDto {
   approverName?: string;
   approverId?: string;
   approverEmail?: string;
+  finalDecision?: boolean;
 }

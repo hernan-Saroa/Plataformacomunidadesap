@@ -3146,7 +3146,12 @@ export class GraduationCertificatesService {
     this.ensureManualReviewRequestIsActionable(request);
 
     if (
-      ['PENDING_APPROVAL', 'APPROVED_FINAL', 'REJECTED_FINAL'].includes(
+      [
+        'PENDING_APPROVAL',
+        'PENDING_HEAD_APPROVAL',
+        'APPROVED_FINAL',
+        'REJECTED_FINAL',
+      ].includes(
         request.approvalStatus || '',
       )
     ) {
@@ -3198,7 +3203,12 @@ export class GraduationCertificatesService {
     await this.expireManualReviewRequestIfNeeded(request);
     this.ensureManualReviewRequestIsActionable(request);
     if (
-      ['PENDING_APPROVAL', 'APPROVED_FINAL', 'REJECTED_FINAL'].includes(
+      [
+        'PENDING_APPROVAL',
+        'PENDING_HEAD_APPROVAL',
+        'APPROVED_FINAL',
+        'REJECTED_FINAL',
+      ].includes(
         request.approvalStatus || '',
       )
     ) {
@@ -3811,7 +3821,7 @@ export class GraduationCertificatesService {
     const requests = await this.requestRepository.find({
       where: { manualReview: true },
       relations: ['graduate', 'reviewFiles'],
-      order: { requestDate: 'DESC' },
+      order: { updatedAt: 'DESC', requestDate: 'DESC' },
     });
 
     return requests.map((request) =>
@@ -3827,13 +3837,15 @@ export class GraduationCertificatesService {
         manualReview: true,
         approvalStatus: In([
           'PENDING_APPROVAL',
+          'PENDING_HEAD_APPROVAL',
           'APPROVED_FINAL',
           'REJECTED_FINAL',
           'OBSERVATION',
+          'HEAD_OBSERVATION',
         ]),
       },
       relations: ['graduate', 'reviewFiles'],
-      order: { reviewSubmittedAt: 'DESC', requestDate: 'DESC' },
+      order: { updatedAt: 'DESC', reviewSubmittedAt: 'DESC', requestDate: 'DESC' },
     });
 
     return requests.map((request) =>
@@ -3841,12 +3853,20 @@ export class GraduationCertificatesService {
     );
   }
 
-  async contarSolicitudesAprobacionPendientes() {
+  async contarSolicitudesAprobacionPendientes(stage?: string) {
     await this.expireOverdueManualReviewRequests();
+    const normalizedStage = (stage || '').trim().toLowerCase();
+    const pendingStatuses =
+      normalizedStage === 'head'
+        ? ['PENDING_HEAD_APPROVAL']
+        : ['PENDING_APPROVAL', 'HEAD_OBSERVATION'];
 
     return {
       count: await this.requestRepository.count({
-        where: { manualReview: true, approvalStatus: 'PENDING_APPROVAL' },
+        where: {
+          manualReview: true,
+          approvalStatus: In(pendingStatuses),
+        },
       }),
     };
   }
@@ -3909,6 +3929,11 @@ export class GraduationCertificatesService {
     request.approvedAt = null;
     request.approvedBy = null;
     request.approverName = null;
+    request.headDecision = null;
+    request.headNotes = null;
+    request.headReviewedAt = null;
+    request.headReviewedBy = null;
+    request.headReviewerName = null;
 
     this.appendReviewTimeline(request, {
       type: 'review_decision_submitted',
@@ -3940,12 +3965,6 @@ export class GraduationCertificatesService {
     await this.expireManualReviewRequestIfNeeded(request);
     this.ensureManualReviewRequestIsActionable(request);
 
-    if (request.approvalStatus !== 'PENDING_APPROVAL') {
-      throw new BadRequestException(
-        'La solicitud no tiene una decision de revisor pendiente de aprobacion',
-      );
-    }
-
     const decision = payload?.decision;
     if (!['APPROVED', 'REJECTED', 'OBSERVATION'].includes(decision)) {
       throw new BadRequestException('Decision de aprobacion invalida');
@@ -3959,20 +3978,72 @@ export class GraduationCertificatesService {
     }
 
     const now = new Date();
-    request.approverDecision = decision;
-    request.approverNotes = reason || payload.reason || null;
-    request.approvedAt = now;
-    request.approvedBy = payload.approverId || request.approvedBy;
-    request.approverName = payload.approverName || request.approverName;
+    const isFinalDecision = payload?.finalDecision === true;
+
+    if (!isFinalDecision) {
+      if (
+        !['PENDING_APPROVAL', 'HEAD_OBSERVATION'].includes(
+          request.approvalStatus || '',
+        )
+      ) {
+        throw new BadRequestException(
+          'La solicitud no esta pendiente de gestion por aprobador',
+        );
+      }
+
+      request.approverDecision = decision;
+      request.approverNotes = reason || payload.reason || null;
+      request.approvedAt = now;
+      request.approvedBy = payload.approverId || request.approvedBy;
+      request.approverName = payload.approverName || request.approverName;
+      request.headDecision = null;
+      request.headNotes = null;
+      request.headReviewedAt = null;
+      request.headReviewedBy = null;
+      request.headReviewerName = null;
+
+      this.appendReviewTimeline(request, {
+        type: 'approver_decision',
+        label:
+          decision === 'APPROVED'
+            ? 'Preaprobacion del aprobador'
+            : decision === 'REJECTED'
+              ? 'Prerechazo del aprobador'
+              : 'Observacion del aprobador al revisor',
+        notes: reason || undefined,
+        actorId: payload.approverId,
+        actorName: payload.approverName,
+        actorEmail: payload.approverEmail,
+        createdAt: now,
+      });
+
+      request.status = 'PROCESSING';
+      request.approvalStatus =
+        decision === 'OBSERVATION' ? 'OBSERVATION' : 'PENDING_HEAD_APPROVAL';
+
+      return await this.requestRepository.save(request);
+    }
+
+    if (request.approvalStatus !== 'PENDING_HEAD_APPROVAL') {
+      throw new BadRequestException(
+        'La solicitud no tiene un concepto del aprobador pendiente de decision final',
+      );
+    }
+
+    request.headDecision = decision;
+    request.headNotes = reason || payload.reason || null;
+    request.headReviewedAt = now;
+    request.headReviewedBy = payload.approverId || request.headReviewedBy;
+    request.headReviewerName = payload.approverName || request.headReviewerName;
 
     this.appendReviewTimeline(request, {
-      type: 'approver_decision',
+      type: 'head_decision',
       label:
         decision === 'APPROVED'
-          ? 'Aprobacion final'
+          ? 'Aprobacion final del jefe'
           : decision === 'REJECTED'
-            ? 'Rechazo final'
-            : 'Observacion del aprobador',
+            ? 'Rechazo final del jefe'
+            : 'Observacion del jefe al aprobador',
       notes: reason || undefined,
       actorId: payload.approverId,
       actorName: payload.approverName,
@@ -3982,7 +4053,7 @@ export class GraduationCertificatesService {
 
     if (decision === 'OBSERVATION') {
       request.status = 'PROCESSING';
-      request.approvalStatus = 'OBSERVATION';
+      request.approvalStatus = 'HEAD_OBSERVATION';
       return await this.requestRepository.save(request);
     }
 
@@ -3992,16 +4063,17 @@ export class GraduationCertificatesService {
       const rejected = await this.rechazarSolicitud(
         id,
         reason,
-        request.reviewSubmittedByName || request.reviewerName || undefined,
-        request.reviewSubmittedBy || request.reviewedBy || undefined,
+        payload.approverName || request.headReviewerName || undefined,
+        payload.approverId || request.headReviewedBy || undefined,
         frontendBaseUrl,
       );
       rejected.approvalStatus = 'REJECTED_FINAL';
-      rejected.approverDecision = decision;
-      rejected.approverNotes = reason;
-      rejected.approvedAt = now;
-      rejected.approvedBy = payload.approverId || rejected.approvedBy;
-      rejected.approverName = payload.approverName || rejected.approverName;
+      rejected.headDecision = decision;
+      rejected.headNotes = reason;
+      rejected.headReviewedAt = now;
+      rejected.headReviewedBy = payload.approverId || rejected.headReviewedBy;
+      rejected.headReviewerName =
+        payload.approverName || rejected.headReviewerName;
       this.appendReviewTimeline(rejected, {
         type: 'final_rejection_notified',
         label: 'Rechazo final notificado al solicitante',
@@ -4021,13 +4093,13 @@ export class GraduationCertificatesService {
       frontendBaseUrl,
     );
     approved.request.approvalStatus = 'APPROVED_FINAL';
-    approved.request.approverDecision = decision;
-    approved.request.approverNotes = reason || null;
-    approved.request.approvedAt = now;
-    approved.request.approvedBy =
-      payload.approverId || approved.request.approvedBy;
-    approved.request.approverName =
-      payload.approverName || approved.request.approverName;
+    approved.request.headDecision = decision;
+    approved.request.headNotes = reason || null;
+    approved.request.headReviewedAt = now;
+    approved.request.headReviewedBy =
+      payload.approverId || approved.request.headReviewedBy;
+    approved.request.headReviewerName =
+      payload.approverName || approved.request.headReviewerName;
     this.appendReviewTimeline(approved.request, {
       type: 'certificate_generated',
       label: 'Certificado generado y enviado al solicitante',

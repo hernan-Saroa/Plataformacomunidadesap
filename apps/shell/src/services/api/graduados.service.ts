@@ -85,7 +85,15 @@ export interface SolicitudCertificadoGraduado {
   reviewerName?: string;
   reviewNotes?: string;
   reviewResolution?: string;
-  approvalStatus?: "PENDING_APPROVAL" | "APPROVED_FINAL" | "REJECTED_FINAL" | "OBSERVATION" | string | null;
+  approvalStatus?:
+    | "PENDING_APPROVAL"
+    | "PENDING_HEAD_APPROVAL"
+    | "APPROVED_FINAL"
+    | "REJECTED_FINAL"
+    | "OBSERVATION"
+    | "HEAD_OBSERVATION"
+    | string
+    | null;
   reviewRecommendation?: "APPROVED" | "REJECTED" | "OBSERVATION" | string | null;
   reviewRecommendationReason?: string | null;
   reviewPayload?: Record<string, unknown> | null;
@@ -97,6 +105,11 @@ export interface SolicitudCertificadoGraduado {
   approvedAt?: string | null;
   approvedBy?: string | null;
   approverName?: string | null;
+  headDecision?: "APPROVED" | "REJECTED" | "OBSERVATION" | string | null;
+  headNotes?: string | null;
+  headReviewedAt?: string | null;
+  headReviewedBy?: string | null;
+  headReviewerName?: string | null;
   reviewTimeline?: Array<{
     type: string;
     label: string;
@@ -108,6 +121,7 @@ export interface SolicitudCertificadoGraduado {
   }>;
   reviewFiles?: GraduationReviewFile[];
   requestDate: string;
+  updatedAt?: string;
   validationDate?: string;
   completionDate?: string;
 }
@@ -184,6 +198,7 @@ export interface ResolverAprobacionRevisionPayload {
   approverName?: string;
   approverId?: string;
   approverEmail?: string;
+  finalDecision?: boolean;
 }
 
 export interface GraduationReviewFile {
@@ -599,9 +614,12 @@ const graduadosService = {
       return response;
     },
 
-    contarAprobacionPendiente: async (): Promise<{ count: number }> => {
+    contarAprobacionPendiente: async (
+      stage?: "approver" | "head",
+    ): Promise<{ count: number }> => {
+      const query = stage ? `?stage=${encodeURIComponent(stage)}` : "";
       const response = await apiClient.get(
-        `${SERVICE_PREFIX}/certificates/solicitudes/aprobacion/pendientes-count`,
+        `${SERVICE_PREFIX}/certificates/solicitudes/aprobacion/pendientes-count${query}`,
       );
       return response;
     },

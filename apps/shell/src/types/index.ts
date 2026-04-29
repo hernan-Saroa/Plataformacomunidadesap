@@ -696,7 +696,7 @@ export interface ReviewRequest {
   
   // Estado de la solicitud
   status: 'pending' | 'under_review' | 'approved' | 'rejected' | 'expired' | 'duplicate';
-  approvalStatus?: 'PENDING_APPROVAL' | 'APPROVED_FINAL' | 'REJECTED_FINAL' | 'OBSERVATION' | string | null;
+  approvalStatus?: 'PENDING_APPROVAL' | 'PENDING_HEAD_APPROVAL' | 'APPROVED_FINAL' | 'REJECTED_FINAL' | 'OBSERVATION' | 'HEAD_OBSERVATION' | string | null;
   reviewRecommendation?: 'APPROVED' | 'REJECTED' | 'OBSERVATION' | string | null;
   reviewRecommendationReason?: string | null;
   reviewPayload?: Record<string, unknown> | null;
@@ -706,6 +706,10 @@ export interface ReviewRequest {
   approverNotes?: string | null;
   approvedAt?: string | null;
   approverName?: string | null;
+  headDecision?: 'APPROVED' | 'REJECTED' | 'OBSERVATION' | string | null;
+  headNotes?: string | null;
+  headReviewedAt?: string | null;
+  headReviewerName?: string | null;
   reviewTimeline?: Array<{
     type: string;
     label: string;
@@ -729,6 +733,7 @@ export interface ReviewRequest {
   
   // Fechas
   createdAt: string;
+  updatedAt?: string;
   reviewedAt?: string;
   
   // Revisión por el backoffice
