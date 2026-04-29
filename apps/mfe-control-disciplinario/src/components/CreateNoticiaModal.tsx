@@ -168,13 +168,13 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     fechaHechos: noticiaToEdit?.fechaHechos || '',
     territorial: noticiaToEdit?.territorial || '',
     denunciado: {
-      nombre: noticiaToEdit?.denunciado?.nombre || '',
-      identificacion: noticiaToEdit?.denunciado?.numeroIdentificacion || '',
-      cargo: noticiaToEdit?.cargo || '',
-      dependencia: noticiaToEdit?.dependencia || ''
+      nombre: noticiaToEdit?.denunciado?.nombre || noticiaToEdit?.disciplinable?.nombre || '',
+      identificacion: noticiaToEdit?.denunciado?.numeroIdentificacion || noticiaToEdit?.disciplinable?.cedula || noticiaToEdit?.disciplinable?.documento || '',
+      cargo: noticiaToEdit?.cargo || noticiaToEdit?.disciplinable?.cargo || '',
+      dependencia: noticiaToEdit?.dependencia || noticiaToEdit?.disciplinable?.dependencia || ''
     },
     descripcionHechos: noticiaToEdit?.hechos || '',
-    conductasSeleccionadas: noticiaToEdit?.conductasSeleccionadas || [] as string[],
+    conductasSeleccionadas: noticiaToEdit?.conductasSeleccionadas || noticiaToEdit?.conductas || [] as string[],
     procesosRelacionados: noticiaToEdit?.procesosRelacionados || [] as string[]
   });
 
@@ -196,7 +196,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
   // ✅ NUEVO: Estado para conducta seleccionada y campo personalizado
   const [conductaSeleccionada, setConductaSeleccionada] = useState<string>(
-    noticiaToEdit?.conductaSeleccionada || ''
+    noticiaToEdit?.conductaSeleccionada || noticiaToEdit?.conductas?.[0] || ''
   );
   const [conductaPersonalizada, setConductaPersonalizada] = useState<string>(
     noticiaToEdit?.conductaPersonalizada || ''
@@ -231,18 +231,26 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   // ✅ NUEVO: Estado para múltiples denunciados
   const [denunciados, setDenunciados] = useState<Denunciado[]>(() => {
     if (!isEditMode || !noticiaToEdit) return [];
-    const denunciadoObj = noticiaToEdit.denunciado && typeof noticiaToEdit.denunciado !== 'string'
-      ? noticiaToEdit.denunciado
-      : null;
-    const nombre = denunciadoObj?.nombre || '';
-    if (!nombre || nombre === 'Sin denunciado') return [];
-    return [{
-      id: 'edit-0',
-      nombre,
-      identificacion: denunciadoObj?.numeroIdentificacion || '',
-      cargo: noticiaToEdit.cargo || '',
-      lugarHechos: noticiaToEdit.dependencia || ''
-    }];
+
+    // Handle both single object and array formats
+    let denunciadoData: any[] = [];
+    if (noticiaToEdit.denunciados && Array.isArray(noticiaToEdit.denunciados)) {
+      denunciadoData = noticiaToEdit.denunciados;
+    } else if (noticiaToEdit.denunciado && typeof noticiaToEdit.denunciado !== 'string') {
+      denunciadoData = [noticiaToEdit.denunciado];
+    } else if (noticiaToEdit.disciplinable) {
+      denunciadoData = [noticiaToEdit.disciplinable];
+    }
+
+    return denunciadoData
+      .filter(d => d?.nombre && d.nombre !== 'Sin denunciado')
+      .map((d, index) => ({
+        id: `edit-${index}`,
+        nombre: d.nombre || '',
+        identificacion: d.numeroIdentificacion || d.cedula || d.documento || d.identificacion || '',
+        cargo: d.cargo || noticiaToEdit.cargo || '',
+        lugarHechos: d.lugarHechos || d.dependencia || noticiaToEdit.dependencia || ''
+      }));
   });
   const [currentDenunciado, setCurrentDenunciado] = useState<Denunciado>({
     id: '',
@@ -255,22 +263,30 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
   const [denunciantes, setDenunciantes] = useState<Denunciante[]>(() => {
     if (!isEditMode || !noticiaToEdit) return [];
-    const denuncianteObj = noticiaToEdit.denunciante && typeof noticiaToEdit.denunciante !== 'string'
-      ? noticiaToEdit.denunciante
-      : null;
-    const nombre = denuncianteObj?.nombre || '';
-    if (!nombre || nombre === 'Sin denunciante' || nombre === 'Anonimo') return [];
-    return [{
-      id: 'edit-0',
-      nombre,
-      identificacion: denuncianteObj?.numeroIdentificacion || '',
-      direccion: '',
-      telefono: '',
-      correo: '',
-      cargo: '',
-      entidad: '',
-      tipo: 'Denunciante' as const
-    }];
+
+    // Handle both single object and array formats
+    let denuncianteData: any[] = [];
+    if (noticiaToEdit.denunciantes && Array.isArray(noticiaToEdit.denunciantes)) {
+      denuncianteData = noticiaToEdit.denunciantes;
+    } else if (noticiaToEdit.denunciante && typeof noticiaToEdit.denunciante !== 'string') {
+      denuncianteData = [noticiaToEdit.denunciante];
+    } else if (noticiaToEdit.denunciante) {
+      denuncianteData = [noticiaToEdit.denunciante];
+    }
+
+    return denuncianteData
+      .filter(d => d?.nombre && d.nombre !== 'Sin denunciante' && d.nombre !== 'Anonimo')
+      .map((d, index) => ({
+        id: `edit-${index}`,
+        nombre: d.nombre || '',
+        identificacion: d.numeroIdentificacion || d.cedula || d.documento || d.identificacion || '',
+        direccion: d.direccion || '',
+        telefono: d.telefono || '',
+        correo: d.email || d.correo || '',
+        cargo: d.cargo || '',
+        entidad: d.entidad || d.dependencia || '',
+        tipo: (d.tipo as 'Denunciante' | 'Víctima') || 'Denunciante'
+      }));
   });
   const [currentDenunciante, setCurrentDenunciante] = useState<Denunciante>({
     id: '',

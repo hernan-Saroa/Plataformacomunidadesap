@@ -2781,6 +2781,28 @@ export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = [])
   const denuncianteData = Array.isArray(proceso.news?.denunciante) ? proceso.news?.denunciante?.[0] : proceso.news?.denunciante;
   const disciplinableData = Array.isArray(proceso.news?.disciplinable) ? proceso.news?.disciplinable?.[0] : proceso.news?.disciplinable;
 
+  // Map single objects to arrays for consistency with frontend expectations
+  const denunciados: DenunciadoCompleto[] = disciplinableData ? [{
+    id: '1',
+    nombre: (disciplinableData as any)?.nombre || 'Sin disciplinable',
+    identificacion: (disciplinableData as any)?.cedula || (disciplinableData as any)?.documento || '',
+    cargo: (disciplinableData as any)?.cargo || '',
+    lugarHechos: (disciplinableData as any)?.dependencia || '',
+    dependencia: (disciplinableData as any)?.dependencia || ''
+  }] : [];
+
+  const denunciantes: DenuncianteCompleto[] = denuncianteData ? [{
+    id: '1',
+    nombre: (denuncianteData as any)?.nombre || 'Sin denunciante',
+    identificacion: (denuncianteData as any)?.cedula || (denuncianteData as any)?.documento || '',
+    direccion: (denuncianteData as any)?.direccion || '',
+    telefono: (denuncianteData as any)?.telefono || '',
+    correo: (denuncianteData as any)?.email || '',
+    cargo: (denuncianteData as any)?.cargo || '',
+    entidad: (denuncianteData as any)?.dependencia || (denuncianteData as any)?.entidad || '',
+    tipo: 'Denunciante' as const
+  }] : [];
+
   return {
     id: proceso.id,
     numeroProceso: proceso.radicadoProceso,
@@ -2821,6 +2843,18 @@ export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = [])
     procesoAsociadoFecha: proceso.procesoAsociadoFecha,
     procesoAsociadoJustificacion: proceso.procesoAsociadoJustificacion,
     profesionalAsignadoId: proceso.abogadoAsignadoId,
+    // Add the missing fields from news
+    territorial: proceso.news?.territorial,
+    fechaHechos: proceso.news?.fechaHechos,
+    conductaSeleccionada: proceso.news?.conductas?.[0] || '',
+    conductaPersonalizada: '',
+    denunciados,
+    denunciantes,
+    hechosSeparados: [],
+    archivosAdjuntos: [],
+    origenNoticia: proceso.news?.origen,
+    fechaRecepcionNoticia: proceso.news?.fechaRecepcion,
+    prioridadNoticia: proceso.news?.estado === 'ALTA' ? 'alta' : proceso.news?.estado === 'MEDIA' ? 'media' : 'baja'
   };
 };
 
