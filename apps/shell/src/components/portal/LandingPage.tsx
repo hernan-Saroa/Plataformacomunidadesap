@@ -56,8 +56,8 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
 
   const services = [
     {
-      icon: <Award className="w-7 h-7" />,
-      title: 'Verificación de Títulos',
+      icon: <Award className="w-7 h-7" style={{ color: '#1e5da8' }} />,
+      title: 'Verificación de Títulos 2',
       description: 'Cada certificado tiene un QR único para validación pública. Sistema de trazabilidad completa que registra cada validación.',
       action: () => {
         if (onNavigate) {
@@ -70,7 +70,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
       badge: 'Seguro'
     },
     {
-      icon: <Briefcase className="w-7 h-7" />,
+      icon: <Briefcase className="w-7 h-7" style={{ color: '#1e5da8' }} />,
       title: 'Certificados Laborales',
       description: 'Solicita tu certificado laboral de forma automática. Validamos tu identidad por correo y generas tu certificado al instante.',
       action: () => {

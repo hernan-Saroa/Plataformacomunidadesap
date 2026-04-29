@@ -302,6 +302,48 @@ export class GraduateMysqlIntegrationService {
       return this.formatDateParts(Number(year), Number(month), Number(day));
     }
 
+    const normalizeText = (value: string) => {
+      const base = String(value || '').trim();
+      const normalized =
+        typeof base.normalize === 'function' ? base.normalize('NFD') : base;
+      return normalized
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[.,]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase();
+    };
+
+    const monthMap: Record<string, number> = {
+      ENERO: 1,
+      FEBRERO: 2,
+      MARZO: 3,
+      ABRIL: 4,
+      MAYO: 5,
+      JUNIO: 6,
+      JULIO: 7,
+      AGOSTO: 8,
+      SEPTIEMBRE: 9,
+      SETIEMBRE: 9,
+      OCTUBRE: 10,
+      NOVIEMBRE: 11,
+      DICIEMBRE: 12,
+    };
+
+    const normalizedRaw = normalizeText(raw);
+    const spanishMatch = normalizedRaw.match(
+      /(\d{1,2})\s+(?:DE\s+)?(ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|SETIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)\s+(?:DE\s+)?(\d{4})/,
+    );
+    if (spanishMatch) {
+      const [, dayText, monthText, yearText] = spanishMatch;
+      const day = Number(dayText);
+      const month = monthMap[monthText] || 0;
+      const year = Number(yearText);
+      if (month) {
+        return this.formatDateParts(year, month, day);
+      }
+    }
+
     const parsed = new Date(raw);
     if (Number.isNaN(parsed.getTime())) return null;
     return parsed.toISOString().slice(0, 10);
@@ -344,7 +386,6 @@ export class GraduateMysqlIntegrationService {
 
     return await this.withConnection(async (connection, config) => {
       const documentColumn = config.escapedDocumentColumn;
-      console.log('Buscando graduados por documento', config);
       const [rows] = await connection.execute(
         `SELECT *
            FROM ${config.qualifiedView}
