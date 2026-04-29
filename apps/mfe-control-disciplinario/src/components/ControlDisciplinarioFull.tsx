@@ -285,11 +285,11 @@ export function ControlDisciplinarioFull() {
       try {
         const userId = authService.getCurrentUser()?.id || '';
         await disciplinaryService.aprobarAuto(borrador.autoId, userId);
-      } catch {
+      } catch (error) {
         toast.error('Error al aprobar el auto', {
           description: 'No se pudo conectar con el servidor. Intente nuevamente.',
         });
-        return;
+        throw error;
       }
     }
 
