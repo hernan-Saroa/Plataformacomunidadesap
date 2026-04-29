@@ -81,10 +81,10 @@ export class DisciplinaryNews {
   dependenciaDenunciado: string;
 
   @Column({ type: 'jsonb', nullable: true })
-  denunciante: PersonInfo;
+  denunciante: PersonInfo | PersonInfo[];
 
   @Column({ type: 'jsonb', nullable: true })
-  disciplinable: PersonInfo;
+  disciplinable: PersonInfo | PersonInfo[];
 
   @Column({ type: 'text' })
   hechos: string;

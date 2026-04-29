@@ -112,18 +112,22 @@ export class CreateDisciplinaryNewsDto {
   dependenciaDenunciado: string;
 
   @IsOptional()
-  @IsObject()
-  @ValidateNested()
-  @Type(() => PersonInfoDto)
-  @Transform(({ value }) => toPersonInfoDto(value))
-  denunciante: PersonInfoDto;
+  @Transform(({ value }) => {
+    const parsed = typeof value === 'string' ? (() => { try { return JSON.parse(value); } catch { return null; } })() : value;
+    if (!parsed) return null;
+    if (Array.isArray(parsed)) return parsed.map((item: unknown) => plainToInstance(PersonInfoDto, item));
+    return plainToInstance(PersonInfoDto, parsed);
+  })
+  denunciante: PersonInfoDto | PersonInfoDto[];
 
   @IsOptional()
-  @IsObject()
-  @ValidateNested()
-  @Type(() => PersonInfoDto)
-  @Transform(({ value }) => toPersonInfoDto(value))
-  disciplinable: PersonInfoDto;
+  @Transform(({ value }) => {
+    const parsed = typeof value === 'string' ? (() => { try { return JSON.parse(value); } catch { return null; } })() : value;
+    if (!parsed) return null;
+    if (Array.isArray(parsed)) return parsed.map((item: unknown) => plainToInstance(PersonInfoDto, item));
+    return plainToInstance(PersonInfoDto, parsed);
+  })
+  disciplinable: PersonInfoDto | PersonInfoDto[];
 
   @IsString()
   hechos: string;
