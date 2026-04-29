@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   AlertCircle,
@@ -31,6 +31,18 @@ import { authService } from '../../services/api/authService';
 
 type ApprovalAction = 'APPROVED' | 'REJECTED' | 'OBSERVATION';
 type ApprovalMode = 'approver' | 'head';
+type PreviewFileType = 'image' | 'pdf' | 'office' | 'other';
+
+type OfficePreviewState = {
+  status: 'loading' | 'ready' | 'error' | 'unsupported';
+  kind: 'word' | 'spreadsheet' | 'unsupported';
+  data?: ArrayBuffer;
+  rows?: string[][];
+  sheetName?: string;
+  totalRows?: number;
+  totalColumns?: number;
+  error?: string;
+};
 
 interface ApprovalRequestsModuleProps {
   onPendingCountChange?: (count: number) => void;
@@ -158,6 +170,80 @@ const getFileType = (fileName: string): 'image' | 'pdf' | 'office' | 'other' => 
   return 'other';
 };
 
+const getOfficeKind = (fileName: string): OfficePreviewState['kind'] => {
+  const ext = (fileName.split('.').pop() || '').toLowerCase();
+  if (ext === 'docx') return 'word';
+  if (['xls', 'xlsx'].includes(ext)) return 'spreadsheet';
+  return 'unsupported';
+};
+
+const buildOfficePreview = async (
+  blob: Blob,
+  fileName: string,
+): Promise<OfficePreviewState> => {
+  const ext = (fileName.split('.').pop() || '').toLowerCase();
+  const arrayBuffer = await blob.arrayBuffer();
+
+  if (ext === 'docx') {
+    return {
+      status: 'ready',
+      kind: 'word',
+      data: arrayBuffer,
+    };
+  }
+
+  if (['xls', 'xlsx'].includes(ext)) {
+    const XLSX = await import('xlsx');
+    const workbook = XLSX.read(arrayBuffer, {
+      type: 'array',
+      cellDates: true,
+      cellText: false,
+    });
+    const sheetName = workbook.SheetNames[0];
+
+    if (!sheetName) {
+      return {
+        status: 'ready',
+        kind: 'spreadsheet',
+        sheetName: 'Sin hoja',
+        rows: [],
+        totalRows: 0,
+        totalColumns: 0,
+      };
+    }
+
+    const sheet = workbook.Sheets[sheetName];
+    const allRows = XLSX.utils.sheet_to_json<string[]>(sheet, {
+      header: 1,
+      defval: '',
+      raw: false,
+    });
+    const normalizedRows = allRows.map((row) =>
+      row.map((cell) => String(cell ?? '').trim()),
+    );
+    const totalColumns = normalizedRows.reduce(
+      (max, row) => Math.max(max, row.length),
+      0,
+    );
+
+    return {
+      status: 'ready',
+      kind: 'spreadsheet',
+      sheetName,
+      rows: normalizedRows.slice(0, 80).map((row) => row.slice(0, 20)),
+      totalRows: normalizedRows.length,
+      totalColumns,
+    };
+  }
+
+  return {
+    status: 'unsupported',
+    kind: 'unsupported',
+    error:
+      'Este formato de Word antiguo no permite una previsualizacion segura en el navegador. Descargalo para abrirlo.',
+  };
+};
+
 const getFileExtStyle = (fileName: string): { color: string; bg: string; border: string } => {
   const ext = (fileName.split('.').pop() || '').toLowerCase();
   if (ext === 'pdf') return { color: '#DC2626', bg: '#FEF2F2', border: '#FECACA' };
@@ -269,8 +355,10 @@ export function ApprovalRequestsModule({
   const [previewState, setPreviewState] = useState<{
     url: string;
     name: string;
-    fileType: 'image' | 'pdf' | 'office' | 'other';
+    fileType: PreviewFileType;
+    officePreview?: OfficePreviewState;
   } | null>(null);
+  const wordPreviewRef = useRef<HTMLDivElement | null>(null);
 
   const isHeadMode = mode === 'head';
   const pendingStatuses = useMemo(
@@ -360,6 +448,77 @@ export function ApprovalRequestsModule({
     loadRequests();
   }, []);
 
+  useEffect(() => {
+    const target = wordPreviewRef.current;
+    const officePreview = previewState?.officePreview;
+
+    if (
+      !target ||
+      previewState?.fileType !== 'office' ||
+      officePreview?.status !== 'ready' ||
+      officePreview.kind !== 'word' ||
+      !officePreview.data
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    target.innerHTML = '';
+
+    const renderDocx = async () => {
+      try {
+        const { renderAsync } = await import('docx-preview');
+        if (cancelled) return;
+
+        await renderAsync(officePreview.data, target, undefined, {
+          className: 'docx-preview-rendered',
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          ignoreFonts: false,
+          breakPages: true,
+          renderHeaders: true,
+          renderFooters: true,
+          renderFootnotes: true,
+          renderEndnotes: true,
+          useBase64URL: true,
+          renderChanges: false,
+          renderComments: false,
+        });
+      } catch (error: any) {
+        if (cancelled) return;
+        console.error('Error renderizando DOCX:', error);
+        setPreviewState((current) =>
+          current?.name === previewState.name && current.fileType === 'office'
+            ? {
+                ...current,
+                officePreview: {
+                  status: 'error',
+                  kind: 'word',
+                  error:
+                    error?.message ||
+                    'No se pudo renderizar el documento Word.',
+                },
+              }
+            : current,
+        );
+      }
+    };
+
+    void renderDocx();
+
+    return () => {
+      cancelled = true;
+      target.innerHTML = '';
+    };
+  }, [
+    previewState?.name,
+    previewState?.fileType,
+    previewState?.officePreview?.status,
+    previewState?.officePreview?.kind,
+    previewState?.officePreview?.data,
+  ]);
+
   const openActionModal = (
     request: SolicitudCertificadoGraduado,
     nextAction: ApprovalAction,
@@ -405,8 +564,61 @@ export function ApprovalRequestsModule({
     fileName: string,
   ) => {
     const fileType = getFileType(fileName);
-    if (fileType === 'office' || fileType === 'other') {
-      setPreviewState({ url: '', name: normalizeDisplayText(fileName) || fileName, fileType });
+    const displayName = normalizeDisplayText(fileName) || fileName;
+    if (fileType === 'other') {
+      setPreviewState({
+        url: '',
+        name: displayName,
+        fileType,
+        officePreview: {
+          status: 'unsupported',
+          kind: 'unsupported',
+          error:
+            'Este tipo de archivo no tiene previsualizacion disponible. Puedes descargarlo para abrirlo.',
+        },
+      });
+      return;
+    }
+
+    if (fileType === 'office') {
+      setPreviewState({
+        url: '',
+        name: displayName,
+        fileType,
+        officePreview: {
+          status: 'loading',
+          kind: getOfficeKind(displayName),
+        },
+      });
+
+      try {
+        const blob = await graduadosService.solicitudes.descargarArchivoRevision(
+          request.id,
+          fileId,
+        );
+        const officePreview = await buildOfficePreview(blob, displayName);
+        setPreviewState((current) =>
+          current?.name === displayName && current.fileType === 'office'
+            ? { ...current, officePreview }
+            : current,
+        );
+      } catch (error: any) {
+        setPreviewState((current) =>
+          current?.name === displayName && current.fileType === 'office'
+            ? {
+                ...current,
+                officePreview: {
+                  status: 'error',
+                  kind: getOfficeKind(displayName),
+                  error:
+                    error?.response?.data?.message ||
+                    error?.message ||
+                    'No se pudo generar la previsualizacion del archivo.',
+                },
+              }
+            : current,
+        );
+      }
       return;
     }
     try {
@@ -415,7 +627,7 @@ export function ApprovalRequestsModule({
         fileId,
       );
       const url = URL.createObjectURL(blob);
-      setPreviewState({ url, name: normalizeDisplayText(fileName) || fileName, fileType });
+      setPreviewState({ url, name: displayName, fileType });
     } catch (error: any) {
       toast.error('No se pudo cargar el archivo para visualización', {
         description: error?.response?.data?.message || error?.message,
@@ -1077,21 +1289,157 @@ export function ApprovalRequestsModule({
               />
             )}
 
-            {(previewState?.fileType === 'office' || previewState?.fileType === 'other') && (
+            {previewState?.fileType === 'office' && (
+              <div className="min-h-[320px] bg-white">
+                {previewState.officePreview?.status === 'loading' && (
+                  <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-8 py-12 text-center">
+                    <RefreshCw className="h-8 w-8 animate-spin text-[#1e5da8]" />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">
+                        Preparando previsualizacion
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Estamos leyendo el archivo localmente en el navegador.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {previewState.officePreview?.status === 'ready' &&
+                  previewState.officePreview.kind === 'word' && (
+                    <div className="bg-[#2f2f2f]">
+                      <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-[#3a3a3a] px-5 py-3 text-white">
+                        <div className="flex items-center gap-3 text-sm">
+                          <FileText className="h-4 w-4" />
+                          <span>Vista previa DOCX</span>
+                        </div>
+                        <span className="rounded bg-black/25 px-2 py-1 text-xs font-semibold">
+                          Render tipo Word
+                        </span>
+                      </div>
+                      <div className="px-3 py-4 sm:px-6">
+                        <div
+                          ref={wordPreviewRef}
+                          className="min-h-[700px] overflow-auto [&_.docx-wrapper]:!bg-transparent [&_.docx-wrapper]:!p-0 [&_.docx-wrapper>section.docx]:!mx-auto [&_.docx-wrapper>section.docx]:!mb-5 [&_.docx-wrapper>section.docx]:!shadow-[0_12px_42px_-18px_rgba(0,0,0,0.75)]"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                {previewState.officePreview?.status === 'ready' &&
+                  previewState.officePreview.kind === 'spreadsheet' && (
+                    <div className="p-5">
+                      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-green-100 bg-green-50 px-4 py-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-green-700">
+                            Vista previa de Excel
+                          </p>
+                          <p className="mt-1 text-xs text-green-700/80">
+                            Hoja: {previewState.officePreview.sheetName || 'Principal'}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-green-700 shadow-sm">
+                          {previewState.officePreview.totalRows || 0} filas,{' '}
+                          {previewState.officePreview.totalColumns || 0} columnas
+                        </span>
+                      </div>
+
+                      {previewState.officePreview.rows?.length ? (
+                        <div className="overflow-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+                          <table className="min-w-full border-collapse text-left text-xs">
+                            <tbody>
+                              {previewState.officePreview.rows.map((row, rowIndex) => (
+                                <tr
+                                  key={`sheet-row-${rowIndex}`}
+                                  className={rowIndex === 0 ? 'bg-gray-100' : 'odd:bg-white even:bg-gray-50'}
+                                >
+                                  {Array.from({
+                                    length: Math.max(
+                                      previewState.officePreview?.rows?.[0]?.length || 1,
+                                      row.length,
+                                    ),
+                                  }).map((_, columnIndex) => (
+                                    <td
+                                      key={`sheet-cell-${rowIndex}-${columnIndex}`}
+                                      className={`max-w-[260px] border border-gray-200 px-3 py-2 align-top ${
+                                        rowIndex === 0
+                                          ? 'font-semibold text-gray-900'
+                                          : 'text-gray-700'
+                                      }`}
+                                    >
+                                      <span className="block truncate" title={row[columnIndex] || ''}>
+                                        {row[columnIndex] || ''}
+                                      </span>
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-8 text-center text-sm text-gray-500">
+                          La hoja no contiene datos visibles para previsualizar.
+                        </div>
+                      )}
+
+                      {(previewState.officePreview.totalRows || 0) > 80 ||
+                      (previewState.officePreview.totalColumns || 0) > 20 ? (
+                        <p className="mt-3 text-xs text-gray-500">
+                          Vista limitada a las primeras 80 filas y 20 columnas para evitar
+                          bloqueos del navegador. Descarga el archivo para revisar todo el contenido.
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
+
+                {(previewState.officePreview?.status === 'error' ||
+                  previewState.officePreview?.status === 'unsupported') && (
+                  <div className="flex min-h-[320px] flex-col items-center justify-center gap-5 px-8 py-12 text-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100">
+                      <FileText className="h-8 w-8 text-gray-400" />
+                    </div>
+                    <div>
+                      <p className="mb-1 text-sm font-semibold text-gray-800">
+                        No se pudo previsualizar este archivo
+                      </p>
+                      <p className="text-xs leading-relaxed text-gray-500">
+                        {previewState.officePreview?.error ||
+                          'Descargalo para abrirlo correctamente.'}
+                      </p>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#1e5da8]/10 px-3 py-1.5 text-xs font-medium text-[#1e5da8]">
+                      <Download className="h-3.5 w-3.5" />
+                      Usa el boton de descarga
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {previewState?.fileType === 'other' && (
               <div className="flex flex-col items-center justify-center gap-5 px-8 py-12 text-center min-h-[280px]">
                 <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center">
                   <FileText className="w-8 h-8 text-gray-400" />
                 </div>
                 <div>
                   <p className="text-gray-800 font-semibold mb-1 text-sm">
-                    Este archivo no puede visualizarse en el navegador
+                    Vista previa no disponible
                   </p>
                   <p className="text-xs text-gray-500 leading-relaxed">
+                    {previewState.officePreview?.error ||
+                      'Descarga el archivo para abrirlo correctamente.'}
+                  </p>
+                  <p className="hidden">
                     Los archivos Word y Excel requieren una aplicación de escritorio.<br />
                     Descárgalo para abrirlo correctamente.
                   </p>
                 </div>
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
+                  <Download className="w-3.5 h-3.5" />
+                  Usa el boton de descarga
+                </span>
+                <span className={`hidden ${
                   previewState?.fileType === 'office'
                     ? 'bg-[#1e5da8]/10 text-[#1e5da8]'
                     : 'bg-gray-100 text-gray-600'
