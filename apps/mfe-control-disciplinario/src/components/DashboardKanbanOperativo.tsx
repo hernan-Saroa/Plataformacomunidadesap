@@ -742,6 +742,22 @@ function TarjetaProceso({
                     {proceso.denunciante.numeroIdentificacion}
                   </p>
                 )}
+                {proceso.denunciantes?.[0] && (
+                  <div className="text-[11px] text-gray-500 mt-0.5 space-y-0.5">
+                    {proceso.denunciantes[0].tipo && <p className="text-blue-600 font-medium">{proceso.denunciantes[0].tipo}</p>}
+                    {proceso.denunciantes[0].correo && <p className="truncate flex items-start gap-1"><Mail className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />{proceso.denunciantes[0].correo}</p>}
+                    {proceso.denunciantes[0].cargo && <p className="truncate">{proceso.denunciantes[0].cargo}</p>}
+                    {proceso.denunciantes[0].entidad && <p className="truncate">{proceso.denunciantes[0].entidad}</p>}
+                  </div>
+                )}
+                {(() => {
+                const apoderado = (typeof proceso.denunciante !== 'string' && proceso.denunciante?.apoderado) || proceso.denunciantes?.[0]?.apoderado;
+                return apoderado?.nombre ? (
+                  <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200 pt-1">
+                    Apoderado: {apoderado.nombre}
+                  </p>
+                ) : null;
+                })()}
 
               </div>
             </div>
@@ -756,6 +772,20 @@ function TarjetaProceso({
                     {proceso.denunciado.numeroIdentificacion}
                   </p>
                 )}
+                {proceso.denunciados?.[0]?.lugarHechos && (
+                  <p className="text-[11px] text-gray-500 truncate mt-0.5 flex items-start gap-1">
+                    <MapPin className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />
+                    {proceso.denunciados[0].lugarHechos}
+                  </p>
+                )}
+                {(() => {
+                const apoderado = (typeof proceso.denunciado !== 'string' && proceso.denunciado?.apoderado) || proceso.denunciados?.[0]?.apoderado;
+                return apoderado?.nombre ? (
+                  <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200 pt-1">
+                    Apoderado: {apoderado.nombre}
+                  </p>
+                ) : null;
+                })()}
 
               </div>
             </div>

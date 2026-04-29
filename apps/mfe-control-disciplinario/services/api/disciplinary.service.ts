@@ -38,6 +38,7 @@ export interface DisciplinaryNews {
         documento?: string;
         dependencia?: string;
         entidad?: string;
+        tipo?: 'Denunciante' | 'Víctima';
         apoderado?: {
             nombre: string;
             cedula: string;
@@ -53,6 +54,7 @@ export interface DisciplinaryNews {
         email?: string;
         telefono?: string;
         dependencia?: string;
+        lugarHechos?: string;
         apoderado?: {
             nombre: string;
             cedula: string;
