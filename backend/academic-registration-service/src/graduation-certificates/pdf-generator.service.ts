@@ -239,13 +239,17 @@ export class PdfGeneratorService {
     const signature = await this.resolveSignatureSettings(snapshot);
     const signerName = String(signature.signerName || '').trim();
     const signatureDataUrl = this.loadSignatureDataUrl(signature.signatureUrl);
+    const signerTitle = String(
+      templateTexts.signerTitle ||
+        DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle,
+    ).trim();
 
     if (signerName && signatureDataUrl) {
       return `
                 <div class="firma-seccion">
                     <img class="firma-img" src="${this.escapeHtml(signatureDataUrl)}" alt="Firma electronica" />
                     <div class="firma-nombre">${this.escapeHtml(signerName)}</div>
-                    <div class="firma-cargo">Director(a) de Direcci&oacute;n T&eacute;cnica Registro y Control</div>
+                    <div class="firma-cargo">${this.formatMultilineText(signerTitle)}</div>
                 </div>`;
     }
 
@@ -337,10 +341,15 @@ export class PdfGeneratorService {
         activeConfig.certificateContentHtml,
       ) || DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS;
 
+    const hasSignature =
+      Boolean(activeConfig.signatureUrlOverride?.trim()) &&
+      Boolean(activeConfig.signerNameOverride?.trim());
+
     return {
       ...parsedTexts,
-      signerTitle:
-        activeConfig.signerTitleOverride || parsedTexts.signerTitle,
+      signerTitle: hasSignature
+        ? activeConfig.signerTitleOverride || parsedTexts.signerTitle
+        : DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle,
     };
   }
 

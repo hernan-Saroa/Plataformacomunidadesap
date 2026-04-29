@@ -427,8 +427,12 @@ export function ApprovalRequestsModule({
     if (!selectedRequest) return;
 
     const trimmedNotes = notes.trim();
-    if ((action === 'REJECTED' || action === 'OBSERVATION') && !trimmedNotes) {
-      toast.error('Debes escribir una justificacion');
+    if ((isHeadMode || action === 'REJECTED' || action === 'OBSERVATION') && !trimmedNotes) {
+      toast.error(
+        isHeadMode
+          ? 'Debes escribir el comentario final para el solicitante'
+          : 'Debes escribir una justificacion',
+      );
       return;
     }
 
@@ -969,22 +973,28 @@ export function ApprovalRequestsModule({
               </div>
               <div>
                 <label className="mb-2 block text-sm font-semibold text-gray-900">
-                  {action === 'APPROVED'
-                    ? isHeadMode
-                      ? 'Comentario final (opcional)'
-                      : 'Comentario de preaprobacion (opcional)'
-                    : 'Justificacion (obligatoria)'}
+                  {isHeadMode
+                    ? action === 'APPROVED'
+                      ? 'Comentario final para el solicitante *'
+                      : action === 'REJECTED'
+                        ? 'Motivo final para el solicitante *'
+                        : 'Observacion interna para el aprobador *'
+                    : action === 'APPROVED'
+                      ? 'Comentario de preaprobacion (opcional)'
+                      : 'Justificacion (obligatoria)'}
                 </label>
                 <textarea
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                   className="min-h-[120px] w-full resize-none rounded-lg border-2 border-gray-300 p-3 text-sm focus:border-[#003DA5]"
                   placeholder={
-                    action === 'APPROVED'
-                      ? isHeadMode
-                        ? 'Agrega una nota interna si aplica...'
-                        : 'Agrega una nota para el jefe si aplica...'
-                      : 'Describe el motivo de la decision...'
+                    isHeadMode
+                      ? action === 'OBSERVATION'
+                        ? 'Describe que debe revisar o corregir el aprobador...'
+                        : 'Este texto se incluira en el correo enviado al solicitante...'
+                      : action === 'APPROVED'
+                        ? 'Agrega una nota para el jefe si aplica...'
+                        : 'Describe el motivo de la decision...'
                   }
                 />
               </div>

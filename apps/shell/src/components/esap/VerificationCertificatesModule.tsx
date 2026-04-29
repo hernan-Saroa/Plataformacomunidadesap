@@ -180,7 +180,6 @@ const TEMPLATE_TEXT_FIELDS: Array<{
   { key: 'issuePlaceDateLabel', label: 'Etiqueta lugar y fecha' },
   { key: 'registryLabel', label: 'Etiqueta registro-folio-libro' },
   { key: 'closingText', label: 'Texto de cierre' },
-  { key: 'signerTitle', label: 'Texto del firmante', rows: 2 },
   { key: 'validationMessage', label: 'Mensaje de validacion', rows: 2 },
 ];
 
@@ -1066,6 +1065,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         toast.error('El nombre del firmante es obligatorio');
         return;
       }
+      if (!templateForm.signerTitle.trim()) {
+        toast.error('El cargo del firmante es obligatorio');
+        return;
+      }
       if (
         !templateSignatureForm.signatureImageDataUrl &&
         !templateSignatureForm.signatureUrl
@@ -1077,8 +1080,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
     setIsSavingTemplateConfig(true);
     try {
-      const response = await graduadosService.plantilla.actualizarTextos({
+      const nextTemplateForm = {
         ...templateForm,
+        signerTitle: templateSignatureForm.enabled
+          ? templateForm.signerTitle.trim()
+          : DEFAULT_CERTIFICATE_TEMPLATE_TEXTS.signerTitle,
+      };
+      const response = await graduadosService.plantilla.actualizarTextos({
+        ...nextTemplateForm,
         electronicSignatureEnabled: templateSignatureForm.enabled,
         signerName: templateSignatureForm.enabled
           ? templateSignatureForm.signerName.trim()
@@ -2869,12 +2878,20 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         <Checkbox
                           id="template-electronic-signature"
                           checked={templateSignatureForm.enabled}
-                          onCheckedChange={(checked) =>
+                          onCheckedChange={(checked) => {
+                            const enabled = checked === true;
                             setTemplateSignatureForm((prev) => ({
                               ...prev,
-                              enabled: checked === true,
-                            }))
-                          }
+                              enabled,
+                            }));
+                            if (!enabled) {
+                              setTemplateForm((prev) => ({
+                                ...prev,
+                                signerTitle:
+                                  DEFAULT_CERTIFICATE_TEMPLATE_TEXTS.signerTitle,
+                              }));
+                            }
+                          }}
                           disabled={isSavingTemplateConfig}
                         />
                         <div className="min-w-0 flex-1">
@@ -2885,7 +2902,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             Incluir firma electronica
                           </Label>
                           <p className="mt-1 text-xs text-gray-500">
-                            La firma se aplicara a los certificados generados despues de guardar esta plantilla.
+                            La firma se aplicara a los certificados generados despues de guardar esta plantilla. Requiere nombre, imagen y cargo.
                           </p>
                         </div>
                       </div>
@@ -2894,7 +2911,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         <div className="grid grid-cols-1 gap-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
                           <div className="space-y-2">
                             <Label htmlFor="template-signer-name">
-                              Nombre del firmante
+                              Nombre del firmante *
                             </Label>
                             <Input
                               id="template-signer-name"
@@ -2911,7 +2928,26 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           </div>
 
                           <div className="space-y-2">
-                            <Label>Imagen de la firma</Label>
+                            <Label htmlFor="template-signer-title">
+                              Cargo o titulo del firmante *
+                            </Label>
+                            <Input
+                              id="template-signer-title"
+                              value={templateForm.signerTitle}
+                              onChange={(event) =>
+                                handleTemplateTextChange(
+                                  'signerTitle',
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="Ej: Administrador jefe Registro academico"
+                              maxLength={255}
+                              disabled={isSavingTemplateConfig}
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Imagen de la firma *</Label>
                             <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-blue-200 bg-white px-4 py-5 text-center transition-colors hover:border-blue-400">
                               <input
                                 type="file"
@@ -3062,7 +3098,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                   {templateSignatureForm.signerName || 'Nombre del firmante'}
                                 </p>
                                 <p className="text-[15px] font-semibold leading-5 text-gray-900">
-                                  Director(a) de Direccion Tecnica Registro y Control
+                                  {templateForm.signerTitle || 'Cargo o titulo del firmante'}
                                 </p>
                               </div>
                             ) : (

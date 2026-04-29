@@ -307,11 +307,12 @@ export class GraduationCertificatesService {
     return {
       reviewNotes:
         request.reviewRecommendationReason ||
-        fallbackReason ||
         request.reviewNotes ||
+        fallbackReason ||
         'Aprobado por revision manual',
       reviewerName: request.reviewSubmittedByName || request.reviewerName,
       reviewerId: request.reviewSubmittedBy || request.reviewedBy,
+      publicNotificationNotes: fallbackReason || undefined,
       fullName: this.toNullableText(savedPayload.fullName) || undefined,
       idNumber: this.toNullableText(savedPayload.idNumber) || undefined,
       email: this.toNullableText(savedPayload.email) || undefined,
@@ -2360,8 +2361,8 @@ export class GraduationCertificatesService {
     )}/verificar-certificado/${certificate.verificationCode}`;
 
     const trimmedReviewNotes = (reviewNotes || '').trim();
-    const reviewNotesText = trimmedReviewNotes
-      ? `\nNotas de revisión: ${trimmedReviewNotes}`
+    const publicReviewNotesText = trimmedReviewNotes
+      ? `\nComentario de aprobacion: ${trimmedReviewNotes}`
       : '';
     const safeReviewNotes = trimmedReviewNotes
       .replace(/&/g, '&amp;')
@@ -2377,7 +2378,7 @@ export class GraduationCertificatesService {
     const payload = {
       to: email,
       subject: `Certificado de verificación de título - ${certificate.certificateNumber}`,
-      text: `Adjunto encontrarás el certificado de verificación de título solicitado.\n\nCódigo de verificación: ${certificate.verificationCode}\nURL de validación: ${validationUrl}${reviewNotesText}`,
+      text: `Adjunto encontraras el certificado de verificacion de titulo solicitado.\n\nCodigo de verificacion: ${certificate.verificationCode}\nURL de validacion: ${validationUrl}${publicReviewNotesText}`,
       html: `
         <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
           <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
@@ -2420,7 +2421,7 @@ export class GraduationCertificatesService {
                   </table>
                   ${
                     trimmedReviewNotes
-                      ? `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:16px;"><tr><td style="padding:14px 16px;"><p style="margin:0 0 4px 0;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.5px;">Notas de revisión</p><p style="margin:0;font-size:13px;color:#78350f;white-space:pre-line;line-height:1.6;">${safeReviewNotes}</p></td></tr></table>`
+                      ? `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:16px;"><tr><td style="padding:14px 16px;"><p style="margin:0 0 4px 0;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.5px;">Comentario de aprobacion</p><p style="margin:0;font-size:13px;color:#78350f;white-space:pre-line;line-height:1.6;">${safeReviewNotes}</p></td></tr></table>`
                       : ''
                   }
                 </td>
@@ -2646,6 +2647,10 @@ export class GraduationCertificatesService {
     config: TemplateConfig,
     frontendBaseUrl?: string,
   ) {
+    const hasElectronicSignature =
+      Boolean(config.signatureUrlOverride?.trim()) &&
+      Boolean(config.signerNameOverride?.trim());
+
     return buildGraduationCertificateTemplateSnapshot({
       id: config.id,
       version: config.version,
@@ -2658,7 +2663,9 @@ export class GraduationCertificatesService {
       signerNameOverride: config.signerNameOverride,
       signatureUrlOverride: config.signatureUrlOverride,
       signatureFilenameOverride: config.signatureFilenameOverride,
-      signerTitleOverride: config.signerTitleOverride,
+      signerTitleOverride: hasElectronicSignature
+        ? config.signerTitleOverride
+        : DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle,
       certificateContentHtml: config.certificateContentHtml,
     });
   }
@@ -3528,9 +3535,17 @@ export class GraduationCertificatesService {
     const parsedTexts =
       parseGraduationCertificateTemplateTexts(config.certificateContentHtml) ||
       DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS;
+    const effectiveSignerTitle =
+      config.signerTitleOverride ||
+      parsedTexts.signerTitle ||
+      DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle;
     const hasSignature =
       Boolean(config.signatureUrlOverride?.trim()) &&
-      Boolean(config.signerNameOverride?.trim());
+      Boolean(config.signerNameOverride?.trim()) &&
+      Boolean(effectiveSignerTitle.trim());
+    const signerTitleForEditing = hasSignature
+      ? effectiveSignerTitle
+      : DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle;
 
     return {
       id: config.id,
@@ -3546,7 +3561,7 @@ export class GraduationCertificatesService {
       },
       texts: normalizeGraduationCertificateTemplateTexts({
         ...parsedTexts,
-        signerTitle: config.signerTitleOverride || parsedTexts.signerTitle,
+        signerTitle: signerTitleForEditing,
       }),
     };
   }
@@ -3560,6 +3575,10 @@ export class GraduationCertificatesService {
       ...currentTexts,
       ...payload,
     });
+    if (payload.electronicSignatureEnabled === false) {
+      nextTexts.signerTitle =
+        DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle;
+    }
     const actor = this.resolveTemplateUpdatedBy(payload.updatedBy);
 
     const previousSerialized = serializeGraduationCertificateTemplateTexts(
@@ -3711,10 +3730,17 @@ export class GraduationCertificatesService {
       config.signatureUrlOverride = null;
       config.signatureFilenameOverride = null;
       config.signerNameOverride = null;
+      config.signerTitleOverride =
+        DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle;
       return;
     }
 
     const signerName = String(payload.signerName || '').trim();
+    const signerTitle = String(
+      payload.signerTitle ??
+        config.signerTitleOverride ??
+        DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle,
+    ).trim();
     const hasExistingSignature = Boolean(config.signatureUrlOverride?.trim());
     const hasIncomingSignature = Boolean(payload.signatureImageDataUrl?.trim());
 
@@ -3728,6 +3754,16 @@ export class GraduationCertificatesService {
         'El nombre del firmante no puede superar 255 caracteres.',
       );
     }
+    if (!signerTitle) {
+      throw new BadRequestException(
+        'El cargo del firmante es obligatorio cuando la firma electronica esta activa.',
+      );
+    }
+    if (signerTitle.length > 255) {
+      throw new BadRequestException(
+        'El cargo del firmante no puede superar 255 caracteres.',
+      );
+    }
     if (!hasExistingSignature && !hasIncomingSignature) {
       throw new BadRequestException(
         'La imagen de la firma es obligatoria cuando la firma electronica esta activa.',
@@ -3735,6 +3771,7 @@ export class GraduationCertificatesService {
     }
 
     config.signerNameOverride = signerName;
+    config.signerTitleOverride = signerTitle;
 
     if (hasIncomingSignature) {
       const storedSignature = this.normalizeTemplateSignatureImage(
@@ -3899,7 +3936,6 @@ export class GraduationCertificatesService {
         ? 'Concepto favorable del revisor'
         : 'Concepto registrado por el revisor')
     ).trim();
-
     if (!reason) {
       throw new BadRequestException('Las notas de revision son obligatorias');
     }
@@ -3971,14 +4007,18 @@ export class GraduationCertificatesService {
     }
 
     const reason = (payload.reason || '').trim();
-    if ((decision === 'REJECTED' || decision === 'OBSERVATION') && !reason) {
-      throw new BadRequestException(
-        'Debes registrar una justificacion para esta decision',
-      );
-    }
-
     const now = new Date();
     const isFinalDecision = payload?.finalDecision === true;
+    if (
+      (isFinalDecision || decision === 'REJECTED' || decision === 'OBSERVATION') &&
+      !reason
+    ) {
+      throw new BadRequestException(
+        isFinalDecision
+          ? 'Debes registrar el comentario final para el solicitante'
+          : 'Debes registrar una justificacion para esta decision',
+      );
+    }
 
     if (!isFinalDecision) {
       if (
@@ -4190,6 +4230,11 @@ export class GraduationCertificatesService {
     const reviewNotes = (
       payload?.reviewNotes || 'Aprobado por revisión manual'
     ).trim();
+
+    const publicNotificationNotes =
+      payload?.publicNotificationNotes !== undefined
+        ? (payload.publicNotificationNotes || '').trim()
+        : reviewNotes;
 
     if (payload?.fullName) {
       request.fullName = payload.fullName.trim();
@@ -4404,7 +4449,7 @@ export class GraduationCertificatesService {
           deliveryEmail,
           certificate,
           frontendBaseUrl,
-          reviewNotes,
+          publicNotificationNotes,
         );
       } catch (error) {
         this.logger.warn(

@@ -169,6 +169,7 @@ export interface AprobarSolicitudPayload {
   reviewNotes: string;
   reviewerName?: string;
   reviewerId?: string;
+  publicNotificationNotes?: string;
   fullName?: string;
   idNumber?: string;
   email?: string;

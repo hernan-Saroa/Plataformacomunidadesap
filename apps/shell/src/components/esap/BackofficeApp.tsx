@@ -364,34 +364,23 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     .map(normalizeRoleCode)
     .some((role) => CONTROL_INTERNO_ROLE_CODES.has(role));
   
-  const finalInitialModule = isViewAccessible(initialModule as ModuleView)
-    ? initialModule
-    : moduleFromArray ?? (esRolAuditOTipoJefe ? 'control-interno' : 'dashboard');
+  const finalInitialModule =
+    moduleFromArray ??
+    (isViewAccessible(initialModule as ModuleView) ? initialModule : undefined) ??
+    (esRolAuditOTipoJefe ? 'control-interno' : 'dashboard');
 
   const getDefaultSidebarModule = (view: ModuleView) => MODULE_TO_DEFAULT_SIDEBAR[view] || '';
 
   console.log('📋 Inicial module:', finalInitialModule);
 
-  // 🚀 RECUPERAR MÓDULO PREVIO: Mantener la sesión del usuario donde estaba
-  const [currentModule, setCurrentModule] = useState<ModuleView>(() => {
-    const saved = localStorage.getItem('esap-last-module');
-    // Validar que el módulo guardado sea accesible para este usuario
-    if (saved) {
-      const savedView = resolveModuleView(saved);
-      // Si tiene todos los módulos o si el módulo guardado está entre los asignados, restaurarlo
-      if (isViewAccessible(savedView)) {
-        return savedView as ModuleView;
-      }
-    }
-    // Si es la primera vez (o el módulo guardado no es accesible), usar el módulo por defecto según permisos
-    return finalInitialModule as ModuleView;
-  });
+  // Siempre iniciar en la primera vista habilitada del menu visible para el rol.
+  const [currentModule, setCurrentModule] = useState<ModuleView>(
+    () => finalInitialModule as ModuleView,
+  );
 
-  const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(() => {
-    const saved = localStorage.getItem('esap-last-sidebar-module');
-    if (saved && isViewAccessible(resolveModuleView(saved))) return saved;
-    return getDefaultSidebarModule(finalInitialModule as ModuleView);
-  });
+  const [currentSidebarModule, setCurrentSidebarModule] = useState<string>(
+    () => getDefaultSidebarModule(finalInitialModule as ModuleView),
+  );
 
   // Guardar el módulo actual cada vez que cambie
   useEffect(() => {
