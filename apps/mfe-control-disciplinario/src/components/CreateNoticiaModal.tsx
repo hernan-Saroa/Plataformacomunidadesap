@@ -57,7 +57,7 @@ interface Denunciado {
 
 interface CreateNoticiaModalProps {
   onClose: () => void;
-  onSave: (data: any) => void;
+  onSave: (data: any) => Promise<void>;
   noticiaToEdit?: any; // ✅ NUEVO: Noticia a editar (opcional)
   isEditMode?: boolean; // ✅ NUEVO: Modo edición
 }
@@ -677,7 +677,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // Validar todos los pasos antes de guardar
     const step1Valid = validateStep1();
     const step2Valid = validateStep2();
@@ -707,7 +707,13 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       conductaPersonalizada: conductaSeleccionada === 'Otro' ? conductaPersonalizada : null
     };
 
-    onSave(dataToSave);
+    try {
+      await onSave(dataToSave);
+      onClose();
+    } catch (error) {
+      // Error is handled by the parent, but ensure modal stays open
+      console.error('Error saving noticia:', error);
+    }
   };
 
   return (

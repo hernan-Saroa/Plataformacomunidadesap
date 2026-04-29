@@ -3874,48 +3874,10 @@ export function DashboardKanbanOperativo({
     } catch (error: any) {
       console.error('[DashboardKanban] Error al crear noticia en backend:', error);
 
-      // ✅ Fallback: crear localmente si el backend falla
-      console.log('[DashboardKanban] Creando noticia localmente como fallback...');
-
-      const nuevaNoticiaLocal: Noticia = {
-        id: `n${Date.now()}`,
-        numero: `NOT-2026-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
-        fechaRecepcion: data.fechaQueja || new Date().toISOString().split('T')[0],
-        fechaRegistro: new Date().toISOString(),
-        radicador: data.radicador || 'Usuario Actual',
-        origen: data.origen || 'Denuncia Ciudadana',
-        territorial: data.territorial || undefined,
-        fechaHechos: data.fechaHechos || undefined,
-        cargo: primerDenunciado?.cargo || data.denunciado?.cargo || undefined,
-        dependencia: primerDenunciado?.lugarHechos || data.denunciado?.dependencia || undefined,
-        conductaSeleccionada: data.conductaSeleccionada || undefined,
-        conductaPersonalizada: data.conductaPersonalizada || undefined,
-        denunciante: denunciantePersona,
-        denunciado: denunciadoPersona,
-        denunciados: data.denunciados || [],
-        denunciantes: data.denunciantes || [],
-        hechos: data.descripcionHechos || '',
-        hechosSeparados: data.hechosSeparados || [],
-        archivosAdjuntos: archivosMetadata,
-        estado: 'pendiente',
-        prioridad: 'media',
-        diasPendientes: 0,
-        tipo: 'noticia',
-        etapaActual: etapaInicial // ✅ Usar etapa desde configuración
-      };
-
-      setItems(prev => [...prev, nuevaNoticiaLocal]);
-
-      // Persistir en Supabase como fallback secundario
-      noticiasService.create(nuevaNoticiaLocal).catch(err => {
-        console.error('[DashboardKanban] Error al guardar noticia en Supabase:', err);
-      });
-
-      toast.warning('Noticia creada localmente', {
+      toast.error('Error al crear la noticia', {
         id: toastId,
-        description: 'No se pudo guardar en el servidor. La noticia se guardó localmente.'
+        description: error.message || 'Ocurrió un error al guardar en el servidor. La noticia no se creó.'
       });
-      setModalActivo(null);
     }
   };
 
