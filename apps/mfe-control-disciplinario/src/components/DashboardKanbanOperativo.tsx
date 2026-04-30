@@ -3546,7 +3546,7 @@ export function DashboardKanbanOperativo({
     };
   };
 
-  export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
+  const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
     let etapa = proceso.kanbanStage || proceso.etapaActual;
 
     if (!etapa) {
