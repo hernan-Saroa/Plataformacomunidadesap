@@ -6,8 +6,6 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
 import { authService } from '../../services/api/authService';
 
-const LOGIN_BG_IMAGE = 'https://images.unsplash.com/photo-1623156167557-281309073eef?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxsYXRpbiUyMHN0dWRlbnRzJTIwc3R1ZHlpbmclMjB0b2dldGhlciUyMGNhbXB1cyUyMGxpYnJhcnl8ZW58MXx8fHwxNzcyNjQ1OTMxfDA&ixlib=rb-4.1.0&q=80&w=1920';
-
 interface MicrosoftCallbackResponse {
   code: string;
   state: string;
@@ -46,7 +44,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     document.documentElement.classList.remove('dark');
     const img = new Image();
     img.onload = () => setBgLoaded(true);
-    img.src = LOGIN_BG_IMAGE;
+    img.src = 'src/assets/photo-1623156167557-281309073eef.png';
   }, []);
 
   useEffect(() => {
@@ -754,7 +752,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       >
         <div className="absolute inset-0">
           <img
-            src={LOGIN_BG_IMAGE}
+            src="src/assets/photo-1623156167557-281309073eef.png"
             alt=""
             className={`w-full h-full object-cover transition-opacity duration-1000 ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}
           />
