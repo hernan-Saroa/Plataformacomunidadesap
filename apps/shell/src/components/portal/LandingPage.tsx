@@ -57,7 +57,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
   const services = [
     {
       icon: <Award className="w-7 h-7" style={{ color: '#1e5da8' }} />,
-      title: 'Verificación de Títulos 2',
+      title: 'Verificación de Títulos',
       description: 'Cada certificado tiene un QR único para validación pública. Sistema de trazabilidad completa que registra cada validación.',
       action: () => {
         if (onNavigate) {
