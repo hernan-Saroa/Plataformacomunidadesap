@@ -23,7 +23,7 @@ import {
 } from './ModalConfiguracionPuntosControl';
 import { ModalFirmaOTP, type FirmaElectronicaMetadata } from './ModalFirmaOTP';
 
-// ⚠️ IMPORTACIÓN OBLIGATORIA DE REGLAS DE NEGOCIO Y CUMPLIMIENTO NORMATIVO
+// a️ IMPORTACIN OBLIGATORIA DE REGLAS DE NEGOCIO Y CUMPLIMIENTO NORMATIVO
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { createPortal } from 'react-dom';
 // Hook para sincronizar evidencias con backend y API de auditores
@@ -39,7 +39,7 @@ import {
   DOCUMENTOS_PREDEFINIDOS,
   LOGO_ESAP_URL
 } from './services/pdfESAPHeader';
-// ✅ NUEVO: Exportación Excel con logo
+// S& NUEVO: Exportación Excel con logo
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 
@@ -62,17 +62,19 @@ interface TareaSeguimiento {
   fechaCompletado?: string;
   responsables?: string[];
   observaciones?: string;
-  // ✅ Requisitos por tarea (antes estaban al nivel de actividad)
+  // S& Requisitos por tarea (antes estaban al nivel de actividad)
   requiereObservaciones?: boolean;
   requiereAdjuntos?: boolean;
   adjuntosTarea?: { nombre: string; url: string; fecha: string }[];
-  // ✅ Fecha de entrega opcional
+  // S& Fecha de entrega opcional
   fechaEntrega?: string;
-  // ✅ Evaluación por el responsable
+  // S& Evaluación por el responsable
   evaluada?: boolean;
   aceptada?: boolean;
   observacionesEvaluacion?: string;
   fechaEvaluacion?: string;
+  // S& Vinculación a punto de control (corte) específico
+  puntoControlId?: string;
 }
 
 interface Actividad {
@@ -92,9 +94,9 @@ interface Actividad {
   adjuntos?: ArchivoAdjunto[]; // Archivos adjuntos para evidencia de cumplimiento
   observacionesCumplimiento?: ObservacionCumplimiento[] | string; // FLEXIBILIDAD: array para múltiples o string simple
   
-  // ═══════════════════════════════════════════════════════════════════════
-  // CONFIGURACIÓN DE EVIDENCIAS - Define si adjuntos/observaciones son requeridos
-  // ═══════════════════════════════════════════════════════════════════════
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+  // CONFIGURACIN DE EVIDENCIAS - Define si adjuntos/observaciones son requeridos
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   configuracionEvidencias?: ConfiguracionEvidencias;
   
   // Sistema de autorización del Jefe OCI - Configurado en creación del plan
@@ -109,11 +111,11 @@ interface Actividad {
   fechaVerificacion?: string; // Fecha de verificación del Director
   observacionesDirector?: string; // Observaciones del Director al verificar
   
-  // ✅ NUEVO: Sistema de puntos de control
+  // S& NUEVO: Sistema de puntos de control
   puntosControl?: PuntoControl[]; // Puntos de control configurados
   frecuenciaPuntosControl?: FrecuenciaPuntoControl; // Frecuencia configurada
 
-  // ✅ NUEVO: Entradas de seguimiento vinculadas a puntos de control
+  // S& NUEVO: Entradas de seguimiento vinculadas a puntos de control
   entradasSeguimiento?: EntradaSeguimiento[];
 
   // Soft delete
@@ -123,7 +125,7 @@ interface Actividad {
 interface EntradaSeguimiento {
   id: string;
   puntoControlId: string;   // ID del punto de control (pc-auto-1, etc.)
-  fechaRegistro: string;    // ISO date — se compara con fechaProgramada del corte
+  fechaRegistro: string;    // ISO date  se compara con fechaProgramada del corte
   registradoPor: string;
   usuarioId?: string;
   texto?: string;           // observación escrita (opcional)
@@ -153,9 +155,9 @@ interface ObservacionCumplimiento {
   registradoPor: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 // FUNCIONES HELPER - Manejar diferentes formatos de datos
-// ═══════════════════════════════════════════════════════════════════════════
+// """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 /**
  * Obtiene el conteo correcto de observaciones
@@ -188,7 +190,7 @@ function tieneObservaciones(obs: ObservacionCumplimiento[] | string | undefined)
 /**
  * Calcula el % de avance basado en cortes de seguimiento.
  * Solo cuenta los cortes cuya fechaProgramada <= hoy.
- * Un corte se considera cumplido si tiene ≥1 EntradaSeguimiento con fechaRegistro <= fechaProgramada del corte.
+ * Un corte se considera cumplido si tiene 01 EntradaSeguimiento con fechaRegistro <= fechaProgramada del corte.
  */
 function calcularPorcentajeCortes(actividad: Actividad): number {
   const cortes = actividad.puntosControl;
@@ -260,13 +262,13 @@ const ROLES_DECRETO_648: Omit<Rol, 'actividades'>[] = [
   { numero: 1, nombre: 'Liderazgo estratégico', color: '#2962FF', icono: '🎯', descripcion: 'Asesorar y acompañar a la alta dirección' },
   { numero: 2, nombre: 'Enfoque hacia la prevención', color: '#00C853', icono: '🛡️', descripcion: 'Promover actividades preventivas' },
   { numero: 3, nombre: 'Evaluación de la gestión del riesgo', color: '#FF6D00', icono: '⚠️', descripcion: 'Evaluar sistema de gestión de riesgos' },
-  { numero: 4, nombre: 'Evaluación y seguimiento', color: '#AA00FF', icono: '✓', descripcion: 'Evaluar diseño y efectividad del sistema de control interno' },
+  { numero: 4, nombre: 'Evaluación y seguimiento', color: '#AA00FF', icono: '✔', descripcion: 'Evaluar diseño y efectividad del sistema de control interno' },
   { numero: 5, nombre: 'Relación con entes externos de control', color: '#C62828', icono: '⚖️', descripcion: 'Coordinar con entes externos' }
 ];
 
 // Tipo para configuración de roles en el wizard
 interface ActividadBase {
-  id?: string; // ⚡ ID único para identificar cada actividad
+  id?: string; // a ID único para identificar cada actividad
   nombre: string;
   descripcion: string;
   fechaInicio: string;
@@ -277,9 +279,9 @@ interface ActividadBase {
   tareasSeguimiento?: TareaSeguimiento[];
   requiereAutorizacionJefeOCI?: boolean; // Checkbox      por actividad
   tipoEvidencia?: 'SOLO_CHECK' | 'OBSERVACIONES' | 'ADJUNTOS' | 'COMPLETO'; // Tipo de evidencia requerida
-  responsables?: Auditor[]; // ✅ Responsables por actividad (múltiples)
+  responsables?: Auditor[]; // S& Responsables por actividad (múltiples)
   fechaCorte?: string; // Fecha límite de corte para la actividad
-  // ✅ NUEVO: Configuración de puntos de control
+  // S& NUEVO: Configuración de puntos de control
   puntosControl?: PuntoControl[];
   frecuenciaPuntosControl?: FrecuenciaPuntoControl;
   /** Si es `false`, la actividad no entra en el plan guardado pero se conserva lo configurado hasta volver a marcarla. */
@@ -348,313 +350,205 @@ interface RolConfig extends Omit<Rol, 'actividades'> {
 
 // Función para obtener actividades por rol desde el archivo principal
 function getActividadesPorRol(numeroRol: number): ActividadBase[] {
-  // ════════════════════════════════════════════════════════════════════════════
+  // """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   // ACTIVIDADES OFICIALES DECRETO 648/2017 - SINCRONIZADO CON EXCEL ESAP
-  // ════════════════════════════════════════════════════════════════════════════
+  // """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   const actividadesPorRol: Record<number, ActividadBase[]> = {
-    // ═══════════════════ ROL 1: LIDERAZGO ESTRATÉGICO (46) ═══════════════════
+    // """"""""""""""""""" ROL 1: LIDERAZGO ESTRATÉGICO (46) """""""""""""""""""
     1: [
       { 
         nombre: 'Establecer canales de comunicación directa con el Director Nacional de la ESAP', 
         descripcion: 'Mantener comunicación permanente con la dirección sobre temas estratégicos de control interno', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '50% avance', 
-        seguimiento: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del Director. Enviar comunicaciones internas hechas a los procesos de la ESAP al Señor Director.',
+        fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance', 
+        seguimiento: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del Director.',
         tareasSeguimiento: [
-          { id: 'r1-a1-t1', descripcion: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del Director', completada: false },
-          { id: 'r1-a1-t2', descripcion: 'Enviar comunicaciones internas hechas a los procesos de la ESAP al Señor Director', completada: false },
+          { id: 'r1-a1-t1', descripcion: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del Director.', completada: false, fechaEntrega: '2026-07-31' },
+          { id: 'r1-a1-t2', descripcion: 'Enviar comunicaciones internas hechas a los procesos de la ESAP al Señor Director.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
       { 
         nombre: 'Verificar a través del Plan anual de auditorías, el cumplimiento de metas, indicadores, procesos estratégicos de la entidad y riesgos asociados a estos', 
         descripcion: 'Revisar cumplimiento de objetivos institucionales y riesgos asociados', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento cuatrimestral.', 
-        evaluacion: '50% avance', 
-        seguimiento: 'Socializar resultados en el Comité Institucional de Gestión y Desempeño',
+        fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento cuatrimestral.', evaluacion: '0% avance', 
+        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno',
         tareasSeguimiento: [
-          { id: 'r1-a2-t1', descripcion: 'Socializar resultados en el Comité Institucional de Gestión y Desempeño', completada: false },
+          { id: 'r1-a2-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false, fechaEntrega: '2026-05-31' },
+          { id: 'r1-a2-t2', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false, fechaEntrega: '2026-09-30' },
+          { id: 'r1-a2-t3', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
       { 
         nombre: 'Establecer en el Comité de Gestión y Desempeño la periodicidad y alcance de rendición de informes estratégicos', 
         descripcion: 'Definir en el comité de gestión y desempeño la periodicidad de rendición de informes', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento anual.', 
-        evaluacion: '10% avance', 
-        seguimiento: 'Socializar Plan Anual de Auditoría en el Comité Institucional de Gestión y Desempeño',
+        fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento anual.', evaluacion: '100% avance', 
+        seguimiento: 'Socializar Plan Anual de Auditoría en el Comité Institucional de Gestión y Desempeño.',
         tareasSeguimiento: [
-          { id: 'r1-a3-t1', descripcion: 'Socializar Plan Anual de Auditoría en el Comité Institucional de Gestión y Desempeño', completada: false },
+          { id: 'r1-a3-t1', descripcion: 'Socializar Plan Anual de Auditoría en el Comité Institucional de Gestión y Desempeño.', completada: true, fechaEntrega: '2026-02-28' },
         ]
       },
       { 
         nombre: 'Presentar ante el Comité Institucional de Coordinación de Control Interno los resultados de la evaluación de la operación de la primera y segunda línea de defensa. Analizar las variaciones del ambiente organizacional y del entorno, identificando procesos críticos, controles y servicios que tengan un impacto significativo en el cumplimiento de los objetivos institucionales', 
         descripcion: 'Evaluar operación de primera y segunda línea de defensa ante el CICC', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno, a través de sus cinco (5) componentes y publicar en la página web',
+        fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance', 
+        seguimiento: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno',
         tareasSeguimiento: [
-          { id: 'r1-a4-t1', descripcion: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno, a través de sus cinco (5) componentes y publicar en la página web', completada: false },
+          { id: 'r1-a4-t1', descripcion: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno, a través de sus cinco (5) componentes y publicar en la página web.', completada: false, fechaEntrega: '2026-07-31' },
+          { id: 'r1-a4-t2', descripcion: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno, a través de sus cinco (5) componentes y publicar en la página web.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
       { 
-        nombre: 'Informar al jefe de la entidad sobre las alertas de riesgo fiscal identificadas y en general los resultados de los ejercicios de auditoría y se planteen recomendaciones estratégicas para el fortalecimiento y la prevención', 
-        descripcion: 'Comunicar al jefe de la entidad sobre alertas identificadas en auditorías', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace informe cuatrimestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION',
+        nombre: 'Informar al Director Nacional de la ESAP sobre las alertas de riesgo fiscal identificadas y en general los resultados de los ejercicios de auditoría y se planteen recomendaciones estratégicas para el fortalecimiento y la prevención', 
+        descripcion: 'Comunicar al Director sobre alertas de riesgo fiscal identificadas en auditorías', 
+        fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace informe cuatrimestral.', evaluacion: '0% avance', 
+        seguimiento: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION.',
         tareasSeguimiento: [
-          { id: 'r1-a5-t1', descripcion: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION', completada: false },
+          { id: 'r1-a5-t1', descripcion: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION.', completada: false, fechaEntrega: '2026-05-31' },
+          { id: 'r1-a5-t2', descripcion: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION.', completada: false, fechaEntrega: '2026-09-30' },
+          { id: 'r1-a5-t3', descripcion: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
       { 
         nombre: 'Participación frente a los procesos de empalme cuando se dan cambios de administración', 
         descripcion: 'Acompañar procesos de transición cuando hay cambios de administración', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: '', 
-        evaluacion: '0% avance', 
-        seguimiento: 'Se hace seguimiento el último año',
+        fechaInicio: '2026-08-08', fechaFin: '2026-10-31', 
+        control: 'Cuando se aplique', evaluacion: '0% avance', 
+        seguimiento: 'Se hace seguimiento el último año.',
         tareasSeguimiento: [
-          { id: 'r1-a6-t1', descripcion: 'Se hace seguimiento el último año', completada: false },
+          { id: 'r1-a6-t1', descripcion: 'Se hace seguimiento el último año.', completada: false, fechaEntrega: '2026-10-31' },
         ]
       }
     ],
-    // ═══════════════════ ROL 2: ENFOQUE HACIA LA PREVENCIÓN (60) ═══════════════════
+    // """"""""""""""""""" ROL 2: ENFOQUE HACIA LA PREVENCIN (60) """""""""""""""""""
     2: [
-      { 
-        nombre: 'Programar en los comités institucionales más estratégicos (gestión y desempeño institucional, de coordinación de control interno, de gerencia u otro), sesiones que sensibilicen sobre la articulación del sistema de control interno y el control externo', 
-        descripcion: 'Programar sesiones en comités estratégicos sobre la articulación del sistema de control interno y el control externo', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Socializar articulación del sistema de control interno y el control externo (Guía de auditoría)',
+      { nombre: 'Programar en los comités institucionales más estratégicos sesiones que sensibilicen sobre la articulación del sistema de control interno y el control externo', 
+        descripcion: 'Programar sesiones en comités estratégicos sobre articulación del SCI', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance', seguimiento: 'Socializar articulación del sistema de control interno y el control externo (Guía de auditoría).',
         tareasSeguimiento: [
-          { id: 'r2-a1-t1', descripcion: 'Socializar articulación del sistema de control interno y el control externo (Guía de auditoría)', completada: false },
+          { id: 'r2-a1-t1', descripcion: 'Socializar articulación del sistema de control interno y el control externo (Guía de auditoría).', completada: false, fechaEntrega: '2026-08-31' },
+          { id: 'r2-a1-t2', descripcion: 'Socializar articulación del sistema de control interno y el control externo (Guía de auditoría).', completada: false, fechaEntrega: '2027-02-28' },
         ]
       },
-      { 
-        nombre: 'Acompañar a los procesos en la formulación de planes de mejoramiento', 
-        descripcion: 'Asesorar a los procesos en la formulación de planes de mejoramiento', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento trimestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Asesorar y suministrar herramientas como el diagrama causa efecto',
+      { nombre: 'Acompañar a los procesos en la formulación de planes de mejoramiento', 
+        descripcion: 'Asesorar a los procesos en la formulación de planes de mejoramiento', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento trimestral.', evaluacion: '0% avance', seguimiento: 'Revisión metodológica',
         tareasSeguimiento: [
-          { id: 'r2-a2-t1', descripcion: 'Asesorar y suministrar herramientas como el diagrama causa efecto', completada: false },
+          { id: 'r2-a2-t1', descripcion: 'Revisión metodológica', completada: false, fechaEntrega: '2026-04-30' },
+          { id: 'r2-a2-t2', descripcion: 'Revisión metodológica', completada: false, fechaEntrega: '2026-07-31' },
+          { id: 'r2-a2-t3', descripcion: 'Revisión metodológica', completada: false, fechaEntrega: '2026-10-31' },
+          { id: 'r2-a2-t4', descripcion: 'Revisión metodológica', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
-      { 
-        nombre: 'Adoptar formalmente un procedimiento para el seguimiento al Plan de Mejoramiento, con esquema de semaforización que genere informe de alertas a los responsables internos. Hacer mesas de trabajo con los responsables de las acciones que se encuentren en alguna de las alertas', 
-        descripcion: 'Formalizar procedimiento con semaforización y alertas a responsables', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento anual.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Documentar procedimiento y formato para hacer seguimiento al cumplimiento y efectividad de las acciones de mejora',
+      { nombre: 'Adoptar formalmente un procedimiento para el seguimiento al Plan de Mejoramiento, con esquema de semaforización que genere informe de alertas a los responsables internos. Hacer mesas de trabajo con los responsables de las acciones que se encuentren en alguna de las alertas', 
+        descripcion: 'Formalizar procedimiento con semaforización y alertas a responsables', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento anual.', evaluacion: '0% avance', seguimiento: 'Incluir en el módulo de control interno las alertas para los planes de mejoramiento',
         tareasSeguimiento: [
-          { id: 'r2-a3-t1', descripcion: 'Documentar procedimiento y formato para hacer seguimiento al cumplimiento y efectividad de las acciones de mejora', completada: false },
+          { id: 'r2-a3-t1', descripcion: 'Incluir en el módulo de control interno las alertas para los planes de mejoramiento', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
-      { 
-        nombre: 'Elaborar y presentar, en el marco del Comité Institucional de Coordinación de Control Interno un informe en relación con el avance del plan de mejoramiento', 
-        descripcion: 'Informar sobre el estado de avance del plan de mejoramiento institucional', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento trimestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno',
+      { nombre: 'Elaborar y presentar, en el marco del Comité Institucional de Coordinación de Control Interno un informe en relación con el avance del plan de mejoramiento', 
+        descripcion: 'Informar sobre el estado de avance del plan de mejoramiento institucional', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento trimestral.', evaluacion: '0% avance', seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.',
         tareasSeguimiento: [
-          { id: 'r2-a4-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false },
+          { id: 'r2-a4-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-05-29' },
+          { id: 'r2-a4-t2', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-08-28' },
+          { id: 'r2-a4-t3', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-11-20' },
+          { id: 'r2-a4-t4', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2027-03-31' },
         ]
       },
-      { 
-        nombre: 'Hacer seguimiento a decisiones en firme de órganos de control e investigación sobre procesos penales, fiscales y disciplinarios derivados de hallazgos o denuncias relacionadas con la entidad', 
-        descripcion: 'Monitorear procesos penales, fiscales y disciplinarios relacionados con la entidad', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno',
+      { nombre: 'Desarrollar diagnósticos para la mejora en la gestión del riesgo en todos sus ámbitos', 
+        descripcion: 'Realizar diagnósticos en todos los ámbitos de gestión del riesgo', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance', seguimiento: 'Establecer a través de la auditoría interna la efectividad de los controles.',
         tareasSeguimiento: [
-          { id: 'r2-a5-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false },
+          { id: 'r2-a5-t1', descripcion: 'Establecer a través de la auditoría interna la efectividad de los controles para evitar la materialización de riesgos y socializar en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-08-31' },
+          { id: 'r2-a5-t2', descripcion: 'Establecer a través de la auditoría interna la efectividad de los controles para evitar la materialización de riesgos y socializar en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2027-02-28' },
         ]
       },
-      { 
-        nombre: 'Desarrollar diagnósticos para la mejora en la gestión del riesgo en todos sus ámbitos', 
-        descripcion: 'Realizar diagnósticos en todos los ámbitos de gestión del riesgo', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Establecer a través de la auditoría interna la efectividad de los controles para evitar la materialización de riesgos y socializar en el Comité Institucional de Coordinación de Control Interno',
+      { nombre: 'Asesorar a la alta dirección para la articulación del esquema de líneas de defensa', 
+        descripcion: 'Acompañar a la alta dirección en la implementación de las tres líneas de defensa', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance', seguimiento: 'Realizar capacitaciones del esquema de tres líneas de defensa del Sistema de Control Interno.',
         tareasSeguimiento: [
-          { id: 'r2-a6-t1', descripcion: 'Establecer a través de la auditoría interna la efectividad de los controles para evitar la materialización de riesgos y socializar en el Comité Institucional de Coordinación de Control Interno', completada: false },
+          { id: 'r2-a6-t1', descripcion: 'Realizar capacitaciones del esquema de tres líneas de defensa del Sistema de Control Interno.', completada: false, fechaEntrega: '2026-08-31' },
+          { id: 'r2-a6-t2', descripcion: 'Realizar capacitaciones del esquema de tres líneas de defensa del Sistema de Control Interno.', completada: false, fechaEntrega: '2027-02-28' },
         ]
       },
-      { 
-        nombre: 'Asesorar a la alta dirección para la articulación del esquema de líneas de defensa', 
-        descripcion: 'Acompañar a la alta dirección en la implementación de las tres líneas de defensa', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Realizar capacitaciones del esquema de tres líneas de defensa del Sistema de Control Interno',
+      { nombre: 'Alertas tempranas', 
+        descripcion: 'Emitir alertas tempranas cuando se requieran', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Cuando se aplique', evaluacion: '0% avance', seguimiento: 'Emitir alertas cuando se requieran',
         tareasSeguimiento: [
-          { id: 'r2-a7-t1', descripcion: 'Realizar capacitaciones del esquema de tres líneas de defensa del Sistema de Control Interno', completada: false },
-        ]
-      },
-      { 
-        nombre: 'Establecer una estrategia de acompañamiento de la batería de indicadores y diseño de tableros de control', 
-        descripcion: 'Establecer estrategia para el diseño y seguimiento de indicadores', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Realizar capacitaciones',
-        tareasSeguimiento: [
-          { id: 'r2-a8-t1', descripcion: 'Realizar capacitaciones', completada: false },
+          { id: 'r2-a7-t1', descripcion: 'Emitir alertas cuando se requieran', completada: false },
         ]
       }
     ],
-    // ═══════════════════ ROL 3: EVALUACIÓN DE LA GESTIÓN DEL RIESGO (48) ═══════════════════
+    // """"""""""""""""""" ROL 3: EVALUACIN DE LA GESTIN DEL RIESGO (48) """""""""""""""""""
     3: [
-      { 
-        nombre: 'Revisar la adecuación y/o actualización de la política de administración del riesgo y si se evalúa periódicamente su implementación', 
-        descripcion: 'Evaluar actualización y cumplimiento de la política de gestión del riesgo', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '48% avance', 
-        seguimiento: 'Revisar que está formalizada a través de acto administrativo o actuación administrativa y que contenga (objetivo, alcance, niveles de aceptación del riesgo, niveles para calificar el impacto, tratamiento del riesgo) de conformidad con la Guía para la Administración del Riesgo y el diseño de controles en entidades públicas',
+      { nombre: 'Revisar la adecuación y/o actualización de la política de administración del riesgo y si se evalúa periódicamente su implementación', 
+        descripcion: 'Evaluar actualización y cumplimiento de la política de gestión del riesgo', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento cuatrimestral.', evaluacion: '0% avance', seguimiento: 'Revisar que está formalizada a través de acto administrativo.',
         tareasSeguimiento: [
-          { id: 'r3-a1-t1', descripcion: 'Revisar que está formalizada a través de acto administrativo o actuación administrativa', completada: false },
-          { id: 'r3-a1-t2', descripcion: 'Verificar que contenga: objetivo, alcance, niveles de aceptación del riesgo, niveles para calificar el impacto, tratamiento del riesgo', completada: false },
-          { id: 'r3-a1-t3', descripcion: 'Validar conformidad con la Guía para la Administración del Riesgo y el diseño de controles en entidades públicas', completada: false },
+          { id: 'r3-a1-t1', descripcion: 'Revisar que está formalizada a través de acto administrativo o actuación administrativa y que contenga (objetivo, alcance, niveles de aceptación del riesgo, niveles para calificar el impacto, tratamiento del riesgo) de conformidad con la Guía para la Administración del Riesgo y el diseño de controles en entidades públicas.', completada: false, fechaEntrega: '2026-05-31' },
+          { id: 'r3-a1-t2', descripcion: 'Revisar que está formalizada a través de acto administrativo o actuación administrativa y que contenga (objetivo, alcance, niveles de aceptación del riesgo, niveles para calificar el impacto, tratamiento del riesgo) de conformidad con la Guía para la Administración del Riesgo y el diseño de controles en entidades públicas.', completada: false, fechaEntrega: '2026-09-30' },
+          { id: 'r3-a1-t3', descripcion: 'Revisar que está formalizada a través de acto administrativo o actuación administrativa y que contenga (objetivo, alcance, niveles de aceptación del riesgo, niveles para calificar el impacto, tratamiento del riesgo) de conformidad con la Guía para la Administración del Riesgo y el diseño de controles en entidades públicas.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
-      { 
-        nombre: 'Promover escenarios para que la dirección comprenda el valor de la gestión de riesgos como paso previo para promover el proceso en toda la organización. Proporcionar la información de riesgos para que la alta dirección la utilice en la toma de decisiones', 
-        descripcion: 'Generar escenarios para que la dirección comprenda la importancia de la gestión de riesgos', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '48% avance', 
-        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno',
+      { nombre: 'Promover escenarios para que la dirección comprenda el valor de la gestión de riesgos como paso previo para promover el proceso en toda la organización. Proporcionar la información de riesgos para que la alta dirección la utilice en la toma de decisiones', 
+        descripcion: 'Generar escenarios para que la dirección comprenda la importancia de la gestión de riesgos', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento cuatrimestral.', evaluacion: '0% avance', seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.',
         tareasSeguimiento: [
-          { id: 'r3-a2-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false },
+          { id: 'r3-a2-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-05-31' },
+          { id: 'r3-a2-t2', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-09-30' },
+          { id: 'r3-a2-t3', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
-      { 
-        nombre: 'Evaluar prácticas actuales de gestión del riesgo para migrar a esquemas más efectivos. Articular ejercicios de seguimiento y monitoreo en el marco del Esquema de las líneas de defensa', 
-        descripcion: 'Migrar a esquemas más efectivos y articular ejercicios de seguimiento y monitoreo en el marco del Esquema de las líneas de defensa', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento cuatrimestral.', 
-        evaluacion: '48% avance', 
-        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno',
+      { nombre: 'Evaluar prácticas actuales de gestión del riesgo para migrar a esquemas más efectivos. Articular ejercicios de seguimiento y monitoreo en el marco del Esquema de las líneas de defensa', 
+        descripcion: 'Migrar a esquemas más efectivos de gestión del riesgo', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento cuatrimestral.', evaluacion: '0% avance', seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.',
         tareasSeguimiento: [
-          { id: 'r3-a3-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false },
+          { id: 'r3-a3-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-05-31' },
+          { id: 'r3-a3-t2', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-09-30' },
+          { id: 'r3-a3-t3', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       }
     ],
-    // ═══════════════════ ROL 4: EVALUACIÓN Y SEGUIMIENTO (60) ═══════════════════
+    // """"""""""""""""""" ROL 4: EVALUACIN Y SEGUIMIENTO (60) """""""""""""""""""
     4: [
-      { 
-        nombre: 'Efectuar auditorías internas con enfoque preventivo y las especiales acorde al programa de auditoria', 
-        descripcion: 'Realizar auditorías internas y especiales conforme al programa anual', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento mensual.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría',
+      { nombre: 'Efectuar auditorías internas con enfoque preventivo y las especiales acorde al programa de auditoria', 
+        descripcion: 'Realizar auditorías internas y especiales conforme al programa anual', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento mensual.', evaluacion: '0% avance', seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría.',
         tareasSeguimiento: [
-          { id: 'r4-a1-t1', descripcion: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría', completada: false },
+          { id: 'r4-a1-t1', descripcion: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría.', completada: false },
         ]
       },
-      { 
-        nombre: 'Seguimiento a planes de mejoramiento internos y externos', 
-        descripcion: 'Monitorear cumplimiento de planes de mejoramiento derivados de auditorías', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento trimestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Asesorar y suministrar herramientas como el diagrama causa efecto',
+      { nombre: 'Seguimiento a planes de mejoramiento internos y externos', 
+        descripcion: 'Monitorear cumplimiento de planes de mejoramiento derivados de auditorías', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento trimestral.', evaluacion: '0% avance', seguimiento: 'Evaluar el cumplimiento de los planes de mejoramiento',
         tareasSeguimiento: [
-          { id: 'r4-a2-t1', descripcion: 'Asesorar y suministrar herramientas como el diagrama causa efecto', completada: false },
-        ]
-      },
-      { 
-        nombre: 'Establecer una estrategia de acompañamiento de la batería de indicadores y diseño de tableros de control', 
-        descripcion: 'Fortalecer la medición del desempeño institucional a través del seguimiento de indicadores', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Realizar capacitaciones y acompañamiento en el diseño de tableros de control',
-        tareasSeguimiento: [
-          { id: 'r4-a3-t1', descripcion: 'Realizar capacitaciones y acompañamiento en el diseño de tableros de control', completada: false },
-        ]
-      },
-      { 
-        nombre: 'Adelantar de una manera armónica procesos de auditoría que lleve a cabo el organismo de control', 
-        descripcion: 'Coordinación efectiva con entes de control externo durante sus visitas', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: '', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes',
-        tareasSeguimiento: [
-          { id: 'r4-a4-t1', descripcion: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes', completada: false },
-        ]
-      },
-      { 
-        nombre: 'Presentar informes y seguimientos de ley', 
-        descripcion: 'Cumplimiento de todos los informes obligatorios establecidos en el cronograma anual', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento mensual.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes',
-        tareasSeguimiento: [
-          { id: 'r4-a5-t1', descripcion: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes', completada: false },
+          { id: 'r4-a2-t1', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2026-05-29' },
+          { id: 'r4-a2-t2', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2026-08-28' },
+          { id: 'r4-a2-t3', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2026-11-20' },
+          { id: 'r4-a2-t4', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2027-03-31' },
         ]
       }
     ],
-    // ═══════════════════ ROL 5: RELACIÓN CON ENTES EXTERNOS DE CONTROL ═══════════════════
+    // """"""""""""""""""" ROL 5: RELACIN CON ENTES EXTERNOS DE CONTROL """""""""""""""""""
     5: [
-      { 
-        nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control', 
-        descripcion: 'Alertar a responsables sobre información requerida por organismos de control', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento mensual.', 
-        evaluacion: '59% avance', 
-        seguimiento: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del proceso respectivo',
+      { nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control. Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)', 
+        descripcion: 'Alertar a responsables sobre información requerida por organismos de control', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance', seguimiento: 'Comunicación interna a la Dirección Nacional y responsables de los procesos.',
         tareasSeguimiento: [
-          { id: 'r5-a1-t1', descripcion: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del proceso respectivo', completada: false },
+          { id: 'r5-a1-t1', descripcion: 'Comunicación interna a la Dirección Nacional y responsables de los proceso del cargue del plan de mejoramiento en el aplicativo SIRECI - CGR', completada: false, fechaEntrega: '2026-12-31' },
         ]
       },
-      { 
-        nombre: 'Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)', 
-        descripcion: 'Alertar sobre conductas generadoras de sanciones ante órganos de control', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento mensual.', 
-        evaluacion: '59% avance', 
-        seguimiento: 'Comunicar oportunamente a los líderes de procesos sobre posibles sanciones',
+      { nombre: 'Presentar informes y seguimientos de ley', 
+        descripcion: 'Cumplimiento de todos los informes obligatorios establecidos en el cronograma anual', fechaInicio: '2026-01-01', fechaFin: '2026-12-31', 
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance', seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes.',
         tareasSeguimiento: [
-          { id: 'r5-a2-t1', descripcion: 'Comunicar oportunamente a los líderes de procesos sobre posibles sanciones', completada: false },
+          { id: 'r5-a2-t1', descripcion: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes.', completada: false, fechaEntrega: '2026-07-31' },
+          { id: 'r5-a2-t2', descripcion: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
     ]
@@ -663,9 +557,9 @@ function getActividadesPorRol(numeroRol: number): ActividadBase[] {
   return actividadesPorRol[numeroRol] || [];
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// COMPONENTE: SELECTOR DE PROFESIONAL DISEÑADO (Combobox)
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+// COMPONENTE: SELECTOR DE PROFESIONAL DISEADO (Combobox)
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 function SelectorProfesional({
   auditores,
@@ -838,9 +732,9 @@ function SelectorProfesional({
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// WIZARD DE CREACIÓN
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+// WIZARD DE CREACIN
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 interface WizardCreacionProps {
   planAEditar?: PlanAnual;
@@ -851,7 +745,7 @@ interface WizardCreacionProps {
 }
 
 export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, planesExistentes = [] }: WizardCreacionProps) {
-  // 💾 Cargar borrador de localStorage
+  // x Cargar borrador de localStorage
   const draftKey = planAEditar ? `esap:wizard_plan_anual_edit_${planAEditar.id}` : 'esap:wizard_plan_anual_draft';
   const draftStr = typeof window !== 'undefined' ? localStorage.getItem(draftKey) : null;
   let draft = null;
@@ -882,7 +776,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     .filter((p: any) => !planAEditar || p.id !== planAEditar.id)
     .map((p: any) => p.vigencia);
   const anioActual = new Date().getFullYear();
-  // Mismo rango que la validación de vigencia en el wizard (2020–2100)
+  // Mismo rango que la validación de vigencia en el wizard (20202100)
   const vigenciasDisponibles = Array.from({ length: 2100 - 2020 + 1 }, (_, i) => 2020 + i)
     .filter(y => !vigenciasOcupadas.includes(y));
 
@@ -1035,7 +929,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
         const año = vigencia;
         return {
           ...act,
-          // ═══ FECHAS DINÁMICAS: siempre reflejan la vigencia del plan ═══
+          // """ FECHAS DINÁMICAS: siempre reflejan la vigencia del plan """
           fechaInicio: `${año}-01-01`,
           fechaFin: `${año}-12-31`,
           fechaCorte: `${año}-12-31`,
@@ -1112,24 +1006,73 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     return ROLES_DECRETO_648.map(rol => {
       const actividades = getActividadesPorRol(rol.numero);
       
-      // ⚡ Auto-generar 3 puntos de control trimestrales por actividad (Mar, Jun, Sep)
+      // a Auto-generar puntos de control según la periodicidad de cada actividad
       const actividadesConPuntos = actividades.map((act, idx) => {
-        const uniqueId = `rol-${rol.numero}-act-${idx}`; // ⚡ ID único por rol e índice
-        const añoInicial = vigencia || new Date().getFullYear();
-        const puntosDefault: PuntoControl[] = [
-          { id: `pc-${uniqueId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${añoInicial}-03-31`, fechaSeguimiento: `${añoInicial}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-          { id: `pc-${uniqueId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${añoInicial}-06-30`, fechaSeguimiento: `${añoInicial}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-          { id: `pc-${uniqueId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${añoInicial}-09-30`, fechaSeguimiento: `${añoInicial}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-        ];
+        const uniqueId = `rol-${rol.numero}-act-${idx}`;
+        const año = Number(vigencia || new Date().getFullYear());
+        const mkPC = (pcId: string, orden: number, fi: string, ff: string): PuntoControl => ({
+          id: pcId, orden, nombre: `Corte ${orden}`, descripcion: '',
+          fechaProgramada: fi, fechaSeguimiento: ff,
+          fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: []
+        });
+        const ctrl = (act.control || '').toLowerCase();
+        let puntosDefault: PuntoControl[];
+        let frecuencia: FrecuenciaPuntoControl = 'trimestral';
+        if (ctrl.includes('semestral')) {
+          frecuencia = 'semestral';
+          puntosDefault = [
+            mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-06-30`),
+            mkPC(`pc-${uniqueId}-2`, 2, `${año}-07-01`, `${año}-12-31`),
+          ];
+        } else if (ctrl.includes('cuatrimestral')) {
+          frecuencia = 'cuatrimestral';
+          puntosDefault = [
+            mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-04-30`),
+            mkPC(`pc-${uniqueId}-2`, 2, `${año}-05-01`, `${año}-08-31`),
+            mkPC(`pc-${uniqueId}-3`, 3, `${año}-09-01`, `${año}-12-31`),
+          ];
+        } else if (ctrl.includes('trimestral')) {
+          frecuencia = 'trimestral';
+          puntosDefault = [
+            mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-03-31`),
+            mkPC(`pc-${uniqueId}-2`, 2, `${año}-04-01`, `${año}-06-30`),
+            mkPC(`pc-${uniqueId}-3`, 3, `${año}-07-01`, `${año}-09-30`),
+            mkPC(`pc-${uniqueId}-4`, 4, `${año}-10-01`, `${año}-12-31`),
+          ];
+        } else if (ctrl.includes('anual')) {
+          frecuencia = 'anual';
+          puntosDefault = [
+            mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-12-31`),
+          ];
+        } else if (ctrl.includes('mensual')) {
+          frecuencia = 'mensual';
+          puntosDefault = Array.from({length: 12}, (_, i) => {
+            const m = (i+1).toString().padStart(2, '0');
+            const lastDay = new Date(año, i+1, 0).getDate().toString().padStart(2, '0');
+            return mkPC(`pc-${uniqueId}-${i+1}`, i+1, `${año}-${m}-01`, `${año}-${m}-${lastDay}`);
+          });
+        } else {
+          // Default: anual para actividades sin periodicidad definida
+          frecuencia = 'anual';
+          puntosDefault = [
+            mkPC(`pc-${uniqueId}-1`, 1, act.fechaInicio || `${año}-01-01`, act.fechaFin || `${año}-12-31`),
+          ];
+        }
+        // Auto-asignar tareas al corte correspondiente (tarea N   corte N)
+        const tareasConCorte = (act.tareasSeguimiento || []).map((t, tIdx) => ({
+          ...t,
+          puntoControlId: puntosDefault[tIdx % puntosDefault.length]?.id,
+        }));
         return {
           ...act,
           id: uniqueId,
           tipoEvidencia: 'SOLO_CHECK' as const,
-          fechaInicio: `${añoInicial}-01-01`,
-          fechaFin: `${añoInicial}-12-31`,
-          fechaCorte: `${añoInicial}-09-30`,
+          fechaInicio: act.fechaInicio || `${año}-01-01`,
+          fechaFin: act.fechaFin || `${año}-12-31`,
+          fechaCorte: puntosDefault[puntosDefault.length - 1]?.fechaSeguimiento || `${año}-12-31`,
           puntosControl: puntosDefault,
-          frecuenciaPuntosControl: 'trimestral' as const,
+          frecuenciaPuntosControl: frecuencia,
+          tareasSeguimiento: tareasConCorte,
         };
       });
       
@@ -1230,7 +1173,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       return false;
     }
     
-    // ⚠️ VALIDACIÓN OBLIGATORIA: Todos los roles con actividades DEBEN tener responsables
+    // a️ VALIDACIN OBLIGATORIA: Todos los roles con actividades DEBEN tener responsables
     const rolesConActividades = rolesConfig.filter(rol => 
       contarActividadesIncluidas(rol) + (rol.actividadesCustom?.length || 0) > 0
     );
@@ -1297,7 +1240,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       sum + (rol.responsables?.length || 0), 0
     );
     
-    console.log(`✅ [validarPaso2] Validación exitosa:`);
+    console.log(`S& [validarPaso2] Validación exitosa:`);
     console.log(`   - ${rolesConActividades.length} roles con actividades`);
     console.log(`   - ${totalActividades} actividades totales`);
     console.log(`   - ${totalResponsables} responsables asignados`);
@@ -1373,7 +1316,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
               <Check className="w-10 h-10 text-green-600" />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {planAEditar ? '¡Plan Actualizado con Éxito!' : '¡Plan Creado con Éxito!'}
+              {planAEditar ? '¡Plan Actualizado con 0xito!' : '¡Plan Creado con 0xito!'}
             </h2>
             <p className="text-gray-600 mb-8 border-b pb-8">
               El Plan Anual de Auditoría {vigencia} ha sido guardado correctamente. Ahora puedes revisarlo desde el Dashboard.
@@ -1638,7 +1581,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               <svg className={`w-5 h-5 transition-transform ${showDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             </button>
             {vigenciaDisponible && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded-full border border-green-300">✅ Disponible</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded-full border border-green-300">S& Disponible</span>
             )}
             {vigenciaOcupada && (
               <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded-full border border-red-300">⚠️ Ya existe</span>
@@ -1652,7 +1595,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
                     }`}
                   >
                     <span className="text-lg font-bold">{y}</span>
-                    {y === vigencia && <span className="ml-2 text-blue-500 text-xs">← seleccionado</span>}
+                    {y === vigencia && <span className="ml-2 text-blue-500 text-xs">  seleccionado</span>}
                   </button>
                 )) : (
                   <div className="px-4 py-3 text-sm text-gray-500 italic">No hay años disponibles que coincidan</div>
@@ -1663,7 +1606,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
           {vigenciaOcupada ? (
             <p className="text-xs text-red-600 mt-1 font-medium">Ya existe un plan para {vigencia}. Selecciona otro año del listado.</p>
           ) : vigenciaDisponible ? (
-            <p className="text-xs text-green-600 mt-1 font-medium">✓ Año {vigencia} disponible. Las fechas se ajustan automáticamente.</p>
+            <p className="text-xs text-green-600 mt-1 font-medium">✅ Año {vigencia} disponible. Las fechas se ajustan automáticamente.</p>
           ) : (
             <p className="text-xs text-gray-500 mt-1">Escribe un año o despliega la lista para ver los disponibles.</p>
           )}
@@ -1686,7 +1629,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             />
             {errorVigenciaNoCoincide && anioFechaInicio !== vigencia && (
               <p className="text-xs text-red-600 mt-1 font-medium">
-                ⚠️ El año de la fecha ({anioFechaInicio}) debe coincidir con la vigencia ({vigencia})
+                a️ El año de la fecha ({anioFechaInicio}) debe coincidir con la vigencia ({vigencia})
               </p>
             )}
             {!errorVigenciaNoCoincide && (
@@ -1709,12 +1652,12 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             />
             {errorFechaFinAnterior && (
               <p className="text-xs text-red-600 mt-1 font-medium">
-                ⚠️ La fecha de finalización no puede ser anterior a la fecha de inicio
+                a️ La fecha de finalización no puede ser anterior a la fecha de inicio
               </p>
             )}
             {!errorFechaFinAnterior && errorVigenciaNoCoincide && anioFechaFin !== vigencia && (
               <p className="text-xs text-red-600 mt-1 font-medium">
-                ⚠️ El año de la fecha ({anioFechaFin}) debe coincidir con la vigencia ({vigencia})
+                a️ El año de la fecha ({anioFechaFin}) debe coincidir con la vigencia ({vigencia})
               </p>
             )}
             {!errorFechaFinAnterior && !errorVigenciaNoCoincide && (
@@ -1806,7 +1749,7 @@ function Paso2({
     seguimiento: 'Por definir'
   });
 
-  // ✅ NUEVO: Estado para configuración de puntos de control
+  // S& NUEVO: Estado para configuración de puntos de control
   const [modalPuntosControlAbierto, setModalPuntosControlAbierto] = useState(false);
   const [actividadConfigurando, setActividadConfigurando] = useState<{
     numeroRol: number;
@@ -1852,12 +1795,35 @@ function Paso2({
       if (!actividadBase) return rol;
 
       const primerResponsable = rol.responsables?.[0];
-      const año = fechaInicio ? fechaInicio.split('-')[0] : new Date().getFullYear().toString();
-      const puntosDefault: PuntoControl[] = [
-        { id: `pc-${actId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-        { id: `pc-${actId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-        { id: `pc-${actId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-      ];
+      const año = Number(fechaInicio ? fechaInicio.split('-')[0] : new Date().getFullYear());
+      const mkPC = (pcId: string, orden: number, fi: string, ff: string): PuntoControl => ({
+        id: pcId, orden, nombre: `Corte ${orden}`, descripcion: '',
+        fechaProgramada: fi, fechaSeguimiento: ff,
+        fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: []
+      });
+      const ctrl = (actividadBase.control || '').toLowerCase();
+      let puntosDefault: PuntoControl[];
+      let frecuencia: FrecuenciaPuntoControl = 'trimestral';
+      if (ctrl.includes('semestral')) {
+        frecuencia = 'semestral';
+        puntosDefault = [mkPC(`pc-${actId}-1`, 1, `${año}-01-01`, `${año}-06-30`), mkPC(`pc-${actId}-2`, 2, `${año}-07-01`, `${año}-12-31`)];
+      } else if (ctrl.includes('cuatrimestral')) {
+        frecuencia = 'cuatrimestral';
+        puntosDefault = [mkPC(`pc-${actId}-1`, 1, `${año}-01-01`, `${año}-04-30`), mkPC(`pc-${actId}-2`, 2, `${año}-05-01`, `${año}-08-31`), mkPC(`pc-${actId}-3`, 3, `${año}-09-01`, `${año}-12-31`)];
+      } else if (ctrl.includes('trimestral')) {
+        frecuencia = 'trimestral';
+        puntosDefault = [mkPC(`pc-${actId}-1`, 1, `${año}-01-01`, `${año}-03-31`), mkPC(`pc-${actId}-2`, 2, `${año}-04-01`, `${año}-06-30`), mkPC(`pc-${actId}-3`, 3, `${año}-07-01`, `${año}-09-30`), mkPC(`pc-${actId}-4`, 4, `${año}-10-01`, `${año}-12-31`)];
+      } else if (ctrl.includes('anual')) {
+        frecuencia = 'anual';
+        puntosDefault = [mkPC(`pc-${actId}-1`, 1, `${año}-01-01`, `${año}-12-31`)];
+      } else if (ctrl.includes('mensual')) {
+        frecuencia = 'mensual';
+        puntosDefault = Array.from({length: 12}, (_, i) => { const m = (i+1).toString().padStart(2, '0'); const ld = new Date(año, i+1, 0).getDate().toString().padStart(2, '0'); return mkPC(`pc-${actId}-${i+1}`, i+1, `${año}-${m}-01`, `${año}-${m}-${ld}`); });
+      } else {
+        frecuencia = 'anual';
+        puntosDefault = [mkPC(`pc-${actId}-1`, 1, actividadBase.fechaInicio || `${año}-01-01`, actividadBase.fechaFin || `${año}-12-31`)];
+      }
+      const tareasConCorte = (actividadBase.tareasSeguimiento || []).map((t, tIdx) => ({ ...t, puntoControlId: puntosDefault[tIdx % puntosDefault.length]?.id }));
       return {
         ...rol,
         actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
@@ -1865,10 +1831,11 @@ function Paso2({
           id: actId,
           incluidaEnPlan: true,
           tipoEvidencia: 'SOLO_CHECK' as const,
-          fechaCorte: `${año}-09-30`,
+          fechaCorte: puntosDefault[puntosDefault.length - 1]?.fechaSeguimiento || `${año}-12-31`,
           responsables: primerResponsable ? [primerResponsable] : [],
           puntosControl: puntosDefault,
-          frecuenciaPuntosControl: 'trimestral' as const,
+          frecuenciaPuntosControl: frecuencia,
+          tareasSeguimiento: tareasConCorte,
         }]
       };
     });
@@ -1933,7 +1900,7 @@ function Paso2({
           ...rol,
           actividadesCustom: [...rol.actividadesCustom, { 
             ...nuevaActividad,
-            // ⚡ Valor por defecto: SOLO_CHECK (sin requisitos de documentos/observaciones)
+            // a Valor por defecto: SOLO_CHECK (sin requisitos de documentos/observaciones)
             tipoEvidencia: 'SOLO_CHECK' as const
           }]
         };
@@ -2011,7 +1978,7 @@ function Paso2({
     onRolesChange(nuevaConfig);
   };
 
-  // ✅ Funciones para asignar responsables por actividad
+  // S& Funciones para asignar responsables por actividad
   const agregarResponsableActividad = (actId: string, auditor: Auditor) => {
     const nuevaConfig = rolesConfig.map(rol => ({
       ...rol,
@@ -2095,7 +2062,7 @@ function Paso2({
     onRolesChange(nuevaConfig);
   };
 
-  // ✅ NUEVO: Funciones para configurar puntos de control
+  // S& NUEVO: Funciones para configurar puntos de control
   const abrirConfiguracionPuntosControl = (numeroRol: number, nombreActividad: string, esCustom: boolean, indexCustom?: number) => {
     setActividadConfigurando({ numeroRol, nombreActividad, esCustom, indexCustom });
     setModalPuntosControlAbierto(true);
@@ -2280,11 +2247,11 @@ function Paso2({
                                 }}
                                 className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-xs transition-colors flex-shrink-0"
                               >
-                                ✕
+                                ×
                               </button>
                             </div>
                           ))}
-                          {/* Dropdown para agregar — solo si no hay responsables */}
+                          {/* Dropdown para agregar  solo si no hay responsables */}
                           {!responsablePrincipal && (
                             <SelectorProfesional
                               auditores={auditores.filter(a => !responsablesRol.some((r: any) => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
@@ -2330,11 +2297,11 @@ function Paso2({
                         </h4>
                         <div className="space-y-2">
                           {actividadesBase.map((actividad, index) => {
-                            // ⚡ Generar ID único para esta actividad
+                            // a Generar ID único para esta actividad
                             const actId = `rol-${rol.numero}-act-${index}`;
                             const seleccionada = estaSeleccionada(actId, actividad.nombre);
                             const actividadData = rol.actividadesSeleccionadas.find(a => a.id === actId || a.nombre === actividad.nombre);
-                            /** UUID del backend vs id sintético del template — las mutaciones deben usar el id real en estado */
+                            /** UUID del backend vs id sintético del template  las mutaciones deben usar el id real en estado */
                             const idActividadEnEstado = actividadData?.id ?? actId;
                             return (
                               <div
@@ -2429,7 +2396,7 @@ function Paso2({
                                         {/* Responsable inline */}
                                         {(actividadData.responsables && actividadData.responsables.length > 0) ? (
                                           <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-medium">
-                                            👤 {actividadData.responsables[0].nombre}
+                                            x {actividadData.responsables[0].nombre}
                                             {actividadData.responsables.length > 1 && ` +${actividadData.responsables.length - 1}`}
                                           </span>
                                         ) : (
@@ -2545,7 +2512,7 @@ function Paso2({
                                     {/* Selector de tipo de evidencia - Switches que propagan a todas las tareas */}
                                     <div className="p-2 bg-blue-50/50 rounded-lg" onClick={e => e.stopPropagation()}>
                                       <div className="block text-xs font-semibold text-gray-900 mb-1">
-                                        📋 Requisitos para todas las tareas de seguimiento
+                                        x9 Requisitos para todas las tareas de seguimiento
                                       </div>
                                       <p className="text-[10px] text-gray-500 mb-2">Al activar, se habilita en todas las tareas de esta actividad.</p>
                                       <div className="flex flex-col gap-2">
@@ -2635,7 +2602,7 @@ function Paso2({
                                       </div>
                                     </div>
 
-                                    {/* ✅ Sección de puntos de control — vista profesional */}
+                                    {/* S& Sección de puntos de control  vista profesional */}
                                     <div className="border-2 border-blue-200 rounded-xl overflow-hidden" onClick={e => e.stopPropagation()}>
                                       {/* Header con resumen y botón configurar */}
                                       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2.5 flex items-center justify-between">
@@ -2677,7 +2644,8 @@ function Paso2({
                                             const esVencido = !esCompletado && !enSeguimiento && fechaCorte < hoyDate && (fechaSeg === null || hoyDate > fechaSeg);
                                             const esActivo = !esCompletado && !esVencido && !enSeguimiento && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividadData.puntosControl![pcIdx-1].fechaProgramada + 'T00:00:00') < hoyDate);
                                             return (
-                                              <div key={pc.id} className={`px-3 py-2.5 flex items-start gap-3 ${esActivo ? 'bg-blue-50/50' : enSeguimiento ? 'bg-purple-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
+                                              <div key={pc.id} className={`px-3 py-2.5 ${esActivo ? 'bg-blue-50/50' : enSeguimiento ? 'bg-purple-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
+                                                <div className="flex items-start gap-3">
                                                 {/* Indicador lateral */}
                                                 <div className="flex flex-col items-center pt-0.5">
                                                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${
@@ -2687,7 +2655,7 @@ function Paso2({
                                                     esActivo ? 'bg-blue-500 border-blue-500 text-white' :
                                                     'bg-gray-100 border-gray-300 text-gray-500'
                                                   }`}>
-                                                    {esCompletado ? '✓' : pcIdx + 1}
+                                                    {esCompletado ? 'S' : pcIdx + 1}
                                                   </div>
                                                   {pcIdx < actividadData.puntosControl!.length - 1 && (
                                                     <div className={`w-0.5 flex-1 mt-1 min-h-[20px] ${
@@ -2707,7 +2675,7 @@ function Paso2({
                                                       esActivo ? 'bg-blue-100 text-blue-700' :
                                                       'bg-gray-100 text-gray-500'
                                                     }`}>
-                                                      {esCompletado ? '✅ Completado' : enSeguimiento ? '📋 En seguimiento' : esVencido ? '⚠️ Vencido' : esActivo ? '🔵 Activo' : '⏳ Futuro'}
+                                                      {esCompletado ? 'S& Completado' : enSeguimiento ? 'x9 En seguimiento' : esVencido ? 'a️ Vencido' : esActivo ? 'x Activo' : '⏳ Futuro'}
                                                     </span>
                                                   </div>
                                                   <div className="grid grid-cols-2 gap-2">
@@ -2722,11 +2690,145 @@ function Paso2({
                                                       <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
                                                       <span className="text-[11px] text-gray-700">
                                                         <span className="text-[9px] text-gray-400 uppercase">Fin: </span>
-                                                        <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
+                                                        <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</span>
                                                       </span>
                                                     </div>
                                                   </div>
                                                 </div>
+                                                </div>
+                                                {/* S& Tareas de seguimiento DENTRO del corte  ANCHO COMPLETO */}
+                                                {(() => {
+                                                  const tareasDelCorte = (actividadData?.tareasSeguimiento || []).filter(t => t.puntoControlId === pc.id);
+                                                  return (
+                                                    <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+                                                      <div className="flex items-center justify-between mb-2">
+                                                        <p className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                                                          <span className="w-5 h-5 rounded-md bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+                                                            <Check className="w-3 h-3 text-white" />
+                                                          </span>
+                                                          Tareas de este corte
+                                                          {tareasDelCorte.length > 0 && (
+                                                            <span className="ml-1 px-1 py-0.5 rounded-full bg-green-100 text-green-700 text-[9px] font-bold">
+                                                              {tareasDelCorte.length}
+                                                            </span>
+                                                          )}
+                                                        </p>
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        {tareasDelCorte.map((tarea) => {
+                                                          const updateTareaCorte = (updates: Partial<TareaSeguimiento>) => {
+                                                            const nuevaConfig = rolesConfig.map(r => ({
+                                                              ...r,
+                                                              actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                                a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, ...updates } : t) } : a
+                                                              )
+                                                            }));
+                                                            onRolesChange(nuevaConfig);
+                                                          };
+                                                          return (
+                                                            <div key={tarea.id} className="group bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg hover:border-blue-300 transition-all shadow-sm">
+                                                              <div className="px-3 py-2.5 flex items-start gap-2.5">
+                                                                <div className="w-4 h-4 mt-0.5 rounded bg-green-100 flex items-center justify-center flex-shrink-0">
+                                                                  <Check className="w-2.5 h-2.5 text-green-600" />
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                  <p className="text-xs font-medium text-gray-900 leading-snug">{tarea.descripcion}</p>
+                                                                  {(tarea.responsables || []).length > 0 && (
+                                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                                      {(tarea.responsables || []).map((resp, ri) => (
+                                                                        <span key={ri} className="inline-flex items-center gap-0.5 pl-0.5 pr-1 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[9px]">
+                                                                          <span className="w-3 h-3 rounded-full bg-blue-600 text-white flex items-center justify-center text-[6px] font-bold">
+                                                                            {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                                                          </span>
+                                                                          <span className="text-blue-800 font-medium">{resp.split(' ').slice(0, 2).join(' ')}</span>
+                                                                          <button
+                                                                            type="button"
+                                                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateTareaCorte({ responsables: (tarea.responsables || []).filter((_, idx) => idx !== ri) }); }}
+                                                                            className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[7px] flex items-center justify-center transition-colors"
+                                                                          ></button>
+                                                                        </span>
+                                                                      ))}
+                                                                    </div>
+                                                                  )}
+                                                                </div>
+                                                                <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                                  {(tarea.responsables || []).length === 0 && (
+                                                                    <select
+                                                                      className="text-[9px] border border-gray-300 rounded px-0.5 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
+                                                                      value=""
+                                                                      onChange={(e) => { if (!e.target.value) return; const aud = auditores.find(a => a.id === e.target.value); if (!aud) return; updateTareaCorte({ responsables: [aud.nombre] }); }}
+                                                                    >
+                                                                      <option value="">+ Asignar</option>
+                                                                      {auditores.filter(a => !(tarea.responsables || []).includes(a.nombre)).map(a => (<option key={a.id} value={a.id}>{a.nombre}</option>))}
+                                                                    </select>
+                                                                  )}
+                                                                  <button
+                                                                    onClick={() => {
+                                                                      const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a) }));
+                                                                      onRolesChange(nuevaConfig);
+                                                                    }}
+                                                                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                                                    title="Eliminar tarea"
+                                                                  >
+                                                                    <Trash2 className="w-3 h-3" />
+                                                                  </button>
+                                                                </div>
+                                                              </div>
+                                                              <div className="px-3 pb-2 flex items-center gap-4 border-t border-gray-100 pt-1.5">
+                                                                <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere observaciones al completar">
+                                                                  <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTareaCorte({ requiereObservaciones: !tarea.requiereObservaciones })}>
+                                                                    <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} />
+                                                                  </div>
+                                                                  <span className={`text-[11px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝 Observaciones</span>
+                                                                </label>
+                                                                <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere archivos adjuntos">
+                                                                  <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTareaCorte({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
+                                                                    <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} />
+                                                                  </div>
+                                                                  <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
+                                                                </label>
+                                                                <div className="flex items-center gap-1 ml-auto">
+                                                                  <input type="date" value={tarea.fechaEntrega || ''} onChange={(e) => updateTareaCorte({ fechaEntrega: e.target.value })} className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[100px]" title="Fecha de entrega" />
+                                                                </div>
+                                                              </div>
+                                                            </div>
+                                                          );
+                                                        })}
+                                                        {/* Agregar tarea al corte */}
+                                                        <div className="flex gap-1.5 mt-1">
+                                                          <input
+                                                            type="text"
+                                                            data-tarea-corte={`${idActividadEnEstado}-${pc.id}`}
+                                                            placeholder="✏️ Nueva tarea…"
+                                                            className="flex-1 px-2 py-1.5 border border-dashed border-gray-300 rounded-md focus:outline-none focus:border-green-500 text-[11px] text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
+                                                            onClick={e => e.stopPropagation()}
+                                                            onKeyDown={(e) => {
+                                                              if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
+                                                                const desc = (e.target as HTMLInputElement).value.trim();
+                                                                const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [], puntoControlId: pc.id }] } : a) }));
+                                                                onRolesChange(nuevaConfig);
+                                                                (e.target as HTMLInputElement).value = '';
+                                                              }
+                                                            }}
+                                                          />
+                                                          <button
+                                                            onClick={() => {
+                                                              const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte="${idActividadEnEstado}-${pc.id}"]`);
+                                                              if (input && input.value.trim()) {
+                                                                const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [], puntoControlId: pc.id }] } : a) }));
+                                                                onRolesChange(nuevaConfig);
+                                                                input.value = '';
+                                                              }
+                                                            }}
+                                                            className="px-2.5 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-md text-[10px] font-semibold flex items-center gap-1 shadow-sm transition-all flex-shrink-0"
+                                                          >
+                                                            <Plus className="w-3 h-3" /> Agregar
+                                                          </button>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                })()}
                                               </div>
                                             );
                                           })}
@@ -2743,177 +2845,6 @@ function Paso2({
 
 
 
-                                    {/* ✅ Tareas de seguimiento — World-class design */}
-                                    <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm" onClick={e => e.stopPropagation()}>
-                                      <div className="flex items-center justify-between mb-3">
-                                        <p className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                                          <span className="w-5 h-5 rounded-md bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
-                                            <Check className="w-3 h-3 text-white" />
-                                          </span>
-                                          Tareas de seguimiento
-                                          {(actividadData?.tareasSeguimiento || []).length > 0 && (
-                                            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">
-                                              {(actividadData?.tareasSeguimiento || []).length}
-                                            </span>
-                                          )}
-                                        </p>
-                                      </div>
-
-                                      <div className="space-y-2">
-                                        {(actividadData?.tareasSeguimiento || []).map((tarea) => {
-                                          const updateTarea = (updates: Partial<TareaSeguimiento>) => {
-                                            const nuevaConfig = rolesConfig.map(r => ({
-                                              ...r,
-                                              actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, ...updates } : t) } : a
-                                              )
-                                            }));
-                                            onRolesChange(nuevaConfig);
-                                          };
-                                          return (
-                                          <div key={tarea.id} className="group bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all">
-                                            {/* Header de la tarea */}
-                                            <div className="px-3 py-2.5 flex items-start gap-2.5">
-                                              <div className="w-5 h-5 mt-0.5 rounded bg-green-100 flex items-center justify-center flex-shrink-0">
-                                                <Check className="w-3 h-3 text-green-600" />
-                                              </div>
-                                              <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
-                                                {/* Responsables como chips */}
-                                                {(tarea.responsables || []).length > 0 && (
-                                                  <div className="flex flex-wrap gap-1 mt-1.5">
-                                                    {(tarea.responsables || []).map((resp, ri) => (
-                                                      <span key={ri} className="inline-flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[10px]">
-                                                        <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[7px] font-bold">
-                                                          {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                                                        </span>
-                                                        <span className="text-blue-800 font-medium">{resp.split(' ').slice(0, 2).join(' ')}</span>
-                                                        <button
-                                                          type="button"
-                                                          onClick={(e) => {
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                            updateTarea({ responsables: (tarea.responsables || []).filter((_, idx) => idx !== ri) });
-                                                          }}
-                                                          className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[8px] flex items-center justify-center transition-colors"
-                                                        >×</button>
-                                                      </span>
-                                                    ))}
-                                                  </div>
-                                                )}
-                                              </div>
-                                              {/* Acciones */}
-                                              <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                                                {(tarea.responsables || []).length === 0 && (
-                                                  <select
-                                                    className="text-[10px] border border-gray-300 rounded-md px-1 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
-                                                    value=""
-                                                    onChange={(e) => {
-                                                      if (!e.target.value) return;
-                                                      const aud = auditores.find(a => a.id === e.target.value);
-                                                      if (!aud) return;
-                                                      // Solo permitir un responsable por tarea
-                                                      updateTarea({ responsables: [aud.nombre] });
-                                                    }}
-                                                  >
-                                                    <option value="">+ Asignar</option>
-                                                    {auditores
-                                                      .filter(a => !(tarea.responsables || []).includes(a.nombre))
-                                                      .map(a => (
-                                                        <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
-                                                      ))}
-                                                  </select>
-                                                )}
-                                                <button
-                                                  onClick={() => {
-                                                    const nuevaConfig = rolesConfig.map(r => ({
-                                                      ...r,
-                                                      actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                        a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a
-                                                      )
-                                                    }));
-                                                    onRolesChange(nuevaConfig);
-                                                  }}
-                                                  className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                                                  title="Eliminar tarea"
-                                                >
-                                                  <Trash2 className="w-3.5 h-3.5" />
-                                                </button>
-                                              </div>
-                                            </div>
-
-                                            {/* Footer: opciones compactas */}
-                                            <div className="px-3 pb-2 flex items-center gap-4 border-t border-gray-100 pt-1.5">
-                                              <label className="flex items-center gap-1.5 cursor-pointer group/opt" title="Requiere observaciones al completar">
-                                                <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTarea({ requiereObservaciones: !tarea.requiereObservaciones })}>
-                                                  <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} />
-                                                </div>
-                                                <span className={`text-[11px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝 Observaciones</span>
-                                              </label>
-                                              <label className="flex items-center gap-1.5 cursor-pointer group/opt" title="Requiere archivos adjuntos">
-                                                <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTarea({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
-                                                  <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} />
-                                                </div>
-                                                <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
-                                              </label>
-                                              <div className="flex items-center gap-1.5 ml-auto">
-                                                <span className="text-[11px] text-gray-500">📅</span>
-                                                <input
-                                                  type="date"
-                                                  value={tarea.fechaEntrega || (tarea as any).fechaLimite || ''}
-                                                  onChange={(e) => updateTarea({ fechaEntrega: e.target.value })}
-                                                  className="text-[11px] border border-gray-200 rounded-md px-1.5 py-0.5 bg-white hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none w-[120px]"
-                                                  title="Fecha de entrega (opcional)"
-                                                />
-                                              </div>
-                                            </div>
-                                          </div>
-                                          );
-                                        })}
-
-                                        {/* Agregar nueva tarea — diseño premium */}
-                                        <div className="flex gap-2 mt-1">
-                                          <input
-                                            type="text"
-                                            data-tarea-wizard={idActividadEnEstado}
-                                            placeholder="✍ Escribir nueva tarea…"
-                                            className="flex-1 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-green-500 focus:bg-green-50/30 text-sm text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
-                                            onClick={e => e.stopPropagation()}
-                                            onKeyDown={(e) => {
-                                              if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
-                                                const desc = (e.target as HTMLInputElement).value.trim();
-                                                const nuevaConfig = rolesConfig.map(r => ({
-                                                  ...r,
-                                                  actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                    a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [] }] } : a
-                                                  )
-                                                }));
-                                                onRolesChange(nuevaConfig);
-                                                (e.target as HTMLInputElement).value = '';
-                                              }
-                                            }}
-                                          />
-                                          <button
-                                            onClick={() => {
-                                              const input = document.querySelector<HTMLInputElement>(`[data-tarea-wizard="${idActividadEnEstado}"]`);
-                                              if (input && input.value.trim()) {
-                                                const nuevaConfig = rolesConfig.map(r => ({
-                                                  ...r,
-                                                  actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                    a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [] }] } : a
-                                                  )
-                                                }));
-                                                onRolesChange(nuevaConfig);
-                                                input.value = '';
-                                              }
-                                            }}
-                                            className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm hover:shadow transition-all flex-shrink-0"
-                                          >
-                                            <Plus className="w-3.5 h-3.5" /> Agregar
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
 
                                   </div>
                                 )}
@@ -2944,7 +2875,7 @@ function Paso2({
                                       {/* Responsable inline */}
                                       {(actividad.responsables && actividad.responsables.length > 0) ? (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-medium">
-                                          👤 {actividad.responsables[0].nombre}
+                                          x {actividad.responsables[0].nombre}
                                           {actividad.responsables.length > 1 && ` +${actividad.responsables.length - 1}`}
                                         </span>
                                       ) : (
@@ -3071,7 +3002,7 @@ function Paso2({
                                   {/* Selector de tipo de evidencia */}
                                   <div className="p-2 bg-green-50/50 rounded-lg">
                                     <label className="block text-xs font-semibold text-gray-900 mb-2">
-                                      📋 Requisitos para completar
+                                      x9 Requisitos para completar
                                     </label>
                                     <div className="flex flex-col gap-1.5">
                                       <label className="flex items-center gap-2 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors">
@@ -3126,7 +3057,7 @@ function Paso2({
                                     </div>
                                   </div>
 
-                                  {/* ✅ Sección de puntos de control — vista profesional (custom) */}
+                                  {/* S& Sección de puntos de control  vista profesional (custom) */}
                                   <div className="border-2 border-blue-200 rounded-xl overflow-hidden" onClick={e => e.stopPropagation()}>
                                     {/* Header con resumen y botón configurar */}
                                     <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2.5 flex items-center justify-between">
@@ -3168,7 +3099,8 @@ function Paso2({
                                           const esVencido = !esCompletado && !enSeguimiento && fechaCorte < hoyDate && (fechaSeg === null || hoyDate > fechaSeg);
                                           const esActivo = !esCompletado && !esVencido && !enSeguimiento && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividad.puntosControl![pcIdx-1].fechaProgramada + 'T00:00:00') < hoyDate);
                                           return (
-                                            <div key={pc.id} className={`px-3 py-2.5 flex items-start gap-3 ${esActivo ? 'bg-blue-50/50' : enSeguimiento ? 'bg-purple-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
+                                            <div key={pc.id} className={`px-3 py-2.5 ${esActivo ? 'bg-blue-50/50' : enSeguimiento ? 'bg-purple-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
+                                              <div className="flex items-start gap-3">
                                               {/* Indicador lateral */}
                                               <div className="flex flex-col items-center pt-0.5">
                                                 <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${
@@ -3178,7 +3110,7 @@ function Paso2({
                                                   esActivo ? 'bg-blue-500 border-blue-500 text-white' :
                                                   'bg-gray-100 border-gray-300 text-gray-500'
                                                 }`}>
-                                                  {esCompletado ? '✓' : pcIdx + 1}
+                                                  {esCompletado ? 'S' : pcIdx + 1}
                                                 </div>
                                                 {pcIdx < actividad.puntosControl!.length - 1 && (
                                                   <div className={`w-0.5 flex-1 mt-1 min-h-[20px] ${
@@ -3198,7 +3130,7 @@ function Paso2({
                                                     esActivo ? 'bg-blue-100 text-blue-700' :
                                                     'bg-gray-100 text-gray-500'
                                                   }`}>
-                                                    {esCompletado ? '✅ Completado' : enSeguimiento ? '📋 En seguimiento' : esVencido ? '⚠️ Vencido' : esActivo ? '🔵 Activo' : '⏳ Futuro'}
+                                                    {esCompletado ? 'S& Completado' : enSeguimiento ? 'x9 En seguimiento' : esVencido ? 'a️ Vencido' : esActivo ? 'x Activo' : '⏳ Futuro'}
                                                   </span>
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-2">
@@ -3213,11 +3145,146 @@ function Paso2({
                                                     <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
                                                     <span className="text-[11px] text-gray-700">
                                                       <span className="text-[9px] text-gray-400 uppercase">Fin: </span>
-                                                      <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
+                                                      <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</span>
                                                     </span>
                                                   </div>
                                                 </div>
                                               </div>
+                                              </div>
+
+                                                {/* S& Tareas de seguimiento DENTRO del corte (custom)  ANCHO COMPLETO */}
+                                                {(() => {
+                                                  const tareasDelCorte = (actividad.tareasSeguimiento || []).filter(t => t.puntoControlId === pc.id);
+                                                  return (
+                                                    <div className="mt-2 bg-white border border-gray-200 rounded-lg p-2 shadow-sm">
+                                                      <div className="flex items-center justify-between mb-2">
+                                                        <p className="text-[10px] font-bold text-gray-700 flex items-center gap-1">
+                                                          <span className="w-4 h-4 rounded bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+                                                            <Check className="w-2.5 h-2.5 text-white" />
+                                                          </span>
+                                                          Tareas de este corte
+                                                          {tareasDelCorte.length > 0 && (
+                                                            <span className="ml-1 px-1 py-0.5 rounded-full bg-green-100 text-green-700 text-[9px] font-bold">
+                                                              {tareasDelCorte.length}
+                                                            </span>
+                                                          )}
+                                                        </p>
+                                                      </div>
+                                                      <div className="space-y-1.5">
+                                                        {tareasDelCorte.map((tarea) => {
+                                                          const updateTareaCorteCustom = (updates: Partial<TareaSeguimiento>) => {
+                                                            const nuevaConfig = rolesConfig.map(r => {
+                                                              if (r.numero !== rol.numero) return r;
+                                                              return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
+                                                                i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, ...updates } : t) } : a
+                                                              )};
+                                                            });
+                                                            onRolesChange(nuevaConfig);
+                                                          };
+                                                          return (
+                                                            <div key={tarea.id} className="group bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-md hover:border-blue-300 transition-all">
+                                                              <div className="px-2 py-1.5 flex items-start gap-2">
+                                                                <div className="w-4 h-4 mt-0.5 rounded bg-green-100 flex items-center justify-center flex-shrink-0">
+                                                                  <Check className="w-2.5 h-2.5 text-green-600" />
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                  <p className="text-[11px] font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
+                                                                  {(tarea.responsables || []).length > 0 && (
+                                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                                      {(tarea.responsables || []).map((resp, ri) => (
+                                                                        <span key={ri} className="inline-flex items-center gap-0.5 pl-0.5 pr-1 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[9px]">
+                                                                          <span className="w-3 h-3 rounded-full bg-blue-600 text-white flex items-center justify-center text-[6px] font-bold">
+                                                                            {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                                                          </span>
+                                                                          <span className="text-blue-800 font-medium">{resp.split(' ').slice(0, 2).join(' ')}</span>
+                                                                          <button
+                                                                            type="button"
+                                                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateTareaCorteCustom({ responsables: (tarea.responsables || []).filter((_, idx) => idx !== ri) }); }}
+                                                                            className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[7px] flex items-center justify-center transition-colors"
+                                                                          ></button>
+                                                                        </span>
+                                                                      ))}
+                                                                    </div>
+                                                                  )}
+                                                                </div>
+                                                                <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                                  {(tarea.responsables || []).length === 0 && (
+                                                                    <select
+                                                                      className="text-[9px] border border-gray-300 rounded px-0.5 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
+                                                                      value=""
+                                                                      onChange={(e) => { if (!e.target.value) return; const aud = auditores.find(a => a.id === e.target.value); if (!aud) return; updateTareaCorteCustom({ responsables: [aud.nombre] }); }}
+                                                                    >
+                                                                      <option value="">+ Asignar</option>
+                                                                      {auditores.filter(a => !(tarea.responsables || []).includes(a.nombre)).map(a => (<option key={a.id} value={a.id}>{a.nombre}</option>))}
+                                                                    </select>
+                                                                  )}
+                                                                  <button
+                                                                    onClick={() => {
+                                                                      const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a) }; });
+                                                                      onRolesChange(nuevaConfig);
+                                                                    }}
+                                                                    className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                                                    title="Eliminar tarea"
+                                                                  >
+                                                                    <Trash2 className="w-3 h-3" />
+                                                                  </button>
+                                                                </div>
+                                                              </div>
+                                                              <div className="px-2 pb-1.5 flex items-center gap-3 border-t border-gray-100 pt-1">
+                                                                <label className="flex items-center gap-1 cursor-pointer" title="Requiere observaciones">
+                                                                  <div className={`w-6 h-3.5 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTareaCorteCustom({ requiereObservaciones: !tarea.requiereObservaciones })}>
+                                                                    <div className={`w-2.5 h-2.5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3' : 'left-0.5'}`} />
+                                                                  </div>
+                                                                  <span className={`text-[10px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝</span>
+                                                                </label>
+                                                                <label className="flex items-center gap-1 cursor-pointer" title="Requiere adjuntos">
+                                                                  <div className={`w-6 h-3.5 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTareaCorteCustom({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
+                                                                    <div className={`w-2.5 h-2.5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3' : 'left-0.5'}`} />
+                                                                  </div>
+                                                                  <span className={`text-[10px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎</span>
+                                                                </label>
+                                                                <div className="flex items-center gap-1 ml-auto">
+                                                                  <input type="date" value={tarea.fechaEntrega || ''} onChange={(e) => updateTareaCorteCustom({ fechaEntrega: e.target.value })} className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[100px]" title="Fecha de entrega" />
+                                                                </div>
+                                                              </div>
+                                                            </div>
+                                                          );
+                                                        })}
+                                                        {/* Agregar tarea al corte (custom) */}
+                                                        <div className="flex gap-1.5 mt-1">
+                                                          <input
+                                                            type="text"
+                                                            data-tarea-corte-custom={`${rol.numero}-${index}-${pc.id}`}
+                                                            placeholder="✏️ Nueva tarea…"
+                                                            className="flex-1 px-2 py-1.5 border border-dashed border-gray-300 rounded-md focus:outline-none focus:border-green-500 text-[11px] text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
+                                                            onClick={e => e.stopPropagation()}
+                                                            onKeyDown={(e) => {
+                                                              if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
+                                                                const desc = (e.target as HTMLInputElement).value.trim();
+                                                                const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [], puntoControlId: pc.id }] } : a) }; });
+                                                                onRolesChange(nuevaConfig);
+                                                                (e.target as HTMLInputElement).value = '';
+                                                              }
+                                                            }}
+                                                          />
+                                                          <button
+                                                            onClick={() => {
+                                                              const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                              if (input && input.value.trim()) {
+                                                                const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [], puntoControlId: pc.id }] } : a) }; });
+                                                                onRolesChange(nuevaConfig);
+                                                                input.value = '';
+                                                              }
+                                                            }}
+                                                            className="px-2.5 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-md text-[10px] font-semibold flex items-center gap-1 shadow-sm transition-all flex-shrink-0"
+                                                          >
+                                                            <Plus className="w-3 h-3" /> Agregar
+                                                          </button>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                })()}
                                             </div>
                                           );
                                         })}
@@ -3234,7 +3301,7 @@ function Paso2({
 
 
 
-                                  {/* ✅ Tareas de seguimiento — World-class design (custom) */}
+                                  {/* S& Tareas de seguimiento  World-class design (custom) */}
                                   <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm" onClick={e => e.stopPropagation()}>
                                     <div className="flex items-center justify-between mb-3">
                                       <p className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
@@ -3289,7 +3356,7 @@ function Paso2({
                                                           onRolesChange(nuevaConfig);
                                                         }}
                                                         className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[8px] flex items-center justify-center transition-colors"
-                                                      >×</button>
+                                                      ></button>
                                                     </span>
                                                   ))}
                                                 </div>
@@ -3364,7 +3431,7 @@ function Paso2({
                                         );
                                       })}
 
-                                      {/* Agregar nueva tarea — diseño premium */}
+                                      {/* Agregar nueva tarea  diseño premium */}
                                       <div className="flex gap-2 mt-1">
                                         <input
                                           type="text"
@@ -3433,7 +3500,7 @@ function Paso2({
                               }}
                               className="text-blue-600 hover:text-blue-800"
                             >
-                              ✕
+                              ×
                             </button>
                           </div>
                           <input
@@ -3460,7 +3527,7 @@ function Paso2({
                               }}
                               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
                             >
-                              ✓ Agregar
+                              ➕ Agregar
                             </button>
                             <button
                               onClick={(e) => {
@@ -3496,7 +3563,7 @@ function Paso2({
         })}
       </div>
 
-      {/* ✅ NUEVO: Modal de configuración de puntos de control */}
+      {/* S& NUEVO: Modal de configuración de puntos de control */}
       {modalPuntosControlAbierto && actividadConfigurando && (
         <ModalConfiguracionPuntosControl
           isOpen={modalPuntosControlAbierto}
@@ -3511,7 +3578,7 @@ function Paso2({
             (() => {
               const rol = rolesConfig.find(r => r.numero === actividadConfigurando.numeroRol);
               if (!rol) {
-                console.log('[Wizard] ❌ Rol no encontrado');
+                console.log('[Wizard] R Rol no encontrado');
                 return undefined;
               }
               let fechaCorteActividad;
@@ -3636,7 +3703,7 @@ function Paso3({
           </div>
         </div>
 
-        {/* COMITÉ DE APROBACIÓN */}
+        {/* COMIT0 DE APROBACIN */}
         <div className="mt-6 pt-6 border-t border-gray-200">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -3655,7 +3722,7 @@ function Paso3({
                 onClick={() => setOrdenAprobacion?.('secuencial')}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${ordenAprobacion === 'secuencial' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                📝 Secuencial
+                🔄 Secuencial
               </button>
               <button
                 type="button"
@@ -3783,9 +3850,9 @@ function Paso3({
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 // DASHBOARD DEL PLAN - VERSION SIMPLIFICADA
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 interface DashboardPlanProps {
   plan: PlanAnual;
@@ -3856,7 +3923,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           normalized.idPerson = userData.person.id;
         }
         
-        console.log('👤 [PlanAnual] Usuario actual cargado:', {
+        console.log('x [PlanAnual] Usuario actual cargado:', {
           nombre: normalized.nombre || normalized.nombres,
           email: normalized.email,
           id: normalized.id,
@@ -3979,11 +4046,11 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
     setExportando('excel');
     setMostrarModalExportacion(false);
     
-    // ✅ NUEVO: Usar exportación local con ExcelJS + Logo (no depende del backend)
+    // S& NUEVO: Usar exportación local con ExcelJS + Logo (no depende del backend)
     try {
-      // 🔍 DEBUG: Mostrar datos EXACTOS que se envían al Excel
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('📊 [handleExportarExcel] DATOS DEL PLAN para Excel:');
+      // x DEBUG: Mostrar datos EXACTOS que se envían al Excel
+      console.log('');
+      console.log('[handleExportarExcel] DATOS DEL PLAN para Excel:');
       console.log('   plan.id:', plan.id);
       console.log('   plan.vigencia:', plan.vigencia);
       console.log('   plan.fecha_inicio:', (plan as any).fecha_inicio);
@@ -3993,7 +4060,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         console.log(`   ROL ${ri + 1} (${rol.nombre}): ${rol.actividades?.length || 0} actividades`);
         if (rol.actividades?.length > 0) {
           const act = rol.actividades[0] as any;
-          console.log(`     → Primera actividad: "${act.nombre}"`);
+          console.log(`       Primera actividad: "${act.nombre}"`);
           console.log(`       responsable:`, act.responsable);
           console.log(`       responsables:`, act.responsables);
           console.log(`       fechaInicio:`, act.fechaInicio);
@@ -4002,7 +4069,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           console.log(`       fecha_fin:`, act.fecha_fin);
         }
       });
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('');
       const resultado = await exportarPlanAnualExcel(plan, { columnasSeleccionadas: columnasExcel });
       if (resultado.exito) {
         toast.success('Exportado', { description: 'Excel descargado correctamente con logo ESAP' });
@@ -4035,7 +4102,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 10;
 
-      // Header institucional estandarizado — datos dinámicos del plan (NO hardcodeados)
+      // Header institucional estandarizado  datos dinámicos del plan (NO hardcodeados)
       const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
         ...DOCUMENTOS_PREDEFINIDOS.PLAN_ANUAL,
         version: (plan as any).version ?? 1,
@@ -4268,7 +4335,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         const actividadesData = rol.actividades.map((act, idx) => {
           const pctFinal = (act.estado === 'Completada' || act.estado === 'COMPLETADA') ? 100 
                     : (act.entradasSeguimiento && act.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(act) : 0);
-          // Responsable: prioridad responsables[] → responsable → 'No asignado'
+          // Responsable: prioridad responsables[]   responsable   'No asignado'
           const actX = act as any;
           let responsablePdf = '';
           if (Array.isArray(actX.responsables) && actX.responsables.length > 0) {
@@ -4503,9 +4570,9 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
                           Documento oficial con diseño corporativo ESAP. Incluye portada, roles, actividades y firmas.
                         </p>
                         <div className="flex flex-wrap gap-2">
-                          <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">✓ Diseño corporativo</span>
-                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">✓ Normativa 648/2017</span>
-                          <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">✓ Listo para firmar</span>
+                          <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">✅ Diseño corporativo</span>
+                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">✅ Normativa 648/2017</span>
+                          <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">✅ Listo para firmar</span>
                         </div>
                       </div>
                       <div className="flex items-center">
@@ -4529,14 +4596,14 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
                           <FileSpreadsheet className="w-6 h-6 text-green-600" />
                         </div>
                         <div className="flex-1 text-left">
-                          <h3 className="text-base font-bold text-gray-900 mb-1">📊 Exportar a Excel</h3>
+                          <h3 className="text-base font-bold text-gray-900 mb-1">Exportar a Excel</h3>
                           <p className="text-sm text-gray-600 mb-2">
                             Tabla estructurada con datos reales del plan. Selecciona las columnas a incluir.
                           </p>
                           <div className="flex flex-wrap gap-2">
-                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">✓ Datos reales</span>
-                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">✓ {columnasExcel.length} columnas</span>
-                            <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">✓ Editable</span>
+                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">✅ Datos reales</span>
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">{columnasExcel.length} columnas</span>
+                            <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">✏️ Editable</span>
                           </div>
                         </div>
                         <div className="flex items-center">
@@ -4743,9 +4810,9 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// SECCIÓN 1: GESTIÓN Y SEGUIMIENTO (UNIFICADA)
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+// SECCIN 1: GESTIN Y SEGUIMIENTO (UNIFICADA)
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 // Esta sección combina el resumen ejecutivo con el seguimiento detallado
 // permitiendo al usuario ver el estado general y hacer seguimiento sin cambiar de pestaña
 
@@ -4794,9 +4861,9 @@ function SeccionGestionYSeguimiento({
   // Asignar responsables integrados
   const [asignandoId, setAsignandoId] = useState<string | number | null>(null);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TAREAS DE SEGUIMIENTO — Monitoreo (no modifica el plan)
-  // ═══════════════════════════════════════════════════════════════════════════
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+  // TAREAS DE SEGUIMIENTO  Monitoreo (no modifica el plan)
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   const [formTareaActividadId, setFormTareaActividadId] = useState<string | number | null>(null);
   const [nuevaTarea, setNuevaTarea] = useState({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false });
   const [guardandoTarea, setGuardandoTarea] = useState(false);
@@ -5054,7 +5121,7 @@ function SeccionGestionYSeguimiento({
     finally { setAsignandoId(null); }
   };
 
-  // ── AGREGAR ACTIVIDAD INLINE ─────────────────────────────────────────────
+  //  AGREGAR ACTIVIDAD INLINE 
   const agregarActividadInline = async (rolNumero: number) => {
     if (!nuevaActividad.nombre.trim()) {
       toast.error('El nombre de la actividad es obligatorio');
@@ -5096,7 +5163,7 @@ function SeccionGestionYSeguimiento({
     }
   };
 
-  // ── ENTRADAS DE SEGUIMIENTO POR CORTE ────────────────────────────────────
+  //  ENTRADAS DE SEGUIMIENTO POR CORTE 
   const [corteConFormAbierto, setCorteConFormAbierto] = useState<string | null>(null);
   const [formEntrada, setFormEntrada] = useState<{ texto: string; tipo: 'seguimiento' | 'hallazgo' | 'cierre' }>({ texto: '', tipo: 'seguimiento' });
   const [guardandoEntrada, setGuardandoEntrada] = useState(false);
@@ -5112,7 +5179,7 @@ function SeccionGestionYSeguimiento({
     actividadNombre: string;
   } | null>(null);
   
-  // ✅ NUEVO: Modal de edición de actividad (Decreto 648/2017)
+  // S& NUEVO: Modal de edición de actividad (Decreto 648/2017)
   const [modalEdicion, setModalEdicion] = useState<{
     visible: boolean;
     rolNumero: number;
@@ -5134,7 +5201,7 @@ function SeccionGestionYSeguimiento({
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [modalCortesConfig, setModalCortesConfig] = useState(false);
   
-  // ✅ Modificado: roles colapsados por defecto (true)
+  // S& Modificado: roles colapsados por defecto (true)
   const [rolesColapsados, setRolesColapsados] = useState<Record<number, boolean>>(() => {
     const estado: Record<number, boolean> = {};
     if (plan?.roles) plan.roles.forEach(r => estado[r.numero] = true);
@@ -5155,9 +5222,9 @@ function SeccionGestionYSeguimiento({
   // Estado para indicar que se está guardando
   const [guardando, setGuardando] = useState(false);
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   // PERMISOS: Sistema flexible basado en permisos para Control Interno
-  // ═══════════════════════════════════════════════════════════════════════════
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   const { puedeRealizar, esSuperUsuario } = useControlInternoPermissions();
   const puedeEditarPlan = puedeRealizar('plan-anual', 'edit');
   const puedeSeguimiento = puedeRealizar('plan-anual', 'follow-up');
@@ -5167,7 +5234,7 @@ function SeccionGestionYSeguimiento({
   // Permiso compuesto: editar O seguimiento para gestionar evidencias
   const puedeGestionarEvidencias = puedeEditarPlan || puedeSeguimiento;
 
-  // ✅ Usuario para visualización condicional
+  // S& Usuario para visualización condicional
   const [currentUser, setCurrentUser] = useState<any>(null);
   useEffect(() => {
     try {
@@ -5176,9 +5243,9 @@ function SeccionGestionYSeguimiento({
     } catch (e) {}
   }, []);
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   // NUEVO: Estado para cumplimiento de auditorías (Rol 4)
-  // ═══════════════════════════════════════════════════════════════════════════
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   const [cumplimientoAuditorias, setCumplimientoAuditorias] = useState<{
     totalProgramadas: number;
     totalFinalizadas: number;
@@ -5229,7 +5296,7 @@ function SeccionGestionYSeguimiento({
     onRefetchPlan?.();
   };
 
-  // ✅ NUEVO: Función para toggle del colapso de un rol específico
+  // S& NUEVO: Función para toggle del colapso de un rol específico
   const toggleRolColapsado = (numeroRol: number) => {
     setRolesColapsados(prev => ({
       ...prev,
@@ -5237,7 +5304,7 @@ function SeccionGestionYSeguimiento({
     }));
   };
 
-  // ✅ NUEVO: Función para expandir/colapsar todos los roles
+  // S& NUEVO: Función para expandir/colapsar todos los roles
   const toggleTodosRoles = (colapsar: boolean) => {
     const nuevoEstado: Record<number, boolean> = {};
     plan.roles.forEach(rol => {
@@ -5290,11 +5357,11 @@ function SeccionGestionYSeguimiento({
 
   // Función para desactivar una actividad (soft delete)
   const desactivarActividad = async (rolNumero: number, actividadId: number | string) => {
-    console.log('🚫 [desactivarActividad] Desactivando actividad:', { rolNumero, actividadId });
+    console.log('xa [desactivarActividad] Desactivando actividad:', { rolNumero, actividadId });
     
     try {
       const res = await actividadesApi.delete(String(actividadId));
-      console.log('🚫 [desactivarActividad] Respuesta del backend:', res);
+      console.log('xa [desactivarActividad] Respuesta del backend:', res);
 
       if (res.success) {
         // Actualizar estado local - marcar como inactiva
@@ -5328,12 +5395,12 @@ function SeccionGestionYSeguimiento({
 
   // Función para REACTIVAR una actividad
   const reactivarActividad = async (rolNumero: number, actividadId: number | string) => {
-    console.log('✅ [reactivarActividad] Reactivando actividad:', { rolNumero, actividadId });
+    console.log('S& [reactivarActividad] Reactivando actividad:', { rolNumero, actividadId });
     
     try {
       // Llamar al endpoint de actualización para cambiar activo a true
       const res = await actividadesApi.update(String(actividadId), { activo: true } as any);
-      console.log('✅ [reactivarActividad] Respuesta del backend:', res);
+      console.log('S& [reactivarActividad] Respuesta del backend:', res);
 
       if (res.success) {
         // Actualizar estado local - marcar como activa
@@ -5365,7 +5432,7 @@ function SeccionGestionYSeguimiento({
     }
   };
 
-  // ✅ NUEVO: Abrir edición de actividad inline
+  // S& NUEVO: Abrir edición de actividad inline
   const abrirModalEdicion = (actividad: Actividad, rolNumero: number) => {
     setFormularioEdicion({
       nombre: actividad.nombre || '',
@@ -5385,7 +5452,7 @@ function SeccionGestionYSeguimiento({
     setModoCardExpandida('edicion');
   };
 
-  // ✅ NUEVO: Guardar edición de actividad
+  // S& NUEVO: Guardar edición de actividad
   const guardarEdicionActividad = async () => {
     if (!modalEdicion) return;
     
@@ -5404,7 +5471,7 @@ function SeccionGestionYSeguimiento({
         frecuencia_puntos_control: formularioEdicion.frecuenciaPuntosControl
       };
       
-      console.log('✏️ [guardarEdicionActividad] Guardando:', payload);
+      console.log('S️ [guardarEdicionActividad] Guardando:', payload);
       const res = await actividadesApi.update(String(modalEdicion.actividad.id), payload as any);
       
       if (res.success) {
@@ -5455,7 +5522,7 @@ function SeccionGestionYSeguimiento({
 
   // Handler para confirmar acción desde modal
   const confirmarAccionActividad = () => {
-    console.log('✅ confirmarAccionActividad llamado, modalConfirmacion:', modalConfirmacion);
+    console.log('S& confirmarAccionActividad llamado, modalConfirmacion:', modalConfirmacion);
     if (!modalConfirmacion) return;
     
     if (modalConfirmacion.tipo === 'desactivar') {
@@ -5820,9 +5887,9 @@ function SeccionGestionYSeguimiento({
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      {/* ══════════════════════════════════════════════════════════════════════
+      {/* """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
           PARTE 1: CONTEXTO DEL PLAN
-          ══════════════════════════════════════════════════════════════════════ */}
+          """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""" */}
       
 
       {/* Información general - RESPONSIVE GRID */}
@@ -5881,13 +5948,13 @@ function SeccionGestionYSeguimiento({
           </p>
           <div className="flex flex-wrap gap-3">
             <div className="bg-white border border-blue-200 shadow-sm rounded-md p-2 inline-flex items-start gap-1.5 flex-1 min-w-[250px]">
-              <span className="text-sm leading-none">📌</span>
+              <span className="text-sm leading-none">xR</span>
               <p className="text-[10px] text-blue-800 leading-tight">
                 <strong>Cumplimiento Normativo:</strong> Estructura obligatoria del Decreto 648 de 2017 empleando 5 roles estratégicos fijos.
               </p>
             </div>
             <div className="bg-white border border-blue-200 shadow-sm rounded-md p-2 inline-flex items-start gap-1.5 flex-1 min-w-[250px]">
-              <span className="text-sm leading-none">⚙️</span>
+              <span className="text-sm leading-none">a"️</span>
               <p className="text-[10px] text-blue-800 leading-tight">
                  <strong>Sistema Automático:</strong> El porcentaje de avance se calcula automáticamente conforme a las evidencias y cortes.
               </p>
@@ -5976,10 +6043,10 @@ function SeccionGestionYSeguimiento({
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          GESTIÓN Y SEGUIMIENTO POR ROL
+      {/* """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+          GESTIN Y SEGUIMIENTO POR ROL
           Vista unificada: estadísticas + seguimiento detallado
-          ══════════════════════════════════════════════════════════════════════ */}
+          """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""" */}
       
       {plan.estado === 'BORRADOR' || plan.estado === 'EN_REVISION' ? (
         <div className="bg-amber-50 border-2 border-amber-200 border-dashed rounded-xl p-8 text-center mt-6">
@@ -5996,7 +6063,7 @@ function SeccionGestionYSeguimiento({
         </div>
       ) : (
         <>
-          {/* ✅ NUEVO: Botones de control global reubicados en 1 solo botón para ahorrar espacio */}
+          {/* S& NUEVO: Botones de control global reubicados en 1 solo botón para ahorrar espacio */}
           {planesAnteriores.length === 0 && (
             <div className="flex justify-end mb-2">
               {renderBotonToggleRoles()}
@@ -6008,10 +6075,10 @@ function SeccionGestionYSeguimiento({
         // Solo contar actividades activas (activo !== false) para estadísticas
         const actividadesActivas = rol.actividades.filter(a => a.activo !== false);
 
-        // ✅ DEFINIR SI EL USUARIO PUEDE VER TODO EL PLAN
+        // S& DEFINIR SI EL USUARIO PUEDE VER TODO EL PLAN
         const liderazgoVerTodos = puedeAprobarPlan || esSuperUsuario || puedeEditarPlan || puedeAsignarActividades;
 
-        // ✅ FILTRAR ACTIVIDADES PARA QUE EL AUDITOR SOLO VEA LAS PROPIAS
+        // S& FILTRAR ACTIVIDADES PARA QUE EL AUDITOR SOLO VEA LAS PROPIAS
         const actividadesVisibles = actividadesActivas.filter(actividad => {
           if (liderazgoVerTodos) return true; // Líderes o planificadores ven todo
           
@@ -6084,7 +6151,7 @@ function SeccionGestionYSeguimiento({
         if (rol.numero === 1 && !liderazgoVerTodos && actividadesActivas.length > 0) {
           const a0 = actividadesActivas[0];
           const r = a0.responsable;
-          console.log('🔍 [MATCH-DEBUG] responsable.id=' + (r?.id || 'null') + 
+          console.log('x [MATCH-DEBUG] responsable.id=' + (r?.id || 'null') + 
             ' | responsable.nombre=' + (r?.nombre || r?.name || (typeof r === 'string' ? r : 'null')) +
             ' | responsable.email=' + (r?.email || 'null') +
             ' | responsables[0]=' + JSON.stringify(a0.responsables?.[0] || null) +
@@ -6133,7 +6200,7 @@ function SeccionGestionYSeguimiento({
               </div>
               
               <div className="flex items-center gap-3">
-                {/* 👤 Responsable(s) del rol */}
+                {/* x Responsable(s) del rol */}
                 {(() => {
                   const responsablesRol = (rol as any).responsables?.length > 0
                     ? (rol as any).responsables
@@ -6240,7 +6307,7 @@ function SeccionGestionYSeguimiento({
                                   <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">{actividad.porcentajeAvance}% avance</span>
                                 )}
                               </div>
-                              {/* Indicadores de adjuntos y observaciones — SIEMPRE visibles */}
+                              {/* Indicadores de adjuntos y observaciones  SIEMPRE visibles */}
                               <div className="flex items-center gap-2 mt-2 flex-wrap">
                                 {/* 📎 Adjuntos */}
                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
@@ -6253,7 +6320,7 @@ function SeccionGestionYSeguimiento({
                                     ? `${actividad.adjuntos.length} adjunto${actividad.adjuntos.length !== 1 ? 's' : ''}` 
                                     : 'Sin adjuntos'}
                                 </span>
-                                {/* 💬 Observaciones */}
+                                {/* 📝 Observaciones */}
                                 {(() => {
                                   const obs = actividad.observacionesCumplimiento;
                                   const count = Array.isArray(obs) ? obs.length : (typeof obs === 'string' && obs.trim() ? 1 : 0);
@@ -6266,7 +6333,7 @@ function SeccionGestionYSeguimiento({
                                     </span>
                                   );
                                 })()}
-                                {/* ✅ Tareas */}
+                                {/* S& Tareas */}
                                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
                                   actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 
                                     ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' 
@@ -6320,7 +6387,7 @@ function SeccionGestionYSeguimiento({
                                       onClick={(e) => { e.stopPropagation(); quitarResponsableInline(rol.numero, actividad.id, resp.id); }}
                                       className="text-blue-400 hover:text-red-600 leading-none ml-0.5 flex-shrink-0"
                                       disabled={asignandoId === actividad.id}
-                                    >✕</button>
+                                    >×</button>
                                   </div>
                                 ))}
                                 <SelectorProfesional
@@ -6368,9 +6435,9 @@ function SeccionGestionYSeguimiento({
                             })()}
                           </div>
 
-                          {/* ══ DETALLES DE LA PROGRAMACIÓN Y OBSERVACIONES ══ */}
+                          {/* "" DETALLES DE LA PROGRAMACIN Y OBSERVACIONES "" */}
                           <div className="mt-3 ml-11 space-y-3">
-                            {/* ── Detalles de la Programación del Plan Anual ── */}
+                            {/*  Detalles de la Programación del Plan Anual  */}
                             {(actividad.control || actividad.evaluacion || actividad.seguimiento) && (
                               <div className="border border-blue-200 rounded-lg overflow-hidden">
                                 <div className="bg-blue-50 px-3 py-2 border-b border-blue-200">
@@ -6402,7 +6469,7 @@ function SeccionGestionYSeguimiento({
                               </div>
                             )}
 
-                            {/* ── Observaciones de Cumplimiento (texto completo) ── */}
+                            {/*  Observaciones de Cumplimiento (texto completo)  */}
                             {(() => {
                               const obs = actividad.observacionesCumplimiento;
                               const obsArray: ObservacionCumplimiento[] = Array.isArray(obs) ? obs : (typeof obs === 'string' && obs.trim() ? [{ id: 'legacy', texto: obs, fechaRegistro: '', registradoPor: '' }] : []);
@@ -6425,7 +6492,7 @@ function SeccionGestionYSeguimiento({
                                           <p className="text-xs text-gray-800 leading-relaxed">{ob.texto}</p>
                                           {(ob.registradoPor || ob.fechaRegistro) && (
                                             <p className="text-[10px] text-gray-400 mt-1">
-                                              {ob.registradoPor && <span>— {ob.registradoPor}</span>}
+                                              {ob.registradoPor && <span> {ob.registradoPor}</span>}
                                               {ob.fechaRegistro && <span> • {new Date(ob.fechaRegistro).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
                                             </p>
                                           )}
@@ -6485,7 +6552,7 @@ function SeccionGestionYSeguimiento({
 
                                       {/* Fila 2: Metadatos SIEMPRE visibles */}
                                       <div className="ml-7 mt-2 flex items-center gap-2 flex-wrap">
-                                        {/* ⏰ Fecha límite — SIEMPRE visible */}
+                                        {/* ⏰ Fecha límite  SIEMPRE visible */}
                                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${
                                           !fechaLimite ? 'bg-gray-100 text-gray-400 border border-dashed border-gray-300' :
                                           tarea.completada ? 'bg-gray-100 text-gray-400' :
@@ -6496,7 +6563,7 @@ function SeccionGestionYSeguimiento({
                                           ⏰ {!fechaLimite ? 'Sin fecha límite' : estaVencida ? `Vencida (${Math.abs(diasRestantes!)} días)` : `Límite: ${fechaLimite.toLocaleDateString('es-CO')}`}
                                         </span>
 
-                                        {/* 👤 Responsables — SIEMPRE visible (fallback: responsable del rol) */}
+                                        {/* x Responsables  SIEMPRE visible (fallback: responsable del rol) */}
                                         {(() => {
                                           const tieneResp = tarea.responsables && tarea.responsables.length > 0;
                                           const rolResps = (rol as any).responsables as Auditor[] | undefined;
@@ -6519,7 +6586,7 @@ function SeccionGestionYSeguimiento({
                                           );
                                         })()}
 
-                                        {/* 📎 Adjuntos — SIEMPRE visible */}
+                                        {/* 📎 Adjuntos  SIEMPRE visible */}
                                         <button
                                           type="button"
                                           onClick={() => {
@@ -6543,7 +6610,7 @@ function SeccionGestionYSeguimiento({
                                           {cantAdjuntos > 0 ? `${cantAdjuntos} archivo${cantAdjuntos !== 1 ? 's' : ''}` : 'Sin adjuntos'}
                                         </button>
 
-                                        {/* 💬 Comentario — SIEMPRE visible */}
+                                        {/* x Comentario  SIEMPRE visible */}
                                         <button
                                           type="button"
                                           onClick={() => {
@@ -6561,28 +6628,28 @@ function SeccionGestionYSeguimiento({
                                           {tieneObservacion ? 'Con comentario' : 'Sin comentarios'}
                                         </button>
 
-                                        {/* ✅ Completada */}
+                                        {/* S& Completada */}
                                         {tarea.completada && (
                                           <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded text-[11px] font-semibold border border-green-200">
-                                            ✅ {tarea.fechaCompletado ? new Date(tarea.fechaCompletado).toLocaleDateString('es-CO') : 'Completada'}
+                                            S& {tarea.fechaCompletado ? new Date(tarea.fechaCompletado).toLocaleDateString('es-CO') : 'Completada'}
                                           </span>
                                         )}
 
-                                        {/* 🔒 Requisitos para completar */}
+                                        {/* x Requisitos para completar */}
                                         {!tarea.completada && (tarea.requiereAdjuntos || tarea.requiereObservaciones) && (
                                           <>
                                             {tarea.requiereAdjuntos && (
                                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${
                                                 cantAdjuntos > 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-300'
                                               }`}>
-                                                📎 {cantAdjuntos > 0 ? '✓ Adjunto OK' : 'Adjunto requerido'}
+                                                📎 {cantAdjuntos > 0 ? '✅ Adjunto OK' : 'Adjunto requerido'}
                                               </span>
                                             )}
                                             {tarea.requiereObservaciones && (
                                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${
                                                 tieneObservacion ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-300'
                                               }`}>
-                                                📝 {tieneObservacion ? '✓ Observación OK' : 'Observación requerida'}
+                                                📝 {tieneObservacion ? '✅ Observación OK' : 'Observación requerida'}
                                               </span>
                                             )}
                                           </>
@@ -6636,7 +6703,7 @@ function SeccionGestionYSeguimiento({
                                 })}
                               </div>
 
-                              {/* ═══ Botón + Agregar tarea de seguimiento ═══ */}
+                              {/* """ Botón + Agregar tarea de seguimiento """ */}
                               {puedeGestionarTareas(rol) && (
                                 formTareaActividadId === actividad.id ? (
                                   <div className="mt-3 p-3 bg-teal-50 border-2 border-teal-300 rounded-lg" onClick={(e) => e.stopPropagation()}>
@@ -6645,7 +6712,7 @@ function SeccionGestionYSeguimiento({
                                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
                                         Nueva tarea de seguimiento
                                       </h5>
-                                      <button onClick={() => { setFormTareaActividadId(null); setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false }); }} className="text-teal-600 hover:text-teal-800 text-sm">✕</button>
+                                      <button onClick={() => { setFormTareaActividadId(null); setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false }); }} className="text-teal-600 hover:text-teal-800 text-sm">×</button>
                                     </div>
                                     <div className="space-y-2">
                                       <input
@@ -6719,7 +6786,7 @@ function SeccionGestionYSeguimiento({
                                               ? 'bg-gray-300 text-gray-500 border border-gray-400 cursor-not-allowed'
                                               : 'bg-teal-700 text-white border border-teal-800 hover:bg-teal-800 shadow-sm'
                                           }`}
-                                        >{guardandoTarea ? 'Guardando...' : '✚ Agregar tarea'}</button>
+                                        >{guardandoTarea ? 'Guardando...' : '+ Agregar tarea'}</button>
                                       </div>
                                     </div>
                                   </div>
@@ -6748,7 +6815,7 @@ function SeccionGestionYSeguimiento({
                       ))
                     )}
 
-                    {/* Formulario para nueva actividad — SOLO en BORRADOR */}
+                    {/* Formulario para nueva actividad  SOLO en BORRADOR */}
                     {plan.estado === 'BORRADOR' && (
                       mostrarFormNuevaActividad === rol.numero ? (
                         <motion.div
@@ -6761,7 +6828,7 @@ function SeccionGestionYSeguimiento({
                             <button
                               onClick={(e) => { e.stopPropagation(); setMostrarFormNuevaActividad(null); }}
                               className="text-blue-600 hover:text-blue-800"
-                            >✕</button>
+                            >×</button>
                           </div>
                           <div>
                             <label className="block text-sm font-semibold text-gray-900 mb-1">Nombre de la actividad *</label>
@@ -6815,9 +6882,9 @@ function SeccionGestionYSeguimiento({
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 // FUNCIONES HELPER PARA SEGUIMIENTO
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 // Función para calcular porcentaje automático basado en puntos de control
 function calcularPorcentajeAutomatico(actividad: Actividad): number {
@@ -6838,8 +6905,9 @@ function obtenerTextoPeriodicidad(frecuencia?: FrecuenciaPuntoControl): string {
   const mapeo: Record<FrecuenciaPuntoControl, string> = {
     'semanal': 'Seguimiento semanal',
     'mensual': 'Seguimiento mensual',
-    'bimensual': 'Seguimiento bimensual',
+    'bimensual': 'Seguimiento bimestral',
     'trimestral': 'Seguimiento trimestral',
+    'cuatrimestral': 'Seguimiento cuatrimestral',
     'semestral': 'Seguimiento semestral',
     'anual': 'Seguimiento anual',
     'personalizada': 'Seguimiento personalizado'
@@ -6848,10 +6916,10 @@ function obtenerTextoPeriodicidad(frecuencia?: FrecuenciaPuntoControl): string {
   return mapeo[frecuencia] || '';
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// [DEPRECATED - ELIMINADA] SECCIÓN 3: SEGUIMIENTO Y CONTROL
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+// [DEPRECATED - ELIMINADA] SECCIN 3: SEGUIMIENTO Y CONTROL
 // Esta sección fue unificada con la Sección de Resumen en "SeccionGestionYSeguimiento"
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, auditores = [] }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onAbrirRol4?: () => void; auditores?: Auditor[] }) {
   const [actividadExpandida, setActividadExpandida] = useState<number | string | null>(null);
@@ -6887,11 +6955,11 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
 
   // Función para desactivar una actividad (soft delete)
   const desactivarActividad = async (rolNumero: number, actividadId: number | string) => {
-    console.log('🚫 [desactivarActividad] Desactivando actividad:', { rolNumero, actividadId });
+    console.log('xa [desactivarActividad] Desactivando actividad:', { rolNumero, actividadId });
     
     try {
       const res = await actividadesApi.delete(String(actividadId));
-      console.log('🚫 [desactivarActividad] Respuesta del backend:', res);
+      console.log('xa [desactivarActividad] Respuesta del backend:', res);
 
       if (res.success) {
         // Actualizar estado local - marcar como inactiva
@@ -7277,7 +7345,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                       actividad.estado === 'EN_EJECUCION' ? 'bg-orange-100 text-orange-700' :
                       'bg-gray-100 text-gray-700'
                     }`}>
-                      {actividad.estado === 'COMPLETADA' ? '✓ Completada' : 
+                      {actividad.estado === 'COMPLETADA' ? 'Completada' : 
                        actividad.estado === 'EN_EJECUCION' ? '⏳ En ejecución' : '⏸ Pendiente'}
                     </span>
                   </div>
@@ -7305,7 +7373,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                         }}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
                       >
-                        {actividadExpandida === actividad.id ? '✕ Cerrar' : '📝 Seguimiento'}
+                        {actividadExpandida === actividad.id ? '× Cerrar' : 'Seguimiento'}
                       </button>
                       {/* Botón Desactivar - siempre visible si activo no es false */}
                       <button
@@ -7342,11 +7410,11 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                       <p className="text-sm text-gray-900">{actividad.control || 'Sin definir'}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-gray-600 mb-1">📊 EVALUACIÓN</p>
+                      <p className="text-xs font-semibold text-gray-600 mb-1">Evaluación</p>
                       <p className="text-sm text-gray-900">{actividad.evaluacion || 'Sin evaluar'}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-gray-600 mb-1">✅ SEGUIMIENTO (Tareas)</p>
+                      <p className="text-xs font-semibold text-gray-600 mb-1">S& SEGUIMIENTO (Tareas)</p>
                       {actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 ? (
                         <ul className="space-y-1.5 mt-1">
                           {actividad.tareasSeguimiento.map((tarea) => (
@@ -7504,7 +7572,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
 
                           {/* Evaluación */}
                           <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
-                            <label className="block text-sm font-semibold mb-2">📊 Evaluación</label>
+                            <label className="block text-sm font-semibold mb-2">Evaluación</label>
                             <textarea
                               value={formulario.evaluacion}
                               onChange={(e) => setFormulario({ ...formulario, evaluacion: e.target.value })}
@@ -7517,7 +7585,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                           {/* Seguimiento - Tareas interactivas */}
                           <div className="bg-white rounded-lg border-2 border-green-200 p-4">
                             <label className="text-sm font-semibold mb-3 flex items-center gap-2">
-                              ✅ Tareas de seguimiento
+                              S& Tareas de seguimiento
                               <span className="text-xs text-gray-500 font-normal">({(actividad.tareasSeguimiento || []).filter(t => t.completada).length}/{(actividad.tareasSeguimiento || []).length} completadas)</span>
                             </label>
 
@@ -7596,11 +7664,11 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                               }
                                             }}
                                             className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[8px] transition-colors"
-                                          >✕</button>
+                                          >×</button>
                                         </div>
                                       ))}
                                       {tarea.fechaCompletado && (
-                                        <span className="text-xs text-green-600">✓ {tarea.fechaCompletado}</span>
+                                        <span className="text-xs text-green-600">Completada: {tarea.fechaCompletado}</span>
                                       )}
                                       {(tarea.responsables || []).length === 0 && (
                                         <select
@@ -7725,7 +7793,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                               />
                             </div>
                             <p className="text-xs text-gray-500 mt-2">
-                              ℹ️ Este campo es diferente de las <strong>Observaciones</strong> del botón "Gestionar evidencias" (abajo). Aquí registra las acciones concretas realizadas.
+                              ️ Este campo es diferente de las <strong>Observaciones</strong> del botón "Gestionar evidencias" (abajo). Aquí registra las acciones concretas realizadas.
                             </p>
                           </div>
 
@@ -7741,7 +7809,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                 {actividad.responsablesApoyo.map((resp) => (
                                   <span key={resp.id} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-purple-50 border border-purple-200 rounded-full text-[10px] text-purple-800">
                                     {resp.nombre}
-                                    <button onClick={() => { if (confirm(`¿Eliminar a ${resp.nombre}?`)) eliminarResponsableApoyo(rol.numero, actividad.id, resp.id); }} className="text-purple-400 hover:text-red-500 leading-none ml-0.5">✕</button>
+                                    <button onClick={() => { if (confirm(`¿Eliminar a ${resp.nombre}?`)) eliminarResponsableApoyo(rol.numero, actividad.id, resp.id); }} className="text-purple-400 hover:text-red-500 leading-none ml-0.5">×</button>
                                   </span>
                                 ))}
                               </>
@@ -7794,7 +7862,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                               )}
                             </div>
 
-                            {/* Observaciones de Cumplimiento - SISTEMA DE MÚLTIPLES ENTRADAS */}
+                            {/* Observaciones de Cumplimiento - SISTEMA DE MaLTIPLES ENTRADAS */}
                             <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
                               <label className="block text-sm font-semibold mb-3 flex items-center gap-2">
                                 <FileText className="w-4 h-4 text-blue-600" />
@@ -7861,7 +7929,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                             </div>
                           </div>
 
-                          {/* Sistema de Autorización del Jefe OCI - CONFIGURADO EN CREACIÓN */}
+                          {/* Sistema de Autorización del Jefe OCI - CONFIGURADO EN CREACIN */}
                           {actividad.requiereAutorizacionJefeOCI && (
                             <div className="bg-gradient-to-r from-orange-50 to-red-50 border-2 border-orange-300 rounded-lg p-4">
                               <div className="flex items-start gap-3 mb-3">
@@ -7870,7 +7938,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                 </svg>
                                 <div className="flex-1">
                                   <p className="font-semibold text-orange-900 mb-1">
-                                    🔐 Requiere Autorización del Jefe OCI
+                                    🔒 Requiere Autorización del Jefe OCI
                                   </p>
                                   <p className="text-xs text-orange-700">
                                     Esta actividad fue configurada en la creación del Plan para requerir autorización del Jefe de la OCI antes de completarse al 100%
@@ -7885,7 +7953,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                     <div className="bg-green-50 border-2 border-green-300 rounded-lg p-3">
                                       <div className="flex items-center gap-2 text-green-800 mb-2">
                                         <CheckCircle2 className="w-5 h-5" />
-                                        <p className="font-bold">✓ Autorizada por el Jefe OCI</p>
+                                        <p className="font-bold">✅ Autorizada por el Jefe OCI</p>
                                       </div>
                                       <p className="text-xs text-green-700">
                                         Fecha: {actividad.fechaAutorizacion ? new Date(actividad.fechaAutorizacion).toLocaleString('es-CO') : 'N/A'}
@@ -8002,7 +8070,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                   <div className="bg-green-50 border-2 border-green-300 rounded-lg p-3">
                                     <div className="flex items-center gap-2 text-green-800 mb-2">
                                       <CheckCircle2 className="w-5 h-5" />
-                                      <p className="font-bold">✓ Verificada por el Director OCI</p>
+                                      <p className="font-bold">✅ Verificada por el Director OCI</p>
                                     </div>
                                     <p className="text-xs text-green-700">
                                       Fecha: {actividad.fechaVerificacion ? new Date(actividad.fechaVerificacion).toLocaleString('es-CO') : 'N/A'}
@@ -8137,9 +8205,9 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// SECCIÓN 3: APROBACIÓN (antes Sección 4)
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+// SECCIN 3: APROBACIN (antes Sección 4)
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 const ESTADO_PLAN_A_BACKEND: Record<EstadoPlan, string> = {
   BORRADOR: 'borrador',
@@ -8578,7 +8646,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                       return;
                     }
 
-                    // ⚡ NUEVO: Persistencia REAL en Base de Datos
+                    // a NUEVO: Persistencia REAL en Base de Datos
                     const isSavingId = toast.loading('Guardando en base de datos...');
                     try {
                       const res = await planAnualApi.update(plan.id, { 
@@ -8623,7 +8691,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                   )}
                 </div>
               ) : ([
-                /* Resumen de progreso del comité — visible para TODOS */
+                /* Resumen de progreso del comité  visible para TODOS */
                 plan.estado === 'EN_REVISION' && equipo.length > 0 && (() => {
                     const totalVotos = equipo.length;
                     const votosAprobados = historial.filter(h => h.estado === 'APROBADA').length;
@@ -8637,7 +8705,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                           <div className="flex items-center gap-2">
                             <Shield className="w-5 h-5 text-blue-600" />
                             <span className="font-bold text-sm text-blue-900">
-                              Progreso de Aprobación — <span className="text-blue-600">{esParalelo ? 'Paralelo' : 'Secuencial'}</span>
+                              Progreso de Aprobación  <span className="text-blue-600">{esParalelo ? 'Paralelo' : 'Secuencial'}</span>
                             </span>
                           </div>
                           <span className="text-sm font-black text-blue-700">{porcentaje}%</span>
@@ -8748,7 +8816,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-1.5 shrink-0">
-                          {/* Status badge — premium pill */}
+                          {/* Status badge  premium pill */}
                           <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[10px] uppercase font-black tracking-wider rounded-lg border backdrop-blur-sm transition-all ${
                             isAprobado ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white border-green-400 shadow-sm shadow-green-200' :
                             isObservado ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white border-red-400 shadow-sm shadow-red-200' :
@@ -8760,7 +8828,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                             {isActiveTurn && <div className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />}
                             {isWaitingTurn ? 'En espera' : track.estado}
                           </span>
-                          {/* Role chip — subtle */}
+                          {/* Role chip  subtle */}
                           <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md shrink-0 ${
                             isActiveTurn ? 'bg-blue-50 text-blue-700 border border-blue-100' : 
                             isAprobado ? 'bg-green-50 text-green-700 border border-green-100' :
@@ -8787,7 +8855,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                           </div>
                           {observados > 0 && (
                             <p className="text-[10px] text-red-500 font-medium">
-                              ⚠ {observados} observación{observados > 1 ? 'es' : ''} registrada{observados > 1 ? 's' : ''}
+                              a {observados} observación{observados > 1 ? 'es' : ''} registrada{observados > 1 ? 's' : ''}
                             </p>
                           )}
                         </div>
