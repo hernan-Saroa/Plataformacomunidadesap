@@ -157,8 +157,6 @@ interface Noticia {
   numero: string;
   fechaRecepcion: string;
   origen: string;
-  denunciante: Persona | string;
-  denunciado: Persona | string;
   hechos: string;
   estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada' | 'remitida' | 'asociada' | 'devuelta';
   prioridad: 'alta' | 'media' | 'baja';
@@ -185,7 +183,7 @@ interface Noticia {
   dependencia?: string;
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
-  denunciados?: {
+  denunciado?: {
     id: string;
     nombre: string;
     identificacion: string;
@@ -193,7 +191,7 @@ interface Noticia {
     lugarHechos: string;
     apoderado?: { nombre: string; cedula: string; correo: string; celular: string };
   }[];
-  denunciantes?: {
+  denunciante?: {
     id: string;
     nombre: string;
     identificacion: string;
@@ -217,8 +215,6 @@ interface Proceso {
   id: string;
   numeroProceso: string;
   noticiaOrigen: string;
-  denunciante: Persona | string;
-  denunciado: Persona | string;
   cedula: string;
   etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo';
   estadoActual: string;
@@ -244,7 +240,7 @@ interface Proceso {
   fechaHechos?: string;
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
-  denunciados?: {
+  denunciado?: {
     id: string;
     nombre: string;
     identificacion: string;
@@ -252,7 +248,7 @@ interface Proceso {
     lugarHechos: string;
     apoderado?: { nombre: string; cedula: string; correo: string; celular: string };
   }[];
-  denunciantes?: {
+  denunciante?: {
     id: string;
     nombre: string;
     identificacion: string;
@@ -414,8 +410,8 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
           <KanbanCardInfoSection>
             {/* Denunciantes */}
             <div className="space-y-2">
-              {noticia.denunciantes && noticia.denunciantes.length > 0 ? (
-                noticia.denunciantes.map((d, idx) => (
+              {noticia.denunciante && noticia.denunciante.length > 0 ? (
+                noticia.denunciante.map((d, idx) => (
                   <div key={d.id || idx} className="flex items-start gap-2.5">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
                       {idx === 0 ? 'DTE' : `DTE ${idx + 1}`}
@@ -455,8 +451,8 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             </div>
             {/* Denunciados */}
             <div className="space-y-2 pt-1 border-t border-gray-50">
-              {noticia.denunciados && noticia.denunciados.length > 0 ? (
-                noticia.denunciados.map((d, idx) => (
+              {noticia.denunciado && noticia.denunciado.length > 0 ? (
+                noticia.denunciado.map((d, idx) => (
                   <div key={d.id || idx} className="flex items-start gap-2.5">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
                       {idx === 0 ? 'DDO' : `DDO ${idx + 1}`}
@@ -791,8 +787,8 @@ function TarjetaProceso({
           <KanbanCardInfoSection>
             {/* Denunciantes */}
             <div className="space-y-2">
-              {proceso.denunciantes && proceso.denunciantes.length > 0 ? (
-                proceso.denunciantes.map((d, idx) => (
+              {proceso.denunciante && proceso.denunciante.length > 0 ? (
+                proceso.denunciante.map((d, idx) => (
                   <div key={d.id || idx} className="flex items-start gap-2.5">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
                       {idx === 0 ? 'DTE' : `DTE ${idx + 1}`}
@@ -839,8 +835,8 @@ function TarjetaProceso({
 
             {/* Denunciados */}
             <div className="space-y-2 pt-1 border-t border-gray-50">
-              {proceso.denunciados && proceso.denunciados.length > 0 ? (
-                proceso.denunciados.map((d, idx) => (
+              {proceso.denunciado && proceso.denunciado.length > 0 ? (
+                proceso.denunciado.map((d, idx) => (
                   <div key={d.id || idx} className="flex items-start gap-2.5">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
                       {idx === 0 ? 'DDO' : `DDO ${idx + 1}`}
@@ -2753,24 +2749,8 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       origen: (noticia as any).origen || 'Noticia',
       territorial: (noticia as any).territorial,
       dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
-      denunciante: {
-        nombre: denuncianteRaw.nombre || 'Sin denunciante',
-        tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
-        numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.identificacion || 'N/A',
-        apoderado: {
-          nombre: denuncianteRaw.nombre,
-          cedula: denuncianteRaw.cedula,
-          correo: denuncianteRaw.correo,
-          celular: denuncianteRaw.celular,
-        }
-      },
-      denunciado: {
-        nombre: denunciadoRaw.nombre || 'Sin disciplinable',
-        tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
-        numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || 'N/A',
-        apoderado: denunciadoRaw.apoderado
-      },
-      denunciantes: denuncianteList.map((d: any) => ({
+      
+      denunciante: denuncianteList.map((d: any) => ({
         id: d.id || d.cedula || d.identificacion || Math.random().toString(),
         nombre: d.nombre || '',
         identificacion: d.cedula || d.identificacion || d.numeroIdentificacion || '',
@@ -2782,7 +2762,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
         tipo: d.tipo || 'Denunciante',
         apoderado: d.apoderado
       })),
-      denunciados: disciplinableList.map((d: any) => ({
+      denunciado: disciplinableList.map((d: any) => ({
         id: d.id || d.cedula || d.identificacion || Math.random().toString(),
         nombre: d.nombre || '',
         identificacion: d.cedula || d.identificacion || d.numeroIdentificacion || '',
@@ -2853,23 +2833,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       id: proceso.id,
       numeroProceso: proceso.radicadoProceso,
       noticiaOrigen: proceso.news?.radicado || 'N/A',
-      denunciante: {
-        nombre: (proceso.news?.denunciante as any)?.nombre || 'Sin denunciante',
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso.news?.denunciante as any)?.cedula || 'N/A',
-        apoderado: {
-          nombre: (proceso.news?.denunciante as any)?.nombre,
-          cedula: (proceso.news?.denunciante as any)?.cedula,
-          correo: (proceso.news?.denunciante as any)?.correo,
-          celular: (proceso.news?.denunciante as any)?.celular,
-        }
-      },
-      denunciado: {
-        nombre: (proceso.news?.disciplinable as any)?.nombre || 'Sin disciplinable',
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso.news?.disciplinable as any)?.cedula || 'N/A',
-        apoderado: (proceso.news?.disciplinable as any)?.apoderado
-      },
+      
       cedula: (proceso.news?.disciplinable as any)?.cedula || 'N/A',
       etapaActual: etapa as any,
       estadoActual: proceso.estado || 'ACTIVO',
@@ -2894,8 +2858,8 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       fechaHechos: proceso.news?.fechaHechos || '',
       conductaSeleccionada: proceso.news?.conductas?.[0] || '',
       conductaPersonalizada: '',
-      denunciados: (() => {
-        const source = (proceso.news as any)?.disciplinables || (proceso.news as any)?.denunciados || (proceso.news as any)?.disciplinable;
+      denunciado: (() => {
+        const source = (proceso.news as any)?.disciplinable || (proceso.news as any)?.denunciado || (proceso.news as any)?.disciplinable;
         const list = Array.isArray(source) ? source : (source ? [source] : []);
         return list.map((d: any, idx: number) => ({
           id: d.id || d.cedula || d.identificacion || `${proceso.id}-d-${idx}`,
@@ -2912,7 +2876,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
           } : undefined,
         }));
       })(),
-      denunciantes: (() => {
+      denunciante: (() => {
         const source = (proceso.news as any)?.denunciantes || (proceso.news as any)?.denunciante;
         const list = Array.isArray(source) ? source : (source ? [source] : []);
         return list.map((d: any, idx: number) => ({
@@ -2948,6 +2912,8 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       profesionalAsignadoId: proceso.abogadoAsignadoId,
     };
   };
+
+  
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function DashboardKanbanOperativo({
@@ -3423,24 +3389,8 @@ export function DashboardKanbanOperativo({
       origen: (noticia as any).origen || 'Noticia',
       territorial: (noticia as any).territorial,
       dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
-      denunciante: {
-        nombre: denuncianteRaw.nombre || 'Sin denunciante',
-        tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
-        numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.identificacion || 'N/A',
-        apoderado: {
-          nombre: denuncianteRaw.nombre,
-          cedula: denuncianteRaw.cedula,
-          correo: denuncianteRaw.correo,
-          celular: denuncianteRaw.celular,
-        }
-      },
-      denunciado: {
-        nombre: denunciadoRaw.nombre || 'Sin disciplinable',
-        tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
-        numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || 'N/A',
-        apoderado: denunciadoRaw.apoderado
-      },
-      denunciantes: denuncianteList.map((d: any) => ({
+      
+      denunciante: denuncianteList.map((d: any) => ({
         id: d.id || d.cedula || d.identificacion || Math.random().toString(),
         nombre: d.nombre || '',
         identificacion: d.cedula || d.identificacion || d.numeroIdentificacion || '',
@@ -3452,7 +3402,7 @@ export function DashboardKanbanOperativo({
         tipo: d.tipo || 'Denunciante',
         apoderado: d.apoderado
       })),
-      denunciados: disciplinableList.map((d: any) => ({
+      denunciado: disciplinableList.map((d: any) => ({
         id: d.id || d.cedula || d.identificacion || Math.random().toString(),
         nombre: d.nombre || '',
         identificacion: d.cedula || d.identificacion || d.numeroIdentificacion || '',
@@ -3586,23 +3536,7 @@ export function DashboardKanbanOperativo({
       id: proceso.id,
       numeroProceso: proceso.radicadoProceso,
       noticiaOrigen: proceso.news?.radicado || 'N/A',
-      denunciante: {
-        nombre: (proceso.news?.denunciante as any)?.nombre || 'Sin denunciante',
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso.news?.denunciante as any)?.cedula || 'N/A',
-        apoderado: {
-          nombre: (proceso.news?.denunciante as any)?.nombre,
-          cedula: (proceso.news?.denunciante as any)?.cedula,
-          correo: (proceso.news?.denunciante as any)?.correo,
-          celular: (proceso.news?.denunciante as any)?.celular,
-        }
-      },
-      denunciado: {
-        nombre: (proceso.news?.disciplinable as any)?.nombre || 'Sin disciplinable',
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso.news?.disciplinable as any)?.cedula || 'N/A',
-        apoderado: (proceso.news?.disciplinable as any)?.apoderado
-      },
+      
       cedula: (proceso.news?.disciplinable as any)?.cedula || 'N/A',
       etapaActual: etapa as any,
       estadoActual: proceso.estado || 'ACTIVO',
@@ -3627,8 +3561,8 @@ export function DashboardKanbanOperativo({
       fechaHechos: proceso.news?.fechaHechos || '',
       conductaSeleccionada: proceso.news?.conductas?.[0] || '',
       conductaPersonalizada: '',
-      denunciados: (() => {
-        const source = (proceso.news as any)?.disciplinables || (proceso.news as any)?.denunciados || (proceso.news as any)?.disciplinable;
+      denunciado: (() => {
+        const source = (proceso.news as any)?.disciplinable || (proceso.news as any)?.denunciado || (proceso.news as any)?.disciplinable;
         const list = Array.isArray(source) ? source : (source ? [source] : []);
         return list.map((d: any, idx: number) => ({
           id: d.id || d.cedula || d.identificacion || `${proceso.id}-d-${idx}`,
@@ -3645,7 +3579,7 @@ export function DashboardKanbanOperativo({
           } : undefined,
         }));
       })(),
-      denunciantes: (() => {
+      denunciante: (() => {
         const source = (proceso.news as any)?.denunciantes || (proceso.news as any)?.denunciante;
         const list = Array.isArray(source) ? source : (source ? [source] : []);
         return list.map((d: any, idx: number) => ({
@@ -3682,6 +3616,243 @@ export function DashboardKanbanOperativo({
     };
   };
 
+   // ✅ Auto-activar vista compacta en mobile y tablet
+  useEffect(() => {
+    if (width < 1024) {
+      setVistaCompacta(true);
+    } else {
+      setVistaCompacta(false);
+    }
+  }, [width]);
+
+  // Detectar touch para usar TouchBackend
+  const isTouchDevice = () => {
+    return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  };
+
+  // ✅ ETAPAS: Si hay etapas configuradas en backend, usarlas ordenadas por 'orden'.
+  // Si no hay config, usar valores por defecto
+  const etapas = etapasConfig.length > 0
+    ? etapasConfig
+      .filter(etapa => etapa.activo !== false)
+      .sort((a, b) => (a.orden || 0) - (b.orden || 0))
+      .map((etapa) => ({
+        nombre: etapa.etapa,
+        color: etapa.color || '#6B7280',
+        icono: getIconoPorEtapa(etapa.etapa),
+        diasEstimados: etapa.diasHabiles || 0
+      }))
+    : [
+      { nombre: 'Recepción', color: '#6B7280', icono: <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 3 },
+      { nombre: 'Valoración', color: '#6B7280', icono: <Eye className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
+      { nombre: 'Indagación', color: '#6B7280', icono: <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 40 },
+      { nombre: 'Investigación', color: '#003DA5', icono: <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />, diasEstimados: 60 },
+      { nombre: 'Juzgamiento', color: '#6B7280', icono: <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 50 },
+      { nombre: 'Fallo', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
+      { nombre: 'Archivo', color: '#059669', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-green-600`} />, diasEstimados: 0 }
+    ];
+
+  // ✅ Función helper para obtener icono según nombre de etapa
+  function getIconoPorEtapa(nombreEtapa: string) {
+    const nombre = nombreEtapa?.toLowerCase() || '';
+    if (nombre.includes('recep')) return <FileCheck className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+    if (nombre.includes('valora')) return <Eye className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+    if (nombre.includes('indag')) return <Search className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+    if (nombre.includes('investig')) return <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />;
+    if (nombre.includes('juzg')) return <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+    if (nombre.includes('fallo')) return <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+    if (nombre.includes('archiv')) return <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-green-600`} />;
+    return <FolderOpen className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+  }
+
+  const normalizeStageKey = (value: string) =>
+    value
+      ?.toString()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[_\s]+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+  const backendStageForLabel = (label: string) => {
+    const normalizedLabel = normalizeStageKey(label);
+
+    const mappedStage = etapasConfig.find(stageConfig => {
+      const raw = stageConfig.etapa || stageConfig.nombre || stageConfig.label || '';
+      const normalizedRaw = normalizeStageKey(raw);
+      return normalizedRaw === normalizedLabel || normalizedRaw.includes(normalizedLabel) || normalizedLabel.includes(normalizedRaw);
+    });
+    if (mappedStage?.etapa) {
+      return mappedStage.etapa.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    }
+
+    const fallbackMap: Record<string, string> = {
+      'recepcion': 'RECEPCION',
+      'valoracion': 'VALORACION',
+      'indagacion': 'INDAGACION_PREVIA',
+      'indagacion previa': 'INDAGACION_PREVIA',
+      'investigacion': 'INVESTIGACION',
+      'evaluacion': 'EVALUACION',
+      'juzgamiento': 'JUZGAMIENTO',
+      'fallo': 'FALLO',
+      'segunda instancia': 'SEGUNDA_INSTANCIA',
+      'archivo': 'ARCHIVO'
+    };
+
+    return fallbackMap[normalizedLabel] || normalizedLabel.replace(/\s+/g, '_').toUpperCase();
+  };
+
+  const getStageOrderForLabel = (label: string) => {
+    const normalizedLabel = normalizeStageKey(label);
+
+    const mappedStage = etapasConfig.find(stageConfig => {
+      const raw = stageConfig.etapa || stageConfig.nombre || stageConfig.label || '';
+      const normalizedRaw = normalizeStageKey(raw);
+      return normalizedRaw === normalizedLabel || normalizedRaw.includes(normalizedLabel) || normalizedLabel.includes(normalizedRaw);
+    });
+    if (mappedStage?.orden !== undefined) {
+      return mappedStage.orden;
+    }
+
+    // Fallback orders based on typical sequence
+    const fallbackOrders: Record<string, number> = {
+      'recepcion': 1,
+      'valoracion': 2,
+      'indagacion': 3,
+      'indagacion previa': 3,
+      'investigacion': 4,
+      'evaluacion': 5,
+      'juzgamiento': 6,
+      'fallo': 7,
+      'segunda instancia': 8,
+      'archivo': 9
+    };
+
+    return fallbackOrders[normalizedLabel] || 1;
+  };
+
+  // ==================== HANDLERS ====================
+  const handleDropItem = async (item: Item, nuevaEtapa: string) => {
+    // ✅ NUEVO: Validar permiso de movimiento en Kanban
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_KANBAN_MOVE)) {
+      toast.error('No tiene permiso para mover elementos en el Kanban');
+      return;
+    }
+
+    // ✅ NUEVO: Validar orden de etapas desde backend config
+    if (etapasConfig.length > 0) {
+      // Obtener el orden de la etapa actual del item
+      let itemOrden: number = 0;
+      let etapaActualItem: string = 'Recepción';
+
+      if (item.tipo === 'noticia') {
+        // Las noticias siempre están en Recepción
+        const etapaRecepcion = etapasConfig.find(e =>
+          e.etapa?.toLowerCase().includes('recep') ||
+          e.etapa?.toLowerCase().includes('recib')
+        );
+        itemOrden = etapaRecepcion?.orden ?? 0;
+        etapaActualItem = etapaRecepcion?.etapa || 'Recepción';
+      } else {
+        // Para procesos, buscar la etapa actual
+        const etapaActualProceso = etapasConfig.find(e =>
+          e.etapa === item.etapaActual ||
+          e.etapa.toLowerCase() === item.etapaActual?.toLowerCase()
+        );
+        itemOrden = etapaActualProceso?.orden ?? 0;
+        etapaActualItem = etapaActualProceso?.etapa || item.etapaActual;
+      }
+
+      // Obtener el orden de la etapa de destino
+      const etapaDestino = etapasConfig.find(e =>
+        e.etapa === nuevaEtapa ||
+        e.etapa.toLowerCase() === nuevaEtapa.toLowerCase()
+      );
+      const etapaDestinoOrden = etapaDestino?.orden ?? itemOrden + 1;
+
+      // Validar que solo permita mover a la siguiente etapa en el orden
+      if (etapaDestinoOrden !== itemOrden + 1) {
+        toast.error('No puede saltar etapas', {
+          description: `Debe avanzar secuencialmente. La etapa actual es "${etapaActualItem}" (orden ${itemOrden}).`
+        });
+        return;
+      }
+    }
+
+    if (item.tipo === 'noticia') {
+      if (nuevaEtapa === 'Valoración') {
+        // ✅ Arrastrar noticia de Recepción a Valoración → activa wizard de conversión a proceso
+        handleConvertirNoticia(item as Noticia);
+        return;
+      } else if (nuevaEtapa !== 'Recepción') {
+        toast.error('Primero debe convertir la noticia a proceso', {
+          description: 'Arrastre a Valoración o use el botón "Convertir"'
+        });
+        return;
+      }
+    } else if (item.tipo === 'proceso') {
+      if (item.etapaActual !== nuevaEtapa) {
+        const etapaAnterior = item.etapaActual;
+
+        // ✅ NUEVO: Interceptar transición Recepción → Valoración para asignar profesional
+        if (etapaAnterior === 'Recepción' && nuevaEtapa === 'Valoración') {
+          setItemSeleccionado(item);
+          setModalActivo('asignar-profesional');
+          return; // No continuar con el movimiento hasta que se asigne el profesional
+        }
+
+        const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
+
+        // ✅ NUEVO: Persistir cambio de etapa en la base de datos
+        const toastId = toast.loading('Cambiando etapa del proceso...');
+        try {
+          const backendStage = backendStageForLabel(nuevaEtapa);
+          const stageOrder = getStageOrderForLabel(nuevaEtapa);
+
+          // Llamar al backend para cambiar la etapa
+          await disciplinaryService.cambiarEtapa(item.id, backendStage, stageOrder);
+          toast.success('Etapa actualizada', {
+            id: toastId,
+            description: `${item.numeroProceso} → ${nuevaEtapa}`
+          });
+        } catch (error: any) {
+          console.error('Error al cambiar etapa en BD:', error);
+          toast.error('Error al guardar cambio', {
+            id: toastId,
+            description: error?.message || 'No se pudo persistir el cambio en la base de datos'
+          });
+          // Continuamos con la actualización local aunque haya error en el backend
+        }
+
+        // Actualizar estado local
+        setItems(prev => prev.map(i =>
+          i.id === item.id && i.tipo === 'proceso'
+            ? {
+              ...i,
+              etapaActual: nuevaEtapa as any,
+              ultimaModificacion: new Date()
+            }
+            : i
+        ));
+
+        // Registrar en trazabilidad/historial
+        const eventoTrazabilidad = {
+          id: `evt-${Date.now()}`,
+          tipo: 'cambio-estado' as const,
+          titulo: `Cambio de etapa: ${etapaAnterior} → ${nuevaEtapa}`,
+          descripcion: `El proceso fue movido de "${etapaAnterior}" a "${nuevaEtapa}" mediante arrastrar y soltar`,
+          usuario: usuario,
+          fecha: new Date(),
+          procesoId: item.id,
+          etapaAnterior: etapaAnterior,
+          etapaNueva: nuevaEtapa
+        };
+
+        console.log('📋 Trazabilidad - Movimiento de proceso:', eventoTrazabilidad);
+      }
+    }
+  };
+
   const handleCrearNoticia = async (data: any) => {
     let etapaInicial = 'Recepcion';
     if (etapasConfig.length > 0) {
@@ -3699,10 +3870,36 @@ export function DashboardKanbanOperativo({
 
     const toastId = toast.loading('Creando noticia en el sistema...');
 
+    // Convertir archivos File a metadata serializable
+    const archivosMetadata = (data.archivosAdjuntos || []).map((f: File | any) => ({
+      nombre: f.name || f.nombre || 'archivo',
+      tipo: f.type || f.tipo || 'application/octet-stream',
+      tamano: f.size || f.tamano || 0,
+      fechaSubida: new Date().toISOString().split('T')[0]
+    }));
+
+    // ✅ MAPEO DE VALORES AL FORMATO DEL BACKEND
+    // origen: debe ser uno de ANONIMO, QUEJOSO, OFICIO, REMISION, POR_DETERMINAR
+    const origenMap: Record<string, string> = {
+      'Anónimo': 'ANONIMO',
+      'Anonimo': 'ANONIMO',
+      'Denuncia Ciudadana': 'QUEJOSO',
+      'Quejoso': 'QUEJOSO',
+      'Oficio': 'OFICIO',
+      'Remisión': 'REMISION',
+      'Remision': 'REMISION',
+      'Por Determinar': 'POR_DETERMINAR',
+      'Por determinar': 'POR_DETERMINAR'
+    };
+
+    const origenNormalizado = origenMap[data.origen] || 'POR_DETERMINAR';
+
+    console.log('Origen normalizado:', origenNormalizado);
+
     try {
       // ✅ PREPARAR PAYLOAD UNIFICADO
       // Transformar denunciantes y denunciados para el payload
-      const denunciantesTransformed = data.denunciantes?.length > 0 ? data.denunciantes.map((d: any) => ({
+      const denunciantesTransformed = data.denunciantes && Array.isArray(data.denunciantes) ? data.denunciantes.map((d: any) => ({
         nombre: d.nombre,
         cedula: d.identificacion || d.cedula,
         telefono: d.telefono,
@@ -3712,23 +3909,25 @@ export function DashboardKanbanOperativo({
         entidad: d.entidad,
         tipo: d.tipo, // ✅ Campo tipo (Denunciante/Víctima)
         apoderado: d.apoderado
-      })) : [];
+      })) : null;
 
-      const denunciadosTransformed = data.denunciados?.length > 0 ? data.denunciados.map((d: any) => ({
+      const denunciadosTransformed = data.denunciados && Array.isArray(data.denunciados) ? data.denunciados.map((d: any) => ({
         nombre: d.nombre,
         cedula: d.identificacion || d.cedula,
         cargo: d.cargo,
         dependencia: d.lugarHechos || d.dependencia,
         apoderado: d.apoderado
-      })) : [];
+      })) : null;
+
+      
 
       const newsData: CreateNewsDto = {
-        origen: data.origenMap ? data.origenMap[data.origen] : (data.origen || 'POR_DETERMINAR'),
+        origen: origenNormalizado || 'POR_DETERMINAR',
         territorial: data.territorial,
         dependenciaDenunciado: data.dependencia || data.dependenciaDenunciado || '',
         // ✅ UNIFICAR TODO EN CAMPOS SINGULARES - Arrays cuando múltiples, objeto cuando uno solo
-        denunciante: denunciantesTransformed.length > 1 ? denunciantesTransformed : (denunciantesTransformed[0] || { nombre: 'Anónimo' }),
-        disciplinable: denunciadosTransformed.length > 1 ? denunciadosTransformed : (denunciadosTransformed[0] || { nombre: 'Por determinar' }),
+        denunciante: denunciantesTransformed,
+        disciplinable: denunciadosTransformed,
         hechos: data.hechosSeparados?.length > 0
           ? data.hechosSeparados.map((h: any, idx: number) => `Hecho ${idx + 1}: ${h.descripcion}`).join('\n\n')
           : (data.hechos || data.descripcionHechos || ''),
@@ -3794,11 +3993,8 @@ export function DashboardKanbanOperativo({
         // Actualizar proceso - MISMOS CAMPOS EN TODOS LOS ESTADOS
         return {
           ...item,
-          denunciado: data.denunciado ? {
-            nombre: data.denunciado.nombre || 'Sin nombre',
-            tipoIdentificacion: 'CC' as const,
-            numeroIdentificacion: data.denunciado.identificacion || 'Sin identificación'
-          } : 'Sin información',
+          denunciado: data.denunciado,
+          denunciante: data.denunciante,
           hechos: data.hechosSeparados?.map((h: any, idx: number) =>
             `Hecho ${idx + 1}: ${h.descripcion}`
           ).join('\\n\\n') || data.descripcionHechos,
@@ -3810,20 +4006,15 @@ export function DashboardKanbanOperativo({
         };
       }
       if (item.tipo === 'noticia' && item.id === noticiaAEditar.id) {
-        const primerDenunciadoEdit = data.denunciados?.[0] || data.denunciado;
+        const primerDenunciadoEdit = data.denunciado?.[0] || data.denunciado;
         return {
           ...item,
           origen: data.origen,
           fechaRecepcion: data.fechaQueja,
           fechaHechos: data.fechaHechos,
           territorial: data.territorial,
-          denunciado: primerDenunciadoEdit ? {
-            nombre: primerDenunciadoEdit.nombre || 'Sin nombre',
-            tipoIdentificacion: 'CC' as const,
-            numeroIdentificacion: primerDenunciadoEdit.identificacion || primerDenunciadoEdit.numeroIdentificacion || 'Sin identificación'
-          } : 'Sin información',
-          denunciados: data.denunciados || item.denunciados || [],
-          denunciantes: data.denunciantes || item.denunciantes || [],
+          denunciado: data.denunciado,
+          denunciante: data.denunciante,
           hechos: data.hechosSeparados?.length > 0
             ? data.hechosSeparados.map((h: any, idx: number) => `Hecho ${idx + 1}: ${h.descripcion}`).join('\n\n')
             : (data.descripcionHechos || (item as any).hechos || ''),
