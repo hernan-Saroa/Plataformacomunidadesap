@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ESAPLogo } from '../assets/ESAPLogo';
+import studentsHeroImage from '../../assets/b908880c14a3cc806d23bc03bf323801e9003c27.png';
 import {
   ArrowRight, Users, Award, Zap, Star, Shield, Sparkles, TrendingUp, MapPin, Phone, Mail,
   CheckCircle, Globe, Rocket, Clock, Briefcase, Layers, Check, ShieldCheck, Menu, X
@@ -448,7 +449,7 @@ export function LandingPage({ onIrALogin, onLoginClick, onNavigate }: LandingPag
                   )}
 
                   <img
-                    src="src/assets/b908880c14a3cc806d23bc03bf323801e9003c27.png"
+                    src={studentsHeroImage}
                     alt="Estudiantes ESAP - Escuela Superior de Administración Pública Colombia"
                     className={`w-full h-[220px] xs:h-[260px] sm:h-[300px] md:h-[350px] lg:h-[400px] xl:h-[450px] object-cover transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
                     loading="lazy"

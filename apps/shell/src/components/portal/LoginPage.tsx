@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { ESAPLogo } from '../assets/ESAPLogo';
 import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
 import { authService } from '../../services/api/authService';
+import loginHeroImage from '../../assets/photo-1623156167557-281309073eef.png';
 
 interface MicrosoftCallbackResponse {
   code: string;
@@ -44,7 +45,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     document.documentElement.classList.remove('dark');
     const img = new Image();
     img.onload = () => setBgLoaded(true);
-    img.src = 'src/assets/photo-1623156167557-281309073eef.png';
+    img.src = loginHeroImage;
   }, []);
 
   useEffect(() => {
@@ -752,7 +753,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       >
         <div className="absolute inset-0">
           <img
-            src="src/assets/photo-1623156167557-281309073eef.png"
+            src={loginHeroImage}
             alt=""
             className={`w-full h-full object-cover transition-opacity duration-1000 ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}
           />
