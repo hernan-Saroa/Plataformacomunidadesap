@@ -426,6 +426,9 @@ export interface CreateNewsDto {
     adjuntos?: string[];
     denunciante: any;
     disciplinable: any;
+    denunciantes?: any[];
+    disciplinables?: any[];
+    denunciados?: any[];
     radicadorId?: string;
 }
 
@@ -535,6 +538,15 @@ class DisciplinaryService {
         if (data.radicadorId) {
             formData.append('radicadorId', data.radicadorId);
         }
+        if (data.denunciantes) {
+            formData.append('denunciantes', JSON.stringify(data.denunciantes));
+        }
+        if (data.disciplinables) {
+            formData.append('disciplinables', JSON.stringify(data.disciplinables));
+        }
+        if (data.denunciados) {
+            formData.append('denunciados', JSON.stringify(data.denunciados));
+        }
 
         // Archivos con el campo correcto que espera el backend
         if (files && files.length > 0) {
@@ -553,6 +565,8 @@ class DisciplinaryService {
         hechos?: string;
         denunciante?: any;
         disciplinable?: any;
+        denunciantes?: any[];
+        disciplinables?: any[];
         conductas?: string[];
         fechaHechos?: string | null;
         fechaQueja?: string;
