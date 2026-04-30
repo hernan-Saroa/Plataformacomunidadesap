@@ -26,6 +26,7 @@ export interface DisciplinaryNews {
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
+    conductaDisciplinaria?: string;
     conductas?: string[];
     adjuntos?: string[];
     denunciante?: {
@@ -422,6 +423,7 @@ export interface CreateNewsDto {
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
+    conducta?: string;
     conductas?: string[];
     adjuntos?: string[];
     denunciante: any;
@@ -527,6 +529,9 @@ class DisciplinaryService {
         formData.append('territorial', data.territorial);
         formData.append('dependenciaDenunciado', data.dependenciaDenunciado);
         formData.append('hechos', data.hechos);
+        if (data.conducta) {
+            formData.append('conducta', data.conducta);
+        }
         formData.append('denunciante', JSON.stringify(data.denunciante));
         formData.append('disciplinable', JSON.stringify(data.disciplinable));
         if (data.fechaHechos) {

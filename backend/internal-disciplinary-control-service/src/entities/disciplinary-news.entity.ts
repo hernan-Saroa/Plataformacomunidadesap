@@ -86,11 +86,15 @@ export class DisciplinaryNews {
   @Column({ type: 'jsonb', nullable: true })
   disciplinable: PersonInfo | PersonInfo[];
 
-  @Column({ type: 'text' })
-  hechos: string;
+   @Column({ type: 'text' })
+   hechos: string;
 
-  @Column({ type: 'text', array: true, nullable: true })
-  conductas?: string[];
+
+   @Column({ type: 'varchar', length: 255, nullable: true, name: 'conducta_disciplinaria' })
+   conductaDisciplinaria?: string;
+
+   @Column({ type: 'text', array: true, nullable: true })
+   conductas?: string[];
 
    @Column({ type: 'varchar', length: 50, default: 'RADICADA' })
    estado: string;
