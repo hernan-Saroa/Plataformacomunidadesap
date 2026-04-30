@@ -201,6 +201,48 @@ const extractPermissionCodes = (user: any): string[] => {
 
 // Configuración de timeout (15 minutos en milisegundos)
 const TIMEOUT_INACTIVIDAD = 15 * 60 * 1000; // 15 minutos
+const AUTH_TOKEN_STORAGE_KEYS = [
+  config.STORAGE_KEYS.AUTH_TOKEN,
+  'esap_access_token',
+  config.STORAGE_KEYS.REFRESH_TOKEN,
+  'token',
+  'esap-auth-token',
+];
+
+function migrateAuthTokensToSessionStorage() {
+  for (const key of AUTH_TOKEN_STORAGE_KEYS) {
+    const token = localStorage.getItem(key);
+    if (token && !sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, token);
+    }
+    localStorage.removeItem(key);
+  }
+
+  const rememberedSession = localStorage.getItem('esap-remember-session');
+  if (!rememberedSession) return;
+
+  try {
+    const parsed = JSON.parse(rememberedSession);
+    if (parsed?.token || parsed?.accessToken || parsed?.refreshToken) {
+      delete parsed.token;
+      delete parsed.accessToken;
+      delete parsed.refreshToken;
+      localStorage.setItem('esap-remember-session', JSON.stringify(parsed));
+    }
+  } catch {
+    localStorage.removeItem('esap-remember-session');
+  }
+}
+
+function sanitizeUserForStorage(user: User) {
+  const sanitizedUser = { ...(user as Record<string, any>) };
+  delete sanitizedUser.accessToken;
+  delete sanitizedUser.refreshToken;
+  delete sanitizedUser.token;
+  delete sanitizedUser.idToken;
+  delete sanitizedUser.rememberMe;
+  return sanitizedUser;
+}
 const TIEMPO_ALERTA = 1 * 60 * 1000; // 1 minuto antes de cerrar sesión
 
 function DemoNoDisponible({ title }: { title: string }) {
@@ -381,11 +423,13 @@ export default function App() {
       });
     };
 
+    migrateAuthTokensToSessionStorage();
+
     const authToken =
-      localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
-      localStorage.getItem('esap_access_token');
-    if (authToken && !localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN)) {
-      localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, authToken);
+      sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
+      sessionStorage.getItem('esap_access_token');
+    if (authToken && !sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN)) {
+      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, authToken);
     }
     const storedAuthUser = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
     let sesionGuardada = localStorage.getItem('esap-sesion-activa');
@@ -577,12 +621,9 @@ export default function App() {
       // console.log('🔐 Login handler called with roles:', user.roles);
       // console.log('🔐 Login handler called with accessToken:', accessToken);
       // console.log('🔐 Login handler called with rememberMe:', rememberMe);
-      user.accessToken = accessToken;
-      user.rememberMe = rememberMe || false;
-
       // Guardar token JWT
-      localStorage.setItem('esap_auth_token', accessToken);
-      localStorage.setItem('esap_access_token', accessToken);
+      sessionStorage.setItem('esap_auth_token', accessToken);
+      sessionStorage.setItem('esap_access_token', accessToken);
 
       // Extraer información del usuario
       const userEmail = user?.person?.email || user?.email || '';
@@ -680,7 +721,7 @@ export default function App() {
           setUserData(userDataToSave);
           // También guardar en esap_user_data para que otros componentes puedan acceder
           localStorage.setItem('esap_user_data', JSON.stringify({
-            ...user,
+            ...sanitizeUserForStorage(user),
             roles: user?.roles || roles.map((code: string) => ({ code, name: code })),
             permissions
           }));
@@ -754,8 +795,7 @@ export default function App() {
       // Guardar sesión si rememberMe está activo
       if (rememberMe) {
         localStorage.setItem('esap-remember-session', JSON.stringify({
-          email: userEmail,
-          token: accessToken
+          email: userEmail
         }));
       }
 
@@ -790,6 +830,7 @@ export default function App() {
   // Handler para logout (desde cualquier ambiente)
   const handleLogout = (viewToast = true) => {
     localStorage.clear();
+    AUTH_TOKEN_STORAGE_KEYS.forEach((key) => sessionStorage.removeItem(key));
     if (viewToast) {
       toast.success('Sesión cerrada exitosamente', {
         description: 'Has cerrado sesión de forma segura',

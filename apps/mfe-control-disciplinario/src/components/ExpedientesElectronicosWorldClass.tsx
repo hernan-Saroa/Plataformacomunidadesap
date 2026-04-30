@@ -1102,7 +1102,7 @@ export function ExpedientesElectronicosWorldClass() {
       // ?view=true hace que el backend devuelva Content-Type correcto (ej. application/pdf) e inline
       const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download?view=true`;
       const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
-      const token = localStorage.getItem('esap_access_token');
+      const token = sessionStorage.getItem('esap_access_token');
 
       // Cargar el documento como blob para crear una URL local
       const response = await fetch(downloadUrl, {
@@ -1174,7 +1174,7 @@ export function ExpedientesElectronicosWorldClass() {
       // Construir la URL del documento usando buildApiUrl (respeta gateway/direct)
       const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download`;
       const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
-      const token = localStorage.getItem('esap_access_token');
+      const token = sessionStorage.getItem('esap_access_token');
 
       const response = await fetch(downloadUrl, {
         method: 'GET',

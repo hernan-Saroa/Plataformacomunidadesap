@@ -71,7 +71,7 @@ async function fetchFromAuthService<T>(endpoint: string): Promise<T | null> {
   try {
     const baseUrl = getAuthApiBaseUrl();
     const token = typeof localStorage !== 'undefined' 
-      ? localStorage.getItem('esap_auth_token') 
+      ? sessionStorage.getItem('esap_auth_token') 
       : null;
     
     const response = await fetch(`${baseUrl}${endpoint}`, {

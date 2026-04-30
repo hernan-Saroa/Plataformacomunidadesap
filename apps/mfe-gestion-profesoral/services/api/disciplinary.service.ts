@@ -698,7 +698,7 @@ class DisciplinaryService {
         const url = buildApiUrl('control-disciplinario', endpoint);
 
         // Obtener token de autenticacion
-        const token = localStorage.getItem('esap_access_token');
+        const token = sessionStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/octet-stream',
         };
@@ -759,7 +759,7 @@ class DisciplinaryService {
             fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
         }
 
-        const token = localStorage.getItem('esap_access_token');
+        const token = sessionStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': '*/*', // Aceptar cualquier cosa (binarios)
         };
@@ -999,7 +999,7 @@ class DisciplinaryService {
         const url = buildApiUrl('control-disciplinario', endpoint);
 
         // Obtener token
-        const token = localStorage.getItem('esap_access_token');
+        const token = sessionStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/zip',
         };
@@ -1514,7 +1514,7 @@ class DisciplinaryService {
         createdAt: string;
     }> {
         // Debug: verificar que hay token disponible
-        const token = localStorage.getItem('esap_auth_token');
+        const token = sessionStorage.getItem('esap_auth_token');
         console.log('[DEBUG] Token available:', !!token);
         console.log('[DEBUG] Token prefix:', token?.substring(0, 20));
 

@@ -76,7 +76,7 @@ export function useCrearNotificacion() {
       const usuarioIdString = String(params.usuarioId);
       
       // PETICIÓN DIRECTA SIN PASAR POR EL API WRAPPER
-      const token = localStorage.getItem('esap_auth_token');
+      const token = sessionStorage.getItem('esap_auth_token');
       const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/notificaciones`;
       
       const response = await fetch(url, {

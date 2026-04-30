@@ -2880,7 +2880,7 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
                       const response = await fetch(urlDescarga, {
                         method: 'GET',
                         headers: {
-                          'Authorization': `Bearer ${localStorage.getItem('esap_auth_token')}`,
+                          'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token')}`,
                         },
                       });
 

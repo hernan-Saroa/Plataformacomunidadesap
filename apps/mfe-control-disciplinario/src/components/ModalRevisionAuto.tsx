@@ -508,7 +508,7 @@ export function ModalRevisionAuto({
         if (auto.documentUrl) {
           const restPath = auto.documentUrl;
           const fileUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
-          const token = localStorage.getItem('esap_access_token');
+          const token = sessionStorage.getItem('esap_access_token');
           const response = await fetch(fileUrl, {
             method: 'GET',
             headers: token ? { 'Authorization': `Bearer ${token}` } : {}

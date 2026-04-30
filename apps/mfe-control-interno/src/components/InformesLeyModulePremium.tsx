@@ -680,7 +680,7 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
       }
       
       // 3. Intentar decodificar el token JWT para extraer roles
-      const token = localStorage.getItem('esap_auth_token') || localStorage.getItem('esap-auth-token');
+      const token = sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || sessionStorage.getItem('esap-auth-token');
       if (token) {
         try {
           const payload = JSON.parse(atob(token.split('.')[1]));
@@ -798,7 +798,7 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
       const response = await fetch(urlDescarga, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('esap_auth_token')}`,
+          'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token')}`,
         },
       });
 
@@ -1473,7 +1473,7 @@ function ModalDetalleInformeGenerado({ informe, onClose, onInformeActualizado }:
       const response = await fetch(urlDescarga, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('esap_auth_token')}`,
+          'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token')}`,
         },
       });
 

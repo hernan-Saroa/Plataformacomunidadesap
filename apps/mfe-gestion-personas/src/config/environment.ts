@@ -475,13 +475,13 @@ export const getDefaultHeaders = (includeAuth = true): HeadersInit => {
   };
 
   if (includeAuth) {
-    const primaryToken = localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    const legacyToken = localStorage.getItem('esap_access_token');
+    const primaryToken = sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    const legacyToken = sessionStorage.getItem('esap_access_token');
     const token = primaryToken || legacyToken;
 
     // Compatibilidad con módulos legados: migrar token antiguo a la clave nueva.
     if (!primaryToken && legacyToken) {
-      localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, legacyToken);
+      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, legacyToken);
     }
 
     if (token) {

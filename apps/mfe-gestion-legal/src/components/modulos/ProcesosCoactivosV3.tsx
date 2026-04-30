@@ -1222,7 +1222,7 @@ function ModalDetalleProceso({
   const handleExportarPdf = async () => {
     setExportandoPdf(true);
     try {
-      const token = localStorage.getItem('esap_auth_token');
+      const token = sessionStorage.getItem('esap_auth_token');
       const url = procesosCoactivosService.getExportPdfUrl(proceso.id);
 
       const response = await fetch(url, {

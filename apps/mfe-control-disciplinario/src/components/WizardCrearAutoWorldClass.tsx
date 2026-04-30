@@ -354,7 +354,7 @@ export function WizardCrearAutoWorldClass({
       try {
         setWordPreview({ loading: true, html: '', error: '' });
 
-        const token = localStorage.getItem('esap_access_token');
+        const token = sessionStorage.getItem('esap_access_token');
         const response = await fetch(getAutoDocumentUrl(documento.documentUrl), {
           headers: {
             Accept: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

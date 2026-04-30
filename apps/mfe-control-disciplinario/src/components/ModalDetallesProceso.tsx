@@ -616,7 +616,7 @@ function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; p
         }
 
         const requestUrl = resolveArchivoRequestUrl(archivo, procesoId, true);
-        const token = localStorage.getItem('esap_access_token');
+        const token = sessionStorage.getItem('esap_access_token');
         const headers: HeadersInit = { Accept: '*/*' };
 
         if (token) {

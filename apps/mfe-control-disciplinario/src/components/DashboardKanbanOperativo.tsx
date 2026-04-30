@@ -4552,7 +4552,7 @@ export function DashboardKanbanOperativo({
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('esap_auth_token') || localStorage.getItem('esap_access_token') || ''}`,
+              'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || ''}`,
             },
             body: JSON.stringify({}),
           });

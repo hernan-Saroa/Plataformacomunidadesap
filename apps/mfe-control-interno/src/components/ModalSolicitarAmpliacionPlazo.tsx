@@ -186,7 +186,7 @@ export function ModalSolicitarAmpliacionPlazo({
     setEnviando(true);
     try {
       // Verificar que existe token de autenticación
-      const token = localStorage.getItem('esap_auth_token');
+      const token = sessionStorage.getItem('esap_auth_token');
       
       if (!token) {
         toast.error('❌ Error de autenticación', {

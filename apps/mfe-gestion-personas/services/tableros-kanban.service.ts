@@ -117,7 +117,7 @@ export async function cargarTablerosKanban(): Promise<ConfiguracionTablero[]> {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || sessionStorage.getItem('token')}`
       }
     });
 
@@ -154,7 +154,7 @@ export async function crearEtapa(tableroId: string, etapa: Partial<EtapaKanban>)
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || sessionStorage.getItem('token')}`
       },
       body: JSON.stringify(etapaData)
     });
@@ -192,7 +192,7 @@ export async function actualizarEtapa(tableroId: string, etapaId: string, etapa:
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || sessionStorage.getItem('token')}`
       },
       body: JSON.stringify(etapaData)
     });
@@ -220,7 +220,7 @@ export async function eliminarEtapa(tableroId: string, etapaId: string): Promise
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || sessionStorage.getItem('token')}`
       }
     });
 
@@ -247,7 +247,7 @@ export async function reordenarEtapas(tableroId: string, etapasIds: string[]): P
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`
+        'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || sessionStorage.getItem('token')}`
       },
       body: JSON.stringify({ etapasIds })
     });

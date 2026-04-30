@@ -590,7 +590,7 @@ function ModalVisorDocumento({
             : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
           downloadUrl = buildApiUrl('control-disciplinario', endpoint);
         }
-        const token = localStorage.getItem('esap_access_token');
+        const token = sessionStorage.getItem('esap_access_token');
 
         const headers: HeadersInit = {
           'Accept': 'application/octet-stream',
@@ -725,7 +725,7 @@ function ModalVisorDocumento({
         ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
         : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
       const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
-      const token = localStorage.getItem('esap_access_token');
+      const token = sessionStorage.getItem('esap_access_token');
 
       const headers: HeadersInit = {
         'Accept': 'application/octet-stream',
@@ -1087,7 +1087,7 @@ function ModalVisorDocumento({
                                 ? `/disciplinary-processes/${processId}/documents/${documento.id}/download`
                                 : `/api/v1/disciplinary-processes/${processId}/documents/${documento.id}/download`;
                               const downloadUrl = buildApiUrl('control-disciplinario', endpoint);
-                              const token = localStorage.getItem('esap_access_token');
+                              const token = sessionStorage.getItem('esap_access_token');
 
                               const headers: HeadersInit = {
                                 'Accept': 'application/octet-stream',
@@ -2339,7 +2339,7 @@ export function ExpedienteElectronico({ initialProcesoId }: ExpedienteElectronic
           ? `/disciplinary-processes/${procesoSeleccionado.id}/documents`
           : `/api/v1/disciplinary-processes/${procesoSeleccionado.id}/documents`;
         const url = buildApiUrl('control-disciplinario', endpoint);
-        const token = localStorage.getItem('esap_access_token');
+        const token = sessionStorage.getItem('esap_access_token');
 
         const headers: HeadersInit = {};
         if (token) {

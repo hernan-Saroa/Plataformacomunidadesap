@@ -190,7 +190,7 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
       const fileUrl = getFileUrl(acta.archivoUrl);
 
       // Obtener token para autenticación
-      const token = localStorage.getItem('esap_auth_token');
+      const token = sessionStorage.getItem('esap_auth_token');
       const headers: HeadersInit = {};
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
@@ -344,7 +344,7 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
       const url = `${baseUrl}${prefix}/actas/expediente/${expedienteId}/download-zip`;
 
       // Obtener token para autenticación
-      const token = localStorage.getItem('esap_auth_token');
+      const token = sessionStorage.getItem('esap_auth_token');
       const headers: HeadersInit = {};
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;

@@ -278,7 +278,7 @@ export function ModalGestionDocumentos({
       const fullUrl = `${baseUrl}${prefix}/files/${filename}`;
 
       // Fetching data to force download (with auth header)
-      const token = localStorage.getItem('esap_auth_token');
+      const token = sessionStorage.getItem('esap_auth_token');
       const response = await fetch(fullUrl, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
@@ -304,7 +304,7 @@ export function ModalGestionDocumentos({
     toast.info('Preparando descarga ZIP...');
     try {
       const url = ocService.getDocumentosDownloadUrl(requerimientoId, nombreRequerimiento);
-      const token = localStorage.getItem('esap_auth_token');
+      const token = sessionStorage.getItem('esap_auth_token');
       const response = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
