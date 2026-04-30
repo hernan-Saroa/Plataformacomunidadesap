@@ -826,31 +826,9 @@ function TabPersonas({
   getDenuncianteId: () => string;
   getDenunciadoId: () => string;
 }) {
-  const denunciados = n.denunciados && n.denunciados.length > 0
-    ? n.denunciados
-    : (typeof n.denunciado !== 'string' && n.denunciado ? [{
-        id: '1',
-        nombre: n.denunciado.nombre,
-        identificacion: `${n.denunciado.tipoIdentificacion || 'CC'} ${n.denunciado.numeroIdentificacion}`,
-        cargo: n.cargo || '',
-        lugarHechos: n.dependencia || '',
-        apoderado: n.denunciado.apoderado
-      }] : []);
-
-  const denunciantes = n.denunciantes && n.denunciantes.length > 0
-    ? n.denunciantes
-    : (typeof n.denunciante !== 'string' && n.denunciante ? [{
-        id: '1',
-        nombre: n.denunciante.nombre,
-        identificacion: `${n.denunciante.tipoIdentificacion || 'CC'} ${n.denunciante.numeroIdentificacion}`,
-        direccion: n.denunciante.direccion || '',
-        telefono: n.denunciante.telefono || '',
-        correo: n.denunciante.correo || '',
-        cargo: n.denunciante.cargo || '',
-        entidad: n.denunciante.entidad || '',
-        tipo: n.denunciante.tipo || 'Denunciante' as const,
-        apoderado: n.denunciante.apoderado
-      }] : []);
+  // Preparar datos de personas para mostrar al inicio
+  let denunciados = n.denunciado && n.denunciado.length > 0 ? n.denunciado : [];
+  let denunciantes = n.denunciante && n.denunciante.length > 0 ? n.denunciante : [];
 
   return (
     <div className="space-y-5">
