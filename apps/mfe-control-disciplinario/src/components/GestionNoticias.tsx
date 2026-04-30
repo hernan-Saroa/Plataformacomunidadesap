@@ -44,7 +44,7 @@ import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import { mapStageToUi } from '../../../services/api/esapDataService';
 import autoTable from 'jspdf-autotable';
-import { CreateNoticiaModal } from './CreateNoticiaModal';
+import { CreateNoticiaModal } from '../CreateNoticiaModal';
 import { FlujoNoticiasDisciplinarias } from './FlujoNoticiasDisciplinarias';
 import { ModalDetallesNoticia } from './ModalDetallesNoticia';
 import { ModalArchivarNoticia } from './ModalArchivarNoticia';
@@ -1240,8 +1240,8 @@ export function GestionNoticias() {
         territorial: data.territorial,
         dependenciaDenunciado: firstDisciplinable.dependencia || 'Sin Dependencia',
         hechos: data.descripcionHechos || 'Sin descripción',
-        denunciante: (denunciantesArray.length === 1 ? denunciantesArray[0] : denunciantesArray) as any,
-        disciplinable: (disciplinablesArray.length === 1 ? disciplinablesArray[0] : disciplinablesArray) as any,
+        denunciante: denunciantesArray,
+        disciplinable: disciplinablesArray,
         fechaHechos: data.fechaHechos || undefined,
         radicadorId: authService.getCurrentUser()?.id,
       };
