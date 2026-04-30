@@ -75,6 +75,13 @@ interface Auditoria {
   fechaInicio: string;
   fechaFin: string;
   duracionDias: number;
+
+  // Fechas de etapa (planas para persistencia)
+  fechaFinPlaneacion?: string;
+  fechaInicioEjecucion?: string;
+  fechaFinEjecucion?: string;
+  fechaInicioComunicacion?: string;
+  fechaFinComunicacion?: string;
   
   // Equipo
   liderAuditor: MiembroEquipo;
@@ -268,7 +275,24 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
 
   const TOTAL_PASOS = 8;
 
-  // Auto-calcular duración cuando cambian las fechas
+  // Auto-calcular duración y fecha fin cuando cambia la fecha de inicio (PROMPT: 4-4-5 semanas)
+  useEffect(() => {
+    if (fechaInicio) {
+      const inicio = new Date(fechaInicio);
+      // El ciclo estándar es de 13 semanas (4 + 4 + 5)
+      const DURACION_TOTAL_SEMANAS = 13;
+      const fin = new Date(inicio);
+      fin.setDate(fin.getDate() + (DURACION_TOTAL_SEMANAS * 7) - 1);
+      
+      const fechaFinString = fin.toISOString().split('T')[0];
+      setFechaFin(fechaFinString);
+      
+      const diferencia = Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
+      setDuracionDias(Math.max(1, diferencia));
+    }
+  }, [fechaInicio]);
+
+  // Si el usuario cambia manualmente la fecha de fin, recalculamos la duración
   useEffect(() => {
     if (fechaInicio && fechaFin) {
       const inicio = new Date(fechaInicio);
@@ -276,7 +300,7 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
       const diferencia = Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
       setDuracionDias(Math.max(1, diferencia));
     }
-  }, [fechaInicio, fechaFin]);
+  }, [fechaFin]);
 
   // Auto-calcular horas totales del equipo
   useEffect(() => {
@@ -577,6 +601,25 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
       return;
     }
 
+    // 13. Persistir etapas calculadas (OCI 4-4-5)
+    const inicioDate = new Date(fechaInicio);
+    
+    // Etapa 1: Planeación (4 semanas)
+    const finPlaneacion = new Date(inicioDate);
+    finPlaneacion.setDate(finPlaneacion.getDate() + 27);
+    
+    // Etapa 2: Ejecución (4 semanas)
+    const inicioEjecucion = new Date(finPlaneacion);
+    inicioEjecucion.setDate(inicioEjecucion.getDate() + 1);
+    const finEjecucion = new Date(inicioEjecucion);
+    finEjecucion.setDate(finEjecucion.getDate() + 27);
+    
+    // Etapa 3: Comunicación (5 semanas)
+    const inicioComunicacion = new Date(finEjecucion);
+    inicioComunicacion.setDate(inicioComunicacion.getDate() + 1);
+    const finComunicacion = new Date(inicioComunicacion);
+    finComunicacion.setDate(finComunicacion.getDate() + 34);
+
     const nuevaAuditoria: Auditoria = {
       id: auditoriaExistente?.id || `aud-${Date.now()}`,
       codigo,
@@ -592,8 +635,13 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
         responsable: areaSeleccionada!.responsable
       },
       fechaInicio,
-      fechaFin,
+      fechaFin: finComunicacion.toISOString().split('T')[0],
       duracionDias,
+      fechaFinPlaneacion: finPlaneacion.toISOString().split('T')[0],
+      fechaInicioEjecucion: inicioEjecucion.toISOString().split('T')[0],
+      fechaFinEjecucion: finEjecucion.toISOString().split('T')[0],
+      fechaInicioComunicacion: inicioComunicacion.toISOString().split('T')[0],
+      fechaFinComunicacion: finComunicacion.toISOString().split('T')[0],
       liderAuditor: lider!,
       equipoAuditor: equipo,
       nivelRiesgo,
@@ -1220,23 +1268,39 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
                 )}
 
                 {duracionDias > 0 && !errores.duracion && (
-                  <div className="p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                        <Clock className="w-6 h-6 text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-blue-900">
-                          Duración Calculada
-                        </p>
-                        <p className="text-2xl font-black text-blue-600">
-                          {duracionDias} {duracionDias === 1 ? 'día' : 'días'}
-                        </p>
-                        {duracionDias > 0 && (
-                          <p className="text-xs text-blue-700 mt-1">
-                            Aproximadamente {Math.ceil(duracionDias / 7)} {Math.ceil(duracionDias / 7) === 1 ? 'semana' : 'semanas'} de trabajo
+                  <div className="space-y-4">
+                    <div className="p-4 bg-blue-50 rounded-lg border-2 border-blue-200">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                          <Clock className="w-6 h-6 text-blue-600" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-blue-900">
+                            Duración Estándar Calculada (Ciclo 4-4-5)
                           </p>
-                        )}
+                          <p className="text-2xl font-black text-blue-600">
+                            {duracionDias} {duracionDias === 1 ? 'día' : 'días'}
+                          </p>
+                          <p className="text-xs text-blue-700 mt-1">
+                            13 semanas exactas para cumplir las 3 etapas del cronograma.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Desglose de Etapas */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-[10px] font-black text-blue-800 uppercase mb-1">Planeación</p>
+                        <p className="text-xs font-bold text-blue-900">4 Semanas</p>
+                      </div>
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <p className="text-[10px] font-black text-amber-800 uppercase mb-1">Ejecución</p>
+                        <p className="text-xs font-bold text-amber-900">4 Semanas</p>
+                      </div>
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                        <p className="text-[10px] font-black text-emerald-800 uppercase mb-1">Comunicación</p>
+                        <p className="text-xs font-bold text-emerald-900">5 Semanas</p>
                       </div>
                     </div>
                   </div>
@@ -1246,12 +1310,12 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
                   <div className="flex items-start gap-2">
                     <Info className="w-4 h-4 text-gray-600 flex-shrink-0 mt-0.5" />
                     <div className="text-xs text-gray-600">
-                      <p className="font-semibold mb-1">Recomendaciones de programación:</p>
+                      <p className="font-semibold mb-1">Ciclo de vida de auditoría (Estándar OCI):</p>
                       <ul className="list-disc list-inside space-y-1">
-                        <li>Auditorías operacionales: 15-30 días</li>
-                        <li>Auditorías de cumplimiento: 20-40 días</li>
-                        <li>Auditorías financieras: 30-60 días</li>
-                        <li>Auditorías TI: 20-45 días</li>
+                        <li><strong>Planeación:</strong> Primeras 4 semanas desde el inicio.</li>
+                        <li><strong>Ejecución:</strong> De la semana 5 a la 8.</li>
+                        <li><strong>Comunicación:</strong> De la semana 9 a la 13.</li>
+                        <li className="text-blue-600 font-medium">El sistema calcula automáticamente estas etapas en el cronograma.</li>
                       </ul>
                     </div>
                   </div>

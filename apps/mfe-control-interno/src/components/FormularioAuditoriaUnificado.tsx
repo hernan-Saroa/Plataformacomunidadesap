@@ -459,6 +459,46 @@ export function FormularioAuditoriaUnificado({
     cargarProcesos();
   }, [open]);
 
+  // Auto-calcular etapas del cronograma (PROMPT: 4-4-5 semanas)
+  useEffect(() => {
+    if (formData.fechaInicioPlaneacion && !formData.fechaFinPlaneacion && mode === 'create') {
+      const inicioP = new Date(formData.fechaInicioPlaneacion);
+      
+      // 1. Planeación: 4 semanas (28 días)
+      const finP = new Date(inicioP);
+      finP.setDate(finP.getDate() + 27);
+      const fechaFinP = finP.toISOString().split('T')[0];
+      
+      // 2. Ejecución: 4 semanas (28 días)
+      const inicioE = new Date(finP);
+      inicioE.setDate(inicioE.getDate() + 1);
+      const fechaInicioE = inicioE.toISOString().split('T')[0];
+      
+      const finE = new Date(inicioE);
+      finE.setDate(finE.getDate() + 27);
+      const fechaFinE = finE.toISOString().split('T')[0];
+      
+      // 3. Comunicación: 5 semanas (35 días)
+      const inicioC = new Date(finE);
+      inicioC.setDate(inicioC.getDate() + 1);
+      const fechaInicioC = inicioC.toISOString().split('T')[0];
+      
+      const finC = new Date(inicioC);
+      finC.setDate(finC.getDate() + 34);
+      const fechaFinC = finC.toISOString().split('T')[0];
+      
+      setFormData(prev => ({
+        ...prev,
+        fechaFinPlaneacion: fechaFinP,
+        fechaInicioEjecucion: fechaInicioE,
+        fechaFinEjecucion: fechaFinE,
+        fechaInicioComunicacion: fechaInicioC,
+        fechaFinComunicacion: fechaFinC,
+        fechaFin: fechaFinC // Compatibilidad legacy
+      }));
+    }
+  }, [formData.fechaInicioPlaneacion, mode]);
+
   // Inicializar búsqueda con el proceso/título actual si existe
   useEffect(() => {
     if (formData.titulo && !busquedaProceso) {
@@ -1742,8 +1782,30 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
         <Calendar className="w-12 h-12 mx-auto mb-3" style={{ color: '#003DA5' }} />
         <h3 className="text-xl font-black text-gray-900">Cronograma de Auditoría</h3>
         <p className="text-sm text-gray-600 mt-1">
-          Defina las fechas específicas para cada etapa. Las etapas se habilitan secuencialmente.
+          Defina las fechas específicas para cada etapa. El sistema calcula automáticamente el ciclo estándar de 13 semanas (4-4-5).
         </p>
+      </div>
+
+      {/* Info Ciclo Estándar */}
+      <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-4 mb-6">
+        <div className="flex items-center gap-3 mb-3">
+          <Zap className="w-5 h-5 text-blue-600" />
+          <h4 className="font-black text-blue-900 uppercase text-sm tracking-tight">Modelo de Ciclo de Vida OCI (13 Semanas)</h4>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-white p-3 rounded-lg border border-blue-200">
+            <p className="text-[10px] font-black text-blue-600 uppercase">Planeación</p>
+            <p className="text-xs font-bold text-gray-800">4 Semanas</p>
+          </div>
+          <div className="bg-white p-3 rounded-lg border border-amber-200">
+            <p className="text-[10px] font-black text-amber-600 uppercase">Ejecución</p>
+            <p className="text-xs font-bold text-gray-800">4 Semanas</p>
+          </div>
+          <div className="bg-white p-3 rounded-lg border border-emerald-200">
+            <p className="text-[10px] font-black text-emerald-600 uppercase">Comunicación</p>
+            <p className="text-xs font-bold text-gray-800">5 Semanas</p>
+          </div>
+        </div>
       </div>
 
       {/* ETAPA 1: PLANEACIÓN - Siempre habilitada */}

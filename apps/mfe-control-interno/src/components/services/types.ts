@@ -49,6 +49,13 @@ export interface Auditoria {
     comunicacion: { inicio: string; fin: string; duracionDias: number };
   };
   
+  // Fechas de etapa (planas para BD)
+  fechaFinPlaneacion?: string;
+  fechaInicioEjecucion?: string;
+  fechaFinEjecucion?: string;
+  fechaInicioComunicacion?: string;
+  fechaFinComunicacion?: string;
+  
   // Progreso
   progreso: number;
   prioridad: PrioridadAuditoria;

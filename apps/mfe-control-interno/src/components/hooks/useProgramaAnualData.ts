@@ -55,6 +55,11 @@ export interface AuditoriaProgramadaUI {
   planMejoramientoId?: string;
   hallazgosCount: number;
   territorial: string; // 🆕 Territorial para cronograma
+  // ✅ Fechas de etapas persistidas
+  fechaFinPlaneacion?: string;
+  fechaInicioEjecucion?: string;
+  fechaFinEjecucion?: string;
+  fechaInicioComunicacion?: string;
 }
 
 export interface Auditor {
@@ -316,6 +321,10 @@ function mapAuditoriaBackendToUI(
     planMejoramientoId: auditoria.planMejoramientoId || undefined,
     hallazgosCount: auditoria.hallazgosCount || 0,
     territorial: auditoria.territorial || procesoUI._territorial || 'Sede Central',
+    fechaFinPlaneacion: auditoria.fechaFinPlaneacion || auditoria.etapas?.planeacion?.fechaFin,
+    fechaInicioEjecucion: auditoria.fechaInicioEjecucion || auditoria.etapas?.ejecucion?.fechaInicio,
+    fechaFinEjecucion: auditoria.fechaFinEjecucion || auditoria.etapas?.ejecucion?.fechaFin,
+    fechaInicioComunicacion: auditoria.fechaInicioComunicacion || auditoria.etapas?.comunicacion?.fechaInicio,
   };
 }
 

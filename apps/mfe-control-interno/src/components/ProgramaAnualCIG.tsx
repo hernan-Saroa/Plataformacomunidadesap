@@ -22,18 +22,12 @@
  * - Exportación a Excel/PDF
  * - Workflow de aprobación
  * 
- * DURACIONES ESTÁNDAR:
- * SEDE CENTRAL:
- *   - Planeación: 5-10 días
- *   - Ejecución: 10-30 días
- *   - Comunicación: 10-15 días
+ * DURACIONES ESTÁNDAR (Ciclo OCI 13 Semanas):
+ * - Planeación (P): 4 semanas (28 días)
+ * - Ejecución (E): 4 semanas (28 días)
+ * - Comunicación (C): 5 semanas (35 días)
  * 
- * TERRITORIALES:
- *   - Planeación: 3 días
- *   - Ejecución: 4 días (FIJO)
- *   - Comunicación: 2 días
- * 
- * ÚLTIMA ACTUALIZACIÓN: 21 Diciembre 2025
+ * ÚLTIMA ACTUALIZACIÓN: 30 Abril 2026
  */
 
 import { useState, useMemo, useEffect } from 'react';
@@ -287,9 +281,9 @@ export function ProgramaAnualOCIG() {
               mesInicio,
               semanaInicio: Math.min(semanaInicio, 4) as 1 | 2 | 3 | 4,
               fases: {
-                planeacion: { duracionDias: 7, color: '#3B82F6' },
-                ejecucion: { duracionDias: 15, color: '#10B981' },
-                comunicacion: { duracionDias: 10, color: '#8B5CF6' }
+                planeacion: { duracionDias: 28, color: '#3B82F6' },
+                ejecucion: { duracionDias: 28, color: '#10B981' },
+                comunicacion: { duracionDias: 35, color: '#8B5CF6' }
               },
               estadoPrograma: mapEstadoBackendToFrontend(aud.estadoKanban || aud.fase || 'Borrador'),
               observaciones: aud.descripcion
@@ -631,38 +625,63 @@ function VistaCalendario({
                       className="h-24 bg-gray-50 rounded border border-gray-200 relative"
                     >
                       {/* Renderizar fase si corresponde al mes */}
-                      {aud.mesInicio === mesIdx && (
-                        <div className="absolute inset-0 p-0.5">
-                          <div
-                            className="h-full rounded flex flex-col justify-center items-center shadow-md hover:shadow-lg transition-all cursor-pointer"
-                            style={{ 
-                              backgroundColor: aud.fases.planeacion.color,
-                              padding: '8px 12px'
-                            }}
-                          >
-                            <div 
-                              className="text-white font-black tracking-tight" 
-                              style={{ 
-                                fontSize: '15px', 
-                                lineHeight: '1.3',
-                                textShadow: '0 1px 2px rgba(0,0,0,0.2)'
-                              }}
-                            >
-                              {aud.codigo}
+                      {(() => {
+                        const inicio = new Date(calcularFechaInicio(aud.mesInicio, aud.semanaInicio));
+                        const mesReferencia = new Date(año, mesIdx, 1);
+                        const mesSiguiente = new Date(año, mesIdx + 1, 1);
+
+                        // Si la auditoría comienza en este mes
+                        if (aud.mesInicio === mesIdx) {
+                          return (
+                            <div className="absolute inset-0 p-0.5">
+                              <div
+                                className="h-full rounded flex flex-col justify-center items-center shadow-md hover:shadow-lg transition-all cursor-pointer overflow-hidden"
+                                style={{ 
+                                  background: `linear-gradient(90deg, ${aud.fases.planeacion.color} 30%, ${aud.fases.ejecucion.color} 60%, ${aud.fases.comunicacion.color} 100%)`,
+                                  padding: '4px'
+                                }}
+                              >
+                                <div 
+                                  className="text-white font-black tracking-tight" 
+                                  style={{ 
+                                    fontSize: '11px', 
+                                    lineHeight: '1.1',
+                                    textShadow: '0 1px 2px rgba(0,0,0,0.5)'
+                                  }}
+                                >
+                                  {aud.codigo}
+                                </div>
+                                <div className="mt-1 flex gap-1">
+                                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: aud.fases.planeacion.color, border: '1px solid white' }} />
+                                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: aud.fases.ejecucion.color, border: '1px solid white' }} />
+                                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: aud.fases.comunicacion.color, border: '1px solid white' }} />
+                                </div>
+                                <div 
+                                  className="text-white font-bold text-[9px] mt-1" 
+                                  style={{ textShadow: '0 1px 1px rgba(0,0,0,0.5)' }}
+                                >
+                                  Ciclo 13 sem.
+                                </div>
+                              </div>
                             </div>
-                            <div 
-                              className="text-white font-bold mt-1" 
-                              style={{ 
-                                fontSize: '13px', 
-                                lineHeight: '1.3',
-                                textShadow: '0 1px 2px rgba(0,0,0,0.2)'
-                              }}
-                            >
-                              P: {aud.fases.planeacion.duracionDias}d
-                            </div>
-                          </div>
-                        </div>
-                      )}
+                          );
+                        }
+                        
+                        // Si la auditoría está en curso en este mes (pero no empezó aquí)
+                        // Calculamos si el mes está dentro del rango de 13 semanas
+                        const fechaFin = new Date(inicio);
+                        fechaFin.setDate(fechaFin.getDate() + (13 * 7));
+                        
+                        if (mesReferencia > inicio && mesReferencia < fechaFin) {
+                           return (
+                             <div className="absolute inset-0 p-0.5 opacity-50">
+                               <div className="h-2 bg-blue-400 rounded-full mt-auto mb-2 mx-1" title="En curso" />
+                             </div>
+                           );
+                        }
+
+                        return null;
+                      })()}
                     </div>
                   ))}
                 </div>
@@ -678,19 +697,21 @@ function VistaCalendario({
             ))}
           </div>
 
-          {/* Leyenda */}
-          <div className="flex items-center gap-4 mt-6 pt-6 border-t border-gray-200">
+          <div className="flex items-center gap-6 mt-6 pt-6 border-t border-gray-200">
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded" style={{ backgroundColor: '#3B82F6' }} />
-              <span className="text-xs text-gray-600">Planeación (P)</span>
+              <div className="w-4 h-4 rounded shadow-sm" style={{ backgroundColor: '#3B82F6' }} />
+              <span className="text-xs font-bold text-gray-700">Planeación (4 sem.)</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded" style={{ backgroundColor: '#10B981' }} />
-              <span className="text-xs text-gray-600">Ejecución (E)</span>
+              <div className="w-4 h-4 rounded shadow-sm" style={{ backgroundColor: '#10B981' }} />
+              <span className="text-xs font-bold text-gray-700">Ejecución (4 sem.)</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-4 h-4 rounded" style={{ backgroundColor: '#8B5CF6' }} />
-              <span className="text-xs text-gray-600">Comunicación (C)</span>
+              <div className="w-4 h-4 rounded shadow-sm" style={{ backgroundColor: '#8B5CF6' }} />
+              <span className="text-xs font-bold text-gray-700">Comunicación (5 sem.)</span>
+            </div>
+            <div className="ml-auto text-[10px] text-blue-600 font-black uppercase tracking-wider">
+              Total Ciclo: 13 Semanas (Estándar OCI)
             </div>
           </div>
         </div>
@@ -916,6 +937,10 @@ function ModalNuevaAuditoria({ onClose }: { onClose: () => void }) {
         areaAuditable: auditoria.areaAuditable?.nombre || '',
         fechaInicio: auditoria.fechaInicio,
         fechaFin: auditoria.fechaFin,
+        fechaFinPlaneacion: auditoria.fechaFinPlaneacion,
+        fechaInicioEjecucion: auditoria.fechaInicioEjecucion,
+        fechaFinEjecucion: auditoria.fechaFinEjecucion,
+        fechaInicioComunicacion: auditoria.fechaInicioComunicacion,
         duracionDias: auditoria.duracionDias || 0,
         auditorLider: auditoria.liderAuditor?.nombre || '',
         equipoAuditor: auditoria.equipoAuditor?.map((m: any) => m.nombre) || [],
