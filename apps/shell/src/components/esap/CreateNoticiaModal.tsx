@@ -776,6 +776,152 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
           </div>
         </div>
 
+        {/* ✅ NUEVO: Resumen de datos actuales en modo edición */}
+        {isEditMode && noticiaToEdit && (
+          <div className="px-6 py-4 border-b border-gray-200 bg-amber-50">
+            <div className="max-w-4xl mx-auto">
+              <h3 className="text-lg font-semibold text-amber-900 mb-4 flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Resumen de Datos Actuales de la Noticia
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white p-4 rounded-lg border border-amber-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <User className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-900">Denunciante</span>
+                  </div>
+                  <p className={`text-lg font-bold ${(() => {
+                    // Count denunciantes from noticiaToEdit
+                    let count = 0;
+                    if (noticiaToEdit.denunciantes && Array.isArray(noticiaToEdit.denunciantes)) {
+                      count = noticiaToEdit.denunciantes.filter(d => d?.nombre && d.nombre !== 'Sin denunciante' && d.nombre !== 'Anonimo').length;
+                    } else if (noticiaToEdit.denunciante && typeof noticiaToEdit.denunciante !== 'string') {
+                      count = 1;
+                    }
+                    return count > 0 ? 'text-green-600' : 'text-red-600';
+                  })()}`}>
+                    {(() => {
+                      let count = 0;
+                      if (noticiaToEdit.denunciantes && Array.isArray(noticiaToEdit.denunciantes)) {
+                        count = noticiaToEdit.denunciantes.filter(d => d?.nombre && d.nombre !== 'Sin denunciante' && d.nombre !== 'Anonimo').length;
+                      } else if (noticiaToEdit.denunciante && typeof noticiaToEdit.denunciante !== 'string') {
+                        count = 1;
+                      }
+                      return count > 0 ? '1' : 'n';
+                    })()}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {(() => {
+                      let count = 0;
+                      if (noticiaToEdit.denunciantes && Array.isArray(noticiaToEdit.denunciantes)) {
+                        count = noticiaToEdit.denunciantes.filter(d => d?.nombre && d.nombre !== 'Sin denunciante' && d.nombre !== 'Anonimo').length;
+                      } else if (noticiaToEdit.denunciante && typeof noticiaToEdit.denunciante !== 'string') {
+                        count = 1;
+                      }
+                      return count > 0 ? `${count} registrado(s)` : 'Ninguno registrado';
+                    })()}
+                  </p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border border-amber-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <UserCheck className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-900">Disciplinado</span>
+                  </div>
+                  <p className={`text-lg font-bold ${(() => {
+                    // Count denunciados from noticiaToEdit
+                    let count = 0;
+                    if (noticiaToEdit.denunciados && Array.isArray(noticiaToEdit.denunciados)) {
+                      count = noticiaToEdit.denunciados.filter(d => d?.nombre && d.nombre !== 'Sin denunciado').length;
+                    } else if (noticiaToEdit.denunciado && typeof noticiaToEdit.denunciado !== 'string') {
+                      if (Array.isArray(noticiaToEdit.denunciado)) {
+                        count = noticiaToEdit.denunciado.filter(d => d?.nombre && d.nombre !== 'Sin denunciado').length;
+                      } else {
+                        count = 1;
+                      }
+                    } else if (noticiaToEdit.disciplinable) {
+                      count = 1;
+                    }
+                    return count > 0 ? 'text-green-600' : 'text-red-600';
+                  })()}`}>
+                    {(() => {
+                      let count = 0;
+                      if (noticiaToEdit.denunciados && Array.isArray(noticiaToEdit.denunciados)) {
+                        count = noticiaToEdit.denunciados.filter(d => d?.nombre && d.nombre !== 'Sin denunciado').length;
+                      } else if (noticiaToEdit.denunciado && typeof noticiaToEdit.denunciado !== 'string') {
+                        if (Array.isArray(noticiaToEdit.denunciado)) {
+                          count = noticiaToEdit.denunciado.filter(d => d?.nombre && d.nombre !== 'Sin denunciado').length;
+                        } else {
+                          count = 1;
+                        }
+                      } else if (noticiaToEdit.disciplinable) {
+                        count = 1;
+                      }
+                      return count > 0 ? '1' : 'n';
+                    })()}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {(() => {
+                      let count = 0;
+                      if (noticiaToEdit.denunciados && Array.isArray(noticiaToEdit.denunciados)) {
+                        count = noticiaToEdit.denunciados.filter(d => d?.nombre && d.nombre !== 'Sin denunciado').length;
+                      } else if (noticiaToEdit.denunciado && typeof noticiaToEdit.denunciado !== 'string') {
+                        if (Array.isArray(noticiaToEdit.denunciado)) {
+                          count = noticiaToEdit.denunciado.filter(d => d?.nombre && d.nombre !== 'Sin denunciado').length;
+                        } else {
+                          count = 1;
+                        }
+                      } else if (noticiaToEdit.disciplinable) {
+                        count = 1;
+                      }
+                      return count > 0 ? `${count} registrado(s)` : 'Ninguno registrado';
+                    })()}
+                  </p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border border-amber-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-900">Conducta</span>
+                  </div>
+                  <p className={`text-lg font-bold ${noticiaToEdit.conductaSeleccionada || noticiaToEdit.conducta ? 'text-green-600' : 'text-red-600'}`}>
+                    {noticiaToEdit.conductaSeleccionada || noticiaToEdit.conducta ? '1' : 'n'}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {noticiaToEdit.conductaSeleccionada || noticiaToEdit.conducta ?
+                      (noticiaToEdit.conductaSeleccionada === 'Otro' ? noticiaToEdit.conductaPersonalizada : noticiaToEdit.conductaSeleccionada || noticiaToEdit.conducta)
+                      : 'Ninguna registrada'}
+                  </p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border border-amber-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Building2 className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-900">Origen</span>
+                  </div>
+                  <p className="text-lg font-bold text-blue-600">
+                    {noticiaToEdit.origen || 'No definido'}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Territorial: {noticiaToEdit.territorial || 'No definida'}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 bg-white p-4 rounded-lg border border-amber-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <Calendar className="w-4 h-4 text-amber-600" />
+                  <span className="text-sm font-medium text-amber-900">Fechas</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="font-medium">Fecha queja:</span> {noticiaToEdit.fechaQueja || noticiaToEdit.fechaRecepcion || 'No definida'}
+                  </div>
+                  <div>
+                    <span className="font-medium">Fecha hechos:</span> {noticiaToEdit.fechaHechos || 'No definida'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex-1 overflow-auto p-6">
           {/* PASO 1: Datos Básicos */}
