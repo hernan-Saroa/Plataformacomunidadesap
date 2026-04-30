@@ -26,6 +26,7 @@ export interface DisciplinaryNews {
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
+    conductaDisciplinaria?: string;
     conductas?: string[];
     adjuntos?: string[];
     denunciante?: {
@@ -422,10 +423,14 @@ export interface CreateNewsDto {
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
+    conducta?: string;
     conductas?: string[];
     adjuntos?: string[];
     denunciante: any;
     disciplinable: any;
+    denunciantes?: any[];
+    disciplinables?: any[];
+    denunciados?: any[];
     radicadorId?: string;
 }
 
@@ -524,6 +529,9 @@ class DisciplinaryService {
         formData.append('territorial', data.territorial);
         formData.append('dependenciaDenunciado', data.dependenciaDenunciado);
         formData.append('hechos', data.hechos);
+        if (data.conducta) {
+            formData.append('conducta', data.conducta);
+        }
         formData.append('denunciante', JSON.stringify(data.denunciante));
         formData.append('disciplinable', JSON.stringify(data.disciplinable));
         if (data.fechaHechos) {
@@ -534,6 +542,15 @@ class DisciplinaryService {
         }
         if (data.radicadorId) {
             formData.append('radicadorId', data.radicadorId);
+        }
+        if (data.denunciantes) {
+            formData.append('denunciantes', JSON.stringify(data.denunciantes));
+        }
+        if (data.disciplinables) {
+            formData.append('disciplinables', JSON.stringify(data.disciplinables));
+        }
+        if (data.denunciados) {
+            formData.append('denunciados', JSON.stringify(data.denunciados));
         }
 
         // Archivos con el campo correcto que espera el backend
@@ -553,6 +570,8 @@ class DisciplinaryService {
         hechos?: string;
         denunciante?: any;
         disciplinable?: any;
+        denunciantes?: any[];
+        disciplinables?: any[];
         conductas?: string[];
         fechaHechos?: string | null;
         fechaQueja?: string;

@@ -704,6 +704,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       radicadorId: currentUser?.id, // ✅ ID del usuario que radica
       porDeterminar, // ✅ Incluir flags de campos "Por determinar"
       // ✅ NUEVO: Incluir conducta seleccionada
+      conductaDisciplinaria: conductaSeleccionada === 'Otro' ? conductaPersonalizada : conductaSeleccionada,
       conductaSeleccionada: conductaSeleccionada === 'Otro' ? conductaPersonalizada : conductaSeleccionada,
       conductaPersonalizada: conductaSeleccionada === 'Otro' ? conductaPersonalizada : null
     };

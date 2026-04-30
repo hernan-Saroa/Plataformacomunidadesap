@@ -79,6 +79,15 @@ function sumarMeses(fechaStr: string, meses: number): string {
   return `${y}-${m}-${day}`;
 }
 
+function sumarDias(fechaStr: string, dias: number): string {
+  const base = new Date(`${fechaStr}T00:00:00`);
+  base.setDate(base.getDate() + dias);
+  const y = base.getFullYear();
+  const m = String(base.getMonth() + 1).padStart(2, '0');
+  const d = String(base.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function generarPuntosControlAutomaticos(
   frecuencia: FrecuenciaPuntoControl,
   fechaInicio: string,
@@ -89,17 +98,26 @@ function generarPuntosControlAutomaticos(
 
   const inicio = new Date(`${fechaInicio}T00:00:00`);
   const fin = new Date(`${fechaFin}T23:59:59`);
-  const fechaFinClean = new Date(`${fechaFin}T00:00:00`);
+  if (fin < inicio) return [];
   const candidatos: Date[] = [];
 
-  // ── Intervalo en meses por frecuencia ──
-  const intervaloMeses: Record<string, number> = {
-    mensual: 1,
-    bimensual: 2,
-    trimestral: 4,     // cada 4 meses → 3 cortes/año
-    cuatrimestral: 3,  // cada 3 meses → 4 cortes/año
-    semestral: 6,
-    anual: 12,
+  const esCierrePeriodo = (mes: number): boolean => {
+    switch (frecuencia) {
+      case 'mensual':
+        return true; // Ene..Dic
+      case 'bimensual':
+        return mes % 2 === 1; // Feb, Abr, Jun, Ago, Oct, Dic
+      case 'trimestral':
+        return mes % 3 === 2; // Mar, Jun, Sep, Dic
+      case 'cuatrimestral':
+        return mes % 4 === 3; // Abr, Ago, Dic
+      case 'semestral':
+        return mes === 5 || mes === 11; // Jun, Dic
+      case 'anual':
+        return mes === 11; // Dic
+      default:
+        return false;
+    }
   };
 
   if (frecuencia === 'semanal') {
@@ -110,33 +128,22 @@ function generarPuntosControlAutomaticos(
       candidatos.push(new Date(cursor));
       cursor.setDate(cursor.getDate() + 7);
     }
-    // Incluir fecha de corte como último punto si no coincide
-    const ultimo = candidatos[candidatos.length - 1];
-    if (!ultimo || Math.abs(ultimo.getTime() - fechaFinClean.getTime()) > 86400000) {
-      candidatos.push(fechaFinClean);
-    }
   } else {
-    const intervalo = intervaloMeses[frecuencia];
-    if (intervalo) {
-      // Generar cortes cada N meses desde el inicio
-      for (let step = intervalo; ; step += intervalo) {
-        const mesAbsoluto = inicio.getMonth() + step - 1;
-        const año = inicio.getFullYear() + Math.floor(mesAbsoluto / 12);
-        const mes = ((mesAbsoluto % 12) + 12) % 12;
-        const corte = finDeMes(año, mes);
-        if (corte > fin) break;
-        candidatos.push(corte);
-      }
+    // Frecuencias mensuales/por meses: cortes en cierres naturales de calendario
+    // dentro del rango [inicio, fin], sin agregar fechas extra.
+    const cursorMes = new Date(inicio.getFullYear(), inicio.getMonth(), 1);
+    const finMes = new Date(fin.getFullYear(), fin.getMonth(), 1);
 
-      // ✅ Siempre incluir la fecha de corte como último punto de control
-      const ultimo = candidatos[candidatos.length - 1];
-      const mismaFecha = ultimo &&
-        ultimo.getFullYear() === fechaFinClean.getFullYear() &&
-        ultimo.getMonth() === fechaFinClean.getMonth() &&
-        ultimo.getDate() === fechaFinClean.getDate();
-      if (!mismaFecha) {
-        candidatos.push(fechaFinClean);
+    while (cursorMes <= finMes) {
+      const año = cursorMes.getFullYear();
+      const mes = cursorMes.getMonth();
+      if (esCierrePeriodo(mes)) {
+        const corte = finDeMes(año, mes);
+        if (corte >= inicio && corte <= fin) {
+          candidatos.push(corte);
+        }
       }
+      cursorMes.setMonth(cursorMes.getMonth() + 1);
     }
   }
 
@@ -366,9 +373,35 @@ export function ModalConfiguracionPuntosControl({
   };
 
   const handleGuardar = () => {
+    const inicio = new Date(`${fechaInicioActividad}T00:00:00`);
+    const fin = new Date(`${fechaCorteLocal}T00:00:00`);
+    if (fin < inicio) {
+      toast.error('La fecha fin del plan no puede ser anterior a la fecha de inicio');
+      return;
+    }
+
     if (puntosControl.length === 0) {
       toast.error('Debe configurar al menos una fecha de corte');
       return;
+    }
+
+    const puntosOrdenados = [...puntosControl].sort(
+      (a, b) => new Date(a.fechaProgramada).getTime() - new Date(b.fechaProgramada).getTime()
+    );
+
+    for (let i = 0; i < puntosOrdenados.length; i++) {
+      const fechaActual = new Date(`${puntosOrdenados[i].fechaProgramada}T00:00:00`);
+      if (fechaActual < inicio || fechaActual > fin) {
+        toast.error('Todas las fechas de corte deben estar dentro del periodo del plan');
+        return;
+      }
+      if (i > 0) {
+        const fechaAnterior = new Date(`${puntosOrdenados[i - 1].fechaProgramada}T00:00:00`);
+        if (fechaActual <= fechaAnterior) {
+          toast.error('Cada corte debe ser posterior al corte anterior');
+          return;
+        }
+      }
     }
 
     onGuardar(puntosControl, frecuenciaSeleccionada, fechaCorteLocal);
@@ -382,13 +415,13 @@ export function ModalConfiguracionPuntosControl({
     descripcion: string; 
     color: string;
   }[] = [
-    { value: 'mensual', label: 'Mensual', descripcion: 'Cada mes', color: 'bg-blue-500' },
-    { value: 'bimensual', label: 'Bimensual', descripcion: 'Cada 2 meses', color: 'bg-teal-500' },
-    { value: 'trimestral', label: 'Trimestral', descripcion: '3 cortes al año', color: 'bg-purple-500' },
-    { value: 'cuatrimestral', label: 'Cuatrimestral', descripcion: '4 cortes al año', color: 'bg-amber-500' },
-    { value: 'semestral', label: 'Semestral', descripcion: 'Cada 6 meses', color: 'bg-green-500' },
-    { value: 'anual', label: 'Anual', descripcion: 'Cada 12 meses', color: 'bg-orange-500' },
-    { value: 'semanal', label: 'Semanal', descripcion: 'Cada 7 días', color: 'bg-red-500' },
+    { value: 'mensual', label: 'Mensual', descripcion: '12 cortes al año', color: 'bg-blue-500' },
+    { value: 'bimensual', label: 'Bimestral', descripcion: '6 cortes al año', color: 'bg-teal-500' },
+    { value: 'trimestral', label: 'Trimestral', descripcion: '4 cortes al año', color: 'bg-purple-500' },
+    { value: 'cuatrimestral', label: 'Cuatrimestral', descripcion: '3 cortes al año', color: 'bg-amber-500' },
+    { value: 'semestral', label: 'Semestral', descripcion: '2 cortes al año', color: 'bg-green-500' },
+    { value: 'anual', label: 'Anual', descripcion: '1 corte al año', color: 'bg-orange-500' },
+    { value: 'semanal', label: 'Semanal', descripcion: '52 cortes al año', color: 'bg-red-500' },
     { value: 'personalizada', label: 'Personalizada', descripcion: 'Fechas manuales', color: 'bg-gray-500' }
   ];
 
@@ -477,7 +510,7 @@ export function ModalConfiguracionPuntosControl({
                 </div>
                 <p className="text-xs text-blue-700 mt-2 flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
-                  Las fechas provienen de la Configuración Básica del plan. El seguimiento de cada corte se calcula +2 meses después.
+                  Las fechas provienen de la Configuración Básica del plan.
                 </p>
               </div>
 
@@ -629,8 +662,8 @@ export function ModalConfiguracionPuntosControl({
                                 <input
                                   type="date"
                                   value={puntoEditandoData.fechaProgramada}
-                                  min={index === 0 ? fechaInicioActividad : puntosControl[index - 1].fechaProgramada}
-                                  max={index === puntosControl.length - 1 ? fechaCorteLocal : puntosControl[index + 1].fechaProgramada}
+                                  min={index === 0 ? fechaInicioActividad : sumarDias(puntosControl[index - 1].fechaProgramada, 1)}
+                                  max={index === puntosControl.length - 1 ? fechaCorteLocal : sumarDias(puntosControl[index + 1].fechaProgramada, -1)}
                                   onChange={(e) => setPuntoEditandoData({ ...puntoEditandoData, fechaProgramada: e.target.value })}
                                   className="w-full px-3 py-2 bg-white border-2 border-orange-400 rounded-lg text-sm focus:outline-none focus:border-orange-600"
                                 />
@@ -724,8 +757,8 @@ export function ModalConfiguracionPuntosControl({
                                 <input
                                   type="date"
                                   value={punto.fechaProgramada}
-                                  min={index === 0 ? fechaInicioActividad : puntosControl[index - 1].fechaProgramada}
-                                  max={index === puntosControl.length - 1 ? fechaCorteLocal : puntosControl[index + 1].fechaProgramada}
+                                  min={index === 0 ? fechaInicioActividad : sumarDias(puntosControl[index - 1].fechaProgramada, 1)}
+                                  max={index === puntosControl.length - 1 ? fechaCorteLocal : sumarDias(puntosControl[index + 1].fechaProgramada, -1)}
                                   onChange={(e) => {
                                     manualmenteEditado.current = true;
                                     const nuevaFecha = e.target.value;
