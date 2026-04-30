@@ -639,12 +639,8 @@ export function ApprovalRequestsModule({
     if (!selectedRequest) return;
 
     const trimmedNotes = notes.trim();
-    if ((isHeadMode || action === 'REJECTED' || action === 'OBSERVATION') && !trimmedNotes) {
-      toast.error(
-        isHeadMode
-          ? 'Debes escribir el comentario final para el solicitante'
-          : 'Debes escribir una justificacion',
-      );
+    if (!isHeadMode && (action === 'REJECTED' || action === 'OBSERVATION') && !trimmedNotes) {
+      toast.error('Debes escribir una justificacion');
       return;
     }
 

@@ -100,6 +100,26 @@ interface NoticiaDisciplinaria {
     dependencia?: string;
     entidad?: string;
   }>;
+  denunciados?: Array<{
+    id: string;
+    nombre: string;
+    identificacion: string;
+    cargo: string;
+    lugarHechos: string;
+    apoderado?: any;
+  }>;
+  denunciantes?: Array<{
+    id: string;
+    nombre: string;
+    identificacion: string;
+    direccion: string;
+    telefono: string;
+    correo: string;
+    cargo: string;
+    entidad: string;
+    tipo: 'Denunciante' | 'Víctima';
+    apoderado?: any;
+  }>;
   state?: string;
   estado: 'pendiente' | 'en-valoracion' | 'devuelto' | 'asignado' | 'convertido-proceso' | 'archivado' | 'remitido';
   estadoLabel: 'Pendiente' | 'En Valoración' | 'Devuelto' | 'Asignado' | 'Convertido a Proceso' | 'Archivado' | 'Remitido';
@@ -901,6 +921,26 @@ export function GestionNoticias() {
             ...d,
             identificacion: d.cedula || d.identificacion || ''
           })),
+          denunciados: (Array.isArray(news.disciplinable) ? news.disciplinable : (news.disciplinable ? [news.disciplinable] : [])).map((d: any, idx: number) => ({
+            id: d.id || String(idx),
+            nombre: d.nombre || '',
+            identificacion: d.cedula || d.identificacion || '',
+            cargo: d.cargo || '',
+            lugarHechos: d.dependencia || d.lugarHechos || '',
+            apoderado: d.apoderado
+          })),
+          denunciantes: (Array.isArray(news.denunciante) ? news.denunciante : (news.denunciante ? [news.denunciante] : [])).map((d: any, idx: number) => ({
+            id: d.id || String(idx),
+            nombre: d.nombre || '',
+            identificacion: d.cedula || d.identificacion || '',
+            direccion: d.direccion || '',
+            telefono: d.telefono || '',
+            correo: d.correo || d.email || '',
+            cargo: d.cargo || '',
+            entidad: d.entidad || '',
+            tipo: (d.tipo as 'Denunciante' | 'Víctima') || 'Denunciante',
+            apoderado: d.apoderado
+          })),
           adjuntos: news.adjuntos || [],
           archivosAdjuntos: (news.adjuntos || []).map((path: string) => ({
             nombre: path.split('/').pop() || path,
@@ -1141,70 +1181,68 @@ export function GestionNoticias() {
       console.log('[DEBUG] handleCreateNoticia - data.archivosAdjuntos:', data.archivosAdjuntos);
       console.log('[DEBUG] handleCreateNoticia - archivos length:', data.archivosAdjuntos?.length || 0);
 
-      // Map Denunciante(s)
-      const denuncianteData = (data.denunciantes && data.denunciantes.length > 0)
-        ? data.denunciantes[0]
-        : (data.denunciante || {});
+      // Map todos los Denunciantes (incluye víctimas)
+      const denunciantesSource: any[] = (data.denunciantes && data.denunciantes.length > 0)
+        ? data.denunciantes
+        : (data.denunciante ? [data.denunciante] : []);
 
-      const denuncianteObj = {
-        nombre: denuncianteData.nombre || 'Anónimo',
-        email: denuncianteData.email || denuncianteData.correo || '',
-        cedula: denuncianteData.identificacion || denuncianteData.cedula || '',
-        identificacion: denuncianteData.identificacion || denuncianteData.cedula || '',
-        cargo: denuncianteData.cargo || 'Ciudadano',
-        telefono: denuncianteData.telefono || '',
-        direccion: denuncianteData.direccion || '',
-        entidad: denuncianteData.entidad || denuncianteData.dependencia || '',
-        dependencia: denuncianteData.dependencia || '',
-        // ✅ NUEVO: Incluir apoderado del denunciante
-        ...(denuncianteData.apoderado && denuncianteData.apoderado.nombre ? {
+      const denunciantesArray = denunciantesSource.map((d: any) => ({
+        nombre: d.nombre || 'Anónimo',
+        email: d.email || d.correo || '',
+        cedula: d.identificacion || d.cedula || '',
+        identificacion: d.identificacion || d.cedula || '',
+        cargo: d.cargo || 'Ciudadano',
+        telefono: d.telefono || '',
+        direccion: d.direccion || '',
+        entidad: d.entidad || d.dependencia || '',
+        dependencia: d.dependencia || '',
+        tipo: d.tipo || 'Denunciante',
+        ...(d.apoderado && d.apoderado.nombre ? {
           apoderado: {
-            nombre: denuncianteData.apoderado.nombre || '',
-            cedula: denuncianteData.apoderado.cedula || '',
-            email: denuncianteData.apoderado.correo || '',
-            telefono: denuncianteData.apoderado.celular || '',
-            direccion: denuncianteData.apoderado.direccion || ''
+            nombre: d.apoderado.nombre || '',
+            cedula: d.apoderado.cedula || '',
+            email: d.apoderado.correo || '',
+            telefono: d.apoderado.celular || '',
+            direccion: d.apoderado.direccion || ''
           }
         } : {})
-      };
+      }));
 
-      // Map Disciplinable(s)
-      // The create modal returns `denunciados`; keep `disciplinable` as fallback for older callers.
-      const disciplinablesData = Array.isArray(data.denunciados)
+      // Map todos los Denunciados (disciplinables)
+      const disciplinablesSource: any[] = Array.isArray(data.denunciados)
         ? data.denunciados
         : Array.isArray(data.disciplinable)
           ? data.disciplinable
           : (data.disciplinable ? [data.disciplinable] : []);
-      const mainDisciplinableData = disciplinablesData.length > 0 ? disciplinablesData[0] : {};
 
-      const disciplinableObj = {
-        nombre: mainDisciplinableData.nombre || 'Por determinar',
-        cedula: mainDisciplinableData.identificacion || mainDisciplinableData.cedula || '',
-        identificacion: mainDisciplinableData.identificacion || mainDisciplinableData.cedula || '',
-        cargo: mainDisciplinableData.cargo || 'N/A',
-        dependencia: mainDisciplinableData.dependencia || mainDisciplinableData.lugarHechos || 'Sin Dependencia',
-        // ✅ NUEVO: Incluir apoderado del disciplinable (denunciado)
-        ...(mainDisciplinableData.apoderado && mainDisciplinableData.apoderado.nombre ? {
+      const disciplinablesArray = disciplinablesSource.map((d: any) => ({
+        nombre: d.nombre || 'Por determinar',
+        cedula: d.identificacion || d.cedula || '',
+        identificacion: d.identificacion || d.cedula || '',
+        cargo: d.cargo || 'N/A',
+        dependencia: d.dependencia || d.lugarHechos || 'Sin Dependencia',
+        lugarHechos: d.lugarHechos || d.dependencia || '',
+        ...(d.apoderado && d.apoderado.nombre ? {
           apoderado: {
-            nombre: mainDisciplinableData.apoderado.nombre || '',
-            cedula: mainDisciplinableData.apoderado.cedula || '',
-            email: mainDisciplinableData.apoderado.correo || '',
-            telefono: mainDisciplinableData.apoderado.celular || '',
-            direccion: mainDisciplinableData.apoderado.direccion || ''
+            nombre: d.apoderado.nombre || '',
+            cedula: d.apoderado.cedula || '',
+            email: d.apoderado.correo || '',
+            telefono: d.apoderado.celular || '',
+            direccion: d.apoderado.direccion || ''
           }
         } : {})
-      };
+      }));
+
+      const firstDisciplinable = disciplinablesArray[0] || {};
 
       const createDto: CreateNewsDto = {
-        origen: mapOrigenToEnum(data.origen), // Map to backend enum
+        origen: mapOrigenToEnum(data.origen),
         territorial: data.territorial,
-        dependenciaDenunciado: disciplinableObj.dependencia,
+        dependenciaDenunciado: firstDisciplinable.dependencia || 'Sin Dependencia',
         hechos: data.descripcionHechos || 'Sin descripción',
-        denunciante: denuncianteObj as any, // Pass object, service handles stringify
-        disciplinable: disciplinableObj as any,
-        // Fecha de los hechos para cálculo de caducidad (Ley 734/2002 Art. 30)
+        denunciante: (denunciantesArray.length === 1 ? denunciantesArray[0] : denunciantesArray) as any,
+        disciplinable: (disciplinablesArray.length === 1 ? disciplinablesArray[0] : disciplinablesArray) as any,
         fechaHechos: data.fechaHechos || undefined,
-        // NO enviar: radicado, fechaRecepcion, estado (los genera el backend)
         radicadorId: authService.getCurrentUser()?.id,
       };
 

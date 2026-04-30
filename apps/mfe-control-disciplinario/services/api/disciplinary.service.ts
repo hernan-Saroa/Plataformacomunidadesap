@@ -776,7 +776,13 @@ class DisciplinaryService {
         } else if (url.startsWith('/control-disciplinario/')) {
             // La URL ya contiene el prefijo del servicio, extraer la ruta relativa
             // /control-disciplinario/api/v1/... -> /api/v1/...
-            const path = url.replace(/^\/control-disciplinario/, '/');
+            let path = url.replace(/^\/control-disciplinario/, '');
+            if (path.startsWith('/api/v1/files/') || path.startsWith('/api/v1/uploads/')) {
+                path = path.replace(/^\/api\/v1/, '');
+            }
+            fullUrl = buildApiUrl('control-disciplinario', path) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        } else if (url.startsWith('/api/v1/files/') || url.startsWith('/api/v1/uploads/')) {
+            const path = url.replace(/^\/api\/v1/, '');
             fullUrl = buildApiUrl('control-disciplinario', path) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
         } else if (url.startsWith('/files/')) {
             // La URL es para archivos estáticos, construir correctamente

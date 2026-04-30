@@ -312,7 +312,7 @@ export class GraduationCertificatesService {
         'Aprobado por revision manual',
       reviewerName: request.reviewSubmittedByName || request.reviewerName,
       reviewerId: request.reviewSubmittedBy || request.reviewedBy,
-      publicNotificationNotes: fallbackReason || undefined,
+      publicNotificationNotes: fallbackReason ?? '',
       fullName: this.toNullableText(savedPayload.fullName) || undefined,
       idNumber: this.toNullableText(savedPayload.idNumber) || undefined,
       email: this.toNullableText(savedPayload.email) || undefined,
@@ -651,7 +651,7 @@ export class GraduationCertificatesService {
         idNumber,
         100,
       );
-    console.log('Graduados MySQL', mysqlGraduates);
+    
     if (!mysqlGraduates.length) {
       return {
         enabled: true,
@@ -664,7 +664,6 @@ export class GraduationCertificatesService {
     }
 
     const localGraduates = await this.findActiveGraduatesByIdNumber(idNumber);
-    console.log('localGraduates', localGraduates);
     const usedGraduateIds = new Set<string>();
     const result: OracleGraduateSyncResult = {
       enabled: true,
@@ -865,7 +864,6 @@ export class GraduationCertificatesService {
     const gradDate = graduationDate
       ? this.normalizeDateString(graduationDate)
       : null;
-    console.log('Buscar Coincidencias Graduado', idNumber, graduationDate, lastName);
     if (graduationDate && !gradDate) {
       throw new BadRequestException('Fecha de graduación inválida');
     }
@@ -2362,7 +2360,7 @@ export class GraduationCertificatesService {
 
     const trimmedReviewNotes = (reviewNotes || '').trim();
     const publicReviewNotesText = trimmedReviewNotes
-      ? `\nComentario de aprobacion: ${trimmedReviewNotes}`
+      ? `\nNotas del jefe: ${trimmedReviewNotes}`
       : '';
     const safeReviewNotes = trimmedReviewNotes
       .replace(/&/g, '&amp;')
@@ -2421,7 +2419,7 @@ export class GraduationCertificatesService {
                   </table>
                   ${
                     trimmedReviewNotes
-                      ? `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:16px;"><tr><td style="padding:14px 16px;"><p style="margin:0 0 4px 0;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.5px;">Comentario de aprobacion</p><p style="margin:0;font-size:13px;color:#78350f;white-space:pre-line;line-height:1.6;">${safeReviewNotes}</p></td></tr></table>`
+                      ? `<table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:16px;"><tr><td style="padding:14px 16px;"><p style="margin:0 0 4px 0;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.5px;">Notas del jefe</p><p style="margin:0;font-size:13px;color:#78350f;white-space:pre-line;line-height:1.6;">${safeReviewNotes}</p></td></tr></table>`
                       : ''
                   }
                 </td>
@@ -4010,14 +4008,11 @@ export class GraduationCertificatesService {
     const now = new Date();
     const isFinalDecision = payload?.finalDecision === true;
     if (
-      (isFinalDecision || decision === 'REJECTED' || decision === 'OBSERVATION') &&
+      !isFinalDecision &&
+      (decision === 'REJECTED' || decision === 'OBSERVATION') &&
       !reason
     ) {
-      throw new BadRequestException(
-        isFinalDecision
-          ? 'Debes registrar el comentario final para el solicitante'
-          : 'Debes registrar una justificacion para esta decision',
-      );
+      throw new BadRequestException('Debes registrar una justificacion para esta decision');
     }
 
     if (!isFinalDecision) {

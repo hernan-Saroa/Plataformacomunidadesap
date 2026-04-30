@@ -33,7 +33,7 @@ export class PdfModifierService {
                     y: textY,
                     size: fontSize,
                     font: helveticaFont,
-                    color: rgb(0.09, 0.44, 0.34),
+                    color: rgb(0, 0, 0),
                 });
             }
 
