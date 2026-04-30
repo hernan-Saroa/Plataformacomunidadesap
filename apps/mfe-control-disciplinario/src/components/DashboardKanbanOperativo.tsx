@@ -183,6 +183,7 @@ interface Noticia {
   dependencia?: string;
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
+  conducta?: string;
   denunciado?: {
     id: string;
     nombre: string;
@@ -240,6 +241,7 @@ interface Proceso {
   fechaHechos?: string;
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
+  conducta?: string;
   denunciado?: {
     id: string;
     nombre: string;
@@ -2858,6 +2860,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       fechaHechos: proceso.news?.fechaHechos || '',
       conductaSeleccionada: proceso.news?.conductas?.[0] || '',
       conductaPersonalizada: '',
+      conducta: proceso.news?.conducta || '',
       denunciado: (() => {
         const source = (proceso.news as any)?.disciplinable || (proceso.news as any)?.denunciado || (proceso.news as any)?.disciplinable;
         const list = Array.isArray(source) ? source : (source ? [source] : []);
@@ -3427,6 +3430,7 @@ export function DashboardKanbanOperativo({
       fundamentoLegalRemision: (noticia as any).fundamentoLegalRemision || (noticia as any).fundamentoLegal || undefined,
       justificacionRemision: (noticia as any).justificacionRemision || (noticia as any).observacionesRemision || undefined,
       conductaSeleccionada: (noticia as any).conductas?.[0] || (noticia as any).conductaSeleccionada || '',
+      conducta: (noticia as any).conducta || '',
       archivosAdjuntos: ((noticia as any).adjuntos || []).map((path: string) => ({
         nombre: path.split('/').pop() || path,
         tipo: path.toLowerCase().includes('pdf') ? 'application/pdf' : path.toLowerCase().includes('jpg') || path.toLowerCase().includes('png') ? 'image' : path.toLowerCase().includes('mp4') || path.toLowerCase().includes('avi') ? 'video' : 'application/octet-stream',
@@ -3561,6 +3565,7 @@ export function DashboardKanbanOperativo({
       fechaHechos: proceso.news?.fechaHechos || '',
       conductaSeleccionada: proceso.news?.conductas?.[0] || '',
       conductaPersonalizada: '',
+      conducta: proceso.news?.conducta || '',
       denunciado: (() => {
         const source = (proceso.news as any)?.disciplinable || (proceso.news as any)?.denunciado || (proceso.news as any)?.disciplinable;
         const list = Array.isArray(source) ? source : (source ? [source] : []);

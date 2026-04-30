@@ -609,6 +609,22 @@ function TabGeneral({
                   {d.cargo && <p><span className="font-bold text-gray-500">Cargo:</span> {d.cargo}</p>}
                   {d.lugarHechos && <p><span className="font-bold text-gray-500">Lugar de Hechos:</span> {d.lugarHechos}</p>}
                 </div>
+
+                {d.apoderado && (
+                  <div className="mt-2 p-2 rounded-md bg-orange-50 border border-orange-100">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Scale className="w-3 h-3 text-orange-600" />
+                      <span className="text-[9px] font-bold text-orange-600 uppercase">Apoderado</span>
+                    </div>
+                    <div className="text-[10px] text-gray-700 space-y-0.5">
+                      <p><span className="font-bold">Nombre:</span> {d.apoderado.nombre || '—'}</p>
+                      <p><span className="font-bold">Cédula:</span> {d.apoderado.cedula || '—'}</p>
+                      <p><span className="font-bold">Correo:</span> {getApoderadoCorreo(d.apoderado) || '—'}</p>
+                      <p><span className="font-bold">Celular:</span> {getApoderadoCelular(d.apoderado) || '—'}</p>
+                      {d.apoderado.direccion && <p><span className="font-bold">Dirección:</span> {d.apoderado.direccion}</p>}
+                    </div>
+                  </div>
+                )}
               </div>
             )) : (
               <p className="text-sm text-gray-500 italic">No hay información de disciplinados</p>
@@ -655,6 +671,22 @@ function TabGeneral({
                   {d.correo && <p><span className="font-bold text-gray-500">Correo:</span> {d.correo}</p>}
                   {d.direccion && <p><span className="font-bold text-gray-500">Dirección:</span> {d.direccion}</p>}
                 </div>
+
+                {d.apoderado && (
+                  <div className="mt-2 p-2 rounded-md bg-blue-50 border border-blue-100">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <Scale className="w-3 h-3 text-blue-600" />
+                      <span className="text-[9px] font-bold text-blue-600 uppercase">Apoderado</span>
+                    </div>
+                    <div className="text-[10px] text-gray-700 space-y-0.5">
+                      <p><span className="font-bold">Nombre:</span> {d.apoderado.nombre || '—'}</p>
+                      <p><span className="font-bold">Cédula:</span> {d.apoderado.cedula || '—'}</p>
+                      <p><span className="font-bold">Correo:</span> {getApoderadoCorreo(d.apoderado) || '—'}</p>
+                      <p><span className="font-bold">Celular:</span> {getApoderadoCelular(d.apoderado) || '—'}</p>
+                      {d.apoderado.direccion && <p><span className="font-bold">Dirección:</span> {d.apoderado.direccion}</p>}
+                    </div>
+                  </div>
+                )}
               </div>
             )) : (
               <p className="text-sm text-gray-500 italic">No hay información de denunciantes</p>
@@ -722,18 +754,27 @@ function TabGeneral({
       </div>
 
       {/* Conducta */}
-      {n.conductaSeleccionada && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Gavel className="w-4 h-4 text-red-600" />
-            <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">Presunta Conducta Disciplinaria</span>
-          </div>
-          <p className="text-sm font-bold text-gray-900">{n.conductaSeleccionada}</p>
-          {n.conductaPersonalizada && (
-            <p className="text-xs text-gray-600 mt-1 italic">{n.conductaPersonalizada}</p>
-          )}
+      <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+        <div className="flex items-center gap-2 mb-2">
+          <Gavel className="w-4 h-4 text-red-600" />
+          <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">Presunta Conducta Disciplinaria</span>
         </div>
-      )}
+        {n.conductaSeleccionada || n.conductaPersonalizada || n.conducta ? (
+          <>
+            {n.conductaSeleccionada && (
+              <p className="text-sm font-bold text-gray-900">{n.conductaSeleccionada}</p>
+            )}
+            {n.conductaPersonalizada && (
+              <p className="text-xs text-gray-600 mt-1 italic">{n.conductaPersonalizada}</p>
+            )}
+            {n.conducta && (!n.conductaSeleccionada || n.conducta !== n.conductaSeleccionada) && (
+              <p className="text-xs text-gray-700 mt-1">{n.conducta}</p>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-gray-500 italic">No se ha especificado conducta disciplinaria</p>
+        )}
+      </div>
 
 
 
