@@ -1287,19 +1287,136 @@ function VistaLista({
                     </div>
                   </div>
 
-                  {/* Denunciado */}
+                  {/* Denunciantes */}
                   <div className="pb-2 border-b border-gray-200">
-                    <p className="text-xs text-gray-500 mb-1">Denunciado:</p>
-                    <p className="font-bold text-sm text-gray-900">
-                      {isNoticia
-                        ? (!noticia!.denunciado ? 'N/A' : typeof noticia!.denunciado === 'string' ? noticia!.denunciado : noticia!.denunciado.nombre)
-                        : (!proceso!.denunciado ? 'N/A' : typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre)}
-                    </p>
-                    <p className="text-xs text-gray-600 mt-0.5">
-                      {isNoticia
-                        ? (noticia!.denunciado && typeof noticia!.denunciado !== 'string' && `${noticia!.denunciado.tipoIdentificacion} ${noticia!.denunciado.numeroIdentificacion}`)
-                        : (proceso!.denunciado && typeof proceso!.denunciado !== 'string' ? `${proceso!.denunciado.tipoIdentificacion} ${proceso!.denunciado.numeroIdentificacion}` : proceso!.cedula ? `CC: ${proceso!.cedula}` : '')}
-                    </p>
+                    <p className="text-xs text-gray-500 mb-2">Denunciante{isNoticia && noticia!.denunciante && noticia!.denunciante.length > 1 ? `s (${noticia!.denunciante.length})` : (!isNoticia && proceso!.denunciante && proceso!.denunciante.length > 1 ? `s (${proceso!.denunciante.length})` : '')}:</p>
+                    <div className="space-y-1">
+                      {isNoticia ? (
+                        noticia!.denunciante && noticia!.denunciante.length > 0 ? (
+                          noticia!.denunciante.map((d, idx) => (
+                            <div key={d.id || idx} className="flex items-center gap-2">
+                              {noticia!.denunciante!.length > 1 && (
+                                <span className="text-[10px] font-bold text-gray-400 min-w-[20px]">DTE {idx + 1}:</span>
+                              )}
+                              <div className="flex-1">
+                                <p className="font-bold text-sm text-gray-900">{d.nombre || 'Sin información'}</p>
+                                {d.identificacion && (
+                                  <p className="text-xs text-gray-600">{d.identificacion}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <p className="font-bold text-sm text-gray-900">
+                                {typeof noticia!.denunciante === 'string' ? noticia!.denunciante : noticia!.denunciante?.nombre || 'Sin información'}
+                              </p>
+                              {noticia!.denunciante && typeof noticia!.denunciante !== 'string' && noticia!.denunciante.numeroIdentificacion && (
+                                <p className="text-xs text-gray-600">{`${noticia!.denunciante.tipoIdentificacion || 'CC'}: ${noticia!.denunciante.numeroIdentificacion}`}</p>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      ) : (
+                        proceso!.denunciante && proceso!.denunciante.length > 0 ? (
+                          proceso!.denunciante.map((d, idx) => (
+                            <div key={d.id || idx} className="flex items-center gap-2">
+                              {proceso!.denunciante!.length > 1 && (
+                                <span className="text-[10px] font-bold text-gray-400 min-w-[20px]">DTE {idx + 1}:</span>
+                              )}
+                              <div className="flex-1">
+                                <p className="font-bold text-sm text-gray-900">{d.nombre || 'Sin información'}</p>
+                                {d.identificacion && (
+                                  <p className="text-xs text-gray-600">{d.identificacion}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <p className="font-bold text-sm text-gray-900">
+                                {typeof proceso!.denunciante === 'string' ? proceso!.denunciante : proceso!.denunciante?.nombre || 'Sin información'}
+                              </p>
+                              {proceso!.denunciante && typeof proceso!.denunciante !== 'string' && proceso!.denunciante.numeroIdentificacion && (
+                                <p className="text-xs text-gray-600">{`${proceso!.denunciante.tipoIdentificacion || 'CC'}: ${proceso!.denunciante.numeroIdentificacion}`}</p>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Denunciados */}
+                  <div className="pb-2 border-b border-gray-200">
+                    <p className="text-xs text-gray-500 mb-2">Denunciado{isNoticia && noticia!.denunciado && noticia!.denunciado.length > 1 ? `s (${noticia!.denunciado.length})` : (!isNoticia && proceso!.denunciado && proceso!.denunciado.length > 1 ? `s (${proceso!.denunciado.length})` : '')}:</p>
+                    <div className="space-y-1">
+                      {isNoticia ? (
+                        noticia!.denunciado && noticia!.denunciado.length > 0 ? (
+                          noticia!.denunciado.map((d, idx) => (
+                            <div key={d.id || idx} className="flex items-center gap-2">
+                              {noticia!.denunciado!.length > 1 && (
+                                <span className="text-[10px] font-bold text-gray-400 min-w-[20px]">DDO {idx + 1}:</span>
+                              )}
+                              <div className="flex-1">
+                                <p className="font-bold text-sm text-gray-900">{d.nombre || 'Sin información'}</p>
+                                {d.identificacion && (
+                                  <p className="text-xs text-gray-600">{d.identificacion}</p>
+                                )}
+                                {d.cargo && (
+                                  <p className="text-xs text-gray-500">{d.cargo}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <p className="font-bold text-sm text-gray-900">
+                                {typeof noticia!.denunciado === 'string' ? noticia!.denunciado : noticia!.denunciado?.nombre || 'Sin información'}
+                              </p>
+                              {noticia!.denunciado && typeof noticia!.denunciado !== 'string' && noticia!.denunciado.numeroIdentificacion && (
+                                <p className="text-xs text-gray-600">{`${noticia!.denunciado.tipoIdentificacion || 'CC'}: ${noticia!.denunciado.numeroIdentificacion}`}</p>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      ) : (
+                        proceso!.denunciado && proceso!.denunciado.length > 0 ? (
+                          proceso!.denunciado.map((d, idx) => (
+                            <div key={d.id || idx} className="flex items-center gap-2">
+                              {proceso!.denunciado!.length > 1 && (
+                                <span className="text-[10px] font-bold text-gray-400 min-w-[20px]">DDO {idx + 1}:</span>
+                              )}
+                              <div className="flex-1">
+                                <p className="font-bold text-sm text-gray-900">{d.nombre || 'Sin información'}</p>
+                                {d.identificacion && (
+                                  <p className="text-xs text-gray-600">{d.identificacion}</p>
+                                )}
+                                {d.cargo && (
+                                  <p className="text-xs text-gray-500">{d.cargo}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <p className="font-bold text-sm text-gray-900">
+                                {typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado?.nombre || 'Sin información'}
+                              </p>
+                              {proceso!.denunciado && typeof proceso!.denunciado !== 'string' && proceso!.denunciado.numeroIdentificacion ? (
+                                <p className="text-xs text-gray-600">{`${proceso!.denunciado.tipoIdentificacion || 'CC'}: ${proceso!.denunciado.numeroIdentificacion}`}</p>
+                              ) : proceso!.cedula ? (
+                                <p className="text-xs text-gray-600">CC: {proceso!.cedula}</p>
+                              ) : null}
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
                   </div>
 
                   {/* Info Row */}
@@ -1460,9 +1577,9 @@ function VistaLista({
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
                     Número / Tipo
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                  {/* <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
                     Denunciado
-                  </th>
+                  </th> */}
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
                     Etapa / Estado
                   </th>
@@ -1517,7 +1634,7 @@ function VistaLista({
                       </td>
 
                       {/* Denunciado */}
-                      <td className="px-4 py-4">
+                      {/* <td className="px-4 py-4">
                         <div>
                           <p className="font-semibold text-sm" style={{ color: '#1F2937' }}>
                             {isNoticia
@@ -1535,7 +1652,7 @@ function VistaLista({
                             </p>
                           )}
                         </div>
-                      </td>
+                      </td> */}
 
                       {/* Etapa / Estado */}
                       <td className="px-4 py-4">
