@@ -70,7 +70,10 @@ export class NewsController {
     @Body() createNewsDto: CreateDisciplinaryNewsDto,
     @UploadedFiles() files?: FileData[],
   ): Promise<DisciplinaryNews> {
-    
+
+    // ✅ DEBUG: Ver qué llega en el DTO
+    console.log('🔍 DTO recibido en backend:', JSON.stringify(createNewsDto, null, 2));
+
     // Obtener el ID del usuario autenticado del JWT
     const userId = (request as any).user?.userId;
     if (!userId) {

@@ -3933,7 +3933,7 @@ export function DashboardKanbanOperativo({
           : (data.hechos || data.descripcionHechos || ''),
         fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : undefined,
         fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined,
-        conductaDisciplinaria: data.conductaDisciplinaria || data.conductaSeleccionada,
+        conducta: data.conducta || data.conductaSeleccionada || '',
         conductas: data.conductas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : []),
         radicadorId: currentUser.id
       };

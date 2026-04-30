@@ -90,8 +90,8 @@ export class DisciplinaryNews {
    hechos: string;
 
 
-   @Column({ type: 'varchar', length: 255, nullable: true, name: 'conducta_disciplinaria' })
-   conductaDisciplinaria?: string;
+    @Column({ type: 'varchar', length: 100, name: 'conducta_disciplinaria' })
+    conducta?: string;
 
    @Column({ type: 'text', array: true, nullable: true })
    conductas?: string[];
