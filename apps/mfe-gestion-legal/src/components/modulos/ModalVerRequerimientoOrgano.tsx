@@ -80,11 +80,14 @@ export function ModalVerRequerimientoOrgano({
     }
     try {
       toast.loading('Reasignando profesional...', { id: 'reasignar-oc' });
-      await ocService.updateRequerimientoOC(requerimiento.id, { funcionarioResponsableId: abogadoSeleccionado });
       const abogado = abogados.find(a => a.id === abogadoSeleccionado);
+      await ocService.updateRequerimientoOC(requerimiento.id, {
+        funcionarioResponsable: abogado?.nombreCompleto || abogado?.nombre || abogadoSeleccionado,
+      });
       toast.success(`Profesional reasignado: ${abogado?.nombreCompleto || 'Actualizado'}`, { id: 'reasignar-oc' });
       setEditandoResponsable(false);
       if (onUpdate) onUpdate();
+      onClose();
     } catch (error) {
       console.error(error);
       toast.error('Error al reasignar profesional', { id: 'reasignar-oc' });
