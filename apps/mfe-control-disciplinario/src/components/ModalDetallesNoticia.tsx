@@ -104,6 +104,7 @@ export interface NoticiaCompleta {
   dependencia?: string;
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
+  conducta?: string;
   denunciados?: DenunciadoCompleto[];
   denunciantes?: DenuncianteCompleto[];
   hechosSeparados?: HechoSeparado[];
@@ -145,6 +146,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
     hechos: '',
     estado: 'pendiente',
     prioridad: 'media',
+    conduta: '',
     diasPendientes: 0,
     tipo: 'noticia'
   };
@@ -190,8 +192,8 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
   const em = estadoMeta[estadoValue] || estadoMeta.pendiente;
 
   // Conteos para badges en tabs
-  const cantDenunciados = n.denunciados?.length || (n.denunciado ? 1 : 0);
-  const cantDenunciantes = n.denunciantes?.length || (n.denunciante ? 1 : 0);
+  const cantDenunciados = n.denunciado?.length || (n.denunciado ? 1 : 0);
+  const cantDenunciantes = n.denunciante?.length || (n.denunciante ? 1 : 0);
   const cantHechos = n.hechosSeparados?.length || (n.hechos ? 1 : 0);
   const cantAdjuntos = n.archivosAdjuntos?.length || 0;
 
@@ -563,9 +565,104 @@ function TabGeneral({
   getDenunciadoNombre: () => string;
   getDenuncianteId: () => string;
   getDenunciadoId: () => string;
+
+  
 }) {
+
+
+  // Preparar datos de personas para mostrar al inicio
+  let denunciados = n.denunciado && n.denunciado.length > 0 ? n.denunciado : [];
+  let denunciantes = n.denunciante && n.denunciante.length > 0 ? n.denunciante : [];
+
+  
+
+
+
   return (
     <div className="space-y-4">
+      {/* Personas: Denunciados y Denunciantes */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Disciplinados */}
+        <div className="rounded-xl border-2 border-orange-200 bg-orange-50/30 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="w-4 h-4 text-orange-600" />
+            <h3 className="text-xs font-black text-orange-700 uppercase tracking-wider">
+              Disciplinado{denunciados.length > 1 ? `s (${denunciados.length})` : ''}
+            </h3>
+            {denunciados.length > 1 && (
+              <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-orange-200 text-orange-700">
+                {denunciados.length}
+              </span>
+            )}
+          </div>
+          <div className="space-y-3">
+            {denunciados.length > 0 ? denunciados.map((d, idx) => (
+              <div key={d.id || idx} className={`${idx > 0 ? 'pt-3 border-t border-orange-200' : ''}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  {denunciados.length > 1 && (
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-orange-500">{idx + 1}</div>
+                  )}
+                  <p className="text-sm font-bold text-gray-900">{d.nombre || 'Sin información'}</p>
+                </div>
+                <div className="grid grid-cols-1 gap-1 text-xs">
+                  {d.identificacion && <p><span className="font-bold text-gray-500">ID:</span> {d.identificacion}</p>}
+                  {d.cargo && <p><span className="font-bold text-gray-500">Cargo:</span> {d.cargo}</p>}
+                  {d.lugarHechos && <p><span className="font-bold text-gray-500">Lugar de Hechos:</span> {d.lugarHechos}</p>}
+                </div>
+              </div>
+            )) : (
+              <p className="text-sm text-gray-500 italic">No hay información de disciplinados</p>
+            )}
+          </div>
+        </div>
+
+        {/* Denunciantes */}
+        <div className="rounded-xl border-2 border-blue-200 bg-blue-50/30 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <User className="w-4 h-4 text-blue-600" />
+            <h3 className="text-xs font-black text-blue-700 uppercase tracking-wider">
+              Denunciante{denunciantes.length > 1 ? `s (${denunciantes.length})` : ''}
+            </h3>
+            {denunciantes.length > 1 && (
+              <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-blue-200 text-blue-700">
+                {denunciantes.length}
+              </span>
+            )}
+          </div>
+          <div className="space-y-3">
+            {denunciantes.length > 0 ? denunciantes.map((d, idx) => (
+              <div key={d.id || idx} className={`${idx > 0 ? 'pt-3 border-t border-blue-200' : ''}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  {denunciantes.length > 1 && (
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-blue-600">{idx + 1}</div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-gray-900">{d.nombre || 'Sin información'}</p>
+                    {d.tipo && (
+                      <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded-full ${
+                        d.tipo === 'Víctima' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {d.tipo}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-1 text-xs">
+                  {d.identificacion && <p><span className="font-bold text-gray-500">ID:</span> {d.identificacion}</p>}
+                  {d.cargo && <p><span className="font-bold text-gray-500">Cargo:</span> {d.cargo}</p>}
+                  {d.entidad && <p><span className="font-bold text-gray-500">Entidad:</span> {d.entidad}</p>}
+                  {d.telefono && <p><span className="font-bold text-gray-500">Teléfono:</span> {d.telefono}</p>}
+                  {d.correo && <p><span className="font-bold text-gray-500">Correo:</span> {d.correo}</p>}
+                  {d.direccion && <p><span className="font-bold text-gray-500">Dirección:</span> {d.direccion}</p>}
+                </div>
+              </div>
+            )) : (
+              <p className="text-sm text-gray-500 italic">No hay información de denunciantes</p>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Datos de radicación */}
       <div className="rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
@@ -638,51 +735,7 @@ function TabGeneral({
         </div>
       )}
 
-      {/* Resumen de personas */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle className="w-4 h-4 text-orange-600" />
-            <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">
-              Disciplinado{(n.denunciados?.length || 0) > 1 ? 's' : ''}
-            </span>
-            {(n.denunciados?.length || 0) > 1 && (
-              <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-orange-200 text-orange-700">
-                {n.denunciados!.length}
-              </span>
-            )}
-          </div>
-          <p className="text-sm font-bold text-gray-900">{getDenunciadoNombre()}</p>
-          {getDenunciadoId() && <p className="text-xs text-gray-500 mt-0.5">{getDenunciadoId()}</p>}
-          {n.cargo && <p className="text-xs text-gray-500 mt-0.5">{n.cargo}</p>}
-          {(n.denunciados?.length || 0) > 1 && (
-            <p className="text-[11px] text-orange-600 mt-2 font-semibold">
-              +{n.denunciados!.length - 1} disciplinado(s) adicional(es)
-            </p>
-          )}
-        </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <User className="w-4 h-4 text-gray-500" />
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
-              Denunciante{(n.denunciantes?.length || 0) > 1 ? 's' : ''}
-            </span>
-            {(n.denunciantes?.length || 0) > 1 && (
-              <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-gray-200 text-gray-700">
-                {n.denunciantes!.length}
-              </span>
-            )}
-          </div>
-          <p className="text-sm font-bold text-gray-900">{getDenuncianteNombre()}</p>
-          {getDenuncianteId() && <p className="text-xs text-gray-500 mt-0.5">{getDenuncianteId()}</p>}
-          {(n.denunciantes?.length || 0) > 1 && (
-            <p className="text-[11px] text-blue-600 mt-2 font-semibold">
-              +{n.denunciantes!.length - 1} denunciante(s) adicional(es)
-            </p>
-          )}
-        </div>
-      </div>
 
       {/* Hechos (resumen) */}
       {n.hechos && (
