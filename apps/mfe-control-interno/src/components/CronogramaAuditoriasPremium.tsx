@@ -112,6 +112,11 @@ interface AuditoriaProgramada {
   horasEstimadas: number;
   trimestre: 1 | 2 | 3 | 4;
   territorial: string; // 🆕 Propiedad territorial
+  // ✅ Fechas de etapas persistidas (4-4-5)
+  fechaFinPlaneacion?: string;
+  fechaInicioEjecucion?: string;
+  fechaFinEjecucion?: string;
+  fechaInicioComunicacion?: string;
 }
 
 interface CronogramaAuditoriasPremiumProps {
@@ -122,6 +127,73 @@ interface CronogramaAuditoriasPremiumProps {
 // ════════════════════════════════════════════════════════════════════════════
 // HELPERS Y CONSTANTES
 // ════════════════════════════════════════════════════════════════════════════
+
+// ════════════════════════════════════════════════════════════════════════════
+// LÓGICA DE ETAPAS AUTOMÁTICAS (PROMPT: 4-4-5 SEMANAS)
+// ════════════════════════════════════════════════════════════════════════════
+
+const DURACION_ETAPAS_WEEKS = {
+  planeacion: 4,
+  ejecucion: 4,
+  comunicacion: 5
+};
+
+/** 
+ * Calcula en qué etapa debería estar la auditoría según la fecha de referencia.
+ */
+function obtenerEtapaAutomatica(fechaReferencia: Date, auditoria: AuditoriaProgramada): ColumnaKanban {
+  if (!auditoria.fechaInicio) return 'desconocido';
+  
+  const ref = new Date(fechaReferencia);
+  ref.setHours(0, 0, 0, 0);
+
+  const { planeacion, ejecucion, comunicacion } = obtenerRangosEtapas(auditoria);
+
+  if (ref >= planeacion.inicio && ref <= planeacion.fin) return 'planeacion';
+  if (ref >= ejecucion.inicio && ref <= ejecucion.fin) return 'ejecucion';
+  if (ref >= comunicacion.inicio && ref <= comunicacion.fin) return 'comunicacion';
+  
+  if (ref < planeacion.inicio) return 'plan_anual';
+  return 'seguimiento';
+}
+
+/** Calcula los rangos de fechas de cada etapa a partir de la fecha de inicio o datos persistidos */
+function obtenerRangosEtapas(auditoria: AuditoriaProgramada) {
+  const { fechaInicio, fechaFinPlaneacion, fechaInicioEjecucion, fechaFinEjecucion, fechaInicioComunicacion, fechaFin } = auditoria;
+  
+  // Si tenemos todas las fechas persistidas, usarlas directamente
+  if (fechaFinPlaneacion && fechaInicioEjecucion && fechaFinEjecucion && fechaInicioComunicacion) {
+    return {
+      planeacion: { inicio: new Date(fechaInicio), fin: new Date(fechaFinPlaneacion) },
+      ejecucion: { inicio: new Date(fechaInicioEjecucion), fin: new Date(fechaFinEjecucion) },
+      comunicacion: { inicio: new Date(fechaInicioComunicacion), fin: new Date(fechaFin) }
+    };
+  }
+
+  // Fallback: Cálculo dinámico (4-4-5 semanas)
+  const inicio = new Date(fechaInicio);
+  inicio.setHours(0, 0, 0, 0);
+  
+  const pInicio = new Date(inicio);
+  const pFin = new Date(inicio);
+  pFin.setDate(pFin.getDate() + (DURACION_ETAPAS_WEEKS.planeacion * 7) - 1);
+
+  const eInicio = new Date(pFin);
+  eInicio.setDate(eInicio.getDate() + 1);
+  const eFin = new Date(eInicio);
+  eFin.setDate(eFin.getDate() + (DURACION_ETAPAS_WEEKS.ejecucion * 7) - 1);
+
+  const cInicio = new Date(eFin);
+  cInicio.setDate(cInicio.getDate() + 1);
+  const cFin = new Date(cInicio);
+  cFin.setDate(cFin.getDate() + (DURACION_ETAPAS_WEEKS.comunicacion * 7) - 1);
+
+  return {
+    planeacion: { inicio: pInicio, fin: pFin },
+    ejecucion: { inicio: eInicio, fin: eFin },
+    comunicacion: { inicio: cInicio, fin: cFin }
+  };
+}
 
 const COLORES_ESTADO = {
   'PROGRAMADA': { bg: '#DBEAFE', border: '#3B82F6', text: '#1E40AF' },
@@ -142,12 +214,23 @@ const LABELS_ESTADO: Record<keyof typeof COLORES_ESTADO, string> = {
  * Color y etiqueta de lista/cards: misma regla que filtros y tablero (`resolverColumnaKanban`).
  * Evita que columnas como Seguimiento o Plan Anual caigan en COMPLETADA → "Comunicación".
  */
-function obtenerEstadoVisual(auditoria: any): { colores: typeof COLORES_ESTADO['PROGRAMADA']; label: string } {
+/**
+ * Color y etiqueta de lista/cards: prioriza la etapa automática si hay fecha de referencia.
+ * Si no, usa resolverColumnaKanban (backend).
+ */
+function obtenerEstadoVisual(auditoria: any, fechaReferencia?: Date): { colores: typeof COLORES_ESTADO['PROGRAMADA']; label: string } {
   const estadoKanban = auditoria.estadoKanban as string | undefined;
   const fase = auditoria.fase as string | undefined;
   const estado = auditoria.estado as EstadoAuditoriaHook | undefined;
 
-  const columna = resolverColumnaKanban(estadoKanban, fase, estado);
+  let columna: ColumnaKanban = 'desconocido';
+
+  if (fechaReferencia && auditoria.fechaInicio) {
+    columna = obtenerEtapaAutomatica(fechaReferencia, auditoria);
+  } else {
+    columna = resolverColumnaKanban(estadoKanban, fase, estado);
+  }
+
   if (columna !== 'desconocido') {
     return {
       colores: COLORES_POR_COLUMNA_KANBAN[columna],
@@ -638,6 +721,7 @@ function VistaDia({ fecha, auditorias, onSeleccionar }: VistaDiaProps) {
             <CardAuditoria
               key={aud.id}
               auditoria={aud}
+              fechaReferencia={fecha}
               onClick={() => onSeleccionar(aud)}
             />
           ))}
@@ -723,7 +807,7 @@ function VistaSemana({ fecha, auditorias, onSeleccionar }: VistaSemanaProps) {
                   </div>
                 )}
                 {auditoriasDelDia.slice(0, 3).map((aud) => {
-                  const { colores } = obtenerEstadoVisual(aud);
+                  const { colores } = obtenerEstadoVisual(aud, dia);
                   return (
                     <button
                       key={aud.id}
@@ -858,7 +942,7 @@ function VistaMes({ fecha, auditorias, onSeleccionar }: VistaMesProps) {
                   </p>
                 )}
                 {auditoriasAMostrar.map((aud) => {
-                  const { colores } = obtenerEstadoVisual(aud);
+                  const { colores } = obtenerEstadoVisual(aud, dia);
                   return (
                     <button
                       key={aud.id}
@@ -1060,26 +1144,66 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
                         </div>
                       )}
 
-                      {/* Barra de auditoría */}
-                      <button
-                        onClick={() => onSeleccionar(auditoria)}
-                        className="absolute h-10 rounded-lg shadow-md hover:shadow-xl transition-all transform hover:scale-105 cursor-pointer z-20 group"
-                        style={{
-                          left: `${left}%`,
-                          width: `${width}%`,
-                          background: `linear-gradient(135deg, ${colores.border}, ${colores.bg})`,
-                          border: `2px solid ${colores.border}`,
-                          minWidth: '40px'
-                        }}
-                      >
-                        <div className="h-full flex items-center justify-center px-2">
-                          <span
-                            className="text-xs font-black truncate"
-                            style={{ color: colores.text }}
+                      {/* Barra de auditoría segmentada (4-4-5) */}
+                      {(() => {
+                        const { planeacion, ejecucion } = obtenerRangosEtapas(auditoria);
+                        const inicioMs = new Date(auditoria.fechaInicio).getTime();
+                        const finMs = new Date(auditoria.fechaFin).getTime();
+                        const totalMs = finMs - inicioMs;
+                        
+                        // Evitar división por cero
+                        const duracionMs = Math.max(totalMs, 1000 * 60 * 60 * 24); 
+                        const pPct = ((planeacion.fin.getTime() - planeacion.inicio.getTime() + (1000 * 60 * 60 * 24)) / duracionMs) * 100;
+                        const ePct = ((ejecucion.fin.getTime() - ejecucion.inicio.getTime() + (1000 * 60 * 60 * 24)) / duracionMs) * 100;
+
+                        return (
+                          <button
+                            onClick={() => onSeleccionar(auditoria)}
+                            className="absolute h-10 rounded-lg shadow-md hover:shadow-xl transition-all transform hover:scale-[1.02] cursor-pointer z-20 group overflow-hidden border-2"
+                            style={{
+                              left: `${left}%`,
+                              width: `${width}%`,
+                              borderColor: colores.border,
+                              minWidth: '60px'
+                            }}
                           >
-                            {width > 5 ? auditoria.nombre : ''}
-                          </span>
-                        </div>
+                            {/* Segmentos de Fondo */}
+                            <div className="absolute inset-0 flex">
+                              <div 
+                                style={{ width: `${pPct}%`, backgroundColor: COLORES_POR_COLUMNA_KANBAN.planeacion.bg }} 
+                                className="h-full border-r border-white/40" 
+                                title="Etapa 1: Planeación"
+                              />
+                              <div 
+                                style={{ width: `${ePct}%`, backgroundColor: COLORES_POR_COLUMNA_KANBAN.ejecucion.bg }} 
+                                className="h-full border-r border-white/40" 
+                                title="Etapa 2: Ejecución"
+                              />
+                              <div 
+                                style={{ flex: 1, backgroundColor: COLORES_POR_COLUMNA_KANBAN.comunicacion.bg }} 
+                                className="h-full" 
+                                title="Etapa 3: Comunicación"
+                              />
+                            </div>
+
+                            {/* Contenido (Nombre) */}
+                            <div className="relative h-full flex items-center justify-center px-2 z-10">
+                              <span
+                                className="text-[10px] font-black truncate drop-shadow-sm"
+                                style={{ color: colores.text }}
+                              >
+                                {width > 8 ? auditoria.nombre : ''}
+                              </span>
+                            </div>
+                            
+                            {/* Overlay de progreso */}
+                            <div 
+                              className="absolute bottom-0 left-0 h-1 bg-blue-600/30 transition-all z-20"
+                              style={{ width: `${auditoria.avance}%` }}
+                            />
+                          </button>
+                        );
+                      })()}
 
                         {/* Tooltip al hover */}
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
@@ -1097,7 +1221,6 @@ function VistaAño({ fecha, auditorias, onSeleccionar }: VistaAñoProps) {
                           {/* Flecha del tooltip */}
                           <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
                         </div>
-                      </button>
 
                       {/* Etiquetas de inicio y fin (solo si la barra es muy ancha) */}
                       {width > 10 && (
@@ -1205,10 +1328,11 @@ interface CardAuditoriaProps {
   auditoria: AuditoriaProgramada;
   onClick: () => void;
   compact?: boolean;
+  fechaReferencia?: Date;
 }
 
-function CardAuditoria({ auditoria, onClick, compact = false }: CardAuditoriaProps) {
-  const { colores, label } = obtenerEstadoVisual(auditoria);
+function CardAuditoria({ auditoria, onClick, compact = false, fechaReferencia }: CardAuditoriaProps) {
+  const { colores, label } = obtenerEstadoVisual(auditoria, fechaReferencia);
 
   return (
     <button
@@ -1308,10 +1432,55 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
         </div>
 
         {/* Contenido */}
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-6">
+          {/* Rangos de Etapas Automáticos */}
+          {auditoria.fechaInicio && (
+            <div className="bg-gray-50 rounded-2xl border-2 border-gray-200 p-5 shadow-inner">
+              <div className="flex items-center gap-2 mb-4">
+                <Clock className="w-5 h-5 text-[#003DA5]" />
+                <h4 className="text-sm font-black text-gray-800 uppercase tracking-wider">Cronograma por Etapas</h4>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-4">
+                {Object.entries(obtenerRangosEtapas(auditoria)).map(([etapa, rango]) => {
+                  const col = etapa as ColumnaKanban;
+                  const coloresEtapa = COLORES_POR_COLUMNA_KANBAN[col];
+                  const esActual = obtenerEtapaAutomatica(new Date(), auditoria) === col;
+
+                  return (
+                    <div 
+                      key={etapa}
+                      className={`relative p-3 rounded-xl border-2 transition-all ${
+                        esActual ? 'ring-4 ring-blue-500/20 scale-105 z-10' : 'opacity-80'
+                      }`}
+                      style={{ backgroundColor: coloresEtapa.bg, borderColor: coloresEtapa.border }}
+                    >
+                      {esActual && (
+                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#F57C00] text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-md uppercase">
+                          Actual
+                        </div>
+                      )}
+                      <div className="text-[10px] font-black mb-1" style={{ color: coloresEtapa.text }}>
+                        {ETIQUETA_COLUMNA_KANBAN[col]}
+                      </div>
+                      <div className="text-[10px] font-bold text-gray-700">
+                        {rango.inicio.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+                        <span className="mx-1">→</span>
+                        {rango.fin.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })}
+                      </div>
+                      <div className="text-[9px] text-gray-500 mt-1 font-medium italic">
+                        {DURACION_ETAPAS_WEEKS[col as keyof typeof DURACION_ETAPAS_WEEKS]} semanas
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
-              <div className="text-xs font-bold text-gray-600 mb-1">Estado</div>
+              <div className="text-xs font-bold text-gray-600 mb-1">Estado Actual (Sistema)</div>
               <div
                 className="text-sm font-black"
                 style={{ color: colores.text }}
@@ -1332,7 +1501,7 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
               </div>
             </div>
             <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
-              <div className="text-xs font-bold text-gray-600 mb-1">Fecha Fin</div>
+              <div className="text-xs font-bold text-gray-600 mb-1">Fecha Fin Sugerida</div>
               <div className="text-sm font-black text-gray-900">
                 {new Date(auditoria.fechaFin).toLocaleDateString('es-CO')}
               </div>
@@ -1344,7 +1513,7 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
               </div>
             </div>
             <div className="bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
-              <div className="text-xs font-bold text-gray-600 mb-1">Avance</div>
+              <div className="text-xs font-bold text-gray-600 mb-1">Avance Global</div>
               <div className="text-2xl font-black text-[#003DA5]">
                 {auditoria.avance}%
               </div>
