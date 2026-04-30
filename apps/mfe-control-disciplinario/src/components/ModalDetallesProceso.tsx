@@ -4088,18 +4088,22 @@ export function ModalDetallesProceso({
                     )}
 
                     {/* Conducta Disciplinaria */}
-                    {proceso.conductaSeleccionada && (
-                      <div className="rounded-xl border border-red-200 bg-red-50 p-3">
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <Gavel className="w-3.5 h-3.5 text-red-600" />
-                          <span className="text-[9px] font-bold text-red-600 uppercase tracking-widest">Presunta Conducta Disciplinaria</span>
-                        </div>
-                        <p className="text-xs font-bold text-gray-900">{proceso.conductaSeleccionada}</p>
-                        {proceso.conductaPersonalizada && (
-                          <p className="text-[11px] text-gray-600 mt-1 italic">{proceso.conductaPersonalizada}</p>
-                        )}
-                      </div>
-                    )}
+                     <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                       <div className="flex items-center gap-1.5 mb-1.5">
+                         <Gavel className="w-3.5 h-3.5 text-red-600" />
+                         <span className="text-[9px] font-bold text-red-600 uppercase tracking-widest">Presunta Conducta Disciplinaria</span>
+                       </div>
+                       {proceso.conductaSeleccionada ? (
+                         <>
+                           <p className="text-xs font-bold text-gray-900">{proceso.conductaSeleccionada}</p>
+                           {proceso.conductaPersonalizada && (
+                             <p className="text-[11px] text-gray-600 mt-1 italic">{proceso.conductaPersonalizada}</p>
+                           )}
+                         </>
+                       ) : (
+                         <p className="text-xs text-gray-500 italic">Sin conducta disciplinaria especificada</p>
+                       )}
+                     </div>
 
                     {/* Personas: Denunciante, Disciplinado, Profesional, Última Actuación */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -4116,54 +4120,66 @@ export function ModalDetallesProceso({
                         </div>
                         
                         <div className="space-y-4">
-                          {proceso.denunciados && proceso.denunciados.length > 0 ? (
-                            proceso.denunciados.map((d, idx) => (
-                              <div key={d.id || idx} className={`${idx > 0 ? 'pt-4 border-t border-orange-100' : ''}`}>
-                                <div className="flex items-center gap-2 mb-2">
-                                  {proceso.denunciados!.length > 1 && (
-                                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-orange-500">{idx + 1}</div>
-                                  )}
-                                  <p className="text-sm font-bold text-gray-900">{d.nombre}</p>
-                                </div>
-                                
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                                  <p><span className="font-bold text-gray-500">ID:</span> {d.identificacion || '—'}</p>
-                                  <p><span className="font-bold text-gray-500">Cargo:</span> {d.cargo || '—'}</p>
-                                  {d.dependencia && <p className="sm:col-span-2"><span className="font-bold text-gray-500">Dependencia:</span> {d.dependencia}</p>}
-                                  {d.lugarHechos && (
-                                    <p className="sm:col-span-2 flex items-start gap-1">
-                                      <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
-                                      <span>{d.lugarHechos}</span>
-                                    </p>
-                                  )}
-                                </div>
+                           {(() => {
+                             // Use proceso.denunciados if available, otherwise try noticia.denunciados, otherwise fallback to proceso.denunciado
+                             const denunciados = proceso.denunciados && proceso.denunciados.length > 0
+                               ? proceso.denunciados
+                               : (noticia?.denunciados && noticia.denunciados.length > 0
+                                   ? noticia.denunciados
+                                   : (proceso.denunciado ? [{
+                                       id: 'fallback-denunciado',
+                                       nombre: getNombre(proceso.denunciado),
+                                       identificacion: getId(proceso.denunciado),
+                                       cargo: cargo || '',
+                                       lugarHechos: '',
+                                       dependencia: proceso.dependencia || '',
+                                     }] : []));
 
-                                {d.apoderado && (
-                                  <div className="mt-3 p-2.5 rounded-lg bg-white border border-orange-100">
-                                    <div className="flex items-center gap-1.5 mb-1.5">
-                                      <Scale className="w-3 h-3 text-orange-600" />
-                                      <span className="text-[9px] font-bold text-orange-600 uppercase tracking-widest">Apoderado</span>
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-gray-700">
-                                      <p><span className="font-bold text-gray-500">Nombre:</span> {d.apoderado.nombre || '—'}</p>
-                                      <p><span className="font-bold text-gray-500">Cédula:</span> {d.apoderado.cedula || '—'}</p>
-                                      <p><span className="font-bold text-gray-500">Correo:</span> {getApoderadoCorreo(d.apoderado) || '—'}</p>
-                                      <p><span className="font-bold text-gray-500">Celular:</span> {getApoderadoCelular(d.apoderado) || '—'}</p>
-                                      {d.apoderado.direccion && <p className="sm:col-span-2"><span className="font-bold text-gray-500">Dirección:</span> {d.apoderado.direccion}</p>}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            ))
-                          ) : (
-                            <div>
-                              <p className="text-sm font-bold text-gray-900">{getNombre(proceso.denunciado)}</p>
-                              {getId(proceso.denunciado) && (
-                                <p className="text-xs text-gray-500 mt-0.5">{getId(proceso.denunciado)}</p>
-                              )}
-                              {cargo && <p className="text-xs text-gray-600 mt-1">{cargo}</p>}
-                            </div>
-                          )}
+                             return denunciados.length > 0 ? (
+                               denunciados.map((d, idx) => (
+                                 <div key={d.id || idx} className={`${idx > 0 ? 'pt-4 border-t border-orange-100' : ''}`}>
+                                   <div className="flex items-center gap-2 mb-2">
+                                     {denunciados.length > 1 && (
+                                       <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-orange-500">{idx + 1}</div>
+                                     )}
+                                     <p className="text-sm font-bold text-gray-900">{d.nombre}</p>
+                                   </div>
+
+                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                                     <p><span className="font-bold text-gray-500">ID:</span> {d.identificacion || '—'}</p>
+                                     <p><span className="font-bold text-gray-500">Cargo:</span> {d.cargo || '—'}</p>
+                                     {d.dependencia && <p className="sm:col-span-2"><span className="font-bold text-gray-500">Dependencia:</span> {d.dependencia}</p>}
+                                     {d.lugarHechos && (
+                                       <p className="sm:col-span-2 flex items-start gap-1">
+                                         <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
+                                         <span>{d.lugarHechos}</span>
+                                       </p>
+                                     )}
+                                   </div>
+
+                                   {d.apoderado && (
+                                     <div className="mt-3 p-2.5 rounded-lg bg-white border border-orange-100">
+                                       <div className="flex items-center gap-1.5 mb-1.5">
+                                         <Scale className="w-3 h-3 text-orange-600" />
+                                         <span className="text-[9px] font-bold text-orange-600 uppercase tracking-widest">Apoderado</span>
+                                       </div>
+                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-gray-700">
+                                         <p><span className="font-bold text-gray-500">Nombre:</span> {d.apoderado.nombre || '—'}</p>
+                                         <p><span className="font-bold text-gray-500">Cédula:</span> {d.apoderado.cedula || '—'}</p>
+                                         <p><span className="font-bold text-gray-500">Correo:</span> {getApoderadoCorreo(d.apoderado) || '—'}</p>
+                                         <p><span className="font-bold text-gray-500">Celular:</span> {getApoderadoCelular(d.apoderado) || '—'}</p>
+                                         {d.apoderado.direccion && <p className="sm:col-span-2"><span className="font-bold text-gray-500">Dirección:</span> {d.apoderado.direccion}</p>}
+                                       </div>
+                                     </div>
+                                   )}
+                                 </div>
+                               ))
+                             ) : (
+                               <div>
+                                 <p className="text-sm font-bold text-gray-900 text-gray-400 italic">Sin información de denunciado</p>
+                               </div>
+                             );
+                           })()}
                         </div>
                       </div>
                       
@@ -4180,66 +4196,82 @@ export function ModalDetallesProceso({
                         </div>
                         
                         <div className="space-y-4">
-                          {proceso.denunciantes && proceso.denunciantes.length > 0 ? (
-                            proceso.denunciantes.map((d, idx) => (
-                              <div key={d.id || idx} className={`${idx > 0 ? 'pt-4 border-t border-gray-100' : ''}`}>
-                                <div className="flex items-center gap-2 mb-2">
-                                  {proceso.denunciantes!.length > 1 && (
-                                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-blue-600">{idx + 1}</div>
-                                  )}
-                                  <p className="text-sm font-bold text-gray-900">{d.nombre}</p>
-                                </div>
-                                
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                                  <p><span className="font-bold text-gray-500">ID:</span> {d.identificacion || '—'}</p>
-                                  {d.tipo && <p><span className="font-bold text-gray-500 text-blue-600">{d.tipo}</span></p>}
-                                  {d.cargo && <p><span className="font-bold text-gray-500">Cargo:</span> {d.cargo}</p>}
-                                  {d.entidad && <p><span className="font-bold text-gray-500">Entidad:</span> {d.entidad}</p>}
-                                  {d.telefono && (
-                                    <p className="flex items-start gap-1">
-                                      <Phone className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
-                                      <span>{d.telefono}</span>
-                                    </p>
-                                  )}
-                                  {d.correo && (
-                                    <p className="flex items-start gap-1">
-                                      <Mail className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
-                                      <span className="truncate">{d.correo}</span>
-                                    </p>
-                                  )}
-                                  {d.direccion && (
-                                    <p className="sm:col-span-2 flex items-start gap-1">
-                                      <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
-                                      <span>{d.direccion}</span>
-                                    </p>
-                                  )}
-                                </div>
+                           {(() => {
+                             // Use proceso.denunciantes if available, otherwise try noticia.denunciantes, otherwise fallback to proceso.denunciante
+                             const denunciantes = proceso.denunciantes && proceso.denunciantes.length > 0
+                               ? proceso.denunciantes
+                               : (noticia?.denunciantes && noticia.denunciantes.length > 0
+                                   ? noticia.denunciantes
+                                   : (proceso.denunciante ? [{
+                                       id: 'fallback-denunciante',
+                                       nombre: getNombre(proceso.denunciante),
+                                       identificacion: getId(proceso.denunciante),
+                                       direccion: '',
+                                       telefono: '',
+                                       correo: '',
+                                       cargo: '',
+                                       entidad: '',
+                                       tipo: 'Denunciante' as const,
+                                     }] : []));
 
-                                {d.apoderado && (
-                                  <div className="mt-3 p-2.5 rounded-lg bg-blue-50 border border-blue-100">
-                                    <div className="flex items-center gap-1.5 mb-1.5">
-                                      <Scale className="w-3 h-3 text-blue-600" />
-                                      <span className="text-[9px] font-bold text-blue-600 uppercase tracking-widest">Apoderado</span>
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-gray-700">
-                                      <p><span className="font-bold text-gray-500">Nombre:</span> {d.apoderado.nombre || '—'}</p>
-                                      <p><span className="font-bold text-gray-500">Cédula:</span> {d.apoderado.cedula || '—'}</p>
-                                      <p><span className="font-bold text-gray-500">Correo:</span> {getApoderadoCorreo(d.apoderado) || '—'}</p>
-                                      <p><span className="font-bold text-gray-500">Celular:</span> {getApoderadoCelular(d.apoderado) || '—'}</p>
-                                      {d.apoderado.direccion && <p className="sm:col-span-2"><span className="font-bold text-gray-500">Dirección:</span> {d.apoderado.direccion}</p>}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            ))
-                          ) : (
-                            <div>
-                              <p className="text-sm font-bold text-gray-900">{getNombre(proceso.denunciante)}</p>
-                              {getId(proceso.denunciante) && (
-                                <p className="text-xs text-gray-500 mt-0.5">{getId(proceso.denunciante)}</p>
-                              )}
-                            </div>
-                          )}
+                             return denunciantes.length > 0 ? (
+                               denunciantes.map((d, idx) => (
+                                 <div key={d.id || idx} className={`${idx > 0 ? 'pt-4 border-t border-gray-100' : ''}`}>
+                                   <div className="flex items-center gap-2 mb-2">
+                                     {denunciantes.length > 1 && (
+                                       <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-blue-600">{idx + 1}</div>
+                                     )}
+                                     <p className="text-sm font-bold text-gray-900">{d.nombre}</p>
+                                   </div>
+
+                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                                     <p><span className="font-bold text-gray-500">ID:</span> {d.identificacion || '—'}</p>
+                                     {d.tipo && <p><span className="font-bold text-gray-500 text-blue-600">{d.tipo}</span></p>}
+                                     {d.cargo && <p><span className="font-bold text-gray-500">Cargo:</span> {d.cargo}</p>}
+                                     {d.entidad && <p><span className="font-bold text-gray-500">Entidad:</span> {d.entidad}</p>}
+                                     {d.telefono && (
+                                       <p className="flex items-start gap-1">
+                                         <Phone className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
+                                         <span>{d.telefono}</span>
+                                       </p>
+                                     )}
+                                     {d.correo && (
+                                       <p className="flex items-start gap-1">
+                                         <Mail className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
+                                         <span className="truncate">{d.correo}</span>
+                                       </p>
+                                     )}
+                                     {d.direccion && (
+                                       <p className="sm:col-span-2 flex items-start gap-1">
+                                         <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
+                                         <span>{d.direccion}</span>
+                                       </p>
+                                     )}
+                                   </div>
+
+                                   {d.apoderado && (
+                                     <div className="mt-3 p-2.5 rounded-lg bg-blue-50 border border-blue-100">
+                                       <div className="flex items-center gap-1.5 mb-1.5">
+                                         <Scale className="w-3 h-3 text-blue-600" />
+                                         <span className="text-[9px] font-bold text-blue-600 uppercase tracking-widest">Apoderado</span>
+                                       </div>
+                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-gray-700">
+                                         <p><span className="font-bold text-gray-500">Nombre:</span> {d.apoderado.nombre || '—'}</p>
+                                         <p><span className="font-bold text-gray-500">Cédula:</span> {d.apoderado.cedula || '—'}</p>
+                                         <p><span className="font-bold text-gray-500">Correo:</span> {getApoderadoCorreo(d.apoderado) || '—'}</p>
+                                         <p><span className="font-bold text-gray-500">Celular:</span> {getApoderadoCelular(d.apoderado) || '—'}</p>
+                                         {d.apoderado.direccion && <p className="sm:col-span-2"><span className="font-bold text-gray-500">Dirección:</span> {d.apoderado.direccion}</p>}
+                                       </div>
+                                     </div>
+                                   )}
+                                 </div>
+                               ))
+                             ) : (
+                               <div>
+                                 <p className="text-sm font-bold text-gray-900 text-gray-400 italic">Sin información de denunciante</p>
+                               </div>
+                             );
+                           })()}
                         </div>
                       </div>
 

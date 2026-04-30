@@ -26,6 +26,7 @@ export interface DisciplinaryNews {
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
+    conducta?: string;
     conductas?: string[];
     adjuntos?: string[];
     denunciante?: {
@@ -422,10 +423,14 @@ export interface CreateNewsDto {
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
+    conducta: string;
     conductas?: string[];
     adjuntos?: string[];
     denunciante: any;
     disciplinable: any;
+    denunciantes?: any[];
+    disciplinables?: any[];
+    denunciados?: any[];
     radicadorId?: string;
 }
 
@@ -518,12 +523,22 @@ class DisciplinaryService {
     // --- NOTICIAS ---
 
     async radicarNoticia(data: CreateNewsDto, files?: File[]): Promise<DisciplinaryNews> {
+        // ✅ DEBUG: Ver data recibida
+        
+        console.log('🔍 data.conducta:', data.conducta, 'tipo:', typeof data.conducta);
+
         const formData = new FormData();
         // Solo enviar campos que acepta el DTO del backend
         formData.append('origen', data.origen);
         formData.append('territorial', data.territorial);
         formData.append('dependenciaDenunciado', data.dependenciaDenunciado);
         formData.append('hechos', data.hechos);
+        
+        formData.append('conducta', data.conducta);
+        
+        if (data.conductas && data.conductas.length > 0) {
+            formData.append('conductas', JSON.stringify(data.conductas));
+        }
         formData.append('denunciante', JSON.stringify(data.denunciante));
         formData.append('disciplinable', JSON.stringify(data.disciplinable));
         if (data.fechaHechos) {
@@ -534,6 +549,15 @@ class DisciplinaryService {
         }
         if (data.radicadorId) {
             formData.append('radicadorId', data.radicadorId);
+        }
+        if (data.denunciantes) {
+            formData.append('denunciantes', JSON.stringify(data.denunciantes));
+        }
+        if (data.disciplinables) {
+            formData.append('disciplinables', JSON.stringify(data.disciplinables));
+        }
+        if (data.denunciados) {
+            formData.append('denunciados', JSON.stringify(data.denunciados));
         }
 
         // Archivos con el campo correcto que espera el backend
@@ -553,6 +577,8 @@ class DisciplinaryService {
         hechos?: string;
         denunciante?: any;
         disciplinable?: any;
+        denunciantes?: any[];
+        disciplinables?: any[];
         conductas?: string[];
         fechaHechos?: string | null;
         fechaQueja?: string;

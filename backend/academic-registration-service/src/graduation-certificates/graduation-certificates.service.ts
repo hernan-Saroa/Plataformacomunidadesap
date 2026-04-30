@@ -651,7 +651,7 @@ export class GraduationCertificatesService {
         idNumber,
         100,
       );
-    console.log('Graduados MySQL', mysqlGraduates);
+    
     if (!mysqlGraduates.length) {
       return {
         enabled: true,
@@ -664,7 +664,6 @@ export class GraduationCertificatesService {
     }
 
     const localGraduates = await this.findActiveGraduatesByIdNumber(idNumber);
-    console.log('localGraduates', localGraduates);
     const usedGraduateIds = new Set<string>();
     const result: OracleGraduateSyncResult = {
       enabled: true,
@@ -865,7 +864,6 @@ export class GraduationCertificatesService {
     const gradDate = graduationDate
       ? this.normalizeDateString(graduationDate)
       : null;
-    console.log('Buscar Coincidencias Graduado', idNumber, graduationDate, lastName);
     if (graduationDate && !gradDate) {
       throw new BadRequestException('Fecha de graduación inválida');
     }

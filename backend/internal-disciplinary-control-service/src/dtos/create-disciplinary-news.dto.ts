@@ -104,6 +104,9 @@ export class CreateDisciplinaryNewsDto {
   @IsString()
   territorial: string;
 
+  @IsString()
+  conducta?: string;
+
   @IsOptional()
   @IsUUID()
   radicadorId?: string;
@@ -129,13 +132,16 @@ export class CreateDisciplinaryNewsDto {
   })
   disciplinable: PersonInfoDto | PersonInfoDto[];
 
-  @IsString()
-  hechos: string;
+    @IsString()
+    hechos: string;
 
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  conductas?: string[];
+  
+    
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    conductas?: string[];
 
   @IsOptional()
   @IsArray()
@@ -164,9 +170,10 @@ export class DisciplinaryNewsResponseDto {
   dependenciaDenunciado: string;
   denunciante: object;
   disciplinable: object;
-  hechos: string;
-  conductas?: string[];
-  estado: string;
+   hechos: string;
+   conducta?: string;
+   conductas?: string[];
+   estado: string;
   adjuntos: string[];
   radicadorId?: string;
   updatedAt: Date;

@@ -3,11 +3,12 @@
  * DISEÑO LIMPIO ESAP 2025
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Plus, User, Building2, DollarSign, Calendar, FileText, CheckCircle, AlertTriangle, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from '../modulos/ModalHeaderClean';
+import { authService } from '../../../../services/api/authService';
 
 interface ModalCrearProcesoCoactivoProps {
   isOpen: boolean;
@@ -44,6 +45,13 @@ export function ModalCrearProcesoCoactivo({
   const [tipoInteresAplicable, setTipoInteresAplicable] = useState('');
   const [observaciones, setObservaciones] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [abogados, setAbogados] = useState<{ id: string; nombre: string }[]>([]);
+
+  useEffect(() => {
+    authService.getAbogadosRolResuelve()
+      .then(data => setAbogados((data || []).map((a: any) => ({ id: a.id, nombre: a.nombre ?? a.nombreCompleto ?? '' }))))
+      .catch(() => {});
+  }, []);
 
   const agregarObligacion = () => {
     setObligaciones([...obligaciones, { concepto: '', valor: '', periodo: '' }]);
@@ -183,13 +191,6 @@ export function ModalCrearProcesoCoactivo({
   };
 
   if (!isOpen) return null;
-
-  const responsablesDisponibles = [
-    'Dra. María Fernández',
-    'Dr. Carlos Pérez',
-    'Dra. Ana Rodríguez',
-    'Dr. Luis Martínez'
-  ];
 
   return (
     <AnimatePresence>
@@ -533,8 +534,8 @@ export function ModalCrearProcesoCoactivo({
                         required
                       >
                         <option value="">Seleccione un responsable</option>
-                        {responsablesDisponibles.map(resp => (
-                          <option key={resp} value={resp}>{resp}</option>
+                        {abogados.map(a => (
+                          <option key={a.id} value={a.nombre}>{a.nombre}</option>
                         ))}
                       </select>
                     </div>

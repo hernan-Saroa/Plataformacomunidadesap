@@ -254,21 +254,37 @@ class AuthService {
       { status: 'active', limit: 1000 }
     );
     const users = Array.isArray(response) ? response : (response?.data ?? []);
-    return users
-      .filter((u: any) => {
-        const roles: any[] = u.user?.roles ?? u.roles ?? [];
-        return roles.some((r: any) => {
-          const code = (r.code ?? '').toLowerCase();
-          const name = (r.name ?? '').toLowerCase();
-          return code.includes('resuelve') || name.includes('resuelve');
-        });
-      })
-      .map((u: any) => ({
+    console.log('[DEBUG getAbogadosRolResuelve] primer usuario raw:', users[0]);
+    const filtered = users.filter((u: any) => {
+      // Buscar roles en todas las ubicaciones posibles de la respuesta
+      const roles: any[] = u.user?.roles ?? u.roles ?? u.person?.roles ?? [];
+      const hasResuelve = roles.some((r: any) => {
+        const code = (r.code ?? '').toUpperCase();
+        const name = (r.name ?? '').toLowerCase();
+        return code === 'RESUELVE_GESTION_LEGAL' || name.includes('resuelve');
+      });
+      const hasExcludedRole = roles.some((r: any) => {
+        const code = (r.code ?? '').toUpperCase();
+        const name = (r.name ?? '').toLowerCase();
+        return code === 'SECRETARIADO_GESTION_LEGAL' || name.includes('secretariado') ||
+               code === 'MONITOREO_GESTION_LEGAL' || name.includes('monitoreo');
+      });
+      return hasResuelve && !hasExcludedRole;
+    });
+    console.log('[DEBUG getAbogadosRolResuelve] total usuarios:', users.length, '→ filtrados (solo RESUELVE):', filtered.length);
+    return filtered.map((u: any) => {
+      const nombre = u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim();
+      const mapped = {
         id: u.user?.id_user ?? u.id_user ?? u.id,
-        nombreCompleto: u.full_name ?? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim(),
-        nombre: u.full_name ?? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim(),
-        email: u.email ?? '',
-      }));
+        rawId: u.id,           // ID a nivel persona/perfil (puede diferir del auth UUID)
+        authId: u.user?.id_user ?? u.id_user ?? u.id, // alias explícito
+        nombreCompleto: nombre,
+        nombre,
+        email: u.email ?? u.person?.email ?? '',
+      };
+      console.log('[DEBUG abogado mapped]', mapped.id, '| rawId:', mapped.rawId, '|', mapped.nombre);
+      return mapped;
+    });
   }
 }
 

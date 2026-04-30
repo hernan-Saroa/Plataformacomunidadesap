@@ -257,18 +257,25 @@ class AuthService {
     const users = Array.isArray(response) ? response : (response?.data ?? []);
     return users
       .filter((u: any) => {
-        const roles: any[] = u.user?.roles ?? u.roles ?? [];
-        return roles.some((r: any) => {
-          const code = (r.code ?? '').toLowerCase();
+        const roles: any[] = u.user?.roles ?? u.roles ?? u.person?.roles ?? [];
+        const hasResuelve = roles.some((r: any) => {
+          const code = (r.code ?? '').toUpperCase();
           const name = (r.name ?? '').toLowerCase();
-          return code.includes('resuelve') || name.includes('resuelve');
+          return code === 'RESUELVE_GESTION_LEGAL' || name.includes('resuelve');
         });
+        const hasExcludedRole = roles.some((r: any) => {
+          const code = (r.code ?? '').toUpperCase();
+          const name = (r.name ?? '').toLowerCase();
+          return code === 'SECRETARIADO_GESTION_LEGAL' || name.includes('secretariado') ||
+                 code === 'MONITOREO_GESTION_LEGAL' || name.includes('monitoreo');
+        });
+        return hasResuelve && !hasExcludedRole;
       })
       .map((u: any) => ({
         id: u.user?.id_user ?? u.id_user ?? u.id,
-        nombreCompleto: u.full_name ?? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim(),
-        nombre: u.full_name ?? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim(),
-        email: u.email ?? '',
+        nombreCompleto: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+        nombre: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+        email: u.email ?? u.person?.email ?? '',
       }));
   }
 }

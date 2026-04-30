@@ -45,7 +45,7 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 // Importar isotipo oficial de ESAP (OPTIMIZADO: SVG en lugar de PNG)
 import { IsotipoESAP } from '../assets/ESAPLogoSVG';
 
-type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta';
+type ModuleType = 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -788,29 +788,13 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                       transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                       className="overflow-hidden"
                     >
-                      {/* Usuarios - Gestión Simplificada CON SUBMENÚ */}
-                      {renderMenuWithSubmenu(
-                        'users-management-menu',
+                      {/* Gestión de usuarios */}
+                      {renderMenuItem(
                         'users-management',
-                        <Users className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                        <Users className="w-4 h-4" />,
                         'Personas',
-                        '2 submódulos',
-                        [
-                          {
-                            module: 'users-management',
-                            icon: <Users className="w-4 h-4" />,
-                            label: 'Administración de Perfiles',
-                            subtitle: 'Gestión de usuarios'
-                          },
-                          {
-                            module: 'carpeta-digital',
-                            icon: <FolderOpen className="w-4 h-4" />,
-                            label: 'Carpeta Digital',
-                            subtitle: 'Documentos del usuario'
-                          }
-                        ]
+                        'Gestión de usuarios'
                       )}
-
                       {/* Banco de Docentes PTA */}
                       {renderMenuItem(
                         'banco-docentes-pta',
@@ -818,7 +802,13 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                         'Banco de Docentes',
                         'Gestión y carga masiva'
                       )}
-
+                      {/* Documentos del usuario */}
+                      {renderMenuItem(
+                        'carpeta-digital',
+                        <FolderOpen className="w-4 h-4" />,
+                        'Carpeta Digital',
+                        'Documentos del usuario'
+                      )}
                       {/* Estructura Organizacional - NUEVO MÓDULO */}
                       {renderMenuItem(
                         'estructura-organizacional',
@@ -1063,35 +1053,26 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                   transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                   className="overflow-hidden"
                 >
-                  {/* Usuarios - Gestión Simplificada CON SUBMENÚ */}
-                  {renderMenuWithSubmenu(
-                    'users-management-menu',
+                  {/* Gestión de usuarios */}
+                  {renderMenuItem(
                     'users-management',
-                    <Users className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
+                    <Users className="w-4 h-4" />,
                     'Personas',
-                    '2 submódulos',
-                    [
-                      {
-                        module: 'users-management',
-                        icon: <Users className="w-4 h-4" />,
-                        label: 'Administración de Perfiles',
-                        subtitle: 'Gestión de usuarios'
-                      },
-                      {
-                        module: 'carpeta-digital',
-                        icon: <FolderOpen className="w-4 h-4" />,
-                        label: 'Carpeta Digital',
-                        subtitle: 'Documentos del usuario'
-                      }
-                    ]
+                    'Gestión de usuarios'
                   )}
-
                   {/* Banco de Docentes PTA */}
                   {renderMenuItem(
                     'banco-docentes-pta',
                     <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />,
                     'Banco de Docentes',
                     'Gestión y carga masiva'
+                  )}
+                  {/* Documentos del usuario */}
+                  {renderMenuItem(
+                    'carpeta-digital',
+                    <FolderOpen className="w-4 h-4" />,
+                    'Carpeta Digital',
+                    'Documentos del usuario'
                   )}
 
                   {/* Estructura Organizacional - NUEVO MÓDULO */}

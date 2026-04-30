@@ -410,6 +410,7 @@ export interface CreateNewsDto {
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
+    conducta: string;
     conductas?: string[];
     adjuntos?: string[];
     denunciante: any;
@@ -514,6 +515,7 @@ class DisciplinaryService {
         formData.append('hechos', data.hechos);
         formData.append('denunciante', JSON.stringify(data.denunciante));
         formData.append('disciplinable', JSON.stringify(data.disciplinable));
+        formData.append('conducta', data.conducta);
         if (data.fechaHechos) {
             formData.append('fechaHechos', data.fechaHechos);
         }
