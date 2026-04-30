@@ -19,7 +19,7 @@ import {
   MapPin, Info, ExternalLink, RefreshCw, Paperclip, UserCheck,
   List, Columns3, Menu, Edit2, FileSignature, History,
   ChevronsDown, ChevronsUp, ChevronUp, ChevronLeft, ChevronRight, Zap, Link2, UserCog, MessageCircle,
-  ClipboardList, FileEdit, Loader2
+  ClipboardList, FileEdit, Loader2, CornerDownLeft
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -414,7 +414,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             <div className="space-y-2">
               {noticia.denunciante && noticia.denunciante.length > 0 ? (
                 noticia.denunciante.map((d, idx) => (
-                  <div key={d.id || idx} className="flex items-start gap-2.5">
+                  <div key={idx} className="flex items-start gap-2.5">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
                       {idx === 0 ? 'DTE' : `DTE ${idx + 1}`}
                     </span>
@@ -455,7 +455,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             <div className="space-y-2 pt-1 border-t border-gray-50">
               {noticia.denunciado && noticia.denunciado.length > 0 ? (
                 noticia.denunciado.map((d, idx) => (
-                  <div key={d.id || idx} className="flex items-start gap-2.5">
+                  <div key={idx} className="flex items-start gap-2.5">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
                       {idx === 0 ? 'DDO' : `DDO ${idx + 1}`}
                     </span>
@@ -791,7 +791,7 @@ function TarjetaProceso({
             <div className="space-y-2">
               {proceso.denunciante && proceso.denunciante.length > 0 ? (
                 proceso.denunciante.map((d, idx) => (
-                  <div key={d.id || idx} className="flex items-start gap-2.5">
+                  <div key={idx} className="flex items-start gap-2.5">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
                       {idx === 0 ? 'DTE' : `DTE ${idx + 1}`}
                     </span>
@@ -839,7 +839,7 @@ function TarjetaProceso({
             <div className="space-y-2 pt-1 border-t border-gray-50">
               {proceso.denunciado && proceso.denunciado.length > 0 ? (
                 proceso.denunciado.map((d, idx) => (
-                  <div key={d.id || idx} className="flex items-start gap-2.5">
+                  <div key={idx} className="flex items-start gap-2.5">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
                       {idx === 0 ? 'DDO' : `DDO ${idx + 1}`}
                     </span>
@@ -1294,7 +1294,7 @@ function VistaLista({
                       {isNoticia ? (
                         noticia!.denunciante && noticia!.denunciante.length > 0 ? (
                           noticia!.denunciante.map((d, idx) => (
-                            <div key={d.id || idx} className="flex items-center gap-2">
+                            <div key={idx} className="flex items-center gap-2">
                               {noticia!.denunciante!.length > 1 && (
                                 <span className="text-[10px] font-bold text-gray-400 min-w-[20px]">DTE {idx + 1}:</span>
                               )}
@@ -1321,7 +1321,7 @@ function VistaLista({
                       ) : (
                         proceso!.denunciante && proceso!.denunciante.length > 0 ? (
                           proceso!.denunciante.map((d, idx) => (
-                            <div key={d.id || idx} className="flex items-center gap-2">
+                            <div key={idx} className="flex items-center gap-2">
                               {proceso!.denunciante!.length > 1 && (
                                 <span className="text-[10px] font-bold text-gray-400 min-w-[20px]">DTE {idx + 1}:</span>
                               )}
@@ -1356,7 +1356,7 @@ function VistaLista({
                       {isNoticia ? (
                         noticia!.denunciado && noticia!.denunciado.length > 0 ? (
                           noticia!.denunciado.map((d, idx) => (
-                            <div key={d.id || idx} className="flex items-center gap-2">
+                            <div key={idx} className="flex items-center gap-2">
                               {noticia!.denunciado!.length > 1 && (
                                 <span className="text-[10px] font-bold text-gray-400 min-w-[20px]">DDO {idx + 1}:</span>
                               )}
@@ -1386,7 +1386,7 @@ function VistaLista({
                       ) : (
                         proceso!.denunciado && proceso!.denunciado.length > 0 ? (
                           proceso!.denunciado.map((d, idx) => (
-                            <div key={d.id || idx} className="flex items-center gap-2">
+                            <div key={idx} className="flex items-center gap-2">
                               {proceso!.denunciado!.length > 1 && (
                                 <span className="text-[10px] font-bold text-gray-400 min-w-[20px]">DDO {idx + 1}:</span>
                               )}
