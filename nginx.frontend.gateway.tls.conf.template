@@ -2,11 +2,13 @@ server {
     listen 80;
     server_name ${TLS_SERVER_NAME};
     server_tokens off;
+    add_header X-Content-Type-Options "nosniff" always;
 
     location = /health {
         access_log off;
         return 200 "healthy\n";
         add_header Content-Type text/plain;
+        add_header X-Content-Type-Options "nosniff" always;
     }
 
     location ^~ /.well-known/acme-challenge/ {
@@ -50,6 +52,7 @@ server {
         expires 30d;
         add_header Cache-Control "public";
         add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
+        add_header X-Content-Type-Options "nosniff" always;
     }
 
     location ^~ /services/ {
@@ -222,5 +225,6 @@ server {
         return 200 "healthy\n";
         add_header Content-Type text/plain;
         add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
+        add_header X-Content-Type-Options "nosniff" always;
     }
 }
