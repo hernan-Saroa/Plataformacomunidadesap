@@ -23,6 +23,7 @@ server {
     server_name ${TLS_SERVER_NAME};
     root /usr/share/nginx/html;
     index index.html;
+    set $esap_csp "default-src 'self'; base-uri 'self'; frame-ancestors 'self'; object-src 'self' blob: https:; script-src 'self'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: ws: wss:; frame-src 'self' blob: https:; worker-src 'self' blob: https://cdnjs.cloudflare.com; media-src 'self' data: blob: https:; form-action 'self'; manifest-src 'self';";
 
     ssl_certificate ${TLS_CERT_PATH};
     ssl_certificate_key ${TLS_KEY_PATH};
@@ -79,6 +80,7 @@ server {
     location = /index.html {
         expires -1;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Content-Security-Policy $esap_csp always;
     }
 
     location ~ ^/remotes/[^/]+/assets/remoteEntry\.js$ {
@@ -90,6 +92,7 @@ server {
     location ~ ^/remotes/[^/]+/?$ {
         expires -1;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Content-Security-Policy $esap_csp always;
         try_files $uri/index.html =404;
     }
 
@@ -102,6 +105,7 @@ server {
     location / {
         expires -1;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Content-Security-Policy $esap_csp always;
         try_files $uri $uri/ /index.html;
     }
 

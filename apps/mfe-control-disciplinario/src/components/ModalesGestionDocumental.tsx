@@ -116,7 +116,7 @@ const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => 
 
 const descargarArchivo = async (url: string, nombre: string) => {
   try {
-    const token = localStorage.getItem('esap_access_token');
+    const token = sessionStorage.getItem('esap_access_token');
     const headers: HeadersInit = {};
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
@@ -371,7 +371,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('esap_access_token')}`
+          'Authorization': `Bearer ${sessionStorage.getItem('esap_access_token')}`
         },
         body: JSON.stringify({
           plantillaId: plantillaSeleccionada.id,
@@ -389,7 +389,7 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('esap_access_token')}`
+              'Authorization': `Bearer ${sessionStorage.getItem('esap_access_token')}`
             },
             body: JSON.stringify({ contenidoHtml })
           });
@@ -2144,7 +2144,7 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
 
                         // Para todos los demás formatos: fetch con token y abrir blob en nueva pestaña
                         const viewUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, true, evidencia.archivoNombre);
-                        const token = localStorage.getItem('esap_access_token');
+                        const token = sessionStorage.getItem('esap_access_token');
                         const headers: HeadersInit = {};
                         if (token) headers['Authorization'] = `Bearer ${token}`;
                         // Abrir ventana sincrónicamente para evitar bloqueo de popups

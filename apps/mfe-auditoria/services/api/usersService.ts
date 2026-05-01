@@ -118,7 +118,7 @@ class UsersService {
       `${apiClient['baseURL']}${API_ENDPOINTS.USERS.EXPORT}?${new URLSearchParams(params as any)}`,
       {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('esap_auth_token')}`,
+          Authorization: `Bearer ${sessionStorage.getItem('esap_auth_token')}`,
         },
       }
     );

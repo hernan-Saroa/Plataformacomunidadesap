@@ -650,7 +650,7 @@ export class ApiClient {
     this.isRefreshing = true;
 
     try {
-      const refreshToken = localStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+      const refreshToken = sessionStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
 
       if (!refreshToken) {
         // Hacer logout automático cuando no hay refresh token
@@ -686,8 +686,8 @@ export class ApiClient {
       }
 
       // Guardar nuevo token
-      localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, newToken);
-      localStorage.setItem('esap_access_token', newToken);
+      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, newToken);
+      sessionStorage.setItem('esap_access_token', newToken);
 
       // Notificar a todos los subscribers
       this.refreshSubscribers.forEach((callback) => callback(newToken));
@@ -707,9 +707,9 @@ export class ApiClient {
    * Logout y limpiar datos
    */
   private handleLogout(): void {
-    localStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    localStorage.removeItem('esap_access_token');
-    localStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+    sessionStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    sessionStorage.removeItem('esap_access_token');
+    sessionStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
     localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
 
     toast.error('Sesión expirada', {

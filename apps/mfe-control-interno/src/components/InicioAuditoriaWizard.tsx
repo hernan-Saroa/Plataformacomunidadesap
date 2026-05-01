@@ -312,7 +312,7 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
       
       // Usar endpoint del servidor en lugar de archivo estático
       const apiBaseUrl = getApiBaseUrl();
-      const token = localStorage.getItem('esap_auth_token');
+      const token = sessionStorage.getItem('esap_auth_token');
       const url = `${apiBaseUrl}/templates/EM-FO-010`;
       
       fetch(url, {
@@ -361,7 +361,7 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
       
       // Usar endpoint del servidor en lugar de archivo estático
       const apiBaseUrl = getApiBaseUrl();
-      const token = localStorage.getItem('esap_auth_token');
+      const token = sessionStorage.getItem('esap_auth_token');
       const url = `${apiBaseUrl}/templates/EM-FO-009`;
       
       fetch(url, {

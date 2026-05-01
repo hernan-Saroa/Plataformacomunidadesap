@@ -216,15 +216,15 @@ class AuthService {
   // ==========================================================================
 
   private saveTokens(accessToken: string, refreshToken: string): void {
-    localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
+    sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
     // Compatibilidad con cliente legacy que usa otra clave.
-    localStorage.setItem('esap_access_token', accessToken);
-    localStorage.setItem(config.STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+    sessionStorage.setItem('esap_access_token', accessToken);
+    sessionStorage.setItem(config.STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
   }
 
   private saveAccessToken(accessToken: string): void {
-    localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
-    localStorage.setItem('esap_access_token', accessToken);
+    sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
+    sessionStorage.setItem('esap_access_token', accessToken);
   }
 
   private saveUserData(user: AuthUser): void {
@@ -233,19 +233,19 @@ class AuthService {
 
   private getAccessToken(): string | null {
     return (
-      localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
-      localStorage.getItem('esap_access_token')
+      sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
+      sessionStorage.getItem('esap_access_token')
     );
   }
 
   private getRefreshToken(): string | null {
-    return localStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+    return sessionStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
   }
 
   private clearAuthData(): void {
-    localStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    localStorage.removeItem('esap_access_token');
-    localStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+    sessionStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    sessionStorage.removeItem('esap_access_token');
+    sessionStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
     localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     apiClient.clearCache();
   }
@@ -267,21 +267,29 @@ class AuthService {
       { status: 'active', limit: 1000 }
     );
     const users = Array.isArray(response) ? response : (response?.data ?? []);
-    return users
-      .filter((u: any) => {
-        const roles: any[] = u.user?.roles ?? u.roles ?? [];
-        return roles.some((r: any) => {
-          const code = (r.code ?? '').toLowerCase();
-          const name = (r.name ?? '').toLowerCase();
-          return code.includes('resuelve') || name.includes('resuelve');
-        });
-      })
-      .map((u: any) => ({
-        id: u.user?.id_user ?? u.id_user ?? u.id,
-        nombreCompleto: u.full_name ?? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim(),
-        nombre: u.full_name ?? `${u.first_name ?? ''} ${u.last_name ?? ''}`.trim(),
-        email: u.email ?? '',
-      }));
+    console.log('[DEBUG getAbogadosRolResuelve] primer usuario raw:', users[0]);
+    const filtered = users.filter((u: any) => {
+      const roles: any[] = u.user?.roles ?? u.roles ?? u.person?.roles ?? [];
+      const hasResuelve = roles.some((r: any) => {
+        const code = (r.code ?? '').toUpperCase();
+        const name = (r.name ?? '').toLowerCase();
+        return code === 'RESUELVE_GESTION_LEGAL' || name.includes('resuelve');
+      });
+      const hasExcludedRole = roles.some((r: any) => {
+        const code = (r.code ?? '').toUpperCase();
+        const name = (r.name ?? '').toLowerCase();
+        return code === 'SECRETARIADO_GESTION_LEGAL' || name.includes('secretariado') ||
+               code === 'MONITOREO_GESTION_LEGAL' || name.includes('monitoreo');
+      });
+      return hasResuelve && !hasExcludedRole;
+    });
+    console.log('[DEBUG getAbogadosRolResuelve] total:', users.length, '→ filtrados:', filtered.length);
+    return filtered.map((u: any) => ({
+      id: u.user?.id_user ?? u.id_user ?? u.id,
+      nombreCompleto: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+      nombre: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+      email: u.email ?? u.person?.email ?? '',
+    }));
   }
 }
 

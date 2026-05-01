@@ -145,7 +145,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
       const url = `${baseUrl}${prefix}/evidencias/expediente/${expedienteId}/download-zip`;
 
       // Obtener token para autenticación
-      const token = localStorage.getItem('esap_auth_token');
+      const token = sessionStorage.getItem('esap_auth_token');
       const headers: HeadersInit = {};
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
@@ -244,7 +244,7 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
     toast.loading('⏳ Descargando...', { id: 'download-evidencia' });
     try {
       // Obtener token para autenticación
-      const token = localStorage.getItem('esap_auth_token');
+      const token = sessionStorage.getItem('esap_auth_token');
       const headers: HeadersInit = {};
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;

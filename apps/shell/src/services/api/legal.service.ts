@@ -1601,7 +1601,7 @@ export class ProcesosCoactivosService {
             url = `${baseUrl}${SERVICE_PREFIX}/procesos-coactivos/pagos/soporte/${filename}`;
         }
 
-        const token = localStorage.getItem('esap_auth_token');
+        const token = sessionStorage.getItem('esap_auth_token');
         const response = await fetch(url, {
             headers: token ? { Authorization: `Bearer ${token}` } : {},
         });

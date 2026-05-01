@@ -373,7 +373,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
     setViewingFile(archivo);
     setFileBlobUrl(null);
     try {
-      const token = localStorage.getItem('esap_access_token');
+      const token = sessionStorage.getItem('esap_access_token');
       const requestUrl = archivo.url.includes('?') ? `${archivo.url}&view=true` : `${archivo.url}?view=true`;
       const response = await fetch(requestUrl, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},

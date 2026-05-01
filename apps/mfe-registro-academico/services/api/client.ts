@@ -50,30 +50,30 @@ class APIClient {
    * Obtener token de acceso del localStorage
    */
   private getAccessToken(): string | null {
-    return localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    return sessionStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
   }
 
   /**
    * Obtener refresh token del localStorage
    */
   private getRefreshToken(): string | null {
-    return localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+    return sessionStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
   }
 
   /**
    * Guardar tokens en localStorage
    */
   private setTokens(accessToken: string, refreshToken: string): void {
-    localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
-    localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+    sessionStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+    sessionStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
   }
 
   /**
    * Limpiar tokens del localStorage
    */
   private clearTokens(): void {
-    localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+    sessionStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+    sessionStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
     localStorage.removeItem(STORAGE_KEYS.USER_DATA);
     localStorage.removeItem(STORAGE_KEYS.SISTEMA_ACTUAL);
   }

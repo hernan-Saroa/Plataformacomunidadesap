@@ -121,7 +121,7 @@ async function apiRequest<T>(
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
   try {
-    const token = localStorage.getItem('esap_auth_token');
+    const token = sessionStorage.getItem('esap_auth_token');
     
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       headers: {

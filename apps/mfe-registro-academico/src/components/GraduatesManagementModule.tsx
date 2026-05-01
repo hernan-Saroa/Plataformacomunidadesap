@@ -650,13 +650,13 @@ export function GraduatesManagementModule() {
       const response = await fetch(fileUrl, {
         method: 'GET',
         headers: (
-          localStorage.getItem('esap_auth_token') ||
-          localStorage.getItem('esap_access_token')
+          sessionStorage.getItem('esap_auth_token') ||
+          sessionStorage.getItem('esap_access_token')
         )
           ? {
               Authorization: `Bearer ${
-                localStorage.getItem('esap_auth_token') ||
-                localStorage.getItem('esap_access_token')
+                sessionStorage.getItem('esap_auth_token') ||
+                sessionStorage.getItem('esap_access_token')
               }`,
             }
           : undefined,

@@ -452,7 +452,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       toast.loading('⬇️ Iniciando descarga...', { id: 'descarga-doc' });
 
       // Obtener token para autenticación
-      const token = localStorage.getItem('esap_auth_token');
+      const token = sessionStorage.getItem('esap_auth_token');
       const headers: HeadersInit = {};
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
@@ -522,7 +522,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       const url = legalService.getDocumentosDownloadZipUrl(id);
 
       // Obtener token para autenticación
-      const token = localStorage.getItem('esap_auth_token');
+      const token = sessionStorage.getItem('esap_auth_token');
       const headers: HeadersInit = {};
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;

@@ -3,7 +3,7 @@
  */
 
 export function debugAuthToken() {
-  const token = localStorage.getItem('esap_auth_token');
+  const token = sessionStorage.getItem('esap_auth_token');
   
   if (!token) {
     console.warn('⚠️ No hay token de autenticación');
