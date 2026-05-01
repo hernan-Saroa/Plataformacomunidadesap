@@ -53,6 +53,7 @@ server {
         add_header Content-Type text/plain;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
         add_header X-ESAP-Frontend-Gateway "prebuilt" always;
+        add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
     }
 
     location ^~ /services/certificados/uploads/ {
@@ -60,6 +61,7 @@ server {
         access_log off;
         expires 30d;
         add_header Cache-Control "public";
+        add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
     }
 
     location ^~ /services/ {
@@ -85,11 +87,13 @@ server {
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
         add_header X-Frame-Options "SAMEORIGIN" always;
         add_header Content-Security-Policy $esap_csp always;
+        add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
     }
 
     location ~ ^/remotes/[^/]+/assets/remoteEntry\.js$ {
         expires -1;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
         try_files $uri =404;
     }
 
@@ -98,12 +102,14 @@ server {
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
         add_header X-Frame-Options "SAMEORIGIN" always;
         add_header Content-Security-Policy $esap_csp always;
+        add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
         try_files $uri/index.html =404;
     }
 
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
         expires 1y;
         add_header Cache-Control "public, immutable";
+        add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
         try_files $uri =404;
     }
 
@@ -112,6 +118,7 @@ server {
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
         add_header X-Frame-Options "SAMEORIGIN" always;
         add_header Content-Security-Policy $esap_csp always;
+        add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
         try_files $uri $uri/ /index.html;
     }
 
@@ -119,5 +126,6 @@ server {
         access_log off;
         return 200 "healthy\n";
         add_header Content-Type text/plain;
+        add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
     }
 }

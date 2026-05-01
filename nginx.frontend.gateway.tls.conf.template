@@ -49,6 +49,7 @@ server {
         access_log off;
         expires 30d;
         add_header Cache-Control "public";
+        add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
     }
 
     location ^~ /services/ {
@@ -220,5 +221,6 @@ server {
         access_log off;
         return 200 "healthy\n";
         add_header Content-Type text/plain;
+        add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
     }
 }
