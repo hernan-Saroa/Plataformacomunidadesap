@@ -8,6 +8,7 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });
+  app.getHttpAdapter().getInstance().disable?.('x-powered-by');
   const requestBodyLimit = process.env.REQUEST_BODY_LIMIT ?? '8mb';
 
   app.use(json({ limit: requestBodyLimit }));

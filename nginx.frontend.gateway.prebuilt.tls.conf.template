@@ -72,6 +72,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header X-Access-Token $http_x_access_token;
+        proxy_hide_header X-Powered-By;
         proxy_cache_bypass $http_upgrade;
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;

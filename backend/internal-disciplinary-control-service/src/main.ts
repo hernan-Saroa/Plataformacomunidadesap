@@ -9,6 +9,7 @@ import { join } from 'path';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.getHttpAdapter().getInstance().disable?.('x-powered-by');
   const requestTimeoutMs = Number(process.env.HTTP_REQUEST_TIMEOUT_MS || 6 * 60 * 60 * 1000);
 
   // Servir archivos estáticos desde la carpeta uploads

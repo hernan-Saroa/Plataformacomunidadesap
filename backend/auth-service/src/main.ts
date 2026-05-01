@@ -6,6 +6,7 @@ import { ResponseInterceptor } from './common/response.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.getHttpAdapter().getInstance().disable?.('x-powered-by');
 
   // Configurar CORS para desarrollo (permisivo)
   app.enableCors({
