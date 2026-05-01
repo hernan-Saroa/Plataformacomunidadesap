@@ -949,7 +949,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
                   if (!informePreliminar.generado) return;
                   const { exportarPDFInformeAuditoria } = await import('./services/exportarPDFInformeAuditoria');
                   const { generarContenidoInformeIA, aplicarContenidoIA } = await import('./services/generarContenidoInformeIA');
-                  const hallazgosParaPDF = (auditoria.hallazgos || []).map((h) => ({
+                  let hallazgosParaPDF = (auditoria.hallazgos || []).map((h) => ({
                     codigo: h.codigo,
                     titulo: h.titulo,
                     gravedad: h.gravedad,
