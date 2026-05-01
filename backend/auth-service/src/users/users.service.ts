@@ -135,11 +135,20 @@ export class UsersService {
       ),
     );
 
+    const currentEmail = this.normalizeOptionalText(user.username).toLowerCase();
+
     if (qualifyingRoles.length === 0) {
+      // Si no hay roles qualifying, eliminar el registro si existe
+      if (currentEmail) {
+        await manager.query(
+          `DELETE FROM ${this.disciplinaryProfessionalTableRef} WHERE email = $1`,
+          [currentEmail],
+        );
+      }
       return;
     }
 
-    const currentEmail = this.normalizeOptionalText(user.username).toLowerCase();
+    
     const previousEmail = this.normalizeOptionalText(previousUsername).toLowerCase();
 
     if (!currentEmail) {
