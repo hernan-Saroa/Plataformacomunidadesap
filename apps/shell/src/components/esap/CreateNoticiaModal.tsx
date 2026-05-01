@@ -475,8 +475,49 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       toast.success('Denunciante agregado');
     }
 
-    // Reset form to normal state: checkboxes unchecked and inputs empty for new entry
-    // Reset denunciante "Por determinar" checkboxes to false (unchecked) for clean state
+    // Reset form
+    resetDenuncianteForm();
+  };
+
+  const handleEditarDenunciante = (denunciante: Denunciante) => {
+    setCurrentDenunciante({ ...denunciante });
+    setEditingDenuncianteId(denunciante.id);
+
+    // ✅ Ajustar checkboxes "Por determinar" según los valores del denunciante
+    setPorDeterminar(prev => ({
+      ...prev,
+      denuncianteNombre: denunciante.nombre === 'Por determinar',
+      denuncianteIdentificacion: denunciante.identificacion === 'Por determinar',
+      denuncianteDireccion: denunciante.direccion === 'Por determinar',
+      denuncianteTelefono: denunciante.telefono === 'Por determinar',
+      denuncianteCorreo: denunciante.correo === 'Por determinar',
+      denuncianteCargo: denunciante.cargo === 'Por determinar',
+      denuncianteEntidad: denunciante.entidad === 'Por determinar'
+    }));
+
+    if (denunciante.apoderado) {
+      setMostrarApoderadoDenunciante(true);
+      setApoderadoDenunciante(denunciante.apoderado);
+    } else {
+      setMostrarApoderadoDenunciante(false);
+      setApoderadoDenunciante({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
+    }
+  };
+
+  const handleEliminarDenunciante = (id: string) => {
+    setDenunciantes(denunciantes.filter(d => d.id !== id));
+    if (editingDenuncianteId === id) {
+      setEditingDenuncianteId(null);
+      // Reset form
+      resetDenuncianteForm();
+    }
+  };
+
+  // ✅ Función para resetear formulario de denunciante
+  const resetDenuncianteForm = () => {
+    setCurrentDenunciante({ id: '', nombre: '', identificacion: '', direccion: '', telefono: '', correo: '', cargo: '', entidad: '', tipo: 'Denunciante' });
+    setMostrarApoderadoDenunciante(false);
+    setApoderadoDenunciante({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
     setPorDeterminar(prev => ({
       ...prev,
       denuncianteNombre: false,
@@ -487,24 +528,6 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       denuncianteCargo: false,
       denuncianteEntidad: false
     }));
-    // Then reset form fields to empty values
-    setCurrentDenunciante({ id: '', nombre: '', identificacion: '', direccion: '', telefono: '', correo: '', cargo: '', entidad: '', tipo: 'Denunciante' });
-    setMostrarApoderadoDenunciante(false);
-    setApoderadoDenunciante({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
-  };
-
-  const handleEditarDenunciante = (denunciante: Denunciante) => {
-    setCurrentDenunciante({ ...denunciante });
-    setEditingDenuncianteId(denunciante.id);
-    if (denunciante.apoderado) {
-      setMostrarApoderadoDenunciante(true);
-      setApoderadoDenunciante(denunciante.apoderado);
-    }
-  };
-
-  const handleEliminarDenunciante = (id: string) => {
-    setDenunciantes(denunciantes.filter(d => d.id !== id));
-    if (editingDenuncianteId === id) setEditingDenuncianteId(null);
   };
 
   // ✅ NUEVO: Funciones para manejar denunciados
@@ -541,8 +564,46 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       toast.success('Denunciado agregado');
     }
 
-    // Reset form to normal state: checkboxes unchecked and inputs empty for new entry
-    // Reset denunciado "Por determinar" checkboxes to false (unchecked) for clean state
+    // Reset form
+    resetDenunciadoForm();
+  };
+
+  const handleEditarDenunciado = (denunciado: Denunciado) => {
+    setCurrentDenunciado({ ...denunciado });
+    setEditingDenunciadoId(denunciado.id);
+
+    // ✅ Ajustar checkboxes "Por determinar" según los valores del denunciado
+    setPorDeterminar(prev => ({
+      ...prev,
+      denunciadoNombre: denunciado.nombre === 'Por determinar',
+      denunciadoIdentificacion: denunciado.identificacion === 'Por determinar',
+      denunciadoCargo: denunciado.cargo === 'Por determinar',
+      denunciadoLugarHechos: denunciado.lugarHechos === 'Por determinar'
+    }));
+
+    if (denunciado.apoderado) {
+      setMostrarApoderadoDenunciado(true);
+      setApoderadoDenunciado(denunciado.apoderado);
+    } else {
+      setMostrarApoderadoDenunciado(false);
+      setApoderadoDenunciado({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
+    }
+  };
+
+  const handleEliminarDenunciado = (id: string) => {
+    setDenunciados(denunciados.filter(d => d.id !== id));
+    if (editingDenunciadoId === id) {
+      setEditingDenunciadoId(null);
+      // Reset form
+      resetDenunciadoForm();
+    }
+  };
+
+  // ✅ Función para resetear formulario de denunciado
+  const resetDenunciadoForm = () => {
+    setCurrentDenunciado({ id: '', nombre: '', identificacion: '', cargo: '', lugarHechos: '' });
+    setMostrarApoderadoDenunciado(false);
+    setApoderadoDenunciado({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
     setPorDeterminar(prev => ({
       ...prev,
       denunciadoNombre: false,
@@ -550,24 +611,6 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       denunciadoCargo: false,
       denunciadoLugarHechos: false
     }));
-    // Then reset form fields to empty values
-    setCurrentDenunciado({ id: '', nombre: '', identificacion: '', cargo: '', lugarHechos: '' });
-    setMostrarApoderadoDenunciado(false);
-    setApoderadoDenunciado({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
-  };
-
-  const handleEditarDenunciado = (denunciado: Denunciado) => {
-    setCurrentDenunciado({ ...denunciado });
-    setEditingDenunciadoId(denunciado.id);
-    if (denunciado.apoderado) {
-      setMostrarApoderadoDenunciado(true);
-      setApoderadoDenunciado(denunciado.apoderado);
-    }
-  };
-
-  const handleEliminarDenunciado = (id: string) => {
-    setDenunciados(denunciados.filter(d => d.id !== id));
-    if (editingDenunciadoId === id) setEditingDenunciadoId(null);
   };
 
   // ✅ NUEVO: Funciones para manejar hechos separados
@@ -1169,9 +1212,58 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                 </div>
               </div>
 
-              {/* Formulario para agregar denunciado */}
+              {/* ✅ NUEVO: Lista de denunciados existentes en modo edición */}
+              {isEditMode && denunciados.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-amber-900 mb-3 flex items-center gap-2">
+                    <UserCheck className="w-4 h-4" />
+                    Denunciados Existentes ({denunciados.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {denunciados.map((denunciado, index) => (
+                      <div
+                        key={denunciado.id}
+                        className="bg-white border border-amber-300 rounded-lg p-3 flex items-center justify-between"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-gray-900">{denunciado.nombre}</span>
+                            {denunciado.identificacion && (
+                              <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
+                                {denunciado.identificacion}
+                              </span>
+                            )}
+                          </div>
+                          {denunciado.cargo && (
+                            <p className="text-xs text-gray-600">Cargo: {denunciado.cargo}</p>
+                          )}
+                          {denunciado.lugarHechos && (
+                            <p className="text-xs text-gray-600">Lugar: {denunciado.lugarHechos}</p>
+                          )}
+                        </div>
+                        <Button
+                          onClick={() => handleEditarDenunciado(denunciado)}
+                          variant="outline"
+                          size="sm"
+                          className="border-amber-600 text-amber-700 hover:bg-amber-50"
+                        >
+                          <Pencil className="w-3 h-3 mr-1" />
+                          Editar
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 p-2 bg-amber-100 rounded text-sm text-amber-800">
+                    <strong>Nota:</strong> Los denunciados existentes se pueden editar. Los cambios se guardarán al actualizar la noticia.
+                  </div>
+                </div>
+              )}
+
+              {/* Formulario para agregar/editar denunciado */}
               <div className="border-2 border-dashed border-blue-300 rounded-lg p-4 bg-blue-50/30">
-                <h3 className="font-semibold text-gray-900 mb-4">Agregar Denunciado</h3>
+                <h3 className="font-semibold text-gray-900 mb-4">
+                  {editingDenunciadoId ? 'Editar Denunciado' : 'Agregar Denunciado'}
+                </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
                     <div className="flex items-center justify-between mb-1">
@@ -1407,7 +1499,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                   )}
                 </div>
 
-                <div className="mt-4">
+                <div className="mt-4 space-y-2">
                   <Button
                     onClick={handleAgregarDenunciado}
                     variant="outline"
@@ -1416,6 +1508,18 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     {editingDenunciadoId ? <Pencil className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                     {editingDenunciadoId ? 'Actualizar Denunciado' : 'Agregar Denunciado'}
                   </Button>
+                  {editingDenunciadoId && (
+                    <Button
+                      onClick={() => {
+                        setEditingDenunciadoId(null);
+                        resetDenunciadoForm();
+                      }}
+                      variant="ghost"
+                      className="w-full text-gray-600 hover:text-gray-800"
+                    >
+                      Cancelar Edición
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -1537,9 +1641,66 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                 </div>
               </div>
 
-              {/* Formulario para agregar denunciante */}
+              {/* ✅ NUEVO: Lista de denunciantes existentes en modo edición */}
+              {isEditMode && denunciantes.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-amber-900 mb-3 flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    Denunciantes Existentes ({denunciantes.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {denunciantes.map((denunciante, index) => (
+                      <div
+                        key={denunciante.id}
+                        className="bg-white border border-amber-300 rounded-lg p-3 flex items-center justify-between"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`px-2 py-1 rounded-full text-xs font-bold text-white ${
+                              denunciante.tipo === 'Víctima' ? 'bg-red-600' : 'bg-blue-600'
+                            }`}>
+                              {denunciante.tipo === 'Víctima' ? '👤 Víctima' : '👤 Denunciante'}
+                            </span>
+                            <span className="font-medium text-gray-900">{denunciante.nombre}</span>
+                            {denunciante.identificacion && (
+                              <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
+                                {denunciante.identificacion}
+                              </span>
+                            )}
+                          </div>
+                          {denunciante.cargo && (
+                            <p className="text-xs text-gray-600">Cargo: {denunciante.cargo}</p>
+                          )}
+                          {denunciante.entidad && (
+                            <p className="text-xs text-gray-600">Entidad: {denunciante.entidad}</p>
+                          )}
+                          {denunciante.correo && (
+                            <p className="text-xs text-gray-600">Correo: {denunciante.correo}</p>
+                          )}
+                        </div>
+                        <Button
+                          onClick={() => handleEditarDenunciante(denunciante)}
+                          variant="outline"
+                          size="sm"
+                          className="border-amber-600 text-amber-700 hover:bg-amber-50"
+                        >
+                          <Pencil className="w-3 h-3 mr-1" />
+                          Editar
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 p-2 bg-amber-100 rounded text-sm text-amber-800">
+                    <strong>Nota:</strong> Los denunciantes existentes se pueden editar. Los cambios se guardarán al actualizar la noticia.
+                  </div>
+                </div>
+              )}
+
+              {/* Formulario para agregar/editar denunciante */}
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-                <h3 className="font-semibold text-gray-900 mb-4">Agregar Denunciante</h3>
+                <h3 className="font-semibold text-gray-900 mb-4">
+                  {editingDenuncianteId ? 'Editar Denunciante' : 'Agregar Denunciante'}
+                </h3>
                 <div className="grid grid-cols-2 gap-4">
                   {/* ✅ NUEVO: Campo Tipo de Denunciante */}
                   <div className="col-span-2">
@@ -1904,7 +2065,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                   )}
                 </div>
 
-                <div className="mt-4">
+                <div className="mt-4 space-y-2">
                   <Button
                     onClick={handleAgregarDenunciante}
                     variant="outline"
@@ -1913,6 +2074,18 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     {editingDenuncianteId ? <Pencil className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                     {editingDenuncianteId ? 'Actualizar Denunciante' : 'Agregar Denunciante'}
                   </Button>
+                  {editingDenuncianteId && (
+                    <Button
+                      onClick={() => {
+                        setEditingDenuncianteId(null);
+                        resetDenuncianteForm();
+                      }}
+                      variant="ghost"
+                      className="w-full text-gray-600 hover:text-gray-800"
+                    >
+                      Cancelar Edición
+                    </Button>
+                  )}
                 </div>
               </div>
 
