@@ -43,6 +43,7 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
+    add_header Content-Security-Policy $esap_csp always;
 
     location = /index.html {
         expires -1;
