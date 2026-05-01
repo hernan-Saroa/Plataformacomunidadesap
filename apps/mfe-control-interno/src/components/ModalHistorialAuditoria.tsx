@@ -103,7 +103,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
         { campo: 'Estado', valorAnterior: '', valorNuevo: 'Planeación' },
         { campo: 'Código', valorAnterior: '', valorNuevo: 'AUD-2025-001' }
       ],
-      ip: '192.168.1.100'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-002',
@@ -120,7 +120,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
         { campo: 'Auditor Asignado', valorAnterior: 'Sin asignar', valorNuevo: 'Ana María López Silva' }
       ],
       observaciones: 'Se asignó el equipo según disponibilidad y expertise en gestión administrativa',
-      ip: '192.168.1.105'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-003',
@@ -136,7 +136,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
         { campo: 'Alcance', valorAnterior: 'Por definir', valorNuevo: 'Evaluación integral de procesos administrativos de la territorial Antioquia' },
         { campo: 'Objetivos', valorAnterior: '0 objetivos', valorNuevo: '2 objetivos definidos' }
       ],
-      ip: '192.168.1.110'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-004',
@@ -150,7 +150,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
       descripcion: 'Se cargó el plan de auditoría',
       documentoAdjunto: 'Plan_Auditoria_AUD-2025-001.pdf',
       observaciones: 'Plan de auditoría aprobado por el Jefe OCI',
-      ip: '192.168.1.110'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-005',
@@ -163,7 +163,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
       accion: 'Aprobación de plan',
       descripcion: 'Se aprobó el plan de auditoría',
       observaciones: 'Plan aprobado sin observaciones. Puede iniciarse trabajo de campo.',
-      ip: '192.168.1.105'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-006',
@@ -176,7 +176,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
       accion: 'Nota agregada',
       descripcion: 'Se agregó una nota sobre la programación del trabajo de campo',
       observaciones: 'Inicio de campo programado para el 20 de enero',
-      ip: '192.168.1.110'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-007',
@@ -191,7 +191,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
       cambios: [
         { campo: 'Progreso', valorAnterior: '10%', valorNuevo: '15%' }
       ],
-      ip: '192.168.1.112'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-008',
@@ -204,7 +204,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
       accion: 'Carga de documento',
       descripcion: 'Se cargó la matriz de riesgos actualizada',
       documentoAdjunto: 'Matriz_Riesgos_AUD-2025-001.xlsx',
-      ip: '192.168.1.112'
+      ip: 'IP interna protegida'
     }
   ],
   'aud-004': [
@@ -222,7 +222,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
         { campo: 'Estado', valorAnterior: '', valorNuevo: 'Planeación' },
         { campo: 'Código', valorAnterior: '', valorNuevo: 'AUD-2025-004' }
       ],
-      ip: '192.168.1.100'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-102',
@@ -239,7 +239,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
         { campo: 'Auditor Asignado', valorAnterior: 'Sin asignar', valorNuevo: 'Patricia Gómez Silva' }
       ],
       observaciones: 'Equipo especializado en auditorías de recursos humanos',
-      ip: '192.168.1.105'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-103',
@@ -252,7 +252,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
       accion: 'Aprobación de plan',
       descripcion: 'Se aprobó el plan de auditoría',
       observaciones: 'Plan aprobado. Autorizado inicio de auditoría.',
-      ip: '192.168.1.105'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-104',
@@ -268,7 +268,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
         { campo: 'Estado', valorAnterior: 'Planeación', valorNuevo: 'Ejecución' }
       ],
       observaciones: 'Inicio de trabajo de campo y recolección de evidencias',
-      ip: '192.168.1.115'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-105',
@@ -281,7 +281,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
       accion: 'Carga de documento',
       descripcion: 'Se cargó acta de reunión de apertura',
       documentoAdjunto: 'Acta_Apertura_AUD-2025-004.pdf',
-      ip: '192.168.1.115'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-106',
@@ -294,7 +294,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
       accion: 'Hallazgo detectado',
       descripcion: 'Se detectó un hallazgo crítico',
       observaciones: 'HALL-2025-012: Falta de evaluaciones de desempeño (45% pendientes)',
-      ip: '192.168.1.115'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-107',
@@ -307,7 +307,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
       accion: 'Nota agregada',
       descripcion: 'Se agregó nota sobre solicitud de documentación',
       observaciones: 'Se solicitó al área de Gestión Humana el plan de capacitación 2025',
-      ip: '192.168.1.116'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-108',
@@ -320,7 +320,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
       accion: 'Hallazgo detectado',
       descripcion: 'Se detectó segundo hallazgo',
       observaciones: 'HALL-2025-013: Ausencia de plan de capacitación documentado',
-      ip: '192.168.1.116'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-109',
@@ -333,7 +333,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
       accion: 'Carga de documento',
       descripcion: 'Se cargó informe preliminar de hallazgos',
       documentoAdjunto: 'Informe_Preliminar_AUD-2025-004.docx',
-      ip: '192.168.1.115'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-110',
@@ -349,7 +349,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
         { campo: 'Progreso', valorAnterior: '35%', valorNuevo: '45%' },
         { campo: 'Hallazgos', valorAnterior: '2', valorNuevo: '3' }
       ],
-      ip: '192.168.1.115'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-111',
@@ -362,7 +362,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
       accion: 'Hallazgo detectado',
       descripcion: 'Se detectó tercer hallazgo',
       observaciones: 'HALL-2025-014: Inconsistencias en hojas de vida (8% de la muestra)',
-      ip: '192.168.1.116'
+      ip: 'IP interna protegida'
     },
     {
       id: 'hist-112',
@@ -375,7 +375,7 @@ const HISTORIAL_MOCK: Record<string, EventoHistorial[]> = {
       accion: 'Nota agregada',
       descripcion: 'Se agregó recomendación para plan de mejoramiento',
       observaciones: 'Recomendar implementar sistema de alertas automáticas',
-      ip: '192.168.1.115'
+      ip: 'IP interna protegida'
     }
   ]
 };

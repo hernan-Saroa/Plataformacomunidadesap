@@ -65,7 +65,7 @@ export function ProfileModal({
     time: new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
     device: 'Chrome en Windows',
     location: 'Bogotá, Colombia',
-    ip: '192.168.1.1'
+    ip: 'IP interna protegida'
   };
 
   // Mock data para estadísticas

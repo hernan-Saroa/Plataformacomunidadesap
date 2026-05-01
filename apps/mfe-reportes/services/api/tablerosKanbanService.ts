@@ -15,7 +15,8 @@ const MICROSERVICIO_PORT = 3007; // Puerto del internal-institutional-control-se
  */
 function esLocalhost(): boolean {
   const hostname = window.location.hostname;
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+  const hostnameParts = hostname.split('.');
+  return hostname === 'localhost' || hostname === '127.0.0.1' || (hostnameParts[0] === '192' && hostnameParts[1] === '168');
 }
 
 export enum TipoTablero {

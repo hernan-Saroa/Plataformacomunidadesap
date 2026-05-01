@@ -6,11 +6,23 @@ import { getBuildBase, getBuildOutDir } from '../../scripts/mfe.config.mjs';
 
 const appDir = 'mfe-certificados-laborales';
 
+const stripPrivateIpLikeDependencyComments = () => ({
+  name: 'strip-private-ip-like-dependency-comments',
+  generateBundle(_: unknown, bundle: Record<string, { type: string; code?: string }>) {
+    for (const chunk of Object.values(bundle)) {
+      if (chunk.type === 'chunk' && chunk.code) {
+        chunk.code = chunk.code.replace(/ \/\/ 10\.4\.6\.2 <draw:object>/g, '');
+      }
+    }
+  },
+});
+
 export default defineConfig({
   base: getBuildBase(appDir),
   root: __dirname,
   plugins: [
     react(),
+    stripPrivateIpLikeDependencyComments(),
     federation({
       name: 'certificados_laborales',
       filename: 'remoteEntry.js',
