@@ -345,8 +345,8 @@ export function NotificacionesModule() {
   const getUsuarioId = useCallback(() => {
     try {
       // Intentar con la key principal: esap_user_data
-      let userStr = localStorage.getItem('esap_user_data');
-      console.log('[NotificacionesModule] localStorage esap_user_data:', userStr?.slice(0, 200));
+      let userStr = sessionStorage.getItem('esap_user_data');
+      console.log('[NotificacionesModule] sessionStorage esap_user_data:', userStr?.slice(0, 200));
       
       if (userStr) {
         const user = JSON.parse(userStr);

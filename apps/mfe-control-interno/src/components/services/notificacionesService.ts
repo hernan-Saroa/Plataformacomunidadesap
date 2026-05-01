@@ -349,7 +349,7 @@ export function useNotificaciones() {
   const getUsuarioId = useCallback((): string => {
     try {
       // Intentar con la key principal: esap_user_data
-      const userData = localStorage.getItem('esap_user_data');
+      const userData = sessionStorage.getItem('esap_user_data');
       if (userData) {
         const user = JSON.parse(userData);
         return user.id || user.userId || user.id_tercero || '';

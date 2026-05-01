@@ -174,7 +174,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     setIsLoading(true);
 
     // 🔥 LIMPIAR CACHÉ COMPLETAMENTE AL HACER LOGIN
-    localStorage.removeItem('esap-sesion-activa');
+    sessionStorage.removeItem('esap-sesion-activa');
     console.log('🗑️ LocalStorage limpiado');
 
     try {

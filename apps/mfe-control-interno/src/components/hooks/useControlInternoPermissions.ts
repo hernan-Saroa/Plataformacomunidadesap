@@ -167,7 +167,7 @@ export function useControlInternoPermissions(
     if (roles.length === 0 && permisos.length === 0) {
       try {
         // Intentar primero esap_user_data (donde App.tsx guarda los datos)
-        const userDataStr = localStorage.getItem('esap_user_data');
+        const userDataStr = sessionStorage.getItem('esap_user_data');
         if (userDataStr) {
           const userDataParsed = JSON.parse(userDataStr);
           
@@ -186,7 +186,7 @@ export function useControlInternoPermissions(
         
         // Si aún no hay datos, intentar esap-sesion-activa
         if (roles.length === 0 && permisos.length === 0) {
-          const sesion = localStorage.getItem('esap-sesion-activa');
+          const sesion = sessionStorage.getItem('esap-sesion-activa');
           if (sesion) {
             const sesionData = JSON.parse(sesion);
             

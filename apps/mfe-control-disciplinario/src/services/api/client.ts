@@ -74,7 +74,7 @@ class APIClient {
   private clearTokens(): void {
     sessionStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
     sessionStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.USER_DATA);
+    sessionStorage.removeItem(STORAGE_KEYS.USER_DATA);
     localStorage.removeItem(STORAGE_KEYS.SISTEMA_ACTUAL);
   }
 
@@ -537,7 +537,7 @@ class APIClient {
 
   login(accessToken: string, refreshToken: string, userData: any): void {
     this.setTokens(accessToken, refreshToken);
-    localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData));
+    sessionStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData));
   }
 
   logout(): void {
@@ -549,7 +549,7 @@ class APIClient {
   }
 
   getUserData(): any | null {
-    const data = localStorage.getItem(STORAGE_KEYS.USER_DATA);
+    const data = sessionStorage.getItem(STORAGE_KEYS.USER_DATA);
     return data ? JSON.parse(data) : null;
   }
 }

@@ -2662,7 +2662,7 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
   const [loadingIndicadores, setLoadingIndicadores] = useState(false);
   
   // Obtener datos del usuario actual
-  const userData = localStorage.getItem('esap_user_data');
+  const userData = sessionStorage.getItem('esap_user_data');
   const currentUser = userData ? JSON.parse(userData) : null;
   
   // Verificar si el usuario actual es Jefe OCI o Admin

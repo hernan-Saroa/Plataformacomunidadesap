@@ -161,7 +161,7 @@ class AuthService {
    * Obtiene el usuario actual del localStorage
    */
   getCurrentUser(): AuthUser | null {
-    const userData = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
+    const userData = sessionStorage.getItem(config.STORAGE_KEYS.USER_DATA);
     return userData ? JSON.parse(userData) : null;
   }
 
@@ -228,7 +228,7 @@ class AuthService {
   }
 
   private saveUserData(user: AuthUser): void {
-    localStorage.setItem(config.STORAGE_KEYS.USER_DATA, JSON.stringify(user));
+    sessionStorage.setItem(config.STORAGE_KEYS.USER_DATA, JSON.stringify(user));
   }
 
   private getAccessToken(): string | null {
@@ -246,7 +246,7 @@ class AuthService {
     sessionStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
     sessionStorage.removeItem('esap_access_token');
     sessionStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
-    localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
+    sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     apiClient.clearCache();
   }
 

@@ -82,7 +82,7 @@ import { VisualizadorPTAAjustes } from './components/gestion-profesoral/Visualiz
  * accesible desde Control Interno Gestión en el Backoffice.
  * 
  * Features:
- * - Persistencia de sesión en localStorage
+ * - Persistencia de sesión en sessionStorage
  * - Auto-logout por inactividad (15 minutos)
  * - Alerta previa antes de cerrar sesión
  */
@@ -172,7 +172,7 @@ interface UserPermission {
 }
 
 interface SesionGuardada {
-  usuario: Usuario;
+  usuario?: Usuario;
   vista: Vista;
   timestamp: number;
 }
@@ -208,6 +208,12 @@ const AUTH_TOKEN_STORAGE_KEYS = [
   'token',
   'esap-auth-token',
 ];
+const USER_DATA_STORAGE_KEY = config.STORAGE_KEYS.USER_DATA;
+const ACTIVE_SESSION_STORAGE_KEY = 'esap-sesion-activa';
+const SENSITIVE_SESSION_STORAGE_KEYS = [
+  USER_DATA_STORAGE_KEY,
+  ACTIVE_SESSION_STORAGE_KEY,
+];
 
 function migrateAuthTokensToSessionStorage() {
   for (const key of AUTH_TOKEN_STORAGE_KEYS) {
@@ -231,6 +237,23 @@ function migrateAuthTokensToSessionStorage() {
     }
   } catch {
     localStorage.removeItem('esap-remember-session');
+  }
+}
+
+function migrateSensitiveSessionDataToSessionStorage() {
+  for (const key of SENSITIVE_SESSION_STORAGE_KEYS) {
+    const value = localStorage.getItem(key);
+    if (value && !sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, value);
+    }
+    localStorage.removeItem(key);
+  }
+}
+
+function clearSensitiveSessionState() {
+  for (const key of SENSITIVE_SESSION_STORAGE_KEYS) {
+    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
   }
 }
 
@@ -424,6 +447,7 @@ export default function App() {
     };
 
     migrateAuthTokensToSessionStorage();
+    migrateSensitiveSessionDataToSessionStorage();
 
     const authToken =
       sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
@@ -431,14 +455,16 @@ export default function App() {
     if (authToken && !sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN)) {
       sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, authToken);
     }
-    const storedAuthUser = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
-    let sesionGuardada = localStorage.getItem('esap-sesion-activa');
+    const storedAuthUser = sessionStorage.getItem(USER_DATA_STORAGE_KEY);
+    let sesionGuardada = sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
     if (authToken && storedAuthUser) {
       try {
         applySessionFromUser(JSON.parse(storedAuthUser));
         return;
       } catch (error) {
         console.error('Error al restaurar sesión de auth:', error);
+        clearSensitiveSessionState();
+        sesionGuardada = null;
       }
     } else {
       if (sesionGuardada) {
@@ -446,7 +472,7 @@ export default function App() {
           description: 'Por seguridad la sesión se ha cerrado',
           duration: 5000,
         });
-        localStorage.clear();
+        clearSensitiveSessionState();
         sesionGuardada = null;
       }
     }
@@ -469,7 +495,7 @@ export default function App() {
             });
           } else {
             // Sesión expirada
-            localStorage.removeItem('esap-sesion-activa');
+            clearSensitiveSessionState();
             console.log('⏰ Sesión expirada');
           }
         } else if (sesionParsed?.email || sesionParsed?.person?.email) {
@@ -477,7 +503,7 @@ export default function App() {
         }
       } catch (error) {
         console.error('Error al restaurar sesión:', error);
-        localStorage.removeItem('esap-sesion-activa');
+        clearSensitiveSessionState();
       }
     }
   }, []);
@@ -486,13 +512,14 @@ export default function App() {
   useEffect(() => {
     if (usuarioActual && (vistaActual === 'portal' || vistaActual === 'backoffice')) {
       const sesion: SesionGuardada = {
-        usuario: usuarioActual,
         vista: vistaActual,
         timestamp: Date.now(),
       };
-      localStorage.setItem('esap-sesion-activa', JSON.stringify(sesion));
+      sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(sesion));
+      localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     } else {
-      localStorage.removeItem('esap-sesion-activa');
+      sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+      localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     }
   }, [usuarioActual, vistaActual]);
 
@@ -611,7 +638,8 @@ export default function App() {
   const handleVolverALanding = () => {
     setVistaActual('landing');
     setUsuarioActual(null);
-    localStorage.removeItem('esap-sesion-activa');
+    sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
   };
 
   // Handler para login con integración del backend
@@ -639,6 +667,7 @@ export default function App() {
       const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
       const hasConfigRole = !(roles.includes('ESTUDIANTE') || roles.includes('DOCENTE') || roles.includes('GRADUADO') || roles.includes('ASPIRANTE'))
       // const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO')  || roles.includes('GESTION_LEGAL');
+      let sessionVista: Vista = hasAdminRole ? 'backoffice' : 'portal';
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
@@ -720,11 +749,12 @@ export default function App() {
           };
           setUserData(userDataToSave);
           // También guardar en esap_user_data para que otros componentes puedan acceder
-          localStorage.setItem('esap_user_data', JSON.stringify({
+          sessionStorage.setItem(USER_DATA_STORAGE_KEY, JSON.stringify({
             ...sanitizeUserForStorage(user),
             roles: user?.roles || roles.map((code: string) => ({ code, name: code })),
             permissions
           }));
+          localStorage.removeItem(USER_DATA_STORAGE_KEY);
           portalRoles.push(rolStr);
         } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           userType = 'docente';
@@ -781,6 +811,7 @@ export default function App() {
         setUserRoles(portalRoles);
         setCurrentView(currentView);
         setVistaActual(vistaActualCurrent);
+        sessionVista = vistaActualCurrent;
         setUsuarioActual({
           id: user?.id || user?.person?.id || 'unknown',
           nombre: userName,
@@ -799,22 +830,11 @@ export default function App() {
         }));
       }
 
-      localStorage.setItem('esap-sesion-activa', JSON.stringify({
-        usuario: {
-          id: user?.id || user?.person?.id || 'unknown',
-          nombre: userName,
-          email: userEmail,
-          tipo: (hasAdminRole || currentView === 'backoffice') ? 'interno' : 'externo'
-        },
-        vista: (hasAdminRole || currentView === 'backoffice') ? 'backoffice' : 'portal',
+      sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({
+        vista: sessionVista,
         timestamp: Date.now(),
-        user: {
-          id: user?.id,
-          email: userEmail,
-          person: user?.person,
-          roles: user?.roles
-        }
       }));
+      localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
 
       // Iniciar sistema de detección de inactividad
       resetearTimerInactividad();
@@ -831,6 +851,7 @@ export default function App() {
   const handleLogout = (viewToast = true) => {
     localStorage.clear();
     AUTH_TOKEN_STORAGE_KEYS.forEach((key) => sessionStorage.removeItem(key));
+    clearSensitiveSessionState();
     if (viewToast) {
       toast.success('Sesión cerrada exitosamente', {
         description: 'Has cerrado sesión de forma segura',

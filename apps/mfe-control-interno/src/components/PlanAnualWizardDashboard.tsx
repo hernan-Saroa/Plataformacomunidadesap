@@ -3888,8 +3888,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   useEffect(() => {
     try {
       // Intentar múltiples fuentes de datos del usuario
-      const userDataStr = localStorage.getItem('esap_user_data');
-      const sesionStr = localStorage.getItem('esap-sesion-activa');
+      const userDataStr = sessionStorage.getItem('esap_user_data');
+      const sesionStr = sessionStorage.getItem('esap-sesion-activa');
       
       let userData: any = null;
       
@@ -5238,7 +5238,7 @@ function SeccionGestionYSeguimiento({
   const [currentUser, setCurrentUser] = useState<any>(null);
   useEffect(() => {
     try {
-      const userDataStr = localStorage.getItem('esap_user_data');
+      const userDataStr = sessionStorage.getItem('esap_user_data');
       if (userDataStr) setCurrentUser(JSON.parse(userDataStr));
     } catch (e) {}
   }, []);
@@ -6086,7 +6086,7 @@ function SeccionGestionYSeguimiento({
           const hasIdentity = currentUser?.nombre || currentUser?.email || currentUser?.nombres;
           const user = hasIdentity ? currentUser : (() => {
             try {
-              const raw = localStorage.getItem('esap_user_data') || localStorage.getItem('esap-sesion-activa');
+              const raw = sessionStorage.getItem('esap_user_data') || sessionStorage.getItem('esap-sesion-activa');
               if (!raw) return currentUser; // al menos devolver lo que tenemos
               const d = JSON.parse(raw);
               const u = d?.user || d?.usuario || d;
@@ -8222,7 +8222,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   const [guardando, setGuardando] = useState(false);
   const currentUser = (() => {
     try {
-      const userDataStr = localStorage.getItem('esap_user_data');
+      const userDataStr = sessionStorage.getItem('esap_user_data');
       return userDataStr ? JSON.parse(userDataStr) : null;
     } catch(e) { return null; }
   })();
@@ -8312,7 +8312,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   };
 
   const handleAprobarAuditor = (auditorId: string, nombre: string, email?: string) => {
-    const sessionUser = JSON.parse(localStorage.getItem('esap_user_data') || '{}');
+    const sessionUser = JSON.parse(sessionStorage.getItem('esap_user_data') || '{}');
     setModalOTPConfig({
       isOpen: true,
       accion: 'aprobar_auditor',
@@ -8327,7 +8327,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
     if (fueDevuelto) {
       setModalSubsanar({ isOpen: true, texto: '' });
     } else {
-      const sessionUser = JSON.parse(localStorage.getItem('esap_user_data') || '{}');
+      const sessionUser = JSON.parse(sessionStorage.getItem('esap_user_data') || '{}');
       setModalOTPConfig({
         isOpen: true,
         accion: 'enviar_comite',

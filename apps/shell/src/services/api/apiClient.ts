@@ -710,7 +710,7 @@ export class ApiClient {
     sessionStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
     sessionStorage.removeItem('esap_access_token');
     sessionStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
-    localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
+    sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
 
     toast.error('Sesión expirada', {
       description: 'Por favor, inicia sesión nuevamente',

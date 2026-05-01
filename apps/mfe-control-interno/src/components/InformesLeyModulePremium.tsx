@@ -608,7 +608,7 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
   const obtenerRolesUsuario = (): { codes: string[]; names: string[] } => {
     try {
       // 1. Intentar desde esap_user_data (guardado por authService)
-      const userData = localStorage.getItem('esap_user_data');
+      const userData = sessionStorage.getItem('esap_user_data');
       if (userData) {
         const user = JSON.parse(userData);
         // Los roles pueden venir en diferentes formatos
@@ -634,7 +634,7 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
       }
       
       // 2. Intentar desde esap-sesion-activa (guardado por App.tsx)
-      const sesion = localStorage.getItem('esap-sesion-activa');
+      const sesion = sessionStorage.getItem('esap-sesion-activa');
       if (sesion) {
         const sesionData = JSON.parse(sesion);
         
