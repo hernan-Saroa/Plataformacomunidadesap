@@ -155,7 +155,8 @@ interface Persona {
 interface Noticia {
   id: string;
   numero: string;
-  fechaRecepcion: string;
+  fechaRecepcion: string; 
+  fechaHechos?: string;
   origen: string;
   hechos: string;
   estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada' | 'remitida' | 'asociada' | 'devuelta';
@@ -178,7 +179,6 @@ interface Noticia {
   justificacionRemision?: string;
   // ═══ Campos extendidos de creación ═══
   territorial?: string;
-  fechaHechos?: string;
   cargo?: string;
   dependencia?: string;
   conductaSeleccionada?: string;
@@ -348,8 +348,6 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
   const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
 
   const [hoverReenviar, setHoverReenviar] = useState(false);
-
-  console.log(noticia);
   
 
   const [{ isDragging }, drag] = useDrag({
@@ -2831,6 +2829,8 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
     const denunciadoRaw: any = disciplinableList[0] || {};
     const fechaQuejaRaw = (noticia as any).fechaQueja;
     const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
+    const fechaHechosRaw = (noticia as any).fechaHechos;
+    const fechaHechos = fechaHechosRaw ? new Date(fechaHechosRaw) : undefined;
 
     // ✅ OBTENER ETAPA: usar kanbanStage del backend, o buscar en stages, o usar primera etapa config
     let etapaRaw = (noticia as any).kanbanStage || (noticia as any).etapaActual;
@@ -2865,6 +2865,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
       fechaRecepcion: fecha.toISOString().split('T')[0],
       fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
+      fechaHechos: fechaHechos ? fechaHechos.toISOString().split('T')[0] : undefined,
       origen: (noticia as any).origen || 'Noticia',
       territorial: (noticia as any).territorial,
       dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
@@ -3325,8 +3326,7 @@ export function DashboardKanbanOperativo({
       const noticiasData = getDataArray<ApiNoticia>(noticiasRaw);
       const procesosData = getDataArray<ApiProceso>(procesosRaw);
 
-      console.log('[DashboardKanban] Noticias recibidas:', noticiasData.length);
-      console.log('[DashboardKanban] Procesos recibidos:', procesosData.length);
+      
 
       // Filtrar solo items activos
       const noticiasFiltradas = noticiasData.filter(n => (n as any).activo !== false);
@@ -3339,7 +3339,7 @@ export function DashboardKanbanOperativo({
         // No se muestran noticias devueltas a menos que el usuario tenga permiso para ver devueltas
         if (estado === 'DEVUELTA') {
           const canViewDevueltas = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DEVUELTAS) || authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_MIS_DEVUELTAS);
-          console.log(canViewDevueltas);
+          
           if (!canViewDevueltas) {
             return false;
           }
@@ -3472,6 +3472,8 @@ export function DashboardKanbanOperativo({
     const denunciadoRaw: any = disciplinableList[0] || {};
     const fechaQuejaRaw = (noticia as any).fechaQueja;
     const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
+    const fechaHechosRaw = (noticia as any).fechaHechos;
+    const fechaHechos = fechaHechosRaw ? new Date(fechaHechosRaw) : undefined;
 
     // ✅ OBTENER ETAPA: usar kanbanStage del backend, o buscar en stages, o usar primera etapa config
     let etapaRaw = (noticia as any).kanbanStage || (noticia as any).etapaActual;
@@ -3506,6 +3508,7 @@ export function DashboardKanbanOperativo({
       numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
       fechaRecepcion: fecha.toISOString().split('T')[0],
       fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
+      fechaHechos: fechaHechos ? fechaHechos.toISOString().split('T')[0] : undefined,
       origen: (noticia as any).origen || 'Noticia',
       territorial: (noticia as any).territorial,
       dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
@@ -3577,6 +3580,7 @@ export function DashboardKanbanOperativo({
       ...raw,
       tipo: raw.tipo || 'noticia',
       fechaQueja: raw.fechaQueja || raw.fechaRecepcion,
+      fechaRecepcion: raw.fechaRecepcion,
       territorial: raw.territorial,
       dependenciaDenunciado: raw.dependenciaDenunciado,
       denunciante: {
@@ -4094,12 +4098,16 @@ export function DashboardKanbanOperativo({
 
   // ✅ NUEVO: Función para editar noticia
   const handleEditarNoticia = (noticia: Noticia) => {
+    console.log('🔍 Dashboard - handleEditarNoticia llamado con noticia:', noticia);
+    
+
     if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT)) {
       toast.error('No tiene permisos para editar noticias');
       return;
     }
     setNoticiaAEditar(noticia);
     setMostrarModalEditar(true);
+    console.log('🔍 Dashboard - Modal editar configurado para mostrar');
   };
 
   // ✅ NUEVO: Función para guardar edición de noticia
@@ -4133,7 +4141,7 @@ export function DashboardKanbanOperativo({
         return {
           ...item,
           origen: data.origen,
-          fechaRecepcion: data.fechaQueja,
+          fechaRecepcion: data.fechaQueja || data.fechaRecepcion,
           fechaHechos: data.fechaHechos,
           territorial: data.territorial,
           denunciado: data.denunciado,
@@ -4169,6 +4177,7 @@ export function DashboardKanbanOperativo({
       denunciante: proceso.denunciante,
       denunciado: proceso.denunciado,
       hechos: proceso.hechos || '',
+      fechaHechos: proceso.fechaHechos,
       estado: 'en-valoracion',
       prioridad: 'media',
       diasPendientes: proceso.diasRestantes,

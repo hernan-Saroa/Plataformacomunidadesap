@@ -48,6 +48,7 @@ export const noticiasService = {
       numero: n.radicado || n.id,
       fechaRecepcion: (n.fechaRecepcion || n.createdAt || new Date().toISOString()).split('T')[0],
       fechaRegistro: n.createdAt,
+      fechaHechos: n.fechaHechos,
       origen: n.origen || 'ANONIMO',
       denunciante: toUiPersona(n.denunciante),
       denunciado: toUiPersona(n.disciplinable),
@@ -111,13 +112,14 @@ export const procesosService = {
       fechaCreacion: (p.createdAt || new Date().toISOString()).split('T')[0],
       tipo: 'proceso',
       hechos: p.news?.hechos || '',
+      fechaHechos: p.news?.fechaHechos || '',
       cargo: p.news?.disciplinable?.cargo || '',
       dependencia: p.news?.dependenciaDenunciado || '',
       // Campos heredados de la Noticia disciplinaria
       territorial: p.news?.territorial || '',
-      fechaHechos: p.news?.fechaHechos || '',
       conductaSeleccionada: p.news?.conductas?.[0] || '',
       conductaPersonalizada: '',
+      conducta: p.news?.conducta || '',
       denunciados: p.news?.disciplinable ? [{
         id: p.news.disciplinable.cedula || p.news.disciplinable.documento || p.id,
         nombre: p.news.disciplinable.nombre || '',
