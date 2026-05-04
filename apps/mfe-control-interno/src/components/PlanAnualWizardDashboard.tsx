@@ -752,6 +752,11 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
   try {
     draft = draftStr ? JSON.parse(draftStr) : null;
   } catch(e) {}
+  // En modo edición usamos SIEMPRE la fuente del backend para evitar
+  // que un borrador local viejo deje actividades desmarcadas o sin responsables.
+  if (planAEditar) {
+    draft = null;
+  }
 
   const normalizarResponsables = (roles: RolConfig[]): RolConfig[] =>
     (roles || []).map((rol) => ({
@@ -973,10 +978,25 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
         }
 
         // Mapear actividades del plan existente
-        const actividadesConfiguradas = rolEdit.actividades.map((act) => ({
-          ...act,
-          tipoEvidencia: inferirTipoEvidenciaParaWizard(act as ActividadBase & { configuracionEvidencias?: any }),
-        }));
+        const actividadesConfiguradas = rolEdit.actividades.map((act) => {
+          const puntosControlActividad = ((act as any).puntosControl || (act as any).puntos_control || []) as any[];
+          const tareasOriginales = ((act as any).tareasSeguimiento || (act as any).tareas_seguimiento || []) as any[];
+          const tareasConCorte = tareasOriginales.map((t, tIdx) => ({
+            ...t,
+            // Compatibilidad con datos antiguos en BD: si una tarea no trae puntoControlId,
+            // se asigna por índice para que aparezca en su corte en paso 2.
+            puntoControlId:
+              (t as any).puntoControlId
+              || (t as any).punto_control_id
+              || puntosControlActividad[tIdx % Math.max(puntosControlActividad.length, 1)]?.id
+              || null,
+          }));
+          return {
+            ...act,
+            tareasSeguimiento: tareasConCorte,
+            tipoEvidencia: inferirTipoEvidenciaParaWizard(act as ActividadBase & { configuracionEvidencias?: any }),
+          };
+        });
 
         // Separar entre seleccionadas (del template) y custom (creadas manualmente)
         const actividadesTemplate = getActividadesPorRol(rolDef.numero);
@@ -990,8 +1010,18 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
         const responsablesDelRolBackend = Array.isArray((rolEdit as any).responsables)
           ? (rolEdit as any).responsables
           : ((rolEdit as any).responsable ? [(rolEdit as any).responsable] : []);
+        const responsablesDelRolPorActividad = (() => {
+          const primeraActividadConResponsables = actividadesConfiguradas.find((a: any) =>
+            Array.isArray(a.responsables) ? a.responsables.length > 0 : !!a.responsable
+          );
+          if (!primeraActividadConResponsables) return [];
+          if (Array.isArray((primeraActividadConResponsables as any).responsables) && (primeraActividadConResponsables as any).responsables.length > 0) {
+            return (primeraActividadConResponsables as any).responsables;
+          }
+          return (primeraActividadConResponsables as any).responsable ? [(primeraActividadConResponsables as any).responsable] : [];
+        })();
         // Regla de negocio: solo un responsable principal por rol.
-        const responsablesRol = responsablesDelRolBackend.slice(0, 1);
+        const responsablesRol = (responsablesDelRolBackend.length > 0 ? responsablesDelRolBackend : responsablesDelRolPorActividad).slice(0, 1);
 
         return {
           ...rolDef,
@@ -1316,7 +1346,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
               <Check className="w-10 h-10 text-green-600" />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {planAEditar ? '¡Plan Actualizado con 0xito!' : '¡Plan Creado con 0xito!'}
+              {planAEditar ? '¡Plan actualizado con éxito!' : '¡Plan creado con éxito!'}
             </h2>
             <p className="text-gray-600 mb-8 border-b pb-8">
               El Plan Anual de Auditoría {vigencia} ha sido guardado correctamente. Ahora puedes revisarlo desde el Dashboard.
@@ -2512,7 +2542,7 @@ function Paso2({
                                     {/* Selector de tipo de evidencia - Switches que propagan a todas las tareas */}
                                     <div className="p-2 bg-blue-50/50 rounded-lg" onClick={e => e.stopPropagation()}>
                                       <div className="block text-xs font-semibold text-gray-900 mb-1">
-                                        x9 Requisitos para todas las tareas de seguimiento
+                                        Requisitos para todas las tareas de seguimiento
                                       </div>
                                       <p className="text-[10px] text-gray-500 mb-2">Al activar, se habilita en todas las tareas de esta actividad.</p>
                                       <div className="flex flex-col gap-2">
@@ -2675,7 +2705,7 @@ function Paso2({
                                                       esActivo ? 'bg-blue-100 text-blue-700' :
                                                       'bg-gray-100 text-gray-500'
                                                     }`}>
-                                                      {esCompletado ? 'S& Completado' : enSeguimiento ? 'x9 En seguimiento' : esVencido ? 'a️ Vencido' : esActivo ? 'x Activo' : '⏳ Futuro'}
+                                                      {esCompletado ? 'Completado' : enSeguimiento ? 'En seguimiento' : esVencido ? 'Vencido' : esActivo ? 'Activo' : 'Futuro'}
                                                     </span>
                                                   </div>
                                                   <div className="grid grid-cols-2 gap-2">
@@ -3002,7 +3032,7 @@ function Paso2({
                                   {/* Selector de tipo de evidencia */}
                                   <div className="p-2 bg-green-50/50 rounded-lg">
                                     <label className="block text-xs font-semibold text-gray-900 mb-2">
-                                      x9 Requisitos para completar
+                                      Requisitos para completar
                                     </label>
                                     <div className="flex flex-col gap-1.5">
                                       <label className="flex items-center gap-2 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors">
@@ -3130,7 +3160,7 @@ function Paso2({
                                                     esActivo ? 'bg-blue-100 text-blue-700' :
                                                     'bg-gray-100 text-gray-500'
                                                   }`}>
-                                                    {esCompletado ? 'S& Completado' : enSeguimiento ? 'x9 En seguimiento' : esVencido ? 'a️ Vencido' : esActivo ? 'x Activo' : '⏳ Futuro'}
+                                                    {esCompletado ? 'Completado' : enSeguimiento ? 'En seguimiento' : esVencido ? 'Vencido' : esActivo ? 'Activo' : 'Futuro'}
                                                   </span>
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-2">
@@ -5948,13 +5978,13 @@ function SeccionGestionYSeguimiento({
           </p>
           <div className="flex flex-wrap gap-3">
             <div className="bg-white border border-blue-200 shadow-sm rounded-md p-2 inline-flex items-start gap-1.5 flex-1 min-w-[250px]">
-              <span className="text-sm leading-none">xR</span>
+              <span className="text-sm leading-none">✓</span>
               <p className="text-[10px] text-blue-800 leading-tight">
                 <strong>Cumplimiento Normativo:</strong> Estructura obligatoria del Decreto 648 de 2017 empleando 5 roles estratégicos fijos.
               </p>
             </div>
             <div className="bg-white border border-blue-200 shadow-sm rounded-md p-2 inline-flex items-start gap-1.5 flex-1 min-w-[250px]">
-              <span className="text-sm leading-none">a"️</span>
+              <span className="text-sm leading-none">ℹ️</span>
               <p className="text-[10px] text-blue-800 leading-tight">
                  <strong>Sistema Automático:</strong> El porcentaje de avance se calcula automáticamente conforme a las evidencias y cortes.
               </p>
@@ -6631,7 +6661,7 @@ function SeccionGestionYSeguimiento({
                                         {/* S& Completada */}
                                         {tarea.completada && (
                                           <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded text-[11px] font-semibold border border-green-200">
-                                            S& {tarea.fechaCompletado ? new Date(tarea.fechaCompletado).toLocaleDateString('es-CO') : 'Completada'}
+                                            {tarea.fechaCompletado ? new Date(tarea.fechaCompletado).toLocaleDateString('es-CO') : 'Completada'}
                                           </span>
                                         )}
 
@@ -7414,7 +7444,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                       <p className="text-sm text-gray-900">{actividad.evaluacion || 'Sin evaluar'}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-gray-600 mb-1">S& SEGUIMIENTO (Tareas)</p>
+                      <p className="text-xs font-semibold text-gray-600 mb-1">SEGUIMIENTO (Tareas)</p>
                       {actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 ? (
                         <ul className="space-y-1.5 mt-1">
                           {actividad.tareasSeguimiento.map((tarea) => (
@@ -7585,7 +7615,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                           {/* Seguimiento - Tareas interactivas */}
                           <div className="bg-white rounded-lg border-2 border-green-200 p-4">
                             <label className="text-sm font-semibold mb-3 flex items-center gap-2">
-                              S& Tareas de seguimiento
+                              Tareas de seguimiento
                               <span className="text-xs text-gray-500 font-normal">({(actividad.tareasSeguimiento || []).filter(t => t.completada).length}/{(actividad.tareasSeguimiento || []).length} completadas)</span>
                             </label>
 
