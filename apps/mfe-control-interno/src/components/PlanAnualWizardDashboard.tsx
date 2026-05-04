@@ -1306,6 +1306,14 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       toast.error('Debe seleccionar un responsable del Plan');
       return;
     }
+
+    if (comiteAprobacion.length !== 5) {
+      toast.error('Flujo de aprobación incompleto', {
+        description: 'Debe seleccionar los 5 miembros del comité de aprobación antes de continuar.',
+        duration: 5000
+      });
+      return;
+    }
     
     try {
       setIsSubmitting(true);
@@ -1507,8 +1515,9 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
           ) : (
             <button 
               onClick={handleFinalizar} 
-              disabled={isSubmitting}
-              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center gap-2 disabled:opacity-50"
+              disabled={isSubmitting || comiteAprobacion.length !== 5}
+              title={comiteAprobacion.length !== 5 ? 'Seleccione los 5 miembros del comité de aprobación' : undefined}
+              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
                 <>
