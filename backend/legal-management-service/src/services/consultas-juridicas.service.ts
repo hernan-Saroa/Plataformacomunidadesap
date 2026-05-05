@@ -7,6 +7,7 @@ import { TerminosService } from './terminos.service';
 import { DiasHabilesService } from './dias-habiles.service';
 import { DocumentosConsultaService } from './documentos-consulta.service';
 import { NotificationClientService } from './notification-client.service';
+import { LegalNotificationsService } from './legal-notifications.service';
 
 import { OnModuleInit } from '@nestjs/common';
 
@@ -22,7 +23,8 @@ export class ConsultasJuridicasService implements OnModuleInit {
         private readonly terminosService: TerminosService,
         private readonly diasHabilesService: DiasHabilesService,
         private readonly documentosService: DocumentosConsultaService,
-        private readonly notificationClient: NotificationClientService
+        private readonly notificationClient: NotificationClientService,
+        private readonly legalNotifications: LegalNotificationsService
     ) { }
 
     async onModuleInit() {
@@ -148,13 +150,21 @@ export class ConsultasJuridicasService implements OnModuleInit {
         );
 
         // Registro Historial Creación
+        const creadoPor = data.nombreSolicitante || 'Sistema';
         await this.registrarEvento(
             savedConsulta.id,
             'CREACIÓN',
             'Consulta radicada en el sistema',
             `Radicado: ${numeroRadicado}`,
-            data.nombreSolicitante || 'Sistema'
+            creadoPor
         );
+
+        await this.legalNotifications.notifyProcesoCreado({
+            modulo: 'ASESORIA_JURIDICA',
+            radicado: numeroRadicado,
+            procesoId: savedConsulta.id,
+            creadoPor,
+        });
 
         return savedConsulta;
     }

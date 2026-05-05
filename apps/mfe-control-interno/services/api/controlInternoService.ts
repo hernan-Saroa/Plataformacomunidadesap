@@ -1105,6 +1105,27 @@ class ControlInternoService {
   }
 
   /**
+   * Borrador del asistente «Nuevo plan» persistido en servidor (por usuario).
+   * Permite recuperar el progreso tras cerrar sesión o cambiar de dispositivo.
+   */
+  async getWizardBorradorPlanAnual(): Promise<{
+    payload: Record<string, unknown> | null;
+    updatedAt: string | null;
+  }> {
+    return client.get(`/plan-anual-5-roles/wizard-borrador/me`);
+  }
+
+  async saveWizardBorradorPlanAnual(
+    payload: Record<string, unknown>,
+  ): Promise<{ ok: boolean; savedAt: string }> {
+    return client.put(`/plan-anual-5-roles/wizard-borrador/me`, { payload });
+  }
+
+  async deleteWizardBorradorPlanAnual(): Promise<void> {
+    await client.delete(`/plan-anual-5-roles/wizard-borrador/me`);
+  }
+
+  /**
    * Crea un nuevo plan anual
    */
   async createPlanAnual(data: { año: number; responsable?: string; estado?: string }): Promise<any> {

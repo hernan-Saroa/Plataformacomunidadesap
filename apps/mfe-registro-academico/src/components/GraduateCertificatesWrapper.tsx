@@ -21,6 +21,18 @@ interface GraduateCertificatesWrapperProps {
 
 type VerificationTab = 'review' | 'approvals' | 'certificates';
 
+const HEAD_ACADEMIC_REGISTRATION_PERMISSIONS = [
+  Permissions.GRADUATES_EDIT,
+  Permissions.GRADUATES_EXPORT,
+  Permissions.GRADUATES_VERIFY_CERTIFICATE,
+  Permissions.GRADUATES_SOLICITUDE_APROBAR,
+  Permissions.GRADUATES_CERTIFICATES_VIEW,
+  Permissions.GRADUATES_CERTIFICATES_EDIT,
+  Permissions.GRADUATES_CERTIFICATES_EXPORT,
+  Permissions.GRADUATES_SOLICITUDE_RECHAZAR,
+  Permissions.GRADUATES_CERTIFICATES_REENVIAR,
+];
+
 export function GraduateCertificatesWrapper({
   onPendingCountChange,
 }: GraduateCertificatesWrapperProps) {
@@ -29,12 +41,12 @@ export function GraduateCertificatesWrapper({
   );
   const canViewReviewRequests = authService.hasPermission(
     Permissions.GRADUATES_SOLICITUDE_VIEW,
-  );
+  ) || authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_REVIEW);
   const canApproveRequests = authService.hasPermission(
     Permissions.GRADUATES_SOLICITUDE_APROBAR,
   );
-  const isHeadRole = authService.hasPermission(
-    Permissions.GRADUATES_CERTIFICATES_EDIT,
+  const isHeadRole = authService.hasAllPermissions(
+    HEAD_ACADEMIC_REGISTRATION_PERMISSIONS,
   );
   const approvalStage = isHeadRole ? 'head' : 'approver';
   const initialTab: VerificationTab = canViewCertificates

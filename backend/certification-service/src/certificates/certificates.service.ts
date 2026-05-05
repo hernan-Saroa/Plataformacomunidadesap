@@ -1060,16 +1060,51 @@ export class CertificatesService {
     return activeEncargo[0];
   }
 
+  private selectHiringDateSourceForCertificate(
+    selectedRequest: CertificateRequest,
+    requests: CertificateRequest[],
+  ): CertificateRequest {
+    const activeWithoutEncargo = requests.filter((request) => {
+      const isActive =
+        this.resolveEmploymentStatus(
+          request.hiring_date,
+          request.request_date,
+          request.status,
+        ) === 'ACTIVO';
+      const isEncargo = this.normalizeEncargoType(request.observations) === 'E';
+      return isActive && !isEncargo;
+    });
+
+    const primaryAdministrativeActiveWithoutEncargo =
+      activeWithoutEncargo.filter((request) =>
+        this.isPrimaryAdministrativeAct(request.position_category),
+      );
+
+    return (
+      primaryAdministrativeActiveWithoutEncargo[0] ||
+      activeWithoutEncargo[0] ||
+      selectedRequest
+    );
+  }
+
   private mergeRequestWithSalarySource(
     selectedRequest: CertificateRequest,
     salarySource: CertificateRequest | null,
     relatedRequests: CertificateRequest[] = [selectedRequest],
   ): CertificateRequest {
+    const hiringDateSource = this.selectHiringDateSourceForCertificate(
+      selectedRequest,
+      relatedRequests,
+    );
     const mergedBase =
       !salarySource || salarySource.id === selectedRequest.id
-        ? selectedRequest
+        ? {
+            ...selectedRequest,
+            hiring_date: hiringDateSource.hiring_date,
+          }
         : {
             ...selectedRequest,
+            hiring_date: hiringDateSource.hiring_date,
             monthly_salary: salarySource.monthly_salary,
             salary_text:
               salarySource.salary_text ?? selectedRequest.salary_text,
