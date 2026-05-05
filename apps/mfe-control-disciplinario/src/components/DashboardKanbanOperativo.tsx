@@ -803,10 +803,10 @@ function TarjetaProceso({
                         </p>
                       )}
                       <div className="text-[10px] text-gray-500 mt-0.5 space-y-0.5">
-                        {d.tipo && <p className="text-blue-600 font-medium">{d.tipo}</p>}
-                        {d.correo && <p className="truncate flex items-start gap-1"><Mail className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />{d.correo}</p>}
-                        {d.cargo && <p className="truncate">{d.cargo}</p>}
-                        {d.entidad && <p className="truncate">{d.entidad}</p>}
+                        {d.tipo && <p className="text-blue-600 font-medium text-[11px]">{d.tipo}</p>}
+                        {d.correo && <p className="truncate flex items-start gap-1 text-[11px]"><Mail className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />{d.correo}</p>}
+                        {d.cargo && <p className="truncate text-[11px]">{d.cargo}</p>}
+                        {d.entidad && <p className="truncate text-[11px]">{d.entidad}</p>}
                       </div>
                       {d.apoderado?.nombre && (
                         <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-100 pt-1">
