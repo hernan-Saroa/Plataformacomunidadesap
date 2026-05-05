@@ -1,0 +1,8 @@
+*
+!build
+!build/**
+!nginx.frontend.gateway.prebuilt.conf
+!nginx.frontend.gateway.prebuilt.tls.conf.template
+!docker
+!docker/nginx
+!docker/nginx/40-esap-select-config.sh

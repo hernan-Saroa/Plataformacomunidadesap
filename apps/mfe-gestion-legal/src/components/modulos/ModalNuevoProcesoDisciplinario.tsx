@@ -1,0 +1,667 @@
+/**
+ * ModalNuevoProcesoDisciplinario - VERSIÓN MEJORADA CON VALIDACIÓN EN TIEMPO REAL
+ * ✅ Hook useFormValidation para validaciones reactivas
+ * ✅ FormField components con indicadores visuales
+ * ✅ Progreso del formulario visible
+ * ✅ Mensajes inline específicos
+ * ✅ Tooltips explicativos
+ */
+
+import { useState, useEffect } from 'react';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
+import { Button } from '@esap-mfe/shared-ui/button';
+import { Badge } from '@esap-mfe/shared-ui/badge';
+import { Card } from '@esap-mfe/shared-ui/card';
+import { toast } from 'sonner';
+
+import { legalService } from '../../../../services/api/legal.service';
+import {
+  Gavel, User, FileText, AlertTriangle, Calendar,
+  Save, X, Building, Info, CheckCircle, Scale
+} from 'lucide-react';
+
+// ✅ Importar sistema de validación
+import { useFormValidation, CommonValidations } from '../hooks/useFormValidation';
+import { FormField, FormSection, FormProgress } from '../design-system/FormField';
+import { ModalHeaderClean } from './ModalHeaderClean';
+
+// ✅ Importar hooks responsive
+import { useKeyboardVisible } from '@esap-mfe/shared-hooks/useKeyboardVisible';
+
+interface ModalNuevoProcesoDisciplinarioProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSubmit?: (proceso: any) => void;
+}
+
+export function ModalNuevoProcesoDisciplinario({
+  isOpen,
+  onClose,
+  onSubmit
+}: ModalNuevoProcesoDisciplinarioProps) {
+
+  // ========== DATOS INICIALES ==========
+  const initialData = {
+    investigado: '',
+    identificacion: '',
+    cargo: '',
+    dependencia: '',
+    tipoFalta: 'LEVE',
+    descripcionHechos: '',
+    investigador: '',
+    abogadoAsignado: '',
+    fechaHechos: '',
+    observaciones: ''
+  };
+
+  // ========== REGLAS DE VALIDACIÓN ==========
+  const validationRules = {
+    investigado: [
+      CommonValidations.required('El nombre del investigado es obligatorio'),
+      CommonValidations.minLength(3, 'Ingrese el nombre completo')
+    ],
+    identificacion: [
+      CommonValidations.required('La identificación es obligatoria'),
+      {
+        pattern: /^[0-9]{5,10}$/,
+        message: 'Identificación inválida (5-10 dígitos)'
+      }
+    ],
+    cargo: [
+      CommonValidations.required('El cargo es obligatorio'),
+      CommonValidations.minLength(3, 'Ingrese el cargo completo')
+    ],
+    dependencia: [
+      CommonValidations.required('La dependencia es obligatoria')
+    ],
+    descripcionHechos: [
+      CommonValidations.required('La descripción de hechos es obligatoria'),
+      CommonValidations.minLength(50, 'Describa los hechos con al menos 50 caracteres para un contexto completo')
+    ],
+    investigador: [
+      CommonValidations.required('El investigador asignado es obligatorio')
+    ],
+    fechaHechos: [
+      CommonValidations.required('La fecha de los hechos es obligatoria'),
+      CommonValidations.pastDate('La fecha de los hechos debe ser pasada o actual')
+    ],
+  };
+
+  // ========== HOOK DE VALIDACIÓN ==========
+  const {
+    formData,
+    errors,
+    updateField,
+    touchField,
+    validateForm,
+    isFormValid,
+    getFieldState,
+    completedFields,
+    totalFields,
+    resetForm
+  } = useFormValidation(initialData, validationRules);
+
+  const [guardando, setGuardando] = useState(false);
+
+  // ========== CONFIGURACIÓN DE PRESCRIPCIÓN ==========
+  const [prescriptionYears, setPrescriptionYears] = useState<number>(5);
+
+  // ========== LEY APLICABLE DINÁMICA ==========
+  /** Fecha límite: igual o posterior → Ley 1952/2019; antes → Ley 734/2002 */
+  const LEY_1952_DESDE = new Date('2021-06-30T00:00:00.000Z');
+  const leyAplicable = formData.fechaHechos
+    ? (new Date(formData.fechaHechos) < LEY_1952_DESDE ? 'Ley 734 de 2002' : 'Ley 1952 de 2019')
+    : null;
+  const esLey1952 = leyAplicable === 'Ley 1952 de 2019';
+
+  // ========== PROFESIONALES DESDE BACKEND (control-disciplinario-service) ==========
+  // ✅ Usa el mismo endpoint que el módulo disciplinario (funciona en QA sin cambios de docker)
+  const [profesionales, setProfesionales] = useState<{ id: string; nombreCompleto: string; especialidad: string }[]>([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      // Cargar abogados con rol RESUELVE_GESTION_LEGAL desde auth-service
+      legalService.getAbogados()
+        .then((data: any[]) => {
+          setProfesionales(
+            data.map((p: any) => ({
+              id: p.id,
+              nombreCompleto: p.nombreCompleto || p.nombre || p.email || 'Sin nombre',
+              especialidad: p.email || 'Abogado'
+            }))
+          );
+        })
+        .catch((err: any) => {
+          console.error('Error cargando profesionales:', err);
+          setProfesionales([]);
+        });
+
+      // Cargar configuración de prescripción disciplinaria
+      legalService.getConfiguration('prescripcion_juzgamiento')
+        .then((config: any) => {
+          const years = config?.value?.years ?? 5;
+          setPrescriptionYears(Number(years));
+        })
+        .catch(() => {
+          setPrescriptionYears(5); // Valor por defecto normativo
+        });
+    }
+  }, [isOpen]);
+
+  // ========== OPCIONES DE SELECTS ==========
+  const tiposFalta = [
+    { value: 'LEVE', label: '🟢 Leve - Sanción amonestación' },
+    { value: 'GRAVE', label: '🟡 Grave - Suspensión hasta 30 días' },
+    { value: 'GRAVISIMA', label: '🔴 Gravísima - Destitución' }
+  ];
+
+  const dependenciasESAP = [
+    { value: 'DIRECCION_GENERAL', label: 'Dirección General' },
+    { value: 'SECRETARIA_GENERAL', label: 'Secretaría General' },
+    { value: 'DIR_ADMINISTRATIVA', label: 'Dirección Administrativa y Financiera' },
+    { value: 'DIR_DOCENCIA', label: 'Dirección de Docencia' },
+    { value: 'DIR_INVESTIGACION', label: 'Dirección de Investigación' },
+    { value: 'OFICINA_JURIDICA', label: 'Oficina Jurídica' },
+    { value: 'CONTROL_INTERNO', label: 'Control Interno' },
+    { value: 'TALENTO_HUMANO', label: 'Talento Humano' },
+    { value: 'OTRA', label: 'Otra Dependencia' }
+  ];
+
+  // ✅ Investigadores y Abogados desde backend (legal-management-service)
+  const investigadoresDisponibles = profesionales.map(p => ({
+    value: p.id,
+    label: `${p.nombreCompleto} (${p.especialidad || 'General'})`
+  }));
+
+  const abogadosDisponibles = profesionales.map(p => ({
+    value: p.id,
+    label: `${p.nombreCompleto} (${p.especialidad || 'General'})`
+  }));
+
+  // ========== HANDLERS ==========
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    if (!validateForm()) {
+      toast.error('⚠️ Formulario incompleto', {
+        description: 'Revise los campos marcados en rojo',
+        duration: 4000
+      });
+      return;
+    }
+
+    setGuardando(true);
+
+    try {
+      // Obtener nombre del investigador seleccionado
+      const investigadorSeleccionado = profesionales.find(p => p.id === formData.investigador);
+      const investigadorNombre = investigadorSeleccionado?.nombreCompleto || 'Profesional Asignado';
+
+      // Obtener label legible de la dependencia
+      const depLabel = dependenciasESAP.find(d => d.value === formData.dependencia)?.label || formData.dependencia;
+
+      // =============================================
+      // Crear expediente disciplinario via legal-management-service
+      // POST /legal/api/v1/juzgamiento -> JuzgamientoController.create()
+      // =============================================
+      const expedienteData = {
+        demandado: formData.investigado,
+        cargoInvestigado: formData.cargo,
+        dependenciaInvestigado: depLabel,
+        tipoFalta: formData.tipoFalta,
+        hechos: formData.descripcionHechos + (formData.observaciones ? `\n\nObservaciones: ${formData.observaciones}` : ''),
+        abogadoSustanciador: investigadorNombre,
+        fechaRadicacion: new Date(formData.fechaHechos).toISOString(),
+        fechaHechos: new Date(formData.fechaHechos).toISOString(),
+        demandante: 'Oficina de Control Interno',
+        numeroIdDemandado: formData.identificacion,
+        // leyAplicable se calcula en el backend según fechaHechos
+      };
+
+      console.log('⚖️ Creando proceso disciplinario...', expedienteData);
+      const proceso = await legalService.createJuzgamientoProceso(expedienteData);
+      console.log('✅ Proceso creado:', proceso.id, proceso.radicado);
+
+      // Notificar al padre y cerrar
+      if (onSubmit) {
+        onSubmit(proceso);
+      }
+
+      toast.success('✅ Proceso disciplinario creado', {
+        description: `Radicado: ${proceso.radicado || proceso.id}`,
+        duration: 4000
+      });
+
+      resetForm();
+      onClose();
+    } catch (error: any) {
+      console.error('❌ Error creando proceso disciplinario:', error);
+      const message = error?.response?.data?.message || error?.message || 'Intente nuevamente';
+      toast.error('❌ Error al crear proceso', {
+        description: message,
+        duration: 5000
+      });
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  // ✅ Estado para confirmar cancelación sin diálogo nativo (evita mostrar IP del servidor)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  const handleCancel = () => {
+    if (completedFields > 0) {
+      setShowCancelConfirm(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const confirmarCancelacion = () => {
+    setShowCancelConfirm(false);
+    resetForm();
+    onClose();
+  };
+
+  // ✅ Hooks responsive
+  const keyboardVisible = useKeyboardVisible();
+
+  return (
+    <Dialog open={isOpen} onOpenChange={handleCancel}>
+      <DialogContent
+        hideCloseButton
+        className={`
+          w-[100vw] sm:w-[95vw] md:w-[90vw] lg:w-[85vw] xl:max-w-[900px]
+          ${keyboardVisible ? 'h-[60vh]' : 'h-auto max-h-[95vh] sm:max-h-[90vh]'}
+          flex flex-col p-0 gap-0
+          transition-all duration-200
+        `}
+      >
+        <DialogTitle className="sr-only">
+          Nuevo Proceso Disciplinario - Validación Mejorada
+        </DialogTitle>
+        <DialogDescription className="sr-only">
+          Formulario para registrar un nuevo proceso disciplinario con validación en tiempo real
+        </DialogDescription>
+
+        {/* Wrapper relativo para el overlay de cancelación */}
+        <div className="relative flex flex-col flex-1 min-h-0 overflow-hidden">
+
+        {/* ✅ OVERLAY DE CONFIRMACIÓN DE CANCELACIÓN */}
+        {showCancelConfirm && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 rounded-[inherit]">
+            <div className="bg-red-50 border-2 border-red-300 rounded-xl shadow-2xl p-6 mx-4 max-w-sm w-full animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-bold text-base text-red-900">¿Desea cancelar?</p>
+                  <p className="text-sm text-red-700 mt-1">Se perderán los datos ingresados en el formulario.</p>
+                  <div className="flex gap-2 mt-4">
+                    <Button
+                      size="sm"
+                      onClick={confirmarCancelacion}
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      Sí, cancelar
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowCancelConfirm(false)}
+                    >
+                      Continuar editando
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== HEADER ==================== */}
+        <ModalHeaderClean
+          icono={Gavel}
+          colorIcono="red"
+          titulo="Nuevo Proceso Disciplinario"
+          subtitulo="Registro de investigación disciplinaria con validación en tiempo real"
+          badgePrincipal="AVOCAMIENTO"
+          badges={
+            <Badge className="bg-green-100 text-green-700 font-semibold text-xs">
+              ✅ Validación Reactiva
+            </Badge>
+          }
+          onClose={handleCancel}
+        />
+
+        {/* ==================== CONTENIDO CON SCROLL ==================== */}
+        <div className="flex-1 overflow-y-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4 bg-gray-50">
+          <div className="space-y-4 sm:space-y-6">
+
+            {/* ✅ PROGRESO DEL FORMULARIO */}
+            <FormProgress completed={completedFields} total={totalFields} />
+
+            {/* ✅ BANNER DE PREREQUISITOS */}
+            <Card className="p-4 bg-blue-50 border-blue-300">
+              <div className="flex items-start gap-3">
+                <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-blue-900">
+                  <p className="font-bold mb-2">📋 Antes de continuar, asegúrese de tener:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>Datos completos del funcionario investigado (nombre, cargo, dependencia)</li>
+                    <li>Descripción detallada de los hechos que motivan la investigación</li>
+                    <li>Investigador asignado conforme al Decreto 648/2017</li>
+                    <li>Fecha del auto de apertura</li>
+                  </ul>
+                </div>
+              </div>
+            </Card>
+
+            {/* ✅ SECCIÓN 1: DATOS DEL INVESTIGADO */}
+            <FormSection
+              title="Datos del Funcionario Investigado"
+              description="Información del servidor público sujeto a investigación"
+              icon={<User />}
+              color="blue"
+            >
+              <FormField
+                name="investigado"
+                label="Nombre Completo del Investigado"
+                type="text"
+                value={formData.investigado}
+                onChange={(val) => updateField('investigado', val)}
+                onBlur={() => touchField('investigado')}
+                required
+                error={errors.investigado}
+                state={getFieldState('investigado')}
+                placeholder="Ej: Juan Carlos Pérez Rodríguez"
+                tooltip="Nombres y apellidos completos del funcionario investigado"
+                icon={<User className="w-4 h-4" />}
+              />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  name="identificacion"
+                  label="Cédula de Ciudadanía"
+                  type="text"
+                  value={formData.identificacion}
+                  onChange={(val) => updateField('identificacion', val)}
+                  onBlur={() => touchField('identificacion')}
+                  required
+                  error={errors.identificacion}
+                  state={getFieldState('identificacion')}
+                  placeholder="Ej: 1234567890"
+                  tooltip="Número de cédula sin puntos ni espacios"
+                  maxLength={10}
+                  showCharCount
+                />
+
+                <FormField
+                  name="cargo"
+                  label="Cargo del Investigado"
+                  type="text"
+                  value={formData.cargo}
+                  onChange={(val) => updateField('cargo', val)}
+                  onBlur={() => touchField('cargo')}
+                  required
+                  error={errors.cargo}
+                  state={getFieldState('cargo')}
+                  placeholder="Ej: Director Administrativo"
+                  tooltip="Cargo que desempeña o desempeñaba al momento de los hechos"
+                />
+              </div>
+
+              <FormField
+                name="dependencia"
+                label="Dependencia"
+                type="select"
+                value={formData.dependencia}
+                onChange={(val) => updateField('dependencia', val)}
+                onBlur={() => touchField('dependencia')}
+                required
+                error={errors.dependencia}
+                state={getFieldState('dependencia')}
+                options={dependenciasESAP.map(dep => ({
+                  value: dep.value,
+                  label: dep.label,
+                  icon: <Building className="w-4 h-4" />
+                }))}
+                tooltip="Dependencia a la que pertenece el funcionario"
+              />
+            </FormSection>
+
+            {/* ✅ SECCIÓN 2: TIPO DE FALTA Y HECHOS */}
+            <FormSection
+              title="Tipo de Falta y Descripción de Hechos"
+              description="Clasificación de la conducta y narración de los hechos investigados"
+              icon={<FileText />}
+              color="orange"
+            >
+              <FormField
+                name="tipoFalta"
+                label="Tipo de Falta (Preliminar)"
+                type="select"
+                value={formData.tipoFalta}
+                onChange={(val) => updateField('tipoFalta', val)}
+                onBlur={() => touchField('tipoFalta')}
+                options={tiposFalta.map(tf => ({
+                  value: tf.value,
+                  label: tf.label
+                }))}
+                helpText="Clasificación preliminar según Ley 734/2002. Puede modificarse durante la investigación"
+                icon={<AlertTriangle className="w-4 h-4" />}
+              />
+
+              <FormField
+                name="descripcionHechos"
+                label="Descripción de los Hechos"
+                type="textarea"
+                value={formData.descripcionHechos}
+                onChange={(val) => updateField('descripcionHechos', val)}
+                onBlur={() => touchField('descripcionHechos')}
+                required
+                error={errors.descripcionHechos}
+                state={getFieldState('descripcionHechos')}
+                placeholder="Describa de manera clara y detallada los hechos que motivan la apertura de la investigación disciplinaria, incluyendo fechas, lugares y circunstancias..."
+                tooltip="Narración completa de los hechos presuntamente constitutivos de falta disciplinaria"
+                rows={8}
+                maxLength={3000}
+                showCharCount
+              />
+            </FormSection>
+
+            {/* ✅ SECCIÓN 3: ASIGNACIÓN DE INVESTIGADOR */}
+            <FormSection
+              title="Asignación de Investigador y Abogado"
+              description="Funcionarios responsables de la investigación disciplinaria"
+              icon={<Gavel />}
+              color="purple"
+            >
+              <FormField
+                name="investigador"
+                label="Investigador Asignado"
+                type="select"
+                value={formData.investigador}
+                onChange={(val) => updateField('investigador', val)}
+                onBlur={() => touchField('investigador')}
+                required
+                error={errors.investigador}
+                state={getFieldState('investigador')}
+                options={investigadoresDisponibles.map(inv => ({
+                  value: inv.value,
+                  label: inv.label
+                }))}
+                tooltip="Funcionario designado para adelantar la investigación según Decreto 648/2017"
+              />
+
+              <FormField
+                name="abogadoAsignado"
+                label="Abogado de Apoyo (Opcional)"
+                type="select"
+                value={formData.abogadoAsignado}
+                onChange={(val) => updateField('abogadoAsignado', val)}
+                options={abogadosDisponibles.map(abg => ({
+                  value: abg.value,
+                  label: abg.label
+                }))}
+                helpText="Abogado que brindará apoyo jurídico durante el proceso"
+              />
+            </FormSection>
+
+            {/* ✅ SECCIÓN 4: FECHAS */}
+            <FormSection
+              title="Fechas del Proceso"
+              description="Fechas relevantes para el cómputo de términos y determinación de la ley aplicable"
+              icon={<Calendar />}
+              color="green"
+            >
+              <FormField
+                name="fechaHechos"
+                label="Fecha de los Hechos"
+                type="date"
+                value={formData.fechaHechos}
+                onChange={(val) => updateField('fechaHechos', val)}
+                onBlur={() => touchField('fechaHechos')}
+                required
+                error={errors.fechaHechos}
+                state={getFieldState('fechaHechos')}
+                tooltip="Fecha en que ocurrieron los hechos disciplinarios. Determina la ley aplicable y el cómputo de prescripción."
+                icon={<Calendar className="w-4 h-4" />}
+              />
+
+              {/* ✅ RECUADRO DINÁMICO DE LEY APLICABLE */}
+              <div className={`flex items-start gap-3 p-4 rounded-lg border ${
+                leyAplicable === null
+                  ? 'bg-gray-50 border-gray-200'
+                  : esLey1952
+                    ? 'bg-blue-50 border-blue-300'
+                    : 'bg-amber-50 border-amber-300'
+              }`}>
+                <Scale className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                  leyAplicable === null ? 'text-gray-400' : esLey1952 ? 'text-blue-600' : 'text-amber-600'
+                }`} />
+                <div className="text-sm">
+                  {leyAplicable === null ? (
+                    <p className="text-gray-500 font-medium">Ingrese la fecha de los hechos para determinar la ley aplicable</p>
+                  ) : (
+                    <>
+                      <p className={`font-bold text-base ${esLey1952 ? 'text-blue-900' : 'text-amber-900'}`}>
+                        {leyAplicable}
+                      </p>
+                      <p className={`mt-1 ${esLey1952 ? 'text-blue-700' : 'text-amber-700'}`}>
+                        {esLey1952
+                          ? 'Código General Disciplinario — vigente desde el 30 de junio de 2021'
+                          : 'Código Disciplinario Único — aplicable a hechos anteriores al 30 de junio de 2021'}
+                      </p>
+                      <p className={`mt-1.5 text-xs ${esLey1952 ? 'text-blue-600' : 'text-amber-600'}`}>
+                        Término de prescripción: <strong>{prescriptionYears} {prescriptionYears === 1 ? 'año' : 'años'}</strong> contados desde la fecha del auto de apertura
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </FormSection>
+
+            {/* ✅ SECCIÓN 5: OBSERVACIONES */}
+            <FormSection
+              title="Observaciones Adicionales"
+              description="Notas internas sobre el proceso disciplinario"
+              icon={<FileText />}
+              color="blue"
+            >
+              <FormField
+                name="observaciones"
+                label="Observaciones"
+                type="textarea"
+                value={formData.observaciones}
+                onChange={(val) => updateField('observaciones', val)}
+                placeholder="Notas internas, antecedentes disciplinarios, recomendaciones del equipo..."
+                helpText="Opcional: Información complementaria visible solo para el equipo de Control Interno"
+                rows={5}
+                maxLength={1500}
+                showCharCount
+              />
+            </FormSection>
+
+            {/* ✅ ADVERTENCIA SI FORMULARIO INCOMPLETO */}
+            {!isFormValid && completedFields > 0 && (
+              <Card className="p-4 bg-yellow-50 border-yellow-300">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-yellow-900">
+                    <p className="font-bold mb-1">⚠️ Faltan campos obligatorios</p>
+                    <p>Complete los campos marcados con asterisco (*) y resuelva los errores antes de guardar.</p>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* ✅ CONFIRMACIÓN SI FORMULARIO VÁLIDO */}
+            {isFormValid && (
+              <Card className="p-4 bg-green-50 border-green-300">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-green-900">
+                    <p className="font-bold">✅ Formulario completo y válido</p>
+                    <p>Puede crear el proceso disciplinario ahora.</p>
+                  </div>
+                </div>
+              </Card>
+            )}
+          </div>
+        </div>
+
+        {/* ==================== FOOTER STICKY ==================== */}
+        <div className="flex-shrink-0 px-3 sm:px-4 md:px-6 py-3 sm:py-4 bg-white border-t border-gray-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div className="text-xs text-gray-600 text-center sm:text-left">
+            <span className="text-red-500 font-bold">*</span> Campos obligatorios
+            <span className="mx-2">•</span>
+            <span className={isFormValid ? 'text-green-600 font-bold' : 'text-orange-600'}>
+              {completedFields}/{totalFields} completados
+            </span>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCancel}
+              disabled={guardando}
+              className="w-full sm:w-auto"
+            >
+              <X className="w-4 h-4 mr-2" />
+              Cancelar
+            </Button>
+
+            <Button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!isFormValid || guardando}
+              style={isFormValid && !guardando ? {
+                background: 'linear-gradient(135deg, #DC2626 0%, #B91C1C 100%)'
+              } : {}}
+              className={`w-full sm:w-auto ${!isFormValid || guardando ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {guardando ? (
+                <>
+                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Guardando...
+                </>
+              ) : !isFormValid ? (
+                <>
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  Complete los campos requeridos
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Crear Proceso Disciplinario
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+        </div>{/* end relative wrapper */}
+      </DialogContent>
+    </Dialog>
+  );
+}

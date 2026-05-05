@@ -56,14 +56,24 @@
         }
 
         .qr-code {
-            text-align: right;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
             margin-top: 0.2cm;
         }
 
         .qr-code img {
-            width: 1.5cm;
-            height: 1.5cm;
+            width: 1.58cm;
+            height: 1.58cm;
             object-fit: contain;
+        }
+
+        .qr-caption {
+            margin-top: 0.08cm;
+            max-width: 2.8cm;
+            font-size: 7.5pt;
+            line-height: 1.2;
         }
 
         .fecha-ciudad {
@@ -122,7 +132,7 @@
         }
 
         .firma-seccion {
-            margin-top: 0.6cm;
+            margin-top: 0.35cm;
             text-align: left;
             padding-left: 0.4cm;
         }
@@ -130,6 +140,21 @@
         .firma-nombre {
             font-weight: bold;
             font-size: 10.5pt;
+        }
+
+        .firma-img {
+            display: block;
+            width: 4.4cm;
+            height: 1.15cm;
+            object-fit: contain;
+            object-position: left center;
+            margin-bottom: 0.08cm;
+        }
+
+        .firma-cargo {
+            font-weight: bold;
+            font-size: 10.5pt;
+            line-height: 1.25;
         }
 
         .validacion-url {
@@ -231,15 +256,13 @@
                     <p>{{CLOSING_TEXT}}</p>
                 </div>
 
-                <!-- Firma -->
-                <div class="firma-seccion">
-                    <div class="firma-nombre">{{SIGNER_TITLE}}</div>
-                </div>
+                {{SIGNATURE_BLOCK}}
             </div>
 
             <!-- Código QR -->
             <div class="qr-code" style="margin-left: 1cm;">
                 <img src="{{QR_CODE_URL}}" alt="C&oacute;digo QR de validaci&oacute;n" />
+                <div class="qr-caption">Escanee y verifique el certificado</div>
             </div>
         </div>
 

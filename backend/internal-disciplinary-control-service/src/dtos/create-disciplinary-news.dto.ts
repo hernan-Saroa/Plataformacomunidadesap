@@ -9,8 +9,46 @@ import {
   IsArray,
   IsDateString,
 } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { Type, Transform, plainToInstance } from 'class-transformer';
 import { NewsOrigin } from '../entities/disciplinary-news.entity';
+
+const toPersonInfoDto = (value: unknown): PersonInfoDto | null => {
+  if (typeof value === 'string') {
+    try {
+      return plainToInstance(PersonInfoDto, JSON.parse(value));
+    } catch {
+      return null;
+    }
+  }
+
+  if (value && typeof value === 'object') {
+    return plainToInstance(PersonInfoDto, value);
+  }
+
+  return null;
+};
+
+export class ApoderadoDto {
+  @IsOptional()
+  @IsString()
+  nombre?: string;
+
+  @IsOptional()
+  @IsString()
+  cedula?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  telefono?: string;
+
+  @IsOptional()
+  @IsString()
+  direccion?: string;
+}
 
 export class PersonInfoDto {
   @IsString()
@@ -44,36 +82,12 @@ export class PersonInfoDto {
   @IsString()
   entidad?: string;
 
-  // ✅ NUEVO: Campo opcional para almacenar información del apoderado
-  // @IsOptional()
-  // @IsObject()
-  // @ValidateNested()
-  // @Type(() => ApoderadoDto)
-  // apoderado?: ApoderadoDto;
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => ApoderadoDto)
+  apoderado?: ApoderadoDto;
 }
-
-// ✅ NUEVO: DTO para información del apoderado
-// export class ApoderadoDto {
-//   @IsOptional()
-//   @IsString()
-//   nombre?: string;
-
-//   @IsOptional()
-//   @IsString()
-//   cedula?: string;
-
-//   @IsOptional()
-//   @IsEmail()
-//   email?: string;
-
-//   @IsOptional()
-//   @IsString()
-//   telefono?: string;
-
-//   @IsOptional()
-//   @IsString()
-//   direccion?: string;
-// }
 
 export class CreateDisciplinaryNewsDto {
   @IsEnum(NewsOrigin)
@@ -91,43 +105,43 @@ export class CreateDisciplinaryNewsDto {
   territorial: string;
 
   @IsString()
+  conducta?: string;
+
+  @IsOptional()
+  @IsUUID()
+  radicadorId?: string;
+
+  @IsString()
   dependenciaDenunciado: string;
 
   @IsOptional()
-  @IsObject()
   @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      try {
-        return JSON.parse(value);
-      } catch {
-        return null;
-      }
-    }
-    return value;
+    const parsed = typeof value === 'string' ? (() => { try { return JSON.parse(value); } catch { return null; } })() : value;
+    if (!parsed) return null;
+    if (Array.isArray(parsed)) return parsed.map((item: unknown) => plainToInstance(PersonInfoDto, item));
+    return plainToInstance(PersonInfoDto, parsed);
   })
-  denunciante: PersonInfoDto;
+  denunciante: PersonInfoDto | PersonInfoDto[];
 
   @IsOptional()
-  @IsObject()
   @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      try {
-        return JSON.parse(value);
-      } catch {
-        return null;
-      }
-    }
-    return value;
+    const parsed = typeof value === 'string' ? (() => { try { return JSON.parse(value); } catch { return null; } })() : value;
+    if (!parsed) return null;
+    if (Array.isArray(parsed)) return parsed.map((item: unknown) => plainToInstance(PersonInfoDto, item));
+    return plainToInstance(PersonInfoDto, parsed);
   })
-  disciplinable: PersonInfoDto;
+  disciplinable: PersonInfoDto | PersonInfoDto[];
 
-  @IsString()
-  hechos: string;
+    @IsString()
+    hechos: string;
 
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  conductas?: string[];
+  
+    
+
+    @IsOptional()
+    @IsArray()
+    @IsString({ each: true })
+    conductas?: string[];
 
   @IsOptional()
   @IsArray()
@@ -156,9 +170,11 @@ export class DisciplinaryNewsResponseDto {
   dependenciaDenunciado: string;
   denunciante: object;
   disciplinable: object;
-  hechos: string;
-  conductas?: string[];
-  estado: string;
+   hechos: string;
+   conducta?: string;
+   conductas?: string[];
+   estado: string;
   adjuntos: string[];
+  radicadorId?: string;
   updatedAt: Date;
 }

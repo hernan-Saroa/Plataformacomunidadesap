@@ -143,7 +143,7 @@ export class AlertasService {
    * Crear nueva alerta/notificación para un Auto (Sin término/regla)
    */
   async crearNotificacionAuto(
-    autoId: string,
+    autoId: string | null,
     tipo: TipoAlerta,
     destinatario: string,
     asunto: string,

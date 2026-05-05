@@ -17,6 +17,7 @@ async function bootstrap() {
       app = await NestFactory.create<NestExpressApplication>(AppModule, {
         logger: ['error', 'warn', 'log'],
       });
+      app.getHttpAdapter().getInstance().disable?.('x-powered-by');
       console.log('✅ Aplicación NestJS creada exitosamente');
     } catch (dbError: any) {
       console.error('\n❌ Error al conectar con la base de datos:');
@@ -76,7 +77,8 @@ async function bootstrap() {
         'Content-Type', 'Authorization', 'Accept', 'Accept-Charset',
         'x-user-id', 'x-user-username', 'x-user-roles',
         'X-Client-Version', 'X-Client-Platform', 'X-Access-Token',
-      ],
+      'x-client-platform',
+      'X-Client-Platform'],
     });
 
     // Aumentar límite de body-parser para archivos grandes (base64)
@@ -105,7 +107,7 @@ async function bootstrap() {
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
-        forbidNonWhitelisted: true,
+        forbidNonWhitelisted: false,
         transform: true,
       }),
     );

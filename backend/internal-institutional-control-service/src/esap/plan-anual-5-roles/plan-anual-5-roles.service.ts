@@ -22,6 +22,31 @@ interface RolTemplate {
 
 @Injectable()
 export class PlanAnual5RolesService {
+  private static readonly ESTADOS_PLAN_VALIDOS = new Set([
+    'borrador',
+    'en-revision',
+    'aprobado',
+    'en-ejecucion',
+    'completado',
+  ]);
+
+  private normalizarEstadoPlan(estado?: string): 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' {
+    const estadoNormalizado = (estado || 'borrador').trim().toLowerCase().replace(/_/g, '-');
+
+    // Compatibilidad con valores legacy usados por frontend/servicio.
+    if (estadoNormalizado === 'activo' || estadoNormalizado === 'vigente') {
+      return 'en-ejecucion';
+    }
+
+    if (!PlanAnual5RolesService.ESTADOS_PLAN_VALIDOS.has(estadoNormalizado)) {
+      throw new BadRequestException(
+        `Estado de plan inválido: "${estado}". Valores permitidos: borrador, en-revision, aprobado, en-ejecucion, completado.`,
+      );
+    }
+
+    return estadoNormalizado as 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado';
+  }
+
   constructor(
     @InjectRepository(PlanAnual5Roles)
     private readonly planRepository: Repository<PlanAnual5Roles>,
@@ -43,12 +68,13 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('plan.roles', 'roles')
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
+      .where('plan.año > 0')
       .orderBy('plan.año', 'DESC')
       .addOrderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC');
 
     if (year) {
-      query.where('plan.año = :year', { year });
+      query.andWhere('plan.año = :year', { year });
     }
 
     return query.getMany();
@@ -61,6 +87,7 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.id = :id', { id })
+      .andWhere('plan.año > 0')
       .orderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC')
       .getOne();
@@ -79,16 +106,18 @@ export class PlanAnual5RolesService {
       .leftJoinAndSelect('roles.actividades', 'actividades')
       .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.año = :year', { year })
-      .orderBy('roles.rol_numero', 'ASC')
+      .andWhere('plan.año > 0')
+      .orderBy('plan.fecha_creacion', 'DESC') // El más reciente primero
+      .addOrderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC')
       .getOne();
   }
 
   async create(createDto: CreatePlanAnual5RolesDto, usuarioId?: string): Promise<PlanAnual5Roles> {
-    // Verificar si ya existe un plan para ese año
+    // Verificar si ya existe un plan para la misma vigencia
     const existing = await this.findByYear(createDto.año);
     if (existing) {
-      throw new BadRequestException(`Ya existe un plan anual para el año ${createDto.año}`);
+      throw new BadRequestException(`Ya existe un plan anual activo para la vigencia ${createDto.año}.`);
     }
 
     // Crear el plan
@@ -98,8 +127,10 @@ export class PlanAnual5RolesService {
       responsable_id: createDto.responsable_id,
       fecha_inicio: createDto.fecha_inicio ? new Date(createDto.fecha_inicio) : undefined,
       fecha_fin: createDto.fecha_fin ? new Date(createDto.fecha_fin) : undefined,
-      estado: createDto.estado || 'borrador',
+      estado: this.normalizarEstadoPlan(createDto.estado),
       fecha_creacion: new Date(),
+      equipo_aprobacion: createDto.equipo_aprobacion || [],
+      orden_aprobacion: createDto.orden_aprobacion || 'secuencial',
     });
 
     const savedPlan: PlanAnual5Roles = await this.planRepository.save(plan);
@@ -174,12 +205,77 @@ export class PlanAnual5RolesService {
       plan.responsable = updateDto.responsable;
     }
 
-    if (updateDto.estado !== undefined && updateDto.estado !== plan.estado) {
-      cambios.push({ campo: 'estado', valorAnterior: plan.estado, valorNuevo: updateDto.estado });
-      plan.estado = updateDto.estado as 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' | 'activo';
+    if (updateDto.estado !== undefined) {
+      const estadoNormalizado = this.normalizarEstadoPlan(updateDto.estado);
+      if (estadoNormalizado !== plan.estado) {
+        cambios.push({ campo: 'estado', valorAnterior: plan.estado, valorNuevo: estadoNormalizado });
+        plan.estado = estadoNormalizado;
+      }
+    }
+
+    // Sanea estado legacy en la fila (ej. BORRADOR) para que no falle cualquier otro UPDATE.
+    plan.estado = this.normalizarEstadoPlan(plan.estado);
+
+    if (updateDto.equipo_aprobacion !== undefined) {
+      // Comparación profunda simple para historial es compleja, marcamos como actualizado
+      cambios.push({ campo: 'equipo_aprobacion', valorAnterior: 'previo', valorNuevo: 'actualizado' });
+      plan.equipo_aprobacion = updateDto.equipo_aprobacion;
+    }
+
+    if (updateDto.orden_aprobacion !== undefined && updateDto.orden_aprobacion !== plan.orden_aprobacion) {
+      cambios.push({ campo: 'orden_aprobacion', valorAnterior: plan.orden_aprobacion || 'secuencial', valorNuevo: updateDto.orden_aprobacion });
+      plan.orden_aprobacion = updateDto.orden_aprobacion;
+    }
+
+    // Manejo de fecha_inicio y fecha_fin del plan
+    const oldFechaInicio = plan.fecha_inicio 
+      ? (plan.fecha_inicio instanceof Date ? plan.fecha_inicio.toISOString().split('T')[0] : String(plan.fecha_inicio))
+      : null;
+    const oldFechaFin = plan.fecha_fin 
+      ? (plan.fecha_fin instanceof Date ? plan.fecha_fin.toISOString().split('T')[0] : String(plan.fecha_fin))
+      : null;
+
+    if (updateDto.fecha_inicio !== undefined) {
+      const newVal = updateDto.fecha_inicio;
+      if (newVal !== oldFechaInicio) {
+        cambios.push({ campo: 'fecha_inicio', valorAnterior: oldFechaInicio || '', valorNuevo: newVal });
+        plan.fecha_inicio = new Date(newVal);
+      }
+    }
+    if (updateDto.fecha_fin !== undefined) {
+      const newVal = updateDto.fecha_fin;
+      if (newVal !== oldFechaFin) {
+        cambios.push({ campo: 'fecha_fin', valorAnterior: oldFechaFin || '', valorNuevo: newVal });
+        plan.fecha_fin = new Date(newVal);
+      }
     }
 
     const savedPlan: PlanAnual5Roles = await this.planRepository.save(plan);
+
+    // Propagar fechas del plan a actividades que aún tienen las fechas anteriores
+    const fechaInicioChanged = cambios.some(c => c.campo === 'fecha_inicio');
+    const fechaFinChanged = cambios.some(c => c.campo === 'fecha_fin');
+    if (fechaInicioChanged || fechaFinChanged) {
+      try {
+        if (fechaInicioChanged && oldFechaInicio) {
+          await this.dataSource.query(`
+            UPDATE control_interno.actividad_plan_anual_5 
+            SET fecha_inicio = $1::date, updated_at = CURRENT_TIMESTAMP
+            WHERE plan_id = $2 AND fecha_inicio = $3::date AND activo = true
+          `, [updateDto.fecha_inicio, savedPlan.id, oldFechaInicio]);
+        }
+        if (fechaFinChanged && oldFechaFin) {
+          await this.dataSource.query(`
+            UPDATE control_interno.actividad_plan_anual_5 
+            SET fecha_fin = $1::date, updated_at = CURRENT_TIMESTAMP
+            WHERE plan_id = $2 AND fecha_fin = $3::date AND activo = true
+          `, [updateDto.fecha_fin, savedPlan.id, oldFechaFin]);
+        }
+        console.log(`[PlanAnual] Fechas propagadas a actividades del plan ${savedPlan.id}`);
+      } catch (propError) {
+        console.error('[PlanAnual] Error propagando fechas a actividades:', propError);
+      }
+    }
 
     // Registrar en historial si hubo cambios
     if (cambios.length > 0) {
@@ -236,6 +332,9 @@ export class PlanAnual5RolesService {
     console.log('📥 [addActividad] Recibido createDto:');
     console.log('   - nombre:', createDto.nombre);
     console.log('   - configuracionEvidencias (RAW):', JSON.stringify(createDto.configuracionEvidencias, null, 2));
+    console.log('   - entradas_seguimiento (RAW):', JSON.stringify(createDto.entradas_seguimiento, null, 2));
+    console.log('   - tiene entradas?:', !!createDto.entradas_seguimiento);
+    console.log('   - cantidad entradas:', createDto.entradas_seguimiento?.length || 0);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
     const rol = await this.rolRepository.findOne({
@@ -247,10 +346,15 @@ export class PlanAnual5RolesService {
       throw new NotFoundException(`Rol con ID ${rolId} no encontrado`);
     }
 
-    // Guardar usando query SQL directa para evitar problemas de zona horaria con TypeORM
-    // Las fechas se insertan directamente como strings YYYY-MM-DD
-    const fechaInicio = createDto.fecha_inicio || new Date().toISOString().split('T')[0];
-    const fechaFin = createDto.fecha_fin || new Date().toISOString().split('T')[0];
+    // Fechas: prioridad actividad → plan → hoy (fallback, NO hardcodeadas)
+    const planFechaInicio = rol.plan?.fecha_inicio 
+      ? (rol.plan.fecha_inicio instanceof Date ? rol.plan.fecha_inicio.toISOString().split('T')[0] : String(rol.plan.fecha_inicio))
+      : null;
+    const planFechaFin = rol.plan?.fecha_fin 
+      ? (rol.plan.fecha_fin instanceof Date ? rol.plan.fecha_fin.toISOString().split('T')[0] : String(rol.plan.fecha_fin))
+      : null;
+    const fechaInicio = createDto.fecha_inicio || planFechaInicio || new Date().toISOString().split('T')[0];
+    const fechaFin = createDto.fecha_fin || planFechaFin || new Date().toISOString().split('T')[0];
     
     // Asignar configuración de evidencias por defecto si no se proporciona
     // Los campos documentos/observaciones se derivan de adjuntosRequeridos/observacionRequerida
@@ -306,12 +410,18 @@ export class PlanAnual5RolesService {
     console.log('✅ [addActividad] configEvidencias FINAL:', JSON.stringify(configEvidencias, null, 2));
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     
+    // Log de entradas de seguimiento antes del INSERT
+    const entradasArray = createDto.entradas_seguimiento || [];
+    const entradasSeguimientoStr = JSON.stringify(entradasArray);
+    console.log('💾 [addActividad] Guardando entradas_seguimiento:', entradasSeguimientoStr);
+    console.log('💾 [addActividad] Tipo:', typeof entradasSeguimientoStr, 'Longitud:', entradasSeguimientoStr.length);
+    
     const query = `
       INSERT INTO control_interno.actividad_plan_anual_5 
       (rol_id, plan_id, nombre, descripcion, responsable, fecha_inicio, fecha_fin, estado, porcentaje_avance, observaciones, prioridad,
        control, evaluacion, seguimiento, requiere_verificacion_director, verificada_por_director, fecha_verificacion, observaciones_director, configuracion_evidencias,
-       puntos_control, frecuencia_puntos_control, responsables, fecha_corte)
-      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23::date)
+       puntos_control, frecuencia_puntos_control, responsables, fecha_corte, entradas_seguimiento, tareas_seguimiento)
+      VALUES ($1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20::jsonb, $21, $22::jsonb, $23::date, $24::jsonb, $25::jsonb)
       RETURNING *
     `;
     
@@ -335,15 +445,21 @@ export class PlanAnual5RolesService {
       createDto.verificadaPorDirector || false,
       createDto.fechaVerificacion || null,
       createDto.observacionesDirector || null,
-      JSON.stringify(configEvidencias),
+      JSON.stringify(configEvidencias),  // $19::jsonb
       // Puntos de control y responsables múltiples
-      JSON.stringify(createDto.puntos_control || []),
-      createDto.frecuencia_puntos_control || null,
-      JSON.stringify(createDto.responsables || []),
-      createDto.fecha_corte || null,
+      JSON.stringify(createDto.puntos_control || []),  // $20::jsonb
+      createDto.frecuencia_puntos_control || null,  // $21
+      JSON.stringify(createDto.responsables || []),  // $22::jsonb
+      createDto.fecha_corte || null,  // $23::date
+      // ⚡ NUEVO: Entradas de seguimiento iniciales
+      entradasSeguimientoStr,  // $24::jsonb
+      // ⚡ NUEVO: Tareas de seguimiento (sub-tareas)
+      JSON.stringify(createDto.tareas_seguimiento || []),  // $25::jsonb
     ]);
 
     const saved = result[0];
+    console.log('✅ [addActividad] Actividad guardada con ID:', saved.id);
+    console.log('📊 [addActividad] entradas_seguimiento guardadas:', saved.entradas_seguimiento?.length || 0);
 
     // Recalcular estadísticas del rol
     await this.recalcularRol(rolId);
@@ -547,6 +663,13 @@ export class PlanAnual5RolesService {
       values.push(entradasStr);
       cambios.push({ campo: 'entradas_seguimiento', valorAnterior: '(array)', valorNuevo: `${((updateDto as any).entradas_seguimiento as any[]).length} entradas` });
     }
+    // Tareas de seguimiento (sub-tareas de la actividad)
+    if ((updateDto as any).tareas_seguimiento !== undefined) {
+      const tareasStr = JSON.stringify((updateDto as any).tareas_seguimiento);
+      updates.push(`tareas_seguimiento = $${paramIndex++}::jsonb`);
+      values.push(tareasStr);
+      cambios.push({ campo: 'tareas_seguimiento', valorAnterior: '(array)', valorNuevo: `${((updateDto as any).tareas_seguimiento as any[]).length} tareas` });
+    }
     // Puntos de control y responsables múltiples
     if (updateDto.puntos_control !== undefined) {
       updates.push(`puntos_control = $${paramIndex++}::jsonb`);
@@ -663,6 +786,39 @@ export class PlanAnual5RolesService {
       undefined,
       undefined,
       [{ campo: 'activo', valorAnterior: 'true', valorNuevo: 'false' }]
+    );
+  }
+
+  async remove(id: string, usuarioId?: string): Promise<void> {
+    const plan = await this.planRepository.findOne({
+      where: { id },
+      relations: ['roles', 'roles.actividades', 'roles.actividades.adjuntos'],
+    });
+
+    if (!plan) {
+      throw new NotFoundException(`Plan Anual con ID ${id} no encontrado`);
+    }
+
+    const vigenciaOriginal = plan.año;
+
+    // Soft delete release pattern: usar estado válido para no violar CHECK.
+    // El "eliminado lógico" se determina por año negativo.
+    plan.estado = 'completado';
+    // Liberar la vigencia para que el usuario pueda crear otro plan en el mismo año,
+    // garantizando que no choque con la restricción @Unique(['año']) de TypeORM
+    plan.año = -(Date.now() % 1000000000); 
+
+    await this.planRepository.save(plan);
+
+    // Dejar traza explícita e imborrable en el Módulo de Auditoría (Historial interno)
+    await this.registrarHistorial(
+      plan.id,
+      TipoEventoPlanAnual.CAMBIO_ESTADO,
+      'Eliminación de Plan Anual',
+      `El Plan Anual de Auditoría de la vigencia ${vigenciaOriginal} fue eliminado por el usuario. Eliminación lógica registrada por control de trazabilidad.`,
+      usuarioId || 1, 
+      JSON.stringify({ accion: 'SOFT_DELETE', vigenciaOriginal }),
+      'completado'
     );
   }
 

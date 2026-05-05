@@ -113,10 +113,36 @@ export class ConsultasJuridicasController {
     @Patch(':id/gestionar-respuesta')
     async gestionarRespuesta(
         @Param('id') id: string,
-        @Body() body: { respuesta: string, enviar: boolean | string, usuario?: string }
+        @Body() body: { respuesta: string, enviar: boolean | string, usuario?: string, destinatariosAdicionales?: string[] }
     ) {
         const enviar = body.enviar === true || body.enviar === 'true';
-        return this.consultasService.updateRespuesta(id, body.respuesta, enviar, body.usuario);
+        return this.consultasService.updateRespuesta(id, body.respuesta, enviar, body.usuario, body.destinatariosAdicionales);
+    }
+
+    // --- Endpoints de Workflow Revisión Jefe ---
+
+    @Patch(':id/enviar-a-jefe')
+    async enviarAJefe(
+        @Param('id') id: string,
+        @Body() body: { respuesta: string; usuario?: string; destinatariosAdicionales?: string[] }
+    ) {
+        return this.consultasService.enviarAJefe(id, body.respuesta, body.usuario, body.destinatariosAdicionales);
+    }
+
+    @Patch(':id/aprobar-respuesta')
+    async aprobarRespuesta(
+        @Param('id') id: string,
+        @Body() body: { usuario?: string; destinatariosAdicionales?: string[] }
+    ) {
+        return this.consultasService.aprobarRespuesta(id, body.usuario, body.destinatariosAdicionales);
+    }
+
+    @Patch(':id/devolver-respuesta')
+    async devolverRespuesta(
+        @Param('id') id: string,
+        @Body() body: { comentario: string; usuario?: string }
+    ) {
+        return this.consultasService.devolverRespuesta(id, body.comentario, body.usuario);
     }
 
     // --- Endpoints de Archivo ---

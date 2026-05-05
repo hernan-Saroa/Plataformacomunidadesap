@@ -10,6 +10,10 @@ import { CertificateGeneratorService } from './certificate-generator.service';
 import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
 import { TemplateConfigService } from './template-config.service';
 import {
+  LaborOracleIntegrationService,
+  type LaborOracleSuggestedRequest,
+} from './labor-oracle-integration.service';
+import {
   TechnicalBonusAssignment,
   type TechnicalBonusCategory,
 } from './technical-bonus-assignment.entity';
@@ -73,9 +77,19 @@ type BulkTechnicalBonusPayload = {
   updatedBy?: string;
 };
 
+type OracleRequestSyncResult = {
+  enabled: boolean;
+  found: boolean;
+  synced: boolean;
+  created: number;
+  updated: number;
+  unchanged: number;
+};
+
 @Injectable()
 export class CertificatesService {
   private readonly logger = new Logger(CertificatesService.name);
+  private readonly emailFormatRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   private readonly geoCache = new Map<string, { expiresAt: number; value: GeoLookupResult | null }>();
   private readonly geoCacheTtlMs = 1000 * 60 * 60 * 6;
   private readonly geoCacheMissTtlMs = 1000 * 60 * 15;
@@ -120,15 +134,454 @@ export class CertificatesService {
     return raw.replace(/\s+/g, '').toUpperCase();
   }
 
-  private parseTechnicalBonusCategory(value?: string | null): TechnicalBonusCategory {
-    const normalized = this.normalizeTemplateText(value || '').replace(/\s+/g, '');
+  private normalizeLaborDocumentType(
+    value?: string | null,
+    options: { strict?: boolean } = {},
+  ): 'CC' | 'CE' | 'PP' | null {
+    const raw = String(value || '').trim().toUpperCase();
+    if (!raw) return null;
+
+    if (raw === 'TI') {
+      if (options.strict) {
+        throw new BadRequestException(
+          'La Tarjeta de Identidad (TI) no esta habilitada para certificados laborales. Usa un documento de mayor de edad.',
+        );
+      }
+      return null;
+    }
+
+    if (raw === 'CC' || raw === 'CE') {
+      return raw;
+    }
+
+    if (raw === 'PP' || raw === 'PA' || raw === 'PAS') {
+      return 'PP';
+    }
+
+    if (options.strict) {
+      throw new BadRequestException(
+        'Tipo de documento invalido. Usa CC, CE o PP.',
+      );
+    }
+
+    return null;
+  }
+
+  private toNullableText(value: unknown): string | null {
+    if (value === null || value === undefined) return null;
+    const text = String(value).trim();
+    return text || null;
+  }
+
+  private toDateOnlyKey(value?: Date | string | null): string {
+    const date = this.normalizeDateOnly(value);
+    if (!date) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private buildOracleGeneratedRequestNumber(
+    idNumber: string,
+    index: number,
+  ): string {
+    const suffix =
+      `${Date.now().toString(36)}${index ? `-${index}` : ''}`.toUpperCase();
+    const documentSuffix = idNumber.slice(-18);
+    return `FNC-${documentSuffix}-${suffix}`.slice(0, 50);
+  }
+
+  private compareRequestValue(
+    key: keyof CertificateRequest,
+    current: unknown,
+    next: unknown,
+  ): boolean {
+    if (
+      key === 'hiring_date' ||
+      key === 'request_date' ||
+      key === 'validation_expires_at'
+    ) {
+      return (
+        this.toDateOnlyKey(current as Date | string | null) ===
+        this.toDateOnlyKey(next as Date | string | null)
+      );
+    }
+
+    if (key === 'monthly_salary') {
+      return (
+        this.roundToTwoDecimals(
+          this.parseNumericValue(current as string | number | null),
+        ) ===
+        this.roundToTwoDecimals(
+          this.parseNumericValue(next as string | number | null),
+        )
+      );
+    }
+
+    return String(current ?? '').trim() === String(next ?? '').trim();
+  }
+
+  private hasRequestChanges(
+    existing: CertificateRequest,
+    payload: Partial<CertificateRequest>,
+  ): boolean {
+    return (Object.keys(payload) as Array<keyof CertificateRequest>).some(
+      (key) => {
+        if (payload[key] === undefined) return false;
+        return !this.compareRequestValue(key, existing[key], payload[key]);
+      },
+    );
+  }
+
+  private async findLocalRequestsByDocument(
+    documento: string,
+  ): Promise<CertificateRequest[]> {
+    const documentoTrim = String(documento || '').trim();
+    const idNumber = this.sanitizeIdNumber(documentoTrim);
+    const qb = this.requestRepo
+      .createQueryBuilder('request')
+      .orderBy(
+        'COALESCE(request.hiring_date, request.request_date, request.created_at)',
+        'DESC',
+      )
+      .addOrderBy('request.request_date', 'DESC')
+      .addOrderBy('request.created_at', 'DESC');
+
+    if (idNumber) {
+      qb.where(
+        `REPLACE(REPLACE(REPLACE(request.id_number, '.', ''), '-', ''), ' ', '') = :idNumber`,
+        { idNumber },
+      );
+    } else {
+      qb.where('request.id_number = :documento', { documento: documentoTrim });
+    }
+
+    return await qb.getMany();
+  }
+
+  private findMatchingLocalRequestForOracle(
+    suggested: LaborOracleSuggestedRequest,
+    localRequests: CertificateRequest[],
+    usedRequestIds: Set<string>,
+  ): CertificateRequest | null {
+    const candidates = localRequests.filter(
+      (request) => !usedRequestIds.has(request.id),
+    );
+    if (!candidates.length) {
+      return null;
+    }
+
+    const suggestedCodCargo = this.normalizePersistedCodeValue(
+      suggested.cod_cargo,
+      suggested.cod_grade,
+    );
+    const suggestedCodGrade = this.normalizePersistedCodeValue(
+      suggested.cod_grade,
+    );
+    const suggestedObservation = this.normalizeEncargoType(
+      suggested.observations,
+    );
+    const suggestedCareer = this.normalizeTemplateText(
+      suggested.career_category || '',
+    );
+    const suggestedPosition = this.normalizeTemplateText(
+      suggested.position_category || '',
+    );
+
+    const sameCodes = (request: CertificateRequest) => {
+      const requestCodCargo = this.normalizePersistedCodeValue(
+        request.cod_cargo,
+        request.cod_grade,
+      );
+      const requestCodGrade = this.normalizePersistedCodeValue(
+        request.cod_grade,
+      );
+      return (
+        !!suggestedCodCargo &&
+        requestCodCargo === suggestedCodCargo &&
+        (!suggestedCodGrade || requestCodGrade === suggestedCodGrade)
+      );
+    };
+
+    const exactByCodeAndObservation = candidates.find((request) => {
+      if (!sameCodes(request)) return false;
+      if (!suggestedObservation) return true;
+      return (
+        this.normalizeEncargoType(request.observations) === suggestedObservation
+      );
+    });
+    if (exactByCodeAndObservation) {
+      return exactByCodeAndObservation;
+    }
+
+    const samePosition = candidates.find((request) => {
+      const career = this.normalizeTemplateText(request.career_category || '');
+      const position = this.normalizeTemplateText(
+        request.position_category || '',
+      );
+      const sameObservation =
+        !suggestedObservation ||
+        this.normalizeEncargoType(request.observations) ===
+          suggestedObservation;
+      return (
+        !!suggestedCareer &&
+        !!suggestedPosition &&
+        career === suggestedCareer &&
+        position === suggestedPosition &&
+        sameObservation
+      );
+    });
+    if (samePosition) {
+      return samePosition;
+    }
+
+    return candidates.length === 1 ? candidates[0] : null;
+  }
+
+  private buildOracleRequestPayload(
+    suggested: LaborOracleSuggestedRequest,
+    requestedDocument: string,
+    existing: CertificateRequest | null,
+    index: number,
+  ): Partial<CertificateRequest> {
+    const idNumber = this.sanitizeIdNumber(
+      suggested.id_number || existing?.id_number || requestedDocument,
+    );
+    if (!idNumber) {
+      throw new BadRequestException(
+        'Oracle encontro el documento, pero no entrego un numero de identificacion valido.',
+      );
+    }
+
+    const fullName =
+      this.toNullableText(suggested.full_name) ||
+      this.toNullableText(existing?.full_name);
+    if (!fullName) {
+      throw new BadRequestException(
+        `Oracle encontro el documento ${idNumber}, pero no entrego el nombre completo.`,
+      );
+    }
+
+    const hiringDate =
+      this.normalizeDateOnly(suggested.hiring_date) ||
+      this.normalizeDateOnly(existing?.hiring_date);
+    if (!hiringDate) {
+      throw new BadRequestException(
+        `Oracle encontro el documento ${idNumber}, pero no entrego FECHA_INGRESO.`,
+      );
+    }
+
+    const requestDate =
+      this.normalizeDateOnly(suggested.request_date) ||
+      this.normalizeDateOnly(existing?.request_date) ||
+      new Date();
+    const monthlySalary =
+      suggested.monthly_salary !== null &&
+      suggested.monthly_salary !== undefined
+        ? this.roundToTwoDecimals(
+            this.parseNumericValue(suggested.monthly_salary),
+          )
+        : this.roundToTwoDecimals(
+            this.parseNumericValue(existing?.monthly_salary),
+          );
+    const status = this.resolveStatusForPersistence(
+      suggested.status || existing?.status,
+      hiringDate,
+      requestDate,
+    );
+
+    const payload: Partial<CertificateRequest> = {
+      full_name: fullName,
+      id_number: idNumber,
+      career_category:
+        this.toNullableText(suggested.career_category) ||
+        this.toNullableText(existing?.career_category) ||
+        'NO REGISTRADO',
+      hiring_date: hiringDate,
+      position_category:
+        this.toNullableText(suggested.position_category) ||
+        this.toNullableText(existing?.position_category) ||
+        'NO REGISTRADO',
+      position_location:
+        this.toNullableText(suggested.position_location) ??
+        this.toNullableText(existing?.position_location) ??
+        undefined,
+      monthly_salary: monthlySalary,
+      salary_text:
+        this.toNullableText(suggested.salary_text) ??
+        this.toNullableText(existing?.salary_text) ??
+        undefined,
+      department:
+        this.toNullableText(suggested.department) ??
+        this.toNullableText(existing?.department) ??
+        undefined,
+      cod_cargo:
+        this.normalizePersistedCodeValue(
+          suggested.cod_cargo,
+          suggested.cod_grade,
+        ) ??
+        this.normalizePersistedCodeValue(
+          existing?.cod_cargo,
+          existing?.cod_grade,
+        ),
+      cod_grade:
+        this.normalizePersistedCodeValue(suggested.cod_grade) ??
+        this.normalizePersistedCodeValue(existing?.cod_grade),
+      email:
+        this.toNullableText(suggested.email) ??
+        this.toNullableText(existing?.email) ??
+        undefined,
+      phone:
+        this.toNullableText(suggested.phone) ??
+        this.toNullableText(existing?.phone) ??
+        undefined,
+      status,
+      request_date: requestDate,
+      observations:
+        this.toNullableText(suggested.observations) ??
+        this.toNullableText(existing?.observations) ??
+        undefined,
+    };
+
+    if (!existing) {
+      payload.request_number =
+        suggested.request_number ||
+        this.buildOracleGeneratedRequestNumber(idNumber, index);
+      payload.person_id = suggested.person_id || undefined;
+    }
+
+    return payload;
+  }
+
+  private async upsertLocalRequestFromOracle(
+    suggested: LaborOracleSuggestedRequest,
+    requestedDocument: string,
+    existing: CertificateRequest | null,
+    index: number,
+  ): Promise<{
+    request: CertificateRequest;
+    action: 'created' | 'updated' | 'unchanged';
+  }> {
+    const payload = this.buildOracleRequestPayload(
+      suggested,
+      requestedDocument,
+      existing,
+      index,
+    );
+
+    if (!existing) {
+      const request = this.requestRepo.create(payload);
+      return {
+        request: await this.requestRepo.save(request),
+        action: 'created',
+      };
+    }
+
+    const {
+      request_number: _requestNumber,
+      person_id: _personId,
+      ...updatePayload
+    } = payload;
+    if (!this.hasRequestChanges(existing, updatePayload)) {
+      return { request: existing, action: 'unchanged' };
+    }
+
+    Object.assign(existing, updatePayload);
+    return {
+      request: await this.requestRepo.save(existing),
+      action: 'updated',
+    };
+  }
+
+  private async syncRequestsFromOracle(
+    documento: string,
+  ): Promise<OracleRequestSyncResult> {
+    if (!this.laborOracleIntegrationService.isEnabled()) {
+      return {
+        enabled: false,
+        found: false,
+        synced: false,
+        created: 0,
+        updated: 0,
+        unchanged: 0,
+      };
+    }
+
+    const oracleRequests =
+      await this.laborOracleIntegrationService.findSuggestedRequestsByDocument(
+        documento,
+        20,
+      );
+
+    if (!oracleRequests.length) {
+      return {
+        enabled: true,
+        found: false,
+        synced: false,
+        created: 0,
+        updated: 0,
+        unchanged: 0,
+      };
+    }
+
+    const localRequests = await this.findLocalRequestsByDocument(documento);
+    const usedRequestIds = new Set<string>();
+    const result: OracleRequestSyncResult = {
+      enabled: true,
+      found: true,
+      synced: false,
+      created: 0,
+      updated: 0,
+      unchanged: 0,
+    };
+
+    for (const [index, suggested] of oracleRequests.entries()) {
+      const existing = this.findMatchingLocalRequestForOracle(
+        suggested,
+        localRequests,
+        usedRequestIds,
+      );
+      if (existing) {
+        usedRequestIds.add(existing.id);
+      }
+
+      const sync = await this.upsertLocalRequestFromOracle(
+        suggested,
+        documento,
+        existing,
+        index,
+      );
+      if (sync.action === 'created') {
+        result.created += 1;
+        localRequests.push(sync.request);
+      } else if (sync.action === 'updated') {
+        result.updated += 1;
+      } else {
+        result.unchanged += 1;
+      }
+    }
+
+    result.synced = result.created > 0 || result.updated > 0;
+    return result;
+  }
+
+  private parseTechnicalBonusCategory(
+    value?: string | null,
+  ): TechnicalBonusCategory {
+    const normalized = this.normalizeTemplateText(value || '').replace(
+      /\s+/g,
+      '',
+    );
     if (normalized === 'directivos' || normalized === 'directivo') {
       return 'DIRECTIVOS';
     }
     if (normalized === 'coordinadores' || normalized === 'coordinador') {
       return 'COORDINADORES';
     }
-    throw new BadRequestException('Categoria invalida. Usa Directivos o Coordinadores.');
+    throw new BadRequestException(
+      'Categoria invalida. Usa Directivos o Coordinadores.',
+    );
   }
 
   private mapTechnicalBonusAssignment(item: TechnicalBonusAssignment) {
@@ -166,7 +619,10 @@ export class CertificatesService {
     return Number(value.toFixed(2));
   }
 
-  private resolveTechnicalBonusAmount(monthlySalaryRaw: string | number | null | undefined, percentageRaw: string | number | null | undefined): number {
+  private resolveTechnicalBonusAmount(
+    monthlySalaryRaw: string | number | null | undefined,
+    percentageRaw: string | number | null | undefined,
+  ): number {
     const monthlySalary = this.parseNumericValue(monthlySalaryRaw);
     const percentage = this.parseNumericValue(percentageRaw);
 
@@ -218,8 +674,13 @@ export class CertificatesService {
       };
     }
 
-    const percentage = this.roundToTwoDecimals(this.parseNumericValue(assignment.percentage));
-    const value = this.resolveTechnicalBonusAmount(request?.monthly_salary, percentage);
+    const percentage = this.roundToTwoDecimals(
+      this.parseNumericValue(assignment.percentage),
+    );
+    const value = this.resolveTechnicalBonusAmount(
+      request?.monthly_salary,
+      percentage,
+    );
     const available = percentage > 0;
 
     return {
@@ -233,7 +694,9 @@ export class CertificatesService {
 
   private extractExceptionMessage(error: any, fallback: string): string {
     const response =
-      error && typeof error.getResponse === 'function' ? error.getResponse() : undefined;
+      error && typeof error.getResponse === 'function'
+        ? error.getResponse()
+        : undefined;
 
     if (typeof response === 'string' && response.trim()) {
       return response.trim();
@@ -262,12 +725,16 @@ export class CertificatesService {
     return /\bdocen\w*\b|\bdoc\b/.test(text) ? 'docente' : 'administrador';
   }
 
-  private resolveTemplateTypeFromRequest(request: CertificateRequest): TemplateType {
+  private resolveTemplateTypeFromRequest(
+    request: CertificateRequest,
+  ): TemplateType {
     const raw = `${request?.position_category || ''} ${request?.career_category || ''}`;
     return this.resolveTemplateTypeFromText(raw);
   }
 
-  private resolveTemplateTypeFromCertificate(certificate: Certificate): TemplateType {
+  private resolveTemplateTypeFromCertificate(
+    certificate: Certificate,
+  ): TemplateType {
     const raw = `${certificate?.position_category || ''} ${certificate?.career_category || ''}`;
     return this.resolveTemplateTypeFromText(raw);
   }
@@ -307,7 +774,10 @@ export class CertificatesService {
     }>
   ): string | undefined {
     const normalized = pairs
-      .map(({ value, relatedGrade }) => this.normalizePersistedCodeValue(value, relatedGrade) || '')
+      .map(
+        ({ value, relatedGrade }) =>
+          this.normalizePersistedCodeValue(value, relatedGrade) || '',
+      )
       .filter(Boolean);
 
     if (!normalized.length) {
@@ -328,9 +798,15 @@ export class CertificatesService {
     selectedRequest: CertificateRequest,
     requests: CertificateRequest[],
   ): CertificateRequest[] {
-    const selectedCareer = this.normalizeTemplateText(selectedRequest.career_category || '');
-    const selectedPosition = this.normalizeTemplateText(selectedRequest.position_category || '');
-    const selectedGrade = this.normalizePersistedCodeValue(selectedRequest.cod_grade);
+    const selectedCareer = this.normalizeTemplateText(
+      selectedRequest.career_category || '',
+    );
+    const selectedPosition = this.normalizeTemplateText(
+      selectedRequest.position_category || '',
+    );
+    const selectedGrade = this.normalizePersistedCodeValue(
+      selectedRequest.cod_grade,
+    );
 
     const compatible = requests.filter((request) => {
       if (request.id === selectedRequest.id) {
@@ -339,12 +815,15 @@ export class CertificatesService {
 
       const sameCareer =
         !!selectedCareer &&
-        this.normalizeTemplateText(request.career_category || '') === selectedCareer;
+        this.normalizeTemplateText(request.career_category || '') ===
+          selectedCareer;
       const samePosition =
         !!selectedPosition &&
-        this.normalizeTemplateText(request.position_category || '') === selectedPosition;
+        this.normalizeTemplateText(request.position_category || '') ===
+          selectedPosition;
       const requestGrade = this.normalizePersistedCodeValue(request.cod_grade);
-      const sameGrade = !selectedGrade || !requestGrade || requestGrade === selectedGrade;
+      const sameGrade =
+        !selectedGrade || !requestGrade || requestGrade === selectedGrade;
 
       return sameCareer && samePosition && sameGrade;
     });
@@ -354,9 +833,40 @@ export class CertificatesService {
 
   private normalizeDateOnly(value?: Date | string | null): Date | null {
     if (!value) return null;
+
+    if (typeof value === 'string') {
+      const raw = value.trim();
+      if (!raw) return null;
+
+      const ymdMatch = raw.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+.*)?$/);
+      if (ymdMatch) {
+        const [, year, month, day] = ymdMatch;
+        return this.dateOnlyFromParts(Number(year), Number(month), Number(day));
+      }
+
+      const dmyMatch = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s+.*)?$/);
+      if (dmyMatch) {
+        const [, day, month, year] = dmyMatch;
+        return this.dateOnlyFromParts(Number(year), Number(month), Number(day));
+      }
+    }
+
     const date = value instanceof Date ? value : new Date(value);
     if (isNaN(date.getTime())) return null;
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
+  }
+
+  private dateOnlyFromParts(year: number, month: number, day: number): Date | null {
+    const date = new Date(year, month - 1, day, 12, 0, 0);
+    if (
+      date.getFullYear() !== year ||
+      date.getMonth() !== month - 1 ||
+      date.getDate() !== day
+    ) {
+      return null;
+    }
+
+    return date;
   }
 
   private resolveEmploymentStatusByDates(
@@ -373,11 +883,17 @@ export class CertificatesService {
     return today <= end ? 'ACTIVO' : 'INACTIVO';
   }
 
-  private normalizeEmploymentStatus(statusRaw?: string | null): 'ACTIVO' | 'INACTIVO' | null {
-    const status = String(statusRaw || '').trim().toUpperCase();
+  private normalizeEmploymentStatus(
+    statusRaw?: string | null,
+  ): 'ACTIVO' | 'INACTIVO' | null {
+    const status = String(statusRaw || '')
+      .trim()
+      .toUpperCase();
     if (!status) return null;
-    if (status === 'A' || status === 'ACTIVO' || status === 'ACTIVE') return 'ACTIVO';
-    if (status === 'I' || status === 'INACTIVO' || status === 'INACTIVE') return 'INACTIVO';
+    if (status === 'A' || status === 'ACTIVO' || status === 'ACTIVE')
+      return 'ACTIVO';
+    if (status === 'I' || status === 'INACTIVO' || status === 'INACTIVE')
+      return 'INACTIVO';
     return null;
   }
 
@@ -386,7 +902,10 @@ export class CertificatesService {
     endDate?: Date | string | null,
     statusRaw?: string | null,
   ): 'ACTIVO' | 'INACTIVO' {
-    const statusByDate = this.resolveEmploymentStatusByDates(hiringDate, endDate);
+    const statusByDate = this.resolveEmploymentStatusByDates(
+      hiringDate,
+      endDate,
+    );
     const statusByCode = this.normalizeEmploymentStatus(statusRaw);
 
     // Regla de negocio: status (A/I) es la fuente principal y la fecha valida como respaldo.
@@ -406,11 +925,15 @@ export class CertificatesService {
     if (explicitStatus) {
       return explicitStatus.toUpperCase();
     }
-    return this.resolveEmploymentStatusByDates(hiringDate, endDate) === 'ACTIVO' ? 'A' : 'I';
+    return this.resolveEmploymentStatusByDates(hiringDate, endDate) === 'ACTIVO'
+      ? 'A'
+      : 'I';
   }
 
   private normalizeEncargoType(value?: string | null): 'E' | 'N' | null {
-    const normalized = String(value || '').trim().toUpperCase();
+    const normalized = String(value || '')
+      .trim()
+      .toUpperCase();
     if (!normalized) {
       return null;
     }
@@ -425,7 +948,9 @@ export class CertificatesService {
     return null;
   }
 
-  private isPrimaryAdministrativeAct(positionCategory?: string | null): boolean {
+  private isPrimaryAdministrativeAct(
+    positionCategory?: string | null,
+  ): boolean {
     const normalized = this.normalizeTemplateText(positionCategory || '');
     if (!normalized) {
       return false;
@@ -437,7 +962,9 @@ export class CertificatesService {
     );
   }
 
-  private selectPreferredRequestForCertificate(requests: CertificateRequest[]): CertificateRequest | null {
+  private selectPreferredRequestForCertificate(
+    requests: CertificateRequest[],
+  ): CertificateRequest | null {
     if (!requests.length) {
       return null;
     }
@@ -445,19 +972,34 @@ export class CertificatesService {
     // Prioridad 1: contratos activos.
     const activeRequests = requests.filter(
       (request) =>
-        this.resolveEmploymentStatus(request.hiring_date, request.request_date, request.status) === 'ACTIVO',
+        this.resolveEmploymentStatus(
+          request.hiring_date,
+          request.request_date,
+          request.status,
+        ) === 'ACTIVO',
     );
 
-    // Prioridad 2 dentro de activos: contrato base (no encargo).
+    // Prioridad 2 dentro de activos: encargos vigentes.
+    // Si existe un encargo activo, debe ser la base del certificado.
+    const activeEncargoRequests = activeRequests.filter(
+      (request) => this.normalizeEncargoType(request.observations) === 'E',
+    );
+
+    if (activeEncargoRequests.length) {
+      return activeEncargoRequests[0];
+    }
+
+    // Prioridad 3 dentro de activos: contrato base (no encargo).
     const activeWithoutEncargo = activeRequests.filter(
       (request) => this.normalizeEncargoType(request.observations) !== 'E',
     );
 
     // Desempate controlado: si existen varios activos sin encargo,
     // priorizar el registro principal de carrera administrativa.
-    const primaryAdministrativeActiveWithoutEncargo = activeWithoutEncargo.filter(
-      (request) => this.isPrimaryAdministrativeAct(request.position_category),
-    );
+    const primaryAdministrativeActiveWithoutEncargo =
+      activeWithoutEncargo.filter((request) =>
+        this.isPrimaryAdministrativeAct(request.position_category),
+      );
 
     if (primaryAdministrativeActiveWithoutEncargo.length) {
       return primaryAdministrativeActiveWithoutEncargo[0];
@@ -489,7 +1031,8 @@ export class CertificatesService {
         selectedRequest.request_date,
         selectedRequest.status,
       ) === 'ACTIVO';
-    const selectedIsEncargo = this.normalizeEncargoType(selectedRequest.observations) === 'E';
+    const selectedIsEncargo =
+      this.normalizeEncargoType(selectedRequest.observations) === 'E';
 
     // Solo aplicar salario de encargo cuando el contrato principal es activo y no encargo.
     if (!selectedIsActive || selectedIsEncargo) {
@@ -501,7 +1044,11 @@ export class CertificatesService {
         return false;
       }
       const isActive =
-        this.resolveEmploymentStatus(request.hiring_date, request.request_date, request.status) === 'ACTIVO';
+        this.resolveEmploymentStatus(
+          request.hiring_date,
+          request.request_date,
+          request.status,
+        ) === 'ACTIVO';
       const isEncargo = this.normalizeEncargoType(request.observations) === 'E';
       return isActive && isEncargo;
     });
@@ -513,18 +1060,54 @@ export class CertificatesService {
     return activeEncargo[0];
   }
 
+  private selectHiringDateSourceForCertificate(
+    selectedRequest: CertificateRequest,
+    requests: CertificateRequest[],
+  ): CertificateRequest {
+    const activeWithoutEncargo = requests.filter((request) => {
+      const isActive =
+        this.resolveEmploymentStatus(
+          request.hiring_date,
+          request.request_date,
+          request.status,
+        ) === 'ACTIVO';
+      const isEncargo = this.normalizeEncargoType(request.observations) === 'E';
+      return isActive && !isEncargo;
+    });
+
+    const primaryAdministrativeActiveWithoutEncargo =
+      activeWithoutEncargo.filter((request) =>
+        this.isPrimaryAdministrativeAct(request.position_category),
+      );
+
+    return (
+      primaryAdministrativeActiveWithoutEncargo[0] ||
+      activeWithoutEncargo[0] ||
+      selectedRequest
+    );
+  }
+
   private mergeRequestWithSalarySource(
     selectedRequest: CertificateRequest,
     salarySource: CertificateRequest | null,
     relatedRequests: CertificateRequest[] = [selectedRequest],
   ): CertificateRequest {
+    const hiringDateSource = this.selectHiringDateSourceForCertificate(
+      selectedRequest,
+      relatedRequests,
+    );
     const mergedBase =
       !salarySource || salarySource.id === selectedRequest.id
-        ? selectedRequest
+        ? {
+            ...selectedRequest,
+            hiring_date: hiringDateSource.hiring_date,
+          }
         : {
             ...selectedRequest,
+            hiring_date: hiringDateSource.hiring_date,
             monthly_salary: salarySource.monthly_salary,
-            salary_text: salarySource.salary_text ?? selectedRequest.salary_text,
+            salary_text:
+              salarySource.salary_text ?? selectedRequest.salary_text,
           };
 
     const compatibleRequests = this.selectCompatibleRequestsForCodeSelection(
@@ -558,7 +1141,9 @@ export class CertificatesService {
       return certificate;
     }
 
-    const cert = certificate as Certificate & { request?: CertificateRequest | null };
+    const cert = certificate as Certificate & {
+      request?: CertificateRequest | null;
+    };
     const baseRequest =
       cert.request ||
       requests.find((request) => request.id === certificate.request_id) ||
@@ -568,8 +1153,15 @@ export class CertificatesService {
       return certificate;
     }
 
-    const salarySource = this.selectSalarySourceForCertificate(baseRequest, requests);
-    const requestContext = this.mergeRequestWithSalarySource(baseRequest, salarySource, requests);
+    const salarySource = this.selectSalarySourceForCertificate(
+      baseRequest,
+      requests,
+    );
+    const requestContext = this.mergeRequestWithSalarySource(
+      baseRequest,
+      salarySource,
+      requests,
+    );
 
     cert.request = cert.request
       ? ({ ...cert.request, ...requestContext } as CertificateRequest)
@@ -585,7 +1177,9 @@ export class CertificatesService {
     return cert;
   }
 
-  private async hydrateCertificatesRequestContext(certificates: Certificate[]): Promise<void> {
+  private async hydrateCertificatesRequestContext(
+    certificates: Certificate[],
+  ): Promise<void> {
     if (!certificates.length) {
       return;
     }
@@ -595,8 +1189,11 @@ export class CertificatesService {
         certificates
           .map((certificate) =>
             this.sanitizeIdNumber(
-              (certificate as Certificate & { request?: { id_number?: string } }).request?.id_number ||
-                certificate.id_number,
+              (
+                certificate as Certificate & {
+                  request?: { id_number?: string };
+                }
+              ).request?.id_number || certificate.id_number,
             ),
           )
           .filter(Boolean),
@@ -613,7 +1210,10 @@ export class CertificatesService {
         `REPLACE(REPLACE(REPLACE(request.id_number, '.', ''), '-', ''), ' ', '') IN (:...idNumbers)`,
         { idNumbers },
       )
-      .orderBy('COALESCE(request.hiring_date, request.request_date, request.created_at)', 'DESC')
+      .orderBy(
+        'COALESCE(request.hiring_date, request.request_date, request.created_at)',
+        'DESC',
+      )
       .addOrderBy('request.request_date', 'DESC')
       .addOrderBy('request.created_at', 'DESC')
       .getMany();
@@ -638,8 +1238,8 @@ export class CertificatesService {
 
     for (const certificate of certificates) {
       const idNumber = this.sanitizeIdNumber(
-        (certificate as Certificate & { request?: { id_number?: string } }).request?.id_number ||
-          certificate.id_number,
+        (certificate as Certificate & { request?: { id_number?: string } })
+          .request?.id_number || certificate.id_number,
       );
       if (!idNumber) {
         continue;
@@ -649,7 +1249,9 @@ export class CertificatesService {
     }
   }
 
-  private async ensureTemplateSnapshotForCertificate(certificate: Certificate): Promise<Certificate> {
+  private async ensureTemplateSnapshotForCertificate(
+    certificate: Certificate,
+  ): Promise<Certificate> {
     const cert = certificate as Certificate & {
       template_snapshot?: any;
       template_type?: string;
@@ -660,8 +1262,11 @@ export class CertificatesService {
       return certificate;
     }
 
-    const templateType = (cert.template_type as TemplateType) || this.resolveTemplateTypeFromCertificate(certificate);
-    const config = await this.templateConfigService.getActiveConfig(templateType);
+    const templateType =
+      (cert.template_type as TemplateType) ||
+      this.resolveTemplateTypeFromCertificate(certificate);
+    const config =
+      await this.templateConfigService.getActiveConfig(templateType);
     if (!config) {
       return certificate;
     }
@@ -677,8 +1282,12 @@ export class CertificatesService {
     return certificate;
   }
 
-  private async ensureTemplateSnapshots(certificates: Certificate[]): Promise<void> {
-    const missing = certificates.filter((cert) => !(cert as any)?.template_snapshot);
+  private async ensureTemplateSnapshots(
+    certificates: Certificate[],
+  ): Promise<void> {
+    const missing = certificates.filter(
+      (cert) => !(cert as any)?.template_snapshot,
+    );
     if (!missing.length) {
       return;
     }
@@ -686,7 +1295,8 @@ export class CertificatesService {
     const typesNeeded = new Set<TemplateType>();
     for (const cert of missing) {
       const templateType =
-        ((cert as any)?.template_type as TemplateType) || this.resolveTemplateTypeFromCertificate(cert);
+        ((cert as any)?.template_type as TemplateType) ||
+        this.resolveTemplateTypeFromCertificate(cert);
       typesNeeded.add(templateType);
     }
 
@@ -701,7 +1311,8 @@ export class CertificatesService {
     await Promise.all(
       missing.map(async (cert) => {
         const templateType =
-          ((cert as any)?.template_type as TemplateType) || this.resolveTemplateTypeFromCertificate(cert);
+          ((cert as any)?.template_type as TemplateType) ||
+          this.resolveTemplateTypeFromCertificate(cert);
         const config = configByType.get(templateType);
         if (!config) return;
         const patch = {
@@ -731,6 +1342,7 @@ export class CertificatesService {
     private certificateGenerator: CertificateGeneratorService,
     private laborPdfService: LaborCertificatePdfService,
     private templateConfigService: TemplateConfigService,
+    private laborOracleIntegrationService: LaborOracleIntegrationService,
   ) {}
 
   // ============================================
@@ -763,44 +1375,83 @@ export class CertificatesService {
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '');
-      throw new Error(`Notifications service error (${response.status}): ${errorBody || 'sin detalle'}`);
+      throw new Error(
+        `Notifications service error (${response.status}): ${errorBody || 'sin detalle'}`,
+      );
     }
 
-    this.logger.log(`Solicitud de envío de código enviada a notifications-service para ${destinatario}`);
+    this.logger.log(
+      `Solicitud de envío de código enviada a notifications-service para ${destinatario}`,
+    );
   }
 
-  private buildLaborEmailHtml(certificate: Certificate, recipientName?: string): string {
+  private normalizarCorreo(email?: string | null): string {
+    return typeof email === 'string' ? email.trim() : '';
+  }
+
+  private tieneFormatoCorreoValido(email?: string | null): boolean {
+    const correoNormalizado = this.normalizarCorreo(email);
+    if (!correoNormalizado || correoNormalizado.toLowerCase() === 'n/a') {
+      return false;
+    }
+    return this.emailFormatRegex.test(correoNormalizado);
+  }
+
+  private buildLaborEmailHtml(
+    certificate: Certificate,
+    recipientName?: string,
+  ): string {
     const nombre = recipientName || certificate.full_name || 'usuario';
     const consecutivo = certificate.certificate_number || 'ESAP';
     return `
-      <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
-        <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
-          <tr>
-            <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
-              Certificados ESAP
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-              Certificado laboral
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 12px 24px; font-size: 14px; color: #4b5563; line-height: 1.6;">
-              Hola ${nombre}, adjuntamos tu certificado laboral solicitado.
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 0 24px 18px 24px; font-size: 13px; color: #6b7280;">
-              Certificado: <strong>${consecutivo}</strong>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
-              ESAP - Escuela Superior de Administracion Publica
-            </td>
-          </tr>
-        </table>
+      <div style="font-family: Arial,'Helvetica Neue',sans-serif; background-color: #f0f4f8; padding: 32px 16px; margin: 0;">
+        <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+          <table cellspacing="0" cellpadding="0" border="0" style="max-width:560px;width:100%;background-color:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #dde3ed;">
+            <tr>
+              <td style="background-image:linear-gradient(135deg,#003DA5 0%,#1565C0 100%);background-color:#003DA5;padding:0;">
+                <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr><td style="height:4px;background-color:#34D399;font-size:0;line-height:0;">&nbsp;</td></tr>
+                  <tr><td style="padding:22px 28px 18px 28px;">
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0"><tr>
+                      <td><div style="font-size:20px;font-weight:800;color:#ffffff;letter-spacing:-0.3px;">ESAP</div><div style="font-size:10px;color:rgba(255,255,255,0.7);margin-top:2px;letter-spacing:0.8px;text-transform:uppercase;">Certificados Laborales</div></td>
+                      <td align="right"><span style="background-color:rgba(52,211,153,0.25);color:#ffffff;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;">Documento listo</span></td>
+                    </tr></table>
+                  </td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px 28px 8px 28px;">
+                <h1 style="margin:0 0 6px 0;font-size:22px;font-weight:700;color:#111827;">Tu certificado laboral está listo</h1>
+                <p style="margin:0 0 24px 0;font-size:14px;color:#6b7280;line-height:1.6;">Hola <strong style="color:#374151;">${nombre}</strong>, adjuntamos a este correo el certificado laboral que solicitaste a la ESAP.</p>
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:16px;">
+                  <tr><td style="padding:16px 20px;">
+                    <p style="margin:0 0 12px 0;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:0.6px;">Detalle del documento</p>
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0">
+                      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;">
+                        <span style="font-size:12px;color:#6b7280;">Número de certificado</span><br>
+                        <span style="font-size:15px;font-weight:700;color:#111827;">${consecutivo}</span>
+                      </td></tr>
+                      <tr><td style="padding:8px 0;">
+                        <span style="font-size:12px;color:#6b7280;">Tipo de certificado</span><br>
+                        <span style="font-size:14px;font-weight:600;color:#374151;">Certificado Laboral — ESAP</span>
+                      </td></tr>
+                    </table>
+                  </td></tr>
+                </table>
+                <table width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;margin-bottom:24px;">
+                  <tr><td style="padding:12px 16px;font-size:13px;color:#15803d;line-height:1.5;">&#10003; El archivo PDF se encuentra adjunto en este correo.</td></tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 28px 18px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                <p style="margin:0;font-size:12px;color:#9ca3af;">ESAP — Escuela Superior de Administración Pública</p>
+                
+              </td>
+            </tr>
+          </table>
+        </td></tr></table>
       </div>
     `;
   }
@@ -809,30 +1460,50 @@ export class CertificatesService {
     certificate: Certificate,
     options: SendLaborCertificateOptions = {},
   ): Promise<{ to: string }> {
-    const destinatario = (options.to || certificate.request?.email || '').trim();
+    const destinatario = (
+      options.to ||
+      certificate.request?.email ||
+      ''
+    ).trim();
     if (!destinatario) {
-      throw new BadRequestException('No hay un email registrado para enviar el certificado');
+      throw new BadRequestException(
+        'No hay un email registrado para enviar el certificado',
+      );
     }
 
     const includeSalaryPersisted = this.normalizeBoolean(
-      (certificate as Certificate & { include_salary?: boolean | null }).include_salary,
+      (certificate as Certificate & { include_salary?: boolean | null })
+        .include_salary,
       true,
     );
     const includeTechnicalBonusPersisted = this.normalizeBoolean(
-      (certificate as Certificate & { include_technical_bonus?: boolean | null }).include_technical_bonus,
+      (
+        certificate as Certificate & {
+          include_technical_bonus?: boolean | null;
+        }
+      ).include_technical_bonus,
       false,
     );
-    const includeSalary = this.normalizeBoolean(options.includeSalary, includeSalaryPersisted);
+    const includeSalary = this.normalizeBoolean(
+      options.includeSalary,
+      includeSalaryPersisted,
+    );
     const includeTechnicalBonus = includeSalary
-      ? this.normalizeBoolean(options.includeTechnicalBonus, includeTechnicalBonusPersisted)
+      ? this.normalizeBoolean(
+          options.includeTechnicalBonus,
+          includeTechnicalBonusPersisted,
+        )
       : false;
 
-    const attachment = await this.laborPdfService.generateCertificatePdf(certificate, {
-      includeSalary,
-      includeTechnicalBonus,
-      templateType: options.templateType,
-      publicBaseUrl: options.publicBaseUrl,
-    });
+    const attachment = await this.laborPdfService.generateCertificatePdf(
+      certificate,
+      {
+        includeSalary,
+        includeTechnicalBonus,
+        templateType: options.templateType,
+        publicBaseUrl: options.publicBaseUrl,
+      },
+    );
 
     const baseUrl = this.resolveNotificationsBaseUrl();
     const url = `${baseUrl}/api/v1/emails/send-with-attachment`;
@@ -857,7 +1528,9 @@ export class CertificatesService {
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '');
-      throw new Error(`Notifications service error (${response.status}): ${errorBody || 'sin detalle'}`);
+      throw new Error(
+        `Notifications service error (${response.status}): ${errorBody || 'sin detalle'}`,
+      );
     }
 
     this.logger.log(`Certificado laboral enviado a ${destinatario}`);
@@ -880,7 +1553,10 @@ export class CertificatesService {
     await this.hydrateCertificatesRequestContext([certificate]);
     await this.ensureTemplateSnapshotForCertificate(certificate);
 
-    const result = await this.enviarCertificadoLaboralPorEmail(certificate, options);
+    const result = await this.enviarCertificadoLaboralPorEmail(
+      certificate,
+      options,
+    );
 
     return {
       mensaje: `Certificado reenviado a ${result.to}`,
@@ -924,7 +1600,9 @@ export class CertificatesService {
 
       if (existing) {
         const incomingName = this.normalizeTemplateText(data.full_name || '');
-        const existingName = this.normalizeTemplateText(existing.full_name || '');
+        const existingName = this.normalizeTemplateText(
+          existing.full_name || '',
+        );
         if (incomingName && existingName && incomingName !== existingName) {
           throw new BadRequestException(
             `El documento ${rawIdNumber} ya está registrado a nombre de ${existing.full_name}. Verifica el número de documento.`,
@@ -933,10 +1611,23 @@ export class CertificatesService {
       }
     }
 
-    const status = this.resolveStatusForPersistence(data.status, data.hiring_date, data.request_date);
+    const status = this.resolveStatusForPersistence(
+      data.status,
+      data.hiring_date,
+      data.request_date,
+    );
     const requestPayload: Partial<CertificateRequest> = {
       ...data,
-      cod_cargo: this.normalizePersistedCodeValue(data.cod_cargo, data.cod_grade),
+      document_type:
+        'document_type' in data
+          ? this.normalizeLaborDocumentType(data.document_type, {
+              strict: true,
+            })
+          : undefined,
+      cod_cargo: this.normalizePersistedCodeValue(
+        data.cod_cargo,
+        data.cod_grade,
+      ),
       cod_grade: this.normalizePersistedCodeValue(data.cod_grade),
       status,
     };
@@ -946,8 +1637,16 @@ export class CertificatesService {
 
   async updateSolicitud(id: string, data: Partial<CertificateRequest>) {
     const patch: Partial<CertificateRequest> = { ...data };
+    if ('document_type' in data) {
+      patch.document_type = this.normalizeLaborDocumentType(data.document_type, {
+        strict: true,
+      });
+    }
     if ('cod_cargo' in data) {
-      patch.cod_cargo = this.normalizePersistedCodeValue(data.cod_cargo, data.cod_grade);
+      patch.cod_cargo = this.normalizePersistedCodeValue(
+        data.cod_cargo,
+        data.cod_grade,
+      );
     }
     if ('cod_grade' in data) {
       patch.cod_grade = this.normalizePersistedCodeValue(data.cod_grade);
@@ -956,14 +1655,22 @@ export class CertificatesService {
       const existing = await this.requestRepo.findOne({ where: { id } });
       const hiringDate = data.hiring_date ?? existing?.hiring_date ?? null;
       const requestDate = data.request_date ?? existing?.request_date ?? null;
-      patch.status = this.resolveStatusForPersistence(data.status, hiringDate, requestDate);
+      patch.status = this.resolveStatusForPersistence(
+        data.status,
+        hiringDate,
+        requestDate,
+      );
     } else if ('hiring_date' in data || 'request_date' in data) {
       const existing = await this.requestRepo.findOne({ where: { id } });
       const currentStatus = String(existing?.status || '').trim();
       if (!currentStatus) {
         const hiringDate = data.hiring_date ?? existing?.hiring_date ?? null;
         const requestDate = data.request_date ?? existing?.request_date ?? null;
-        patch.status = this.resolveStatusForPersistence(undefined, hiringDate, requestDate);
+        patch.status = this.resolveStatusForPersistence(
+          undefined,
+          hiringDate,
+          requestDate,
+        );
       }
     }
     await this.requestRepo.update(id, patch);
@@ -974,7 +1681,10 @@ export class CertificatesService {
   // TECHNICAL BONUS (PRIMA TECNICA)
   // ============================================
 
-  async searchTechnicalBonusCandidates(query: string, limit = 10): Promise<SearchTechnicalBonusCandidate[]> {
+  async searchTechnicalBonusCandidates(
+    query: string,
+    limit = 10,
+  ): Promise<SearchTechnicalBonusCandidate[]> {
     const normalizedQuery = String(query || '').trim();
     if (!normalizedQuery || normalizedQuery.length < 2) {
       return [];
@@ -985,14 +1695,18 @@ export class CertificatesService {
     const idNeedle = normalizedQuery.replace(/\D+/g, '');
 
     const qb = this.requestRepo.createQueryBuilder('request');
-    qb
-      .orderBy('COALESCE(request.request_date, request.updated_at, request.created_at)', 'DESC')
+    qb.orderBy(
+      'COALESCE(request.request_date, request.updated_at, request.created_at)',
+      'DESC',
+    )
       .addOrderBy('request.updated_at', 'DESC')
       .addOrderBy('request.created_at', 'DESC')
       .take(safeLimit * 4);
 
     if (idNeedle) {
-      qb.where('LOWER(request.full_name) LIKE :searchTerm', { searchTerm }).orWhere(
+      qb.where('LOWER(request.full_name) LIKE :searchTerm', {
+        searchTerm,
+      }).orWhere(
         `REPLACE(REPLACE(REPLACE(request.id_number, '.', ''), '-', ''), ' ', '') LIKE :idNeedle`,
         {
           idNeedle: `%${idNeedle}%`,
@@ -1042,18 +1756,29 @@ export class CertificatesService {
     const percentageRaw = Number(payload.percentage);
 
     if (!idNumber) {
-      throw new BadRequestException('El numero de identificacion es obligatorio.');
+      throw new BadRequestException(
+        'El numero de identificacion es obligatorio.',
+      );
     }
 
-    if (!Number.isFinite(percentageRaw) || percentageRaw <= 0 || percentageRaw > 100) {
-      throw new BadRequestException('El porcentaje debe ser mayor a 0 y menor o igual a 100.');
+    if (
+      !Number.isFinite(percentageRaw) ||
+      percentageRaw <= 0 ||
+      percentageRaw > 100
+    ) {
+      throw new BadRequestException(
+        'El porcentaje debe ser mayor a 0 y menor o igual a 100.',
+      );
     }
 
     const existingGlobalAssignment = await this.technicalBonusRepo.findOne({
       where: { id_number: idNumber },
       order: { updated_at: 'DESC' },
     });
-    if (existingGlobalAssignment && existingGlobalAssignment.category !== category) {
+    if (
+      existingGlobalAssignment &&
+      existingGlobalAssignment.category !== category
+    ) {
       const categoryLabel =
         existingGlobalAssignment.category === 'DIRECTIVOS'
           ? 'Directivos'
@@ -1067,7 +1792,9 @@ export class CertificatesService {
 
     let request: CertificateRequest | null = null;
     if (payload.requestId) {
-      request = await this.requestRepo.findOne({ where: { id: payload.requestId } });
+      request = await this.requestRepo.findOne({
+        where: { id: payload.requestId },
+      });
     }
 
     if (!request) {
@@ -1132,17 +1859,23 @@ export class CertificatesService {
     };
   }
 
-  async bulkUpsertTechnicalBonusAssignments(payload: BulkTechnicalBonusPayload) {
+  async bulkUpsertTechnicalBonusAssignments(
+    payload: BulkTechnicalBonusPayload,
+  ) {
     const category = this.parseTechnicalBonusCategory(payload.category);
     const rows = Array.isArray(payload.rows) ? payload.rows : [];
     const updatedBy = String(payload.updatedBy || '').trim() || undefined;
 
     if (!rows.length) {
-      throw new BadRequestException('Debes enviar al menos una fila para la carga masiva.');
+      throw new BadRequestException(
+        'Debes enviar al menos una fila para la carga masiva.',
+      );
     }
 
     if (rows.length > 1000) {
-      throw new BadRequestException('La carga masiva permite maximo 1000 filas por archivo.');
+      throw new BadRequestException(
+        'La carga masiva permite maximo 1000 filas por archivo.',
+      );
     }
 
     const seenDocumentRows = new Map<string, number>();
@@ -1171,12 +1904,16 @@ export class CertificatesService {
 
       const idNumber = this.sanitizeIdNumber(row.idNumber);
       const fullName = String(row.fullName || '').trim() || undefined;
-      const percentageValue = String(row.percentage ?? '').replace(',', '.').trim();
+      const percentageValue = String(row.percentage ?? '')
+        .replace(',', '.')
+        .trim();
       const percentage = Number(percentageValue);
 
       try {
         if (!idNumber) {
-          throw new BadRequestException('Numero de documento vacio o invalido.');
+          throw new BadRequestException(
+            'Numero de documento vacio o invalido.',
+          );
         }
 
         const duplicateRowNumber = seenDocumentRows.get(idNumber);
@@ -1187,8 +1924,14 @@ export class CertificatesService {
         }
         seenDocumentRows.set(idNumber, rowNumber);
 
-        if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) {
-          throw new BadRequestException('El porcentaje debe ser mayor a 0 y menor o igual a 100.');
+        if (
+          !Number.isFinite(percentage) ||
+          percentage <= 0 ||
+          percentage > 100
+        ) {
+          throw new BadRequestException(
+            'El porcentaje debe ser mayor a 0 y menor o igual a 100.',
+          );
         }
 
         const record = await this.upsertTechnicalBonusAssignment({
@@ -1246,15 +1989,24 @@ export class CertificatesService {
     };
   }
 
-  async updateTechnicalBonusAssignment(id: string, payload: UpdateTechnicalBonusPayload) {
+  async updateTechnicalBonusAssignment(
+    id: string,
+    payload: UpdateTechnicalBonusPayload,
+  ) {
     const recordId = String(id || '').trim();
     if (!recordId) {
       throw new BadRequestException('El id del registro es obligatorio.');
     }
 
     const percentageRaw = Number(payload.percentage);
-    if (!Number.isFinite(percentageRaw) || percentageRaw <= 0 || percentageRaw > 100) {
-      throw new BadRequestException('El porcentaje debe ser mayor a 0 y menor o igual a 100.');
+    if (
+      !Number.isFinite(percentageRaw) ||
+      percentageRaw <= 0 ||
+      percentageRaw > 100
+    ) {
+      throw new BadRequestException(
+        'El porcentaje debe ser mayor a 0 y menor o igual a 100.',
+      );
     }
     const percentage = Number(percentageRaw.toFixed(2));
 
@@ -1263,7 +2015,9 @@ export class CertificatesService {
     });
 
     if (!assignment) {
-      throw new NotFoundException('No se encontro el registro de Prima Tecnica.');
+      throw new NotFoundException(
+        'No se encontro el registro de Prima Tecnica.',
+      );
     }
 
     const updatedBy = String(payload.updatedBy || '').trim() || null;
@@ -1291,7 +2045,9 @@ export class CertificatesService {
     });
 
     if (!assignment) {
-      throw new NotFoundException('No se encontro el registro de Prima Tecnica.');
+      throw new NotFoundException(
+        'No se encontro el registro de Prima Tecnica.',
+      );
     }
 
     await this.technicalBonusRepo.remove(assignment);
@@ -1387,16 +2143,21 @@ export class CertificatesService {
     }
 
     if (params.tipoVinculacion) {
-      qb.andWhere('cert.career_category = :tipo', { tipo: params.tipoVinculacion });
+      qb.andWhere('cert.career_category = :tipo', {
+        tipo: params.tipoVinculacion,
+      });
     }
 
     if (params.fechaDesde) {
       const desde = new Date(params.fechaDesde);
       if (!isNaN(desde.getTime())) {
         desde.setHours(0, 0, 0, 0);
-        qb.andWhere('COALESCE(cert.issue_date, cert.created_at) >= :fechaDesde', {
-          fechaDesde: desde,
-        });
+        qb.andWhere(
+          'COALESCE(cert.issue_date, cert.created_at) >= :fechaDesde',
+          {
+            fechaDesde: desde,
+          },
+        );
       }
     }
 
@@ -1404,20 +2165,31 @@ export class CertificatesService {
       const hasta = new Date(params.fechaHasta);
       if (!isNaN(hasta.getTime())) {
         hasta.setHours(23, 59, 59, 999);
-        qb.andWhere('COALESCE(cert.issue_date, cert.created_at) <= :fechaHasta', {
-          fechaHasta: hasta,
-        });
+        qb.andWhere(
+          'COALESCE(cert.issue_date, cert.created_at) <= :fechaHasta',
+          {
+            fechaHasta: hasta,
+          },
+        );
       }
     }
 
-    qb
-      .addSelect('COALESCE(cert.issuance_timestamp, cert.created_at)', 'sort_issuance_date')
-      .addSelect('COALESCE(cert.issue_date, cert.created_at)', 'sort_issue_date')
+    qb.addSelect(
+      'COALESCE(cert.issuance_timestamp, cert.created_at)',
+      'sort_issuance_date',
+    )
+      .addSelect(
+        'COALESCE(cert.issue_date, cert.created_at)',
+        'sort_issue_date',
+      )
       .orderBy('sort_issuance_date', 'DESC')
       .addOrderBy('sort_issue_date', 'DESC')
       .addOrderBy('cert.created_at', 'DESC');
 
-    const [certificates, total] = await qb.skip(skip).take(safeLimit).getManyAndCount();
+    const [certificates, total] = await qb
+      .skip(skip)
+      .take(safeLimit)
+      .getManyAndCount();
 
     await this.hydrateCertificatesRequestContext(certificates);
     await this.ensureTemplateSnapshots(certificates);
@@ -1441,13 +2213,14 @@ export class CertificatesService {
       }),
     );
 
-    const [totalEmitidos, activos, revocados, expirados, escaneosQR] = await Promise.all([
-      this.certificateRepo.count(),
-      this.certificateRepo.count({ where: { status: 'VALID' } }),
-      this.certificateRepo.count({ where: { status: 'REVOKED' } }),
-      this.certificateRepo.count({ where: { status: 'EXPIRED' } }),
-      this.validationRepo.count(),
-    ]);
+    const [totalEmitidos, activos, revocados, expirados, escaneosQR] =
+      await Promise.all([
+        this.certificateRepo.count(),
+        this.certificateRepo.count({ where: { status: 'VALID' } }),
+        this.certificateRepo.count({ where: { status: 'REVOKED' } }),
+        this.certificateRepo.count({ where: { status: 'EXPIRED' } }),
+        this.validationRepo.count(),
+      ]);
 
     return {
       items: certificatesWithCount,
@@ -1483,13 +2256,22 @@ export class CertificatesService {
     // Buscar sin importar mayusculas/minusculas
     const certificate = await this.certificateRepo
       .createQueryBuilder('certificate')
-      .where('UPPER(certificate.verification_code) = UPPER(:codigo)', { codigo: codigoTrim })
-      .orWhere('UPPER(certificate.certificate_number) = UPPER(:codigo)', { codigo: codigoTrim })
-      .orWhere("UPPER(REPLACE(certificate.certificate_number, ' ', '')) = UPPER(:codigoSinEspacios)", { codigoSinEspacios })
+      .where('UPPER(certificate.verification_code) = UPPER(:codigo)', {
+        codigo: codigoTrim,
+      })
+      .orWhere('UPPER(certificate.certificate_number) = UPPER(:codigo)', {
+        codigo: codigoTrim,
+      })
+      .orWhere(
+        "UPPER(REPLACE(certificate.certificate_number, ' ', '')) = UPPER(:codigoSinEspacios)",
+        { codigoSinEspacios },
+      )
       .getOne();
 
     if (!certificate) {
-      throw new NotFoundException(`Certificado con codigo ${codigoTrim} no encontrado`);
+      throw new NotFoundException(
+        `Certificado con codigo ${codigoTrim} no encontrado`,
+      );
     }
     await this.hydrateCertificatesRequestContext([certificate]);
     return certificate;
@@ -1505,15 +2287,23 @@ export class CertificatesService {
     const requestById = await this.findSolicitudById(solicitudId);
     const relatedRequests = await this.requestRepo
       .createQueryBuilder('request')
-      .where('request.id_number = :documento', { documento: requestById.id_number })
-      .orderBy('COALESCE(request.hiring_date, request.request_date, request.created_at)', 'DESC')
+      .where('request.id_number = :documento', {
+        documento: requestById.id_number,
+      })
+      .orderBy(
+        'COALESCE(request.hiring_date, request.request_date, request.created_at)',
+        'DESC',
+      )
       .addOrderBy('request.request_date', 'DESC')
       .addOrderBy('request.created_at', 'DESC')
       .getMany();
 
     const preferredRequest =
       this.selectPreferredRequestForCertificate(relatedRequests) || requestById;
-    const salarySource = this.selectSalarySourceForCertificate(preferredRequest, relatedRequests);
+    const salarySource = this.selectSalarySourceForCertificate(
+      preferredRequest,
+      relatedRequests,
+    );
     const request = this.mergeRequestWithSalarySource(
       preferredRequest,
       salarySource,
@@ -1524,7 +2314,9 @@ export class CertificatesService {
     });
 
     if (!signer) {
-      throw new NotFoundException('No se encontrИ un firmante principal activo');
+      throw new NotFoundException(
+        'No se encontra un firmante principal activo',
+      );
     }
 
     // Generate unique verification code
@@ -1540,19 +2332,26 @@ export class CertificatesService {
     let templateSnapshot: any = null;
     let templateVersion: string | null = null;
     try {
-      const config = await this.templateConfigService.getActiveConfig(templateType);
+      const config =
+        await this.templateConfigService.getActiveConfig(templateType);
       if (config) {
         templateSnapshot = config;
         templateVersion = config.version || null;
       }
     } catch (error) {
-      this.logger.warn(`No se pudo cargar la plantilla activa (${templateType}): ${error?.message || error}`);
+      this.logger.warn(
+        `No se pudo cargar la plantilla activa (${templateType}): ${error?.message || error}`,
+      );
     }
 
     const includeSalary = this.normalizeBoolean(options.includeSalary, true);
     const includeTechnicalBonus = includeSalary
       ? this.normalizeBoolean(options.includeTechnicalBonus, false)
       : false;
+    const requestDocumentType =
+      this.normalizeLaborDocumentType(
+        requestById.document_type || request.document_type,
+      ) || undefined;
     const technicalBonus = await this.resolveTechnicalBonusForRequest(request);
 
     if (includeTechnicalBonus && !technicalBonus.available) {
@@ -1567,6 +2366,7 @@ export class CertificatesService {
       request_id: request.id,
       full_name: request.full_name,
       id_number: request.id_number,
+      document_type: requestDocumentType,
       career_category: request.career_category,
       hiring_date: request.hiring_date,
       position_category: request.position_category,
@@ -1670,7 +2470,11 @@ export class CertificatesService {
   private normalizeGeoText(value?: string | null): string | undefined {
     const normalized = String(value || '').trim();
     if (!normalized) return undefined;
-    if (/^(unknown|desconocido|n\/a|na|null|undefined|localhost|local)$/i.test(normalized)) {
+    if (
+      /^(unknown|desconocido|n\/a|na|null|undefined|localhost|local)$/i.test(
+        normalized,
+      )
+    ) {
       return undefined;
     }
     if (/^(xx|t1)$/i.test(normalized)) {
@@ -1679,7 +2483,9 @@ export class CertificatesService {
     return normalized;
   }
 
-  private normalizeGeoPayload(geo?: GeoLookupResult | null): GeoLookupResult | null {
+  private normalizeGeoPayload(
+    geo?: GeoLookupResult | null,
+  ): GeoLookupResult | null {
     if (!geo) return null;
 
     const city = this.normalizeGeoText(geo.city);
@@ -1695,7 +2501,13 @@ export class CertificatesService {
         ? geo.longitude
         : undefined;
 
-    if (!city && !region && !country && latitude === undefined && longitude === undefined) {
+    if (
+      !city &&
+      !region &&
+      !country &&
+      latitude === undefined &&
+      longitude === undefined
+    ) {
       return null;
     }
 
@@ -1709,7 +2521,9 @@ export class CertificatesService {
     };
   }
 
-  private resolveGeoFromContext(context?: ValidationGeoContext): GeoLookupResult | null {
+  private resolveGeoFromContext(
+    context?: ValidationGeoContext,
+  ): GeoLookupResult | null {
     if (!context) return null;
     return this.normalizeGeoPayload({
       city: context.geoCity,
@@ -1718,7 +2532,10 @@ export class CertificatesService {
     });
   }
 
-  private mergeGeoSources(primary?: GeoLookupResult | null, fallback?: GeoLookupResult | null): GeoLookupResult | null {
+  private mergeGeoSources(
+    primary?: GeoLookupResult | null,
+    fallback?: GeoLookupResult | null,
+  ): GeoLookupResult | null {
     return this.normalizeGeoPayload({
       city: primary?.city || fallback?.city,
       region: primary?.region || fallback?.region,
@@ -1730,7 +2547,11 @@ export class CertificatesService {
   }
 
   private getGeoLookupTimeoutMs(): number {
-    const raw = Number(process.env.GEOLOOKUP_TIMEOUT_MS || process.env.GEO_LOOKUP_TIMEOUT_MS || 3500);
+    const raw = Number(
+      process.env.GEOLOOKUP_TIMEOUT_MS ||
+        process.env.GEO_LOOKUP_TIMEOUT_MS ||
+        3500,
+    );
     if (!Number.isFinite(raw)) return 3500;
     return Math.min(10000, Math.max(1200, Math.round(raw)));
   }
@@ -1740,7 +2561,9 @@ export class CertificatesService {
 
     const resultado = (validation.result || 'VALID').toUpperCase();
     const resultadoNormalizado =
-      resultado === 'REVOKED' || resultado === 'EXPIRED' || resultado === 'INVALID'
+      resultado === 'REVOKED' ||
+      resultado === 'EXPIRED' ||
+      resultado === 'INVALID'
         ? 'fallida'
         : resultado === 'SUSPICIOUS' || resultado === 'WARNING'
           ? 'sospechosa'
@@ -1751,8 +2574,10 @@ export class CertificatesService {
       .split(',')
       .map((part) => part.trim())
       .filter(Boolean);
-    const locationSingle = locationParts.length === 1 ? locationParts[0] : undefined;
-    const cityFromLocation = locationParts.length > 1 ? locationParts[0] : undefined;
+    const locationSingle =
+      locationParts.length === 1 ? locationParts[0] : undefined;
+    const cityFromLocation =
+      locationParts.length > 1 ? locationParts[0] : undefined;
     const countryFromLocation =
       locationParts.length > 1 ? locationParts.slice(1).join(', ') : undefined;
     const locationLooksLikeCountryCode =
@@ -1766,10 +2591,15 @@ export class CertificatesService {
     const pais =
       validation.country ||
       countryFromLocation ||
-      (locationLooksLikeCountryCode ? String(locationSingle).toUpperCase() : '') ||
+      (locationLooksLikeCountryCode
+        ? String(locationSingle).toUpperCase()
+        : '') ||
       'Desconocido';
 
-    const normalizedIp = this.normalizeIp(validation.ip_address || '') || validation.ip_address || '0.0.0.0';
+    const normalizedIp =
+      this.normalizeIp(validation.ip_address || '') ||
+      validation.ip_address ||
+      '0.0.0.0';
 
     return {
       id: validation.id,
@@ -1835,7 +2665,9 @@ export class CertificatesService {
 
     if (!candidates.length) return null;
 
-    const publicIp = candidates.find((candidate) => !this.isPrivateIp(candidate));
+    const publicIp = candidates.find(
+      (candidate) => !this.isPrivateIp(candidate),
+    );
     return publicIp || candidates[0];
   }
 
@@ -1868,7 +2700,10 @@ export class CertificatesService {
     return false;
   }
 
-  private async fetchJsonWithTimeout(url: string, timeoutMs = 3500): Promise<any | null> {
+  private async fetchJsonWithTimeout(
+    url: string,
+    timeoutMs = 3500,
+  ): Promise<any | null> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -1921,8 +2756,12 @@ export class CertificatesService {
               city: ipWho.city || undefined,
               region: ipWho.region || undefined,
               country: ipWho.country || undefined,
-              latitude: typeof ipWho.latitude === 'number' ? ipWho.latitude : undefined,
-              longitude: typeof ipWho.longitude === 'number' ? ipWho.longitude : undefined,
+              latitude:
+                typeof ipWho.latitude === 'number' ? ipWho.latitude : undefined,
+              longitude:
+                typeof ipWho.longitude === 'number'
+                  ? ipWho.longitude
+                  : undefined,
               isp: ipWho.connection?.isp || undefined,
             }
           : null,
@@ -1999,7 +2838,9 @@ export class CertificatesService {
       });
       return geoFallback;
     } catch (error) {
-      this.logger.warn(`No se pudo resolver geolocalizacion para IP ${ip}: ${error?.message || error}`);
+      this.logger.warn(
+        `No se pudo resolver geolocalizacion para IP ${ip}: ${error?.message || error}`,
+      );
       this.geoCache.set(normalizedIp, {
         expiresAt: now + this.geoCacheMissTtlMs,
         value: null,
@@ -2008,7 +2849,9 @@ export class CertificatesService {
     }
   }
 
-  private async obtenerHistorialValidacionesPorCertificado(certificateId: string) {
+  private async obtenerHistorialValidacionesPorCertificado(
+    certificateId: string,
+  ) {
     const validaciones = await this.validationRepo.find({
       where: { certificate_id: certificateId },
       order: { validation_date: 'DESC' },
@@ -2016,7 +2859,10 @@ export class CertificatesService {
 
     const mapped = await Promise.all(
       validaciones.map(async (validation) => {
-        if ((!validation.city || !validation.country) && validation.ip_address) {
+        if (
+          (!validation.city || !validation.country) &&
+          validation.ip_address
+        ) {
           const geo = await this.resolveGeoFromIp(validation.ip_address);
           if (geo) {
             validation.city = geo.city || validation.city;
@@ -2045,7 +2891,8 @@ export class CertificatesService {
     userAgent?: string,
     geoContext?: ValidationGeoContext,
   ) {
-    const certificate = await this.findCertificadoByCodigoVerificacion(codigoVerificacion);
+    const certificate =
+      await this.findCertificadoByCodigoVerificacion(codigoVerificacion);
 
     // Determine validation result based on certificate status
     let result = 'VALID';
@@ -2064,7 +2911,9 @@ export class CertificatesService {
     const geoFromIp = await this.resolveGeoFromIp(normalizedIp);
     const geo = this.mergeGeoSources(geoFromIp, geoFromHeader);
     if (!geo && normalizedIp && !this.isPrivateIp(normalizedIp)) {
-      this.logger.warn(`Validacion sin geolocalizacion para IP publica ${normalizedIp}`);
+      this.logger.warn(
+        `Validacion sin geolocalizacion para IP publica ${normalizedIp}`,
+      );
     }
     const location =
       geo?.city && geo?.country
@@ -2090,9 +2939,13 @@ export class CertificatesService {
 
     await this.validationRepo.save(validation);
 
-    const historial = await this.obtenerHistorialValidacionesPorCertificado(certificate.id);
+    const historial = await this.obtenerHistorialValidacionesPorCertificado(
+      certificate.id,
+    );
     const requestContext = certificate.request_id
-      ? await this.requestRepo.findOne({ where: { id: certificate.request_id } })
+      ? await this.requestRepo.findOne({
+          where: { id: certificate.request_id },
+        })
       : null;
     const requestPayload = requestContext
       ? {
@@ -2114,8 +2967,11 @@ export class CertificatesService {
   }
 
   async obtenerHistorialValidaciones(codigoVerificacion: string) {
-    const certificate = await this.findCertificadoByCodigoVerificacion(codigoVerificacion);
-    const historial = await this.obtenerHistorialValidacionesPorCertificado(certificate.id);
+    const certificate =
+      await this.findCertificadoByCodigoVerificacion(codigoVerificacion);
+    const historial = await this.obtenerHistorialValidacionesPorCertificado(
+      certificate.id,
+    );
 
     return {
       certificate_id: certificate.id,
@@ -2165,7 +3021,9 @@ export class CertificatesService {
     });
 
     if (!certificado) {
-      throw new NotFoundException(`Certificado con ID ${certificadoId} no encontrado`);
+      throw new NotFoundException(
+        `Certificado con ID ${certificadoId} no encontrado`,
+      );
     }
 
     const normalizarFecha = (valor: Date | string) => {
@@ -2205,7 +3063,10 @@ export class CertificatesService {
 
     const normalizarMonto = (value?: string | number | null) => {
       if (value === null || value === undefined) return 0;
-      const raw = typeof value === 'string' ? value.replace(/[^\d.-]/g, '') : String(value);
+      const raw =
+        typeof value === 'string'
+          ? value.replace(/[^\d.-]/g, '')
+          : String(value);
       const parsed = Number(raw);
       if (!Number.isFinite(parsed)) return 0;
       return Math.round(parsed);
@@ -2249,33 +3110,45 @@ export class CertificatesService {
    * y si ya tiene un certificado generado
    */
   async verificarDocumentoPorSolicitud(documento: string) {
-    // Buscar la solicitud por numero de documento
     const documentoTrim = (documento || '').trim();
-    const solicitudes = await this.requestRepo
-      .createQueryBuilder('request')
-      .where('request.id_number = :documento', { documento: documentoTrim })
-      .orderBy('COALESCE(request.hiring_date, request.request_date, request.created_at)', 'DESC')
-      .addOrderBy('request.request_date', 'DESC')
-      .addOrderBy('request.created_at', 'DESC')
-      .getMany();
+    const oracleSync = await this.syncRequestsFromOracle(documentoTrim);
 
-    const solicitudBase = this.selectPreferredRequestForCertificate(solicitudes);
+    if (oracleSync.enabled && !oracleSync.found) {
+      return {
+        existe: false,
+        mensaje:
+          'No se encontro ningun registro con este documento en Oracle FNC',
+        fuente: 'oracle',
+        oracleSync,
+      };
+    }
+
+    const solicitudes = await this.findLocalRequestsByDocument(documentoTrim);
+
+    const solicitudBase =
+      this.selectPreferredRequestForCertificate(solicitudes);
 
     if (!solicitudBase) {
       return {
         existe: false,
         mensaje: 'No se encontro ningun registro con este documento',
+        fuente: oracleSync.enabled ? 'oracle' : 'postgres',
+        oracleSync,
       };
     }
 
-    const salarySource = this.selectSalarySourceForCertificate(solicitudBase, solicitudes);
+    const salarySource = this.selectSalarySourceForCertificate(
+      solicitudBase,
+      solicitudes,
+    );
     const solicitud = this.mergeRequestWithSalarySource(
       solicitudBase,
       salarySource,
       solicitudes,
     );
 
-    const technicalBonus = await this.resolveTechnicalBonusForRequest(solicitud);
+    const technicalBonus =
+      await this.resolveTechnicalBonusForRequest(solicitud);
     const solicitudResponse = {
       ...solicitud,
       technical_bonus_available: technicalBonus.available,
@@ -2299,6 +3172,8 @@ export class CertificatesService {
         mensaje: 'Ya tienes un certificado generado',
         solicitud: solicitudResponse,
         certificado: certificadoExistente,
+        fuente: oracleSync.enabled ? 'oracle' : 'postgres',
+        oracleSync,
         technical_bonus_available: technicalBonus.available,
         technical_bonus_percentage: technicalBonus.percentage,
         technical_bonus_value: technicalBonus.value,
@@ -2311,6 +3186,8 @@ export class CertificatesService {
       tieneCertificado: false,
       mensaje: 'Documento encontrado, puedes solicitar tu certificado',
       solicitud: solicitudResponse,
+      fuente: oracleSync.enabled ? 'oracle' : 'postgres',
+      oracleSync,
       technical_bonus_available: technicalBonus.available,
       technical_bonus_percentage: technicalBonus.percentage,
       technical_bonus_value: technicalBonus.value,
@@ -2323,8 +3200,12 @@ export class CertificatesService {
    * En produccion: enviar email
    * En local: devolver codigo fijo
    */
-  async generarCodigoValidacion(documento: string) {
+  async generarCodigoValidacion(documento: string, documentType?: string) {
     const verificacion = await this.verificarDocumentoPorSolicitud(documento);
+    const normalizedDocumentType = this.normalizeLaborDocumentType(
+      documentType,
+      { strict: true },
+    );
 
     if (!verificacion.existe) {
       throw new NotFoundException('Documento no encontrado en el sistema');
@@ -2332,7 +3213,9 @@ export class CertificatesService {
 
     // Verificar que solicitud existe
     if (!verificacion.solicitud) {
-      throw new BadRequestException('Error al recuperar informacion de la solicitud');
+      throw new BadRequestException(
+        'Error al recuperar informacion de la solicitud',
+      );
     }
 
     const employmentStatus = this.resolveEmploymentStatus(
@@ -2346,31 +3229,57 @@ export class CertificatesService {
       );
     }
 
+    const emailDestino = this.normalizarCorreo(verificacion.solicitud.email);
+    if (emailDestino && !this.tieneFormatoCorreoValido(emailDestino)) {
+      throw new BadRequestException(
+        'El correo registrado no tiene un formato valido. No fue enviado el codigo de validacion.',
+      );
+    }
+
     // Generar codigo de 6 digitos
-    const codigoValidacion = Math.floor(100000 + Math.random() * 900000).toString();
+    const codigoValidacion = Math.floor(
+      100000 + Math.random() * 900000,
+    ).toString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
 
     // Guardar el codigo y expiracion en la solicitud
     await this.requestRepo.update(verificacion.solicitud.id, {
       validation_code: codigoValidacion,
       validation_expires_at: expiresAt,
+      ...(normalizedDocumentType
+        ? { document_type: normalizedDocumentType }
+        : {}),
     });
+
+    if (normalizedDocumentType) {
+      (verificacion.solicitud as CertificateRequest).document_type =
+        normalizedDocumentType;
+    }
 
     // Enviar email si hay configuracion SMTP
     try {
-      await this.enviarCodigoPorEmail(verificacion.solicitud.email, codigoValidacion);
+      await this.enviarCodigoPorEmail(
+        emailDestino,
+        codigoValidacion,
+      );
     } catch (err) {
-      this.logger.warn(`No se pudo enviar el codigo por email: ${err?.message || err}`);
+      this.logger.warn(
+        `No se pudo enviar el codigo por email: ${err?.message || err}`,
+      );
     }
 
     return {
       mensaje: 'Codigo de validacion generado',
-      email: verificacion.solicitud.email,
+      email: emailDestino,
       // Devolver datos del empleado para mostrar en el frontend
       solicitud: {
         full_name: verificacion.solicitud.full_name,
         id_number: verificacion.solicitud.id_number,
-        email: verificacion.solicitud.email,
+        document_type:
+          normalizedDocumentType ||
+          (verificacion.solicitud as CertificateRequest).document_type ||
+          undefined,
+        email: emailDestino,
         status: verificacion.solicitud.status,
         employment_status: employmentStatus,
         career_category: verificacion.solicitud.career_category,
@@ -2388,12 +3297,17 @@ export class CertificatesService {
           false,
         ),
         technical_bonus_percentage: this.roundToTwoDecimals(
-          this.parseNumericValue((verificacion.solicitud as any).technical_bonus_percentage),
+          this.parseNumericValue(
+            (verificacion.solicitud as any).technical_bonus_percentage,
+          ),
         ),
         technical_bonus_value: this.roundToTwoDecimals(
-          this.parseNumericValue((verificacion.solicitud as any).technical_bonus_value),
+          this.parseNumericValue(
+            (verificacion.solicitud as any).technical_bonus_value,
+          ),
         ),
-        technical_bonus_category: (verificacion.solicitud as any).technical_bonus_category || null,
+        technical_bonus_category:
+          (verificacion.solicitud as any).technical_bonus_category || null,
       },
     };
   }
@@ -2405,12 +3319,17 @@ export class CertificatesService {
     documento: string,
     codigo: string,
     options: {
+      documentType?: string;
       includeSalary?: boolean;
       includeTechnicalBonus?: boolean;
     } = {},
   ) {
     const documentoTrim = (documento || '').trim();
     const codigoTrim = (codigo || '').trim();
+    const normalizedDocumentType = this.normalizeLaborDocumentType(
+      options.documentType,
+      { strict: true },
+    );
     // Buscar la solicitud por documento + codigo para evitar conflictos con multiples solicitudes
     const solicitud = await this.requestRepo.findOne({
       where: { id_number: documentoTrim, validation_code: codigoTrim },
@@ -2423,11 +3342,15 @@ export class CertificatesService {
 
     // Validar vigencia
     if (!solicitud.validation_expires_at) {
-      throw new BadRequestException('No se ha generado un codigo de validacion para esta solicitud');
+      throw new BadRequestException(
+        'No se ha generado un codigo de validacion para esta solicitud',
+      );
     }
 
     if (new Date(solicitud.validation_expires_at) < new Date()) {
-      throw new BadRequestException('El codigo de validacion ha expirado. Solicita uno nuevo.');
+      throw new BadRequestException(
+        'El codigo de validacion ha expirado. Solicita uno nuevo.',
+      );
     }
 
     const employmentStatus = this.resolveEmploymentStatus(
@@ -2439,6 +3362,14 @@ export class CertificatesService {
       throw new BadRequestException(
         'Si tu certificado no se encuentra disponible o tienes inquietudes, escribenos a talento.humano@esap.edu.co.',
       );
+    }
+
+    if (
+      normalizedDocumentType &&
+      solicitud.document_type !== normalizedDocumentType
+    ) {
+      solicitud.document_type = normalizedDocumentType;
+      await this.requestRepo.save(solicitud);
     }
 
     // Generar el certificado

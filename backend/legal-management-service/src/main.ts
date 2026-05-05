@@ -6,6 +6,7 @@ import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.getHttpAdapter().getInstance().disable?.('x-powered-by');
 
   // Aumentar límite de payload para uploads de documentos (250MB)
   app.use(bodyParser.json({ limit: '250mb' }));

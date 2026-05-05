@@ -3,6 +3,10 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  await app.listen(process.env.PORT ?? 3000);
+  app.getHttpAdapter().getInstance().disable?.('x-powered-by');
+  app.enableCors();
+  const port = process.env.PORT ?? 3006;
+  await app.listen(port);
+  console.log(`✅ Interoperability Service running on port ${port}`);
 }
 bootstrap();

@@ -59,6 +59,7 @@ import { DisciplinaryProcessTask } from './entities/disciplinary-process-task.en
 import { DisciplinaryProcessNote } from './entities/disciplinary-process-note.entity';
 import { DisciplinaryNewsProcess } from './entities/disciplinary-news-process.entity';
 import { DisciplinaryProcessReassignmentRequest } from './entities/disciplinary-process-reassignment-request.entity';
+import { DisciplinaryBehavior } from './entities/disciplinary-behavior.entity';
 
 export const databaseConfig: TypeOrmModuleOptions = {
   type: 'postgres',
@@ -94,6 +95,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
     DisciplinaryProcessNote,
     DisciplinaryNewsProcess,
     DisciplinaryProcessReassignmentRequest,
+    DisciplinaryBehavior,
   ],
   synchronize: false,
   logging: false,

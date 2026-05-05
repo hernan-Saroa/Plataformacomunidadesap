@@ -4,8 +4,10 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Not } from 'typeorm';
+import { InjectRepository, InjectConnection } from '@nestjs/typeorm';
+import { Repository, Not, Connection } from 'typeorm';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 import { DisciplinaryNews, NewsStatus, NewsOrigin } from '../entities/disciplinary-news.entity';
 import { DisciplinaryProcess } from '../entities/disciplinary-process.entity';
 import { DisciplinaryNewsProcess } from '../entities/disciplinary-news-process.entity';
@@ -14,6 +16,7 @@ import { CreateDisciplinaryNewsDto } from '../dtos/create-disciplinary-news.dto'
 import { ReturnNewsDto } from '../dtos/return-news.dto';
 import { SequenceService } from './sequence.service';
 import { StorageService } from './storage.service';
+import { NotificationClientService } from './notification-client.service';
 
 interface FileData {
   buffer: Buffer;
@@ -31,8 +34,12 @@ export class NewsService {
     private newsProcessRepository: Repository<DisciplinaryNewsProcess>,
     @InjectRepository(StageConfiguration)
     private stageConfigurationRepository: Repository<StageConfiguration>,
+    @InjectConnection()
+    private connection: Connection,
     private sequenceService: SequenceService,
     private storageService: StorageService,
+    private notificationClient: NotificationClientService,
+    private readonly httpService: HttpService,
   ) { }
 
   /**
@@ -41,8 +48,10 @@ export class NewsService {
   async create(
     createNewsDto: CreateDisciplinaryNewsDto,
     files?: FileData[],
+    userId?: string,
   ): Promise<DisciplinaryNews> {
     try {
+      console.log('[DEBUG] NewsService.create - DTO received:', JSON.stringify(createNewsDto, null, 2));
       // Generar radicado único
       const radicado = await this.sequenceService.generateNewsRadicado();
 
@@ -90,14 +99,32 @@ export class NewsService {
       const noticia = this.newsRepository.create({
         radicado,
         ...createNewsDto,
+        radicadorId: createNewsDto.radicadorId || userId,
         adjuntos,
         fechaCaducidad,
-        estado: NewsStatus.RADICADA,
+        estado: 'RADICADA',
         kanbanStage: initialStage.id,
+        etapaActual: initialStage.etapa,
         historialAuditoria: initialHistory,
-      });
+      } as any);
 
-      return await this.newsRepository.save(noticia);
+      const noticiaGuardada = await this.newsRepository.save(noticia) as unknown as DisciplinaryNews;
+
+      this.notificationClient.notifyByRole('JEFE_DE_LA_OCID', {
+        tipo_notificacion: 'NUEVA_NOTICIA',
+        titulo: 'Nueva noticia disciplinaria radicada',
+        mensaje: `Se ha radicado una nueva noticia con número ${radicado}. Está pendiente de revisión.`,
+        descripcion_corta: `Noticia ${radicado} pendiente de revisión`,
+        icono: 'FileText',
+        color: '#2563EB',
+        prioridad: 'Media',
+        categoria: 'DISCIPLINARIO',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver noticia',
+        datos_adicionales: { noticiaId: noticiaGuardada.id, radicado },
+      }).catch(() => {});
+
+      return noticiaGuardada;
     } catch (error) {
       throw new HttpException(
         `Error al radicar noticia: ${error.message}`,
@@ -109,9 +136,78 @@ export class NewsService {
   /**
    * Obtiene todas las noticias (excluyendo las asociadas)
    */
-  async findAll(): Promise<DisciplinaryNews[]> {
-    return await this.newsRepository.find({
+  async findAll(): Promise<any[]> {
+    const news = await this.newsRepository.find({
       where: { estado: Not(NewsStatus.ASOCIADA) },
+    });
+
+    // Get unique radicadorIds
+    const radicadorIds = [...new Set(news.map(n => n.radicadorId).filter(id => id))];
+    console.log('[NewsService] RadicadorIds encontrados:', radicadorIds);
+    console.log('[NewsService] Total de noticias:', news.length);
+
+    // Fetch user data if there are radicadorIds
+    const userMap = new Map<string, any>();
+    console.log('[NewsService] Iniciando fetch de usuarios para', radicadorIds.length, 'IDs únicos');
+    if (radicadorIds.length > 0) {
+      try {
+        // Consulta directa a la base de datos del esquema auth
+        const query = `
+          SELECT
+            u.id_user,
+            u.id_person,
+            p.nom_largo,
+            u.username
+          FROM auth.user u
+          LEFT JOIN auth.personas p ON p.id_person = u.id_person
+          WHERE u.id_user = ANY($1)
+        `;
+        const users = await this.connection.query(query, [radicadorIds]);
+
+        console.log('[NewsService] Usuarios obtenidos de la BD auth:', users.length);
+        users.forEach((user: any) => {
+          console.log('[NewsService] Usuario:', {
+            id_user: user.id_user,
+            id_person: user.id_person,
+            nom_largo: user.nom_largo,
+            username: user.username
+          });
+          const userId = user.id_user;
+          if (userId) {
+            const userData = {
+              nombre: user.nom_largo,
+              email: user.username,
+            };
+            userMap.set(String(userId), userData);
+            // Also try with the original format
+            userMap.set(userId, userData);
+            console.log('[NewsService] Mapeado usuario ID:', userId, '->', userData);
+          }
+        });
+        console.log('[NewsService] Total usuarios mapeados:', userMap.size);
+      } catch (error) {
+        console.error('[NewsService] Error fetching users from auth database:', error.message);
+        console.log('[NewsService] Continuando sin información de usuarios - se mostrará ID en lugar de nombre');
+        // If database query fails, we'll just not have user names
+      }
+    } else {
+      console.log('[NewsService] No hay radicadorIds para buscar usuarios');
+    }
+
+    // Add user information to news
+    console.log('[NewsService] UserMap keys:', Array.from(userMap.keys()));
+    return news.map(n => {
+      const userInfo = n.radicadorId ? userMap.get(n.radicadorId) || userMap.get(String(n.radicadorId)) : null;
+      const result = {
+        ...n,
+        radicador: userInfo?.nombre || null,
+        radicadorEmail: userInfo?.email || null,
+      };
+
+      console.log(`[NewsService] Noticia ${n.id}: radicadorId=${n.radicadorId} (tipo: ${typeof n.radicadorId}), buscando en mapa...`);
+      console.log(`[NewsService] Noticia ${n.id}: userInfo encontrado=${!!userInfo}, nombre=${result.radicador}, email=${result.radicadorEmail}`);
+
+      return result;
     });
   }
 
@@ -347,7 +443,27 @@ export class NewsService {
     };
     noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
 
-    return await this.newsRepository.save(noticia);
+    const noticiaGuardada = await this.newsRepository.save(noticia);
+
+    const radicadorIdDestino = returnNewsDto.radicadorId ?? noticia.radicadorId;
+    if (radicadorIdDestino) {
+      this.notificationClient.send({
+        id_usuario_destinatario: radicadorIdDestino,
+        tipo_notificacion: 'NOTICIA_DEVUELTA',
+        titulo: 'Noticia devuelta por el Jefe OCID',
+        mensaje: `La noticia ${noticia.radicado} ha sido devuelta. Observaciones: ${returnNewsDto.observaciones}`,
+        descripcion_corta: `Noticia ${noticia.radicado} devuelta`,
+        icono: 'ArrowLeft',
+        color: '#DC2626',
+        prioridad: 'Alta',
+        categoria: 'DISCIPLINARIO',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver noticia',
+        datos_adicionales: { noticiaId: noticia.id, radicado: noticia.radicado },
+      }).catch(() => {});
+    }
+
+    return noticiaGuardada;
   }
 
   /**
@@ -405,7 +521,17 @@ export class NewsService {
         noticia.kanbanStage = stageConfig.id;
      }
      return await this.newsRepository.save(noticia);
-   }
+  }
+
+  /**
+   * Obtiene las noticias radicadas por un usuario específico
+   */
+  async findByRadicadorId(radicadorId: string): Promise<DisciplinaryNews[]> {
+    return await this.newsRepository.find({
+      where: { radicadorId },
+      order: { fechaRecepcion: 'DESC' },
+    });
+  }
 
   /**
    * Actualiza el historial de auditoría de una noticia
@@ -492,6 +618,23 @@ export class NewsService {
       // Guardar la noticia con el nuevo estado
       await this.newsRepository.save(noticia);
   
+      if (proceso.abogadoAsignadoId) {
+        this.notificationClient.send({
+          id_usuario_destinatario: proceso.abogadoAsignadoId,
+          tipo_notificacion: 'NOTICIA_ASOCIADA_PROCESO',
+          titulo: 'Nueva noticia asociada a tu proceso',
+          mensaje: `Se ha asociado la noticia ${noticia.radicado} al proceso ${proceso.radicadoProceso}. Justificación: ${justificacion}`,
+          descripcion_corta: `Noticia ${noticia.radicado} asociada al proceso ${proceso.radicadoProceso}`,
+          icono: 'Link',
+          color: '#7C3AED',
+          prioridad: 'Media',
+          categoria: 'DISCIPLINARIO',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver proceso',
+          datos_adicionales: { noticiaId: newsId, procesoId: procesoDestinoId },
+        }).catch(() => {});
+      }
+
       return {
         message: 'Asociación creada exitosamente',
         association: savedAssociation
@@ -701,8 +844,8 @@ export class NewsService {
       fechaRecepcion: new Date(noticia.fechaRecepcion).toISOString(),
       territorial: noticia.territorial,
       dependenciaDenunciado: noticia.dependenciaDenunciado,
-      denunciante: typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante,
-      disciplinable: typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable,
+      denunciante: (() => { const d = typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante; return Array.isArray(d) ? d[0] : d; })(),
+      disciplinable: (() => { const d = typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable; return Array.isArray(d) ? d[0] : d; })(),
       hechos: noticia.hechos,
       conductas: noticia.conductas,
       fundamentosLegales: [],

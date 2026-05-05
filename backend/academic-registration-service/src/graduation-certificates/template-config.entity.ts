@@ -55,13 +55,23 @@ export class TemplateConfig {
 
   // Firma (puede sobrescribir la del firmante)
   @Column({ name: 'signature_url_override', type: 'text', nullable: true })
-  signatureUrlOverride: string;
+  signatureUrlOverride: string | null;
 
-  @Column({ name: 'signature_filename_override', length: 255, nullable: true })
-  signatureFilenameOverride: string;
+  @Column({
+    name: 'signature_filename_override',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  signatureFilenameOverride: string | null;
 
-  @Column({ name: 'signer_name_override', length: 255, nullable: true })
-  signerNameOverride: string;
+  @Column({
+    name: 'signer_name_override',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  signerNameOverride: string | null;
 
   // Auditoría
   @CreateDateColumn({ name: 'created_at' })

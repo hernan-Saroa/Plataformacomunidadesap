@@ -26,6 +26,7 @@ import { DisciplinaryProcessTask } from './entities/disciplinary-process-task.en
 import { DisciplinaryProcessNote } from './entities/disciplinary-process-note.entity';
 import { DisciplinaryNewsProcess } from './entities/disciplinary-news-process.entity';
 import { DisciplinaryProcessReassignmentRequest } from './entities/disciplinary-process-reassignment-request.entity';
+import { DisciplinaryBehavior } from './entities/disciplinary-behavior.entity';
 
 // Controllers
 import { NewsController } from './controllers/news.controller';
@@ -42,6 +43,7 @@ import { DisciplinaryProcessActuacionesController } from './controllers/discipli
 import { DisciplinaryProcessTasksController } from './controllers/disciplinary-process-tasks.controller';
 import { DisciplinaryProcessNotesController } from './controllers/disciplinary-process-notes.controller';
 import { DisciplinaryProcessReassignmentController } from './controllers/disciplinary-process-reassignment.controller';
+import { DisciplinaryBehaviorController } from './controllers/disciplinary-behavior.controller';
 
 // Services
 import { NewsService } from './services/news.service';
@@ -59,6 +61,7 @@ import { SchedulerService } from './services/scheduler.service';
 import { SeedService } from './seed.service';
 import { OnlyOfficeService } from './services/onlyoffice.service';
 import { PdfModifierService } from './services/pdf-modifier.service';
+import { DocumentConversionService } from './services/document-conversion.service';
 import { databaseConfig } from './database.config';
 
 import { AppController } from './app.controller';
@@ -94,6 +97,11 @@ import { DisciplinaryProcessActuacionesService } from './services/disciplinary-p
 import { DisciplinaryProcessTasksService } from './services/disciplinary-process-tasks.service';
 import { DisciplinaryProcessNotesService } from './services/disciplinary-process-notes.service';
 import { DisciplinaryProcessReassignmentService } from './services/disciplinary-process-reassignment.service';
+import { JuridicaEmailService } from './services/juridica-email.service';
+import { DisciplinaryEmailService } from './services/disciplinary-email.service';
+import { DisciplinaryBehaviorService } from './services/disciplinary-behavior.service';
+import { NotificationClientService } from './services/notification-client.service';
+import { RolesGuard } from './auth/roles.guard';
 
 @Module({
   imports: [
@@ -133,6 +141,7 @@ import { DisciplinaryProcessReassignmentService } from './services/disciplinary-
       DisciplinaryProcessTask,
       DisciplinaryProcessNote,
       DisciplinaryProcessReassignmentRequest,
+      DisciplinaryBehavior,
     ]),
   ],
   controllers: [
@@ -160,6 +169,7 @@ import { DisciplinaryProcessReassignmentService } from './services/disciplinary-
     EntidadRemisionController,
     TipoRemisionController,
     DisciplinaryProcessReassignmentController,
+    DisciplinaryBehaviorController,
   ],
   providers: [
     AppService,
@@ -179,6 +189,7 @@ import { DisciplinaryProcessReassignmentService } from './services/disciplinary-
     DisciplinaryExportService,
     OnlyOfficeService,
     PdfModifierService,
+    DocumentConversionService,
     AutosConfigurationService,
     OficiosConfigurationService,
     ActasConfigurationService,
@@ -189,6 +200,11 @@ import { DisciplinaryProcessReassignmentService } from './services/disciplinary-
     DisciplinaryProcessTasksService,
     DisciplinaryProcessNotesService,
     DisciplinaryProcessReassignmentService,
+    JuridicaEmailService,
+    DisciplinaryEmailService,
+    DisciplinaryBehaviorService,
+    NotificationClientService,
+    RolesGuard,
   ],
 })
 export class AppModule { }

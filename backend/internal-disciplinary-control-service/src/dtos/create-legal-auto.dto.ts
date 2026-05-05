@@ -4,16 +4,17 @@ import {
   IsOptional,
   IsNotEmpty,
   IsNumber,
+  IsIn,
   Matches,
 } from 'class-validator';
-import { AutoType, AutoStatus } from '../entities/legal-auto.entity';
+import { AutoStatus } from '../entities/legal-auto.entity';
 
 export class CreateLegalAutoDto {
   @Matches(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
   processId: string;
 
-  @IsEnum(AutoType)
-  tipoAuto: AutoType;
+  @IsString()
+  tipoAuto: string;
 
   @IsOptional()
   @IsString()
@@ -42,6 +43,15 @@ export class CreateLegalAutoDto {
   @IsOptional()
   @IsString()
   comentarios?: string;
+
+  @IsOptional()
+  @IsString()
+  etapaDestino?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @IsIn([3, 6])
+  prorrogaMeses?: number; // Solo para AUTO_PRORROGA: 3 o 6 meses
 }
 
 export class UpdateAutoStatusDto {
