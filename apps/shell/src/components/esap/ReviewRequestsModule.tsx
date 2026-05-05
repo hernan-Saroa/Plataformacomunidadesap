@@ -153,10 +153,9 @@ export function ReviewRequestsModule() {
   const canManageApprovalConcepts = authService.hasPermission(
     Permissions.GRADUATES_SOLICITUDE_APROBAR,
   );
-  const canWorkReviewRequests =
-    authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_REVIEW) ||
-    canManageApprovalConcepts ||
-    authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_RECHAZAR);
+  const canWorkReviewRequests = authService.hasPermission(
+    Permissions.GRADUATES_SOLICITUDE_REVIEW,
+  );
   const isReviewWorkLocked = (request: ReviewRequest) =>
     [
       'PENDING_APPROVAL',
