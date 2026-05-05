@@ -2316,11 +2316,12 @@ function ColumnaKanban({
 interface VistaArchivadosProps {
   items: Array<any>;
   onDesarchivar: (item: any) => void;
+  onApelar: (item: any) => void;
   onVerDetalles: (item: any) => void;
   isMobile: boolean;
 }
 
-function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: VistaArchivadosProps) {
+function VistaArchivados({ items, onDesarchivar, onApelar, onVerDetalles, isMobile }: VistaArchivadosProps) {
   const [searchArchivo, setSearchArchivo] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'noticia' | 'proceso'>('todos');
   const [ordenarPor, setOrdenarPor] = useState<'reciente' | 'antiguo'>('reciente');
@@ -2454,7 +2455,7 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
           <div className="divide-y divide-gray-100">
             {/* Cabecera de tabla */}
             {!isMobile && (
-              <div className="grid grid-cols-[auto_1fr_140px_140px_120px_120px_100px] gap-3 px-4 py-2.5 bg-gray-50 text-[10px] font-bold text-gray-500 uppercase tracking-wider sticky top-0 z-10 border-b border-gray-200">
+              <div className="grid grid-cols-[auto_1fr_140px_140px_120px_120px_170px] gap-3 px-4 py-2.5 bg-gray-50 text-[10px] font-bold text-gray-500 uppercase tracking-wider sticky top-0 z-10 border-b border-gray-200">
                 <div className="w-8">Tipo</div>
                 <div>Identificación / Detalle</div>
                 <div>Denunciado</div>
@@ -2524,6 +2525,9 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
                         {canRestoreItem(item) && (
                           <KanbanButtonSemantic variant="success" onClick={() => onDesarchivar(item)} icon={<RefreshCw className="w-3.5 h-3.5" />} title="Restaurar al flujo activo" className="!w-auto !px-2 !py-1.5" />
                         )}
+                        {!isNoticia && canRestoreItem(item) && (
+                          <KanbanButtonTertiary compact onClick={() => onApelar(item)} icon={<Forward className="w-3.5 h-3.5" />} title="Apelar a segunda instancia" className="!flex-none !w-8" />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2533,7 +2537,7 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
               return (
                 <div
                   key={item.id}
-                  className="grid grid-cols-[auto_1fr_140px_140px_120px_120px_100px] gap-3 px-4 py-3 items-center hover:bg-gray-50/80 transition-colors group"
+                  className="grid grid-cols-[auto_1fr_140px_140px_120px_120px_170px] gap-3 px-4 py-3 items-center hover:bg-gray-50/80 transition-colors group"
                 >
                   {/* Tipo */}
                   <div className="w-8">
@@ -2604,6 +2608,11 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
                       <KanbanButtonSemantic variant="success" onClick={() => onDesarchivar(item)} icon={<RefreshCw className="w-3 h-3" />} title="Restaurar al flujo activo" className="!text-[10px] !px-2 !py-1">
                         Restaurar
                       </KanbanButtonSemantic>
+                    )}
+                    {!isNoticia && canRestoreItem(item) && (
+                      <KanbanButtonSecondary onClick={() => onApelar(item)} icon={<Forward className="w-3 h-3" />} title="Apelar a segunda instancia" className="!text-[10px] !px-2 !py-1">
+                        Apelar
+                      </KanbanButtonSecondary>
                     )}
                   </div>
                 </div>
@@ -3775,6 +3784,7 @@ export function DashboardKanbanOperativo({
       { nombre: 'Investigación', color: '#003DA5', icono: <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />, diasEstimados: 60 },
       { nombre: 'Juzgamiento', color: '#6B7280', icono: <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 50 },
       { nombre: 'Fallo', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
+      { nombre: 'Segunda Instancia', color: '#6B7280', icono: <Forward className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
       { nombre: 'Archivo', color: '#059669', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-green-600`} />, diasEstimados: 0 }
     ];
 
@@ -3787,6 +3797,7 @@ export function DashboardKanbanOperativo({
     if (nombre.includes('investig')) return <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />;
     if (nombre.includes('juzg')) return <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
     if (nombre.includes('fallo')) return <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+    if (nombre.includes('segunda') && nombre.includes('instancia')) return <Forward className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
     if (nombre.includes('archiv')) return <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-green-600`} />;
     return <FolderOpen className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
   }
@@ -4604,6 +4615,80 @@ export function DashboardKanbanOperativo({
   const handleDesarchivar = (item: any) => {
     setItemParaRestaurar(item);
     setMostrarModalRestaurar(true);
+  };
+
+  const restaurarProcesoArchivadoEnBackend = async (procesoId: string) => {
+    try {
+      await disciplinaryService.restoreProcess(procesoId);
+    } catch (serviceError) {
+      console.error('Gateway restore failed, trying direct disciplinary service:', serviceError);
+
+      const response = await fetch(`http://localhost:3005/disciplinary-processes/${procesoId}/restore`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || ''}`,
+        },
+        body: JSON.stringify({}),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+      }
+    }
+  };
+
+  const getEtapaSegundaInstancia = () => {
+    const etapaConfigurada = etapasConfig.find(etapa => {
+      const raw = etapa.etapa || etapa.nombre || etapa.label || '';
+      const normalized = normalizeStageKey(raw);
+      return normalized.includes('segunda') && normalized.includes('instancia');
+    });
+
+    return etapaConfigurada?.etapa || etapaConfigurada?.nombre || 'Segunda Instancia';
+  };
+
+  const handleApelarArchivado = async (item: any) => {
+    if (!item || item.tipo !== 'proceso') return;
+
+    const etapaApelacion = getEtapaSegundaInstancia();
+    const backendStage = backendStageForLabel(etapaApelacion);
+    const stageOrder = getStageOrderForLabel(etapaApelacion);
+    const { fechaArchivo, motivoArchivo, ...itemRestaurado } = item;
+    const toastId = toast.loading('Apelando proceso a segunda instancia...');
+
+    try {
+      await disciplinaryService.updateProcess(item.id, {
+        etapaActual: backendStage,
+        estado: 'ACTIVO',
+        kanbanStage: stageOrder as any,
+      } as any);
+
+      setItems(prev => [
+        ...prev,
+        {
+          ...itemRestaurado,
+          etapaActual: etapaApelacion,
+          kanbanStage: etapaApelacion,
+          estadoActual: 'ACTIVO',
+          restaurado: true,
+          ultimaActuacion: 'Proceso apelado a segunda instancia',
+        } as Proceso,
+      ]);
+      setItemsArchivados(prev => prev.filter(i => i.id !== item.id));
+
+      toast.success('Proceso apelado', {
+        id: toastId,
+        description: `${item.numeroProceso} fue restaurado en ${etapaApelacion}.`,
+      });
+    } catch (err: any) {
+      console.error('[DashboardKanban] Error al apelar proceso:', err);
+      toast.error('Error al apelar proceso', {
+        id: toastId,
+        description: err?.message || 'No se pudo restaurar el proceso en segunda instancia',
+      });
+    }
   };
 
   // ✅ Función para determinar el estado apropiado al restaurar un proceso
@@ -6023,6 +6108,7 @@ export function DashboardKanbanOperativo({
           <VistaArchivados
             items={itemsArchivadosFiltrados}
             onDesarchivar={handleDesarchivar}
+            onApelar={handleApelarArchivado}
             onVerDetalles={(item) => {
               setItemSeleccionado(item);
               if (item.tipo === 'noticia') {
