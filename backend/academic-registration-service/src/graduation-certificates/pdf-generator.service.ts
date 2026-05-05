@@ -64,6 +64,10 @@ export class PdfGeneratorService {
     const templateSnapshot = this.getTemplateSnapshot(certificate);
     const templateTexts =
       templateSnapshot?.texts || (await this.getTemplateTexts(certificate));
+    const signatureBlock = await this.buildSignatureBlock(
+      templateSnapshot,
+      templateTexts,
+    );
 
     const headerImg = this.loadImageDataUrl('img_primera.png');
     const footerImg = this.loadImageDataUrl('img_segunda.png');
@@ -140,6 +144,7 @@ export class PdfGeneratorService {
         /{{SIGNER_TITLE}}/g,
         this.formatMultilineText(templateTexts.signerTitle),
       )
+      .replace(/{{SIGNATURE_BLOCK}}/g, signatureBlock)
       .replace(/{{QR_CODE_URL}}/g, qrCodeDataUrl)
       .replace(
         /{{VALIDATION_MESSAGE}}/g,
@@ -227,6 +232,93 @@ export class PdfGeneratorService {
     return `data:${mime};base64,${buffer.toString('base64')}`;
   }
 
+  private async buildSignatureBlock(
+    snapshot: GraduationCertificateTemplateSnapshot | null,
+    templateTexts: GraduationCertificateTemplateTexts,
+  ): Promise<string> {
+    const signature = await this.resolveSignatureSettings(snapshot);
+    const signerName = String(signature.signerName || '').trim();
+    const signatureDataUrl = this.loadSignatureDataUrl(signature.signatureUrl);
+    const signerTitle = String(
+      templateTexts.signerTitle ||
+        DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle,
+    ).trim();
+
+    if (signerName && signatureDataUrl) {
+      return `
+                <div class="firma-seccion">
+                    <img class="firma-img" src="${this.escapeHtml(signatureDataUrl)}" alt="Firma electronica" />
+                    <div class="firma-nombre">${this.escapeHtml(signerName)}</div>
+                    <div class="firma-cargo">${this.formatMultilineText(signerTitle)}</div>
+                </div>`;
+    }
+
+    return `
+                <div class="firma-seccion">
+                    <div class="firma-nombre">${this.formatMultilineText(templateTexts.signerTitle)}</div>
+                </div>`;
+  }
+
+  private async resolveSignatureSettings(
+    snapshot: GraduationCertificateTemplateSnapshot | null,
+  ): Promise<{ signerName: string | null; signatureUrl: string | null }> {
+    if (snapshot) {
+      return {
+        signerName: snapshot.signerNameOverride,
+        signatureUrl: snapshot.signatureUrlOverride,
+      };
+    }
+
+    const activeConfig = await this.templateConfigRepository.findOne({
+      where: { isActive: true },
+      order: { updatedAt: 'DESC', id: 'DESC' },
+    });
+
+    return {
+      signerName: activeConfig?.signerNameOverride || null,
+      signatureUrl: activeConfig?.signatureUrlOverride || null,
+    };
+  }
+
+  private loadSignatureDataUrl(signatureUrl?: string | null): string {
+    const raw = String(signatureUrl || '').trim();
+    if (!raw) {
+      return '';
+    }
+    if (/^data:image\/(png|jpe?g);base64,/i.test(raw)) {
+      return raw;
+    }
+
+    const normalized = raw.startsWith('/') ? raw.slice(1) : raw;
+    const withoutUploadsPrefix = normalized.startsWith('uploads/')
+      ? normalized.slice('uploads/'.length)
+      : normalized;
+    const storagePath =
+      process.env.STORAGE_PATH || './uploads/graduation-certificates';
+    const candidates = [
+      path.join(process.cwd(), normalized),
+      path.join(process.cwd(), 'uploads', withoutUploadsPrefix),
+      path.join(storagePath, 'signatures', path.basename(normalized)),
+      path.join(
+        process.cwd(),
+        'backend',
+        'academic-registration-service',
+        'uploads',
+        withoutUploadsPrefix,
+      ),
+    ];
+
+    const filePath = candidates.find((candidate) => fs.existsSync(candidate));
+    if (!filePath) {
+      return '';
+    }
+
+    const buffer = fs.readFileSync(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+    const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
+    return `data:${mime};base64,${buffer.toString('base64')}`;
+  }
+
   private async getTemplateTexts(
     certificate: GraduationCertificate,
   ): Promise<GraduationCertificateTemplateTexts> {
@@ -249,10 +341,15 @@ export class PdfGeneratorService {
         activeConfig.certificateContentHtml,
       ) || DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS;
 
+    const hasSignature =
+      Boolean(activeConfig.signatureUrlOverride?.trim()) &&
+      Boolean(activeConfig.signerNameOverride?.trim());
+
     return {
       ...parsedTexts,
-      signerTitle:
-        activeConfig.signerTitleOverride || parsedTexts.signerTitle,
+      signerTitle: hasSignature
+        ? activeConfig.signerTitleOverride || parsedTexts.signerTitle
+        : DEFAULT_GRADUATION_CERTIFICATE_TEMPLATE_TEXTS.signerTitle,
     };
   }
 

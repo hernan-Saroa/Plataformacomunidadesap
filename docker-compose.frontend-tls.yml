@@ -1,0 +1,14 @@
+services:
+  frontend:
+    environment:
+      ENABLE_TLS: ${FRONTEND_ENABLE_TLS:-true}
+      TLS_SERVER_NAME: ${FRONTEND_TLS_SERVER_NAME:-localhost}
+      TLS_CERT_PATH: ${FRONTEND_TLS_CERT_PATH:-/etc/nginx/certs/fullchain.pem}
+      TLS_KEY_PATH: ${FRONTEND_TLS_KEY_PATH:-/etc/nginx/certs/privkey.pem}
+      TLS_HSTS_MAX_AGE: ${FRONTEND_TLS_HSTS_MAX_AGE:-31536000}
+      TLS_HSTS_INCLUDE_SUBDOMAINS: ${FRONTEND_TLS_HSTS_INCLUDE_SUBDOMAINS:-true}
+      TLS_HSTS_PRELOAD: ${FRONTEND_TLS_HSTS_PRELOAD:-false}
+    ports:
+      - "${FRONTEND_HTTPS_BIND:-0.0.0.0}:${FRONTEND_HTTPS_PORT:-443}:443"
+    volumes:
+      - ${FRONTEND_TLS_CERTS_DIR:-./certs/frontend}:/etc/nginx/certs:ro

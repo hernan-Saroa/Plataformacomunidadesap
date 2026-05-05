@@ -1,13 +1,22 @@
+/**
+ * SEED SERVICE - DESHABILITADO
+ *
+ * Este servicio está configurado para NO cargar datos de prueba en la base de datos.
+ * Solo inicializa las secuencias necesarias para el funcionamiento del sistema.
+ *
+ * Para habilitar datos de prueba, descomente las llamadas en el método seed().
+ */
+
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { DisciplinaryNews, NewsOrigin, NewsStatus } from './entities/disciplinary-news.entity';
+import { DisciplinaryNews } from './entities/disciplinary-news.entity';
 import { Sequence } from './entities/sequence.entity';
 import { DisciplinaryProfessional } from './entities/disciplinary-professional.entity';
-import { DisciplinaryProcess, ProcessStage, ProcessStatus } from './entities/disciplinary-process.entity';
+import { DisciplinaryProcess } from './entities/disciplinary-process.entity';
 import { StageConfiguration } from './entities/stage-configuration.entity';
 import { SystemConfiguration } from './entities/system-configuration.entity';
-import { LegalAuto, AutoStatus, AutoType } from './entities/legal-auto.entity';
+import { LegalAuto } from './entities/legal-auto.entity';
 
 @Injectable()
 export class SeedService {
@@ -30,20 +39,24 @@ export class SeedService {
 
   /**
    * Ejecuta el seed con datos de prueba
+   * NOTA: Este seed está deshabilitado para evitar carga de datos en producción
    */
   async seed(): Promise<void> {
+    console.log('ℹ️ Seed deshabilitado - No se cargarán datos de prueba');
+
+    // Solo inicializar secuencias si no existen
     await this.initializeSequences();
-    await this.seedConfigurations();
 
-    const { abogado } = await this.createProfessionals();
-    await this.createSampleNews();
+    console.log('✅ Secuencias inicializadas exitosamente');
 
-    if (abogado) {
-      await this.createSampleProcesses(abogado);
-      await this.createSampleAutos();
-    }
-
-    console.log('✅ Seed completado exitosamente');
+    // Los siguientes métodos están comentados para evitar carga de datos de prueba:
+    // await this.seedConfigurations();
+    // const { abogado } = await this.createProfessionals();
+    // await this.createSampleNews();
+    // if (abogado) {
+    //   await this.createSampleProcesses(abogado);
+    //   await this.createSampleAutos();
+    // }
   }
 
   private async initializeSequences(): Promise<void> {
@@ -72,20 +85,26 @@ export class SeedService {
     }
   }
 
+  /**
+   * DESHABILITADO: Crea configuraciones de etapas y sistema
+   * Este método está deshabilitado para evitar carga de datos en producción
+   */
   private async seedConfigurations(): Promise<void> {
+    console.log('⚠️ Método seedConfigurations() está deshabilitado');
+
     // IMPORTANTE: Solo sembrar etapas si la tabla está COMPLETAMENTE vacía
     // Esto evita duplicados cuando hay etapas con nombres diferentes (con/sin acentos)
     const existingStagesCount = await this.stageConfigRepository.count();
 
     if (existingStagesCount === 0) {
       const stages = [
-        { etapa: ProcessStage.RECEPCION, diasHabiles: 3, descripcion: 'Recepción de la noticia', activo: true },
-        { etapa: ProcessStage.VALORACION, diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
-        { etapa: ProcessStage.INDAGACION_PREVIA, diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
-        { etapa: ProcessStage.INVESTIGACION, diasHabiles: 60, descripcion: 'Investigación disciplinaria', activo: true },
-        { etapa: ProcessStage.EVALUACION, diasHabiles: 10, descripcion: 'Evaluación de investigación', activo: true },
-        { etapa: ProcessStage.JUZGAMIENTO, diasHabiles: 50, descripcion: 'Etapa de juzgamiento', activo: true },
-        { etapa: ProcessStage.SEGUNDA_INSTANCIA, diasHabiles: 10, descripcion: 'Segunda instancia', activo: true },
+        { etapa: 'RECEPCION', orden: 1, diasHabiles: 3, descripcion: 'Recepción de la noticia', activo: true },
+        { etapa: 'VALORACION', orden: 2, diasHabiles: 10, descripcion: 'Valoración inicial', activo: true },
+        { etapa: 'INDAGACION_PREVIA', orden: 3, diasHabiles: 40, descripcion: 'Indagación previa', activo: true },
+        { etapa: 'INVESTIGACION', orden: 4, diasHabiles: 60, descripcion: 'Investigación disciplinaria', activo: true },
+        { etapa: 'EVALUACION', orden: 5, diasHabiles: 10, descripcion: 'Evaluación de investigación', activo: true },
+        { etapa: 'JUZGAMIENTO', orden: 6, diasHabiles: 50, descripcion: 'Etapa de juzgamiento', activo: true },
+        { etapa: 'SEGUNDA_INSTANCIA', orden: 7, diasHabiles: 10, descripcion: 'Segunda instancia', activo: true },
       ];
 
       for (const stage of stages) {
@@ -117,6 +136,10 @@ export class SeedService {
     }
   }
 
+  /**
+   * DESHABILITADO: Crea profesionales de prueba
+   * Este método está deshabilitado para evitar carga de datos en producción
+   */
   private async createProfessionals(): Promise<{ jefe: DisciplinaryProfessional, abogado: DisciplinaryProfessional }> {
     let jefe = await this.professionalRepository.findOne({ where: { email: 'jefe@esap.edu.co' } });
     if (!jefe) {
@@ -144,13 +167,17 @@ export class SeedService {
     return { jefe, abogado: abogado! };
   }
 
+  /**
+   * DESHABILITADO: Crea noticias disciplinarias de prueba
+   * Este método está deshabilitado para evitar carga de datos en producción
+   */
   private async createSampleNews(): Promise<void> {
     const existingNews = await this.newsRepository.count();
     if (existingNews > 0) return;
 
     const news = [
       {
-        origen: NewsOrigin.QUEJOSO,
+        origen: 'QUEJOSO',
         territorial: 'BOGOTA',
         dependenciaDenunciado: 'RECURSOS HUMANOS',
         denunciante: {
@@ -166,10 +193,10 @@ export class SeedService {
         },
         hechos: 'Se alega incumplimiento en los procedimientos administrativos y trato discriminatorio hacia el personal.',
         adjuntos: [],
-        estado: NewsStatus.RADICADA,
+        estado: 'RADICADA',
       },
       {
-        origen: NewsOrigin.OFICIO,
+        origen: 'OFICIO',
         territorial: 'MEDELLIN',
         dependenciaDenunciado: 'TESORERIA',
         denunciante: {
@@ -184,10 +211,10 @@ export class SeedService {
         },
         hechos: 'Presunta irregularidad en el manejo de fondos públicos según auditoría interna.',
         adjuntos: [],
-        estado: NewsStatus.ASIGNADA,
+        estado: 'ASIGNADA',
       },
       {
-        origen: NewsOrigin.ANONIMO,
+        origen: 'ANONIMO',
         territorial: 'CALI',
         dependenciaDenunciado: 'CONTRATACION',
         denunciante: {
@@ -200,7 +227,7 @@ export class SeedService {
         },
         hechos: 'Posible favorecimiento en proceso de licitación.',
         adjuntos: [],
-        estado: NewsStatus.DEVUELTA,
+        estado: 'DEVUELTA',
       },
     ];
 
@@ -221,13 +248,17 @@ export class SeedService {
         radicado,
         ...newsData,
         fechaRecepcion: new Date(),
-      });
+      } as any);
 
       await this.newsRepository.save(noticia);
       console.log(`✅ Noticia creada: ${radicado}`);
     }
   }
 
+  /**
+   * DESHABILITADO: Crea procesos disciplinarios de prueba
+   * Este método está deshabilitado para evitar carga de datos en producción
+   */
   private async createSampleProcesses(abogado: DisciplinaryProfessional): Promise<void> {
     const existingProcesses = await this.processRepository.count();
     if (existingProcesses > 0) return;
@@ -238,13 +269,13 @@ export class SeedService {
     const processesData = [
       {
         news: noticias[0],
-        etapaActual: ProcessStage.EVALUACION,
-        estado: ProcessStatus.ACTIVO,
+        etapaActual: 'EVALUACION',
+        estado: 'ACTIVO',
       },
       {
         news: noticias[1],
-        etapaActual: ProcessStage.INDAGACION_PREVIA,
-        estado: ProcessStatus.ACTIVO,
+        etapaActual: 'INDAGACION_PREVIA',
+        estado: 'ACTIVO',
       },
     ];
 
@@ -267,13 +298,17 @@ export class SeedService {
         etapaActual: procData.etapaActual,
         estado: procData.estado,
         abogadoAsignado: abogado,
-      });
+      } as any);
 
       await this.processRepository.save(proceso);
       console.log(`✅ Proceso creado: ${radicadoProceso}`);
     }
   }
 
+  /**
+   * DESHABILITADO: Crea autos procesales de prueba
+   * Este método está deshabilitado para evitar carga de datos en producción
+   */
   private async createSampleAutos(): Promise<void> {
     const count = await this.autoRepository.count();
     if (count > 0) return;
@@ -284,9 +319,9 @@ export class SeedService {
     const autoRevision = this.autoRepository.create({
       process: processes[0],
       processId: processes[0].id,
-      tipo: AutoType.AUTO_APERTURA_INDAGACION,
+      tipo: 'AUTO_APERTURA_INDAGACION',
       contenido: '<h2>AUTO DE APERTURA</h2><p>Texto de prueba</p>',
-      estado: AutoStatus.REVISION_JEFE,
+      estado: 'REVISION_JEFE',
       currentVersion: 1,
       comentarios: 'Favor revisar',
       createdAt: new Date(),

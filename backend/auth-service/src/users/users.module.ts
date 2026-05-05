@@ -16,6 +16,7 @@ import { UsersController } from './users.controller';
 import { RolesController } from './roles.controller';
 import { ModulesController } from './modules.controller';
 import { EstructuraOrganizacionalController } from './estructura-organizacional.controller';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 @NestModule({
   imports: [
@@ -30,7 +31,7 @@ import { EstructuraOrganizacionalController } from './estructura-organizacional.
       Seccional,
     ]),
   ],
-  providers: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService],
+  providers: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService, RolesGuard],
   controllers: [
     RolesController,
     UsersController,

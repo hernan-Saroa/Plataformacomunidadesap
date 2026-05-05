@@ -20,9 +20,10 @@ export class NewPersonDto {
   @IsString()
   username: string;
 
+  @IsOptional()
   @IsString()
   @MinLength(6)
-  password: string;
+  password?: string;
 
   @IsOptional()
   roles?: string[];

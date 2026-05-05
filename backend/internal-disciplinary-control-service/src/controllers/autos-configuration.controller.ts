@@ -12,6 +12,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -22,6 +23,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { AutosConfigurationService } from '../services/autos-configuration.service';
 import {
+  AutoConfigurationDeletionImpactDto,
   CreateAutosConfigurationDto,
   UpdateAutosConfigurationDto,
 } from '../dtos/autos-configuration.dto';
@@ -29,9 +31,15 @@ import { AutoConfiguration } from '../entities/auto-configuration.entity';
 import { diskStorage } from 'multer';
 import { existsSync, mkdirSync } from 'fs';
 import { join, extname } from 'path';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Configuración de Autos')
 @Controller('autos-configuration')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class AutosConfigurationController {
   constructor(
     private autosConfigService: AutosConfigurationService,
@@ -43,11 +51,23 @@ export class AutosConfigurationController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Crear configuración de auto' })
-  @ApiResponse({ status: 201, description: 'Configuración creada' })
+  @ApiResponse({ status: 201, description: 'Configuración creada exitosamente' })
+  @ApiResponse({ status: 400, description: 'Datos inválidos' })
+  @ApiResponse({ status: 409, description: 'Ya existe una configuración para este tipo' })
   async create(
     @Body() createDto: CreateAutosConfigurationDto,
-  ): Promise<AutoConfiguration> {
-    return await this.autosConfigService.create(createDto);
+  ): Promise<{ success: boolean; message: string; data?: AutoConfiguration }> {
+    try {
+      const autoConfig = await this.autosConfigService.create(createDto);
+      return {
+        success: true,
+        message: 'Configuración de auto creada exitosamente',
+        data: autoConfig,
+      };
+    } catch (error) {
+      // Re-throw to maintain HTTP status codes
+      throw error;
+    }
   }
 
   /**
@@ -69,6 +89,25 @@ export class AutosConfigurationController {
   }
 
   /**
+   * Obtener impacto de eliminación de una configuración
+   */
+  @Get(':id/deletion-impact')
+  @ApiOperation({
+    summary:
+      'Consultar procesos asociados antes de eliminar una configuración de auto',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Impacto de eliminación calculado correctamente',
+    type: AutoConfigurationDeletionImpactDto,
+  })
+  async getDeletionImpact(
+    @Param('id') id: string,
+  ): Promise<AutoConfigurationDeletionImpactDto> {
+    return await this.autosConfigService.getDeletionImpact(id);
+  }
+
+  /**
    * Obtener una configuración por ID
    */
   @Get(':id')
@@ -82,7 +121,7 @@ export class AutosConfigurationController {
    */
   @Get('tipo/:tipo')
   @ApiOperation({ summary: 'Obtener configuración por tipo' })
-  async findByTipo(@Param('tipo') tipo: string): Promise<AutoConfiguration> {
+  async findByTipo(@Param('tipo') tipo: string): Promise<AutoConfiguration | null> {
     return await this.autosConfigService.findByTipo(tipo);
   }
 
@@ -91,21 +130,44 @@ export class AutosConfigurationController {
    */
   @Put(':id')
   @ApiOperation({ summary: 'Actualizar configuración' })
+  @ApiResponse({ status: 200, description: 'Configuración actualizada exitosamente' })
+  @ApiResponse({ status: 404, description: 'Configuración no encontrada' })
+  @ApiResponse({ status: 409, description: 'Ya existe una configuración para este tipo' })
   async update(
     @Param('id') id: string,
     @Body() updateDto: UpdateAutosConfigurationDto,
-  ): Promise<AutoConfiguration> {
-    return await this.autosConfigService.update(id, updateDto);
+  ): Promise<{ success: boolean; message: string; data?: AutoConfiguration }> {
+    try {
+      const autoConfig = await this.autosConfigService.update(id, updateDto);
+      return {
+        success: true,
+        message: 'Configuración de auto actualizada exitosamente',
+        data: autoConfig,
+      };
+    } catch (error) {
+      throw error;
+    }
   }
 
   /**
    * Eliminar una configuración
    */
   @Delete(':id')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Eliminar configuración' })
-  async delete(@Param('id') id: string): Promise<void> {
-    await this.autosConfigService.delete(id);
+  @ApiResponse({ status: 200, description: 'Configuración eliminada exitosamente' })
+  @ApiResponse({ status: 404, description: 'Configuración no encontrada' })
+  @ApiResponse({ status: 409, description: 'No se puede eliminar porque tiene procesos asociados' })
+  async delete(@Param('id') id: string): Promise<{ success: boolean; message: string }> {
+    try {
+      await this.autosConfigService.delete(id);
+      return {
+        success: true,
+        message: 'Configuración de auto eliminada exitosamente',
+      };
+    } catch (error) {
+      throw error;
+    }
   }
 
   /**
@@ -113,8 +175,20 @@ export class AutosConfigurationController {
    */
   @Patch(':id/toggle-estado')
   @ApiOperation({ summary: 'Cambiar estado de configuración' })
-  async toggleEstado(@Param('id') id: string): Promise<AutoConfiguration> {
-    return await this.autosConfigService.toggleEstado(id);
+  @ApiResponse({ status: 200, description: 'Estado de configuración actualizado exitosamente' })
+  @ApiResponse({ status: 404, description: 'Configuración no encontrada' })
+  async toggleEstado(@Param('id') id: string): Promise<{ success: boolean; message: string; data?: AutoConfiguration }> {
+    try {
+      const autoConfig = await this.autosConfigService.toggleEstado(id);
+      const nuevoEstado = autoConfig.estado === 'activo' ? 'activada' : 'desactivada';
+      return {
+        success: true,
+        message: `Configuración de auto ${nuevoEstado} exitosamente`,
+        data: autoConfig,
+      };
+    } catch (error) {
+      throw error;
+    }
   }
 
   /**
@@ -156,18 +230,29 @@ export class AutosConfigurationController {
     }),
   )
   @ApiResponse({ status: 200, description: 'Plantilla subida exitosamente' })
+  @ApiResponse({ status: 400, description: 'No se ha subido ningún archivo' })
+  @ApiResponse({ status: 404, description: 'Configuración no encontrada' })
   async uploadPlantilla(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File,
-  ): Promise<AutoConfiguration> {
+  ): Promise<{ success: boolean; message: string; data?: AutoConfiguration }> {
     if (!file) {
       throw new BadRequestException('No se ha subido ningún archivo');
     }
-    
-    // Construir la URL del archivo
-    const fileUrl = `/uploads/plantillas-autos/${file.filename}`;
-    
-    // Actualizar la configuración con la URL de la plantilla
-    return await this.autosConfigService.updatePlantilla(id, fileUrl);
+
+    try {
+      // Construir la URL del archivo
+      const fileUrl = `/uploads/plantillas-autos/${file.filename}`;
+
+      // Actualizar la configuración con la URL de la plantilla
+      const autoConfig = await this.autosConfigService.updatePlantilla(id, fileUrl);
+      return {
+        success: true,
+        message: 'Plantilla subida exitosamente',
+        data: autoConfig,
+      };
+    } catch (error) {
+      throw error;
+    }
   }
 }

@@ -20,10 +20,19 @@
         "strict": true,
         "noUnusedLocals": false,
         "noUnusedParameters": false,
-        "noFallthroughCasesInSwitch": true
+        "noFallthroughCasesInSwitch": true,
+        "baseUrl": ".",
+        "paths": {
+            "@esap-mfe/shared-ui": ["packages/shared-ui/src/index.ts"],
+            "@esap-mfe/shared-ui/*": ["packages/shared-ui/src/*"],
+            "@esap-mfe/shared-types": ["packages/shared-types/src/index.ts"],
+            "@esap-mfe/shared-types/*": ["packages/shared-types/src/*"],
+            "@/*": ["apps/shell/src/*"]
+        }
     },
     "include": [
-        "src"
+        "apps/**/*",
+        "packages/**/*"
     ],
     "references": [
         {

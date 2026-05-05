@@ -18,6 +18,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/auth\/api\/v\d+\/login/i,
     /^\/auth\/api\/v\d+\/new-person/i,
     /^\/auth\/api\/v\d+\/register/i,
+    /^\/auth\/api\/v\d+\/forgot-password/i,
+    /^\/auth\/api\/v\d+\/reset-password/i,
+    /^\/auth\/api\/v\d+\/verify-reset-code/i,
     /^\/certificados\/api\/v\d+\/validate/i,
     /^\/certificates\/api\/v\d+\/validate/i,
     // Autoservicio certificados laborales (públicos)
@@ -52,8 +55,15 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     // Expediente compartido - control disciplinario (público)
     /^\/control-disciplinario\/api\/v\d+\/compartir-expediente\/verificar/i,
     /^\/control-disciplinario\/api\/v\d+\/compartir-expediente\/publico\/.+/i,
+    /^\/control-disciplinario\/api\/v\d+\/compartir-expediente\/documentos\/.+/i,
     /^\/control-disciplinario\/api\/v\d+\/compartir-expediente\/vista\/.+/i,
     /^\/control-disciplinario\/api\/v\d+\/compartir-expediente\/documento\/.+\/download/i,
+    /^\/control-disciplinario\/api\/v\d+\/documentos\/.+\/download/i,
+    /^\/control-disciplinario\/api\/v\d+\/documentos\/.+\/preview/i,
+    /^\/control-disciplinario\/api\/v\d+\/expediente-compartido\/.+/i,
+    /^\/expediente-compartido\/.+/i,
+    
+    
   ];
 
   constructor(private readonly reflector: Reflector) {
@@ -71,6 +81,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   private isPublic(context: ExecutionContext) {
+    console.log('DEBUG [JwtAuthGuard] isPublic called');
+console.log('Handler:', context.getHandler());
+console.log('Class:', context.getClass());
+
     return this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),

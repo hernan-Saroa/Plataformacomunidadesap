@@ -12,6 +12,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -29,9 +30,15 @@ import { OficioConfiguration } from '../entities/oficio-configuration.entity';
 import { diskStorage } from 'multer';
 import { existsSync, mkdirSync } from 'fs';
 import { join, extname } from 'path';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Configuración de Oficios')
 @Controller('oficios-configuration')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class OficiosConfigurationController {
   constructor(
     private oficiosConfigService: OficiosConfigurationService,

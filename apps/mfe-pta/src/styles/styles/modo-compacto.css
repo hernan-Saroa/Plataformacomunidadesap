@@ -1,0 +1,163 @@
+/* ========================================================================
+   MODO COMPACTO GLOBAL - OPTIMIZADO PARA LEGIBILIDAD
+   ========================================================================
+   v2.0 - Prioridad: LEGIBILIDAD > compacidad
+   Los clientes reportaron que las fuentes eran demasiado pequenas.
+   Se aumentaron todos los tamanos para garantizar usabilidad.
+   ======================================================================== */
+
+/* ==================== LAPTOP STANDARD (< 1366px) ==================== */
+@media (max-width: 1365px) {
+  :root {
+    /* Spacing moderadamente reducido (no agresivo) */
+    --spacing-xs: 0.25rem;  /* 4px */
+    --spacing-sm: 0.5rem;   /* 8px */
+    --spacing-md: 0.75rem;  /* 12px */
+    --spacing-lg: 1rem;     /* 16px */
+    --spacing-xl: 1.25rem;  /* 20px */
+    
+    /* Sidebar colapsado en pantallas pequenas */
+    --sidebar-width: 80px !important;
+    
+    /* Header reducido */
+    --topbar-height: 56px !important;
+  }
+  
+  /* Sidebar colapsado */
+  .sidebar,
+  [class*="sidebar"],
+  [data-sidebar="true"] {
+    width: 80px !important;
+    min-width: 80px !important;
+    max-width: 80px !important;
+  }
+  
+  /* Ocultar texto del sidebar, solo mostrar iconos */
+  .sidebar-text,
+  .sidebar span:not(.icon),
+  [class*="sidebar"] span:not(.icon) {
+    display: none !important;
+  }
+  
+  /* Header/TopBar compacto */
+  .topbar,
+  .header,
+  [class*="topbar"],
+  [class*="header"] {
+    height: 56px !important;
+    min-height: 56px !important;
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+  
+  /* Reducir padding moderadamente */
+  .p-6 { padding: 1rem !important; }
+  .p-8 { padding: 1.25rem !important; }
+  
+  .gap-6 { gap: 0.875rem !important; }
+  .gap-8 { gap: 1rem !important; }
+}
+
+/* ==================== TABLET (< 1024px) ==================== */
+@media (max-width: 1023px) {
+  :root {
+    --spacing-xs: 0.25rem;
+    --spacing-sm: 0.375rem;
+    --spacing-md: 0.5rem;
+    --spacing-lg: 0.75rem;
+    --spacing-xl: 1rem;
+    
+    --topbar-height: 48px !important;
+  }
+  
+  .p-6 { padding: 0.875rem !important; }
+  .p-8 { padding: 1rem !important; }
+  
+  .gap-6 { gap: 0.75rem !important; }
+  .gap-8 { gap: 0.875rem !important; }
+  
+  .topbar,
+  .header {
+    height: 48px !important;
+    min-height: 48px !important;
+  }
+  
+  /* Kanban: Layout vertical en tablet */
+  .kanban-container {
+    flex-direction: column !important;
+  }
+  
+  .kanban-column {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+  }
+}
+
+/* ==================== AJUSTES POR MODULO ==================== */
+@media (max-width: 1365px) {
+  /* Columnas Kanban */
+  [class*="ColumnaKanban"] {
+    min-width: 200px !important;
+    max-width: 280px !important;
+  }
+}
+
+/* ==================== SCROLL INDICATORS ==================== */
+@media (max-width: 1365px) {
+  .overflow-x-auto,
+  [class*="overflow-x"] {
+    position: relative;
+  }
+  
+  .overflow-x-auto::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 20px;
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.1), transparent);
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  
+  .overflow-x-auto.has-scroll-left::before {
+    opacity: 1;
+  }
+  
+  .overflow-x-auto::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 20px;
+    background: linear-gradient(to left, rgba(0, 0, 0, 0.1), transparent);
+    pointer-events: none;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  
+  .overflow-x-auto.has-scroll-right::after {
+    opacity: 1;
+  }
+}
+
+/* ==================== UTILIDADES RESPONSIVE ==================== */
+@media (max-width: 1365px) {
+  .hide-on-compact,
+  [data-hide-compact="true"] {
+    display: none !important;
+  }
+  
+  .show-on-compact,
+  [data-show-compact="true"] {
+    display: block !important;
+  }
+}
+
+/* ==================== FIN MODO COMPACTO ==================== */

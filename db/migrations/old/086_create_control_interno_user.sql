@@ -18,8 +18,8 @@ ON CONFLICT (id_tercero) DO NOTHING;
 -- Hash bcrypt generado para 'Esap2026*'
 INSERT INTO auth."user" (id_user, username, password_hash, id_tercero)
 VALUES
-  ('770e8400-e29b-41d4-a716-446655440009', 'ocig@esap.edu.co', '$2b$10$0hAnE/dXPJvVpIFJ48W0yOHy/s1EdCEb1IT/AScUsKmVuYY7BFfJS', 24),
-  ('770e8400-e29b-41d4-a716-446655440010', 'auditor.lider@esap.edu.co', '$2b$10$0hAnE/dXPJvVpIFJ48W0yOHy/s1EdCEb1IT/AScUsKmVuYY7BFfJS', 25)
+  ('2ca0b55a-bbca-4203-bf35-a0f55ecf753f', 'ocig@esap.edu.co', '$2b$10$0hAnE/dXPJvVpIFJ48W0yOHy/s1EdCEb1IT/AScUsKmVuYY7BFfJS', 24),
+  ('4ff058c2-b8a5-41d4-b1c3-f3c8ecce019d', 'auditor.lider@esap.edu.co', '$2b$10$0hAnE/dXPJvVpIFJ48W0yOHy/s1EdCEb1IT/AScUsKmVuYY7BFfJS', 25)
 ON CONFLICT (id_user) DO NOTHING;
 
 -- Asignar rol JEFE_CONTROL_INTERNO al usuario OCIG

@@ -1,11 +1,9 @@
 import {
   IsString,
-  IsEnum,
   IsUUID,
   IsOptional,
   IsNotEmpty,
 } from 'class-validator';
-import { ProcessStage } from '../entities/disciplinary-process.entity';
 
 export class CreateDisciplinaryProcessDto {
   @IsString()
@@ -24,8 +22,8 @@ export class CreateDisciplinaryProcessDto {
 }
 
 export class UpdateProcessStageDto {
-  @IsEnum(ProcessStage)
-  nuevaEtapa: ProcessStage;
+  @IsUUID()
+  nuevaEtapaId: string; // Stage configuration ID
 
   @IsNotEmpty()
   @IsString()

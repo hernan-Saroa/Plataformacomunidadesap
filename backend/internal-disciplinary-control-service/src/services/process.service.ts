@@ -7,8 +7,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, In } from 'typeorm';
 import {
   DisciplinaryProcess,
-  ProcessStage,
   ProcessStatus,
+  ProcessStage,
 } from '../entities/disciplinary-process.entity';
 import {
   CreateDisciplinaryProcessDto,
@@ -25,6 +25,9 @@ import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-a
 import { DisciplinaryProcessTask } from '../entities/disciplinary-process-task.entity';
 import { DisciplinaryProcessNote } from '../entities/disciplinary-process-note.entity';
 import { StageConfiguration } from '../entities/stage-configuration.entity';
+import { AlertasService } from './alertas.service';
+import { TipoAlerta } from '../entities/alerta-enviada.entity';
+import { NotificationClientService } from './notification-client.service';
 
 @Injectable()
 export class ProcessService {
@@ -48,7 +51,252 @@ export class ProcessService {
     private sequenceService: SequenceService,
     private terminosService: TerminosCalculatorService,
     private newsService: NewsService,
+    private alertasService: AlertasService,
+    private notificationClient: NotificationClientService,
   ) { }
+
+  private normalizeAccessEmail(email?: string | null): string | null {
+    const normalized = email?.trim().toLowerCase();
+    return normalized || null;
+  }
+
+  private async resolveAccessibleProfessionalContext(
+    userId?: string,
+    email?: string,
+  ): Promise<{ professionalIds: Set<string>; normalizedEmail: string | null }> {
+    const professionalIds = new Set<string>();
+    const normalizedEmail = this.normalizeAccessEmail(email);
+
+    if (userId?.trim()) {
+      professionalIds.add(userId.trim());
+    }
+
+    if (normalizedEmail) {
+      const professional = await this.professionalRepository
+        .createQueryBuilder('professional')
+        .where('LOWER(professional.email) = :email', { email: normalizedEmail })
+        .getOne();
+
+      if (professional?.id) {
+        professionalIds.add(professional.id);
+      }
+    }
+
+    return { professionalIds, normalizedEmail };
+  }
+
+  private processBelongsToAccessContext(
+    process: {
+      abogadoAsignadoId?: string | null;
+      abogadoAsignado?: { email?: string | null } | null;
+    },
+    professionalIds: Set<string>,
+    normalizedEmail: string | null,
+  ): boolean {
+    if (process.abogadoAsignadoId && professionalIds.has(process.abogadoAsignadoId)) {
+      return true;
+    }
+
+    const assignedEmail = this.normalizeAccessEmail(process.abogadoAsignado?.email);
+    return Boolean(normalizedEmail && assignedEmail && assignedEmail === normalizedEmail);
+  }
+
+  async findAllAccessible(
+    userId?: string,
+    email?: string,
+  ): Promise<DisciplinaryProcess[]> {
+    const { professionalIds, normalizedEmail } =
+      await this.resolveAccessibleProfessionalContext(userId, email);
+
+    if (professionalIds.size === 0 && !normalizedEmail) {
+      return [];
+    }
+
+    const processes = await this.findAll();
+
+    return processes.filter((process) =>
+      this.processBelongsToAccessContext(
+        process,
+        professionalIds,
+        normalizedEmail,
+      ),
+    );
+  }
+
+  async findByIdAccessible(
+    id: string,
+    includeAutos: boolean,
+    userId?: string,
+    email?: string,
+  ): Promise<DisciplinaryProcess> {
+    const process = await this.findById(id, includeAutos);
+    const { professionalIds, normalizedEmail } =
+      await this.resolveAccessibleProfessionalContext(userId, email);
+
+    if (
+      !this.processBelongsToAccessContext(
+        process,
+        professionalIds,
+        normalizedEmail,
+      )
+    ) {
+      throw new HttpException(
+        'No tiene permisos para acceder a este proceso disciplinario.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    return process;
+  }
+
+  async findByRadicadoAccessible(
+    radicadoProceso: string,
+    userId?: string,
+    email?: string,
+  ): Promise<DisciplinaryProcess> {
+    const process = await this.findByRadicado(radicadoProceso);
+    const { professionalIds, normalizedEmail } =
+      await this.resolveAccessibleProfessionalContext(userId, email);
+
+    if (
+      !this.processBelongsToAccessContext(
+        process,
+        professionalIds,
+        normalizedEmail,
+      )
+    ) {
+      throw new HttpException(
+        'No tiene permisos para acceder a este proceso disciplinario.',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    return process;
+  }
+
+  async getProcessStatisticsAccessible(
+    processId: string,
+    userId?: string,
+    email?: string,
+  ): Promise<{
+    draftsCount: number;
+    documentsCount: number;
+    timePercentage: number;
+  }> {
+    await this.findByIdAccessible(processId, false, userId, email);
+    return this.getProcessStatistics(processId);
+  }
+
+  async findMyProcessesAccessible(
+    userId?: string,
+    email?: string,
+  ): Promise<any[]> {
+    const { professionalIds, normalizedEmail } =
+      await this.resolveAccessibleProfessionalContext(userId, email);
+
+    if (professionalIds.size === 0 && !normalizedEmail) {
+      return [];
+    }
+
+    const query = this.processRepository
+      .createQueryBuilder('process')
+      .leftJoinAndSelect('process.news', 'news')
+      .leftJoinAndSelect('process.evidence', 'evidence')
+      .leftJoinAndSelect('process.autos', 'autos')
+      .leftJoinAndSelect('process.abogadoAsignado', 'abogadoAsignado')
+      .orderBy('process.createdAt', 'DESC');
+
+    const professionalIdsList = Array.from(professionalIds);
+
+    if (professionalIdsList.length > 0 && normalizedEmail) {
+      query
+        .where('process.abogadoAsignadoId IN (:...professionalIds)', {
+          professionalIds: professionalIdsList,
+        })
+        .orWhere('LOWER(abogadoAsignado.email) = :email', {
+          email: normalizedEmail,
+        });
+    } else if (professionalIdsList.length > 0) {
+      query.where('process.abogadoAsignadoId IN (:...professionalIds)', {
+        professionalIds: professionalIdsList,
+      });
+    } else if (normalizedEmail) {
+      query.where('LOWER(abogadoAsignado.email) = :email', {
+        email: normalizedEmail,
+      });
+    }
+
+    const processes = await query.getMany();
+
+    const actuacionesResumen = await this.buildActuacionesResumen(
+      processes.map((process) => process.id),
+    );
+    const tasksResumen = await this.buildTasksResumen(
+      processes.map((process) => process.id),
+    );
+    const notesResumen = await this.buildNotesResumen(
+      processes.map((process) => process.id),
+    );
+
+    return processes.map((p) => {
+      const actuaciones = actuacionesResumen.get(p.id);
+      const tasks = tasksResumen.get(p.id);
+      const notes = notesResumen.get(p.id);
+      const draftsCount =
+        p.autos?.filter((auto) => auto.estado === 'BORRADOR').length || 0;
+      const documentsCount = p.evidence?.length || 0;
+
+      let timePercentage = 0;
+      if (p.fechaVencimientoEtapa && p.createdAt) {
+        const now = new Date();
+        const created = new Date(p.createdAt);
+        const deadline = new Date(p.fechaVencimientoEtapa);
+        const totalTime = deadline.getTime() - created.getTime();
+        const elapsedTime = now.getTime() - created.getTime();
+        if (totalTime > 0) {
+          timePercentage = Math.min(
+            100,
+            Math.max(0, (elapsedTime / totalTime) * 100),
+          );
+        } else {
+          timePercentage = 100;
+        }
+      }
+
+      return {
+        ...p,
+        procesoAsociado: p.procesoAsociadoId
+          ? {
+              id: p.procesoAsociadoId,
+              numeroProceso: p.procesoAsociadoNumero || '',
+              tipoAsociacion: p.procesoAsociadoTipo || 'similar',
+              fechaAsociacion: p.procesoAsociadoFecha
+                ? new Date(p.procesoAsociadoFecha).toISOString()
+                : new Date().toISOString(),
+              justificacion: p.procesoAsociadoJustificacion || '',
+            }
+          : undefined,
+        procesoAsociadoId: p.procesoAsociadoId,
+        procesoAsociadoNumero: p.procesoAsociadoNumero,
+        procesoAsociadoTipo: p.procesoAsociadoTipo,
+        procesoAsociadoFecha: p.procesoAsociadoFecha,
+        procesoAsociadoJustificacion: p.procesoAsociadoJustificacion,
+        procesoConsolidadoPrincipal: p.procesoConsolidadoPrincipal,
+        procesosConsolidados: p.procesosConsolidados,
+        informacionConsolidada: p.informacionConsolidada,
+        draftsCount,
+        documentsCount,
+        actuacionesCount: actuaciones?.actuacionesCount || 0,
+        ultimaActuacion: actuaciones?.ultimaActuacion || null,
+        ultimaActuacionFecha: actuaciones?.ultimaActuacionFecha || null,
+        tasksCount: tasks?.tasksCount || 0,
+        completedTasksCount: tasks?.completedTasksCount || 0,
+        pendingTasksCount: tasks?.pendingTasksCount || 0,
+        notesCount: notes?.notesCount || 0,
+        timePercentage: Math.round(timePercentage * 100) / 100,
+      };
+    });
+  }
 
   private async buildActuacionesResumen(processIds: string[]): Promise<Map<string, {
     actuacionesCount: number;
@@ -265,37 +513,38 @@ export class ProcessService {
         noticia.fechaRecepcion
       );
 
-      // Los procesos siempre inician en Valoración al ser creados desde una noticia
-      const etapaInicial = ProcessStage.VALORACION;
+       // Get initial kanban stage from configuration (orden 2 = VALORACION)
+       const initialKanbanStage = await this.stageConfigurationRepository.findOne({
+         where: { orden: 2, activo: true },
+       });
+       if (!initialKanbanStage) {
+         throw new HttpException(
+           'Initial kanban stage configuration for VALORACION not found',
+           HttpStatus.INTERNAL_SERVER_ERROR,
+         );
+       }
 
-      // Calcular fecha de vencimiento de la etapa inicial
-      const { fechaVencimiento } =
-        await this.terminosService.calculateVencimientoEtapa(etapaInicial);
+       // Los procesos siempre inician en la etapa configurada con orden 2 (Valoración)
+       const etapaInicial = initialKanbanStage.etapa;
 
-      // Get initial kanban stage order from configuration
-      const initialKanbanStage = await this.stageConfigurationRepository.findOne({
-        where: { orden: 2, activo: true },
-      });
-      if (!initialKanbanStage) {
-        throw new HttpException(
-          'Initial kanban stage configuration for VALORACION not found',
-          HttpStatus.INTERNAL_SERVER_ERROR,
-        );
-      }
+       // Calcular fecha de vencimiento de la etapa inicial
+       const { fechaVencimiento } =
+         await this.terminosService.calculateVencimientoEtapa(etapaInicial);
 
-      // Crear proceso con la relación del abogado
-      const proceso = this.processRepository.create({
-        radicadoProceso,
-        newsId: createProcessDto.newsId,
-        abogadoAsignado: abogado, // Establecer la relación directamente
-        abogadoAsignadoId: abogado.id,
-        etapaActual: etapaInicial,
-        kanbanStage: initialKanbanStage.id, // El proceso inicia siempre en la columna Valoración del Kanban
-        estado: ProcessStatus.ACTIVO,
-        fechaPrescripcion,
-        fechaVencimientoEtapa: fechaVencimiento,
-        observaciones: createProcessDto.observaciones,
-      });
+       // Crear proceso con la relación del abogado
+       const proceso = this.processRepository.create({
+         radicadoProceso,
+         newsId: createProcessDto.newsId,
+         abogadoAsignado: abogado, // Establecer la relación directamente
+         abogadoAsignadoId: abogado.id,
+         etapaActual: etapaInicial, // Usar el nombre de la etapa configurada
+         kanbanStage: initialKanbanStage.id, // El proceso inicia siempre en la columna Valoración del Kanban
+         estado: ProcessStatus.ACTIVO,
+         fechaPrescripcion,
+         fechaVencimientoEtapa: fechaVencimiento,
+         fechaInicioEtapa: new Date(),
+         observaciones: createProcessDto.observaciones,
+       });
 
       console.log('💾 Guardando proceso con abogado:', {
         abogadoId: abogado.id,
@@ -340,6 +589,44 @@ export class ProcessService {
           email: resultado.abogadoAsignado?.email
         }
       });
+
+      // Enviar notificación interna al profesional asignado
+      try {
+        const asunto = `Nuevo proceso asignado: ${resultado.radicadoProceso}`;
+        const comentario = createProcessDto.observaciones?.trim();
+        const mensaje = comentario
+          ? `Se le ha asignado el proceso disciplinario ${resultado.radicadoProceso}.\n\nComentario: ${comentario}`
+          : `Se le ha asignado el proceso disciplinario ${resultado.radicadoProceso}.`;
+
+        await this.alertasService.crearNotificacionAuto(
+          null,
+          TipoAlerta.VISUAL,
+          resultado.abogadoAsignadoNombre,
+          asunto,
+          mensaje,
+          resultado.abogadoAsignadoId,
+        );
+
+        if (resultado.abogadoAsignadoId) {
+          this.notificationClient.send({
+            id_usuario_destinatario: resultado.abogadoAsignadoId,
+            tipo_notificacion: 'PROCESO_ASIGNADO',
+            titulo: 'Nuevo proceso disciplinario asignado',
+            mensaje,
+            descripcion_corta: `Proceso ${resultado.radicadoProceso} asignado`,
+            icono: 'Briefcase',
+            color: '#2563EB',
+            prioridad: 'Alta',
+            categoria: 'DISCIPLINARIO',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver proceso',
+            datos_adicionales: { procesoId: resultado.id, radicado: resultado.radicadoProceso },
+          }).catch(() => {});
+        }
+      } catch (notifError) {
+        console.error('Error creando notificación de asignación:', notifError);
+        // No fallamos la transacción principal si falla la notificación
+      }
 
       return resultado as any;
     } catch (error) {
@@ -645,41 +932,57 @@ export class ProcessService {
    */
   async changeStage(
     id: string,
-    stage: ProcessStage,
-    kanbanStage?: number,
+    stageId: string,
     kanbanNotice?: string
   ): Promise<DisciplinaryProcess> {
     try {
       const proceso = await this.findById(id, false);
 
-       if (kanbanStage !== undefined) {
-         const stageConfig = await this.stageConfigurationRepository.findOne({
-           where: { orden: kanbanStage, activo: true },
-         });
-         if (!stageConfig) {
-           throw new HttpException(
-             `Stage configuration with orden ${kanbanStage} not found`,
-             HttpStatus.BAD_REQUEST,
-           );
-         }
-          proceso.kanbanStage = stageConfig.id;
+      if (proceso.estado === ProcessStatus.CERRADO) {
+        throw new HttpException(
+          'No se puede cambiar la etapa de un proceso CERRADO',
+          HttpStatus.FORBIDDEN,
+        );
+      }
+
+      // Get the new stage configuration
+      const newStageConfig = await this.stageConfigurationRepository.findOne({
+        where: { id: stageId, activo: true },
+      });
+      if (!newStageConfig) {
+        throw new HttpException(
+          `Stage configuration with id ${stageId} not found`,
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      // Get current stage configuration to get its orden
+      const currentStageConfig = await this.stageConfigurationRepository.findOne({
+        where: { etapa: proceso.etapaActual, activo: true },
+      });
+      if (!currentStageConfig) {
+        throw new HttpException(
+          `Current stage configuration for ${proceso.etapaActual} not found`,
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
       if (kanbanNotice !== undefined) {
         proceso.kanbanNotice = kanbanNotice || null;
       }
 
-      if (proceso.etapaActual !== stage) {
-        // Validar transicion de etapa
-        this.validarTransicionEtapa(proceso.etapaActual as ProcessStage, stage);
+      if (proceso.etapaActual !== newStageConfig.etapa) {
+        // Validar transicion de etapa using orden
+        this.validarTransicionEtapa(currentStageConfig.orden, newStageConfig.orden);
 
         // Calcular nuevo vencimiento
         const { fechaVencimiento } =
-          await this.terminosService.calculateVencimientoEtapa(stage);
+          await this.terminosService.calculateVencimientoEtapa(newStageConfig.etapa);
 
-        console.log('Changing stage for process', id, 'from', proceso.etapaActual, 'to', stage, 'new deadline', fechaVencimiento);
+        console.log('Changing stage for process', id, 'from', proceso.etapaActual, 'to', newStageConfig.etapa, 'new deadline', fechaVencimiento);
 
-        proceso.etapaActual = stage;
+        proceso.etapaActual = newStageConfig.etapa; // Set the stage name
+        proceso.kanbanStage = newStageConfig.id; // Set the stage ID
         proceso.fechaVencimientoEtapa = fechaVencimiento;
       }
 
@@ -691,10 +994,57 @@ export class ProcessService {
   }
 
   /**
+   * Cambia la etapa del proceso por aprobación de auto de apertura (sin validación de transición)
+   */
+  async changeStageByAutoApertura(
+    id: string,
+    nuevaEtapa: ProcessStage,
+    fechaAprobacion: Date,
+  ): Promise<{ proceso: DisciplinaryProcess; tiempoAcumuladoDias: number | null }> {
+    const proceso = await this.findById(id, false);
+
+    let tiempoAcumuladoDias: number | null = null;
+    const fechaInicioReferencia =
+      proceso.fechaInicioEtapa || proceso.createdAt || null;
+
+    if (fechaInicioReferencia) {
+      tiempoAcumuladoDias = await this.terminosService.contarDiasHabiles(
+        fechaInicioReferencia,
+        fechaAprobacion,
+      );
+    }
+
+    const newStageConfig = await this.stageConfigurationRepository.findOne({
+      where: { etapa: nuevaEtapa, activo: true },
+    });
+
+    const { fechaVencimiento } =
+      await this.terminosService.calculateVencimientoEtapa(nuevaEtapa);
+
+    proceso.etapaActual = nuevaEtapa;
+    proceso.fechaInicioEtapa = fechaAprobacion;
+    proceso.fechaVencimientoEtapa = fechaVencimiento;
+    if (newStageConfig) {
+      proceso.kanbanStage = newStageConfig.id;
+    }
+
+    const procesoGuardado = await this.processRepository.save(proceso);
+    return { proceso: procesoGuardado, tiempoAcumuladoDias };
+  }
+
+  /**
    * Actualiza datos generales del proceso (abogado, hechos, disciplinable)
    */
   async update(id: string, updateDto: UpdateDisciplinaryProcessDto): Promise<DisciplinaryProcess> {
     const proceso = await this.findById(id, false);
+
+    if (proceso.estado === ProcessStatus.CERRADO) {
+      throw new HttpException(
+        'No se puede modificar un proceso que está CERRADO (trasladado a jurídica)',
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     let updated = false;
 
     // 1. Actualizar abogado asignado si se proporciona
@@ -751,7 +1101,7 @@ export class ProcessService {
     id: string,
     updateStageDto: UpdateProcessStageDto,
   ): Promise<DisciplinaryProcess> {
-    return this.changeStage(id, updateStageDto.nuevaEtapa);
+    return this.changeStage(id, updateStageDto.nuevaEtapaId);
   }
 
   /**
@@ -764,6 +1114,90 @@ export class ProcessService {
     const proceso = await this.findById(id, false);
     proceso.estado = nuevoEstado;
     return await this.processRepository.save(proceso);
+  }
+
+  /**
+   * Cierra el proceso por aprobación de Auto Pliego de Cargos.
+   * Retorna datos consolidados para el correo a jurídica.
+   */
+  async cerrarPorPliegoCargos(
+    id: string,
+    aprobadoPorId: string,
+  ): Promise<{
+    radicado: string;
+    etapaAlCierre: string;
+    profesionalResponsable: string;
+    fechaCreacion: string;
+    fechaCierre: string;
+    fechaVencimiento: string;
+    disciplinable: any;
+    hechos: string;
+    autosGenerados: number;
+    historialEtapas: string;
+  }> {
+    const proceso = await this.processRepository.findOne({
+      where: { id },
+      relations: ['news', 'abogadoAsignado', 'autos'],
+    });
+
+    if (!proceso) {
+      throw new HttpException('Proceso no encontrado', HttpStatus.NOT_FOUND);
+    }
+
+    if (proceso.estado !== ProcessStatus.ACTIVO) {
+      throw new HttpException(
+        'Solo se puede cerrar un proceso que esté ACTIVO',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const fechaCierre = new Date();
+    const etapaAlCierre = proceso.etapaActual;
+
+    // Calcular tiempo acumulado
+    let tiempoAcumuladoDias: number | null = null;
+    if (proceso.fechaInicioEtapa) {
+      tiempoAcumuladoDias = await this.terminosService.contarDiasHabiles(
+        proceso.fechaInicioEtapa,
+        fechaCierre,
+      );
+    }
+
+    // Actualizar estado del proceso
+    proceso.estado = ProcessStatus.CERRADO;
+    proceso.fechaCierre = fechaCierre;
+    proceso.etapaAlCierre = etapaAlCierre;
+    proceso.cerradoPorId = aprobadoPorId;
+
+    await this.processRepository.save(proceso);
+
+    // Preparar datos consolidados para el correo
+    const disciplinable = proceso.news?.disciplinable;
+    const hechos = proceso.news?.hechos || '';
+    const profesionalResponsable = proceso.abogadoAsignado?.nombreCompleto || 'Sin asignar';
+
+    return {
+      radicado: proceso.radicadoProceso,
+      etapaAlCierre,
+      profesionalResponsable,
+      fechaCreacion: proceso.createdAt?.toISOString() || '',
+      fechaCierre: fechaCierre.toISOString(),
+      fechaVencimiento: proceso.fechaVencimientoEtapa?.toISOString() || '',
+      disciplinable: Array.isArray(disciplinable) ? disciplinable[0] : disciplinable,
+      hechos,
+      autosGenerados: proceso.autos?.length || 0,
+      historialEtapas: `Etapa al cierre: ${etapaAlCierre}. Tiempo acumulado: ${tiempoAcumuladoDias ?? 'N/A'} día(s) hábil(es).`,
+    };
+  }
+
+  /**
+   * Marca que el correo a jurídica fue enviado exitosamente.
+   */
+  async marcarCorreoJuridicaEnviado(processId: string): Promise<void> {
+    await this.processRepository.update(processId, {
+      correoJuridicaEnviado: true,
+      correoJuridicaFechaEnvio: new Date(),
+    });
   }
 
   /**
@@ -821,6 +1255,13 @@ export class ProcessService {
     try {
 
       const proceso = await this.findById(id, false); // No cargar autos para evitar errores
+
+      if (proceso.estado === ProcessStatus.CERRADO) {
+        throw new HttpException(
+          'No se puede agregar evidencia a un proceso CERRADO',
+          HttpStatus.FORBIDDEN,
+        );
+      }
 
       // Determinar tipo de archivo desde la extensión si no se proporciona
       const extension = originalName.split('.').pop()?.toLowerCase() || '';
@@ -914,128 +1355,112 @@ export class ProcessService {
   }
 
   /**
-   * Valida las transiciones permitidas entre etapas
-   * Flujo ESPECÍFICO:
-   * - RECEPCION → INDAGACION_PREVIA / INVESTIGACION
-   * - VALORACION → INDAGACION_PREVIA / INVESTIGACION
-   * - INDAGACION_PREVIA / INVESTIGACION → EVALUACION / JUZGAMIENTO / FALLO
-   * - EVALUACION → JUZGAMIENTO / FALLO
-   * - JUZGAMIENTO → INDAGACION
-   * - INDAGACION → FALLO
-   * - FALLO → SEGUNDA_INSTANCIA
-   * - SEGUNDA_INSTANCIA → etapa final (no permite transiciones)
+   * Valida las transiciones permitidas entre etapas usando el orden configurado
+   * Flujo ESPECÍFICO basado en orden numérico:
+   * - Orden 1 (RECEPCION) → Orden 3 (INDAGACION_PREVIA) / Orden 4 (INVESTIGACION)
+   * - Orden 2 (VALORACION) → Orden 3 (INDAGACION_PREVIA) / Orden 4 (INVESTIGACION)
+   * - Orden 3-4 (INDAGACION_PREVIA/INVESTIGACION) → Orden 5 (EVALUACION) / Orden 6 (JUZGAMIENTO) / Orden 8 (FALLO)
+   * - Orden 5 (EVALUACION) → Orden 6 (JUZGAMIENTO) / Orden 8 (FALLO)
+   * - Orden 6 (JUZGAMIENTO) → Orden 7 (INDAGACION)
+   * - Orden 7 (INDAGACION) → Orden 8 (FALLO)
+   * - Orden 8 (FALLO) → Orden 9 (SEGUNDA_INSTANCIA)
+   * - Orden 9 (SEGUNDA_INSTANCIA) → etapa final (no permite transiciones)
    *
    * NOTA: Se permiten movimientos hacia ATRÁS (a etapas anteriores) para dar flexibilidad.
    * Los movimientos hacia adelante deben seguir el flujo específico definido.
    */
-  private validarTransicionEtapa(etapaActual: ProcessStage, nuevaEtapa: ProcessStage): void {
-    console.log('Validating transition from', etapaActual, 'to', nuevaEtapa);
+  private validarTransicionEtapa(ordenActual: number, ordenNueva: number): void {
+    console.log('Validating transition from orden', ordenActual, 'to orden', ordenNueva);
 
     // No puede pasar a la misma etapa
-    if (etapaActual === nuevaEtapa) {
+    if (ordenActual === ordenNueva) {
       throw new HttpException(
-        `No se puede pasar de ${etapaActual} a ${nuevaEtapa}`,
+        `No se puede pasar de la etapa con orden ${ordenActual} a la misma etapa`,
         HttpStatus.BAD_REQUEST,
       );
     }
 
-    // SEGUNDA_INSTANCIA es etapa final, no puede salir de aquí
-    if (etapaActual === ProcessStage.SEGUNDA_INSTANCIA) {
+    // SEGUNDA_INSTANCIA (orden 9) es etapa final, no puede salir de aquí
+    if (ordenActual === 9) {
       throw new HttpException(
         'No se puede cambiar la etapa desde Segunda Instancia',
         HttpStatus.BAD_REQUEST,
       );
     }
 
-    // Definir el orden de etapas (índice numérico para cada etapa)
-    const ordenEtapas: Record<ProcessStage, number> = {
-      [ProcessStage.RECEPCION]: 1,
-      [ProcessStage.VALORACION]: 2,
-      [ProcessStage.INDAGACION_PREVIA]: 3,
-      [ProcessStage.INVESTIGACION]: 4,
-      [ProcessStage.EVALUACION]: 5,
-      [ProcessStage.JUZGAMIENTO]: 6,
-      [ProcessStage.INDAGACION]: 7,
-      [ProcessStage.FALLO]: 8,
-      [ProcessStage.SEGUNDA_INSTANCIA]: 9,
-    };
-
-    const indiceActual = ordenEtapas[etapaActual];
-    const indiceNueva = ordenEtapas[nuevaEtapa];
-
     // Movimiento hacia ATRÁS: siempre permitido
-    if (indiceNueva < indiceActual) {
-      console.log(`Movimiento hacia atrás permitido: de ${etapaActual} a ${nuevaEtapa}`);
+    if (ordenNueva < ordenActual) {
+      console.log(`Movimiento hacia atrás permitido: de orden ${ordenActual} a orden ${ordenNueva}`);
       return; // Permitir sin validación adicional
     }
 
     // Movimiento hacia ADELANTE: seguir el flujo ESPECÍFICO
-    if (etapaActual === ProcessStage.RECEPCION) {
-      // RECEPCION → INDAGACION_PREVIA / INVESTIGACION
-      if (nuevaEtapa !== ProcessStage.INDAGACION_PREVIA && nuevaEtapa !== ProcessStage.INVESTIGACION) {
+    if (ordenActual === 1) { // RECEPCION
+      // RECEPCION → INDAGACION_PREVIA (3) / INVESTIGACION (4)
+      if (ordenNueva !== 3 && ordenNueva !== 4) {
         throw new HttpException(
-          `Desde RECEPCION solo puede ir a INDAGACION_PREVIA o INVESTIGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde RECEPCION (orden 1) solo puede ir a INDAGACION_PREVIA (orden 3) o INVESTIGACION (orden 4). Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === ProcessStage.VALORACION) {
-      // VALORACION → INDAGACION_PREVIA / INVESTIGACION
-      if (nuevaEtapa !== ProcessStage.INDAGACION_PREVIA && nuevaEtapa !== ProcessStage.INVESTIGACION) {
+    else if (ordenActual === 2) { // VALORACION
+      // VALORACION → INDAGACION_PREVIA (3) / INVESTIGACION (4)
+      if (ordenNueva !== 3 && ordenNueva !== 4) {
         throw new HttpException(
-          `Desde VALORACION solo puede ir a INDAGACION_PREVIA o INVESTIGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde VALORACION (orden 2) solo puede ir a INDAGACION_PREVIA (orden 3) o INVESTIGACION (orden 4). Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === ProcessStage.INDAGACION_PREVIA || etapaActual === ProcessStage.INVESTIGACION) {
-      // INDAGACION_PREVIA / INVESTIGACION → EVALUACION / JUZGAMIENTO / FALLO
-      // También permite cambiar entre INDAGACION_PREVIA e INVESTIGACION (mismo nivel)
-      const esCambioMismoNivel = (etapaActual === ProcessStage.INDAGACION_PREVIA && nuevaEtapa === ProcessStage.INVESTIGACION) ||
-        (etapaActual === ProcessStage.INVESTIGACION && nuevaEtapa === ProcessStage.INDAGACION_PREVIA);
+    else if (ordenActual === 3 || ordenActual === 4) { // INDAGACION_PREVIA / INVESTIGACION
+      // INDAGACION_PREVIA / INVESTIGACION → EVALUACION (5) / JUZGAMIENTO (6) / FALLO (8)
+      // También permite cambiar entre INDAGACION_PREVIA e INVESTIGACION (orden 3 y 4)
+      const esCambioMismoNivel = (ordenActual === 3 && ordenNueva === 4) ||
+        (ordenActual === 4 && ordenNueva === 3);
 
       if (!esCambioMismoNivel &&
-        nuevaEtapa !== ProcessStage.EVALUACION &&
-        nuevaEtapa !== ProcessStage.JUZGAMIENTO &&
-        nuevaEtapa !== ProcessStage.FALLO) {
+        ordenNueva !== 5 &&
+        ordenNueva !== 6 &&
+        ordenNueva !== 8) {
         throw new HttpException(
-          `Desde INDAGACION_PREVIA o INVESTIGACION solo puede ir a EVALUACION, JUZGAMIENTO, FALLO o cambiar entre INDAGACION_PREVIA/INVESTIGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde INDAGACION_PREVIA o INVESTIGACION (orden 3-4) solo puede ir a EVALUACION (5), JUZGAMIENTO (6), FALLO (8) o cambiar entre INDAGACION_PREVIA/INVESTIGACION. Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === ProcessStage.EVALUACION) {
-      // EVALUACION → JUZGAMIENTO / FALLO
-      if (nuevaEtapa !== ProcessStage.JUZGAMIENTO && nuevaEtapa !== ProcessStage.FALLO) {
+    else if (ordenActual === 5) { // EVALUACION
+      // EVALUACION → JUZGAMIENTO (6) / FALLO (8)
+      if (ordenNueva !== 6 && ordenNueva !== 8) {
         throw new HttpException(
-          `Desde EVALUACION solo puede ir a JUZGAMIENTO o FALLO. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde EVALUACION (orden 5) solo puede ir a JUZGAMIENTO (6) o FALLO (8). Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === ProcessStage.JUZGAMIENTO) {
-      // JUZGAMIENTO → solo INDAGACION
-      if (nuevaEtapa !== ProcessStage.INDAGACION) {
+    else if (ordenActual === 6) { // JUZGAMIENTO
+      // JUZGAMIENTO → INDAGACION (7)
+      if (ordenNueva !== 7) {
         throw new HttpException(
-          `Desde JUZGAMIENTO solo puede ir a INDAGACION. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde JUZGAMIENTO (orden 6) solo puede ir a INDAGACION (7). Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === ProcessStage.INDAGACION) {
-      // INDAGACION → solo FALLO
-      if (nuevaEtapa !== ProcessStage.FALLO) {
+    else if (ordenActual === 7) { // INDAGACION
+      // INDAGACION → FALLO (8)
+      if (ordenNueva !== 8) {
         throw new HttpException(
-          `Desde INDAGACION solo puede ir a FALLO. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde INDAGACION (orden 7) solo puede ir a FALLO (8). Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }
     }
-    else if (etapaActual === ProcessStage.FALLO) {
-      // FALLO → solo SEGUNDA_INSTANCIA
-      if (nuevaEtapa !== ProcessStage.SEGUNDA_INSTANCIA) {
+    else if (ordenActual === 8) { // FALLO
+      // FALLO → SEGUNDA_INSTANCIA (9)
+      if (ordenNueva !== 9) {
         throw new HttpException(
-          `Desde FALLO solo puede ir a SEGUNDA_INSTANCIA. Intento: ${etapaActual} → ${nuevaEtapa}`,
+          `Desde FALLO (orden 8) solo puede ir a SEGUNDA_INSTANCIA (9). Intento: orden ${ordenActual} → orden ${ordenNueva}`,
           HttpStatus.BAD_REQUEST,
         );
       }
@@ -1227,7 +1652,66 @@ export class ProcessService {
       await this.processRepository.save(procesoDestino);
     }
 
+    const profesionalesANotificar: Array<{ id: string; radicado: string }> = [];
+    if (procesoOrigen.abogadoAsignadoId) {
+      profesionalesANotificar.push({ id: procesoOrigen.abogadoAsignadoId, radicado: procesoOrigen.radicadoProceso });
+    }
+    if (procesoDestino.abogadoAsignadoId && procesoDestino.abogadoAsignadoId !== procesoOrigen.abogadoAsignadoId) {
+      profesionalesANotificar.push({ id: procesoDestino.abogadoAsignadoId, radicado: procesoDestino.radicadoProceso });
+    }
+
+    for (const prof of profesionalesANotificar) {
+      this.notificationClient.send({
+        id_usuario_destinatario: prof.id,
+        tipo_notificacion: 'PROCESOS_ASOCIADOS',
+        titulo: 'Procesos disciplinarios asociados',
+        mensaje: `El proceso ${procesoOrigen.radicadoProceso} ha sido asociado con el proceso ${procesoDestino.radicadoProceso} (tipo: ${tipoAsociacion}). Justificación: ${justificacion}`,
+        descripcion_corta: `Proceso ${procesoOrigen.radicadoProceso} asociado con ${procesoDestino.radicadoProceso}`,
+        icono: 'GitMerge',
+        color: '#0891B2',
+        prioridad: 'Media',
+        categoria: 'DISCIPLINARIO',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver proceso',
+        datos_adicionales: { procesoOrigenId, procesoDestinoId, tipoAsociacion },
+      }).catch(() => {});
+    }
+
     return procesoOrigenActualizado;
+  }
+
+  /**
+   * Restaura un proceso archivado al flujo activo
+   */
+  async restore(id: string): Promise<DisciplinaryProcess> {
+    const proceso = await this.processRepository.findOne({
+      where: { id },
+      relations: ['news'],
+    });
+
+    if (!proceso) {
+      throw new HttpException(
+        `Proceso con ID ${id} no encontrado. No se puede restaurar un proceso que no existe. Verifique que el ID sea correcto y que el proceso haya sido creado previamente.`,
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    // Verificar que el proceso esté archivado
+    if (proceso.estado !== ProcessStatus.ARCHIVADO) {
+      throw new HttpException(
+        `El proceso ${proceso.radicadoProceso} no está archivado (estado actual: ${proceso.estado}). Solo los procesos archivados pueden ser restaurados.`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Cambiar estado a ACTIVO y marcar como restaurado
+    proceso.estado = ProcessStatus.ACTIVO;
+    proceso.restaurado = true;
+
+    // Nota: El historial de auditoría se maneja en el frontend o podría agregarse como campo JSON en el futuro
+    console.log(`Proceso ${proceso.radicadoProceso} restaurado al flujo activo desde estado archivado`);
+
+    return await this.processRepository.save(proceso);
   }
 }
 
