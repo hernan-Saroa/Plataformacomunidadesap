@@ -10,7 +10,7 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { PermissionsService } from '../services/permissions.service';
 
 // Roles que tienen TODOS los permisos (superusuarios)
-const SUPER_ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRATIVO'];
+const SUPER_ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRATIVO', 'Super Administrador', 'SUPER_ADMINISTRADOR', 'super_administrador'];
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
@@ -60,9 +60,11 @@ export class PermissionsGuard implements CanActivate {
     console.log('🔐 [PermissionsGuard] Extracted roles:', userRoles);
 
     // Verificar si es superusuario (tiene acceso a todo)
-    const isSuperAdmin = userRoles.some((role) =>
-      SUPER_ADMIN_ROLES.includes(role.toUpperCase()),
-    );
+    const isSuperAdmin = userRoles.some((role) => {
+      if (typeof role !== 'string') return false;
+      const normalized = role.toUpperCase().replace(/\s+/g, '_');
+      return SUPER_ADMIN_ROLES.includes(normalized) || SUPER_ADMIN_ROLES.includes(role.toUpperCase());
+    });
 
     if (isSuperAdmin) {
       console.log('✅ [PermissionsGuard] Super admin, access granted');

@@ -1,11 +1,18 @@
-import { Controller, Get, Post } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AppService } from './app.service';
 import { SeedService } from './seed.service';
 import { SequenceService } from './services/sequence.service';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { Public } from './auth/public.decorator';
+import { Roles } from './auth/roles.decorator';
+import { RolesGuard } from './auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from './auth/authorization.constants';
 
 @ApiTags('Health Check')
 @Controller()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class AppController {
   constructor(
     private readonly appService: AppService,
@@ -13,12 +20,14 @@ export class AppController {
     private readonly sequenceService: SequenceService,
   ) {}
 
+  @Public()
   @Get('health')
   @ApiOperation({ summary: 'Health Check' })
   getHealth(): string {
     return this.appService.getHello();
   }
 
+  @Roles('SUPER_ADMIN', 'ADMIN')
   @Post('seed')
   @ApiOperation({
     summary: 'Ejecutar Seed',

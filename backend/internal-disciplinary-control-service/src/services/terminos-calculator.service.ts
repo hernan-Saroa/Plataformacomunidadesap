@@ -215,6 +215,28 @@ export class TerminosCalculatorService {
   }
 
   /**
+   * Cuenta los días hábiles transcurridos entre dos fechas
+   */
+  async contarDiasHabiles(desde: Date, hasta: Date): Promise<number> {
+    const festivos = await this.obtenerFestivosActivos();
+    let dias = 0;
+    const temporal = new Date(desde);
+    temporal.setHours(0, 0, 0, 0);
+    const fin = new Date(hasta);
+    fin.setHours(0, 0, 0, 0);
+
+    while (temporal < fin) {
+      if (temporal.getDay() !== 0 && temporal.getDay() !== 6) {
+        if (!(await this.esFestivo(temporal, festivos))) {
+          dias++;
+        }
+      }
+      temporal.setDate(temporal.getDate() + 1);
+    }
+    return dias;
+  }
+
+  /**
    * Limpia el caché de festivos (llamar cuando se actualiza un festivo)
    */
   limpiarCacheFestivos(): void {

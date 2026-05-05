@@ -7,13 +7,14 @@ import {
   Index,
 } from 'typeorm';
 
-export enum RolOCIG {
-  JEFE_OCIG = 'Jefe OCIG',
-  AUDITOR_SENIOR = 'Auditor Sénior',
-  AUDITOR = 'Auditor',
-  AUDITOR_JUNIOR = 'Auditor Júnior',
-  APOYO_TECNICO = 'Apoyo Técnico',
-}
+// Valores sugeridos (no restrictivos)
+export const ROLES_OCIG_SUGERIDOS = [
+  'Jefe OCIG',
+  'Auditor Sénior',
+  'Auditor',
+  'Auditor Júnior',
+  'Apoyo Técnico',
+];
 
 @Entity('configuracion_profesionales_ocig', { schema: 'control_interno' })
 @Index(['idTercero'], { unique: true })
@@ -29,12 +30,12 @@ export class ConfiguracionProfesionalOCIG {
 
   @Column({
     name: 'rol_ocig',
-    type: 'enum',
-    enum: RolOCIG,
-    default: RolOCIG.AUDITOR,
+    type: 'varchar',
+    length: 100,
+    default: 'Auditor',
     nullable: false,
   })
-  rolOcig: RolOCIG;
+  rolOcig: string;
 
   @Column({
     name: 'especialidades',

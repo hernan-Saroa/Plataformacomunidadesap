@@ -26,6 +26,14 @@ export enum NewsStatus {
   ASOCIADA = 'ASOCIADA',
 }
 
+export interface Apoderado {
+  nombre?: string;
+  cedula?: string;
+  email?: string;
+  telefono?: string;
+  direccion?: string;
+}
+
 // export interface Apoderado {
 //   nombre?: string;
 //   cedula?: string;
@@ -43,6 +51,7 @@ export interface PersonInfo {
   direccion?: string;
   dependencia?: string;
   entidad?: string;
+  apoderado?: Apoderado;
   // ✅ NUEVO: Campo opcional para almacenar información del apoderado
   // apoderado?: Apoderado;
 }
@@ -55,18 +64,15 @@ export class DisciplinaryNews {
   @Column({ unique: true })
   radicado: string; // ND-2025-001
 
+
   @CreateDateColumn()
   fechaRecepcion: Date;
 
   @Column({ type: 'timestamp', nullable: true })
   fechaQueja?: Date;
 
-  @Column({
-    type: 'enum',
-    enum: NewsOrigin,
-    nullable: true,
-  })
-  origen: NewsOrigin;
+   @Column({ type: 'varchar', length: 50, nullable: true })
+   origen: string;
 
   @Column()
   territorial: string;
@@ -75,29 +81,32 @@ export class DisciplinaryNews {
   dependenciaDenunciado: string;
 
   @Column({ type: 'jsonb', nullable: true })
-  denunciante: PersonInfo;
+  denunciante: PersonInfo | PersonInfo[];
 
   @Column({ type: 'jsonb', nullable: true })
-  disciplinable: PersonInfo;
+  disciplinable: PersonInfo | PersonInfo[];
 
-  @Column({ type: 'text' })
-  hechos: string;
+   @Column({ type: 'text' })
+   hechos: string;
 
-  @Column({ type: 'text', array: true, nullable: true })
-  conductas?: string[];
 
-  @Column({
-    type: 'enum',
-    enum: NewsStatus,
-    default: NewsStatus.RADICADA,
-  })
-  estado: NewsStatus;
+    @Column({ type: 'varchar', length: 100, name: 'conducta_disciplinaria' })
+    conducta?: string;
+
+   @Column({ type: 'text', array: true, nullable: true })
+   conductas?: string[];
+
+   @Column({ type: 'varchar', length: 50, default: 'RADICADA' })
+   estado: string;
 
   @Column({ type: 'text', array: true, nullable: true })
   adjuntos: string[];
 
   @Column({ type: 'text', nullable: true })
   observaciones: string;
+
+  @Column({ type: 'uuid', nullable: true, name: 'radicador_id' })
+  radicadorId: string | null;
 
   @Column({ type: 'uuid', nullable: true })
   kanbanStage: string | null;

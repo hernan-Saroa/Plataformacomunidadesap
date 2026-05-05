@@ -260,8 +260,9 @@ export class AuditoriasService {
     if (auditoria.equipoAuditores && Array.isArray(auditoria.equipoAuditores)) {
       serialized.equipoAuditores = auditoria.equipoAuditores.map(eq => ({
         ...eq,
-        id: Number(eq.id),
-        personaId: Number(eq.personaId),
+        // ✅ FIX: id y personaId son UUIDs en la DB — NO convertir con Number() (daría NaN→null)
+        id: eq.id ? String(eq.id) : null,
+        personaId: eq.personaId ? String(eq.personaId) : null,
       }));
     }
 
@@ -327,6 +328,11 @@ export class AuditoriasService {
    * Obtiene una auditoría por ID
    */
   async findOne(id: string): Promise<Auditoria> {
+    // Validar que el ID sea un UUID antes de consultar la BD
+    if (!this.isValidUUID(id)) {
+      throw new NotFoundException(`Auditoría con ID ${id} no encontrada (formato inválido)`);
+    }
+
     const auditoria = await this.auditoriaRepository.findOne({
       where: { id },
       relations: ['objetivos', 'criterios', 'equipoAuditores'],
@@ -760,9 +766,19 @@ export class AuditoriasService {
         ? this.parseDateOnly(updateDto.fechaFinPlaneacion) 
         : undefined;
     }
+    if (updateDto.fechaInicioEjecucion !== undefined) {
+      auditoria.fechaInicioEjecucion = updateDto.fechaInicioEjecucion
+        ? this.parseDateOnly(updateDto.fechaInicioEjecucion)
+        : undefined;
+    }
     if (updateDto.fechaFinEjecucion !== undefined) {
       auditoria.fechaFinEjecucion = updateDto.fechaFinEjecucion 
         ? this.parseDateOnly(updateDto.fechaFinEjecucion) 
+        : undefined;
+    }
+    if (updateDto.fechaInicioComunicacion !== undefined) {
+      auditoria.fechaInicioComunicacion = updateDto.fechaInicioComunicacion
+        ? this.parseDateOnly(updateDto.fechaInicioComunicacion)
         : undefined;
     }
     if (updateDto.progreso !== undefined) auditoria.progreso = updateDto.progreso;

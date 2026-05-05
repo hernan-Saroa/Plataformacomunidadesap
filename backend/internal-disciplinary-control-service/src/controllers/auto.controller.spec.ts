@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AutoController } from './auto.controller';
 import { AutoService } from '../services/auto.service';
+import { OnlyOfficeService } from '../services/onlyoffice.service';
 import { LegalAuto, AutoStatus } from '../entities/legal-auto.entity';
 import { CreateLegalAutoDto } from '../dtos/create-legal-auto.dto';
 import { ReviewAutoDto } from '../dtos/review-auto.dto';
@@ -30,6 +31,10 @@ describe('AutoController', () => {
         {
           provide: AutoService,
           useValue: mockAutoService,
+        },
+        {
+          provide: OnlyOfficeService,
+          useValue: { generateConfig: jest.fn() },
         },
       ],
     }).compile();

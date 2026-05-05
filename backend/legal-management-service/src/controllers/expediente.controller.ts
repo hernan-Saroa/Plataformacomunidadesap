@@ -84,7 +84,8 @@ export class ExpedienteController {
             }
         }
 
-        return this.expedienteService.crearExpediente(data);
+        const creadoPor = body.creadoPor || body.usuario || body.userName || body.userId || 'Sistema';
+        return this.expedienteService.crearExpediente(data, creadoPor);
     }
 
     @Delete(':id')

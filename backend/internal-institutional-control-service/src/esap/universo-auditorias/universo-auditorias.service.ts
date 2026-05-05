@@ -250,6 +250,7 @@ export class UniversoAuditoriasService {
       descripcion: createDto.descripcion || createDto.nombre,
       tipo: createDto.tipo,
       macroproceso: createDto.macroproceso,
+      unidadesAuditables: createDto.unidadesAuditables || [],
       responsable: createDto.responsable || 'Sin asignar',
       dependencia: createDto.dependencia,
       territorial: createDto.territorial,
@@ -286,6 +287,7 @@ export class UniversoAuditoriasService {
     if (updateDto.descripcion) proceso.descripcion = updateDto.descripcion;
     if (updateDto.tipo) proceso.tipo = updateDto.tipo as TipoProceso;
     if (updateDto.macroproceso) proceso.macroproceso = updateDto.macroproceso;
+    if (updateDto.unidadesAuditables !== undefined) proceso.unidadesAuditables = updateDto.unidadesAuditables;
     if (updateDto.responsable) proceso.responsable = updateDto.responsable;
     if (updateDto.dependencia) proceso.dependencia = updateDto.dependencia;
     if (updateDto.territorial !== undefined) proceso.territorial = updateDto.territorial;

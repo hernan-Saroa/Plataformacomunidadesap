@@ -9,6 +9,94 @@ describe('CertificatesService', () => {
     service = Object.create(CertificatesService.prototype) as CertificatesService;
   });
 
+  it('prioriza un encargo activo sobre un registro normal activo', () => {
+    const normalRequest = {
+      id: 'normal',
+      position_category: 'Cra. Administrativa',
+      observations: 'N',
+      status: 'A',
+      hiring_date: new Date('2024-06-18'),
+      request_date: null,
+    } as unknown as CertificateRequest;
+    const encargoRequest = {
+      id: 'encargo',
+      position_category: 'Cra. Administrativa',
+      observations: 'E',
+      status: 'A',
+      hiring_date: new Date('2025-12-01'),
+      request_date: null,
+    } as unknown as CertificateRequest;
+
+    const selected = service['selectPreferredRequestForCertificate']([
+      encargoRequest,
+      normalRequest,
+    ]);
+
+    expect(selected?.id).toBe('encargo');
+  });
+
+  it('usa la fecha de inicio del cargo activo normal aunque el certificado tome el encargo', () => {
+    const normalRequest = {
+      id: 'normal',
+      career_category: 'Profesional Especializado Grado 14',
+      position_category: 'Cra. Administrativa',
+      observations: 'N',
+      status: 'A',
+      hiring_date: new Date('2024-05-14'),
+      request_date: null,
+      monthly_salary: 5912927,
+      salary_text: '5912927',
+    } as unknown as CertificateRequest;
+    const encargoRequest = {
+      id: 'encargo',
+      career_category: 'Profesional Especializado Grado 16',
+      position_category: 'Cra. Administrativa',
+      observations: 'E',
+      status: 'A',
+      hiring_date: new Date('2025-05-01'),
+      request_date: null,
+      monthly_salary: 7048194,
+      salary_text: '7048194',
+    } as unknown as CertificateRequest;
+
+    const merged = service['mergeRequestWithSalarySource'](
+      encargoRequest,
+      null,
+      [encargoRequest, normalRequest],
+    );
+
+    expect(merged.id).toBe('encargo');
+    expect(merged.career_category).toBe('Profesional Especializado Grado 16');
+    expect(merged.monthly_salary).toBe(7048194);
+    expect(merged.hiring_date).toEqual(new Date('2024-05-14'));
+  });
+
+  it('mantiene el primer encargo activo cuando hay mas de uno', () => {
+    const firstEncargoRequest = {
+      id: 'encargo-1',
+      position_category: 'Cra. Administrativa',
+      observations: 'E',
+      status: 'A',
+      hiring_date: new Date('2025-12-01'),
+      request_date: null,
+    } as unknown as CertificateRequest;
+    const secondEncargoRequest = {
+      id: 'encargo-2',
+      position_category: 'Libre Nombramiento',
+      observations: 'E',
+      status: 'A',
+      hiring_date: new Date('2025-12-01'),
+      request_date: null,
+    } as unknown as CertificateRequest;
+
+    const selected = service['selectPreferredRequestForCertificate']([
+      firstEncargoRequest,
+      secondEncargoRequest,
+    ]);
+
+    expect(selected?.id).toBe('encargo-1');
+  });
+
   it('prioriza carrera administrativa sobre provisional cuando ambos registros estan activos y sin encargo', () => {
     const provisionalRequest = {
       id: 'provisional',
@@ -17,7 +105,7 @@ describe('CertificatesService', () => {
       status: 'A',
       hiring_date: new Date('2001-07-30'),
       request_date: null,
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
     const primaryRequest = {
       id: 'principal',
       position_category: 'Cra. Administrativa',
@@ -25,7 +113,7 @@ describe('CertificatesService', () => {
       status: 'A',
       hiring_date: new Date('2001-07-30'),
       request_date: null,
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
 
     const selected = service['selectPreferredRequestForCertificate']([
       provisionalRequest,
@@ -43,7 +131,7 @@ describe('CertificatesService', () => {
       status: 'A',
       hiring_date: new Date('2001-07-30'),
       request_date: null,
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
     const secondRequest = {
       id: 'provisional-2',
       position_category: 'Libre Nombramiento',
@@ -51,7 +139,7 @@ describe('CertificatesService', () => {
       status: 'A',
       hiring_date: new Date('2001-07-30'),
       request_date: null,
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
 
     const selected = service['selectPreferredRequestForCertificate']([
       firstRequest,
@@ -70,7 +158,7 @@ describe('CertificatesService', () => {
       cod_grade: '18',
       monthly_salary: 1000,
       salary_text: '1000',
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
     const requestWithLeadingZero = {
       id: 'better-code',
       career_category: 'Jefe de Oficina',
@@ -79,7 +167,7 @@ describe('CertificatesService', () => {
       cod_grade: '18',
       monthly_salary: 950,
       salary_text: '950',
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
 
     const merged = service['mergeRequestWithSalarySource'](
       selectedRequest,
@@ -101,7 +189,7 @@ describe('CertificatesService', () => {
       cod_grade: '18',
       monthly_salary: 1000,
       salary_text: '1000',
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
     const unrelatedRequest = {
       id: 'other-role',
       career_category: 'Auxiliar de Servicios Generales',
@@ -110,7 +198,7 @@ describe('CertificatesService', () => {
       cod_grade: '18',
       monthly_salary: 950,
       salary_text: '950',
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
 
     const merged = service['mergeRequestWithSalarySource'](
       selectedRequest,
@@ -144,7 +232,7 @@ describe('CertificatesService', () => {
         monthly_salary: 1000,
         salary_text: '1000',
       },
-    } as Certificate & { request: CertificateRequest };
+    } as unknown as Certificate & { request: CertificateRequest };
 
     const requestWithLeadingZero = {
       id: 'better-code',
@@ -155,7 +243,7 @@ describe('CertificatesService', () => {
       cod_grade: '18',
       monthly_salary: 950,
       salary_text: '950',
-    } as CertificateRequest;
+    } as unknown as CertificateRequest;
 
     service['applyRequestContextToCertificate'](certificate, [
       certificate.request,

@@ -1,0 +1,2 @@
+ALTER TABLE control_interno.plan_anual_5_roles DROP CONSTRAINT IF EXISTS plan_anual_5_roles_estado_check;
+ALTER TABLE control_interno.plan_anual_5_roles ADD CONSTRAINT plan_anual_5_roles_estado_check CHECK (estado::text = ANY (ARRAY['borrador'::character varying::text, 'en-revision'::character varying::text, 'aprobado'::character varying::text, 'en-ejecucion'::character varying::text, 'completado'::character varying::text, 'activo'::character varying::text, 'eliminado'::character varying::text]));

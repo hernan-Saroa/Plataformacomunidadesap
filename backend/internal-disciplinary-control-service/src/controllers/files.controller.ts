@@ -11,15 +11,22 @@ import {
   HttpException,
   HttpStatus,
   Body,
+  UseGuards,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @Controller('files')
 export class FilesController {
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
   @Post('upload')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -137,9 +144,10 @@ export class FilesController {
         'audio/mp3',
         'audio/wav',
       ],
-      // Auto: Solo PDF
+      // Auto: Solo Word
       'AUTO': [
-        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       ],
       // Oficio: Solo PDF
       'OFICIO': [
@@ -165,7 +173,7 @@ export class FilesController {
     const extensiones: Record<string, RegExp> = {
       // Evidencias: PDF, Word, Excel, HTML, Imágenes, Videos, Audio - INCLUYE .heic y .mp3
       'EVIDENCIA': /\.(pdf|doc|docx|xls|xlsx|html|jpg|jpeg|png|gif|webp|heic|mp4|webm|mov|avi|mp3|wav)$/i,
-      'AUTO': /\.(pdf)$/i,
+      'AUTO': /\.(doc|docx)$/i,
       'OFICIO': /\.(pdf)$/i,
       'default': /\.(pdf|doc|docx|xls|xlsx)$/i,
     };
@@ -179,7 +187,7 @@ export class FilesController {
   private static getAllowedExtensionsLabel(tipoDocumento: string): string {
     const extensiones: Record<string, string> = {
       'EVIDENCIA': 'PDF, Word, Excel, HTML, Imágenes (JPG, PNG, GIF, WebP, HEIC), Videos (MP4, WebM, MOV, AVI), Audio (MP3, WAV)',
-      'AUTO': 'Solo PDF',
+      'AUTO': 'Solo Word (.doc, .docx)',
       'OFICIO': 'Solo PDF',
       'default': 'PDF, Word, Excel',
     };
@@ -190,7 +198,7 @@ export class FilesController {
   /**
    * Obtiene el tamaño máximo de archivo según el tipo de documento
    * Evidencias: 10 GB (para videos grandes)
-   * Autos/Oficios: 50 MB (solo PDFs)
+   * Autos/Oficios: 50 MB
    */
   private static getMaxFileSize(tipoDocumento: string): number {
     const tamanoMaximo: Record<string, number> = {

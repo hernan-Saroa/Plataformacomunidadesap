@@ -1,0 +1,522 @@
+/**
+ * SISTEMA DE TEMAS ESAP
+ * Colores corporativos, tokens de diseño y variables CSS
+ * 
+ * Basado en la identidad corporativa de la ESAP
+ * con optimizaciones para accesibilidad y UX
+ */
+
+@layer base {
+  :root {
+    /* ============================================
+       COLORES CORPORATIVOS ESAP
+       ============================================ */
+    
+    /* Azul ESAP - Color principal */
+    --esap-blue-primary: #003DA5;
+    --esap-blue-dark: #002B75;
+    --esap-blue-darker: #001A45;
+    --esap-blue-light: #0052D9;
+    --esap-blue-lighter: #E6F0FF;
+    --esap-blue-50: #F0F6FF;
+    --esap-blue-100: #DBEAFE;
+    --esap-blue-200: #BFDBFE;
+    --esap-blue-300: #93C5FD;
+    --esap-blue-400: #60A5FA;
+    --esap-blue-500: #003DA5;
+    --esap-blue-600: #002B75;
+    --esap-blue-700: #001E54;
+    --esap-blue-800: #001440;
+    --esap-blue-900: #000A2B;
+
+    /* Colores Complementarios */
+    --esap-gold: #C89F3C;
+    --esap-gold-light: #F4E4B7;
+    --esap-gold-dark: #9A7A2E;
+
+    /* ============================================
+       PALETA EXTENDIDA - SISTEMA
+       ============================================ */
+    
+    /* Grises (neutrales) */
+    --gray-50: #F9FAFB;
+    --gray-100: #F3F4F6;
+    --gray-200: #E5E7EB;
+    --gray-300: #D1D5DB;
+    --gray-400: #9CA3AF;
+    --gray-500: #6B7280;
+    --gray-600: #4B5563;
+    --gray-700: #374151;
+    --gray-800: #1F2937;
+    --gray-900: #111827;
+    --gray-950: #030712;
+
+    /* Semánticos - Éxito */
+    --success-50: #ECFDF5;
+    --success-100: #D1FAE5;
+    --success-200: #A7F3D0;
+    --success-300: #6EE7B7;
+    --success-400: #34D399;
+    --success-500: #10B981;
+    --success-600: #059669;
+    --success-700: #047857;
+    --success-800: #065F46;
+    --success-900: #064E3B;
+
+    /* Semánticos - Alerta/Advertencia */
+    --warning-50: #FFFBEB;
+    --warning-100: #FEF3C7;
+    --warning-200: #FDE68A;
+    --warning-300: #FCD34D;
+    --warning-400: #FBBF24;
+    --warning-500: #F59E0B;
+    --warning-600: #D97706;
+    --warning-700: #B45309;
+    --warning-800: #92400E;
+    --warning-900: #78350F;
+
+    /* Semánticos - Error/Crítico */
+    --error-50: #FEF2F2;
+    --error-100: #FEE2E2;
+    --error-200: #FECACA;
+    --error-300: #FCA5A5;
+    --error-400: #F87171;
+    --error-500: #EF4444;
+    --error-600: #DC2626;
+    --error-700: #B91C1C;
+    --error-800: #991B1B;
+    --error-900: #7F1D1D;
+
+    /* Semánticos - Información */
+    --info-50: #EFF6FF;
+    --info-100: #DBEAFE;
+    --info-200: #BFDBFE;
+    --info-300: #93C5FD;
+    --info-400: #60A5FA;
+    --info-500: #3B82F6;
+    --info-600: #2563EB;
+    --info-700: #1D4ED8;
+    --info-800: #1E40AF;
+    --info-900: #1E3A8A;
+
+    /* Morado (Analytics) */
+    --purple-50: #FAF5FF;
+    --purple-100: #F3E8FF;
+    --purple-200: #E9D5FF;
+    --purple-300: #D8B4FE;
+    --purple-400: #C084FC;
+    --purple-500: #A855F7;
+    --purple-600: #9333EA;
+    --purple-700: #7E22CE;
+    --purple-800: #6B21A8;
+    --purple-900: #581C87;
+
+    /* ============================================
+       SOMBRAS
+       ============================================ */
+    
+    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+    
+    /* Sombras ESAP con color azul */
+    --shadow-esap-sm: 0 2px 4px 0 rgba(0, 61, 165, 0.1);
+    --shadow-esap-md: 0 4px 8px 0 rgba(0, 61, 165, 0.15);
+    --shadow-esap-lg: 0 8px 16px 0 rgba(0, 61, 165, 0.2);
+    --shadow-esap-xl: 0 12px 24px 0 rgba(0, 61, 165, 0.25);
+
+    /* ============================================
+       ESPACIADO
+       ============================================ */
+    
+    --spacing-xs: 0.25rem;    /* 4px */
+    --spacing-sm: 0.5rem;     /* 8px */
+    --spacing-md: 1rem;       /* 16px */
+    --spacing-lg: 1.5rem;     /* 24px */
+    --spacing-xl: 2rem;       /* 32px */
+    --spacing-2xl: 3rem;      /* 48px */
+    --spacing-3xl: 4rem;      /* 64px */
+
+    /* ============================================
+       BORDES Y RADIOS
+       ============================================ */
+    
+    --radius-none: 0;
+    --radius-sm: 0.25rem;     /* 4px */
+    --radius-md: 0.5rem;      /* 8px */
+    --radius-lg: 0.75rem;     /* 12px */
+    --radius-xl: 1rem;        /* 16px */
+    --radius-2xl: 1.5rem;     /* 24px */
+    --radius-full: 9999px;
+
+    --border-width: 1px;
+    --border-width-2: 2px;
+    --border-width-4: 4px;
+
+    /* ============================================
+       TIPOGRAFÍA
+       ============================================ */
+    
+    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    --font-serif: Georgia, Cambria, 'Times New Roman', Times, serif;
+    --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+
+    /* Tamaños de fuente */
+    --text-xs: 0.75rem;       /* 12px */
+    --text-sm: 0.875rem;      /* 14px */
+    --text-base: 1rem;        /* 16px */
+    --text-lg: 1.125rem;      /* 18px */
+    --text-xl: 1.25rem;       /* 20px */
+    --text-2xl: 1.5rem;       /* 24px */
+    --text-3xl: 1.875rem;     /* 30px */
+    --text-4xl: 2.25rem;      /* 36px */
+    --text-5xl: 3rem;         /* 48px */
+
+    /* Pesos de fuente */
+    --font-thin: 100;
+    --font-light: 300;
+    --font-normal: 400;
+    --font-medium: 500;
+    --font-semibold: 600;
+    --font-bold: 700;
+    --font-black: 900;
+
+    /* Line heights */
+    --leading-tight: 1.25;
+    --leading-snug: 1.375;
+    --leading-normal: 1.5;
+    --leading-relaxed: 1.625;
+    --leading-loose: 2;
+
+    /* ============================================
+       TRANSICIONES Y ANIMACIONES
+       ============================================ */
+    
+    --transition-fast: 150ms ease-in-out;
+    --transition-base: 200ms ease-in-out;
+    --transition-slow: 300ms ease-in-out;
+    --transition-slower: 500ms ease-in-out;
+
+    --ease-in: cubic-bezier(0.4, 0, 1, 1);
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    /* ============================================
+       Z-INDEX
+       ============================================ */
+    
+    --z-base: 0;
+    --z-dropdown: 1000;
+    --z-sticky: 1020;
+    --z-fixed: 1030;
+    --z-modal-backdrop: 1040;
+    --z-modal: 1050;
+    --z-popover: 1060;
+    --z-tooltip: 1070;
+    --z-notification: 1080;
+
+    /* ============================================
+       BREAKPOINTS (para referencia)
+       ============================================ */
+    
+    /* 
+    sm: 640px
+    md: 768px
+    lg: 1024px
+    xl: 1280px
+    2xl: 1536px
+    */
+  }
+
+  /* ============================================
+     MODO OSCURO (opcional)
+     ============================================ */
+  
+  .dark {
+    --esap-blue-primary: #3B82F6;
+    --gray-50: #111827;
+    --gray-100: #1F2937;
+    --gray-900: #F9FAFB;
+    /* ... más tokens de modo oscuro si se necesita */
+  }
+}
+
+/* ============================================
+   UTILIDADES GLOBALES
+   ============================================ */
+
+@layer utilities {
+  /* Gradientes ESAP */
+  .bg-gradient-esap {
+    background: linear-gradient(135deg, var(--esap-blue-primary) 0%, var(--esap-blue-light) 100%);
+  }
+
+  .bg-gradient-esap-soft {
+    background: linear-gradient(135deg, var(--esap-blue-50) 0%, var(--esap-blue-100) 100%);
+  }
+
+  .bg-gradient-gold {
+    background: linear-gradient(135deg, var(--esap-gold) 0%, var(--esap-gold-light) 100%);
+  }
+
+  /* Sombras ESAP */
+  .shadow-esap-sm {
+    box-shadow: var(--shadow-esap-sm);
+  }
+
+  .shadow-esap-md {
+    box-shadow: var(--shadow-esap-md);
+  }
+
+  .shadow-esap-lg {
+    box-shadow: var(--shadow-esap-lg);
+  }
+
+  .shadow-esap-xl {
+    box-shadow: var(--shadow-esap-xl);
+  }
+
+  /* Animaciones de hover */
+  .hover-lift {
+    transition: transform var(--transition-base), box-shadow var(--transition-base);
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .hover-scale {
+    transition: transform var(--transition-base);
+  }
+
+  .hover-scale:hover {
+    transform: scale(1.02);
+  }
+
+  /* Animación de pulso suave */
+  @keyframes pulse-soft {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.8;
+    }
+  }
+
+  .animate-pulse-soft {
+    animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* Animación de fade in */
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.3s ease-out;
+  }
+
+  /* Animación de slide in */
+  @keyframes slide-in-right {
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .animate-slide-in-right {
+    animation: slide-in-right 0.3s ease-out;
+  }
+
+  /* Focus visible mejorado */
+  .focus-esap:focus-visible {
+    outline: 2px solid var(--esap-blue-primary);
+    outline-offset: 2px;
+  }
+
+  /* Truncate con tooltip */
+  .truncate-with-tooltip {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Scrollbar personalizado */
+  .scrollbar-esap::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scrollbar-esap::-webkit-scrollbar-track {
+    background: var(--gray-100);
+    border-radius: var(--radius-full);
+  }
+
+  .scrollbar-esap::-webkit-scrollbar-thumb {
+    background: var(--esap-blue-primary);
+    border-radius: var(--radius-full);
+  }
+
+  .scrollbar-esap::-webkit-scrollbar-thumb:hover {
+    background: var(--esap-blue-dark);
+  }
+
+  /* Glass effect */
+  .glass-effect {
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .glass-effect-dark {
+    background: rgba(0, 61, 165, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+}
+
+/* ============================================
+   COMPONENTES BASE
+   ============================================ */
+
+@layer components {
+  /* Botón primario ESAP */
+  .btn-esap-primary {
+    background: var(--esap-blue-primary);
+    color: white;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border-radius: var(--radius-lg);
+    font-weight: var(--font-bold);
+    transition: all var(--transition-base);
+    border: none;
+    cursor: pointer;
+  }
+
+  .btn-esap-primary:hover {
+    background: var(--esap-blue-dark);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-esap-md);
+  }
+
+  .btn-esap-primary:active {
+    transform: translateY(0);
+  }
+
+  .btn-esap-primary:disabled {
+    background: var(--gray-300);
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Botón secundario ESAP */
+  .btn-esap-secondary {
+    background: white;
+    color: var(--esap-blue-primary);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border-radius: var(--radius-lg);
+    font-weight: var(--font-bold);
+    transition: all var(--transition-base);
+    border: 2px solid var(--esap-blue-primary);
+    cursor: pointer;
+  }
+
+  .btn-esap-secondary:hover {
+    background: var(--esap-blue-50);
+    border-color: var(--esap-blue-dark);
+    transform: translateY(-1px);
+  }
+
+  /* Card ESAP */
+  .card-esap {
+    background: white;
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-md);
+    transition: all var(--transition-base);
+  }
+
+  .card-esap:hover {
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* Badge ESAP */
+  .badge-esap {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: var(--font-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .badge-esap-primary {
+    background: var(--esap-blue-100);
+    color: var(--esap-blue-700);
+    border: 1px solid var(--esap-blue-300);
+  }
+
+  .badge-esap-success {
+    background: var(--success-100);
+    color: var(--success-700);
+    border: 1px solid var(--success-300);
+  }
+
+  .badge-esap-warning {
+    background: var(--warning-100);
+    color: var(--warning-700);
+    border: 1px solid var(--warning-300);
+  }
+
+  .badge-esap-error {
+    background: var(--error-100);
+    color: var(--error-700);
+    border: 1px solid var(--error-300);
+  }
+
+  /* Input ESAP */
+  .input-esap {
+    width: 100%;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: 2px solid var(--gray-300);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-base);
+    transition: all var(--transition-base);
+  }
+
+  .input-esap:focus {
+    outline: none;
+    border-color: var(--esap-blue-primary);
+    box-shadow: 0 0 0 3px rgba(0, 61, 165, 0.1);
+  }
+
+  .input-esap::placeholder {
+    color: var(--gray-400);
+  }
+
+  /* Divider ESAP */
+  .divider-esap {
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--gray-300), transparent);
+    margin: var(--spacing-lg) 0;
+  }
+}

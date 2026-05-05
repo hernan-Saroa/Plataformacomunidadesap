@@ -59,6 +59,12 @@ export class PlanAnual5Roles {
   @OneToMany(() => RolPlanAnual5, (rol) => rol.plan, { cascade: true })
   roles: RolPlanAnual5[];
 
+  @Column({ type: 'jsonb', nullable: true, name: 'equipo_aprobacion', default: [] })
+  equipo_aprobacion: any[];
+
+  @Column({ type: 'varchar', length: 20, nullable: true, name: 'orden_aprobacion', default: 'secuencial' })
+  orden_aprobacion: string;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
