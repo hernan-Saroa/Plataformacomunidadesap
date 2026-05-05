@@ -4111,12 +4111,98 @@ export function DashboardKanbanOperativo({
   };
 
   // ✅ NUEVO: Función para guardar edición de noticia
-  const handleGuardarEdicion = (data: any) => {
+  const handleGuardarEdicion = async (data: any) => {
     if (!noticiaAEditar) return;
 
     // Determinar si es noticia o proceso
     const itemOriginal = items.find(item => item.id === noticiaAEditar.id);
     const esProceso = itemOriginal?.tipo === 'proceso';
+    const denunciadosEdit = Array.isArray(data.denunciados)
+      ? data.denunciados
+      : Array.isArray(data.denunciado)
+        ? data.denunciado
+        : data.denunciado
+          ? [data.denunciado]
+          : [];
+    const denunciantesEdit = Array.isArray(data.denunciantes)
+      ? data.denunciantes
+      : Array.isArray(data.denunciante)
+        ? data.denunciante
+        : data.denunciante
+          ? [data.denunciante]
+          : [];
+    const primerDenunciadoEdit = denunciadosEdit[0];
+    const hechosEdit = data.hechosSeparados?.length > 0
+      ? data.hechosSeparados.map((h: any, idx: number) => `Hecho ${idx + 1}: ${h.descripcion}`).join('\n\n')
+      : (data.descripcionHechos || (itemOriginal as any)?.hechos || '');
+    const conductaEdit = data.conducta || data.conductaSeleccionada || '';
+    const denunciantesPayload = denunciantesEdit.map((d: any) => ({
+      nombre: d.nombre,
+      cedula: d.identificacion || d.cedula,
+      telefono: d.telefono,
+      email: d.correo || d.email,
+      direccion: d.direccion,
+      cargo: d.cargo,
+      entidad: d.entidad,
+      tipo: d.tipo,
+      apoderado: d.apoderado
+    }));
+    const denunciadosPayload = denunciadosEdit.map((d: any) => ({
+      nombre: d.nombre,
+      cedula: d.identificacion || d.cedula,
+      cargo: d.cargo,
+      dependencia: d.lugarHechos || d.dependencia,
+      apoderado: d.apoderado
+    }));
+
+    const toastId = toast.loading(esProceso ? 'Actualizando proceso...' : 'Actualizando noticia...');
+
+    try {
+      if (esProceso) {
+        await disciplinaryService.updateProcess(noticiaAEditar.id, {
+          territorial: data.territorial,
+          fechaHechos: data.fechaHechos || null,
+          hechos: hechosEdit,
+          conducta: conductaEdit,
+          conductas: conductaEdit ? [conductaEdit] : [],
+          denunciante: denunciantesPayload,
+          disciplinable: denunciadosPayload
+        } as any);
+      } else {
+        const origenMap: Record<string, string> = {
+          'AnÃ³nimo': 'ANONIMO',
+          'Anonimo': 'ANONIMO',
+          'Quejoso': 'QUEJOSO',
+          'De oficio': 'OFICIO',
+          'Oficio': 'OFICIO',
+          'RemisiÃ³n por competencia': 'REMISION',
+          'RemisiÃ³n': 'REMISION',
+          'Remision': 'REMISION',
+          'Por determinar': 'POR_DETERMINAR',
+          'Por Determinar': 'POR_DETERMINAR'
+        };
+
+        await disciplinaryService.updateNoticia(noticiaAEditar.id, {
+          origen: origenMap[data.origen] || data.origen || 'POR_DETERMINAR',
+          territorial: data.territorial,
+          dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
+          hechos: hechosEdit,
+          conducta: conductaEdit,
+          conductas: conductaEdit ? [conductaEdit] : [],
+          denunciante: denunciantesPayload,
+          disciplinable: denunciadosPayload,
+          fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : null,
+          fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined
+        });
+      }
+    } catch (error: any) {
+      console.error('Error al guardar ediciÃ³n:', error);
+      toast.error(esProceso ? 'Error al actualizar proceso' : 'Error al actualizar noticia', {
+        id: toastId,
+        description: error?.message || 'No se pudo guardar en la base de datos'
+      });
+      throw error;
+    }
 
     // Actualizar la noticia o proceso en el estado
     setItems(prevItems => prevItems.map(item => {
@@ -4124,33 +4210,35 @@ export function DashboardKanbanOperativo({
         // Actualizar proceso - MISMOS CAMPOS EN TODOS LOS ESTADOS
         return {
           ...item,
-          denunciado: data.denunciado,
-          denunciante: data.denunciante,
-          hechos: data.hechosSeparados?.map((h: any, idx: number) =>
-            `Hecho ${idx + 1}: ${h.descripcion}`
-          ).join('\\n\\n') || data.descripcionHechos,
+          denunciado: denunciadosEdit,
+          denunciados: denunciadosEdit,
+          denunciante: denunciantesEdit,
+          denunciantes: denunciantesEdit,
+          hechos: hechosEdit,
           hechosSeparados: data.hechosSeparados,
-          conductasSeleccionadas: data.conductasSeleccionadas,
-          cargo: data.denunciado?.cargo,
-          dependencia: data.denunciado?.dependencia,
-          territorial: data.territorial
+          conductasSeleccionadas: conductaEdit ? [conductaEdit] : [],
+          conducta: conductaEdit,
+          cargo: primerDenunciadoEdit?.cargo,
+          dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos,
+          territorial: data.territorial,
+          fechaHechos: data.fechaHechos
         };
       }
       if (item.tipo === 'noticia' && item.id === noticiaAEditar.id) {
-        const primerDenunciadoEdit = data.denunciado?.[0] || data.denunciado;
         return {
           ...item,
           origen: data.origen,
           fechaRecepcion: data.fechaQueja || data.fechaRecepcion,
           fechaHechos: data.fechaHechos,
           territorial: data.territorial,
-          denunciado: data.denunciado,
-          denunciante: data.denunciante,
-          hechos: data.hechosSeparados?.length > 0
-            ? data.hechosSeparados.map((h: any, idx: number) => `Hecho ${idx + 1}: ${h.descripcion}`).join('\n\n')
-            : (data.descripcionHechos || (item as any).hechos || ''),
+          denunciado: denunciadosEdit,
+          denunciados: denunciadosEdit,
+          denunciante: denunciantesEdit,
+          denunciantes: denunciantesEdit,
+          hechos: hechosEdit,
           hechosSeparados: data.hechosSeparados,
-          conductaSeleccionada: data.conductaSeleccionada,
+          conductaSeleccionada: conductaEdit,
+          conducta: conductaEdit,
           cargo: primerDenunciadoEdit?.cargo,
           dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos
         };
@@ -4162,6 +4250,7 @@ export function DashboardKanbanOperativo({
     setNoticiaAEditar(null);
 
     toast.success(esProceso ? 'Proceso actualizado' : 'Noticia actualizada', {
+      id: toastId,
       description: 'La información ha sido actualizada exitosamente'
     });
   };
