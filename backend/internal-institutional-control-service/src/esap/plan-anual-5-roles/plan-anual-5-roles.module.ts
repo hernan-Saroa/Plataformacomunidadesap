@@ -7,6 +7,7 @@ import { RolPlanAnual5 } from './entities/rol-plan-anual-5.entity';
 import { ActividadPlanAnual5 } from './entities/actividad-plan-anual-5.entity';
 import { AdjuntoActividadPlanAnual5 } from './entities/adjunto-actividad-plan-anual-5.entity';
 import { HistorialPlanAnual } from './entities/historial-plan-anual.entity';
+import { PlanAnualWizardBorrador } from './entities/plan-anual-wizard-borrador.entity';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { AuthModule } from '../../auth/auth.module';
 
@@ -18,6 +19,7 @@ import { AuthModule } from '../../auth/auth.module';
       ActividadPlanAnual5,
       AdjuntoActividadPlanAnual5,
       HistorialPlanAnual,
+      PlanAnualWizardBorrador,
     ]),
     NotificacionesModule,
     AuthModule,
