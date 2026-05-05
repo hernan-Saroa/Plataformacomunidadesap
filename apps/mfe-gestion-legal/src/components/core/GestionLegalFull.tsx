@@ -71,8 +71,39 @@ type VistaDisponible =
   | 'reportes'
   | 'configuraciones';
 
+/**
+ * Lee `?modulo=<vista>` del querystring para posicionar la vista inicial cuando
+ * el módulo se abre desde una notificación. Acepta los códigos que emite el
+ * backend (`legal-notifications.service.ts`: defensa-judicial, juzgamiento, asesoria,
+ * organos-control, procesos-coactivos) y cualquier otro valor de `VistaDisponible`.
+ */
+const VISTAS_VALIDAS: VistaDisponible[] = [
+  'defensa-judicial',
+  'juzgamiento',
+  'asesoria',
+  'centro-comunicaciones',
+  'terminos',
+  'organos-control',
+  'procesos-coactivos',
+  'expedientes',
+  'plan-accion',
+  'riesgos',
+  'planes-mejoramiento',
+  'reportes',
+  'configuraciones',
+];
+
+function getVistaInicialDesdeQuery(): VistaDisponible {
+  if (typeof window === 'undefined') return 'defensa-judicial';
+  const moduloParam = new URLSearchParams(window.location.search).get('modulo');
+  if (moduloParam && VISTAS_VALIDAS.includes(moduloParam as VistaDisponible)) {
+    return moduloParam as VistaDisponible;
+  }
+  return 'defensa-judicial';
+}
+
 export function GestionLegalFull() {
-  const [vistaActual, setVistaActual] = useState<VistaDisponible>('defensa-judicial');
+  const [vistaActual, setVistaActual] = useState<VistaDisponible>(getVistaInicialDesdeQuery);
 
   // ✅ Estados del tour guiado multi-módulo
   const [isTourOpen, setIsTourOpen] = useState(false);
@@ -140,6 +171,59 @@ export function GestionLegalFull() {
 
     verificarTerminosUrgentes();
   }, [addNotification]);
+
+  // ✅ Listener: notificaciones del Jefe Gestión Legal abren expediente in-app sin reload.
+  //
+  // El backend (`legal-notifications.service.ts`) emite notificaciones con
+  // `url_accion='/gestion-legal?modulo=<vista>&radicado=<...>'`. Cuando el usuario hace
+  // clic en "Ver proceso", `NotificationsPanelV2` despacha el evento `legal:open-expediente`
+  // con `{modulo, radicado, procesoId}`. Aquí cambiamos la vista activa y reemitimos
+  // `legal:open-expediente-detail` para que el submódulo correspondiente abra el modal.
+  //
+  // Mapeo modulo (vista) → submódulo que escucha:
+  //   defensa-judicial      → ModuloDefensaJudicialV3
+  //   juzgamiento           → ModuloJuzgamientoDisciplinarioV3
+  //   asesoria              → ModuloAsesoriaJuridicaV3
+  //   organos-control       → OrganosControl
+  //   procesos-coactivos    → ProcesosCoactivosV3
+  useEffect(() => {
+    const moduloAVista: Record<string, VistaDisponible> = {
+      'defensa-judicial': 'defensa-judicial',
+      'juzgamiento': 'juzgamiento',
+      'asesoria': 'asesoria',
+      'organos-control': 'organos-control',
+      'procesos-coactivos': 'procesos-coactivos',
+    };
+
+    const handleOpen = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      const vista = moduloAVista[detail.modulo];
+      if (!vista) return;
+      setVistaActual(vista);
+      // Re-emitir tras un microtick para que el submódulo ya esté montado.
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent('legal:open-expediente-detail', { detail }),
+        );
+      }, 80);
+    };
+
+    window.addEventListener('legal:open-expediente', handleOpen);
+
+    // Procesar intención pendiente al montar (caso: shell recargó al MFE).
+    const pending = sessionStorage.getItem('legal:pendingOpenExpediente');
+    if (pending) {
+      sessionStorage.removeItem('legal:pendingOpenExpediente');
+      try {
+        const detail = JSON.parse(pending);
+        handleOpen(new CustomEvent('legal:open-expediente', { detail }));
+      } catch {
+        /* ignore */
+      }
+    }
+
+    return () => window.removeEventListener('legal:open-expediente', handleOpen);
+  }, []);
 
   // ✅ Handler para navegación automática cuando cambia el paso del tour
   const handleTourStepChange = (stepIndex: number) => {

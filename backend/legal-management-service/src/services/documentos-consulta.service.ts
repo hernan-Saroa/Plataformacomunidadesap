@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DocumentoConsulta } from '../entities/documento-consulta.entity';
+import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
+import { LegalNotificationsService } from './legal-notifications.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -9,7 +11,10 @@ import * as path from 'path';
 export class DocumentosConsultaService {
     constructor(
         @InjectRepository(DocumentoConsulta)
-        private readonly documentoRepository: Repository<DocumentoConsulta>
+        private readonly documentoRepository: Repository<DocumentoConsulta>,
+        @InjectRepository(ConsultaJuridica)
+        private readonly consultaRepository: Repository<ConsultaJuridica>,
+        private readonly legalNotifications: LegalNotificationsService
     ) { }
 
     async findByConsulta(consultaId: string): Promise<DocumentoConsulta[]> {
@@ -29,7 +34,22 @@ export class DocumentosConsultaService {
 
     async create(data: Partial<DocumentoConsulta>): Promise<DocumentoConsulta> {
         const documento = this.documentoRepository.create(data);
-        return this.documentoRepository.save(documento);
+        const saved = await this.documentoRepository.save(documento);
+
+        if (saved.consultaId) {
+            const consulta = await this.consultaRepository.findOne({ where: { id: saved.consultaId } });
+            if (consulta) {
+                await this.legalNotifications.notifyDocumentoSubido({
+                    modulo: 'ASESORIA_JURIDICA',
+                    radicado: consulta.numeroRadicado || consulta.id,
+                    procesoId: consulta.id,
+                    nombreDocumento: saved.archivoNombreOriginal || saved.nombre,
+                    subidoPor: saved.subidoPor || 'Sistema',
+                });
+            }
+        }
+
+        return saved;
     }
 
     async update(id: string, data: Partial<DocumentoConsulta>): Promise<DocumentoConsulta> {

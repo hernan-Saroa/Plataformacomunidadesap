@@ -1651,6 +1651,109 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     }
   };
 
+  const handleEditarPlan = async (plan: PlanAnual) => {
+    try {
+      const resp = await planAnualApi.getById(plan.id);
+      if (!resp?.success || !resp.data) {
+        toast.error('No se pudo cargar el plan completo para edición');
+        setPlanAEditar(plan);
+        setVista('wizard');
+        return;
+      }
+
+      let planBackend: any = resp.data;
+      // Fallback: algunos backends devuelven getById sin actividades anidadas.
+      const rolesGetById = Array.isArray(planBackend?.roles) ? planBackend.roles : [];
+      const sinActividades =
+        rolesGetById.length === 0 ||
+        rolesGetById.every((r: any) => !Array.isArray(r?.actividades) || r.actividades.length === 0);
+      if (sinActividades && plan.vigencia) {
+        const byYear = await planAnualApi.getByYear(plan.vigencia);
+        if (byYear?.success && byYear.data) {
+          planBackend = byYear.data as any;
+        }
+      }
+
+      const rolesOrdenados = [...(planBackend.roles || [])].sort(
+        (a, b) => (a.rol_numero ?? a.numero ?? 0) - (b.rol_numero ?? b.numero ?? 0),
+      );
+
+      const planCompleto: PlanAnual = {
+        ...plan,
+        id: planBackend.id || plan.id,
+        vigencia: planBackend.año || planBackend.ano || plan.vigencia,
+        estado: mapearEstadoPlan(planBackend.estado || plan.estado || 'borrador'),
+        fechaInicio: planBackend.fecha_inicio || plan.fechaInicio || `${plan.vigencia}-01-01`,
+        fechaFin: planBackend.fecha_fin || plan.fechaFin || `${plan.vigencia}-12-31`,
+        equipoAprobacion: planBackend.equipo_aprobacion || planBackend.equipoAprobacion || plan.equipoAprobacion || [],
+        ordenAprobacion: planBackend.orden_aprobacion || planBackend.ordenAprobacion || plan.ordenAprobacion || 'secuencial',
+        roles: rolesOrdenados.map((rol: any) => ({
+          id: rol.id,
+          numero: rol.rol_numero ?? rol.numero,
+          nombre: rol.nombre,
+          color: rol.color,
+          icono: obtenerIconoRol(rol.rol_numero ?? rol.numero),
+          descripcion: rol.descripcion,
+          responsables: normalizarArrayResponsablesBackend(rol.responsables).slice(0, 1) as any,
+          actividades: (rol.actividades || []).map((act: any) => ({
+            ...act,
+            id: act.id,
+            nombre: act.nombre,
+            descripcion: act.descripcion,
+            fechaInicio: act.fecha_inicio || act.fechaInicio || '',
+            fechaFin: act.fecha_fin || act.fechaFin || '',
+            porcentajeAvance: act.porcentaje_avance ?? act.porcentajeAvance ?? 0,
+            estado: (act.estado || 'pendiente').toUpperCase(),
+            control: act.control || '',
+            evaluacion: act.evaluacion || '',
+            seguimiento: act.seguimiento || '',
+            activo: act.activo !== false,
+            incluidaEnPlan: act.incluidaEnPlan !== false,
+            puntosControl: act.puntos_control || act.puntosControl || [],
+            frecuenciaPuntosControl: act.frecuencia_puntos_control || act.frecuenciaPuntosControl || null,
+            ...(() => {
+              const respSing =
+                act.responsable && act.responsable !== 'Por asignar'
+                  ? { id: `temp-${act.responsable}`, nombre: act.responsable, cargo: 'Auditor', email: '' }
+                  : null;
+              let respList = normalizarArrayResponsablesBackend(act.responsables).map((r: any) => ({
+                id: r.id,
+                nombre: r.nombre,
+                cargo: r.cargo || 'Auditor',
+                email: r.email || '',
+              }));
+              if (respList.length === 0 && respSing) respList = [{ ...respSing }];
+              return { responsable: respSing, responsables: respList };
+            })(),
+            tareasSeguimiento: (act.tareas_seguimiento || act.tareasSeguimiento || []).map((t: any) => ({
+              id: t.id,
+              descripcion: t.descripcion || '',
+              completada: !!t.completada,
+              responsables: t.responsables || [],
+              fechaLimite: t.fechaLimite || t.fecha_limite || t.fechaEntrega || t.fecha_entrega || undefined,
+              fechaEntrega: t.fechaEntrega || t.fecha_entrega || t.fechaLimite || t.fecha_limite || undefined,
+              fechaCompletada: t.fechaCompletada || t.fecha_completada || undefined,
+              completadaPor: t.completadaPor || t.completada_por || undefined,
+              requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
+              requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
+              observaciones: t.observaciones || '',
+              adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
+            })),
+            entradasSeguimiento: act.entradas_seguimiento || act.entradasSeguimiento || [],
+          })),
+        })),
+      };
+
+      setPlanAEditar(planCompleto);
+      setVista('wizard');
+    } catch (error) {
+      console.error('Error cargando plan completo para edición:', error);
+      toast.error('No se pudo cargar el plan completo para edición');
+      setPlanAEditar(plan);
+      setVista('wizard');
+    }
+  };
+
   // Hook para crear plan en backend
   const { mutate: crearPlanEnBackend, loading: creandoPlan } = useCreatePlanAnual();
 
@@ -2138,7 +2241,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               }
             }}
             onCrearNuevo={puedeCrearPlan ? () => { setPlanAEditar(undefined); setVista('wizard'); } : undefined}
-            onEditarPlan={puedeCrearPlan ? (plan) => { setPlanAEditar(plan); setVista('wizard'); } : undefined}
+            onEditarPlan={puedeCrearPlan ? handleEditarPlan : undefined}
             planesAnteriores={planesAnteriores}
             planesDisponibles={planesAnteriores}
             onCambiarPlan={handleCambiarPlan}

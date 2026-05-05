@@ -148,6 +148,7 @@ export class LegalService {
         descripcion: string;
         fechaActuacion: string;
         file?: File;
+        subidoPor?: string;
     }): Promise<any> {
         if (data.file) {
             const formData = new FormData();
@@ -155,12 +156,14 @@ export class LegalService {
             formData.append('tipoActuacion', data.tipoActuacion);
             formData.append('descripcion', data.descripcion);
             formData.append('fechaActuacion', data.fechaActuacion);
+            if (data.subidoPor) formData.append('subidoPor', data.subidoPor);
             return apiClient.upload<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/actuaciones`, formData);
         }
         return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/actuaciones`, {
             tipoActuacion: data.tipoActuacion,
             descripcion: data.descripcion,
-            fechaActuacion: data.fechaActuacion
+            fechaActuacion: data.fechaActuacion,
+            ...(data.subidoPor ? { subidoPor: data.subidoPor } : {}),
         });
     }
 
