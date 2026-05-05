@@ -35,6 +35,42 @@ describe('CertificatesService', () => {
     expect(selected?.id).toBe('encargo');
   });
 
+  it('usa la fecha de inicio del cargo activo normal aunque el certificado tome el encargo', () => {
+    const normalRequest = {
+      id: 'normal',
+      career_category: 'Profesional Especializado Grado 14',
+      position_category: 'Cra. Administrativa',
+      observations: 'N',
+      status: 'A',
+      hiring_date: new Date('2024-05-14'),
+      request_date: null,
+      monthly_salary: 5912927,
+      salary_text: '5912927',
+    } as unknown as CertificateRequest;
+    const encargoRequest = {
+      id: 'encargo',
+      career_category: 'Profesional Especializado Grado 16',
+      position_category: 'Cra. Administrativa',
+      observations: 'E',
+      status: 'A',
+      hiring_date: new Date('2025-05-01'),
+      request_date: null,
+      monthly_salary: 7048194,
+      salary_text: '7048194',
+    } as unknown as CertificateRequest;
+
+    const merged = service['mergeRequestWithSalarySource'](
+      encargoRequest,
+      null,
+      [encargoRequest, normalRequest],
+    );
+
+    expect(merged.id).toBe('encargo');
+    expect(merged.career_category).toBe('Profesional Especializado Grado 16');
+    expect(merged.monthly_salary).toBe(7048194);
+    expect(merged.hiring_date).toEqual(new Date('2024-05-14'));
+  });
+
   it('mantiene el primer encargo activo cuando hay mas de uno', () => {
     const firstEncargoRequest = {
       id: 'encargo-1',
