@@ -5,12 +5,14 @@ import * as express from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.getHttpAdapter().getInstance().disable?.('x-powered-by');
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ limit: '10mb', extended: true }));
   app.enableCors({
-    origin: ['http://localhost:3000'],
+    origin: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Version', 'X-Client-Platform', 'X-Access-Token'],
+    credentials: true,
   });
   app.useGlobalPipes(
     new ValidationPipe({

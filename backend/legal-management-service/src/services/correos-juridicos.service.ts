@@ -579,18 +579,47 @@ export class CorreosJuridicosService {
     }
 
     /**
-     * Forward an email
+     * Forward an email.
+     * Graph native forward automatically includes original attachments.
+     * Any additional attachments uploaded by the user are sent via a separate
+     * sendMail call so they arrive alongside the forwarded thread.
      */
-    async forwardEmail(correoId: string, to: string, comment: string): Promise<{ success: boolean; correo?: CorreoJuridico }> {
-        const original = await this.correoRepo.findOne({ where: { id: correoId } });
+    async forwardEmail(
+        correoId: string,
+        to: string,
+        comment: string,
+        additionalAttachments?: { name: string; contentBytes: string; contentType: string }[],
+    ): Promise<{ success: boolean; correo?: CorreoJuridico }> {
+        const original = await this.correoRepo.findOne({ where: { id: correoId }, relations: ['adjuntos'] });
         if (!original) throw new NotFoundException('Correo original no encontrado');
 
-        // Send forward via Graph API
-        const sent = await this.graphService.forwardEmail(original.graphMessageId, to, comment);
+        // Build comment that includes original body so the recipient sees both
+        const fullComment = this.buildForwardComment(comment, original);
+
+        // Send the native Graph forward — this carries the original body + original attachments
+        const sent = await this.graphService.forwardEmail(original.graphMessageId, to, fullComment);
         if (!sent) return { success: false };
 
-        // Save forward record in DB
+        // If the user also uploaded new attachments, send them in a companion email
+        // referencing the same thread so they are grouped together.
+        if (additionalAttachments && additionalAttachments.length > 0) {
+            const companionSubject = original.asunto.startsWith('RV:') || original.asunto.startsWith('FW:')
+                ? original.asunto
+                : `RV: ${original.asunto}`;
+
+            const companionBody = `
+                <p>Adjuntos adicionales del reenvío:</p>
+                <blockquote style="border-left:3px solid #ccc;padding-left:12px;color:#555;">
+                    ${fullComment.replace(/\n/g, '<br/>')}
+                </blockquote>
+            `;
+
+            await this.graphService.sendEmail(to, companionSubject, companionBody, [], additionalAttachments);
+        }
+
+        // Persist the forward record in DB
         try {
+            const hasExtraAttachments = (additionalAttachments?.length ?? 0) > 0;
             const forwardCorreo = this.correoRepo.create({
                 graphMessageId: `fwd-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                 asunto: original.asunto.startsWith('RV:') || original.asunto.startsWith('FW:') ? original.asunto : `RV: ${original.asunto}`,
@@ -598,9 +627,10 @@ export class CorreosJuridicosService {
                 remitenteNombre: 'Oficina Jurídica ESAP',
                 destinatariosTo: to,
                 fechaRecepcion: new Date(),
-                cuerpoHtml: comment,
+                cuerpoHtml: fullComment,
                 cuerpoTexto: comment,
-                tieneAdjuntos: original.tieneAdjuntos, // Graph native forward includes original attachments
+                // Original attachments go via Graph; flag reflects both sources
+                tieneAdjuntos: original.tieneAdjuntos || hasExtraAttachments,
                 leido: true,
                 archivado: false,
                 urgente: original.urgente,
@@ -617,7 +647,11 @@ export class CorreosJuridicosService {
             // Mark original as forwarded
             original.isForwarded = true;
             await this.correoRepo.save(original);
-            await this.registrarAccion(original.id, 'REENVIADO', `Correo reenviado a ${to}`);
+
+            const adjuntosDesc = hasExtraAttachments
+                ? `Correo reenviado a ${to} (con ${additionalAttachments!.length} adjunto(s) adicional(es))`
+                : `Correo reenviado a ${to}`;
+            await this.registrarAccion(original.id, 'REENVIADO', adjuntosDesc);
 
             this.logger.log(`Forward saved: ${savedForward.id} -> parent: ${original.id}`);
             return { success: true, correo: savedForward };
@@ -625,6 +659,30 @@ export class CorreosJuridicosService {
             this.logger.error('Error saving forward to DB (forward was sent successfully):', dbError);
             return { success: true };
         }
+    }
+
+    /**
+     * Builds a plain-text comment for Graph forward that includes the original body
+     * so the recipient sees the user comment + the full original content.
+     */
+    private buildForwardComment(userComment: string, original: CorreoJuridico): string {
+        const formattedDate = new Intl.DateTimeFormat('es-CO', {
+            year: 'numeric', month: 'long', day: 'numeric',
+            hour: '2-digit', minute: '2-digit',
+        }).format(new Date(original.fechaRecepcion));
+
+        const originalText = original.cuerpoTexto || '';
+
+        return [
+            userComment,
+            '',
+            '─'.repeat(60),
+            `De: ${original.remitenteNombre || original.remitenteEmail}`,
+            `Fecha: ${formattedDate}`,
+            `Asunto: ${original.asunto}`,
+            '─'.repeat(60),
+            originalText,
+        ].join('\n');
     }
 
     /**

@@ -1,0 +1,297 @@
+/**
+ * ACCESSIBILITY STYLES
+ * 
+ * Optimizado para Lighthouse Accessibility Score ≥95
+ * Cumple con WCAG 2.1 Level AA
+ */
+
+/* ==========================================
+   SKIP LINK
+   Visible solo con keyboard focus
+   ========================================== */
+
+.skip-link {
+  position: fixed;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 9999;
+  padding: 0.75rem 1.5rem;
+  background-color: #2962FF;
+  color: white;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-decoration: none;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  
+  /* Hidden by default */
+  transform: translateY(-200%);
+  transition: transform 0.2s ease-in-out;
+}
+
+.skip-link:focus {
+  /* Visible when focused */
+  transform: translateY(0);
+  outline: 3px solid rgba(41, 98, 255, 0.5);
+  outline-offset: 2px;
+}
+
+/* ==========================================
+   SCREEN READER ONLY
+   Visible solo para screen readers
+   ========================================== */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.sr-only-focusable:focus,
+.sr-only-focusable:active {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
+/* ==========================================
+   FOCUS INDICATORS
+   Visible focus para keyboard navigation
+   ========================================== */
+
+/* Focus visible global */
+*:focus-visible {
+  outline: 3px solid rgba(41, 98, 255, 0.5);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/* Remove outline on mouse click, keep on keyboard */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Focus específico para botones */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(41, 98, 255, 0.5);
+  outline-offset: 2px;
+}
+
+/* ==========================================
+   HIGH CONTRAST MODE
+   Mejora visibilidad en modo alto contraste
+   ========================================== */
+
+@media (prefers-contrast: high) {
+  /* Incrementar contraste de bordes */
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    border-width: 2px;
+  }
+
+  /* Hacer focus más visible */
+  *:focus-visible {
+    outline-width: 4px;
+    outline-color: #000;
+  }
+}
+
+/* ==========================================
+   REDUCED MOTION
+   Respetar preferencia de usuario
+   ========================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ==========================================
+   TOUCH TARGETS
+   Mínimo 44x44px para touch devices
+   ========================================== */
+
+@media (pointer: coarse) {
+  /* Aumentar área clickeable en mobile */
+  button,
+  a,
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* Aumentar padding en elementos interactivos */
+  button:not(.icon-only),
+  a:not(.icon-only) {
+    padding: 0.75rem 1.5rem;
+  }
+}
+
+/* ==========================================
+   DARK MODE ACCESSIBILITY
+   Mantener contraste en modo oscuro
+   ========================================== */
+
+@media (prefers-color-scheme: dark) {
+  .skip-link {
+    background-color: #003DA5;
+    color: white;
+  }
+
+  *:focus-visible {
+    outline-color: rgba(100, 149, 237, 0.8);
+  }
+}
+
+/* ==========================================
+   ARIA LIVE REGIONS
+   Estilos para anuncios de screen reader
+   ========================================== */
+
+[role="alert"],
+[role="status"],
+[aria-live="polite"],
+[aria-live="assertive"] {
+  position: relative;
+}
+
+/* Alert visual feedback */
+[role="alert"] {
+  padding: 1rem;
+  border-left: 4px solid #dc2626;
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+[role="status"] {
+  padding: 1rem;
+  border-left: 4px solid #2962FF;
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+/* ==========================================
+   DISABLED STATES
+   Indicadores claros de elementos deshabilitados
+   ========================================== */
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ==========================================
+   KEYBOARD NAVIGATION
+   Mejorar experiencia de teclado
+   ========================================== */
+
+/* Indicador de navegación con Tab */
+body:has(:focus-visible) {
+  --keyboard-navigation: true;
+}
+
+/* Scroll suave solo si no hay preferencia de reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Scroll to element debe respetar offsets */
+  :target {
+    scroll-margin-top: 100px;
+  }
+}
+
+/* ==========================================
+   PRINT STYLES
+   Accesibilidad en impresión
+   ========================================== */
+
+@media print {
+  /* Mostrar URLs de links */
+  a[href^="http"]:after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #666;
+  }
+
+  /* Ocultar elementos de navegación */
+  nav,
+  .skip-link,
+  button:not(.print-include) {
+    display: none;
+  }
+
+  /* Asegurar contraste en impresión */
+  * {
+    background: white !important;
+    color: black !important;
+  }
+}
+
+/* ==========================================
+   CUSTOM SCROLLBAR (Accessibility-friendly)
+   ========================================== */
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e0 #f7fafc;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: #f7fafc;
+  border-radius: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
+  border-radius: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0;
+}
+
+/* Asegurar que scrollbar sea visible en high contrast */
+@media (prefers-contrast: high) {
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #4a5568;
+  }
+}

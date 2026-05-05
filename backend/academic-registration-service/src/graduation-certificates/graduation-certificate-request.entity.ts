@@ -10,6 +10,17 @@ import {
 } from 'typeorm';
 import { Graduate } from './graduate.entity';
 import { GraduationCertificate } from './graduation-certificate.entity';
+import { GraduationRequestReviewFile } from './graduation-request-review-file.entity';
+
+export type GraduationReviewTimelineEntry = {
+  type: string;
+  label: string;
+  notes?: string;
+  actorId?: string;
+  actorName?: string;
+  actorEmail?: string;
+  createdAt: string;
+};
 
 @Entity({
   schema: 'academic_registration',
@@ -91,7 +102,7 @@ export class GraduationCertificateRequest {
 
   // Estado
   @Column({ length: 50, default: 'PENDING' })
-  status: string; // PENDING, VALIDATED, PROCESSING, COMPLETED, REJECTED
+  status: string; // PENDING, VALIDATED, PROCESSING, COMPLETED, REJECTED, EXPIRED
 
   // Observaciones
   @Column({ type: 'text', nullable: true })
@@ -119,6 +130,60 @@ export class GraduationCertificateRequest {
   @Column({ name: 'review_resolution', length: 50, nullable: true })
   reviewResolution: string;
 
+  @Column({ name: 'approval_status', type: 'varchar', length: 50, nullable: true })
+  approvalStatus: string | null;
+
+  @Column({ name: 'review_recommendation', type: 'varchar', length: 50, nullable: true })
+  reviewRecommendation: string | null;
+
+  @Column({ name: 'review_recommendation_reason', type: 'text', nullable: true })
+  reviewRecommendationReason: string | null;
+
+  @Column({ name: 'review_payload', type: 'jsonb', nullable: true })
+  reviewPayload: Record<string, unknown> | null;
+
+  @Column({ name: 'review_submitted_at', type: 'timestamp', nullable: true })
+  reviewSubmittedAt: Date | null;
+
+  @Column({ name: 'review_submitted_by', type: 'varchar', length: 100, nullable: true })
+  reviewSubmittedBy: string | null;
+
+  @Column({ name: 'review_submitted_by_name', type: 'varchar', length: 255, nullable: true })
+  reviewSubmittedByName: string | null;
+
+  @Column({ name: 'approver_decision', type: 'varchar', length: 50, nullable: true })
+  approverDecision: string | null;
+
+  @Column({ name: 'approver_notes', type: 'text', nullable: true })
+  approverNotes: string | null;
+
+  @Column({ name: 'approved_at', type: 'timestamp', nullable: true })
+  approvedAt: Date | null;
+
+  @Column({ name: 'approved_by', type: 'varchar', length: 100, nullable: true })
+  approvedBy: string | null;
+
+  @Column({ name: 'approver_name', type: 'varchar', length: 255, nullable: true })
+  approverName: string | null;
+
+  @Column({ name: 'head_decision', type: 'varchar', length: 50, nullable: true })
+  headDecision: string | null;
+
+  @Column({ name: 'head_notes', type: 'text', nullable: true })
+  headNotes: string | null;
+
+  @Column({ name: 'head_reviewed_at', type: 'timestamp', nullable: true })
+  headReviewedAt: Date | null;
+
+  @Column({ name: 'head_reviewed_by', type: 'varchar', length: 100, nullable: true })
+  headReviewedBy: string | null;
+
+  @Column({ name: 'head_reviewer_name', type: 'varchar', length: 255, nullable: true })
+  headReviewerName: string | null;
+
+  @Column({ name: 'review_timeline', type: 'jsonb', default: () => "'[]'::jsonb" })
+  reviewTimeline: GraduationReviewTimelineEntry[];
+
   // Fechas
   @CreateDateColumn({ name: 'request_date' })
   requestDate: Date;
@@ -143,4 +208,7 @@ export class GraduationCertificateRequest {
 
   @OneToMany(() => GraduationCertificate, (certificate) => certificate.request)
   certificates: GraduationCertificate[];
+
+  @OneToMany(() => GraduationRequestReviewFile, (file) => file.request)
+  reviewFiles: GraduationRequestReviewFile[];
 }

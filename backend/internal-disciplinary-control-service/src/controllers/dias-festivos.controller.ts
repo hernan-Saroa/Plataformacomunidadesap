@@ -10,6 +10,7 @@ import {
   HttpCode,
   HttpStatus,
   Request,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -24,10 +25,16 @@ import {
   ListarFestivosDto,
 } from '../dtos/dias-festivos.dto';
 import { DiaFestivo } from '../entities/dia-festivo.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Días Festivos')
 @Controller('dias-festivos')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class DiasFestivosController {
   constructor(
     private festivosService: DiasFestivosService,

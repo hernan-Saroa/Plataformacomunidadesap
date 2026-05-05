@@ -80,6 +80,14 @@ export class Documento {
   })
   etapa?: EtapaDocumento;
 
+  /** ID de la etapa en la tabla etapa_kanban (estable aunque cambie el nombre) */
+  @Column({ name: 'etapa_kanban_id', type: 'uuid', nullable: true })
+  etapaKanbanId?: string | null;
+
+  /** Nombre de la etapa al momento de guardar (snapshot para display aunque cambie la config) */
+  @Column({ name: 'etapa_kanban_nombre', type: 'varchar', length: 255, nullable: true })
+  etapaNombreKanban?: string | null;
+
   @Column({ name: 'auditoria_id', type: 'uuid', nullable: true })
   auditoriaId?: string | null;
 

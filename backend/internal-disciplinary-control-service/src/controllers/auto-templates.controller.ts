@@ -3,6 +3,7 @@ import {
   Get,
   Put,
   Body,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -11,9 +12,15 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PlantillaAuto } from '../entities/plantilla-auto.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Plantillas de Autos')
 @Controller('auto-templates')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class AutoTemplatesController {
   constructor(
     @InjectRepository(PlantillaAuto)

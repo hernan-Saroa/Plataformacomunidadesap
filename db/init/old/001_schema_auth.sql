@@ -437,6 +437,7 @@ CREATE TABLE auth.centros_costo (
 
 CREATE TABLE auth.user (
   id_user uuid PRIMARY KEY NOT NULL,
+  public_id uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,
   username VARCHAR(100) NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   id_tercero bigint,

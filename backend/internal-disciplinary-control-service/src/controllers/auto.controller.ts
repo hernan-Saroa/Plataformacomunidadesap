@@ -11,8 +11,16 @@ import {
   HttpCode,
   HttpStatus,
   Res,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import {
   ApiTags,
   ApiOperation,
@@ -26,9 +34,16 @@ import {
 import { ReviewAutoDto } from '../dtos/review-auto.dto';
 import { RegisterNotificationDto } from '../dtos/register-notification.dto';
 import { LegalAuto } from '../entities/legal-auto.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Public } from '../auth/public.decorator';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Autos Legales')
 @Controller('disciplinary-autos')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class AutoController {
   constructor(
     private autoService: AutoService,
@@ -179,6 +194,24 @@ export class AutoController {
   }
 
   /**
+   * Enviar auto pliego de cargos aprobado a Oficina Jurídica
+   */
+  @Patch(':id/send-juridica')
+  @ApiOperation({
+    summary: 'Enviar Pliego de Cargos a Jurídica',
+    description: 'Envía el auto pliego de cargos aprobado a la Oficina Jurídica, cerrando el proceso',
+  })
+  async sendPliegoToJuridica(
+    @Param('id') id: string,
+    @Body('enviadoPorId') enviadoPorId: string,
+  ): Promise<void> {
+    if (!enviadoPorId) {
+      throw new Error('enviadoPorId es requerido');
+    }
+    return await this.autoService.sendPliegoToJuridica(id, enviadoPorId);
+  }
+
+  /**
    * Firmar Auto (Paso Final)
    */
   @Patch(':id/sign')
@@ -206,6 +239,61 @@ export class AutoController {
     @Body() registerNotificationDto: RegisterNotificationDto,
   ): Promise<LegalAuto> {
     return await this.autoService.registerNotification(id, registerNotificationDto);
+  }
+
+  /**
+   * Subir/reemplazar documento de un auto durante revisión (con control de versiones)
+   */
+  @Patch(':id/upload-document')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reemplazar documento del auto durante revisión' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = join(process.cwd(), 'uploads', 'autos');
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = extname(file.originalname);
+          cb(null, `auto-${req.params.id}-${uniqueSuffix}${ext}`);
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        const allowed = ['.pdf', '.doc', '.docx'];
+        const ext = extname(file.originalname).toLowerCase();
+        if (allowed.includes(ext)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Solo se permiten archivos PDF o Word'), false);
+        }
+      },
+      limits: { fileSize: 20 * 1024 * 1024 },
+    }),
+  )
+  async uploadDocumento(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('comentario') comentario: string,
+    @Body('userId') userId: string,
+  ): Promise<LegalAuto> {
+    if (!file) {
+      throw new BadRequestException('No se ha subido ningún archivo');
+    }
+    const documentUrl = `/uploads/autos/${file.filename}`;
+    return await this.autoService.uploadDocumentoDuranteRevision(
+      id,
+      documentUrl,
+      file.originalname,
+      file.mimetype,
+      file.size,
+      comentario,
+      userId,
+    );
   }
 
   /**
@@ -243,6 +331,16 @@ export class AutoController {
   })
   async downloadPdf(@Param('id') id: string, @Res() res: Response) {
     const auto = await this.autoService.findById(id);
+
+    const isStoredPdf =
+      !!auto.documentUrl &&
+      (auto.documentType === 'application/pdf' ||
+        auto.documentName?.toLowerCase().endsWith('.pdf') ||
+        auto.documentUrl.toLowerCase().endsWith('.pdf'));
+
+    if (isStoredPdf) {
+      return res.redirect(auto.documentUrl);
+    }
 
     // Por ahora retornamos HTML renderizable
     res.setHeader('Content-Type', 'text/html');
@@ -376,6 +474,7 @@ export class AutoController {
   /**
    * Callback de OnlyOffice cuando se guarda el documento
    */
+  @Public()
   @Post('onlyoffice/callback')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

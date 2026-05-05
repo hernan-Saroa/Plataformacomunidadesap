@@ -1,0 +1,16 @@
+FROM nginx:alpine
+
+RUN mkdir -p /opt/esap-nginx
+COPY nginx.frontend.static.conf /opt/esap-nginx/http.conf
+COPY nginx.frontend.static.tls.conf.template /opt/esap-nginx/tls.conf.template
+COPY docker/nginx/40-esap-select-config.sh /docker-entrypoint.d/40-esap-select-config.sh
+RUN chmod +x /docker-entrypoint.d/40-esap-select-config.sh
+
+ARG FRONTEND_PREBUILT_DIST_DIR
+RUN test -n "${FRONTEND_PREBUILT_DIST_DIR}"
+
+COPY ${FRONTEND_PREBUILT_DIST_DIR} /usr/share/nginx/html
+
+EXPOSE 80 443
+
+CMD ["nginx", "-g", "daemon off;"]

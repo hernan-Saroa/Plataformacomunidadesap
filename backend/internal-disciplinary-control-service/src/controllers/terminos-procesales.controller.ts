@@ -28,10 +28,16 @@ import {
   ListarTerminosDto,
 } from '../dtos/terminos-procesales.dto';
 import { TerminoProcesal } from '../entities/termino-procesal.entity';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Términos Procesales')
 @Controller('terminos-procesales')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class TerminosProcesalesController {
   constructor(
     private terminosService: TerminosProcesalesService,

@@ -1,13 +1,8 @@
-import { IsEnum, IsOptional, IsString, IsNumber } from 'class-validator';
-import { ProcessStage } from '../entities/disciplinary-process.entity';
+import { IsUUID, IsOptional, IsString } from 'class-validator';
 
 export class ChangeStageDto {
-    @IsEnum(ProcessStage)
-    stage: ProcessStage;
-
-    @IsOptional()
-    @IsNumber()
-    kanbanStage?: number;
+    @IsUUID()
+    stageId: string; // Stage configuration ID
 
     @IsOptional()
     @IsString()

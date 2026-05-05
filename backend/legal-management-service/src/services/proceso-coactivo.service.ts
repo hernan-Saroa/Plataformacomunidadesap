@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
 import { ProcesoCoactivo, DeudorInfo, ObligacionInfo, EstadoProcesoCoactivo } from '../entities/proceso-coactivo.entity';
@@ -6,6 +6,7 @@ import { ProcesoCoactivoAdjunto } from '../entities/proceso-coactivo-adjunto.ent
 import { PagoCoactivo } from '../entities/pago-coactivo.entity';
 import { CoactivoHistorial } from '../entities/coactivo-historial.entity';
 import { TasaReferencia } from '../entities/tasa-referencia.entity';
+import { LegalNotificationsService } from './legal-notifications.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -14,6 +15,8 @@ export interface CreateProcesoCoactivoDto {
     obligacion: ObligacionInfo;
     responsable?: string;
     observaciones?: string;
+    creadoPor?: string;
+    usuario?: string;
 }
 
 export interface UpdateProcesoCoactivoDto {
@@ -57,6 +60,7 @@ export class ProcesoCoactivoService {
         private readonly historialRepository: Repository<CoactivoHistorial>,
         @InjectRepository(TasaReferencia)
         private readonly tasaRepository: Repository<TasaReferencia>,
+        private readonly legalNotifications: LegalNotificationsService,
     ) { }
 
     async findAll(): Promise<ProcesoCoactivo[]> {
@@ -84,7 +88,17 @@ export class ProcesoCoactivoService {
         return proceso;
     }
 
+    private validateDeudor(deudor: DeudorInfo): void {
+        if (deudor.identificacion && deudor.identificacion.length > 11) {
+            throw new BadRequestException('La identificación no puede superar los 11 dígitos');
+        }
+        if (deudor.telefono && deudor.telefono.length > 15) {
+            throw new BadRequestException('El teléfono no puede superar los 15 caracteres');
+        }
+    }
+
     async create(dto: CreateProcesoCoactivoDto): Promise<ProcesoCoactivo> {
+        this.validateDeudor(dto.deudor);
         // Generar radicado automático basado en secuencia anual
         const year = new Date().getFullYear();
         const lastProceso = await this.procesoCoactivoRepository.findOne({
@@ -119,8 +133,16 @@ export class ProcesoCoactivoService {
 
         const savedProceso = await this.procesoCoactivoRepository.save(proceso);
 
+        const creadoPor = dto.creadoPor || dto.usuario || 'Sistema';
         // Registrar historial de creación
-        await this.registrarHistorial(savedProceso.id, 'CREACION', null, null, null, 'Sistema', 'Proceso creado automáticamente o manualmente');
+        await this.registrarHistorial(savedProceso.id, 'CREACION', null, null, null, creadoPor, 'Proceso creado automáticamente o manualmente');
+
+        await this.legalNotifications.notifyProcesoCreado({
+            modulo: 'PROCESOS_COACTIVOS',
+            radicado: savedProceso.radicado,
+            procesoId: savedProceso.id,
+            creadoPor,
+        });
 
         return savedProceso;
     }
@@ -131,6 +153,7 @@ export class ProcesoCoactivoService {
 
         // Detectar cambios y registrar auditoría
         if (dto.deudor) {
+            this.validateDeudor(dto.deudor);
             // Simplificación: registrar que cambió el deudor sin detalle profundo JSON
             await this.registrarHistorial(id, 'ACTUALIZACION', 'deudor', JSON.stringify(proceso.deudor), JSON.stringify(dto.deudor), usuario, 'Actualización de datos del deudor');
             proceso.deudor = dto.deudor;
@@ -509,7 +532,7 @@ export class ProcesoCoactivoService {
         await this.historialRepository.save(historial);
     }
 
-    async addAdjunto(procesoId: string, file: Express.Multer.File, tipo: string = 'DOCUMENTO'): Promise<ProcesoCoactivoAdjunto> {
+    async addAdjunto(procesoId: string, file: Express.Multer.File, tipo: string = 'DOCUMENTO', subidoPor: string = 'Sistema'): Promise<ProcesoCoactivoAdjunto> {
         const proceso = await this.findOne(procesoId);
 
         const adjunto = this.adjuntoRepository.create({
@@ -529,6 +552,14 @@ export class ProcesoCoactivoService {
         const count = await this.adjuntoRepository.count({ where: { proceso: { id: procesoId } } });
         proceso.documentosAdjuntos = count;
         await this.procesoCoactivoRepository.save(proceso);
+
+        await this.legalNotifications.notifyDocumentoSubido({
+            modulo: 'PROCESOS_COACTIVOS',
+            radicado: proceso.radicado,
+            procesoId: proceso.id,
+            nombreDocumento: file.originalname,
+            subidoPor,
+        });
 
         return savedAdjunto;
     }

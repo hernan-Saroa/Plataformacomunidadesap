@@ -324,9 +324,14 @@ export class CertificatesController {
   @Post('autoservicio/generar-codigo')
   @Public()
   @HttpCode(HttpStatus.OK)
-  async generarCodigoValidacion(@Body() data: { documento: string }) {
+  async generarCodigoValidacion(
+    @Body() data: { documento: string; documentType?: string },
+  ) {
     try {
-      return await this.certificatesService.generarCodigoValidacion(data.documento);
+      return await this.certificatesService.generarCodigoValidacion(
+        data.documento,
+        data.documentType,
+      );
     } catch (error) {
       console.error('❌ Error en generarCodigoValidacion:', error);
       throw error;
@@ -341,6 +346,7 @@ export class CertificatesController {
     data: {
       documento: string;
       codigo: string;
+      documentType?: string;
       includeSalary?: boolean;
       includeTechnicalBonus?: boolean;
     },
@@ -349,6 +355,7 @@ export class CertificatesController {
       data.documento,
       data.codigo,
       {
+        documentType: data.documentType,
         includeSalary: data.includeSalary,
         includeTechnicalBonus: data.includeTechnicalBonus,
       },

@@ -173,6 +173,21 @@ export class ActividadPlanAnual5 {
     tipo: 'seguimiento' | 'hallazgo' | 'cierre';
   }>;
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TAREAS DE SEGUIMIENTO - sub-tareas dentro de cada actividad
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  @Column({ type: 'jsonb', name: 'tareas_seguimiento', default: [] })
+  tareas_seguimiento: Array<{
+    id: string;
+    descripcion: string;
+    completada: boolean;
+    responsables?: Array<{ id: string; nombre: string; cargo?: string }>;
+    fechaLimite?: string;
+    fechaCompletada?: string;
+    completadaPor?: string;
+  }>;
+
   // Relación con adjuntos
   @OneToMany(() => AdjuntoActividadPlanAnual5, (adjunto) => adjunto.actividad, { cascade: true })
   adjuntos: AdjuntoActividadPlanAnual5[];
