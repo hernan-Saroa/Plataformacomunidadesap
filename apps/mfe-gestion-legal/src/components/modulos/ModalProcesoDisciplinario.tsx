@@ -1077,11 +1077,22 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
         'informes': 'DOCUMENTO',
       };
       const tipoActuacion = tipoActuacionMap[categoria] || 'DOCUMENTO';
+      const currentUserNombre = ((): string => {
+        const u = authService.getCurrentUser() as any;
+        return (
+          u?.fullName ||
+          u?.person?.full_name ||
+          `${u?.person?.first_name ?? ''} ${u?.person?.last_name ?? ''}`.trim() ||
+          u?.username ||
+          'Sistema'
+        );
+      })();
       await legalService.createJuzgamientoActuacion(proceso.id, {
         tipoActuacion,
         descripcion: `${tipoDocumento}: ${file.name}`,
         fechaActuacion: new Date().toISOString(),
         file,
+        subidoPor: currentUserNombre,
       });
       const data = await legalService.getJuzgamientoActuaciones(proceso.id);
       setActuaciones(Array.isArray(data) ? data : []);

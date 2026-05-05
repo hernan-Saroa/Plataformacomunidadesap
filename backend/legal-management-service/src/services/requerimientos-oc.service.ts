@@ -10,6 +10,7 @@ import { Abogado } from '../entities/abogado.entity';
 import { RespuestaBorradorOC } from '../entities/respuesta-borrador-oc.entity';
 import { TipoRequerimientoOC } from '../entities/tipo-requerimiento-oc.entity';
 import { DiasHabilesService } from './dias-habiles.service';
+import { LegalNotificationsService } from './legal-notifications.service';
 
 @Injectable()
 export class RequerimientosOCService {
@@ -29,6 +30,7 @@ export class RequerimientosOCService {
         private readonly correosService: CorreosJuridicosService,
         private readonly comentariosService: ComentariosDocumentosOCService,
         private readonly diasHabilesService: DiasHabilesService,
+        private readonly legalNotifications: LegalNotificationsService,
     ) { }
 
     // ============================================
@@ -130,7 +132,16 @@ export class RequerimientosOCService {
             }
 
             const req = this.requerimientoRepo.create(data);
-            return await this.requerimientoRepo.save(req);
+            const saved = await this.requerimientoRepo.save(req);
+
+            await this.legalNotifications.notifyProcesoCreado({
+                modulo: 'ORGANOS_CONTROL',
+                radicado: saved.radicadoInterno,
+                procesoId: saved.id,
+                creadoPor: (data as any).creadoPor || (data as any).usuario || 'Sistema',
+            });
+
+            return saved;
         } catch (error) {
             console.error('Error creando Requerimiento OC:', error);
             // Re-throw con mensaje más claro si es constraint violation

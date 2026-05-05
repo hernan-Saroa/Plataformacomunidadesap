@@ -57,6 +57,43 @@ interface NotificationsPanelV2Props {
   compact?: boolean;
 }
 
+/**
+ * Intenta manejar in-app las notificaciones cuya url_accion sigue el patrón
+ * `/gestion-legal?modulo=<vista>&radicado=<...>` emitido por
+ * `legal-notifications.service.ts`. En vez de recargar la página, dispara un
+ * CustomEvent que `GestionLegalFull` intercepta para cambiar la vista activa y
+ * abrir el modal del expediente directamente.
+ *
+ * Devuelve `true` si la notificación fue manejada in-app; `false` si el caller
+ * debe hacer fallback a `window.location.href = url`.
+ */
+function tryHandleLegalNotificationInApp(
+  url: string,
+  notif: { datos_adicionales?: any },
+): boolean {
+  try {
+    if (!url.startsWith('/gestion-legal')) return false;
+    const queryStart = url.indexOf('?');
+    if (queryStart === -1) return false;
+    const params = new URLSearchParams(url.slice(queryStart + 1));
+    const modulo = params.get('modulo');
+    const radicado = params.get('radicado') || undefined;
+    if (!modulo) return false;
+
+    const procesoId = notif.datos_adicionales?.procesoId;
+    const detail = { modulo, radicado, procesoId };
+
+    // Si ya estamos dentro del MFE de Gestión Legal, el evento es suficiente.
+    // Si no lo estamos, el shell montará el módulo y el listener se ejecuta al montar
+    // — para ese caso dejamos la intención en sessionStorage como respaldo.
+    sessionStorage.setItem('legal:pendingOpenExpediente', JSON.stringify(detail));
+    window.dispatchEvent(new CustomEvent('legal:open-expediente', { detail }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function NotificationsPanelV2({
   userId,
   isOpen,
@@ -121,18 +158,25 @@ export function NotificationsPanelV2({
     // Get the URL
     const url = notif.url_accion || '';
 
-    if (url) {
-      // Store the highlighted item ID in sessionStorage for visual highlighting
-      if (notif.datos_adicionales?.terminoId) {
-        sessionStorage.setItem('highlightTerminoId', notif.datos_adicionales.terminoId);
-      }
+    if (!url) return;
 
-      // Navigate to the URL
-      window.location.href = url;
-
-      // Close the panel
-      onClose();
+    // Store the highlighted item ID in sessionStorage for visual highlighting
+    if (notif.datos_adicionales?.terminoId) {
+      sessionStorage.setItem('highlightTerminoId', notif.datos_adicionales.terminoId);
     }
+
+    // Notificaciones de Gestión Legal con `?modulo=...&radicado=...` se manejan in-app
+    // (sin recargar la página): emiten un CustomEvent que GestionLegalFull intercepta
+    // para cambiar la vista activa y abrir el modal del expediente.
+    const handledInApp = tryHandleLegalNotificationInApp(url, notif);
+
+    if (!handledInApp) {
+      // Fallback: navegación normal por URL (otras notificaciones del sistema).
+      window.location.href = url;
+    }
+
+    // Close the panel
+    onClose();
   };
 
   const formatTimeAgo = (date: string) => {

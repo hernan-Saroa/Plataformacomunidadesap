@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ComentarioOC } from '../entities/comentario-oc.entity';
 import { DocumentoOC } from '../entities/documento-oc.entity';
+import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
+import { LegalNotificationsService } from './legal-notifications.service';
 
 @Injectable()
 export class ComentariosDocumentosOCService {
@@ -10,7 +12,10 @@ export class ComentariosDocumentosOCService {
         @InjectRepository(ComentarioOC)
         private readonly comentarioRepository: Repository<ComentarioOC>,
         @InjectRepository(DocumentoOC)
-        private readonly documentoRepository: Repository<DocumentoOC>
+        private readonly documentoRepository: Repository<DocumentoOC>,
+        @InjectRepository(RequerimientoOC)
+        private readonly requerimientoRepository: Repository<RequerimientoOC>,
+        private readonly legalNotifications: LegalNotificationsService
     ) { }
 
     // ==================== COMENTARIOS ====================
@@ -45,7 +50,22 @@ export class ComentariosDocumentosOCService {
 
     async createDocumento(data: Partial<DocumentoOC>): Promise<DocumentoOC> {
         const documento = this.documentoRepository.create(data);
-        return this.documentoRepository.save(documento);
+        const saved = await this.documentoRepository.save(documento);
+
+        if (saved.requerimientoId) {
+            const requerimiento = await this.requerimientoRepository.findOne({ where: { id: saved.requerimientoId } });
+            if (requerimiento) {
+                await this.legalNotifications.notifyDocumentoSubido({
+                    modulo: 'ORGANOS_CONTROL',
+                    radicado: requerimiento.radicadoInterno || requerimiento.id,
+                    procesoId: requerimiento.id,
+                    nombreDocumento: saved.nombre,
+                    subidoPor: saved.subidoPor || 'Sistema',
+                });
+            }
+        }
+
+        return saved;
     }
 
     async deleteDocumento(id: string): Promise<void> {

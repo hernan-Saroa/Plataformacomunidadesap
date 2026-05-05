@@ -814,6 +814,18 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       formData.append('nombre', file.name);
       formData.append('tipo', 'DOCUMENTO_GENERAL'); // Default type
       formData.append('origen', 'CARGA_DIRECTA');
+      formData.append('modulo', 'DEFENSA_JUDICIAL');
+      const currentUserNombreDirect = ((): string => {
+        const u = authService.getCurrentUser() as any;
+        return (
+          u?.fullName ||
+          u?.person?.full_name ||
+          `${u?.person?.first_name ?? ''} ${u?.person?.last_name ?? ''}`.trim() ||
+          u?.username ||
+          'Sistema'
+        );
+      })();
+      formData.append('subidoPor', currentUserNombreDirect);
 
       await legalService.crearDocumento(formData);
 
@@ -848,6 +860,20 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       if (etapaActual) {
         formData.append('etapa', etapaActual);
       }
+
+      // Datos para la notificación al Jefe de Gestión Legal
+      formData.append('modulo', 'DEFENSA_JUDICIAL');
+      const currentUserNombre = ((): string => {
+        const u = authService.getCurrentUser() as any;
+        return (
+          u?.fullName ||
+          u?.person?.full_name ||
+          `${u?.person?.first_name ?? ''} ${u?.person?.last_name ?? ''}`.trim() ||
+          u?.username ||
+          'Sistema'
+        );
+      })();
+      formData.append('subidoPor', currentUserNombre);
 
       await legalService.crearDocumento(formData);
       toast.success('✅ Documento cargado exitosamente');

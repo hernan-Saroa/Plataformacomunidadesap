@@ -57,6 +57,36 @@ interface NotificationsPanelV2Props {
   compact?: boolean;
 }
 
+/**
+ * Intenta manejar in-app las notificaciones cuya url_accion sigue el patrón
+ * `/gestion-legal?modulo=<vista>&radicado=<...>` emitido por
+ * `legal-notifications.service.ts`. En vez de recargar la página, dispara un
+ * CustomEvent que `GestionLegalFull` intercepta para cambiar la vista activa y
+ * abrir el modal del expediente directamente.
+ */
+function tryHandleLegalNotificationInApp(
+  url: string,
+  notif: { datos_adicionales?: any },
+): boolean {
+  try {
+    if (!url.startsWith('/gestion-legal')) return false;
+    const queryStart = url.indexOf('?');
+    if (queryStart === -1) return false;
+    const params = new URLSearchParams(url.slice(queryStart + 1));
+    const modulo = params.get('modulo');
+    const radicado = params.get('radicado') || undefined;
+    if (!modulo) return false;
+
+    const procesoId = notif.datos_adicionales?.procesoId;
+    const detail = { modulo, radicado, procesoId };
+    sessionStorage.setItem('legal:pendingOpenExpediente', JSON.stringify(detail));
+    window.dispatchEvent(new CustomEvent('legal:open-expediente', { detail }));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function NotificationsPanelV2({
   userId,
   isOpen,
@@ -120,18 +150,20 @@ export function NotificationsPanelV2({
     // Get the URL
     const url = notif.url_accion || '';
 
-    if (url) {
-      // Store the highlighted item ID in sessionStorage for visual highlighting
-      if (notif.datos_adicionales?.terminoId) {
-        sessionStorage.setItem('highlightTerminoId', notif.datos_adicionales.terminoId);
-      }
+    if (!url) return;
 
-      // Navigate to the URL
-      window.location.href = url;
-
-      // Close the panel
-      onClose();
+    if (notif.datos_adicionales?.terminoId) {
+      sessionStorage.setItem('highlightTerminoId', notif.datos_adicionales.terminoId);
     }
+
+    // Notificaciones de Gestión Legal se manejan in-app (sin reload).
+    const handledInApp = tryHandleLegalNotificationInApp(url, notif);
+
+    if (!handledInApp) {
+      window.location.href = url;
+    }
+
+    onClose();
   };
 
   const formatTimeAgo = (date: string) => {
