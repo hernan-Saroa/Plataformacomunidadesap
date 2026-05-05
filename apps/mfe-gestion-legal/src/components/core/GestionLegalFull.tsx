@@ -200,12 +200,14 @@ export function GestionLegalFull() {
       const vista = moduloAVista[detail.modulo];
       if (!vista) return;
       setVistaActual(vista);
-      // Re-emitir tras un microtick para que el submódulo ya esté montado.
+      // Re-emitir con delay para dar tiempo a React a montar el submódulo.
+      // 500ms es suficiente incluso en renders lentos; el submódulo guarda el
+      // evento en sessionStorage como respaldo adicional por si llega antes de montar.
       setTimeout(() => {
         window.dispatchEvent(
           new CustomEvent('legal:open-expediente-detail', { detail }),
         );
-      }, 80);
+      }, 500);
     };
 
     window.addEventListener('legal:open-expediente', handleOpen);

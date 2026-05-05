@@ -309,17 +309,29 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   }, []);
 
   // ✅ Listener: Abrir proceso desde notificación (evento legal:open-expediente-detail)
-  // GestionLegalFull cambia la vista activa y re-emite este evento con {radicado, procesoId}.
-  // Reutilizamos handleVerExpedienteAnexado que ya busca el proceso local o lo carga vía API.
   useEffect(() => {
     const handleOpenFromNotification = (event: Event) => {
       const detail = (event as CustomEvent).detail || {};
+      if (detail.modulo && detail.modulo !== 'juzgamiento') return; // Solo para este módulo
       const radicado = detail.radicado || detail.procesoId;
       if (!radicado) return;
       handleVerExpedienteAnexado(radicado);
     };
 
     window.addEventListener('legal:open-expediente-detail', handleOpenFromNotification);
+
+    // Respaldo al montar
+    const pending = sessionStorage.getItem('legal:pendingOpenExpediente');
+    if (pending) {
+      try {
+        const detail = JSON.parse(pending);
+        if (detail.modulo === 'juzgamiento' && (detail.radicado || detail.procesoId)) {
+          sessionStorage.removeItem('legal:pendingOpenExpediente');
+          handleVerExpedienteAnexado(detail.radicado || detail.procesoId);
+        }
+      } catch { /* ignore */ }
+    }
+
     return () => window.removeEventListener('legal:open-expediente-detail', handleOpenFromNotification);
   }, [procesos]);
 
