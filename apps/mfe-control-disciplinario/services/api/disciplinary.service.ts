@@ -23,6 +23,7 @@ export interface DisciplinaryNews {
     origen: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION';
     fechaQueja?: string;
     fechaRecepcion?: string;
+    fechaHechos?: string;
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;

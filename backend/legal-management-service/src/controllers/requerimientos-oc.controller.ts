@@ -41,7 +41,7 @@ export class RequerimientosOCController {
     }
 
     @Post()
-    async create(@Body() data: Partial<RequerimientoOC>): Promise<RequerimientoOC> {
+    async create(@Body() data: Partial<RequerimientoOC> & { creadoPor?: string; usuario?: string }): Promise<RequerimientoOC> {
         return this.service.create(data);
     }
 

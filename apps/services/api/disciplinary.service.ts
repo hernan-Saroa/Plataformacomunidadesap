@@ -23,6 +23,7 @@ export interface DisciplinaryNews {
     origen: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION';
     fechaQueja?: string;
     fechaRecepcion?: string;
+    fechaHechos?: string;
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
@@ -538,6 +539,7 @@ class DisciplinaryService {
         territorial?: string;
         dependenciaDenunciado?: string;
         hechos?: string;
+        conducta?: string;
         denunciante?: any;
         disciplinable?: any;
         conductas?: string[];
@@ -980,7 +982,7 @@ class DisciplinaryService {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/content`, { contenidoHtml });
     }
 
-    async updateProcess(id: string, data: Partial<DisciplinaryProcess> & { abogadoId?: string; hechos?: string; disciplinable?: any }): Promise<DisciplinaryProcess> {
+    async updateProcess(id: string, data: Partial<DisciplinaryProcess> & { abogadoId?: string; hechos?: string; disciplinable?: any; denunciante?: any; conducta?: string }): Promise<DisciplinaryProcess> {
         return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}`, data);
     }
 
