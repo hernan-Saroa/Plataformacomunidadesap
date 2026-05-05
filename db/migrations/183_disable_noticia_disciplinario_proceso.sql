@@ -1,0 +1,1 @@
+UPDATE auth.permission SET is_active = 'FALSE' WHERE code = 'control-disciplinario.procesos.create'

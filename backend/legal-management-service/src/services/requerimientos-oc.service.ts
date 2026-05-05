@@ -10,6 +10,7 @@ import { Abogado } from '../entities/abogado.entity';
 import { RespuestaBorradorOC } from '../entities/respuesta-borrador-oc.entity';
 import { TipoRequerimientoOC } from '../entities/tipo-requerimiento-oc.entity';
 import { DiasHabilesService } from './dias-habiles.service';
+import { LegalNotificationsService } from './legal-notifications.service';
 
 @Injectable()
 export class RequerimientosOCService {
@@ -29,6 +30,7 @@ export class RequerimientosOCService {
         private readonly correosService: CorreosJuridicosService,
         private readonly comentariosService: ComentariosDocumentosOCService,
         private readonly diasHabilesService: DiasHabilesService,
+        private readonly legalNotifications: LegalNotificationsService,
     ) { }
 
     // ============================================
@@ -130,7 +132,16 @@ export class RequerimientosOCService {
             }
 
             const req = this.requerimientoRepo.create(data);
-            return await this.requerimientoRepo.save(req);
+            const saved = await this.requerimientoRepo.save(req);
+
+            await this.legalNotifications.notifyProcesoCreado({
+                modulo: 'ORGANOS_CONTROL',
+                radicado: saved.radicadoInterno,
+                procesoId: saved.id,
+                creadoPor: (data as any).creadoPor || (data as any).usuario || 'Sistema',
+            });
+
+            return saved;
         } catch (error) {
             console.error('Error creando Requerimiento OC:', error);
             // Re-throw con mensaje más claro si es constraint violation
@@ -190,17 +201,18 @@ export class RequerimientosOCService {
         await this.requerimientoRepo.remove(req);
     }
 
-    async reasignar(id: string, nuevoAbogadoId: string): Promise<RequerimientoOC> {
+    async reasignar(id: string, nuevoAbogadoId: string, nuevoAbogadoNombre?: string): Promise<RequerimientoOC> {
         // 1. Get current requerimiento
         const req = await this.findOne(id);
         const responsableAnterior = req.funcionarioResponsable || req.abogadoAsignado?.nombreCompleto || 'Sin asignar';
 
-        // 2. Fetch the new lawyer directly from DB
-        const nuevoAbogado = await this.abogadoRepo.findOne({ where: { id: nuevoAbogadoId } });
-        if (!nuevoAbogado) {
-            throw new NotFoundException(`Abogado ${nuevoAbogadoId} no encontrado`);
+        // 2. Resolve lawyer name — prefer the name passed from frontend (auth-service users),
+        //    fall back to local abogados table for backward compatibility.
+        let nuevoResponsable = nuevoAbogadoNombre || '';
+        if (!nuevoResponsable) {
+            const abogado = await this.abogadoRepo.findOne({ where: { id: nuevoAbogadoId } });
+            nuevoResponsable = abogado?.nombreCompleto || nuevoAbogadoId;
         }
-        const nuevoResponsable = nuevoAbogado.nombreCompleto;
 
         // 3. Update the requerimiento with new lawyer ID AND name
         await this.requerimientoRepo.update(id, {

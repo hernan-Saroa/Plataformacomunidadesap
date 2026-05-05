@@ -7,14 +7,21 @@ import {
   Param,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { DisciplinaryProcessReassignmentService } from '../services/disciplinary-process-reassignment.service';
 import { CreateReassignmentRequestDto } from '../dtos/create-reassignment-request.dto';
 import { ApproveReassignmentRequestDto } from '../dtos/approve-reassignment-request.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Solicitudes de Reasignación de Procesos')
 @Controller('disciplinary-process-reassignment')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class DisciplinaryProcessReassignmentController {
   constructor(
     private readonly reassignmentService: DisciplinaryProcessReassignmentService,

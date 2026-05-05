@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS certification.certificate_requests (
   -- DATA2: ID number
   id_number VARCHAR(50) NOT NULL,
 
+  -- Document type used in autoservicio (CC, CE, PP)
+  document_type VARCHAR(10),
+
   -- DATA3: Career/Category (Administrative Career, Free Appointment, etc.)
   career_category VARCHAR(100) NOT NULL,
 
@@ -83,6 +86,7 @@ CREATE TABLE IF NOT EXISTS certification.certificates (
   -- Employee data (denormalized for historical purposes)
   full_name VARCHAR(255) NOT NULL,
   id_number VARCHAR(50) NOT NULL,
+  document_type VARCHAR(10),
   career_category VARCHAR(100) NOT NULL,
   hiring_date DATE NOT NULL,
   position_category VARCHAR(100) NOT NULL,

@@ -53,6 +53,12 @@ export class ItemListaChequeo {
   @Column({ type: 'text', nullable: true })
   observaciones: string | null;
 
+  @Column({ name: 'documento_biblioteca_id', type: 'varchar', length: 255, nullable: true })
+  documentoBibliotecaId: string | null;
+
+  @Column({ name: 'documento_nombre', type: 'varchar', length: 500, nullable: true })
+  documentoNombre: string | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

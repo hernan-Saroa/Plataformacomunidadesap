@@ -9,40 +9,39 @@ export class PdfModifierService {
     constructor(private storageService: StorageService) { }
 
     /**
-     * Adds the auto consecutive number and process radicado to the PDF header.
+     * Agrega el consecutivo aprobado del auto en la esquina superior derecha.
      */
-    async addConsecutive(filename: string, consecutive: string, processRadicado: string): Promise<void> {
+    async addConsecutive(filename: string, consecutive: string): Promise<void> {
         try {
-            // Extract just the filename in case a URL path like /files/foo.pdf is passed
             const cleanFilename = path.basename(filename);
             const filePath = this.storageService.getFullPath(cleanFilename);
             const pdfBytes = await fs.readFile(filePath);
             const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
             const helveticaFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+            const label = consecutive.toUpperCase();
+            const fontSize = 11;
 
-            const pages = pdfDoc.getPages();
-            const firstPage = pages[0];
-            const { width, height } = firstPage.getSize();
+            const firstPage = pdfDoc.getPages()[0];
+            if (firstPage) {
+                const { width, height } = firstPage.getSize();
+                const textWidth = helveticaFont.widthOfTextAtSize(label, fontSize);
+                const textX = width - textWidth - 24;
+                const textY = height - fontSize - 18;
 
-            const text = `${consecutive} - ${processRadicado}`;
-            const textSize = 12;
-            const textWidth = helveticaFont.widthOfTextAtSize(text, textSize);
-
-            // Draw text at top right corner
-            firstPage.drawText(text, {
-                x: width - textWidth - 20,
-                y: height - 20,
-                size: textSize,
-                font: helveticaFont,
-                color: rgb(0.8, 0.2, 0.2), // Red color for visibility
-            });
+                firstPage.drawText(label, {
+                    x: textX,
+                    y: textY,
+                    size: fontSize,
+                    font: helveticaFont,
+                    color: rgb(0, 0, 0),
+                });
+            }
 
             const pdfBytesModified = await pdfDoc.save();
             await fs.writeFile(filePath, pdfBytesModified);
         } catch (error) {
             console.error('Error adding consecutive to PDF:', error);
-            // Determine if we should throw or just log error (fail soft)
-            // throw error; 
+            throw error;
         }
     }
 
@@ -51,7 +50,6 @@ export class PdfModifierService {
      */
     async addSignature(filename: string, signerName: string, role: string): Promise<void> {
         try {
-            // Extract just the filename in case a URL path like /files/foo.pdf is passed
             const cleanFilename = path.basename(filename);
             const filePath = this.storageService.getFullPath(cleanFilename);
             const pdfBytes = await fs.readFile(filePath);
@@ -92,6 +90,7 @@ export class PdfModifierService {
             await fs.writeFile(filePath, pdfBytesModified);
         } catch (error) {
             console.error('Error adding signature to PDF:', error);
+            throw error;
         }
     }
 }

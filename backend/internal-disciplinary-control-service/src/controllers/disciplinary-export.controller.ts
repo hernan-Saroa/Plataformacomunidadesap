@@ -1,8 +1,14 @@
-import { Controller, Get, Res, Header } from '@nestjs/common';
+import { Controller, Get, Res, Header, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { DisciplinaryExportService } from '../services/disciplinary-export.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @Controller('configuration/export')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class DisciplinaryExportController {
     constructor(private readonly exportService: DisciplinaryExportService) { }
 

@@ -35,7 +35,16 @@ export class TareasNotasController {
         @Param('tareaId') tareaId: string,
         @Body() body: any
     ) {
-        return this.tareasNotasService.updateTarea(tareaId, body);
+        const updateData = { ...body };
+        if (updateData.fechaVencimiento !== undefined) {
+            if (!updateData.fechaVencimiento) {
+                updateData.fechaVencimiento = null;
+            } else {
+                const parsedDate = new Date(updateData.fechaVencimiento);
+                updateData.fechaVencimiento = isNaN(parsedDate.getTime()) ? null : parsedDate;
+            }
+        }
+        return this.tareasNotasService.updateTarea(tareaId, updateData);
     }
 
     @Delete('tareas/:tareaId')

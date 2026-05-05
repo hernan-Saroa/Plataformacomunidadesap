@@ -1,0 +1,103 @@
+const MOJIBAKE_PATTERN = /(?:Ãƒ.|Ã‚.|Ã¢.|Ã°Å¸|ï¿½|\uFFFD)/;
+
+const BROKEN_SPANISH_REPAIRS: Array<[RegExp, string]> = [
+  [/\bMaestr[\uFFFD?]a\b/gi, 'Maestría'],
+  [/\bCiudadan[\uFFFD?]a\b/gi, 'Ciudadanía'],
+  [/\bCategor[\uFFFD?]a\b/gi, 'Categoría'],
+  [/\bDedicaci[\uFFFD?]n\b/gi, 'Dedicación'],
+  [/\bSituaci[\uFFFD?]n\b/gi, 'Situación'],
+  [/\bVinculaci[\uFFFD?]n\b/gi, 'Vinculación'],
+  [/\bEvaluaci[\uFFFD?]n\b/gi, 'Evaluación'],
+  [/\bInvestigaci[\uFFFD?]n\b/gi, 'Investigación'],
+  [/\bAdministraci[\uFFFD?]n\b/gi, 'Administración'],
+  [/\bFormaci[\uFFFD?]n\b/gi, 'Formación'],
+  [/\bEspecializaci[\uFFFD?]n\b/gi, 'Especialización'],
+  [/\bResoluci[\uFFFD?]n\b/gi, 'Resolución'],
+  [/\bN[uú]cleo\b/gi, 'Núcleo'],
+  [/\bTem[aá]tico\b/gi, 'Temático'],
+  [/\bAcad[eé]mico\b/gi, 'Académico'],
+  [/\bAcad[eé]mica\b/gi, 'Académica'],
+  [/\bP[uú]blica\b/gi, 'Pública'],
+  [/\bP[uú]blico\b/gi, 'Público'],
+  [/\bC[aá]tedra\b/gi, 'Cátedra'],
+  [/\bG[eé]nero\b/gi, 'Género'],
+];
+
+function looksLikeMojibake(value: string): boolean {
+  return MOJIBAKE_PATTERN.test(value);
+}
+
+function decodeLatin1AsUtf8(value: string): string {
+  const bytes = Uint8Array.from(Array.from(value).map((char) => char.charCodeAt(0) & 0xff));
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+function preserveCase(template: string, source: string): string {
+  if (source === source.toUpperCase()) {
+    return template.toUpperCase();
+  }
+
+  if (source === source.toLowerCase()) {
+    return template.toLowerCase();
+  }
+
+  if (source[0] === source[0]?.toUpperCase()) {
+    return template[0].toUpperCase() + template.slice(1);
+  }
+
+  return template;
+}
+
+function repairKnownBrokenSpanish(value: string): string {
+  let result = value;
+
+  for (const [pattern, replacement] of BROKEN_SPANISH_REPAIRS) {
+    result = result.replace(pattern, (match) => preserveCase(replacement, match));
+  }
+
+  return result;
+}
+
+export function sanitizeText(value: string): string {
+  let result = value;
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (!looksLikeMojibake(result)) {
+      break;
+    }
+
+    const repaired = decodeLatin1AsUtf8(result);
+    if (!repaired || repaired === result) {
+      break;
+    }
+
+    result = repaired;
+  }
+
+  return repairKnownBrokenSpanish(result);
+}
+
+export function sanitizeDeepStrings<T>(value: T): T {
+  if (typeof value === 'string') {
+    return sanitizeText(value) as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeDeepStrings(item)) as T;
+  }
+
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, innerValue]) => [
+        key,
+        sanitizeDeepStrings(innerValue),
+      ]),
+    ) as T;
+  }
+
+  return value;
+}

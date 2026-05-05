@@ -1672,19 +1672,19 @@ INSERT INTO auth.personas VALUES (1, '123456789', 'CC', 'Super User', 'Super', '
 -- Data for Name: role; Type: TABLE DATA; Schema: auth; Owner: -
 --
 
-INSERT INTO auth.role VALUES ('660e8400-e29b-41d4-a716-446655440001', 'SUPER_ADMIN', 'Super Administrador', 'Acceso total al sistema con todos los permisos administrativos', 'sistema', 'Shield', '#dc2626', 'personalizado', true, true, NULL, 'current_user', NULL, '2026-01-13 22:06:43.454521-05');
+INSERT INTO auth.role VALUES ('a34b7204-6a62-4b8d-a4d2-8b9fa8b8c6f1', 'SUPER_ADMIN', 'Super Administrador', 'Acceso total al sistema con todos los permisos administrativos', 'sistema', 'Shield', '#dc2626', 'personalizado', true, true, NULL, 'current_user', NULL, '2026-01-13 22:06:43.454521-05');
 
 --
 -- Data for Name: user; Type: TABLE DATA; Schema: auth; Owner: -
 --
 
-INSERT INTO auth."user" VALUES ('770e8400-e29b-41d4-a716-446655440001', 'superuser@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 1, true, NULL, NULL, NULL);
+INSERT INTO auth."user" (id_user, public_id, username, password_hash, id_tercero, is_active, token, created_at, updated_at) VALUES ('d68b5cf7-2f23-4fc8-9589-f3b9bb4f5f62', '7bdbca4b-8c17-4d3b-b870-c6f703ecfc9d', 'superuser@esap.edu.co', '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.', 1, true, NULL, NULL, NULL);
 
 --
 -- Data for Name: user_roles; Type: TABLE DATA; Schema: auth; Owner: -
 --
 
-INSERT INTO auth.user_roles VALUES ('770e8400-e29b-41d4-a716-446655440001', '660e8400-e29b-41d4-a716-446655440001', true, NULL, NULL);
+INSERT INTO auth.user_roles VALUES ('d68b5cf7-2f23-4fc8-9589-f3b9bb4f5f62', 'a34b7204-6a62-4b8d-a4d2-8b9fa8b8c6f1', true, NULL, NULL);
 
 
 --

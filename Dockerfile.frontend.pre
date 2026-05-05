@@ -7,48 +7,58 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copiar archivos de dependencias primero (para aprovechar cache de Docker)
-COPY package.json package-lock.json* ./
+# Evita que Puppeteer descargue Chrome/Chromium durante `npm install`.
+ENV PUPPETEER_SKIP_DOWNLOAD=1 \
+    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
+# Copiar el frontend completo para que npm detecte todos los workspaces del monorepo
+COPY . .
 
 # Instalar dependencias (cachea npm para rebuilds más rápidos)
 RUN --mount=type=cache,target=/root/.npm npm install --legacy-peer-deps
 
-# Copiar código fuente
-COPY . .
-
 # Argumento para la URL del API (se pasa en build time)
-ARG VITE_API_URL=http://172.16.202.222/services
+ARG VITE_API_URL=/services
+ARG VITE_ONLYOFFICE_URL=/onlyoffice
 ARG VITE_MICROSOFT_TENANT_ID=
 ARG VITE_MICROSOFT_CLIENT_ID=
+ARG VITE_LOGIN_OPTIONS=both
 
 # Exportar como variable de entorno Y crear .env.production
 # Vite necesita ambas cosas para inyectar la variable correctamente
 ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_ONLYOFFICE_URL=${VITE_ONLYOFFICE_URL}
 ENV VITE_MICROSOFT_TENANT_ID=${VITE_MICROSOFT_TENANT_ID}
 ENV VITE_MICROSOFT_CLIENT_ID=${VITE_MICROSOFT_CLIENT_ID}
+ENV VITE_LOGIN_OPTIONS=${VITE_LOGIN_OPTIONS}
 RUN test -n "${VITE_MICROSOFT_TENANT_ID}" && test -n "${VITE_MICROSOFT_CLIENT_ID}"
 RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
+    echo "VITE_ONLYOFFICE_URL=${VITE_ONLYOFFICE_URL}" >> .env.production && \
     echo "VITE_MICROSOFT_TENANT_ID=${VITE_MICROSOFT_TENANT_ID}" >> .env.production && \
     echo "VITE_MICROSOFT_CLIENT_ID=${VITE_MICROSOFT_CLIENT_ID}" >> .env.production && \
+    echo "VITE_LOGIN_OPTIONS=${VITE_LOGIN_OPTIONS}" >> .env.production && \
     echo "Contenido de .env.production:" && cat .env.production
 
 # Build de producción (Vite lee .env.production automáticamente)
 RUN npm run build && \
-    echo "Verificando build..." && \
-    grep -r "172.16.202.222" /app/build/assets/*.js | head -1 || echo "URL no encontrada en build"
+    echo "Verificando que el bundle no exponga hosts sensibles..." && \
+    if grep -r -E "4\\.156\\.71\\.181|135\\.237\\.81\\.133|172\\.16\\.202\\.169|172\\.16\\.202\\.222|outlook\\.office\\.com|humanosoft\\.esap\\.edu\\.co|arca\\.esap\\.edu\\.co|onlyoffice:80" /app/build/assets/*.js; then exit 1; fi
 
 # ============ STAGE 2: Serve con Nginx ============
 FROM nginx:alpine AS production
 
 # Copiar configuración personalizada de nginx
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+RUN mkdir -p /opt/esap-nginx
+COPY nginx.conf /opt/esap-nginx/http.conf
+COPY nginx.tls.conf.template /opt/esap-nginx/tls.conf.template
+COPY docker/nginx/40-esap-select-config.sh /docker-entrypoint.d/40-esap-select-config.sh
+RUN chmod +x /docker-entrypoint.d/40-esap-select-config.sh
 
 # Copiar archivos de build desde el stage anterior
-# vite.config.ts tiene outDir: 'build'
 COPY --from=builder /app/build /usr/share/nginx/html
 
 # Exponer puerto 80
-EXPOSE 80
+EXPOSE 80 443
 
 # Comando por defecto
 CMD ["nginx", "-g", "daemon off;"]

@@ -26,9 +26,10 @@ export const buildStoredFileName = (originalname: string): string => {
 
 @Injectable()
 export class StorageService {
-  private readonly uploadDir = DEFAULT_UPLOAD_DIR;
+  private readonly uploadDir: string;
 
   constructor() {
+    this.uploadDir = path.resolve(DEFAULT_UPLOAD_DIR);
     ensureUploadDirExists(this.uploadDir);
   }
 
@@ -64,7 +65,12 @@ export class StorageService {
   }
 
   getFullPath(filename: string): string {
-    return path.join(this.uploadDir, filename);
+    const normalizedFilename = filename
+      .replace(/\\/g, '/')
+      .replace(/^\/+/, '')
+      .replace(/^(files|uploads)\//, '');
+
+    return path.resolve(this.uploadDir, normalizedFilename);
   }
 
   async deleteFile(filename: string): Promise<void> {

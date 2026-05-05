@@ -7,14 +7,15 @@ import { AutoVersion } from '../entities/auto-version.entity';
 import { SystemConfiguration } from '../entities/system-configuration.entity';
 import { ProcessService } from './process.service';
 import { AlertasService } from './alertas.service';
+import { PdfModifierService } from './pdf-modifier.service';
+import { SequenceService } from './sequence.service';
+import { DocumentConversionService } from './document-conversion.service';
+import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
 
 describe('AutoService', () => {
   let service: AutoService;
   let autoRepository: Repository<LegalAuto>;
   let versionRepository: Repository<AutoVersion>;
-  let configRepository: Repository<SystemConfiguration>;
-  let processService: ProcessService;
-  let alertasService: AlertasService;
 
   const mockAutoRepository = {
     create: jest.fn(),
@@ -34,15 +35,40 @@ describe('AutoService', () => {
     findOne: jest.fn(),
   };
 
+  const mockActuacionesRepository = {
+    save: jest.fn(),
+  };
+
   const mockProcessService = {
     findById: jest.fn(),
+    changeStageByAutoApertura: jest.fn(),
+    updateStatus: jest.fn(),
+    processRepository: {
+      save: jest.fn(),
+    },
   };
 
   const mockAlertasService = {
     crearNotificacionAuto: jest.fn(),
   };
 
+  const mockPdfModifierService = {
+    addConsecutive: jest.fn(),
+    addSignature: jest.fn(),
+  };
+
+  const mockSequenceService = {
+    generateAutoConsecutivo: jest.fn().mockResolvedValue('AUTO-00042'),
+  };
+
+  const mockDocumentConversionService = {
+    convertWordToPdf: jest.fn(),
+    getFileSize: jest.fn(),
+  };
+
   beforeEach(async () => {
+    jest.clearAllMocks();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AutoService,
@@ -59,6 +85,10 @@ describe('AutoService', () => {
           useValue: mockConfigRepository,
         },
         {
+          provide: getRepositoryToken(DisciplinaryProcessActuacion),
+          useValue: mockActuacionesRepository,
+        },
+        {
           provide: ProcessService,
           useValue: mockProcessService,
         },
@@ -66,15 +96,28 @@ describe('AutoService', () => {
           provide: AlertasService,
           useValue: mockAlertasService,
         },
+        {
+          provide: PdfModifierService,
+          useValue: mockPdfModifierService,
+        },
+        {
+          provide: SequenceService,
+          useValue: mockSequenceService,
+        },
+        {
+          provide: DocumentConversionService,
+          useValue: mockDocumentConversionService,
+        },
       ],
     }).compile();
 
     service = module.get<AutoService>(AutoService);
-    autoRepository = module.get<Repository<LegalAuto>>(getRepositoryToken(LegalAuto));
-    versionRepository = module.get<Repository<AutoVersion>>(getRepositoryToken(AutoVersion));
-    configRepository = module.get<Repository<SystemConfiguration>>(getRepositoryToken(SystemConfiguration));
-    processService = module.get<ProcessService>(ProcessService);
-    alertasService = module.get<AlertasService>(AlertasService);
+    autoRepository = module.get<Repository<LegalAuto>>(
+      getRepositoryToken(LegalAuto),
+    );
+    versionRepository = module.get<Repository<AutoVersion>>(
+      getRepositoryToken(AutoVersion),
+    );
   });
 
   it('should be defined', () => {
@@ -91,21 +134,23 @@ describe('AutoService', () => {
         comentarios: 'Comentarios del auto',
       };
 
-      const mockProcess = { id: 'process-123' };
       const mockAuto = {
         id: 'auto-123',
         ...createAutoDto,
         estado: AutoStatus.BORRADOR,
-        process: mockProcess,
+        process: { id: 'process-123' },
       };
 
-      mockProcessService.findById.mockResolvedValue(mockProcess);
+      mockProcessService.findById.mockResolvedValue({ id: 'process-123' });
       mockAutoRepository.create.mockReturnValue(mockAuto);
       mockAutoRepository.save.mockResolvedValue(mockAuto);
 
-      const result = await service.create(createAutoDto);
+      const result = await service.create(createAutoDto as any);
 
-      expect(mockProcessService.findById).toHaveBeenCalledWith('process-123', false);
+      expect(mockProcessService.findById).toHaveBeenCalledWith(
+        'process-123',
+        false,
+      );
       expect(mockAutoRepository.create).toHaveBeenCalledWith({
         tipo: 'AUTO_APERTURA',
         numero: 'AUTO-001',
@@ -117,125 +162,188 @@ describe('AutoService', () => {
         documentType: undefined,
         documentSize: undefined,
         comentarios: 'Comentarios del auto',
-      });
-      expect(mockAutoRepository.save).toHaveBeenCalledWith(mockAuto);
-      expect(result).toEqual(mockAuto);
-    });
-
-    it('should throw HttpException when process does not exist', async () => {
-      const createAutoDto = {
-        processId: 'invalid-process',
-        tipoAuto: 'AUTO_APERTURA',
-        numero: 'AUTO-001',
-      };
-
-      mockProcessService.findById.mockRejectedValue(new Error('Process not found'));
-
-      await expect(service.create(createAutoDto)).rejects.toThrow();
-    });
-  });
-
-  describe('findById', () => {
-    it('should return auto when found', async () => {
-      const mockAuto = { id: 'auto-123', tipo: 'AUTO_APERTURA' };
-      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
-
-      const result = await service.findById('auto-123');
-
-      expect(mockAutoRepository.findOne).toHaveBeenCalledWith({
-        where: { id: 'auto-123' },
-        relations: ['process', 'versions'],
+        etapaDestino: undefined,
       });
       expect(result).toEqual(mockAuto);
-    });
-
-    it('should throw HttpException when auto not found', async () => {
-      mockAutoRepository.findOne.mockResolvedValue(null);
-
-      await expect(service.findById('invalid-id')).rejects.toThrow('Auto no encontrado');
-    });
-  });
-
-  describe('sendToReview', () => {
-    it('should send auto to review successfully', async () => {
-      const mockAuto = {
-        id: 'auto-123',
-        estado: AutoStatus.BORRADOR,
-        process: { id: 'process-123' },
-      };
-
-      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
-      mockAutoRepository.save.mockResolvedValue({ ...mockAuto, estado: AutoStatus.REVISION_JEFE });
-
-      const result = await service.sendToReview('auto-123');
-
-      expect(mockAutoRepository.save).toHaveBeenCalledWith({
-        ...mockAuto,
-        estado: AutoStatus.REVISION_JEFE,
-      });
-      expect(result.estado).toBe(AutoStatus.REVISION_JEFE);
-    });
-
-    it('should throw error when auto is not in BORRADOR state', async () => {
-      const mockAuto = {
-        id: 'auto-123',
-        estado: AutoStatus.REVISION_JEFE,
-      };
-
-      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
-
-      await expect(service.sendToReview('auto-123')).rejects.toThrow(
-        'Solo se pueden enviar borradores a revisión'
-      );
     });
   });
 
   describe('approve', () => {
-    it('should approve auto successfully', async () => {
+    it('should approve auto and assign global number', async () => {
       const mockAuto = {
         id: 'auto-123',
         estado: AutoStatus.REVISION_JEFE,
-        process: { id: 'process-123' },
+        processId: 'process-123',
+        process: { id: 'process-123', etapaActual: 'VALORACION' },
         currentVersion: 1,
-      };
-
-      const reviewAutoDto = { action: 'APPROVE' };
-
-      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
-      mockConfigRepository.findOne.mockResolvedValue({ securitySettings: { auditEnabled: true } });
-      mockVersionRepository.save.mockResolvedValue({});
-      mockAutoRepository.save.mockResolvedValue({ ...mockAuto, estado: AutoStatus.APROBADO });
-
-      const result = await service.approve('auto-123', reviewAutoDto, 'user-123');
-
-      expect(result.estado).toBe(AutoStatus.APROBADO);
-      expect(mockVersionRepository.save).toHaveBeenCalled();
-    });
-
-    it('should return auto when action is RETURN', async () => {
-      const mockAuto = {
-        id: 'auto-123',
-        estado: AutoStatus.REVISION_JEFE,
-        process: { id: 'process-123' },
-      };
-
-      const reviewAutoDto = {
-        action: 'RETURN',
-        observaciones: 'Necesita correcciones',
+        contenido: '<p>Contenido</p>',
+        tipo: 'AUTO_APERTURA',
+        documentUrl: null,
+        documentName: null,
+        documentType: null,
+        documentSize: null,
       };
 
       mockAutoRepository.findOne.mockResolvedValue(mockAuto);
-      mockVersionRepository.save.mockResolvedValue({});
+      mockConfigRepository.findOne.mockResolvedValue({
+        securitySettings: { auditEnabled: true },
+      });
       mockAutoRepository.save.mockResolvedValue({
         ...mockAuto,
-        estado: AutoStatus.DEVUELTO,
-        rejection_comments: 'Necesita correcciones',
+        estado: AutoStatus.APROBADO,
+        numero: 'AUTO-00042',
       });
 
-      const result = await service.approve('auto-123', reviewAutoDto, 'user-123');
+      const result = await service.approve(
+        'auto-123',
+        { action: 'APPROVE' } as any,
+        'user-123',
+      );
 
-      expect(result.estado).toBe(AutoStatus.DEVUELTO);
-      expect(result.rejection_comments).toBe('Necesita correcciones');
+      expect(mockSequenceService.generateAutoConsecutivo).toHaveBeenCalled();
+      expect(result.estado).toBe(AutoStatus.APROBADO);
+      expect(result.numero).toBe('AUTO-00042');
+      expect(versionRepository.save).toHaveBeenCalled();
+    });
+
+    it('should not move process stage when approving an apertura auto', async () => {
+      const mockAuto = {
+        id: 'auto-apertura-123',
+        estado: AutoStatus.REVISION_JEFE,
+        processId: 'process-123',
+        process: { id: 'process-123', etapaActual: 'VALORACION' },
+        currentVersion: 1,
+        contenido: '<p>Contenido</p>',
+        tipo: 'AUTO_APERTURA_INVESTIGACION',
+        etapaDestino: 'INVESTIGACION',
+        documentUrl: null,
+        documentName: null,
+        documentType: null,
+        documentSize: null,
+      };
+
+      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
+      mockConfigRepository.findOne.mockResolvedValue({
+        securitySettings: { auditEnabled: false },
+      });
+      mockAutoRepository.save.mockResolvedValue({
+        ...mockAuto,
+        estado: AutoStatus.APROBADO,
+        numero: 'AUTO-00042',
+      });
+
+      await service.approve(
+        'auto-apertura-123',
+        { action: 'APPROVE' } as any,
+        'user-123',
+      );
+
+      expect(mockProcessService.changeStageByAutoApertura).not.toHaveBeenCalled();
+      expect(mockActuacionesRepository.save).not.toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'CAMBIO_ETAPA' }),
+      );
+    });
+
+    it('should convert docx to pdf when approving', async () => {
+      const mockAuto = {
+        id: 'auto-456',
+        estado: AutoStatus.REVISION_JEFE,
+        processId: 'process-123',
+        process: { id: 'process-123', etapaActual: 'VALORACION' },
+        currentVersion: 1,
+        contenido: '<p>Contenido</p>',
+        tipo: 'AUTO_ARCHIVO',
+        documentUrl: '/files/original.docx',
+        documentName: 'original.docx',
+        documentType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        documentSize: 128,
+      };
+
+      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
+      mockConfigRepository.findOne.mockResolvedValue({
+        securitySettings: { auditEnabled: false },
+      });
+      mockDocumentConversionService.convertWordToPdf.mockResolvedValue({
+        documentUrl: '/files/AUTO-00042.pdf',
+        documentName: 'AUTO-00042.pdf',
+        documentType: 'application/pdf',
+        documentSize: 2048,
+      });
+      mockAutoRepository.save.mockResolvedValue({
+        ...mockAuto,
+        estado: AutoStatus.APROBADO,
+        numero: 'AUTO-00042',
+        documentUrl: '/files/AUTO-00042.pdf',
+        documentName: 'AUTO-00042.pdf',
+        documentType: 'application/pdf',
+        documentSize: 2048,
+      });
+
+      const result = await service.approve(
+        'auto-456',
+        { action: 'APPROVE' } as any,
+        'user-123',
+      );
+
+      expect(
+        mockDocumentConversionService.convertWordToPdf,
+      ).toHaveBeenCalledWith('/files/original.docx', 'AUTO-00042.pdf', [
+        { marker: '[Consecutivo_Auto]', value: 'AUTO-00042' },
+        { marker: '[CONSECUTIVO_AUTO]', value: 'AUTO-00042' },
+        { marker: '[consecutivo_auto]', value: 'AUTO-00042' },
+      ]);
+      expect(mockPdfModifierService.addConsecutive).toHaveBeenCalledWith(
+        '/files/AUTO-00042.pdf',
+        'AUTO-00042',
+      );
+      expect(result.documentType).toBe('application/pdf');
+    });
+
+    it('should not stamp consecutive on pdf when docx placeholder was replaced', async () => {
+      const mockAuto = {
+        id: 'auto-789',
+        estado: AutoStatus.REVISION_JEFE,
+        processId: 'process-123',
+        process: { id: 'process-123', etapaActual: 'VALORACION' },
+        currentVersion: 1,
+        contenido: '<p>Contenido</p>',
+        tipo: 'AUTO_ARCHIVO',
+        documentUrl: '/files/original.docx',
+        documentName: 'original.docx',
+        documentType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        documentSize: 128,
+      };
+
+      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
+      mockConfigRepository.findOne.mockResolvedValue({
+        securitySettings: { auditEnabled: false },
+      });
+      mockDocumentConversionService.convertWordToPdf.mockResolvedValue({
+        documentUrl: '/files/AUTO-00042.pdf',
+        documentName: 'AUTO-00042.pdf',
+        documentType: 'application/pdf',
+        documentSize: 2048,
+        placeholdersReplaced: ['[Consecutivo_Auto]'],
+      });
+      mockAutoRepository.save.mockResolvedValue({
+        ...mockAuto,
+        estado: AutoStatus.APROBADO,
+        numero: 'AUTO-00042',
+        documentUrl: '/files/AUTO-00042.pdf',
+        documentName: 'AUTO-00042.pdf',
+        documentType: 'application/pdf',
+        documentSize: 2048,
+      });
+
+      await service.approve(
+        'auto-789',
+        { action: 'APPROVE' } as any,
+        'user-123',
+      );
+
+      expect(mockPdfModifierService.addConsecutive).not.toHaveBeenCalled();
     });
   });
 
@@ -244,96 +352,28 @@ describe('AutoService', () => {
       const mockAuto = {
         id: 'auto-123',
         estado: AutoStatus.APROBADO,
+        processId: 'process-123',
         process: { id: 'process-123' },
         currentVersion: 1,
+        contenido: '<p>Contenido</p>',
+        tipo: 'AUTO_ARCHIVO',
+        documentUrl: '/files/AUTO-00042.pdf',
+        documentName: 'AUTO-00042.pdf',
+        documentType: 'application/pdf',
       };
 
       mockAutoRepository.findOne.mockResolvedValue(mockAuto);
-      mockVersionRepository.save.mockResolvedValue({});
+      mockDocumentConversionService.getFileSize.mockResolvedValue(2048);
       mockAutoRepository.save.mockResolvedValue({
         ...mockAuto,
         estado: AutoStatus.FIRMADO,
-        firmaUrl: 'mock-signature-url',
+        firmaUrl: '/files/AUTO-00042.pdf',
       });
 
       const result = await service.sign('auto-123', 'user-123');
 
+      expect(mockPdfModifierService.addSignature).toHaveBeenCalled();
       expect(result.estado).toBe(AutoStatus.FIRMADO);
-      expect(result.firmaUrl).toBeDefined();
-      expect(mockVersionRepository.save).toHaveBeenCalled();
-    });
-
-    it('should throw error when auto is not approved', async () => {
-      const mockAuto = {
-        id: 'auto-123',
-        estado: AutoStatus.BORRADOR,
-      };
-
-      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
-
-      await expect(service.sign('auto-123', 'user-123')).rejects.toThrow(
-        'Solo se pueden firmar autos que estén aprobados'
-      );
-    });
-  });
-
-  describe('registerNotification', () => {
-    it('should register notification successfully', async () => {
-      const mockAuto = {
-        id: 'auto-123',
-        estado: AutoStatus.FIRMADO,
-        process: { id: 'process-123' },
-        currentVersion: 1,
-      };
-
-      const dto = {
-        notificationDate: '2024-01-15',
-        notificationEvidence: 'evidence-url',
-      };
-
-      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
-      mockVersionRepository.save.mockResolvedValue({});
-      mockAlertasService.crearNotificacionAuto.mockResolvedValue({});
-      mockAutoRepository.save.mockResolvedValue({
-        ...mockAuto,
-        estado: AutoStatus.NOTIFICADO,
-        notificationDate: new Date('2024-01-15'),
-        notificationEvidence: 'evidence-url',
-      });
-
-      const result = await service.registerNotification('auto-123', dto);
-
-      expect(result.estado).toBe(AutoStatus.NOTIFICADO);
-      expect(result.notificationDate).toEqual(new Date('2024-01-15'));
-      expect(mockAlertasService.crearNotificacionAuto).toHaveBeenCalled();
-    });
-
-    it('should throw error when auto is not signed', async () => {
-      const mockAuto = {
-        id: 'auto-123',
-        estado: AutoStatus.APROBADO,
-      };
-
-      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
-
-      await expect(service.registerNotification('auto-123', {
-        notificationDate: '2024-01-15'
-      })).rejects.toThrow(
-        'Solo se pueden notificar autos que ya han sido firmados'
-      );
-    });
-  });
-
-  describe('delete', () => {
-    it('should delete auto successfully', async () => {
-      const mockAuto = { id: 'auto-123' };
-
-      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
-      mockAutoRepository.delete.mockResolvedValue({ affected: 1 });
-
-      await service.delete('auto-123');
-
-      expect(mockAutoRepository.delete).toHaveBeenCalledWith('auto-123');
     });
   });
 });

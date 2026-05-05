@@ -1,11 +1,17 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CreateDisciplinaryProcessActuacionDto } from '../dtos/disciplinary-process-actuacion.dto';
 import { DisciplinaryProcessActuacion } from '../entities/disciplinary-process-actuacion.entity';
 import { DisciplinaryProcessActuacionesService } from '../services/disciplinary-process-actuaciones.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
+import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
 
 @ApiTags('Actuaciones Proceso Disciplinario')
 @Controller('disciplinary-processes/:id/actuaciones')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('SUPER_ADMIN', 'ADMIN', DISCIPLINARY_MODULE_ACCESS)
 export class DisciplinaryProcessActuacionesController {
   constructor(
     private readonly actuacionesService: DisciplinaryProcessActuacionesService,

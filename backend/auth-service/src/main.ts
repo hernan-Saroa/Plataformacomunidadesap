@@ -1,10 +1,12 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { ResponseInterceptor } from './common/response.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.getHttpAdapter().getInstance().disable?.('x-powered-by');
 
   // Configurar CORS para desarrollo (permisivo)
   app.enableCors({
@@ -20,6 +22,9 @@ async function bootstrap() {
       'Access-Control-Request-Headers',
       'X-Client-Version',
       'X-Client-Platform',
+      'x-client-platform',
+      'x-client-version',
+      'x-client-platform',
     ],
     exposedHeaders: ['Content-Length', 'Content-Type'],
     credentials: true,
@@ -35,6 +40,7 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalInterceptors(new ResponseInterceptor());
 
   // NOTA: No usar prefijo global ni versionamiento aquí.

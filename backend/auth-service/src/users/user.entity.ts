@@ -7,6 +7,13 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id_user: string;
 
+  @Column({
+    type: 'uuid',
+    unique: true,
+    default: () => 'gen_random_uuid()',
+  })
+  public_id: string;
+
   @Column({ unique: true })
   username: string;
 
@@ -18,6 +25,17 @@ export class User {
 
   @Column({ default: true })
   is_active: boolean;
+
+  @Column({ type: 'numeric', precision: 6, scale: 0, nullable: true })
+  token: string | null;
+
+  @Column({
+    name: 'token_microsoft',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  tokenMicrosoft: string | null;
 
   @CreateDateColumn()
   created_at: Date;
