@@ -10,6 +10,15 @@ import { ListaChequeo } from './entities/lista-chequeo.entity';
 import { ItemListaChequeo } from './entities/item-lista-chequeo.entity';
 import { CreateListaChequeoDto } from './dto/create-lista-chequeo.dto';
 import { UpdateListaChequeoDto } from './dto/update-lista-chequeo.dto';
+import { Auditoria, EstadoKanban } from '../auditorias/entities/auditoria.entity';
+import { EtapaKanban } from '../tableros-kanban/entities/etapa-kanban.entity';
+
+/** Etapas del ciclo en las que aplica una lista de chequeo (alineado con Kanban OCI) */
+const ETAPAS_LISTA_CHEQUEO_KANBAN: EstadoKanban[] = [
+  EstadoKanban.PLANEACION,
+  EstadoKanban.EJECUCION,
+  EstadoKanban.COMUNICACION,
+];
 
 @Injectable()
 export class ListasChequeoService {
@@ -18,7 +27,82 @@ export class ListasChequeoService {
     private readonly listaChequeoRepository: Repository<ListaChequeo>,
     @InjectRepository(ItemListaChequeo)
     private readonly itemRepository: Repository<ItemListaChequeo>,
+    @InjectRepository(Auditoria)
+    private readonly auditoriaRepository: Repository<Auditoria>,
+    @InjectRepository(EtapaKanban)
+    private readonly etapaKanbanRepository: Repository<EtapaKanban>,
   ) {}
+
+  private normalizarNombreEtapa(s: string): string {
+    return (s || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
+  private nombresEtapaEquivalentes(a: string, b: string): boolean {
+    return this.normalizarNombreEtapa(a) === this.normalizarNombreEtapa(b);
+  }
+
+  /** La auditoría debe estar en Planeación, Ejecución o Comunicación para registrar lista */
+  private esEstadoAuditoriaPermitidoParaLista(estadoKanban?: EstadoKanban | string): boolean {
+    if (!estadoKanban) return false;
+    const s = String(estadoKanban);
+    return ETAPAS_LISTA_CHEQUEO_KANBAN.some((perm) =>
+      this.nombresEtapaEquivalentes(s, perm),
+    );
+  }
+
+  /**
+   * Garantiza que la lista se cree/actualice solo en la misma etapa Kanban en que está la auditoría.
+   */
+  private async validarVinculacionAuditoriaEtapa(
+    auditoriaId: string | undefined,
+    etapaKanbanId: string | undefined,
+    etapaNombreKanban: string | undefined,
+  ): Promise<void> {
+    if (!auditoriaId) {
+      return;
+    }
+
+    const aud = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+    });
+    if (!aud) {
+      throw new NotFoundException(`Auditoría con id ${auditoriaId} no encontrada`);
+    }
+
+    const estadoActual = aud.estadoKanban;
+    if (!this.esEstadoAuditoriaPermitidoParaLista(estadoActual)) {
+      throw new BadRequestException(
+        'Solo se pueden registrar listas de chequeo cuando la auditoría está en etapa Planeación, Ejecución o Comunicación (fase actual del Kanban de Auditorías OCI).',
+      );
+    }
+
+    let nombreEtapaLista = etapaNombreKanban;
+    if (etapaKanbanId) {
+      const etapa = await this.etapaKanbanRepository.findOne({
+        where: { id: etapaKanbanId },
+      });
+      if (!etapa) {
+        throw new BadRequestException('La etapa Kanban indicada no existe.');
+      }
+      nombreEtapaLista = etapa.nombre;
+    }
+
+    if (!nombreEtapaLista) {
+      throw new BadRequestException(
+        'Debe indicar la etapa Kanban (etapaKanbanId / etapaNombreKanban) acorde a la auditoría.',
+      );
+    }
+
+    if (!this.nombresEtapaEquivalentes(nombreEtapaLista, String(estadoActual))) {
+      throw new BadRequestException(
+        `La etapa de la lista debe coincidir con la etapa actual de la auditoría en el Kanban (${estadoActual}). No puede crearse para etapas anteriores o posteriores.`,
+      );
+    }
+  }
 
   /**
    * Obtener todas las listas de chequeo (excluyendo eliminadas)
@@ -118,6 +202,12 @@ export class ListasChequeoService {
       );
     }
 
+    await this.validarVinculacionAuditoriaEtapa(
+      createDto.auditoriaId,
+      createDto.etapaKanbanId,
+      createDto.etapaNombreKanban,
+    );
+
     // Crear la lista con valores por defecto para campos requeridos
     const lista = this.listaChequeoRepository.create({
       codigo: createDto.codigo.toUpperCase(),
@@ -179,6 +269,23 @@ export class ListasChequeoService {
    */
   async update(id: string, updateDto: UpdateListaChequeoDto): Promise<ListaChequeo> {
     const lista = await this.findOne(id);
+
+    const auditoriaIdResultado =
+      updateDto.auditoriaId !== undefined ? updateDto.auditoriaId : lista.auditoriaId;
+    const etapaIdResultado =
+      updateDto.etapaKanbanId !== undefined
+        ? updateDto.etapaKanbanId
+        : lista.etapaKanbanId;
+    const etapaNombreResultado =
+      updateDto.etapaNombreKanban !== undefined
+        ? updateDto.etapaNombreKanban
+        : lista.etapaNombreKanban;
+
+    await this.validarVinculacionAuditoriaEtapa(
+      auditoriaIdResultado || undefined,
+      etapaIdResultado || undefined,
+      etapaNombreResultado || undefined,
+    );
 
     // Si se actualiza el código, verificar que no exista otro con ese código
     if (updateDto.codigo && updateDto.codigo !== lista.codigo) {
