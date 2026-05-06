@@ -778,14 +778,30 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   };
 
   /**
-   * Subir nuevo documento al expediente con indicador de firmado
+   * Subir nuevo documento al expediente con indicador de firmado.
    */
   const handleSubirDocumento = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !consulta?.uuid) return;
 
-    if (file.type !== 'application/pdf') {
-      toast.error('Solo se permiten archivos PDF en este módulo');
+    const nombreLower = (file.name || '').toLowerCase();
+    const esDocx =
+      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      nombreLower.endsWith('.docx');
+    const esPdf = file.type === 'application/pdf' || nombreLower.endsWith('.pdf');
+
+    if (firmadoSelection === false && !esDocx) {
+      toast.error('Para documentos "Sin firmar" solo se permite formato Word (.docx)');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (firmadoSelection === true && !esPdf) {
+      toast.error('Para documentos "Firmado" solo se permite formato PDF');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (firmadoSelection === null && !esPdf && !esDocx) {
+      toast.error('Solo se permiten archivos PDF o Word (.docx)');
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -1217,7 +1233,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                     ref={fileInputRef}
                     onChange={handleSubirDocumento}
                     className="hidden"
-                    accept=".pdf"
+                    accept=".pdf,.docx"
                   />
 
                   <div className="flex items-center justify-between gap-4 mb-4">
