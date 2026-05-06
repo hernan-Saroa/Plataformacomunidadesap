@@ -35,7 +35,7 @@ export class DisciplinaryProcessReassignmentController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Datos inválidos o proceso sin profesional asignado',
+    description: 'Datos inválidos',
   })
   @ApiResponse({
     status: 404,

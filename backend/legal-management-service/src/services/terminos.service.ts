@@ -28,8 +28,69 @@ export class TerminosService {
     ) { }
 
     async create(data: Partial<TerminoProcesal>): Promise<TerminoProcesal> {
+        // Si no viene referenciaId pero sí numeroRadicado, intentamos resolverlo
+        // consultando el módulo correspondiente. Esto es necesario porque la columna
+        // referencia_id es NOT NULL en BD, y además permite linkear el término al
+        // registro real para enriquecer dashboards/queries posteriores.
+        if (!data.referenciaId && data.numeroRadicado && data.origenModulo) {
+            try {
+                const radicado = data.numeroRadicado;
+                let resolved: { id: string } | null = null;
+
+                switch (data.origenModulo) {
+                    case 'DEFENSA':
+                    case 'JUZGAMIENTO':
+                        resolved = await this.expedienteRepository.findOne({
+                            where: { radicado },
+                            select: ['id'],
+                        });
+                        break;
+                    case 'ASESORIA':
+                        resolved = await this.consultaRepository.findOne({
+                            where: { numeroRadicado: radicado },
+                            select: ['id'],
+                        });
+                        break;
+                    case 'ORGANOS_CONTROL':
+                        resolved = await this.requerimientoOCRepository.findOne({
+                            where: { radicadoInterno: radicado },
+                            select: ['id'],
+                        });
+                        break;
+                    case 'PROCESOS_COACTIVOS':
+                        resolved = await this.procesoCoactivoRepository.findOne({
+                            where: { radicado },
+                            select: ['id'],
+                        });
+                        break;
+                }
+
+                if (resolved?.id) {
+                    data.referenciaId = resolved.id;
+                }
+            } catch (err) {
+                this.logger.warn(`No se pudo resolver referenciaId para ${data.numeroRadicado} (${data.origenModulo}): ${(err as any)?.message}`);
+            }
+        }
+
+        // Fallback: si todavía no hay referenciaId y la BD lo requiere NOT NULL,
+        // generamos un UUID v4 random para no romper la inserción. El término
+        // queda creado pero sin link directo (queda solo el numeroRadicado como referencia textual).
+        if (!data.referenciaId) {
+            data.referenciaId = this.generateUuidV4();
+        }
+
         const termino = this.terminoRepository.create(data);
         return this.terminoRepository.save(termino);
+    }
+
+    private generateUuidV4(): string {
+        // RFC4122 v4 — Postgres acepta este formato como uuid válido.
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = (Math.random() * 16) | 0;
+            const v = c === 'x' ? r : (r & 0x3) | 0x8;
+            return v.toString(16);
+        });
     }
 
 

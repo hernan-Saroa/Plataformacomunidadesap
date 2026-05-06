@@ -4,10 +4,14 @@ import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ExpedienteService } from '../services/expediente.service';
 import { Expediente } from '../entities/expediente.entity';
+import { NotificationClientService } from '../services/notification-client.service';
 
 @Controller('expedientes')
 export class ExpedienteController {
-    constructor(private readonly expedienteService: ExpedienteService) { }
+    constructor(
+        private readonly expedienteService: ExpedienteService,
+        private readonly notificationClient: NotificationClientService,
+    ) { }
 
     @Get()
     async listar(
@@ -151,6 +155,84 @@ export class ExpedienteController {
     ): Promise<Expediente> {
         const usuario = body.usuario || 'Sistema';
         return this.expedienteService.desanexarExpediente(id, usuario);
+    }
+
+    /**
+     * Notifica a todos los usuarios con un rol específico (ej: JEFE_GESTION_LEGAL).
+     * Envía notificación in-app vía notifications-service y, opcionalmente, correo.
+     * Reutiliza el `NotificationClientService.notifyByRoles` ya probado.
+     */
+    @Post(':id/notify-role')
+    async notifyRole(
+        @Param('id') id: string,
+        @Body() body: {
+            roleCode: string;
+            asunto: string;
+            mensaje: string;
+            enviarEmail?: boolean;
+            enviarSistema?: boolean;
+            radicado?: string;
+            etapa?: string;
+        }
+    ): Promise<{ ok: boolean }> {
+        if (!body.roleCode || !body.asunto || !body.mensaje) {
+            throw new BadRequestException('roleCode, asunto y mensaje son obligatorios');
+        }
+
+        const expediente = await this.expedienteService.findOne(id);
+        if (!expediente) {
+            throw new BadRequestException('Expediente no encontrado');
+        }
+
+        const radicado = body.radicado || expediente.radicado;
+        const etapa = body.etapa || expediente.etapaProcesal || 'N/A';
+
+        const enviarSistema = body.enviarSistema !== false;
+        const enviarEmail = body.enviarEmail !== false;
+
+        const emailHtml = `
+            <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
+                <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden;">
+                    <tr><td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">Gestión Legal ESAP</td></tr>
+                    <tr><td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">${body.asunto}</td></tr>
+                    <tr><td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6; white-space: pre-line;">${body.mensaje}</td></tr>
+                    <tr><td style="padding: 12px 24px; font-size: 12px; color: #6b7280; background: #f0f7ff; border-top: 1px solid #d7e9ff;"><strong>Expediente:</strong> ${radicado}<br/><strong>Etapa:</strong> ${etapa}</td></tr>
+                    <tr><td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">ESAP - Escuela Superior de Administración Pública</td></tr>
+                </table>
+            </div>`;
+
+        const dto = {
+            tipo_notificacion: 'NOTIFICACION_EXPEDIENTE',
+            titulo: body.asunto,
+            mensaje: body.mensaje,
+            descripcion_corta: `Expediente ${radicado}`,
+            icono: 'Bell',
+            color: '#1D4ED8',
+            prioridad: 'Media' as const,
+            categoria: 'gestion-legal',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver expediente',
+            url_accion: `/gestion-legal?modulo=defensa-judicial&radicado=${encodeURIComponent(radicado)}`,
+            datos_adicionales: { expedienteId: expediente.id, radicado, etapa },
+        };
+
+        if (enviarSistema && enviarEmail) {
+            await this.notificationClient.notifyByRoles([body.roleCode], dto, {
+                subject: body.asunto,
+                html: emailHtml,
+            });
+        } else if (enviarSistema) {
+            await this.notificationClient.notifyByRole(body.roleCode, dto);
+        } else if (enviarEmail) {
+            const usuarios = await this.notificationClient.getUsersDetailsByRole(body.roleCode);
+            for (const u of usuarios) {
+                if (u.email) {
+                    await this.notificationClient.sendEmail(u.email, body.asunto, emailHtml);
+                }
+            }
+        }
+
+        return { ok: true };
     }
 }
 
