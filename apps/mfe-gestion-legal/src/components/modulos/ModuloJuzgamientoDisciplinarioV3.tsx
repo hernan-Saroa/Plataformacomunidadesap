@@ -297,7 +297,75 @@ export function ModuloJuzgamientoDisciplinarioV3() {
         ultimaActuacion: p.actuaciones && p.actuaciones.length > 0 ? p.actuaciones[0].descripcion : 'Inicio del proceso',
         documentosAdjuntos: p.documentos ? p.documentos.length : 0,
       }));
-      setProcesos(mappedData);
+
+      // ✅ Filtrado por rol RESUELVE_GESTION_LEGAL (igual que en Defensa Judicial)
+      const abogadosData = await legalService.getAbogados().catch(() => []);
+      const currentUser = authService.getCurrentUser() as any;
+      const isResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
+      let procesosFiltrados = mappedData;
+
+      if (isResuelve && currentUser) {
+        const cuEmail: string = (
+          currentUser.email ??
+          currentUser.person?.email ??
+          currentUser.mail ??
+          ''
+        ).toLowerCase();
+        const cuName: string = (
+          currentUser.fullName ??
+          currentUser.full_name ??
+          currentUser.name ??
+          (currentUser.firstName || currentUser.first_name
+            ? `${currentUser.firstName ?? currentUser.first_name ?? ''} ${currentUser.lastName ?? currentUser.last_name ?? ''}`.trim()
+            : null) ??
+          (currentUser.person?.first_name
+            ? `${currentUser.person.first_name ?? ''} ${currentUser.person.last_name ?? ''}`.trim()
+            : null) ??
+          ''
+        ).toLowerCase();
+        const cuIds = new Set<string>(
+          [
+            currentUser.id,
+            currentUser.id_user,
+            currentUser.user?.id,
+            currentUser.user?.id_user,
+            currentUser.person?.id,
+          ].filter(Boolean)
+        );
+
+        console.log('[DEBUG RESUELVE JUZGAMIENTO] email:', cuEmail, '| nombre:', cuName, '| ids:', [...cuIds]);
+
+        const myAbogado = Array.isArray(abogadosData)
+          ? abogadosData.find((a: any) => {
+              if (a.id && cuIds.has(a.id)) return true;
+              if ((a as any).rawId && cuIds.has((a as any).rawId)) return true;
+              if ((a as any).authId && cuIds.has((a as any).authId)) return true;
+              if (cuEmail && a.email && (a.email as string).toLowerCase() === cuEmail) return true;
+              const aNombre = (a.nombre ?? a.nombreCompleto ?? '').toLowerCase();
+              if (cuName && aNombre && aNombre === cuName) return true;
+              return false;
+            })
+          : null;
+
+        if (myAbogado) {
+          procesosFiltrados = mappedData.filter((p: any) => {
+            if (myAbogado.id && p.abogadoAsignado === myAbogado.id) return true;
+            if ((myAbogado as any).rawId && p.abogadoAsignado === (myAbogado as any).rawId) return true;
+            if ((myAbogado as any).authId && p.abogadoAsignado === (myAbogado as any).authId) return true;
+            if (myAbogado.nombre && p.abogadoAsignado === myAbogado.nombre) return true;
+            if (myAbogado.nombreCompleto && p.abogadoAsignado === myAbogado.nombreCompleto) return true;
+            return false;
+          });
+        } else {
+          // Fallback: filtrar directamente por IDs del usuario contra abogadoAsignado
+          procesosFiltrados = mappedData.filter((p: any) =>
+            cuIds.has(p.abogadoAsignado as string)
+          );
+        }
+        console.log('[DEBUG RESUELVE JUZGAMIENTO] filtrados:', procesosFiltrados.length, 'de', mappedData.length);
+      }
+
+      setProcesos(procesosFiltrados);
     } catch (error) {
       console.error('Error fetching procesos:', error);
       toast.error('Error al cargar expedientes disciplinarios');
