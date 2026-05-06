@@ -784,10 +784,22 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     const file = event.target.files?.[0];
     if (!file || !consulta?.uuid) return;
 
-    if (file.type !== 'application/pdf') {
-      toast.error('Solo se permiten archivos PDF en este módulo');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
+    const WORD_TYPES = [
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+    if (firmadoSelection === 'firmado') {
+      if (file.type !== 'application/pdf') {
+        toast.error('Los documentos firmados deben ser en formato PDF');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+    } else {
+      if (!WORD_TYPES.includes(file.type) && !file.name.match(/\.(docx?|doc)$/i)) {
+        toast.error('Los documentos sin firmar deben ser en formato Word (.doc, .docx)');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
     }
 
     setUploadingDoc(true);
@@ -795,7 +807,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     formData.append('archivo', file);
     formData.append('nombre', file.name);
     formData.append('tipoDocumento', 'adjunto');
-    formData.append('firmado', firmadoSelection ? 'true' : 'false');
+    formData.append('firmado', firmadoSelection === 'firmado' ? 'true' : 'false');
 
     try {
       await legalService.uploadDocumentoConsulta(consulta.uuid, formData);
@@ -1217,7 +1229,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                     ref={fileInputRef}
                     onChange={handleSubirDocumento}
                     className="hidden"
-                    accept=".pdf"
+                    accept={firmadoSelection === 'firmado' ? '.pdf,application/pdf' : '.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'}
                   />
 
                   <div className="flex items-center justify-between gap-4 mb-4">

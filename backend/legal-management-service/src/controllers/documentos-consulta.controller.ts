@@ -25,7 +25,24 @@ export class DocumentosConsultaController {
                 const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
                 cb(null, `${randomName}${extname(file.originalname)}`);
             }
-        })
+        }),
+        fileFilter: (req, file, cb) => {
+            const esFirmado = req.body?.firmado === 'true' || req.body?.firmado === '1';
+            const WORD_MIME_TYPES = [
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'application/msword',
+            ];
+            if (esFirmado) {
+                if (file.mimetype !== 'application/pdf') {
+                    return cb(new BadRequestException('Los documentos firmados deben ser en formato PDF'), false);
+                }
+            } else {
+                if (!WORD_MIME_TYPES.includes(file.mimetype) && !file.originalname.match(/\.(docx?|doc)$/i)) {
+                    return cb(new BadRequestException('Los documentos sin firmar deben ser en formato Word (.doc, .docx)'), false);
+                }
+            }
+            cb(null, true);
+        }
     }))
     async createDocumento(
         @Param('consultaId') consultaId: string,
@@ -65,7 +82,13 @@ export class DocumentosConsultaController {
                 const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
                 cb(null, `${randomName}${extname(file.originalname)}`);
             }
-        })
+        }),
+        fileFilter: (req, file, cb) => {
+            if (file.mimetype !== 'application/pdf') {
+                return cb(new BadRequestException('El documento firmado debe ser en formato PDF'), false);
+            }
+            cb(null, true);
+        }
     }))
     async replaceDocumento(
         @Param('documentoId') documentoId: string,
