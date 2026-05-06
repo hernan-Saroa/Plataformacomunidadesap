@@ -66,3 +66,21 @@ export function getDockerDistDir(appDir) {
 export function getFrontendApp(appDir) {
   return frontendApps.find((app) => app.appDir === appDir);
 }
+
+export function stripBundleComments() {
+  return {
+    name: 'strip-bundle-comments',
+    generateBundle(_, bundle) {
+      for (const chunk of Object.values(bundle)) {
+        if (chunk.type === 'chunk' && chunk.code) {
+          // Remove /* ... */ block comments (includes license headers and TODOs)
+          chunk.code = chunk.code.replace(/\/\*[\s\S]*?\*\//g, '');
+          // Remove standalone // comment lines
+          chunk.code = chunk.code.replace(/^\s*\/\/[^\n]*\n?/gm, '');
+          // Remove // inline comments after statement terminators (never appears in URLs)
+          chunk.code = chunk.code.replace(/([;,})\]]) *\/\/[^\n]*/g, '$1');
+        }
+      }
+    },
+  };
+}
