@@ -12,6 +12,7 @@ export { ValidarCertificadoQR } from './ValidarCertificadoQR';
 export { ValidarCertificadoPublico } from './ValidarCertificadoPublico';
 export { SolicitarCertificadoForm } from './SolicitarCertificadoForm';
 export { GenerarCertificadoModal } from './GenerarCertificadoModal';
+export { GenerarReporteCertificadosModal } from './GenerarReporteCertificadosModal';
 export { CertificadoDetalleModal } from './CertificadoDetalleModal';
 export { ConfiguracionPlantilla } from './ConfiguracionPlantilla';
 export { PrimaTecnicaModal } from './PrimaTecnicaModal';

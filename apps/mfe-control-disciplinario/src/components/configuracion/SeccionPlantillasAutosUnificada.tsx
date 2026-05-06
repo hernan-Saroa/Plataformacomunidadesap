@@ -29,13 +29,21 @@ export const ETAPAS_PROCESO = {
     icon: FileText,
     orden: 0
   },
+  VALORACION: {
+    id: 'VALORACION',
+    nombre: 'Valoración',
+    descripcion: 'Valoración inicial de la noticia disciplinaria',
+    color: '#06B6D4',
+    icon: Info,
+    orden: 1
+  },
   INDAGACION_PREVIA: {
     id: 'INDAGACION_PREVIA',
     nombre: 'Indagación Previa',
     descripcion: 'Verificación preliminar de los hechos',
     color: '#8B5CF6',
     icon: Info,
-    orden: 1
+    orden: 2
   },
   INDAGACION: {
     id: 'INDAGACION',
@@ -43,7 +51,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Indagación preliminar para determinar si hay mérito para abrir proceso',
     color: '#3B82F6',
     icon: Info,
-    orden: 2
+    orden: 3
   },
   INVESTIGACION: {
     id: 'INVESTIGACION',
@@ -51,7 +59,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Se recopilan pruebas y testimonios',
     color: '#2962FF',
     icon: FileCheck,
-    orden: 3
+    orden: 4
   },
   EVALUACION: {
     id: 'EVALUACION',
@@ -59,7 +67,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Evaluación de la investigación',
     color: '#F59E0B',
     icon: Scale,
-    orden: 4
+    orden: 5
   },
   CARGOS: {
     id: 'CARGOS',
@@ -67,7 +75,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Se formula el pliego de cargos al investigado',
     color: '#F97316',
     icon: Scale,
-    orden: 5
+    orden: 6
   },
   JUZGAMIENTO: {
     id: 'JUZGAMIENTO',
@@ -75,7 +83,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Diligencias de descargos y práctica de pruebas',
     color: '#DC2626',
     icon: Gavel,
-    orden: 6
+    orden: 7
   },
   FALLO: {
     id: 'FALLO',
@@ -83,7 +91,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Se emite la decisión final del proceso',
     color: '#10B981',
     icon: Gavel,
-    orden: 7
+    orden: 8
   },
   SEGUNDA_INSTANCIA: {
     id: 'SEGUNDA_INSTANCIA',
@@ -91,7 +99,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Recurso de apelación',
     color: '#059669',
     icon: FileCheck,
-    orden: 8
+    orden: 9
   },
   ARCHIVO: {
     id: 'ARCHIVO',
@@ -99,7 +107,7 @@ export const ETAPAS_PROCESO = {
     descripcion: 'Archivos en cualquier etapa del proceso',
     color: '#DC2626',
     icon: Archive,
-    orden: 9
+    orden: 10
   }
 } as const;
 

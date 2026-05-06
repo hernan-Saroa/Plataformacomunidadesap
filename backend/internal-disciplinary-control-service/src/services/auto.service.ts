@@ -18,6 +18,7 @@ import { SequenceService } from './sequence.service';
 import { JuridicaEmailService } from './juridica-email.service';
 import {
   DisciplinaryProcess,
+  ProcessStage,
   ProcessStatus,
 } from '../entities/disciplinary-process.entity';
 
@@ -244,6 +245,15 @@ export class AutoService {
 
       if (auto.tipo === AutoType.AUTO_ARCHIVO) {
         await this.archiveProcess(auto.processId, aprobadoPorId);
+      }
+
+      // Si es AUTO_APERTURA_*, transicionar el proceso a la etapa destino
+      if (auto.tipo.startsWith('AUTO_APERTURA_') && auto.etapaDestino) {
+        await this.processService.changeStageByAutoApertura(
+          auto.processId,
+          auto.etapaDestino as ProcessStage,
+          new Date(),
+        );
       }
 
       // Si es AUTO_PRORROGA, extender la fecha de vencimiento de la etapa activa

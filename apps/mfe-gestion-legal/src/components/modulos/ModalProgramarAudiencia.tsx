@@ -100,7 +100,7 @@ export function ModalProgramarAudiencia({
       // Fix mapping: ModalExpediente passes linkReunion, component uses linkVirtual
       setLinkVirtual(audienciaExistente.linkReunion || audienciaExistente.linkVirtual || '');
       setJuez(audienciaExistente.juez || '');
-      setAbogadoResponsable(audienciaExistente.abogadoResponsable || '');
+      setAbogadoResponsable(audienciaExistente.abogadoId || audienciaExistente.abogadoResponsable || '');
       setObjetivoAudiencia(audienciaExistente.objetivo || '');
       setObservaciones(audienciaExistente.observaciones || '');
 

@@ -986,6 +986,10 @@ class DisciplinaryService {
         return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}`, data);
     }
 
+    async restoreProcess(id: string): Promise<DisciplinaryProcess> {
+        return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/restore`, {});
+    }
+
     async getProcesoByRadicado(radicado: string): Promise<DisciplinaryProcess> {
         const safeRadicado = encodeURIComponent(radicado);
         return apiClient.get<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/by-radicado/${safeRadicado}`);

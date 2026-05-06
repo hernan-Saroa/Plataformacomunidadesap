@@ -159,7 +159,7 @@ export function VisorPDFCertificado({
       observations,
       templateType,
       includeCodeLabel: true,
-      codeLabel: 'Codigo',
+      codeLabel: 'Código',
     });
 
   const obtenerSnapshotPlantilla = () => {
