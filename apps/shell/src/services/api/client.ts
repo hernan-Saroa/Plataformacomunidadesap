@@ -530,9 +530,9 @@ class APIClient {
    * Métodos de autenticación
    */
 
-  login(accessToken: string, refreshToken: string, userData: any): void {
+  login(accessToken: string, refreshToken: string, _userData: any): void {
     this.setTokens(accessToken, refreshToken);
-    sessionStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData));
+    // user data managed in-memory by authService (OTIC-002)
   }
 
   logout(): void {
@@ -544,8 +544,8 @@ class APIClient {
   }
 
   getUserData(): any | null {
-    const data = sessionStorage.getItem(STORAGE_KEYS.USER_DATA);
-    return data ? JSON.parse(data) : null;
+    // user data managed in-memory by authService (OTIC-002)
+    return null;
   }
 }
 

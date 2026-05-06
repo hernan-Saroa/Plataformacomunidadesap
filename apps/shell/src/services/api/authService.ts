@@ -14,6 +14,9 @@ import type {
 } from '../../types';
 
 class AuthService {
+  // In-memory user cache — never written to sessionStorage/localStorage (OTIC-002)
+  private _cachedUser: AuthUser | null = null;
+
   /**
    * Login con Microsoft (OAuth)
    */
@@ -141,18 +144,24 @@ class AuthService {
   // ==========================================================================
 
   /**
+   * Permite que App.tsx restaure el caché tras verifyToken() en recarga de página (OTIC-002)
+   */
+  setCurrentUserCache(user: AuthUser): void {
+    this._cachedUser = user;
+  }
+
+  /**
    * Verifica si el usuario está autenticado
    */
   isAuthenticated(): boolean {
-    return !!sessionStorage.getItem(config.STORAGE_KEYS.USER_DATA);
+    return this._cachedUser !== null;
   }
 
   /**
    * Obtiene el usuario actual de la sesión
    */
   getCurrentUser(): AuthUser | null {
-    const userData = sessionStorage.getItem(config.STORAGE_KEYS.USER_DATA);
-    return userData ? JSON.parse(userData) : null;
+    return this._cachedUser;
   }
 
   /**
@@ -235,12 +244,17 @@ class AuthService {
     // El frontend nunca los almacena en sessionStorage/localStorage.
   }
 
-  private saveUserData(user: AuthUser): void {
-    sessionStorage.setItem(config.STORAGE_KEYS.USER_DATA, JSON.stringify(user));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private saveUserData(user: any): void {
+    // Datos del usuario en memoria únicamente — nunca en sessionStorage/localStorage (OTIC-002)
+    this._cachedUser = user as AuthUser;
   }
 
   private clearAuthData(): void {
+    this._cachedUser = null;
+    // Limpiar residuos de versiones anteriores que pudieran quedar en storage
     sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
+    localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     apiClient.clearCache();
   }
 
