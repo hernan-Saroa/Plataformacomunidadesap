@@ -640,17 +640,6 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
     input.click();
   };
 
-  const handleCerrar = () => {
-    if (hasChanges) {
-      if (confirm('⚠️ Tienes cambios sin guardar. ¿Deseas cerrar sin guardar los cambios?')) {
-        setHasChanges(false);
-        onClose();
-      }
-    } else {
-      onClose();
-    }
-  };
-
   // Removed old handleDescargarPrueba, simplified to use same logic or dedicated logic
   // The UI calls handleDescargarDocumento for documents, maybe handleVerPrueba is just for viewing.
   // ==================== FUNCIONES PARA ACTUACIONES ====================
@@ -2153,43 +2142,48 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
 
       {/* ==================== MODAL CAMBIOS SIN GUARDAR ==================== */}
       <Dialog open={modalCerrarOpen} onOpenChange={setModalCerrarOpen}>
-        <DialogContent hideCloseButton className="max-w-md">
+        <DialogContent
+          hideCloseButton
+          className="w-[380px] max-w-[90vw] p-0 overflow-hidden"
+          style={{ zIndex: 10000 }}
+        >
           <DialogTitle className="sr-only">Cambios sin guardar</DialogTitle>
           <DialogDescription className="sr-only">
             Hay cambios sin guardar en el expediente. ¿Desea salir de todas formas?
           </DialogDescription>
-          <div className="space-y-5 p-2">
-            <div className="flex items-start gap-4 p-4 bg-amber-50 rounded-xl border-2 border-amber-300">
-              <div className="p-2 bg-amber-100 rounded-lg flex-shrink-0">
-                <AlertTriangle className="w-6 h-6 text-amber-600" />
-              </div>
-              <div>
-                <h3 className="font-bold text-gray-900 text-base">¿Salir sin guardar?</h3>
-                <p className="text-sm text-gray-600 mt-1">
-                  Tiene cambios registrados en este expediente que podrían no haberse confirmado.
-                  Los documentos, actuaciones y notas ya subidos se guardan automáticamente.
-                  ¿Desea cerrar el expediente de todas formas?
-                </p>
-              </div>
+          {/* Header */}
+          <div className="flex items-center gap-3 px-5 py-4 bg-amber-50 border-b border-amber-200">
+            <div className="p-1.5 bg-amber-100 rounded-lg flex-shrink-0">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
             </div>
-            <div className="flex gap-3 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => setModalCerrarOpen(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
-                onClick={() => {
-                  setModalCerrarOpen(false);
-                  setHasChanges(false);
-                  onClose();
-                }}
-              >
-                Sí, cerrar
-              </Button>
-            </div>
+            <h3 className="font-bold text-gray-900 text-sm">¿Salir sin guardar?</h3>
+          </div>
+          {/* Body */}
+          <div className="px-5 py-4">
+            <p className="text-sm text-gray-600 leading-relaxed">
+              Tiene cambios que podrían no haberse confirmado. Los documentos y actuaciones ya subidos se guardan automáticamente.
+            </p>
+          </div>
+          {/* Footer */}
+          <div className="flex gap-2 justify-end px-5 pb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setModalCerrarOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+              onClick={() => {
+                setModalCerrarOpen(false);
+                setHasChanges(false);
+                onClose();
+              }}
+            >
+              Sí, cerrar
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

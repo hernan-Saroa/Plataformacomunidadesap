@@ -40,6 +40,9 @@ interface ModuleLayoutProps {
   
   // Opciones
   initialSidebarCollapsed?: boolean;
+
+  // ✅ Acciones adicionales en el header del área de contenido
+  headerActions?: ReactNode;
 }
 
 export function ModuleLayout({
@@ -51,7 +54,8 @@ export function ModuleLayout({
   activeSection,
   onSectionChange,
   children,
-  initialSidebarCollapsed = false
+  initialSidebarCollapsed = false,
+  headerActions,
 }: ModuleLayoutProps) {
   // Detectar tamaño de pantalla
   const [windowWidth, setWindowWidth] = useState(
@@ -397,25 +401,33 @@ export function ModuleLayout({
       </motion.aside>
 
       {/* CONTENIDO PRINCIPAL */}
-      <main className="flex-1 flex flex-col w-full overflow-y-auto">
-        {/* Header CON BOTÓN HAMBURGUESA MOBILE */}
-        {isMobile && (
-          <div className="p-3 border-b-2" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
-            <Button
-              onClick={() => setMobileMenuOpen(true)}
-              variant="ghost"
-              size="sm"
-              className="flex-shrink-0 -ml-2"
-              style={{ color: moduleColor }}
-            >
-              <Menu className="w-6 h-6" />
-            </Button>
+      <main className="flex-1 flex flex-col w-full overflow-hidden">
+        {/* Header CON BOTÓN HAMBURGUESA MOBILE + ACCIONES (FIJO) */}
+        {(isMobile || headerActions) && (
+          <div className="px-4 py-3 border-b-2 flex items-center justify-between flex-shrink-0" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
+            {isMobile ? (
+              <Button
+                onClick={() => setMobileMenuOpen(true)}
+                variant="ghost"
+                size="sm"
+                className="flex-shrink-0 -ml-2"
+                style={{ color: moduleColor }}
+              >
+                <Menu className="w-6 h-6" />
+              </Button>
+            ) : <div />}
+            
+            {headerActions && (
+              <div className="flex items-center gap-3">
+                {headerActions}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Área de Contenido con Scroll - PADDING REDUCIDO */}
-        <div className="flex-1">
-          <div className="p-2">
+        {/* Área de Contenido con Scroll */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-4">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeSection}

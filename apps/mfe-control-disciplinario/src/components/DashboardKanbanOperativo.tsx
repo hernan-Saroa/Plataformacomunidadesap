@@ -4709,53 +4709,10 @@ export function DashboardKanbanOperativo({
     try {
       if (item.tipo === 'noticia') {
         itemRestaurado.estado = 'pendiente';
-        // Persistir restauración en el backend para noticias
         await disciplinaryService.restoreNews(item.id);
       } else {
-        // Para procesos, llamar directamente al servicio disciplinario (bypass API gateway)
-        console.log('Restoring process:', item.id, 'Calling disciplinary service directly');
-
-        try {
-          // Call disciplinary service directly on port 3005
-          const response = await fetch(`http://localhost:3005/disciplinary-processes/${item.id}/restore`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || ''}`,
-            },
-            body: JSON.stringify({}),
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Direct service call failed:', response.status, errorText);
-            throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-          }
-
-          const result = await response.json();
-          console.log('Restore successful:', result);
-        } catch (directError) {
-          console.error('Direct service call failed, trying gateway fallback:', directError);
-
-          // Fallback to gateway if direct call fails
-          try {
-            const gatewayResponse = await fetch(`/control-disciplinario/api/v1/disciplinary-processes/${item.id}/restore`, {
-              method: 'PATCH',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({}),
-            });
-            if (!gatewayResponse.ok) {
-              throw new Error(`Gateway error! status: ${gatewayResponse.status}`);
-            }
-          } catch (gatewayError) {
-            console.error('Both direct and gateway calls failed');
-            throw gatewayError;
-          }
-        }
-
-        itemRestaurado.restaurado = true; // El backend ya lo actualizó, pero marcamos localmente
+        await disciplinaryService.restoreProcess(item.id);
+        itemRestaurado.restaurado = true;
       }
 
       setItems(prev => [...prev, itemRestaurado]);
