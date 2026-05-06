@@ -38,7 +38,7 @@ export class MicrosoftGraphService {
     private readonly tenantId = process.env.AZURE_TENANT_ID || '';
     private readonly clientId = process.env.AZURE_CLIENT_ID || '';
     private readonly clientSecret = process.env.AZURE_CLIENT_SECRET || '';
-    private readonly emailAccount = process.env.EMAIL_ACCOUNT_QA || 'desarrollo.ccd@esap.edu.co';
+    private readonly emailAccount = process.env.LEGAL_EMAIL_ACCOUNT || 'desarrollo.ccd@esap.edu.co';
 
     private getClient(): Client {
         if (this.graphClient) {
