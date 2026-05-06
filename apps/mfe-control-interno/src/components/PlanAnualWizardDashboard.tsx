@@ -339,6 +339,58 @@ function inferirTipoEvidenciaParaWizard(act: ActividadBase & { configuracionEvid
   return desdeConfig ?? 'SOLO_CHECK';
 }
 
+/** Ajusta solo el año de una fecha ISO YYYY-MM-DD (preserva mes/día). */
+function reemplazarAnioEnFechaIso(iso: string | undefined | null, año: number): string {
+  if (!iso || iso.length < 10) return iso || '';
+  if (!/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso;
+  return `${año}${iso.slice(4)}`;
+}
+
+function sumarAniosIso(iso: string, años: number): string {
+  const parts = iso.split('-').map(Number);
+  if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return iso;
+  const [y, m, d] = parts;
+  const nd = new Date(y + años, m - 1, d);
+  if (Number.isNaN(nd.getTime())) return iso;
+  const yyyy = nd.getFullYear();
+  const mm = String(nd.getMonth() + 1).padStart(2, '0');
+  const dd = String(nd.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Desplaza todas las fechas de entrega para que la más temprana caiga en `vigencia`
+ * (conserva separación entre tareas, p. ej. julio vs enero siguiente).
+ */
+function alinearTareasFechasEntregaAVigencia(
+  tareas: TareaSeguimiento[] | undefined,
+  vigencia: number
+): TareaSeguimiento[] | undefined {
+  if (!tareas?.length) return tareas;
+  const años = tareas
+    .map((t) => t.fechaEntrega?.slice(0, 4))
+    .filter((y): y is string => !!y && /^\d{4}$/.test(y))
+    .map((y) => parseInt(y, 10));
+  if (años.length === 0) return tareas;
+  const minAño = Math.min(...años);
+  const delta = vigencia - minAño;
+  if (delta === 0) return tareas;
+  return tareas.map((t) => ({
+    ...t,
+    fechaEntrega: t.fechaEntrega ? sumarAniosIso(t.fechaEntrega, delta) : t.fechaEntrega,
+  }));
+}
+
+/** Fecha de corte mostrada: último cierre del último punto de control si existe. */
+function fechaCorteDisplayDesdeActividad(act: ActividadBase): string | undefined {
+  const pcs = act.puntosControl;
+  if (pcs && pcs.length > 0) {
+    const ult = pcs[pcs.length - 1];
+    return ult.fechaSeguimiento || ult.fechaProgramada;
+  }
+  return act.fechaCorte;
+}
+
 function contarActividadesIncluidas(rol: RolConfig): number {
   return rol.actividadesSeleccionadas.filter(actividadIncluidaEnPlan).length;
 }
@@ -974,36 +1026,6 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     });
   }, [planAEditar]); // draft no está como dependencia para que evalúe el closure inicial
 
-  // Actualizar fechas de puntos de control Y actividades cuando cambie la vigencia
-  useEffect(() => {
-    // Solo actualizar si el año es válido (evita fechas rotas al escribir valores intermedios)
-    if (!vigencia || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100) return;
-    
-    // Propagar fechaInicio y fechaFin del plan a la vigencia actual
-    setFechaInicio(`${vigencia}-01-01`);
-    setFechaFin(`${vigencia}-12-31`);
-    
-    setRolesConfig(prev => prev.map(rol => ({
-      ...rol,
-      actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
-        const año = vigencia;
-        return {
-          ...act,
-          // """ FECHAS DINÁMICAS: siempre reflejan la vigencia del plan """
-          fechaInicio: `${año}-01-01`,
-          fechaFin: `${año}-12-31`,
-          fechaCorte: `${año}-12-31`,
-          // No sobreescribir puntosControl: se regeneran desde el modal al configurar
-        };
-      }),
-      actividadesCustom: (rol.actividadesCustom || []).map(act => ({
-        ...act,
-        fechaInicio: `${vigencia}-01-01`,
-        fechaFin: `${vigencia}-12-31`,
-        fechaCorte: `${vigencia}-12-31`,
-      }))
-    })));
-  }, [vigencia]);
   const [rolesConfig, setRolesConfig] = useState<RolConfig[]>(() => {
     // 1. Si existe un borrador, recuperar configuracion de roles (PRIORIDAD: progreso más reciente)
     if (draft && draft.rolesConfig) {
@@ -1169,6 +1191,65 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
       };
     })
   });
+
+  // Sincronizar vigencia con cortes (puntos de control), fecha de corte y fechas de entrega de tareas.
+  useEffect(() => {
+    if (!vigencia || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100) return;
+
+    setFechaInicio(`${vigencia}-01-01`);
+    setFechaFin(`${vigencia}-12-31`);
+
+    setRolesConfig((prev) =>
+      prev.map((rol) => ({
+        ...rol,
+        actividadesSeleccionadas: rol.actividadesSeleccionadas.map((act) => {
+          const año = vigencia;
+          const puntos = act.puntosControl || [];
+          const nuevosPuntos = puntos.map((pc) => ({
+            ...pc,
+            fechaProgramada: reemplazarAnioEnFechaIso(pc.fechaProgramada, año),
+            fechaSeguimiento: pc.fechaSeguimiento
+              ? reemplazarAnioEnFechaIso(pc.fechaSeguimiento, año)
+              : pc.fechaSeguimiento,
+          }));
+          const ultimoSeg =
+            nuevosPuntos.length > 0
+              ? nuevosPuntos[nuevosPuntos.length - 1].fechaSeguimiento
+              : undefined;
+          return {
+            ...act,
+            fechaInicio: `${año}-01-01`,
+            fechaFin: `${año}-12-31`,
+            fechaCorte: ultimoSeg || `${año}-12-31`,
+            puntosControl: nuevosPuntos.length > 0 ? nuevosPuntos : act.puntosControl,
+            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(act.tareasSeguimiento, vigencia),
+          };
+        }),
+        actividadesCustom: (rol.actividadesCustom || []).map((act) => {
+          const puntos = act.puntosControl || [];
+          const nuevosPuntos = puntos.map((pc) => ({
+            ...pc,
+            fechaProgramada: reemplazarAnioEnFechaIso(pc.fechaProgramada, vigencia),
+            fechaSeguimiento: pc.fechaSeguimiento
+              ? reemplazarAnioEnFechaIso(pc.fechaSeguimiento, vigencia)
+              : pc.fechaSeguimiento,
+          }));
+          const ultimoSeg =
+            nuevosPuntos.length > 0
+              ? nuevosPuntos[nuevosPuntos.length - 1].fechaSeguimiento
+              : undefined;
+          return {
+            ...act,
+            fechaInicio: `${vigencia}-01-01`,
+            fechaFin: `${vigencia}-12-31`,
+            fechaCorte: ultimoSeg || `${vigencia}-12-31`,
+            puntosControl: nuevosPuntos.length > 0 ? nuevosPuntos : act.puntosControl,
+            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(act.tareasSeguimiento, vigencia),
+          };
+        }),
+      }))
+    );
+  }, [vigencia]);
 
   // Refuerzo de integridad para datos heredados: nunca permitir más de 1 responsable por rol/actividad.
   useEffect(() => {
@@ -2762,6 +2843,7 @@ function Paso2({
                             const actividadData = rol.actividadesSeleccionadas.find(a => a.id === actId || a.nombre === actividad.nombre);
                             /** UUID del backend vs id sintético del template  las mutaciones deben usar el id real en estado */
                             const idActividadEnEstado = actividadData?.id ?? actId;
+                            const fechaCorteMostrar = actividadData ? fechaCorteDisplayDesdeActividad(actividadData) : undefined;
                             return (
                               <div
                                 key={actId}
@@ -2883,9 +2965,9 @@ function Paso2({
                                             Requiere autorización
                                           </span>
                                         )}
-                                        {actividadData.fechaCorte && (
+                                        {fechaCorteMostrar && (
                                           <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] font-medium">
-                                            📅 Corte: {actividadData.fechaCorte}
+                                            📅 Corte: {fechaCorteMostrar}
                                           </span>
                                         )}
                                         <div className="w-full mt-1.5 p-2 bg-indigo-50/60 border border-indigo-100 rounded-lg" onClick={(e) => e.stopPropagation()}>
@@ -3247,7 +3329,15 @@ function Paso2({
                                                                   <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
                                                                 </label>
                                                                 <div className="flex items-center gap-1 ml-auto">
-                                                                  <input type="date" value={tarea.fechaEntrega || ''} onChange={(e) => updateTareaCorte({ fechaEntrega: e.target.value })} className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[100px]" title="Fecha de entrega" />
+                                                                  <input
+                                                                    type="date"
+                                                                    value={tarea.fechaEntrega || ''}
+                                                                    min={pc.fechaProgramada}
+                                                                    max={pc.fechaSeguimiento || undefined}
+                                                                    onChange={(e) => updateTareaCorte({ fechaEntrega: e.target.value })}
+                                                                    className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[100px]"
+                                                                    title="Fecha de entrega (dentro del período del corte)"
+                                                                  />
                                                                 </div>
                                                               </div>
                                                             </div>
@@ -3320,7 +3410,9 @@ function Paso2({
                             ⭐ Actividades personalizadas
                           </h4>
                           <div className="space-y-2">
-                            {rol.actividadesCustom.map((actividad, index) => (
+                            {rol.actividadesCustom.map((actividad, index) => {
+                              const fechaCorteCustom = fechaCorteDisplayDesdeActividad(actividad);
+                              return (
                               <div
                                 key={`rol-${rol.numero}-custom-${index}-${actividad.nombre.slice(0, 20)}`}
                                 className="border-2 border-green-200 bg-green-50 rounded-lg"
@@ -3362,9 +3454,9 @@ function Paso2({
                                           Requiere autorización
                                         </span>
                                       )}
-                                      {actividad.fechaCorte && (
+                                      {fechaCorteCustom && (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] font-medium">
-                                          📅 Corte: {actividad.fechaCorte}
+                                          📅 Corte: {fechaCorteCustom}
                                         </span>
                                       )}
                                       <div className="w-full mt-1.5 p-2 bg-indigo-50/60 border border-indigo-100 rounded-lg" onClick={(e) => e.stopPropagation()}>
@@ -3703,7 +3795,15 @@ function Paso2({
                                                                   <span className={`text-[10px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎</span>
                                                                 </label>
                                                                 <div className="flex items-center gap-1 ml-auto">
-                                                                  <input type="date" value={tarea.fechaEntrega || ''} onChange={(e) => updateTareaCorteCustom({ fechaEntrega: e.target.value })} className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[100px]" title="Fecha de entrega" />
+                                                                  <input
+                                                                    type="date"
+                                                                    value={tarea.fechaEntrega || ''}
+                                                                    min={pc.fechaProgramada}
+                                                                    max={pc.fechaSeguimiento || undefined}
+                                                                    onChange={(e) => updateTareaCorteCustom({ fechaEntrega: e.target.value })}
+                                                                    className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[100px]"
+                                                                    title="Fecha de entrega (dentro del período del corte)"
+                                                                  />
                                                                 </div>
                                                               </div>
                                                             </div>
@@ -3936,7 +4036,8 @@ function Paso2({
 
                                 </div>
                               </div>
-                            ))}
+                            );
+                          })}
 
                           </div>
                         </div>
