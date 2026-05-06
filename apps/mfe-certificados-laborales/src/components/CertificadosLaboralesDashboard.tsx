@@ -31,7 +31,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CertificadoDetalleModal } from './CertificadoDetalleModal';
-import { GenerarCertificadoModal } from './GenerarCertificadoModal';
+import { GenerarReporteCertificadosModal } from './GenerarReporteCertificadosModal';
 import { CertificadoDetallePanel } from './CertificadoDetallePanel';
 import { ModalHistorialCertificados } from './ModalHistorialCertificados';
 import { PrimaTecnicaModal } from './PrimaTecnicaModal';
@@ -336,7 +336,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   // Estados para modales
   const [selectedCertificado, setSelectedCertificado] = useState<CertificadoLaboral | null>(null);
   const [isDetalleOpen, setIsDetalleOpen] = useState(false);
-  const [isGenerarOpen, setIsGenerarOpen] = useState(false);
+  const [isReporteOpen, setIsReporteOpen] = useState(false);
   const [isHistorialOpen, setIsHistorialOpen] = useState(false);
   const [isPrimaTecnicaOpen, setIsPrimaTecnicaOpen] = useState(false);
   const [expandedCertId, setExpandedCertId] = useState<string | null>(null);
@@ -847,7 +847,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             </button>
 
             <button
-              onClick={() => setIsGenerarOpen(true)}
+              onClick={() => setIsReporteOpen(true)}
               className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
               style={{
                 background: '#FFFFFF',
@@ -1426,14 +1426,9 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         />
       )}
 
-      <GenerarCertificadoModal
-        isOpen={isGenerarOpen}
-        onClose={() => setIsGenerarOpen(false)}
-        onSuccess={(nuevoCert) => {
-          toast.success('Certificado generado exitosamente');
-          setIsGenerarOpen(false);
-        }}
-        certificados={certificados}
+      <GenerarReporteCertificadosModal
+        isOpen={isReporteOpen}
+        onClose={() => setIsReporteOpen(false)}
       />
 
       <ModalHistorialCertificados
