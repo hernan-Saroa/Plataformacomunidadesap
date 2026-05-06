@@ -156,7 +156,7 @@ export function ValidarCertificadoQR({ onBack }: ValidarCertificadoQRProps = {})
           response?.observations,
         templateType: response?.template_type || response?.templateType,
         includeCodeLabel: true,
-        codeLabel: 'Codigo',
+        codeLabel: 'Código',
       });
 
       const certificado = {

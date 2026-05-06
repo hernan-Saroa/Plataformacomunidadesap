@@ -203,7 +203,7 @@ export function VerificarCertificado() {
           certificado?.observations,
         templateType: certificado?.template_type || certificado?.templateType,
         includeCodeLabel: true,
-        codeLabel: 'Codigo',
+        codeLabel: 'Código',
       })
     : '';
   const tipoVinculacion = certificado?.position_category || certificado?.positionCategory || certificado?.tipo_vinculacion || '';
