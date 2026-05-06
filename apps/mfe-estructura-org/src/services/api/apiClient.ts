@@ -605,20 +605,9 @@ export class ApiClient {
     this.isRefreshing = true;
 
     try {
-      const refreshToken = sessionStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
-
-      if (!refreshToken) {
-        // Hacer logout automático cuando no hay refresh token
-        console.warn('No refresh token available - logging out');
-        this.handleLogout();
-        return null;
-      }
-
-      // 🔄 Nuevo endpoint versionado para refresh
       const response = await fetch(`${this.baseURL}${API_ENDPOINTS.AUTH.REFRESH}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
         ...CORS_CONFIG,
       });
 
@@ -629,26 +618,11 @@ export class ApiClient {
         return null;
       }
 
-      const data = await response.json();
-
-      // El backend expone el token en data.data.accessToken (contrato NestJS)
-      const newToken = data?.data?.accessToken || data?.accessToken;
-
-      if (!newToken) {
-        console.warn('Refresh response without accessToken - logging out');
-        this.handleLogout();
-        return null;
-      }
-
-      // Guardar nuevo token
-      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, newToken);
-      sessionStorage.setItem('esap_access_token', newToken);
-
       // Notificar a todos los subscribers
-      this.refreshSubscribers.forEach((callback) => callback(newToken));
+      this.refreshSubscribers.forEach((callback) => callback('cookie-refreshed'));
       this.refreshSubscribers = [];
 
-      return newToken;
+      return 'cookie-refreshed';
     } catch (error) {
       console.warn('Token refresh error:', error, '- logging out');
       this.handleLogout();
