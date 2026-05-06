@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import axios from 'axios';
 
 const DEFAULT_INTERNAL_SERVICE_TOKEN = 'esap-super-secret-jwt-key-2024';
@@ -26,7 +28,7 @@ export class NotificationClientService {
   private readonly authUrl: string;
   private readonly internalServiceToken?: string;
 
-  constructor() {
+  constructor(@InjectDataSource() private readonly dataSource: DataSource) {
     this.baseUrl = process.env.NOTIFICATION_SERVICE_URL ?? 'http://localhost:3009';
     this.authUrl = process.env.AUTH_SERVICE_URL ?? 'http://localhost:3001';
     this.internalServiceToken =
@@ -36,11 +38,35 @@ export class NotificationClientService {
   }
 
   /**
+   * Fallback directo a BD: lee usuarios con un rol dado consultando auth.user_roles
+   * y auth."user". Útil cuando la llamada HTTP a auth-service falla por token o red.
+   */
+  private async getUsersByRoleFromDb(roleCode: string): Promise<{ id_user: string; email: string }[]> {
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT u.id_user::text AS id_user, u.username AS email
+         FROM auth.role r
+         JOIN auth.user_roles ur ON ur.id_rol = r.id
+         JOIN auth."user" u      ON u.id_user = ur.id_user
+         WHERE r.code = $1 AND COALESCE(r.is_active, true) = true
+           AND COALESCE(u.is_active, true) = true
+           AND COALESCE(ur.is_active, true) = true`,
+        [roleCode],
+      );
+      this.logger.log(`[notifyByRole][DB] Rol ${roleCode}: ${rows.length} usuario(s) activos`);
+      return rows;
+    } catch (err: any) {
+      this.logger.warn(`[notifyByRole][DB] Error consultando BD para rol ${roleCode}: ${err?.message}`);
+      return [];
+    }
+  }
+
+  /**
    * Obtiene los detalles de usuario (ID y correo) que tienen asignado un rol específico.
    */
   async getUsersDetailsByRole(roleCode: string): Promise<{ id_user: string; email: string }[]> {
+    // Estrategia: intentar HTTP primero (más rica en datos), si falla o viene vacío, leer BD directo.
     try {
-      // Paso 1: obtener el UUID del rol a partir del code
       const rolesRes = await axios.get(`${this.authUrl}/roles`, {
         params: { limit: 200 },
         headers: this.buildAuthHeaders(),
@@ -49,26 +75,33 @@ export class NotificationClientService {
       const roles: any[] = rolesRes.data?.roles ?? [];
       const role = roles.find((r) => r.code === roleCode);
       if (!role) {
-        this.logger.warn(`Rol con code "${roleCode}" no encontrado en auth-service`);
-        return [];
+        this.logger.warn(`[notifyByRole][HTTP] Rol "${roleCode}" no encontrado vía auth-service, intentando BD directa`);
+        return this.getUsersByRoleFromDb(roleCode);
       }
+      this.logger.log(`[notifyByRole][HTTP] Rol "${roleCode}" resuelto a UUID ${role.id}`);
 
-      // Paso 2: obtener usuarios con ese rol UUID
       const usersRes = await axios.get(`${this.authUrl}/users`, {
         params: { role: role.id, limit: 100 },
         headers: this.buildAuthHeaders(),
         timeout: 3000,
       });
       const users: any[] = usersRes.data?.data ?? [];
-      return users
+      const mapped = users
         .filter((u: any) => u?.user?.id_user)
-        .map((u: any) => ({
-          id_user: u.user.id_user,
-          email: u.email,
-        }));
-    } catch (err) {
-      this.logger.warn(`No se pudo obtener usuarios con rol ${roleCode}: ${err?.message}`);
-      return [];
+        .map((u: any) => ({ id_user: u.user.id_user, email: u.email }));
+      this.logger.log(`[notifyByRole][HTTP] auth devolvió ${users.length} usuarios; ${mapped.length} válidos`);
+
+      if (mapped.length === 0) {
+        this.logger.warn(`[notifyByRole][HTTP] 0 usuarios desde auth-service, fallback a BD directa`);
+        return this.getUsersByRoleFromDb(roleCode);
+      }
+      return mapped;
+    } catch (err: any) {
+      const status = err?.response?.status;
+      this.logger.warn(
+        `[notifyByRole][HTTP] Error (auth=${this.authUrl}, status=${status ?? 'n/a'}): ${err?.message}. Fallback a BD directa.`,
+      );
+      return this.getUsersByRoleFromDb(roleCode);
     }
   }
 
@@ -145,8 +178,43 @@ export class NotificationClientService {
     if (!dtos.length) return;
     try {
       await axios.post(`${this.baseUrl}/notifications/bulk`, { notifications: dtos }, { timeout: 3000 });
-    } catch (err) {
-      this.logger.warn(`No se pudieron enviar ${dtos.length} notificaciones: ${err?.message}`);
+      this.logger.log(`[notifyByRole] Enviadas ${dtos.length} notificaciones vía HTTP (${this.baseUrl})`);
+      return;
+    } catch (err: any) {
+      const status = err?.response?.status;
+      this.logger.warn(
+        `[notifyByRole] FALLÓ POST ${this.baseUrl}/notifications/bulk (status=${status ?? 'n/a'}): ${err?.message}. Insertando directo en BD.`,
+      );
+    }
+
+    // Fallback: insertar directo en notifications.notificacion
+    try {
+      for (const dto of dtos) {
+        await this.dataSource.query(
+          `INSERT INTO notifications.notificacion
+            (id_usuario_destinatario, tipo_notificacion, titulo, mensaje, descripcion_corta,
+             icono, color, prioridad, categoria, tiene_accion, texto_boton_accion, url_accion, datos_adicionales)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+          [
+            dto.id_usuario_destinatario,
+            dto.tipo_notificacion,
+            dto.titulo,
+            dto.mensaje,
+            dto.descripcion_corta ?? null,
+            dto.icono ?? null,
+            dto.color ?? null,
+            dto.prioridad ?? 'Media',
+            dto.categoria ?? null,
+            dto.tiene_accion ?? false,
+            dto.texto_boton_accion ?? null,
+            dto.url_accion ?? null,
+            dto.datos_adicionales ? JSON.stringify(dto.datos_adicionales) : null,
+          ],
+        );
+      }
+      this.logger.log(`[notifyByRole][DB] Insertadas ${dtos.length} notificaciones directamente en BD`);
+    } catch (err: any) {
+      this.logger.error(`[notifyByRole][DB] Falló insert directo en BD: ${err?.message}`);
     }
   }
 

@@ -47,6 +47,32 @@ export class PlanAnual5RolesController {
     return this.service.findByYear(yearNum);
   }
 
+  /** Borrador del asistente "Nuevo plan" (un fila JSON por usuario). Debe ir antes de :id. */
+  @Get('wizard-borrador/me')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_CREATE, CIP.PLAN_ANUAL_EDIT)
+  async getWizardBorrador(@Req() req: any) {
+    return this.service.getWizardBorrador(req.user?.userId);
+  }
+
+  @Put('wizard-borrador/me')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_CREATE, CIP.PLAN_ANUAL_EDIT)
+  async saveWizardBorrador(
+    @Body() body: { payload?: Record<string, unknown> },
+    @Req() req: any,
+  ) {
+    return this.service.saveWizardBorrador(req.user?.userId, body?.payload ?? {});
+  }
+
+  @Delete('wizard-borrador/me')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_CREATE, CIP.PLAN_ANUAL_EDIT)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteWizardBorrador(@Req() req: any) {
+    await this.service.deleteWizardBorrador(req.user?.userId);
+  }
+
   @Get(':planId/roles')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.PLAN_ANUAL_VIEW)

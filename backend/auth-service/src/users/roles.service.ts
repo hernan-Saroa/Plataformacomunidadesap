@@ -65,6 +65,27 @@ export class RolesService {
     return typeof value === 'string' && POSTGRES_UUID_PATTERN.test(value.trim());
   }
 
+  private async findPermissionsByIdsOrCodes(permissionIds: string[]): Promise<Permission[]> {
+    if (!permissionIds.length) {
+      return [];
+    }
+
+    const uuidIds = permissionIds.filter(id => this.isPostgresUuid(id));
+    const codeIds = permissionIds.filter(id => !this.isPostgresUuid(id));
+
+    const whereConditions: any[] = [];
+    if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
+    if (codeIds.length > 0) whereConditions.push({ code: In(codeIds) });
+
+    if (!whereConditions.length) {
+      return [];
+    }
+
+    return this.permissionRepo.find({
+      where: whereConditions,
+    });
+  }
+
   async findAll(filters: RoleFilters = {}): Promise<{ roles: Role[], total: number }> {
     const query = this.roleRepo.createQueryBuilder('role');
 
@@ -191,19 +212,11 @@ export class RolesService {
       is_active: true,
     });
 
-    // Asignar permisos si se proporcionan
-    if (createRoleDto.permissionIds && createRoleDto.permissionIds.length > 0) {
-      const uuidIds = createRoleDto.permissionIds.filter(id => this.isPostgresUuid(id));
-      const codeIds = createRoleDto.permissionIds.filter(id => !this.isPostgresUuid(id));
-      
-      const whereConditions: any[] = [];
-      if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
-      if (codeIds.length > 0) whereConditions.push({ code: In(codeIds) });
-
-      const permissions = await this.permissionRepo.find({
-        where: whereConditions
-      });
-      role.permissions = permissions;
+    // Asignar exactamente los permisos seleccionados al crear el rol.
+    if (createRoleDto.permissionIds !== undefined) {
+      role.permissions = await this.findPermissionsByIdsOrCodes(
+        createRoleDto.permissionIds,
+      );
     }
 
     return this.roleRepo.save(role);
@@ -239,21 +252,7 @@ export class RolesService {
 
     // Actualizar permisos si se proporcionan
     if (updateRoleDto.permissionIds !== undefined) {
-      if (updateRoleDto.permissionIds.length === 0) {
-        role.permissions = [];
-      } else {
-        const uuidIds = updateRoleDto.permissionIds.filter(id => this.isPostgresUuid(id));
-        const codeIds = updateRoleDto.permissionIds.filter(id => !this.isPostgresUuid(id));
-        
-        const whereConditions: any[] = [];
-        if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
-        if (codeIds.length > 0) whereConditions.push({ code: In(codeIds) });
-
-        const permissions = await this.permissionRepo.find({
-          where: whereConditions
-        });
-        role.permissions = permissions;
-      }
+      role.permissions = await this.findPermissionsByIdsOrCodes(updateRoleDto.permissionIds);
     }
 
     return this.roleRepo.save(role);
@@ -368,21 +367,7 @@ export class RolesService {
       throw new NotFoundException('Rol no encontrado');
     }
 
-    if (permissionIds.length === 0) {
-      role.permissions = [];
-    } else {
-      const uuidIds = permissionIds.filter(id => this.isPostgresUuid(id));
-      const codeIds = permissionIds.filter(id => !this.isPostgresUuid(id));
-      
-      const whereConditions: any[] = [];
-      if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
-      if (codeIds.length > 0) whereConditions.push({ code: In(codeIds) });
-
-      const permissions = await this.permissionRepo.find({
-        where: whereConditions
-      });
-      role.permissions = permissions;
-    }
+    role.permissions = await this.findPermissionsByIdsOrCodes(permissionIds);
 
     if (updatedBy) role.updated_by = updatedBy;
 

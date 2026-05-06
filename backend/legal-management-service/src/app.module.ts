@@ -110,6 +110,7 @@ import { OficiosService } from './services/oficios.service';
 import { TasaReferenciaService } from './services/tasa-referencia.service';
 import { PlantillasService } from './services/plantillas.service';
 import { NotificationClientService } from './services/notification-client.service';
+import { LegalNotificationsService } from './services/legal-notifications.service';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -252,7 +253,8 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     TasaReferenciaService,
     PlantillasService,
     // Notificaciones
-    NotificationClientService
+    NotificationClientService,
+    LegalNotificationsService
   ],
 })
 export class AppModule { }

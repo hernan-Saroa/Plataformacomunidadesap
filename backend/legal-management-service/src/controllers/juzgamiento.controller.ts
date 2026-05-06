@@ -5,12 +5,14 @@ import { extname } from 'path';
 import { ExpedienteService } from '../services/expediente.service';
 import { Expediente } from '../entities/expediente.entity';
 import { TareasNotasService } from '../services/tareas-notas.service';
+import { LegalNotificationsService } from '../services/legal-notifications.service';
 
 @Controller('juzgamiento')
 export class JuzgamientoController {
     constructor(
         private readonly expedienteService: ExpedienteService,
-        private readonly tareasNotasService: TareasNotasService
+        private readonly tareasNotasService: TareasNotasService,
+        private readonly legalNotifications: LegalNotificationsService
     ) { }
 
     @Get()
@@ -106,7 +108,7 @@ export class JuzgamientoController {
     }
 
     @Post()
-    async create(@Body() data: Partial<Expediente> & { fechaHechos?: string }) {
+    async create(@Body() data: Partial<Expediente> & { fechaHechos?: string; creadoPor?: string; usuario?: string }) {
         // Auto-generar radicado PD-YYYY-NNNNN si no viene en el body
         if (!data.radicado) {
             const year = new Date().getFullYear();
@@ -130,6 +132,7 @@ export class JuzgamientoController {
         // Calcular ley aplicable según fecha de los hechos
         const leyAplicable = this.calcularLeyAplicable(data.fechaHechos);
 
+        const creadoPor = data.creadoPor || data.usuario || 'Sistema';
         return this.expedienteService.crearExpediente({
             ...data,
             jurisdiccion: 'DISCIPLINARIO',
@@ -137,7 +140,7 @@ export class JuzgamientoController {
             etapa: 'E1_AVOCAMIENTO',
             leyAplicable,
             fechaHechos: data.fechaHechos ? new Date(data.fechaHechos) : undefined,
-        });
+        }, creadoPor);
     }
 
     @Patch(':radicado')
@@ -167,7 +170,7 @@ export class JuzgamientoController {
     }))
     async uploadDocumento(
         @Param('radicado') radicado: string,
-        @Body() body: { tipo: string; descripcion: string },
+        @Body() body: { tipo: string; descripcion: string; subidoPor?: string; usuario?: string },
         @UploadedFile() file: any
     ) {
         if (!file) {
@@ -185,17 +188,28 @@ export class JuzgamientoController {
         const contexto = esEvidencia ? 'Pruebas' : tipoUpper === 'OTROS' ? 'Otros Documentos' : 'Documentos';
         const descripcionBase = body.descripcion || file.originalname;
         const descripcionCompleta = `${descripcionBase} (Cargado desde ${contexto})`;
+        const subidoPor = body.subidoPor || body.usuario || 'Usuario Actual';
 
         // Create Actuacion as Evidence/Document
         // tipoActuacion guarda el tipo original para mapeo en frontend
-        return this.expedienteService.agregarActuacion(expediente.id, {
+        const actuacion = await this.expedienteService.agregarActuacion(expediente.id, {
             tipoActuacion: tipoUpper, // Guardar tipo original: 'OTROS', 'PRUEBAS', 'EVIDENCIA', etc.
             descripcion: descripcionCompleta,
             fechaActuacion: new Date(),
             documentoNombre: file.originalname,
             documentoUrl: `files/${file.filename}`, // Ruta relativa - frontend construye la URL absoluta
-            usuarioResponsable: 'Usuario Actual' // Mock user for now
+            usuarioResponsable: subidoPor
         });
+
+        await this.legalNotifications.notifyDocumentoSubido({
+            modulo: 'JUZGAMIENTO_DISCIPLINARIO',
+            radicado: expediente.radicado,
+            procesoId: expediente.id,
+            nombreDocumento: file.originalname,
+            subidoPor,
+        });
+
+        return actuacion;
     }
 
     @Get(':radicado/actuaciones')
@@ -218,7 +232,7 @@ export class JuzgamientoController {
     }))
     async createActuacion(
         @Param('radicado') radicado: string,
-        @Body() body: { tipoActuacion: string; descripcion: string; fechaActuacion?: string },
+        @Body() body: { tipoActuacion: string; descripcion: string; fechaActuacion?: string; usuario?: string; subidoPor?: string },
         @UploadedFile() file?: any
     ) {
         const expediente = await this.expedienteService.findOneByRadicado(radicado);
@@ -226,11 +240,12 @@ export class JuzgamientoController {
             throw new BadRequestException('Expediente no encontrado');
         }
 
+        const subidoPor = body.subidoPor || body.usuario || 'Usuario Actual';
         const actuacionData: any = {
             tipoActuacion: body.tipoActuacion || 'ACTUACION',
             descripcion: body.descripcion,
             fechaActuacion: body.fechaActuacion ? new Date(body.fechaActuacion) : new Date(),
-            usuarioResponsable: 'Usuario Actual' // TODO: obtener del JWT
+            usuarioResponsable: subidoPor
         };
 
         // Si hay archivo, agregar info del documento
@@ -239,7 +254,19 @@ export class JuzgamientoController {
             actuacionData.documentoUrl = `files/${file.filename}`;
         }
 
-        return this.expedienteService.agregarActuacion(expediente.id, actuacionData);
+        const actuacion = await this.expedienteService.agregarActuacion(expediente.id, actuacionData);
+
+        if (file) {
+            await this.legalNotifications.notifyDocumentoSubido({
+                modulo: 'JUZGAMIENTO_DISCIPLINARIO',
+                radicado: expediente.radicado,
+                procesoId: expediente.id,
+                nombreDocumento: file.originalname,
+                subidoPor,
+            });
+        }
+
+        return actuacion;
     }
 
     @Get(':radicado/decisiones')

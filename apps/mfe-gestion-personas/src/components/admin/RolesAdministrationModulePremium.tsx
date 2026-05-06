@@ -273,6 +273,91 @@ const getIconComponent = (iconName: string) => {
   return ICON_MAP[iconName] || Shield;
 };
 
+const ROLE_MOJIBAKE_PATTERN = /[ÃÂâ�]|\?\?/;
+
+const ROLE_TEXT_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/\bSubdirecci(?:\?\?|�)n\b/g, 'Subdirección'],
+  [/\bsubdirecci(?:\?\?|�)n\b/g, 'subdirección'],
+  [/\bSecretar(?:\?\?|�)a\b/g, 'Secretaría'],
+  [/\bsecretar(?:\?\?|�)a\b/g, 'secretaría'],
+  [/\bAcad(?:\?\?|�)mico\b/g, 'Académico'],
+  [/\bacad(?:\?\?|�)mico\b/g, 'académico'],
+  [/\bAcad(?:\?\?|�)mica\b/g, 'Académica'],
+  [/\bacad(?:\?\?|�)mica\b/g, 'académica'],
+  [/\bJur(?:\?\?|�)dica\b/g, 'Jurídica'],
+  [/\bjur(?:\?\?|�)dica\b/g, 'jurídica'],
+  [/\bPlaneaci(?:\?\?|�)n\b/g, 'Planeación'],
+  [/\bplaneaci(?:\?\?|�)n\b/g, 'planeación'],
+  [/\bVerificaci(?:\?\?|�)n\b/g, 'Verificación'],
+  [/\bverificaci(?:\?\?|�)n\b/g, 'verificación'],
+  [/\bT(?:\?\?|�)tulos\b/g, 'Títulos'],
+  [/\bt(?:\?\?|�)tulos\b/g, 'títulos'],
+  [/\bDecisi(?:\?\?|�)n\b/g, 'Decisión'],
+  [/\bdecisi(?:\?\?|�)n\b/g, 'decisión'],
+  [/\bC(?:\?\?|�)digo\b/g, 'Código'],
+  [/\bc(?:\?\?|�)digo\b/g, 'código'],
+  [/\bB(?:\?\?|�)squeda\b/g, 'Búsqueda'],
+  [/\bb(?:\?\?|�)squeda\b/g, 'búsqueda'],
+  [/(^|[\s([{¿¡"'`-])(?:\?\?|�)rea\b/g, '$1área'],
+  [/(^|[\s([{¿¡"'`-])(?:\?\?|�)rganos\b/g, '$1órganos'],
+  [/\bAcademico\b/g, 'Académico'],
+  [/\bacademico\b/g, 'académico'],
+  [/\bAcademica\b/g, 'Académica'],
+  [/\bacademica\b/g, 'académica'],
+  [/\bVerificacion\b/g, 'Verificación'],
+  [/\bverificacion\b/g, 'verificación'],
+  [/\bTitulos\b/g, 'Títulos'],
+  [/\btitulos\b/g, 'títulos'],
+  [/\bPlaneacion\b/g, 'Planeación'],
+  [/\bplaneacion\b/g, 'planeación'],
+  [/\bJuridica\b/g, 'Jurídica'],
+  [/\bjuridica\b/g, 'jurídica'],
+  [/\bSecretaria\b/g, 'Secretaría'],
+  [/\bsecretaria\b/g, 'secretaría'],
+  [/\bSubdireccion\b/g, 'Subdirección'],
+  [/\bsubdireccion\b/g, 'subdirección'],
+  [/\bDecision\b/g, 'Decisión'],
+  [/\bdecision\b/g, 'decisión'],
+  [/\bCodigo\b/g, 'Código'],
+  [/\bcodigo\b/g, 'código'],
+  [/\bBusqueda\b/g, 'Búsqueda'],
+  [/\bbusqueda\b/g, 'búsqueda'],
+];
+
+const applyRoleTextCorrections = (value: string) =>
+  ROLE_TEXT_REPLACEMENTS.reduce(
+    (text, [pattern, fixed]) => text.replace(pattern, fixed),
+    value,
+  );
+
+const repairRoleDisplayText = (value?: string | null) => {
+  if (!value) return '';
+
+  if (ROLE_MOJIBAKE_PATTERN.test(value)) {
+    const isLatin1Only = Array.from(value).every((char) => char.charCodeAt(0) <= 255);
+    if (isLatin1Only) {
+      try {
+        const bytes = Uint8Array.from(
+          Array.from(value),
+          (char) => char.charCodeAt(0) & 0xff,
+        );
+        const repaired = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+        if (!repaired.includes('\uFFFD')) return applyRoleTextCorrections(repaired);
+      } catch {
+        // Fall back to targeted display replacements.
+      }
+    }
+  }
+
+  return applyRoleTextCorrections(value);
+};
+
+const getRoleDisplayName = (role: SystemRole | null) =>
+  repairRoleDisplayText(role?.name || (role as any)?.nombre);
+
+const getRoleDisplayDescription = (role: SystemRole | null) =>
+  repairRoleDisplayText(role?.description || (role as any)?.descripcion);
+
 // ============================================================================
 // COMPONENTE PRINCIPAL
 // ============================================================================
@@ -306,11 +391,19 @@ export function RolesAdministrationModulePremium() {
   const selectedRoleForModal = selectedRole
     ? {
         id: selectedRole.id,
-        nombre: (selectedRole as any).nombre || selectedRole.name || '',
-        descripcion: (selectedRole as any).descripcion || selectedRole.description || '',
+        nombre: getRoleDisplayName(selectedRole),
+        descripcion: getRoleDisplayDescription(selectedRole),
         icono: (selectedRole as any).icono || selectedRole.icon || 'Shield',
         color: selectedRole.color || '#003DA5',
         tipo: ((selectedRole as any).tipo || selectedRole.type || 'personalizado') as 'sistema' | 'personalizado',
+      }
+    : null;
+
+  const selectedRoleForPermissions = selectedRole
+    ? {
+        ...selectedRole,
+        name: getRoleDisplayName(selectedRole),
+        description: getRoleDisplayDescription(selectedRole),
       }
     : null;
 
@@ -428,10 +521,11 @@ export function RolesAdministrationModulePremium() {
 
   // Eliminar rol
   const handleDeleteRole = async (role: SystemRole) => {
+    const roleDisplayName = getRoleDisplayName(role);
     const confirmed = await confirm({
       onConfirm: () => {},
       title: '¿Eliminar rol?',
-      description: `¿Estás seguro de que deseas eliminar el rol "${role.name}"? Esta acción afectará a ${role.usuarios_count} usuarios.`,
+      description: `¿Estás seguro de que deseas eliminar el rol "${roleDisplayName}"? Esta acción afectará a ${role.usuarios_count} usuarios.`,
       confirmText: 'Eliminar',
       cancelText: 'Cancelar',
       type: 'danger'
@@ -446,7 +540,7 @@ export function RolesAdministrationModulePremium() {
         await loadStats();
 
         toast.success('Rol Eliminado', {
-          description: `El rol "${role.name}" ha sido eliminado`
+          description: `El rol "${roleDisplayName}" ha sido eliminado`
         });
       } catch (error: any) {
         console.error('Error deleting role:', error);
@@ -459,10 +553,11 @@ export function RolesAdministrationModulePremium() {
 
   // Duplicar rol con confirmación
   const handleDuplicateRole = async (role: SystemRole) => {
+    const roleDisplayName = getRoleDisplayName(role);
     const confirmed = await confirm({
       onConfirm: () => {},
       title: '¿Duplicar rol?',
-      description: `Se creará una copia de "${role.name}" con los mismos permisos. Podrás editarlo después de la duplicación.`,
+      description: `Se creará una copia de "${roleDisplayName}" con los mismos permisos. Podrás editarlo después de la duplicación.`,
       confirmText: 'Duplicar',
       cancelText: 'Cancelar',
       type: 'info'
@@ -477,7 +572,7 @@ export function RolesAdministrationModulePremium() {
         await loadStats();
 
         toast.success('Rol Duplicado Exitosamente', {
-          description: `Se ha creado "${duplicatedRole.name}" con ${role.permisos_count} permisos`
+          description: `Se ha creado "${getRoleDisplayName(duplicatedRole)}" con ${role.permisos_count} permisos`
         });
 
         // Abrir automáticamente el editor para personalizar
@@ -496,6 +591,7 @@ export function RolesAdministrationModulePremium() {
 
   // Toggle estado activo con validación
   const handleToggleActive = async (role: SystemRole) => {
+    const roleDisplayName = getRoleDisplayName(role);
     // Si está desactivando un rol con usuarios, pedir confirmación
     if (role.is_active && role.usuarios_count > 0) {
       const confirmed = await confirm({
@@ -520,8 +616,8 @@ export function RolesAdministrationModulePremium() {
         role.is_active ? 'Rol Desactivado' : 'Rol Activado',
         {
           description: role.is_active
-            ? `El rol "${role.name}" ha sido desactivado. Los ${role.usuarios_count} usuarios asignados no tendrán acceso.`
-            : `El rol "${role.name}" ha sido activado y está disponible para asignación.`
+            ? `El rol "${roleDisplayName}" ha sido desactivado. Los ${role.usuarios_count} usuarios asignados no tendrán acceso.`
+            : `El rol "${roleDisplayName}" ha sido activado y está disponible para asignación.`
         }
       );
     } catch (error: any) {
@@ -534,12 +630,13 @@ export function RolesAdministrationModulePremium() {
 
   // Toggle 2FA con validación
   const handleToggle2FA = async (role: SystemRole) => {
+    const roleDisplayName = getRoleDisplayName(role);
     // Si está desactivando 2FA en rol administrativo, advertir
     if (role.requires_2fa && (role.name.toLowerCase().includes('admin') || role.name.toLowerCase().includes('super'))) {
       const confirmed = await confirm({
         onConfirm: () => {},
         title: '⚠️ Desactivar 2FA en rol de seguridad',
-        description: `"${role.name}" es un rol de alto privilegio. Desactivar la autenticación de dos factores puede comprometer la seguridad del sistema. ¿Estás seguro?`,
+        description: `"${roleDisplayName}" es un rol de alto privilegio. Desactivar la autenticación de dos factores puede comprometer la seguridad del sistema. ¿Estás seguro?`,
         confirmText: 'Desactivar 2FA',
         cancelText: 'Mantener 2FA',
         type: 'danger'
@@ -558,8 +655,8 @@ export function RolesAdministrationModulePremium() {
         role.requires_2fa ? '2FA Desactivado' : '2FA Activado',
         {
           description: role.requires_2fa
-            ? `La autenticación de dos factores para "${role.name}" ha sido desactivada. Los usuarios ya no necesitarán código 2FA.`
-            : `La autenticación de dos factores para "${role.name}" ha sido activada. Los usuarios deberán configurar 2FA en su próximo login.`
+            ? `La autenticación de dos factores para "${roleDisplayName}" ha sido desactivada. Los usuarios ya no necesitarán código 2FA.`
+            : `La autenticación de dos factores para "${roleDisplayName}" ha sido activada. Los usuarios deberán configurar 2FA en su próximo login.`
         }
       );
     } catch (error: any) {
@@ -576,7 +673,7 @@ export function RolesAdministrationModulePremium() {
     setIsPermissionsEditorOpen(true);
 
     toast.info('Editor de Permisos', {
-      description: `Gestionando ${role.permisos_count} permisos para "${role.name}"`
+      description: `Gestionando ${role.permisos_count} permisos para "${getRoleDisplayName(role)}"`
     });
   };
 
@@ -843,10 +940,10 @@ export function RolesAdministrationModulePremium() {
                                 {getRoleIcon(role)}
                                 <div>
                                   <p className="font-bold text-gray-900 text-sm group-hover:text-[#003DA5] transition-colors">
-                                    {role.name}
+                                    {getRoleDisplayName(role)}
                                   </p>
                                   <p className="text-xs text-gray-500 line-clamp-1">
-                                    {role.description}
+                                    {getRoleDisplayDescription(role)}
                                   </p>
                                 </div>
                               </div>
@@ -1003,7 +1100,7 @@ export function RolesAdministrationModulePremium() {
                                           <div className="space-y-2 text-sm">
                                             <div>
                                               <span className="text-gray-600">Descripción:</span>
-                                              <p className="text-gray-900 font-medium">{role.description}</p>
+                                              <p className="text-gray-900 font-medium">{getRoleDisplayDescription(role)}</p>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2">
                                               <div>
@@ -1080,8 +1177,8 @@ export function RolesAdministrationModulePremium() {
                   <div className="flex items-start gap-3 mb-3">
                     {getRoleIcon(role)}
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-gray-900 text-sm">{role.name}</h3>
-                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{role.description}</p>
+                      <h3 className="font-bold text-gray-900 text-sm">{getRoleDisplayName(role)}</h3>
+                      <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{getRoleDisplayDescription(role)}</p>
                       <div className="mt-2 flex gap-1.5">
                         <Badge variant={role.type === 'sistema' ? 'default' : 'secondary'} className={`text-xs ${
                           role.type === 'sistema'
@@ -1234,7 +1331,7 @@ export function RolesAdministrationModulePremium() {
         onCreateRole={handleCreateRole}
       />
 
-      {selectedRoleForModal && (
+      {selectedRoleForModal && selectedRoleForPermissions && (
         <>
           <EditRoleModal
             open={isEditModalOpen}
@@ -1246,7 +1343,7 @@ export function RolesAdministrationModulePremium() {
           <RolePermissionsEditor
             open={isPermissionsEditorOpen}
             onOpenChange={setIsPermissionsEditorOpen}
-            role={selectedRole}
+            role={selectedRoleForPermissions}
             onSaved={() => {
               loadRoles();
               loadStats();

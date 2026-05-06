@@ -43,9 +43,29 @@ type ValidationGeoContext = {
 type AuthenticatedRequest = Request & {
   user?: {
     roles?: unknown[];
+    permissions?: unknown[];
     internalService?: boolean;
   };
 };
+
+const FINAL_REVIEW_DECISION_PERMISSIONS = [
+  'graduates.edit',
+  'graduates.export',
+  'graduates.verify_certificate',
+  'graduates-certificates.solicitude.aprobar',
+  'graduates-certificates.certificates.view',
+  'graduates-certificates.certificates.edit',
+  'graduates-certificates.certificates.export',
+  'graduates-certificates.solicitude.rechazar',
+  'graduates-certificates.certificates.reenviar',
+];
+const REVIEW_WORK_PERMISSIONS = [
+  'graduates-certificates.solicitude.review',
+];
+const APPROVE_REQUEST_PERMISSION =
+  'graduates-certificates.solicitude.aprobar';
+const REJECT_REQUEST_PERMISSION =
+  'graduates-certificates.solicitude.rechazar';
 
 const normalizeRoleCode = (value: string): string =>
   value
@@ -75,21 +95,131 @@ const getNormalizedRoles = (roles: unknown[] | undefined): Set<string> => {
   return normalized;
 };
 
+const normalizePermissionCode = (value: string): string =>
+  value.trim().toLowerCase();
+
+const addPermissionCandidate = (normalized: Set<string>, value: unknown) => {
+  if (typeof value === 'string' && value.trim()) {
+    normalized.add(normalizePermissionCode(value));
+    return;
+  }
+
+  if (value && typeof value === 'object') {
+    const candidate = value as { code?: string };
+    if (candidate.code) {
+      normalized.add(normalizePermissionCode(candidate.code));
+    }
+  }
+};
+
+const getNormalizedPermissions = (
+  user: AuthenticatedRequest['user'],
+): Set<string> => {
+  const normalized = new Set<string>();
+
+  for (const permission of user?.permissions || []) {
+    addPermissionCandidate(normalized, permission);
+  }
+
+  for (const role of user?.roles || []) {
+    if (role && typeof role === 'object') {
+      const candidate = role as { permissions?: unknown[] };
+      if (Array.isArray(candidate.permissions)) {
+        candidate.permissions.forEach((permission) =>
+          addPermissionCandidate(normalized, permission),
+        );
+      }
+    }
+  }
+
+  return normalized;
+};
+
 const assertCanMakeFinalReviewDecision = (req: AuthenticatedRequest) => {
   if (req.user?.internalService) {
     return;
   }
 
   const roles = getNormalizedRoles(req.user?.roles);
+  if (roles.has('SUPER_ADMIN')) {
+    return;
+  }
+
+  const permissions = getNormalizedPermissions(req.user);
   if (
-    roles.has('SUPER_ADMIN') ||
-    roles.has('JEFE_REGISTRO_ACADEMICO')
+    FINAL_REVIEW_DECISION_PERMISSIONS.every((permission) =>
+      permissions.has(permission),
+    )
   ) {
     return;
   }
 
   throw new ForbiddenException(
-    'Solo el Jefe de Registro Academico puede emitir la decision final.',
+    'Se requieren los permisos minimos de jefe de Registro Academico para emitir la decision final.',
+  );
+};
+
+const hasPermission = (
+  req: AuthenticatedRequest,
+  permissionCode: string,
+): boolean => {
+  if (req.user?.internalService) return true;
+
+  const roles = getNormalizedRoles(req.user?.roles);
+  if (roles.has('SUPER_ADMIN')) return true;
+
+  return getNormalizedPermissions(req.user).has(permissionCode);
+};
+
+const assertHasAnyPermission = (
+  req: AuthenticatedRequest,
+  permissionCodes: string[],
+  message: string,
+) => {
+  if (permissionCodes.some((permissionCode) => hasPermission(req, permissionCode))) {
+    return;
+  }
+
+  throw new ForbiddenException(message);
+};
+
+const assertHasPermission = (
+  req: AuthenticatedRequest,
+  permissionCode: string,
+  message: string,
+) => assertHasAnyPermission(req, [permissionCode], message);
+
+const assertCanResolveApprovalDecision = (
+  req: AuthenticatedRequest,
+  body: ResolveReviewApprovalDto,
+) => {
+  if (body?.finalDecision === true) {
+    assertCanMakeFinalReviewDecision(req);
+    return;
+  }
+
+  if (body?.decision === 'REJECTED') {
+    assertHasPermission(
+      req,
+      REJECT_REQUEST_PERMISSION,
+      'Se requiere permiso para rechazar solicitudes de revision.',
+    );
+    return;
+  }
+
+  if (body?.decision === 'OBSERVATION') {
+    assertHasAnyPermission(
+      req,
+      [APPROVE_REQUEST_PERMISSION, REJECT_REQUEST_PERMISSION],
+      'Se requiere permiso de aprobador para devolver solicitudes con observacion.',
+    );
+    return;
+  }
+
+  assertHasPermission(
+    req,
+    APPROVE_REQUEST_PERMISSION,
+    'Se requiere permiso para aprobar solicitudes de revision.',
   );
 };
 
@@ -600,6 +730,16 @@ export class GraduationCertificatesController {
         },
       }),
       fileFilter: (_req, file, cb) => {
+        try {
+          assertHasAnyPermission(
+            _req as AuthenticatedRequest,
+            REVIEW_WORK_PERMISSIONS,
+            'Se requiere permiso para trabajar solicitudes de revision.',
+          );
+        } catch (error) {
+          return cb(error as Error, false);
+        }
+
         const allowedExtensions = new Set([
           '.pdf',
           '.doc',
@@ -638,9 +778,16 @@ export class GraduationCertificatesController {
   async subirArchivosRevisionSolicitud(
     @Param('id') id: string,
     @UploadedFiles() files: Express.Multer.File[],
+    @Req() req: AuthenticatedRequest,
     @Body('uploadedBy') uploadedBy?: string,
     @Body('uploadedByEmail') uploadedByEmail?: string,
   ) {
+    assertHasAnyPermission(
+      req,
+      REVIEW_WORK_PERMISSIONS,
+      'Se requiere permiso para trabajar solicitudes de revision.',
+    );
+
     if (!files || files.length === 0) {
       throw new BadRequestException('No se recibieron archivos');
     }
@@ -662,8 +809,14 @@ export class GraduationCertificatesController {
     @Param('id') id: string,
     @Body()
     body: { reviewerName?: string; reviewerId?: string; reviewerEmail?: string },
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
   ) {
+    assertHasAnyPermission(
+      req,
+      REVIEW_WORK_PERMISSIONS,
+      'Se requiere permiso para iniciar la revision de solicitudes.',
+    );
+
     return await this.service.marcarEnRevision(
       id,
       body.reviewerName,
@@ -682,7 +835,14 @@ export class GraduationCertificatesController {
   async enviarDecisionRevision(
     @Param('id') id: string,
     @Body() body: SubmitReviewDecisionDto,
+    @Req() req: AuthenticatedRequest,
   ) {
+    assertHasAnyPermission(
+      req,
+      REVIEW_WORK_PERMISSIONS,
+      'Se requiere permiso para enviar decisiones de revision.',
+    );
+
     return await this.service.enviarDecisionRevision(id, body);
   }
 
@@ -697,9 +857,7 @@ export class GraduationCertificatesController {
     @Body() body: ResolveReviewApprovalDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    if (body?.finalDecision === true) {
-      assertCanMakeFinalReviewDecision(req);
-    }
+    assertCanResolveApprovalDecision(req, body);
 
     return await this.service.resolverDecisionAprobador(
       id,
@@ -717,8 +875,14 @@ export class GraduationCertificatesController {
   async aprobarSolicitud(
     @Param('id') id: string,
     @Body() body: ApproveRequestDto,
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
   ) {
+    assertHasPermission(
+      req,
+      APPROVE_REQUEST_PERMISSION,
+      'Se requiere permiso para aprobar solicitudes de revision.',
+    );
+
     const origin =
       typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
     const referer =
@@ -745,8 +909,14 @@ export class GraduationCertificatesController {
     @Param('id') id: string,
     @Body()
     body: { reason: string; reviewerName?: string; reviewerId?: string },
-    @Req() req: Request,
+    @Req() req: AuthenticatedRequest,
   ) {
+    assertHasPermission(
+      req,
+      REJECT_REQUEST_PERMISSION,
+      'Se requiere permiso para rechazar solicitudes de revision.',
+    );
+
     const origin =
       typeof req.headers.origin === 'string' ? req.headers.origin : undefined;
     const referer =

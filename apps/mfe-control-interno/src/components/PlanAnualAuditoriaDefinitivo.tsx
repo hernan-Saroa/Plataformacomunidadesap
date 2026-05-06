@@ -16,7 +16,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1235,6 +1235,59 @@ export function crearPlanConDatosMock(vigencia: number, jefeOCI: Auditor): PlanA
 // FIN MOCK crearPlanConDatosMock
 
 // ════════════════════════════════════════════════════════════════════════════
+// FECHAS DE CORTES / TAREAS AL CARGAR EL PLAN (alineadas a la vigencia)
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Mes/día calendario conservados; el año se fuerza al de la vigencia del plan (evita desfase UTC / año erróneo en JSON). */
+function normalizarFechaCampoAVigencia(fecha: unknown, vigencia: number): string {
+  if (fecha == null || fecha === '') return '';
+  let month = 1;
+  let day = 1;
+  if (typeof fecha === 'string') {
+    const trimmed = fecha.trim();
+    const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) {
+      month = parseInt(iso[2], 10);
+      day = parseInt(iso[3], 10);
+    } else {
+      const dt = new Date(trimmed.includes('T') ? trimmed : `${trimmed.slice(0, 10)}T12:00:00`);
+      if (Number.isNaN(dt.getTime())) return '';
+      month = dt.getMonth() + 1;
+      day = dt.getDate();
+    }
+  } else if (fecha instanceof Date) {
+    if (Number.isNaN(fecha.getTime())) return '';
+    month = fecha.getMonth() + 1;
+    day = fecha.getDate();
+  } else {
+    return '';
+  }
+  const lastDay = new Date(vigencia, month, 0).getDate();
+  const safeDay = Math.min(day, lastDay);
+  return `${vigencia}-${String(month).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
+}
+
+function mapPuntosControlFechasVigencia(puntos: unknown, vigencia: number): any[] {
+  if (!Array.isArray(puntos)) return [];
+  return puntos.map((pc: any) => {
+    const next = { ...pc };
+    const fp = pc.fechaProgramada ?? pc.fecha_programada;
+    if (fp != null && fp !== '') {
+      next.fechaProgramada = normalizarFechaCampoAVigencia(fp, vigencia);
+    }
+    const fs = pc.fechaSeguimiento ?? pc.fecha_seguimiento;
+    if (fs != null && fs !== '') {
+      next.fechaSeguimiento = normalizarFechaCampoAVigencia(fs, vigencia);
+    }
+    const fr = pc.fechaReal ?? pc.fecha_real;
+    if (fr != null && fr !== '') {
+      next.fechaReal = normalizarFechaCampoAVigencia(fr, vigencia);
+    }
+    return next;
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -1243,6 +1296,15 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   const [planAEditar, setPlanAEditar] = useState<PlanAnual | undefined>(undefined);
   const { puedeRealizar, esSuperUsuario } = useControlInternoPermissions();
   const puedeCrearPlan = puedeRealizar('plan-anual', 'create') || esSuperUsuario;
+  const puedeVerPlan = puedeRealizar('plan-anual', 'view') || esSuperUsuario;
+  const puedeEditarPlan = puedeRealizar('plan-anual', 'edit') || esSuperUsuario;
+  const puedeAprobarPlan = puedeRealizar('plan-anual', 'approve');
+  const puedeActivarPlan = puedeRealizar('plan-anual', 'activate');
+  /** Misma regla que `puedeVerAprobacion` en el dashboard */
+  const puedeIrAAprobacion = puedeAprobarPlan || puedeActivarPlan || esSuperUsuario;
+  const [wizardSoloLectura, setWizardSoloLectura] = useState(false);
+  const [dashboardSeccionForzada, setDashboardSeccionForzada] = useState<'gestion' | 'aprobar' | null>(null);
+  const limpiarSeccionForzadaDashboard = useCallback(() => setDashboardSeccionForzada(null), []);
   
   // ═══════════════════════════════════════════════════════════════════════
   // AÑO ACTIVO (puede cambiar al seleccionar otro plan)
@@ -1267,8 +1329,8 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     plan: planDesdeBackend,
     auditores,
     estadisticas,
-    loading: cargandoDatos,
-    error: errorCarga,
+    loadingPlan: cargandoPlan,
+    loadingAuditores: cargandoAuditores,
     refetch: recargarPlan,
     createActividad,
     updateActividad,
@@ -1305,23 +1367,39 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     return mapeo[estadoBackend?.toLowerCase()] || 'BORRADOR';
   };
 
-  // Sincronizar plan del backend con estado local
-  useEffect(() => {
-    if (planDesdeBackend) {
-
-
-
-      
+  const transformarPlanBackendAFicha = useCallback((planDesdeBackend: any): PlanAnual => {
       // Transformar datos del backend al formato del frontend
       // ✅ IMPORTANTE: Ordenar roles por rol_numero para mantener el orden del Decreto 648/2017
+      const añoPlanRaw = Number(planDesdeBackend.año);
+      const vigenciaSafe = Number.isFinite(añoPlanRaw) ? añoPlanRaw : new Date().getFullYear();
       const rolesOrdenados = [...planDesdeBackend.roles].sort((a, b) => a.rol_numero - b.rol_numero);
       
-      const planTransformado: PlanAnual = {
+      return {
         id: planDesdeBackend.id,
         vigencia: planDesdeBackend.año,
         version: 1,
         estado: mapearEstadoPlan(planDesdeBackend.estado),
-        jefeOCI: auditores[0] || { id: '1', nombre: planDesdeBackend.responsable, cargo: 'Jefe de Control Interno', email: '' },
+        // Debe coincidir con responsable_id / responsable del backend (no usar auditores[0]: desalineaba identidad y el banner de «responsable del plan»).
+        jefeOCI: (() => {
+          const pb = planDesdeBackend as any;
+          const rid = pb.responsable_id || pb.jefe_oci_id || '';
+          const nombreResp =
+            pb.responsable ||
+            pb.responsable_nombre ||
+            'Responsable del plan';
+          const emailResp = (pb.responsable_email || '').trim();
+          const cargoResp = pb.responsable_cargo || 'Jefe de Control Interno';
+          if (rid && auditores?.length) {
+            const coincidencia = auditores.find((a) => String(a.id) === String(rid));
+            if (coincidencia) return coincidencia;
+          }
+          return {
+            id: rid || '1',
+            nombre: nombreResp,
+            cargo: cargoResp,
+            email: emailResp,
+          };
+        })(),
         fechaCreacion: planDesdeBackend.fecha_creacion,
         // ═══════════════════════════════════════════════════════════════════
         // CORRECCIÓN DE TIMEZONE: El backend NestJS/TypeORM serializa columnas
@@ -1355,7 +1433,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           color: rol.color,
           icono: obtenerIconoRol(rol.rol_numero),
           descripcion: rol.descripcion,
-          actividades: rol.actividades.map(act => {
+          actividades: rol.actividades.map((act: any) => {
             // Cast a any para acceder campos extendidos que vienen del backend
             const actExtendido = act as any;
 
@@ -1483,7 +1561,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               activo: actExtendido.activo ?? act.activo ?? true,
               responsables: responsablesLista,
               // Puntos de control persistidos
-              puntosControl: actExtendido.puntos_control || [],
+              puntosControl: mapPuntosControlFechasVigencia(actExtendido.puntos_control || actExtendido.puntosControl, vigenciaSafe),
               frecuenciaPuntosControl: actExtendido.frecuencia_puntos_control || null,
               entradasSeguimiento: actExtendido.entradas_seguimiento || actExtendido.entradasSeguimiento || [],
               // Tareas de seguimiento (sub-tareas)
@@ -1492,9 +1570,18 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                 descripcion: t.descripcion,
                 completada: t.completada || false,
                 responsables: t.responsables || [],
-                fechaLimite: t.fechaLimite || t.fecha_limite || undefined,
-                fechaEntrega: t.fechaEntrega || t.fecha_entrega || t.fechaLimite || t.fecha_limite || undefined,
-                fechaCompletada: t.fechaCompletada || t.fecha_completada || undefined,
+                fechaLimite: (() => {
+                  const raw = t.fechaLimite ?? t.fecha_limite;
+                  return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigenciaSafe) : undefined;
+                })(),
+                fechaEntrega: (() => {
+                  const raw = t.fechaEntrega ?? t.fecha_entrega ?? t.fechaLimite ?? t.fecha_limite;
+                  return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigenciaSafe) : undefined;
+                })(),
+                fechaCompletada: (() => {
+                  const raw = t.fechaCompletada ?? t.fecha_completada;
+                  return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigenciaSafe) : undefined;
+                })(),
                 completadaPor: t.completadaPor || t.completada_por || undefined,
                 requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
                 requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
@@ -1506,15 +1593,18 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           })
         }))
       };
-      
+  }, [auditores]);
 
+  useEffect(() => {
+    if (!planDesdeBackend) return;
+    // Evitar pisar el plan recién cargado por historial (getById): al cambiar año el hook
+    // puede seguir exponiendo el plan del año anterior hasta que termine getByYear.
+    const añoPlan = Number((planDesdeBackend as any).año);
+    if (Number.isFinite(añoPlan) && añoPlan !== añoActual) return;
 
-
-      
-      setPlanActual(planTransformado);
-      setVista('dashboard'); // Cambiar a dashboard cuando hay datos
-    }
-  }, [planDesdeBackend, auditores]);
+    setPlanActual(transformarPlanBackendAFicha(planDesdeBackend));
+    setVista('dashboard');
+  }, [planDesdeBackend, añoActual, transformarPlanBackendAFicha]);
   
   // Planes anteriores/disponibles - Carga desde backend
   const [planesAnteriores, setPlanesAnteriores] = useState<PlanAnual[]>([]);
@@ -1527,6 +1617,8 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
         if (response.data && Array.isArray(response.data)) {
           // Transformar planes del backend al formato frontend (normalizado para EDICIÓN en wizard)
           const planesTransformados = response.data.map((planBackend: any) => {
+            const añoPlanList = Number(planBackend.año ?? planBackend.vigencia);
+            const vigenciaLista = Number.isFinite(añoPlanList) ? añoPlanList : new Date().getFullYear();
             const rolesOrdenados = Array.isArray(planBackend.roles)
               ? [...planBackend.roles].sort((a: any, b: any) => (a.rol_numero || a.numero || 0) - (b.rol_numero || b.numero || 0))
               : [];
@@ -1571,7 +1663,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                   }
                   return { responsable: respSing, responsables: respList };
                 })(),
-                puntosControl: act.puntos_control || act.puntosControl || [],
+                puntosControl: mapPuntosControlFechasVigencia(act.puntos_control || act.puntosControl, vigenciaLista),
                 frecuenciaPuntosControl: act.frecuencia_puntos_control || act.frecuenciaPuntosControl || null,
                 entradasSeguimiento: act.entradas_seguimiento || act.entradasSeguimiento || [],
                 tareasSeguimiento: (act.tareas_seguimiento || act.tareasSeguimiento || []).map((t: any) => ({
@@ -1579,9 +1671,18 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                   descripcion: t.descripcion || '',
                   completada: !!t.completada,
                   responsables: t.responsables || [],
-                  fechaLimite: t.fechaLimite || t.fecha_limite || t.fechaEntrega || t.fecha_entrega || undefined,
-                  fechaEntrega: t.fechaEntrega || t.fecha_entrega || t.fechaLimite || t.fecha_limite || undefined,
-                  fechaCompletada: t.fechaCompletada || t.fecha_completada || undefined,
+                  fechaLimite: (() => {
+                    const raw = t.fechaLimite ?? t.fecha_limite ?? t.fechaEntrega ?? t.fecha_entrega;
+                    return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigenciaLista) : undefined;
+                  })(),
+                  fechaEntrega: (() => {
+                    const raw = t.fechaEntrega ?? t.fecha_entrega ?? t.fechaLimite ?? t.fecha_limite;
+                    return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigenciaLista) : undefined;
+                  })(),
+                  fechaCompletada: (() => {
+                    const raw = t.fechaCompletada ?? t.fecha_completada;
+                    return raw != null && raw !== '' ? normalizarFechaCampoAVigencia(raw, vigenciaLista) : undefined;
+                  })(),
                   completadaPor: t.completadaPor || t.completada_por || undefined,
                   requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
                   requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
@@ -1634,22 +1735,180 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     cargarPlanesDisponibles();
   }, [planActual]); // Recargar cuando cambie el plan actual para reflejar nuevos planes
 
-  // Handler para cambiar de plan
+  // Handler para cambiar de plan (historial: ojo). Carga por ID: solo cambiar año puede dejar planActual sin actualizar si getByYear falla.
   const handleCambiarPlan = async (planId: string) => {
-    // Si la persona toca visualizar el plan que ya está activo, la scrolleamos hacia arriba
     if (planId === planActual?.id) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
-    
-    const planSeleccionado = planesAnteriores.find(p => p.id === planId);
-    if (planSeleccionado) {
-      // Cambiar el año para que el hook usePlanAnualCompleto cargue el nuevo plan
-      setAñoActual(planSeleccionado.vigencia);
-      // El planActual se actualizará automáticamente cuando planDesdeBackend cambie
-      toast.success(`Cargando plan ${planSeleccionado.vigencia}...`);
+
+    const planSeleccionado = planesAnteriores.find((p) => p.id === planId);
+    if (!planSeleccionado) {
+      toast.error('No se encontró el plan en el historial.');
+      return;
+    }
+
+    const toastId = 'plan-anual-cambiar-vigencia';
+    toast.loading(`Cargando plan ${planSeleccionado.vigencia}…`, { id: toastId });
+
+    try {
+      let resp = await planAnualApi.getById(planId);
+      let raw: any = resp.data;
+      if (!resp.success || !raw) {
+        toast.error(resp.error || 'No se pudo cargar el plan.', { id: toastId });
+        return;
+      }
+
+      const rolesArr = Array.isArray(raw?.roles) ? raw.roles : [];
+      const sinActividades =
+        rolesArr.length === 0 ||
+        rolesArr.every((r: any) => !Array.isArray(r?.actividades) || r.actividades.length === 0);
+      const vig = raw.año ?? planSeleccionado.vigencia;
+      if (sinActividades && vig) {
+        const byYear = await planAnualApi.getByYear(vig);
+        if (byYear?.success && byYear.data) {
+          raw = byYear.data as any;
+        }
+      }
+
+      if (!Array.isArray(raw?.roles) || raw.roles.length === 0) {
+        toast.error('El plan no tiene roles/actividades en el servidor.', { id: toastId });
+        return;
+      }
+
+      setAñoActual(vig);
+      setPlanActual(transformarPlanBackendAFicha(raw));
+      setVista('dashboard');
+
+      try {
+        localStorage.setItem(
+          'esap:plan_anual_activo',
+          JSON.stringify({
+            vigencia: vig,
+            id: raw.id,
+            estado: raw.estado,
+            version: planSeleccionado.version ?? 1,
+            jefeOCINombre: raw.responsable || planSeleccionado.jefeOCI?.nombre || '',
+            fechaCorte: `${vig}-12-31`,
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
+
+      toast.success(`Plan ${planSeleccionado.vigencia} cargado`, { id: toastId });
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al cargar el plan', { id: toastId });
     }
   };
+
+  const abrirWizardConPlan = async (plan: PlanAnual, soloLectura: boolean) => {
+    setDashboardSeccionForzada(null);
+    setWizardSoloLectura(soloLectura);
+    try {
+      const resp = await planAnualApi.getById(plan.id);
+      if (!resp?.success || !resp.data) {
+        toast.error('No se pudo cargar el plan completo para edición');
+        setPlanAEditar(plan);
+        setVista('wizard');
+        return;
+      }
+
+      let planBackend: any = resp.data;
+      // Fallback: algunos backends devuelven getById sin actividades anidadas.
+      const rolesGetById = Array.isArray(planBackend?.roles) ? planBackend.roles : [];
+      const sinActividades =
+        rolesGetById.length === 0 ||
+        rolesGetById.every((r: any) => !Array.isArray(r?.actividades) || r.actividades.length === 0);
+      if (sinActividades && plan.vigencia) {
+        const byYear = await planAnualApi.getByYear(plan.vigencia);
+        if (byYear?.success && byYear.data) {
+          planBackend = byYear.data as any;
+        }
+      }
+
+      const rolesOrdenados = [...(planBackend.roles || [])].sort(
+        (a, b) => (a.rol_numero ?? a.numero ?? 0) - (b.rol_numero ?? b.numero ?? 0),
+      );
+
+      const planCompleto: PlanAnual = {
+        ...plan,
+        id: planBackend.id || plan.id,
+        vigencia: planBackend.año || planBackend.ano || plan.vigencia,
+        estado: mapearEstadoPlan(planBackend.estado || plan.estado || 'borrador'),
+        fechaInicio: planBackend.fecha_inicio || plan.fechaInicio || `${plan.vigencia}-01-01`,
+        fechaFin: planBackend.fecha_fin || plan.fechaFin || `${plan.vigencia}-12-31`,
+        equipoAprobacion: planBackend.equipo_aprobacion || planBackend.equipoAprobacion || plan.equipoAprobacion || [],
+        ordenAprobacion: planBackend.orden_aprobacion || planBackend.ordenAprobacion || plan.ordenAprobacion || 'secuencial',
+        roles: rolesOrdenados.map((rol: any) => ({
+          id: rol.id,
+          numero: rol.rol_numero ?? rol.numero,
+          nombre: rol.nombre,
+          color: rol.color,
+          icono: obtenerIconoRol(rol.rol_numero ?? rol.numero),
+          descripcion: rol.descripcion,
+          responsables: normalizarArrayResponsablesBackend(rol.responsables).slice(0, 1) as any,
+          actividades: (rol.actividades || []).map((act: any) => ({
+            ...act,
+            id: act.id,
+            nombre: act.nombre,
+            descripcion: act.descripcion,
+            fechaInicio: act.fecha_inicio || act.fechaInicio || '',
+            fechaFin: act.fecha_fin || act.fechaFin || '',
+            porcentajeAvance: act.porcentaje_avance ?? act.porcentajeAvance ?? 0,
+            estado: (act.estado || 'pendiente').toUpperCase(),
+            control: act.control || '',
+            evaluacion: act.evaluacion || '',
+            seguimiento: act.seguimiento || '',
+            activo: act.activo !== false,
+            incluidaEnPlan: act.incluidaEnPlan !== false,
+            puntosControl: act.puntos_control || act.puntosControl || [],
+            frecuenciaPuntosControl: act.frecuencia_puntos_control || act.frecuenciaPuntosControl || null,
+            ...(() => {
+              const respSing =
+                act.responsable && act.responsable !== 'Por asignar'
+                  ? { id: `temp-${act.responsable}`, nombre: act.responsable, cargo: 'Auditor', email: '' }
+                  : null;
+              let respList = normalizarArrayResponsablesBackend(act.responsables).map((r: any) => ({
+                id: r.id,
+                nombre: r.nombre,
+                cargo: r.cargo || 'Auditor',
+                email: r.email || '',
+              }));
+              if (respList.length === 0 && respSing) respList = [{ ...respSing }];
+              return { responsable: respSing, responsables: respList };
+            })(),
+            tareasSeguimiento: (act.tareas_seguimiento || act.tareasSeguimiento || []).map((t: any) => ({
+              id: t.id,
+              descripcion: t.descripcion || '',
+              completada: !!t.completada,
+              responsables: t.responsables || [],
+              fechaLimite: t.fechaLimite || t.fecha_limite || t.fechaEntrega || t.fecha_entrega || undefined,
+              fechaEntrega: t.fechaEntrega || t.fecha_entrega || t.fechaLimite || t.fecha_limite || undefined,
+              fechaCompletada: t.fechaCompletada || t.fecha_completada || undefined,
+              completadaPor: t.completadaPor || t.completada_por || undefined,
+              requiereAdjuntos: !!(t.requiereAdjuntos ?? t.requiere_adjuntos),
+              requiereObservaciones: !!(t.requiereObservaciones ?? t.requiere_observaciones),
+              observaciones: t.observaciones || '',
+              adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
+            })),
+            entradasSeguimiento: act.entradas_seguimiento || act.entradasSeguimiento || [],
+          })),
+        })),
+      };
+
+      setPlanAEditar(planCompleto);
+      setVista('wizard');
+    } catch (error) {
+      console.error('Error cargando plan completo para edición:', error);
+      toast.error('No se pudo cargar el plan completo para edición');
+      setPlanAEditar(plan);
+      setVista('wizard');
+    }
+  };
+
+  const handleEditarPlan = (plan: PlanAnual) => abrirWizardConPlan(plan, false);
+  const handleVerDefinicionPlan = (plan: PlanAnual) => abrirWizardConPlan(plan, true);
 
   // Hook para crear plan en backend
   const { mutate: crearPlanEnBackend, loading: creandoPlan } = useCreatePlanAnual();
@@ -2075,25 +2334,25 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   };
   FIN MOCK handleCrearPlanConMock */
 
-  // Mostrar loading mientras carga
-  if (cargandoDatos) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-blue-50/30">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4" />
-        <p className="text-gray-600">Cargando plan anual...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="h-full flex flex-col bg-gradient-to-br from-gray-50 to-blue-50/30">
+      {vista === 'inicio' && (cargandoPlan || cargandoAuditores) && (
+        <div className="shrink-0 px-4 py-2.5 bg-blue-50 border-b border-blue-100 text-sm text-blue-900 flex items-center gap-2">
+          <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent shrink-0" />
+          <span>
+            {cargandoPlan ? 'Sincronizando el plan del año seleccionado…' : 'Cargando referencias del equipo auditor…'}
+          </span>
+        </div>
+      )}
       <AnimatePresence mode="wait">
         {vista === 'inicio' && (
           <PantallaInicio
             key="inicio"
             planesAnteriores={planesAnteriores}
-            onCrearNuevo={puedeCrearPlan ? () => { setPlanAEditar(undefined); setVista('wizard'); } : undefined}
+            puedeVerPlan={puedeVerPlan}
+            onCrearNuevo={puedeCrearPlan ? () => { setWizardSoloLectura(false); setPlanAEditar(undefined); setVista('wizard'); } : undefined}
             onAbrirPlan={(plan) => {
+              setWizardSoloLectura(false);
               setPlanAEditar(undefined);
               // Si el plan ya está cargado para ese mismo año, ir directo al dashboard
               if (plan.vigencia === añoActual && planActual) {
@@ -2110,12 +2369,29 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
 
         {vista === 'wizard' && (
           <WizardCreacion
-            key="wizard"
+            key={`wizard-${planAEditar?.id ?? 'nuevo'}-${wizardSoloLectura ? 'ro' : 'rw'}`}
             planAEditar={planAEditar}
-            onCancelar={() => setVista(planActual ? 'dashboard' : 'inicio')}
+            soloLectura={wizardSoloLectura}
+            puedeIrAAprobacion={wizardSoloLectura && puedeIrAAprobacion}
+            onIrAAprobacion={
+              puedeIrAAprobacion
+                ? () => {
+                    setWizardSoloLectura(false);
+                    setDashboardSeccionForzada('aprobar');
+                    setVista('dashboard');
+                  }
+                : undefined
+            }
+            onCancelar={() => {
+              setWizardSoloLectura(false);
+              setDashboardSeccionForzada(null);
+              setVista(planActual ? 'dashboard' : 'inicio');
+            }}
             onCrear={handleCrearPlan}
             onTerminado={async () => {
               // añoActual ya fue sincronizado en handleCrearPlan
+              setWizardSoloLectura(false);
+              setDashboardSeccionForzada(null);
               await recargarPlan();
               setVista('dashboard');
             }}
@@ -2137,8 +2413,11 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                 setVista('rol4-integrado');
               }
             }}
-            onCrearNuevo={puedeCrearPlan ? () => { setPlanAEditar(undefined); setVista('wizard'); } : undefined}
-            onEditarPlan={puedeCrearPlan ? (plan) => { setPlanAEditar(plan); setVista('wizard'); } : undefined}
+            onCrearNuevo={puedeCrearPlan ? () => { setWizardSoloLectura(false); setPlanAEditar(undefined); setVista('wizard'); } : undefined}
+            onEditarPlan={puedeEditarPlan ? handleEditarPlan : undefined}
+            onVerDefinicionPlan={puedeVerPlan ? handleVerDefinicionPlan : undefined}
+            seccionForzada={dashboardSeccionForzada}
+            onSeccionForzadaAplicada={limpiarSeccionForzadaDashboard}
             planesAnteriores={planesAnteriores}
             planesDisponibles={planesAnteriores}
             onCambiarPlan={handleCambiarPlan}
@@ -2172,12 +2451,14 @@ function PlanAnualRol4IntegradoWrapper({ vigencia, onVolver }: { vigencia: numbe
 
 interface PantallaInicioProps {
   planesAnteriores: PlanAnual[];
+  /** CONTROL_INTERNO_PLAN_ANUAL_VIEW: mostrar acceso al dashboard del plan */
+  puedeVerPlan?: boolean;
   onCrearNuevo?: () => void;
   onAbrirPlan: (plan: PlanAnual) => void;
   onCargarMock?: () => void; // NUEVO: Para cargar datos de prueba
 }
 
-function PantallaInicio({ planesAnteriores, onCrearNuevo, onAbrirPlan, onCargarMock }: PantallaInicioProps) {
+function PantallaInicio({ planesAnteriores, puedeVerPlan = false, onCrearNuevo, onAbrirPlan, onCargarMock }: PantallaInicioProps) {
   const vigenciaActual = new Date().getFullYear();
   
   // Revisar si existe un borrador local no enviado
@@ -2294,13 +2575,20 @@ function PantallaInicio({ planesAnteriores, onCrearNuevo, onAbrirPlan, onCargarM
                       {plan.id} • {plan.estado} • Responsable: {plan.jefeOCI?.nombre || 'No asignado'}
                     </p>
                   </div>
-                  <button
-                    onClick={() => onAbrirPlan(plan)}
-                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg font-medium flex items-center gap-2 transition-colors"
-                  >
-                    <Eye className="w-4 h-4" />
-                    Ver
-                  </button>
+                  {puedeVerPlan ? (
+                    <button
+                      onClick={() => onAbrirPlan(plan)}
+                      className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg font-medium flex items-center gap-2 transition-colors"
+                      title="Abrir plan en el dashboard"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Ver
+                    </button>
+                  ) : (
+                    <span className="px-3 py-2 text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">
+                      Sin permiso de consulta
+                    </span>
+                  )}
                 </div>
               ))}
             </div>

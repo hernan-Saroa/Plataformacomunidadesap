@@ -289,6 +289,17 @@ export class AuthService {
     // Optimización: Solo incluir códigos de roles en el JWT para reducir tamaño
     const rolesCodes = user.roles.map((r) => r.code);
     const rolesIds = user.roles.map((r) => r.id);
+    const permissionCodes: string[] = Array.from(
+      new Set(
+        user.roles.flatMap((role) =>
+          Array.isArray(role.permissions)
+            ? role.permissions
+                .map((permission) => permission?.code)
+                .filter((code): code is string => Boolean(code))
+            : [],
+        ),
+      ),
+    );
 
     const payload = {
       sub: user.id_user,
@@ -300,6 +311,7 @@ export class AuthService {
         user.username,
       roles: rolesCodes,
       rolesIds: rolesIds,
+      permissions: permissionCodes,
     };
 
     const accessToken = await this.jwtService.signAsync(payload, {
@@ -332,6 +344,7 @@ export class AuthService {
         roles: user.roles,
         person: user.person,
         modules,
+        permissions: permissionCodes,
       },
     };
   }

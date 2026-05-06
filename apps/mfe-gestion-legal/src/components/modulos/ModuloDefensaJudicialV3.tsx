@@ -95,6 +95,9 @@ export function ModuloDefensaJudicialV3() {
   // Estado local para manejar drag and drop
   const [expedientes, setExpedientes] = useState<ExpedienteJudicial[]>([]);
 
+  // ✅ Estado para expediente abierto desde notificación (evento legal:open-expediente-detail)
+  const [expedienteDesdeNotificacion, setExpedienteDesdeNotificacion] = useState<ExpedienteJudicial | null>(null);
+
   // ✅ Estado para items archivados/eliminados (cargados desde backend)
   const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
 
@@ -165,6 +168,66 @@ export function ModuloDefensaJudicialV3() {
       loadArchivados();
     }
   }, [tipoVista]);
+
+  // ✅ Listener: Abrir expediente desde notificación (evento legal:open-expediente-detail)
+  // GestionLegalFull cambia la vista activa y luego dispara este evento con {radicado, procesoId}.
+  // Buscamos por radicado en la lista local; si no está, cargamos todos y filtramos.
+  useEffect(() => {
+    const abrirPorRadicado = async (radicado: string) => {
+      // 1. Buscar en expedientes ya en memoria (por radicado, uuid o id)
+      let exp = expedientes.find(
+        e => (e as any).radicado === radicado || e.id === radicado || (e as any).uuid === radicado
+      );
+
+      if (!exp) {
+        // 2. Cargar lista completa y buscar por radicado
+        try {
+          toast.loading(`Buscando expediente ${radicado}...`, { id: 'load-notif-exp' });
+          const todos = await legalService.getExpedientes();
+          const encontrado = todos.find(
+            (e: any) => e.radicado === radicado || e.id === radicado || e.uuid === radicado
+          );
+          toast.dismiss('load-notif-exp');
+          if (encontrado) {
+            exp = encontrado as any;
+          } else {
+            toast.error(`No se encontró el expediente ${radicado}`);
+            return;
+          }
+        } catch {
+          toast.dismiss('load-notif-exp');
+          toast.error(`Error cargando expediente ${radicado}`);
+          return;
+        }
+      }
+
+      setExpedienteDesdeNotificacion(exp);
+    };
+
+    const handleOpenFromNotification = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      if (detail.modulo && detail.modulo !== 'defensa-judicial') return; // Solo para este módulo
+      const radicado = detail.radicado;
+      if (!radicado) return;
+      abrirPorRadicado(radicado);
+    };
+
+    window.addEventListener('legal:open-expediente-detail', handleOpenFromNotification);
+
+    // Respaldo: procesar intención pendiente al montar (llega antes que el listener)
+    const pending = sessionStorage.getItem('legal:pendingOpenExpediente');
+    if (pending) {
+      try {
+        const detail = JSON.parse(pending);
+        if (detail.modulo === 'defensa-judicial' && detail.radicado) {
+          sessionStorage.removeItem('legal:pendingOpenExpediente');
+          abrirPorRadicado(detail.radicado);
+        }
+      } catch { /* ignore */ }
+    }
+
+    return () => window.removeEventListener('legal:open-expediente-detail', handleOpenFromNotification);
+  }, [expedientes]);
 
   // Cargar expedientes desde el backend
   const loadExpedientes = async () => {
@@ -927,6 +990,16 @@ export function ModuloDefensaJudicialV3() {
         onClose={() => setModalNuevaDemandaOpen(false)}
         onSave={handleSaveNuevaDemanda}
       />
+
+      {/* ✅ Modal Expediente abierto desde notificación (nivel padre) */}
+      {expedienteDesdeNotificacion && (
+        <ModalExpediente
+          isOpen={true}
+          onClose={() => setExpedienteDesdeNotificacion(null)}
+          expediente={expedienteDesdeNotificacion}
+          onUpdate={loadExpedientes}
+        />
+      )}
     </div>
   );
 }

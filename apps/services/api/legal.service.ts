@@ -148,6 +148,7 @@ export class LegalService {
         descripcion: string;
         fechaActuacion: string;
         file?: File;
+        subidoPor?: string;
     }): Promise<any> {
         if (data.file) {
             const formData = new FormData();
@@ -155,12 +156,14 @@ export class LegalService {
             formData.append('tipoActuacion', data.tipoActuacion);
             formData.append('descripcion', data.descripcion);
             formData.append('fechaActuacion', data.fechaActuacion);
+            if (data.subidoPor) formData.append('subidoPor', data.subidoPor);
             return apiClient.upload<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/actuaciones`, formData);
         }
         return apiClient.post<any>(`${SERVICE_PREFIX}/juzgamiento/${radicado}/actuaciones`, {
             tipoActuacion: data.tipoActuacion,
             descripcion: data.descripcion,
-            fechaActuacion: data.fechaActuacion
+            fechaActuacion: data.fechaActuacion,
+            ...(data.subidoPor ? { subidoPor: data.subidoPor } : {}),
         });
     }
 
@@ -255,6 +258,23 @@ export class LegalService {
 
     async desanexarExpediente(anexadoId: string, usuario?: string): Promise<any> {
         return apiClient.post(`${SERVICE_PREFIX}/expedientes/${anexadoId}/desanexar`, { usuario });
+    }
+
+    /**
+     * Notifica a todos los usuarios que tengan un rol específico (ej: JEFE_GESTION_LEGAL)
+     * sobre un expediente. El backend resuelve los usuarios reales y envía la
+     * notificación in-app + email opcional.
+     */
+    async notifyExpedienteToRole(expedienteId: string, payload: {
+        roleCode: string;
+        asunto: string;
+        mensaje: string;
+        enviarEmail?: boolean;
+        enviarSistema?: boolean;
+        radicado?: string;
+        etapa?: string;
+    }): Promise<{ ok: boolean }> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/notify-role`, payload);
     }
 
     // Alias en español para mantener compatibilidad

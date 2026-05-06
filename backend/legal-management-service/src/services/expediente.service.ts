@@ -12,6 +12,7 @@ import { NotaExpediente } from '../entities/nota-expediente.entity';
 import { Audiencia } from '../entities/audiencia.entity';
 import { Acta } from '../entities/acta.entity';
 import { ConfigurationsService } from './configurations.service';
+import { LegalNotificationsService } from './legal-notifications.service';
 
 @Injectable()
 export class ExpedienteService {
@@ -24,7 +25,8 @@ export class ExpedienteService {
         private decisionRepository: Repository<DecisionDisciplinaria>,
         @InjectRepository(ExcepcionProcesal)
         private excepcionRepository: Repository<ExcepcionProcesal>,
-        private readonly configService: ConfigurationsService
+        private readonly configService: ConfigurationsService,
+        private readonly legalNotifications: LegalNotificationsService
     ) { }
 
     async findOneByRadicado(radicado: string): Promise<Expediente | null> {
@@ -86,7 +88,7 @@ export class ExpedienteService {
         });
     }
 
-    async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
+    async crearExpediente(data: Partial<Expediente>, creadoPor: string = 'Sistema'): Promise<Expediente> {
         if (data.radicado) {
             const existing = await this.expedienteRepository.findOne({ where: { radicado: data.radicado } });
             if (existing) {
@@ -125,7 +127,23 @@ export class ExpedienteService {
         }
 
         const nuevoExpediente = this.expedienteRepository.create(data);
-        return this.expedienteRepository.save(nuevoExpediente);
+        const saved = await this.expedienteRepository.save(nuevoExpediente);
+
+        const esDisciplinario =
+            saved.jurisdiccion === 'DISCIPLINARIO' ||
+            saved.jurisdiccion === 'Disciplinaria' ||
+            saved.tipoProceso === 'DISCIPLINARIO' ||
+            saved.tipoProceso === 'Disciplinario';
+        const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+
+        await this.legalNotifications.notifyProcesoCreado({
+            modulo,
+            radicado: saved.radicado,
+            procesoId: saved.id,
+            creadoPor,
+        });
+
+        return saved;
     }
 
     private addBusinessDays(startDate: Date, days: number): Date {
@@ -548,6 +566,22 @@ export class ExpedienteService {
 
         const updated = await this.findOne(principalId);
         if (!updated) throw new Error('Expediente no encontrado post-update');
+
+        const esDisciplinario =
+            updated.jurisdiccion === 'DISCIPLINARIO' ||
+            updated.jurisdiccion === 'Disciplinaria' ||
+            updated.tipoProceso === 'DISCIPLINARIO' ||
+            updated.tipoProceso === 'Disciplinario';
+        const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+
+        await this.legalNotifications.notifyProcesoAnexado({
+            modulo,
+            radicadoAnexado: anexado.radicado,
+            radicadoPrincipal: updated.radicado,
+            procesoPrincipalId: updated.id,
+            anexadoPor: usuario,
+        });
+
         return updated;
     }
 
