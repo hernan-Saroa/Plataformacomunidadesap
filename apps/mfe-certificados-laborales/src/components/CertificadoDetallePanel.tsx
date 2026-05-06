@@ -137,7 +137,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
       observations: certificado.request?.observations || certificado.observations,
       templateType: certificado.templateType,
       includeCodeLabel: true,
-      codeLabel: 'Codigo',
+      codeLabel: 'Código',
     }) ||
     certificado.empleado.cargo
   );
@@ -614,7 +614,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     const copiado = await copiarAlPortapapeles(certificado.consecutivo);
     if (copiado) {
       toast.success('Consecutivo copiado', {
-        description: 'El numero de consecutivo fue copiado al portapapeles'
+        description: 'El número de consecutivo fue copiado al portapapeles'
       });
     } else {
       toast.error('No se pudo copiar el consecutivo');
@@ -770,7 +770,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                             </p>
                             {incluyePrimaTecnicaCertificado && primaTecnicaCertificado > 0 && (
                               <p className="text-xs text-emerald-700 mt-1 pl-5">
-                                Prima Tecnica: ${Number(primaTecnicaCertificado).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} COP
+                                Prima técnica y/o coordinación: ${Number(primaTecnicaCertificado).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} COP
                               </p>
                             )}
                           </>

@@ -203,7 +203,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       observations: cert.request?.observations || cert.observations,
       templateType: templateTypeNormalizado,
       includeCodeLabel: true,
-      codeLabel: 'Codigo',
+      codeLabel: 'Código',
     });
 
     const employmentStatusRaw = String(
@@ -779,7 +779,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             </button>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 sm:ml-auto">
+          <div className="flex min-w-0 flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center sm:justify-end gap-2 sm:gap-3 sm:ml-auto">
             <button
               onClick={() => fetchCertificados(true)}
               disabled={isRefreshing}
@@ -817,7 +817,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
             <button
               onClick={() => setIsPrimaTecnicaOpen(true)}
-              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
+              className="inline-flex max-w-full items-center justify-center gap-2 transition-all whitespace-normal text-center sm:w-auto sm:whitespace-nowrap sm:flex-shrink-0"
               style={{
                 background: '#FFFFFF',
                 color: '#4338CA',
@@ -843,7 +843,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
               <span className="w-5 h-5 rounded-full bg-indigo-100/80 border border-indigo-200 flex items-center justify-center flex-shrink-0">
                 <Percent className="w-3.5 h-3.5" strokeWidth={2.4} />
               </span>
-              <span>Prima Tecnica</span>
+              <span className="leading-tight">Prima técnica y/o coordinación</span>
             </button>
 
             <button
