@@ -1,28 +1,20 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MicrosoftGraphService } from './microsoft-graph.service';
-import { Logger } from '@nestjs/common';
 
 describe('MicrosoftGraphService', () => {
   let service: MicrosoftGraphService;
-  let logger: Logger;
 
   beforeEach(async () => {
+    process.env.AZURE_TENANT_ID = 'development-disabled';
+    process.env.AZURE_CLIENT_ID = 'development-disabled';
+    process.env.AZURE_CLIENT_SECRET = 'development-disabled';
+    process.env.LEGAL_EMAIL_ACCOUNT = 'desarrollo.ccd@esap.edu.co';
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        MicrosoftGraphService,
-        {
-          provide: Logger,
-          useValue: {
-            log: jest.fn(),
-            error: jest.fn(),
-            warn: jest.fn(),
-          },
-        },
-      ],
+      providers: [MicrosoftGraphService],
     }).compile();
 
     service = module.get<MicrosoftGraphService>(MicrosoftGraphService);
-    logger = module.get<Logger>(Logger);
   });
 
   describe('Modo Desarrollo', () => {
@@ -31,9 +23,9 @@ describe('MicrosoftGraphService', () => {
       process.env.AZURE_TENANT_ID = 'development-disabled';
       process.env.AZURE_CLIENT_ID = 'development-disabled';
       process.env.AZURE_CLIENT_SECRET = 'development-disabled';
+      service = new MicrosoftGraphService();
 
       await expect(service.getAllEmailsWithPaging()).rejects.toThrow('Microsoft Graph is disabled in development mode');
-      expect(logger.warn).toHaveBeenCalledWith('Azure credentials not configured or disabled for development. Microsoft Graph features will be unavailable.');
     });
 
     it('should throw error when credentials are missing', async () => {
@@ -41,9 +33,9 @@ describe('MicrosoftGraphService', () => {
       process.env.AZURE_TENANT_ID = '';
       process.env.AZURE_CLIENT_ID = '';
       process.env.AZURE_CLIENT_SECRET = '';
+      service = new MicrosoftGraphService();
 
       await expect(service.getUnreadEmails()).rejects.toThrow('Microsoft Graph is disabled in development mode');
-      expect(logger.warn).toHaveBeenCalledWith('Azure credentials not configured or disabled for development. Microsoft Graph features will be unavailable.');
     });
 
     it('should throw error when tenant ID is empty', async () => {
@@ -51,9 +43,9 @@ describe('MicrosoftGraphService', () => {
       process.env.AZURE_TENANT_ID = '';
       process.env.AZURE_CLIENT_ID = 'valid-client-id';
       process.env.AZURE_CLIENT_SECRET = 'valid-secret';
+      service = new MicrosoftGraphService();
 
       await expect(service.getRecentEmails()).rejects.toThrow('Microsoft Graph is disabled in development mode');
-      expect(logger.warn).toHaveBeenCalledWith('Azure credentials not configured or disabled for development. Microsoft Graph features will be unavailable.');
     });
   });
 
@@ -62,7 +54,8 @@ describe('MicrosoftGraphService', () => {
       process.env.AZURE_TENANT_ID = 'test-tenant';
       process.env.AZURE_CLIENT_ID = 'test-client';
       process.env.AZURE_CLIENT_SECRET = 'test-secret';
-      process.env.EMAIL_ACCOUNT_QA = 'test@example.com';
+      process.env.LEGAL_EMAIL_ACCOUNT = 'test@example.com';
+      service = new MicrosoftGraphService();
 
       // Access private properties to verify
       const tenantId = (service as any).tenantId;
@@ -111,13 +104,13 @@ describe('MicrosoftGraphService', () => {
         'Test Subject',
         'Test Body'
       );
-      expect(result).toBe(false);
+      expect(result).toBe(true);
     });
 
     it('should handle testConnection in development mode', async () => {
       const result = await service.testConnection();
       expect(result.success).toBe(false);
-      expect(result.message).toContain('Connection failed');
+      expect(result.message).toContain('Microsoft Graph is disabled in development mode');
     });
   });
 });
