@@ -123,7 +123,6 @@ const ACADEMIC_PROFILES: AcademicProfile[] = [
       'graduates.verify_certificate',
       'graduates-certificates.solicitude.aprobar',
       'graduates-certificates.certificates.view',
-      'graduates-certificates.certificates.edit',
       'graduates-certificates.solicitude.review',
       'graduates-certificates.solicitude.rechazar',
       'graduates-certificates.certificates.reenviar',
@@ -133,8 +132,10 @@ const ACADEMIC_PROFILES: AcademicProfile[] = [
       'graduates.verify_certificate',
       'graduates-certificates.solicitude.aprobar',
       'graduates-certificates.certificates.view',
+      'graduates-certificates.solicitude.review',
       'graduates-certificates.solicitude.rechazar',
       'graduates-certificates.certificates.reenviar',
+      'graduates-certificates.solicitude.view',
     ],
   },
   {
@@ -157,6 +158,369 @@ const ACADEMIC_PROFILES: AcademicProfile[] = [
 ];
 
 const getPermissionCode = (permission: PermissionWithCode) => permission.code || permission.id;
+
+const MOJIBAKE_PATTERN = /[ÃÂâ�]/;
+
+const KNOWN_MOJIBAKE_REPLACEMENTS: Array<[string, string]> = [
+  ['Ã¡', 'á'],
+  ['Ã©', 'é'],
+  ['Ã­', 'í'],
+  ['Ã³', 'ó'],
+  ['Ãº', 'ú'],
+  ['Ã±', 'ñ'],
+  ['Ã¼', 'ü'],
+  ['Ã', 'Á'],
+  ['Ã‰', 'É'],
+  ['Ã', 'Í'],
+  ['Ã“', 'Ó'],
+  ['Ãš', 'Ú'],
+  ['Ã‘', 'Ñ'],
+  ['Ãœ', 'Ü'],
+  ['Â¿', '¿'],
+  ['Â¡', '¡'],
+  ['Â°', '°'],
+  ['Âº', 'º'],
+  ['â€“', '–'],
+  ['â€”', '—'],
+  ['â€˜', '‘'],
+  ['â€™', '’'],
+  ['â€œ', '“'],
+  ['â€', '”'],
+  ['â€¢', '•'],
+  ['â€¦', '…'],
+  ['âœ…', '✅'],
+  ['âŒ', '❌'],
+];
+
+const SPANISH_TEXT_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/\bGestionar (?:\?\?|�)rganos de Control\b/g, 'Gestionar Órganos de Control'],
+  [/\bAdministrar (?:\?\?|�)rganos de control\b/g, 'Administrar órganos de control'],
+  [/\bde (?:\?\?|�)rganos de control\b/g, 'de órganos de control'],
+  [/(^|[\s([{¿¡"'`-])(?:\?\?|�)rganos\b/g, '$1órganos'],
+  [/(^|[\s([{¿¡"'`-])(?:\?\?|�)rgano\b/g, '$1órgano'],
+  [/\bSoliciar\b/g, 'Solicitar'],
+  [/\bsoliciar\b/g, 'solicitar'],
+  [/\bCambiar Estado (?:\?\?|�)rea\b/g, 'Cambiar Estado Área'],
+  [/\bCrear (?:\?\?|�)rea\b/g, 'Crear Área'],
+  [/\bEditar (?:\?\?|�)rea\b/g, 'Editar Área'],
+  [/\bPermite cambiar el estado una (?:\?\?|�)rea\b/g, 'Permite cambiar el estado de un área'],
+  [/\bPermite cambiar el estado de una (?:\?\?|�)rea\b/g, 'Permite cambiar el estado de un área'],
+  [/\bPermite crear una nueva (?:\?\?|�)rea\b/g, 'Permite crear una nueva área'],
+  [/\bPermite editar una (?:\?\?|�)rea\b/g, 'Permite editar un área'],
+  [/(^|[\s([{¿¡"'`-])(?:\?\?|�)rea\b/g, '$1área'],
+  [/(^|[\s([{¿¡"'`-])(?:\?\?|�)reas\b/g, '$1áreas'],
+  [/\b([A-Za-zÁÉÍÓÚáéíóúÑñÜü]+)ci(?:\?\?|�)n\b/g, '$1ción'],
+  [/\b([A-Za-zÁÉÍÓÚáéíóúÑñÜü]+)Ci(?:\?\?|�)n\b/g, '$1Ción'],
+  [/\bLe(?:\?\?|�)da\b/g, 'Leída'],
+  [/\ble(?:\?\?|�)da\b/g, 'leída'],
+  [/\bLe(?:\?\?|�)do\b/g, 'Leído'],
+  [/\ble(?:\?\?|�)do\b/g, 'leído'],
+  [/\bLe(?:\?\?|�)das\b/g, 'Leídas'],
+  [/\ble(?:\?\?|�)das\b/g, 'leídas'],
+  [/\bLe(?:\?\?|�)dos\b/g, 'Leídos'],
+  [/\ble(?:\?\?|�)dos\b/g, 'leídos'],
+  [/\bGesti(?:\?\?|�)n\b/g, 'Gestión'],
+  [/\bgesti(?:\?\?|�)n\b/g, 'gestión'],
+  [/\bVerificaci(?:\?\?|�)n\b/g, 'Verificación'],
+  [/\bverificaci(?:\?\?|�)n\b/g, 'verificación'],
+  [/\bValidaci(?:\?\?|�)n\b/g, 'Validación'],
+  [/\bvalidaci(?:\?\?|�)n\b/g, 'validación'],
+  [/\bRevisi(?:\?\?|�)n\b/g, 'Revisión'],
+  [/\brevisi(?:\?\?|�)n\b/g, 'revisión'],
+  [/\bAprobaci(?:\?\?|�)n\b/g, 'Aprobación'],
+  [/\baprobaci(?:\?\?|�)n\b/g, 'aprobación'],
+  [/\bConfiguraci(?:\?\?|�)n\b/g, 'Configuración'],
+  [/\bconfiguraci(?:\?\?|�)n\b/g, 'configuración'],
+  [/\bAuditor(?:\?\?|�)a\b/g, 'Auditoría'],
+  [/\bauditor(?:\?\?|�)a\b/g, 'auditoría'],
+  [/\bEjecuci(?:\?\?|�)n\b/g, 'Ejecución'],
+  [/\bejecuci(?:\?\?|�)n\b/g, 'ejecución'],
+  [/\bM(?:\?\?|�)dulo\b/g, 'Módulo'],
+  [/\bm(?:\?\?|�)dulo\b/g, 'módulo'],
+  [/\bPar(?:\?\?|�)metros\b/g, 'Parámetros'],
+  [/\bpar(?:\?\?|�)metros\b/g, 'parámetros'],
+  [/\bEstad(?:\?\?|�)sticas\b/g, 'Estadísticas'],
+  [/\bestad(?:\?\?|�)sticas\b/g, 'estadísticas'],
+  [/\bM(?:\?\?|�)tricas\b/g, 'Métricas'],
+  [/\bm(?:\?\?|�)tricas\b/g, 'métricas'],
+  [/\bPol(?:\?\?|�)ticas\b/g, 'Políticas'],
+  [/\bpol(?:\?\?|�)ticas\b/g, 'políticas'],
+  [/\bContrase(?:\?\?|�)a\b/g, 'Contraseña'],
+  [/\bcontrase(?:\?\?|�)a\b/g, 'contraseña'],
+  [/\bContrase(?:\?\?|�)as\b/g, 'Contraseñas'],
+  [/\bcontrase(?:\?\?|�)as\b/g, 'contraseñas'],
+  [/\bT(?:\?\?|�)rmino\b/g, 'Término'],
+  [/\bt(?:\?\?|�)rmino\b/g, 'término'],
+  [/\bT(?:\?\?|�)rminos\b/g, 'Términos'],
+  [/\bt(?:\?\?|�)rminos\b/g, 'términos'],
+  [/\bElectr(?:\?\?|�)nico\b/g, 'Electrónico'],
+  [/\belectr(?:\?\?|�)nico\b/g, 'electrónico'],
+  [/\bAcad(?:\?\?|�)mico\b/g, 'Académico'],
+  [/\bacad(?:\?\?|�)mico\b/g, 'académico'],
+  [/\bAcad(?:\?\?|�)micos\b/g, 'Académicos'],
+  [/\bacad(?:\?\?|�)micos\b/g, 'académicos'],
+  [/\bT(?:\?\?|�)tulo\b/g, 'Título'],
+  [/\bt(?:\?\?|�)tulo\b/g, 'título'],
+  [/\bT(?:\?\?|�)tulos\b/g, 'Títulos'],
+  [/\bt(?:\?\?|�)tulos\b/g, 'títulos'],
+  [/\bInformaci(?:\?\?|�)n\b/g, 'Información'],
+  [/\binformaci(?:\?\?|�)n\b/g, 'información'],
+  [/\bPublicaci(?:\?\?|�)n\b/g, 'Publicación'],
+  [/\bpublicaci(?:\?\?|�)n\b/g, 'publicación'],
+  [/\bEvaluaci(?:\?\?|�)n\b/g, 'Evaluación'],
+  [/\bevaluaci(?:\?\?|�)n\b/g, 'evaluación'],
+  [/\bSanci(?:\?\?|�)n\b/g, 'Sanción'],
+  [/\bsanci(?:\?\?|�)n\b/g, 'sanción'],
+  [/\bEmisi(?:\?\?|�)n\b/g, 'Emisión'],
+  [/\bemisi(?:\?\?|�)n\b/g, 'emisión'],
+  [/\bM(?:\?\?|�)xima\b/g, 'Máxima'],
+  [/\bm(?:\?\?|�)xima\b/g, 'máxima'],
+  [/\bM(?:\?\?|�)ltiples\b/g, 'Múltiples'],
+  [/\bm(?:\?\?|�)ltiples\b/g, 'múltiples'],
+  [/\b(?:\?\?|�)rganos\b/g, 'Órganos'],
+  [/\b(?:\?\?|�)rea\b/g, 'Área'],
+  [/\b(?:\?\?|�)reas\b/g, 'Áreas'],
+  [/\bDirecci(?:\?\?|�)n\b/g, 'Dirección'],
+  [/\bdirecci(?:\?\?|�)n\b/g, 'dirección'],
+  [/\bPlaneaci(?:\?\?|�)n\b/g, 'Planeación'],
+  [/\bplaneaci(?:\?\?|�)n\b/g, 'planeación'],
+  [/\bValoraci(?:\?\?|�)n\b/g, 'Valoración'],
+  [/\bvaloraci(?:\?\?|�)n\b/g, 'valoración'],
+  [/\bIndagaci(?:\?\?|�)n\b/g, 'Indagación'],
+  [/\bindagaci(?:\?\?|�)n\b/g, 'indagación'],
+  [/\bInvestigaci(?:\?\?|�)n\b/g, 'Investigación'],
+  [/\binvestigaci(?:\?\?|�)n\b/g, 'investigación'],
+  [/\bAdministraci(?:\?\?|�)n\b/g, 'Administración'],
+  [/\badministraci(?:\?\?|�)n\b/g, 'administración'],
+  [/\bAutenticaci(?:\?\?|�)n\b/g, 'Autenticación'],
+  [/\bautenticaci(?:\?\?|�)n\b/g, 'autenticación'],
+  [/\bVisualizaci(?:\?\?|�)n\b/g, 'Visualización'],
+  [/\bvisualizaci(?:\?\?|�)n\b/g, 'visualización'],
+  [/\bNotificaci(?:\?\?|�)n\b/g, 'Notificación'],
+  [/\bnotificaci(?:\?\?|�)n\b/g, 'notificación'],
+  [/\bRemisi(?:\?\?|�)n\b/g, 'Remisión'],
+  [/\bremisi(?:\?\?|�)n\b/g, 'remisión'],
+  [/\bRecepci(?:\?\?|�)n\b/g, 'Recepción'],
+  [/\brecepci(?:\?\?|�)n\b/g, 'recepción'],
+  [/\bCertificaci(?:\?\?|�)n\b/g, 'Certificación'],
+  [/\bcertificaci(?:\?\?|�)n\b/g, 'certificación'],
+  [/\bVinculaci(?:\?\?|�)n\b/g, 'Vinculación'],
+  [/\bvinculaci(?:\?\?|�)n\b/g, 'vinculación'],
+  [/\bAsignaci(?:\?\?|�)n\b/g, 'Asignación'],
+  [/\basignaci(?:\?\?|�)n\b/g, 'asignación'],
+  [/\bProgramaci(?:\?\?|�)n\b/g, 'Programación'],
+  [/\bprogramaci(?:\?\?|�)n\b/g, 'programación'],
+  [/\bC(?:\?\?|�)digo\b/g, 'Código'],
+  [/\bc(?:\?\?|�)digo\b/g, 'código'],
+  [/\bC(?:\?\?|�)dula\b/g, 'Cédula'],
+  [/\bc(?:\?\?|�)dula\b/g, 'cédula'],
+  [/\bT(?:\?\?|�)cnica\b/g, 'Técnica'],
+  [/\bt(?:\?\?|�)cnica\b/g, 'técnica'],
+  [/\bAsesor(?:\?\?|�)a\b/g, 'Asesoría'],
+  [/\basesor(?:\?\?|�)a\b/g, 'asesoría'],
+  [/\bJur(?:\?\?|�)dica\b/g, 'Jurídica'],
+  [/\bjur(?:\?\?|�)dica\b/g, 'jurídica'],
+  [/\bJur(?:\?\?|�)dico\b/g, 'Jurídico'],
+  [/\bjur(?:\?\?|�)dico\b/g, 'jurídico'],
+  [/\bJur(?:\?\?|�)dicas\b/g, 'Jurídicas'],
+  [/\bjur(?:\?\?|�)dicas\b/g, 'jurídicas'],
+  [/\bJur(?:\?\?|�)dicos\b/g, 'Jurídicos'],
+  [/\bjur(?:\?\?|�)dicos\b/g, 'jurídicos'],
+  [/\bCorrecci(?:\?\?|�)n\b/g, 'Corrección'],
+  [/\bcorrecci(?:\?\?|�)n\b/g, 'corrección'],
+  [/\bGestion\b/g, 'Gestión'],
+  [/\bgestion\b/g, 'gestión'],
+  [/\bVerificacion\b/g, 'Verificación'],
+  [/\bverificacion\b/g, 'verificación'],
+  [/\bValidacion\b/g, 'Validación'],
+  [/\bvalidacion\b/g, 'validación'],
+  [/\bRevision\b/g, 'Revisión'],
+  [/\brevision\b/g, 'revisión'],
+  [/\bAprobacion\b/g, 'Aprobación'],
+  [/\baprobacion\b/g, 'aprobación'],
+  [/\bConfiguracion\b/g, 'Configuración'],
+  [/\bconfiguracion\b/g, 'configuración'],
+  [/\bAuditoria\b/g, 'Auditoría'],
+  [/\bauditoria\b/g, 'auditoría'],
+  [/\bEjecucion\b/g, 'Ejecución'],
+  [/\bejecucion\b/g, 'ejecución'],
+  [/\bModulo\b/g, 'Módulo'],
+  [/\bmodulo\b/g, 'módulo'],
+  [/\bParametros\b/g, 'Parámetros'],
+  [/\bparametros\b/g, 'parámetros'],
+  [/\bEstadisticas\b/g, 'Estadísticas'],
+  [/\bestadisticas\b/g, 'estadísticas'],
+  [/\bMetricas\b/g, 'Métricas'],
+  [/\bmetricas\b/g, 'métricas'],
+  [/\bPoliticas\b/g, 'Políticas'],
+  [/\bpoliticas\b/g, 'políticas'],
+  [/\bContrasena\b/g, 'Contraseña'],
+  [/\bcontrasena\b/g, 'contraseña'],
+  [/\bContrasenas\b/g, 'Contraseñas'],
+  [/\bcontrasenas\b/g, 'contraseñas'],
+  [/\bTermino\b/g, 'Término'],
+  [/\btermino\b/g, 'término'],
+  [/\bTerminos\b/g, 'Términos'],
+  [/\bterminos\b/g, 'términos'],
+  [/\bElectronico\b/g, 'Electrónico'],
+  [/\belectronico\b/g, 'electrónico'],
+  [/\bAcademico\b/g, 'Académico'],
+  [/\bacademico\b/g, 'académico'],
+  [/\bAcademicos\b/g, 'Académicos'],
+  [/\bacademicos\b/g, 'académicos'],
+  [/\bTitulo\b/g, 'Título'],
+  [/\btitulo\b/g, 'título'],
+  [/\bTitulos\b/g, 'Títulos'],
+  [/\btitulos\b/g, 'títulos'],
+  [/\bInformacion\b/g, 'Información'],
+  [/\binformacion\b/g, 'información'],
+  [/\bPublicacion\b/g, 'Publicación'],
+  [/\bpublicacion\b/g, 'publicación'],
+  [/\bEvaluacion\b/g, 'Evaluación'],
+  [/\bevaluacion\b/g, 'evaluación'],
+  [/\bSancion\b/g, 'Sanción'],
+  [/\bsancion\b/g, 'sanción'],
+  [/\bEmision\b/g, 'Emisión'],
+  [/\bemision\b/g, 'emisión'],
+  [/\bMaxima\b/g, 'Máxima'],
+  [/\bmaxima\b/g, 'máxima'],
+  [/\bMultiples\b/g, 'Múltiples'],
+  [/\bmultiples\b/g, 'múltiples'],
+  [/\bOrganos\b/g, 'Órganos'],
+  [/\borganos\b/g, 'órganos'],
+  [/\bArea\b/g, 'Área'],
+  [/\barea\b/g, 'área'],
+  [/\bAreas\b/g, 'Áreas'],
+  [/\bareas\b/g, 'áreas'],
+  [/\bDireccion\b/g, 'Dirección'],
+  [/\bdireccion\b/g, 'dirección'],
+  [/\bDirecciones\b/g, 'Direcciones'],
+  [/\bdirecciones\b/g, 'direcciones'],
+  [/\bPlaneacion\b/g, 'Planeación'],
+  [/\bplaneacion\b/g, 'planeación'],
+  [/\bValoracion\b/g, 'Valoración'],
+  [/\bvaloracion\b/g, 'valoración'],
+  [/\bIndagacion\b/g, 'Indagación'],
+  [/\bindagacion\b/g, 'indagación'],
+  [/\bInvestigacion\b/g, 'Investigación'],
+  [/\binvestigacion\b/g, 'investigación'],
+  [/\bAdministracion\b/g, 'Administración'],
+  [/\badministracion\b/g, 'administración'],
+  [/\bAutenticacion\b/g, 'Autenticación'],
+  [/\bautenticacion\b/g, 'autenticación'],
+  [/\bVisualizacion\b/g, 'Visualización'],
+  [/\bvisualizacion\b/g, 'visualización'],
+  [/\bNotificacion\b/g, 'Notificación'],
+  [/\bnotificacion\b/g, 'notificación'],
+  [/\bNotificaciones\b/g, 'Notificaciones'],
+  [/\bnotificaciones\b/g, 'notificaciones'],
+  [/\bRemision\b/g, 'Remisión'],
+  [/\bremision\b/g, 'remisión'],
+  [/\bRecepcion\b/g, 'Recepción'],
+  [/\brecepcion\b/g, 'recepción'],
+  [/\bCertificacion\b/g, 'Certificación'],
+  [/\bcertificacion\b/g, 'certificación'],
+  [/\bVinculacion\b/g, 'Vinculación'],
+  [/\bvinculacion\b/g, 'vinculación'],
+  [/\bAsignacion\b/g, 'Asignación'],
+  [/\basignacion\b/g, 'asignación'],
+  [/\bProgramacion\b/g, 'Programación'],
+  [/\bprogramacion\b/g, 'programación'],
+  [/\bCodigo\b/g, 'Código'],
+  [/\bcodigo\b/g, 'código'],
+  [/\bCedula\b/g, 'Cédula'],
+  [/\bcedula\b/g, 'cédula'],
+  [/\bTecnica\b/g, 'Técnica'],
+  [/\btecnica\b/g, 'técnica'],
+];
+
+const applySpanishTextCorrections = (value: string) =>
+  SPANISH_TEXT_REPLACEMENTS.reduce(
+    (text, [pattern, fixed]) => text.replace(pattern, fixed),
+    value,
+  );
+
+const repairMojibakeText = (value?: string) => {
+  if (!value) return '';
+  if (!MOJIBAKE_PATTERN.test(value)) return applySpanishTextCorrections(value);
+
+  const isLatin1Only = Array.from(value).every((char) => char.charCodeAt(0) <= 255);
+  if (isLatin1Only) {
+    try {
+      const bytes = Uint8Array.from(
+        Array.from(value),
+        (char) => char.charCodeAt(0) & 0xff,
+      );
+      const repaired = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+      if (!repaired.includes('\uFFFD')) return applySpanishTextCorrections(repaired);
+    } catch {
+      // Fallback manual below.
+    }
+  }
+
+  const repaired = KNOWN_MOJIBAKE_REPLACEMENTS.reduce(
+    (text, [broken, fixed]) => text.split(broken).join(fixed),
+    value,
+  );
+  return applySpanishTextCorrections(repaired);
+};
+
+const normalizePermissionModulesText = (
+  modules: PermissionModuleWithCodes[],
+): PermissionModuleWithCodes[] =>
+  modules.map((module) => {
+    const normalizePermission = (permission: PermissionWithCode): PermissionWithCode => ({
+      ...permission,
+      name: repairMojibakeText(permission.name),
+      description: repairMojibakeText(permission.description),
+    });
+
+    const permissions = module.permissions.map(normalizePermission);
+
+    return {
+      ...module,
+      name: repairMojibakeText(module.name),
+      permissions,
+      permissionGroups: module.permissionGroups?.map((permissionGroup) => ({
+        ...permissionGroup,
+        group: repairMojibakeText(permissionGroup.group),
+        permissions: permissionGroup.permissions.map(normalizePermission),
+      })),
+    };
+  });
+
+const getFallbackPermissionModules = () =>
+  normalizePermissionModulesText(PERMISSION_MODULES as PermissionModuleWithCodes[]);
+
+const GROUP_LABELS: Record<string, string> = {
+  plan: 'Plan Anual',
+  'plan-anual': 'Plan Anual',
+  listas: 'Listas',
+  'listas-chequeo': 'Listas de Chequeo',
+  'listas chequeo': 'Listas de Chequeo',
+  'listas de chequeo': 'Listas de Chequeo',
+  auditoria: 'Auditoría',
+  auditorias: 'Auditorías',
+  revision: 'Revisión',
+  'revision-aprobacion': 'Revisión y Aprobación',
+  aprobacion: 'Aprobación',
+  terminos: 'Términos',
+  configuraciones: 'Configuraciones',
+  'organos-control': 'Órganos de Control',
+  expediente: 'Expediente',
+  'expediente-electronico': 'Expediente Electrónico',
+  expedientes: 'Expedientes',
+  'informes-de-ley': 'Informes de Ley',
+  'planes-mejoramiento': 'Planes de Mejoramiento',
+  'procesos-coactivos': 'Procesos Coactivos',
+  'config-auditorias': 'Configuración de Auditorías',
+  'noticia-disciplinaria': 'Noticia Disciplinaria',
+  'juzgamiento-disciplinario': 'Juzgamiento Disciplinario',
+  planeacion: 'Planeación',
+  valoracion: 'Valoración',
+  indagacion: 'Indagación',
+  investigacion: 'Investigación',
+};
 
 const getPermissionMaps = (modules: PermissionModuleWithCodes[]) => {
   const idToCode = new Map<string, string>();
@@ -216,7 +580,9 @@ export function RolePermissionsEditor({
   const [selectedPermissions, setSelectedPermissions] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
-  const [permissionModules, setPermissionModules] = useState<PermissionModuleWithCodes[]>(PERMISSION_MODULES as PermissionModuleWithCodes[]);
+  const [permissionModules, setPermissionModules] = useState<PermissionModuleWithCodes[]>(
+    () => getFallbackPermissionModules(),
+  );
   const [permissionsLoading, setPermissionsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [activeAcademicProfileId, setActiveAcademicProfileId] = useState<AcademicProfileId | null>(null);
@@ -258,7 +624,17 @@ export function RolePermissionsEditor({
     return icon || Shield;
   };
 
-  const formatGroupName = (group: string) => (group || '').split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ').trim() || 'Grupo';
+  const formatGroupName = (group: string) => {
+    const normalizedGroup = repairMojibakeText(group || '').trim();
+    const mappedGroup = GROUP_LABELS[normalizedGroup.toLowerCase()];
+    if (mappedGroup) return mappedGroup;
+
+    return normalizedGroup
+      .split('-')
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+      .trim() || 'Grupo';
+  };
 
   useEffect(() => {
     if (!open || !role?.id) return;
@@ -273,7 +649,9 @@ export function RolePermissionsEditor({
         ]);
 
         if (cancelled) return;
-        const mappedModules = modulesService.mapToPermissionModules(modules) as PermissionModuleWithCodes[];
+        const mappedModules = normalizePermissionModulesText(
+          modulesService.mapToPermissionModules(modules) as PermissionModuleWithCodes[],
+        );
         const loadedPermissions = new Set(rolePermissions.map((permission) => permission.id));
         const loadedAcademicProfile = getActiveAcademicProfile(
           loadedPermissions,
@@ -290,7 +668,7 @@ export function RolePermissionsEditor({
           description: 'No se pudo obtener la lista de permisos desde el servidor'
         });
         if (!cancelled) {
-          setPermissionModules(PERMISSION_MODULES as PermissionModuleWithCodes[]);
+          setPermissionModules(getFallbackPermissionModules());
           setActiveAcademicProfileId(null);
         }
       } finally {
@@ -307,28 +685,49 @@ export function RolePermissionsEditor({
 
   const getPermissionAcademicState = (
     permission: PermissionWithCode,
-  ): 'required' | 'optional' | 'outside' | null => {
-    if (!activeAcademicProfile) return null;
-
+  ): 'required' | 'optional' | 'outside' | 'profile-required' | null => {
     const code = getPermissionCode(permission);
     if (!ACADEMIC_PERMISSION_CODES.has(code)) return null;
+    if (!activeAcademicProfile) return 'profile-required';
     if (activeAcademicProfile.required.includes(code)) return 'required';
     if (activeAcademicProfile.allowed.includes(code)) return 'optional';
     return 'outside';
   };
 
+  const removeAcademicPermissions = (permissionSet: Set<string>) => {
+    const { idToCode } = getPermissionMaps(permissionModules);
+    Array.from(permissionSet).forEach((permissionId) => {
+      const selectedCode = idToCode.get(permissionId);
+      if (selectedCode && ACADEMIC_PERMISSION_CODES.has(selectedCode)) {
+        permissionSet.delete(permissionId);
+      }
+    });
+  };
+
   // Toggle permission
   const togglePermission = (permission: PermissionWithCode) => {
     const code = getPermissionCode(permission);
+    const isAcademicPermission = ACADEMIC_PERMISSION_CODES.has(code);
+
+    if (
+      isAcademicPermission &&
+      !activeAcademicProfile &&
+      !selectedPermissions.has(permission.id)
+    ) {
+      toast.warning('Selecciona un perfil de Registro Académico', {
+        description: 'Primero elige Jefe, Aprobador o Revisor. Luego puedes marcar los opcionales de ese perfil.',
+      });
+      return;
+    }
 
     if (
       activeAcademicProfile &&
-      ACADEMIC_PERMISSION_CODES.has(code) &&
+      isAcademicPermission &&
       !activeAcademicProfile.allowed.includes(code) &&
       !selectedPermissions.has(permission.id)
     ) {
       toast.warning('Permiso fuera del perfil', {
-        description: `Ese permiso no hace parte del maximo permitido para ${activeAcademicProfile.label}. Desmarca el perfil para elegirlo manualmente.`,
+        description: `Ese permiso no hace parte del máximo permitido para ${activeAcademicProfile.label}. Selecciona otro perfil que lo permita.`,
       });
       return;
     }
@@ -337,9 +736,10 @@ export function RolePermissionsEditor({
     if (newPermissions.has(permission.id)) {
       newPermissions.delete(permission.id);
       if (activeAcademicProfile?.required.includes(code)) {
+        removeAcademicPermissions(newPermissions);
         setActiveAcademicProfileId(null);
         toast.warning('Permiso necesario', {
-          description: `Ese permiso es necesario para ser ${activeAcademicProfile.label}. Al quitarlo se desmarca ${activeAcademicProfile.label}.`,
+          description: `Ese permiso es necesario para ser ${activeAcademicProfile.label}. Al quitarlo se desmarca el perfil y se retiran los permisos de Registro Académico.`,
         });
       }
     } else {
@@ -351,6 +751,12 @@ export function RolePermissionsEditor({
 
   // Toggle all permissions in module
   const toggleModulePermissions = (modulePermissions: PermissionWithCode[]) => {
+    const isAcademicPermission = (permission: PermissionWithCode) =>
+      ACADEMIC_PERMISSION_CODES.has(getPermissionCode(permission));
+    const academicPermissions = modulePermissions.filter(isAcademicPermission);
+    const selectedAcademicPermissions = academicPermissions.filter((permission) =>
+      selectedPermissions.has(permission.id),
+    );
     const toggleablePermissions =
       activeAcademicProfile
         ? modulePermissions.filter((permission) => {
@@ -360,10 +766,36 @@ export function RolePermissionsEditor({
               activeAcademicProfile.allowed.includes(code)
             );
           })
-        : modulePermissions;
+        : modulePermissions.filter((permission) => !isAcademicPermission(permission));
     const blockedAcademicCount = activeAcademicProfile
       ? modulePermissions.length - toggleablePermissions.length
-      : 0;
+      : academicPermissions.length;
+
+    if (!activeAcademicProfile && academicPermissions.length > 0 && toggleablePermissions.length === 0) {
+      if (selectedAcademicPermissions.length > 0) {
+        const newPermissions = new Set(selectedPermissions);
+        selectedAcademicPermissions.forEach((permission) => newPermissions.delete(permission.id));
+        setSelectedPermissions(newPermissions);
+        setHasChanges(true);
+        toast.info('Permisos de Registro Académico retirados', {
+          description: 'Para volver a asignarlos, selecciona primero Jefe, Aprobador o Revisor.',
+        });
+        return;
+      }
+
+      toast.warning('Selecciona un perfil de Registro Académico', {
+        description: 'Primero elige Jefe, Aprobador o Revisor para marcar permisos de este módulo.',
+      });
+      return;
+    }
+
+    if (activeAcademicProfile && toggleablePermissions.length === 0 && blockedAcademicCount > 0) {
+      toast.warning('Permisos fuera del perfil', {
+        description: `Este módulo no tiene permisos disponibles para ${activeAcademicProfile.label}.`,
+      });
+      return;
+    }
+
     const modulePermissionIds = toggleablePermissions.map(p => p.id);
     const allSelected = modulePermissionIds.every(id => selectedPermissions.has(id));
     
@@ -376,16 +808,19 @@ export function RolePermissionsEditor({
           activeAcademicProfile.required.includes(getPermissionCode(permission)),
         )
       ) {
+        removeAcademicPermissions(newPermissions);
         setActiveAcademicProfileId(null);
         toast.warning('Perfil desmarcado', {
-          description: `Quitaste permisos necesarios para ser ${activeAcademicProfile.label}.`,
+          description: `Quitaste permisos necesarios para ser ${activeAcademicProfile.label}. Se retiraron los permisos de Registro Académico.`,
         });
       }
     } else {
       modulePermissionIds.forEach(id => newPermissions.add(id));
       if (blockedAcademicCount > 0) {
-        toast.info('Permisos fuera del perfil omitidos', {
-          description: `No se marcaron ${blockedAcademicCount} permisos fuera del maximo de ${activeAcademicProfile?.label}.`,
+        toast.info(activeAcademicProfile ? 'Permisos fuera del perfil omitidos' : 'Permisos académicos omitidos', {
+          description: activeAcademicProfile
+            ? `No se marcaron ${blockedAcademicCount} permisos fuera del máximo de ${activeAcademicProfile.label}.`
+            : `No se marcaron ${blockedAcademicCount} permisos de Registro Académico porque requieren Jefe, Aprobador o Revisor.`,
         });
       }
     }
@@ -398,13 +833,10 @@ export function RolePermissionsEditor({
     const newPermissions = new Set(selectedPermissions);
 
     if (activeAcademicProfile?.id === profile.id) {
-      profile.required.forEach((code) => {
-        const permissionId = codeToId.get(code);
-        if (permissionId) newPermissions.delete(permissionId);
-      });
+      removeAcademicPermissions(newPermissions);
       setActiveAcademicProfileId(null);
       toast.info(`${profile.label} desmarcado`, {
-        description: 'Los permisos opcionales que ya estaban activos se conservaron.',
+        description: 'Se retiraron los permisos de Registro Académico. Selecciona otro perfil para volver a asignarlos.',
       });
     } else {
       Array.from(newPermissions).forEach((permissionId) => {
@@ -480,7 +912,7 @@ export function RolePermissionsEditor({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-extrabold text-slate-900">
-            Perfil de Registro Academico
+            Perfil de Registro Académico
           </p>
           <p className="text-xs font-semibold text-slate-500">
             {activeAcademicProfile
@@ -656,18 +1088,28 @@ export function RolePermissionsEditor({
                             {permissionGroup.permissions.map((permission) => {
                               const isEnabled = selectedPermissions.has(permission.id);
                               const academicState = getPermissionAcademicState(permission);
-                              const isBlockedByProfile = academicState === 'outside' && !isEnabled;
+                              const isBlockedByProfile =
+                                (academicState === 'outside' || academicState === 'profile-required') && !isEnabled;
                               const inactiveClass =
                                 academicState === 'optional'
                                   ? 'bg-slate-50 border-slate-300 hover:border-slate-400 hover:bg-slate-100'
                                   : academicState === 'outside'
                                     ? 'bg-amber-50 border-amber-200 opacity-75 cursor-not-allowed'
-                                    : 'bg-gray-50 border-gray-200 hover:border-gray-300 hover:bg-gray-100';
+                                    : academicState === 'profile-required'
+                                      ? 'bg-slate-50 border-slate-200 opacity-75 cursor-not-allowed'
+                                      : 'bg-gray-50 border-gray-200 hover:border-gray-300 hover:bg-gray-100';
                               return (
                                 <button
                                   key={permission.id}
                                   type="button"
                                   disabled={isBlockedByProfile}
+                                  title={
+                                    academicState === 'profile-required'
+                                      ? 'Selecciona Jefe, Aprobador o Revisor para habilitar permisos de Registro Académico'
+                                      : academicState === 'outside'
+                                        ? `Permiso fuera del máximo de ${activeAcademicProfile?.label}`
+                                        : undefined
+                                  }
                                   onClick={() => togglePermission(permission)}
                                   className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all text-left ${
                                     isEnabled
@@ -698,6 +1140,11 @@ export function RolePermissionsEditor({
                                           Fuera del perfil
                                         </span>
                                       )}
+                                      {academicState === 'profile-required' && (
+                                        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-normal text-slate-600">
+                                          Requiere perfil
+                                        </span>
+                                      )}
                                     </div>
                                     <p className="text-xs font-medium text-[--esap-gray-600] mt-0.5">
                                       {permission.description}
@@ -716,19 +1163,29 @@ export function RolePermissionsEditor({
                     {modulePermissions.map((permission) => {
                       const isEnabled = selectedPermissions.has(permission.id);
                       const academicState = getPermissionAcademicState(permission);
-                      const isBlockedByProfile = academicState === 'outside' && !isEnabled;
+                      const isBlockedByProfile =
+                        (academicState === 'outside' || academicState === 'profile-required') && !isEnabled;
                       const inactiveClass =
                         academicState === 'optional'
                           ? 'bg-slate-50 border-slate-300 hover:border-slate-400 hover:bg-slate-100'
                           : academicState === 'outside'
                             ? 'bg-amber-50 border-amber-200 opacity-75 cursor-not-allowed'
-                            : 'bg-gray-50 border-gray-200 hover:border-gray-300 hover:bg-gray-100';
+                            : academicState === 'profile-required'
+                              ? 'bg-slate-50 border-slate-200 opacity-75 cursor-not-allowed'
+                              : 'bg-gray-50 border-gray-200 hover:border-gray-300 hover:bg-gray-100';
 
                       return (
                         <button
                           key={permission.id}
                           type="button"
                           disabled={isBlockedByProfile}
+                          title={
+                            academicState === 'profile-required'
+                              ? 'Selecciona Jefe, Aprobador o Revisor para habilitar permisos de Registro Académico'
+                              : academicState === 'outside'
+                                ? `Permiso fuera del máximo de ${activeAcademicProfile?.label}`
+                                : undefined
+                          }
                           onClick={() => togglePermission(permission)}
                           className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all text-left ${
                             isEnabled
@@ -757,6 +1214,11 @@ export function RolePermissionsEditor({
                               {academicState === 'outside' && (
                                 <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-normal text-amber-700">
                                   Fuera del perfil
+                                </span>
+                              )}
+                              {academicState === 'profile-required' && (
+                                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-normal text-slate-600">
+                                  Requiere perfil
                                 </span>
                               )}
                             </div>
