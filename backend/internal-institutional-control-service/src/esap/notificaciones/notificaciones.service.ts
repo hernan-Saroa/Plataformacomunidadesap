@@ -4,43 +4,48 @@ import { Repository, LessThanOrEqual, MoreThanOrEqual, DataSource } from 'typeor
 import { Notificacion, EstadoNotificacion, TipoNotificacion, CanalNotificacion, PrioridadNotificacion } from './entities/notificacion.entity';
 import { PreferenciaNotificacion } from './entities/preferencia-notificacion.entity';
 import { CreateNotificacionDto } from './dto/create-notificacion.dto';
+import { ConfigService } from '@nestjs/config';
+import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class NotificacionesService {
+  private transporter: nodemailer.Transporter;
+
   constructor(
     @InjectRepository(Notificacion)
     private readonly notificacionRepository: Repository<Notificacion>,
     @InjectRepository(PreferenciaNotificacion)
     private readonly preferenciaRepository: Repository<PreferenciaNotificacion>,
     private readonly dataSource: DataSource,
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    // Configurar transportador de correo
+    const smtpUser = this.configService.get<string>('SMTP_USER');
+    const smtpPass = this.configService.get<string>('SMTP_PASS');
+
+    const transportConfig: any = {
+      host: this.configService.get<string>('SMTP_HOST', 'smtp.gmail.com'),
+      port: this.configService.get<number>('SMTP_PORT', 587),
+      secure: this.configService.get<boolean>('SMTP_SECURE', false),
+    };
+
+    // Solo añadir autenticación si hay usuario y clave definidos
+    if (smtpUser && smtpPass) {
+      transportConfig.auth = {
+        user: smtpUser,
+        pass: smtpPass,
+      };
+    }
+
+    this.transporter = nodemailer.createTransport(transportConfig);
+  }
 
   /**
-   * Convierte UUID a id_tercero
-   * Acepta tanto UUID como id_tercero numérico
+   * Obtiene el identificador del usuario (UUID)
+   * En este sistema usamos el UUID directamente
    */
-  private async getUserIdTerceroFromUUID(usuarioIdOrUUID: string | number): Promise<number> {
-    // Si ya es numérico, retornarlo directamente
-    if (typeof usuarioIdOrUUID === 'number') {
-      return usuarioIdOrUUID;
-    }
-
-    // Si es string que parece número, convertirlo
-    if (/^\d+$/.test(usuarioIdOrUUID)) {
-      return Number(usuarioIdOrUUID);
-    }
-
-    // Es UUID, consultar id_tercero
-    const result = await this.dataSource.query(
-      'SELECT id_tercero FROM auth."user" WHERE id_user = $1',
-      [usuarioIdOrUUID]
-    );
-
-    if (!result || result.length === 0) {
-      throw new NotFoundException(`Usuario con UUID ${usuarioIdOrUUID} no encontrado en auth.user`);
-    }
-
-    return Number(result[0].id_tercero);
+  private async getUserIdTerceroFromUUID(usuarioId: string): Promise<string> {
+    return usuarioId;
   }
 
   /**
@@ -54,52 +59,34 @@ export class NotificacionesService {
       leida?: boolean;
       prioridad?: string;
     },
-  ): Promise<Notificacion[]> {
-    console.log(`[NotificacionesService.findByUsuario] Consultando notificaciones para usuarioId: ${usuarioId}`);
+  ): Promise<any[]> {
+    console.log(`[NotificacionesService.findByUsuario] Consultando para usuarioId: ${usuarioId}`);
     
-    // Convertir UUID a id_tercero
-    let idTercero: number;
-    try {
-      idTercero = await this.getUserIdTerceroFromUUID(usuarioId);
-      console.log(`[NotificacionesService.findByUsuario] UsuarioId convertido: ${usuarioId} -> ${idTercero}`);
-    } catch (error) {
-      console.error(`[NotificacionesService.findByUsuario] Error al convertir usuarioId ${usuarioId}:`, error);
-      // Si falla la conversión, intentar usar directamente si es numérico
-      if (/^\d+$/.test(usuarioId)) {
-        idTercero = Number(usuarioId);
-        console.log(`[NotificacionesService.findByUsuario] Usando usuarioId directamente como numérico: ${idTercero}`);
-      } else {
-        // Si no se puede convertir y no es numérico, retornar array vacío
-        console.error(`[NotificacionesService.findByUsuario] No se pudo convertir usuarioId ${usuarioId}, retornando array vacío`);
-        return [];
-      }
-    }
-
+    // Volver a TypeORM que es más seguro para los tipos de datos
     const query = this.notificacionRepository
       .createQueryBuilder('notificacion')
-      .where('notificacion.usuarioId = :usuarioId', { usuarioId: String(idTercero) })
+      .where('notificacion.usuarioId = :usuarioId', { usuarioId })
       .orderBy('notificacion.createdAt', 'DESC');
 
-    if (filters?.estado) {
-      query.andWhere('notificacion.estado = :estado', { estado: filters.estado });
-    }
+    const notificaciones = await query.getMany();
 
-    if (filters?.tipo) {
-      query.andWhere('notificacion.tipoNotificacion = :tipo', { tipo: filters.tipo });
-    }
+    // Intentar obtener el nombre del usuario para el primer registro (o todos)
+    let nombreReal = usuarioId;
+    try {
+      const p = await this.dataSource.query(`
+        SELECT p.nom_largo FROM auth.personas p 
+        INNER JOIN auth."user" u ON u.id_person = p.id_person 
+        WHERE u.id_user = $1 LIMIT 1
+      `, [usuarioId]);
+      if (p && p.length > 0) nombreReal = p[0].nom_largo;
+    } catch (e) {}
 
-    if (filters?.leida !== undefined) {
-      query.andWhere('notificacion.leida = :leida', { leida: filters.leida });
-    }
-
-    if (filters?.prioridad) {
-      query.andWhere('notificacion.prioridad = :prioridad', { prioridad: filters.prioridad });
-    }
-
-    const resultados = await query.getMany();
-    console.log(`[NotificacionesService.findByUsuario] Encontradas ${resultados.length} notificaciones para usuario ${idTercero}`);
-    
-    return resultados;
+    // Mapear al formato que el frontend espera
+    return notificaciones.map(n => ({
+      ...n,
+      destinatario: nombreReal,
+      fechaEnvio: n.createdAt
+    }));
   }
 
   /**
@@ -108,8 +95,8 @@ export class NotificacionesService {
   async getNoLeidas(usuarioId: string): Promise<Notificacion[]> {
     console.log(`[NotificacionesService.getNoLeidas] Consultando notificaciones no leídas para usuarioId: ${usuarioId}`);
     
-    // Convertir UUID a id_tercero
-    let idTercero: number;
+    // En este sistema usamos el UUID directamente
+    let idTercero: string;
     try {
       idTercero = await this.getUserIdTerceroFromUUID(usuarioId);
       console.log(`[NotificacionesService.getNoLeidas] UsuarioId convertido: ${usuarioId} -> ${idTercero}`);
@@ -117,8 +104,8 @@ export class NotificacionesService {
       console.error(`[NotificacionesService.getNoLeidas] Error al convertir usuarioId ${usuarioId}:`, error);
       // Si falla la conversión, intentar usar directamente si es numérico
       if (/^\d+$/.test(usuarioId)) {
-        idTercero = Number(usuarioId);
-        console.log(`[NotificacionesService.getNoLeidas] Usando usuarioId directamente como numérico: ${idTercero}`);
+        idTercero = String(usuarioId);
+        console.log(`[NotificacionesService.getNoLeidas] Usando usuarioId directamente como texto: ${idTercero}`);
       } else {
         console.error(`[NotificacionesService.getNoLeidas] No se pudo convertir usuarioId ${usuarioId}, retornando array vacío`);
         return [];
@@ -127,7 +114,7 @@ export class NotificacionesService {
 
     const resultados = await this.notificacionRepository.find({
       where: {
-        usuarioId: String(idTercero),
+        usuarioId: usuarioId,
         leida: false,
         estado: EstadoNotificacion.ENVIADA,
       },
@@ -146,8 +133,8 @@ export class NotificacionesService {
   async getConteoNoLeidas(usuarioId: string): Promise<number> {
     console.log(`[NotificacionesService.getConteoNoLeidas] Consultando conteo para usuarioId: ${usuarioId}`);
     
-    // Convertir UUID a id_tercero
-    let idTercero: number;
+    // En este sistema usamos el UUID directamente
+    let idTercero: string;
     try {
       idTercero = await this.getUserIdTerceroFromUUID(usuarioId);
       console.log(`[NotificacionesService.getConteoNoLeidas] UsuarioId convertido: ${usuarioId} -> ${idTercero}`);
@@ -155,8 +142,8 @@ export class NotificacionesService {
       console.error(`[NotificacionesService.getConteoNoLeidas] Error al convertir usuarioId ${usuarioId}:`, error);
       // Si falla la conversión, intentar usar directamente si es numérico
       if (/^\d+$/.test(usuarioId)) {
-        idTercero = Number(usuarioId);
-        console.log(`[NotificacionesService.getConteoNoLeidas] Usando usuarioId directamente como numérico: ${idTercero}`);
+        idTercero = String(usuarioId);
+        console.log(`[NotificacionesService.getConteoNoLeidas] Usando usuarioId directamente como texto: ${idTercero}`);
       } else {
         console.error(`[NotificacionesService.getConteoNoLeidas] No se pudo convertir usuarioId ${usuarioId}, retornando 0`);
         return 0;
@@ -165,7 +152,7 @@ export class NotificacionesService {
 
     const conteo = await this.notificacionRepository.count({
       where: {
-        usuarioId: String(idTercero),
+        usuarioId: usuarioId,
         leida: false,
         estado: EstadoNotificacion.ENVIADA,
       },
@@ -177,39 +164,137 @@ export class NotificacionesService {
   }
 
   /**
+   * Normaliza un string para asegurar que sea UTF-8 limpio
+   * Ayuda a corregir el Bug 2 de caracteres corruptos
+   */
+  private normalizarTexto(texto: string): string {
+    if (!texto) return '';
+    
+    // Mapeo manual de correcciones comunes para "Control Interno"
+    let limpio = texto
+      .replace(/auditora/g, 'auditoría')
+      .replace(/Auditora/g, 'Auditoría')
+      .replace(/programacin/g, 'programación')
+      .replace(/notificacin/g, 'notificación');
+
+    // Intentar reparar encoding UTF-8 roto
+    try {
+      if (/[\xC2-\xDF][\x80-\xBF]/.test(limpio) || /Ã|â|€|/.test(limpio)) {
+        const bytes = Uint8Array.from(limpio.split('').map(c => c.charCodeAt(0)));
+        limpio = new TextDecoder('utf-8').decode(bytes);
+      }
+    } catch (e) {}
+
+    try {
+      return decodeURIComponent(escape(limpio));
+    } catch (e) {
+      return limpio.replace(/[^\x20-\x7E\xA0-\xFF\u0100-\uFFFF]/g, '');
+    }
+  }
+
+  /**
+   * Obtiene la configuración global de notificaciones
+   */
+  async getGlobalConfig(): Promise<PreferenciaNotificacion | null> {
+    try {
+      return await this.preferenciaRepository.findOne({ where: { usuarioId: 'GLOBAL_CONFIG' } });
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
    * Crea una nueva notificación
    */
   async create(createDto: CreateNotificacionDto): Promise<Notificacion> {
-    // Convertir usuarioId a id_tercero si viene como UUID
-    // El método getUserIdTerceroFromUUID maneja automáticamente si ya es numérico
-    let usuarioIdFinal: string;
+    // ✅ NORMALIZACIÓN AGRESIVA: Limpiar caracteres corruptos
+    // Si viene "auditora" o similar por mal encoding, intentamos forzar UTF-8
+    const tituloNormalizado = this.normalizarTexto(createDto.titulo);
+    const mensajeNormalizado = this.normalizarTexto(createDto.mensaje);
+    
+    const usuarioIdFinal = createDto.usuarioId;
+
+    // ✅ SINCRONIZACIÓN TOTAL: Obtener configuración con fallback a valores reales del sistema
+    let canalFinal = createDto.canal || CanalNotificacion.SISTEMA;
     try {
-      const idTercero = await this.getUserIdTerceroFromUUID(createDto.usuarioId);
-      usuarioIdFinal = String(idTercero);
-      console.log(`[NotificacionesService.create] UsuarioId procesado: ${createDto.usuarioId} -> id_tercero: ${usuarioIdFinal}`);
-    } catch (error) {
-      // Si falla la conversión y es un string numérico, usarlo directamente
-      if (/^\d+$/.test(String(createDto.usuarioId))) {
-        usuarioIdFinal = String(createDto.usuarioId);
-        console.log(`[NotificacionesService.create] UsuarioId ya es numérico, usando directamente: ${usuarioIdFinal}`);
-      } else {
-        // Si es UUID y falla la conversión, lanzar error
-        console.error(`[NotificacionesService.create] Error al convertir usuarioId ${createDto.usuarioId}:`, error);
-        throw new NotFoundException(`No se pudo convertir usuarioId ${createDto.usuarioId} a id_tercero: ${error.message}`);
+      const configGlobal = await this.preferenciaRepository.findOne({ where: { usuarioId: 'GLOBAL_CONFIG' } });
+      
+      // Definición de valores por defecto que coinciden con el Frontend
+      const defaults: Record<string, any> = {
+        'EVT-AUD-001': { email: true, sistema: true, activo: true }, // Nueva auditoría
+        'EVT-AUD-002': { email: true, sistema: true, activo: true }, // Reunión apertura
+        'EVT-AUD-003': { email: true, sistema: true, activo: true }, // Plazo respuesta
+        'EVT-PM-001': { email: true, sistema: true, activo: true },  // Seguimiento PM
+        'EVT-KANBAN-001': { email: true, sistema: true, activo: true }
+      };
+
+      const mapping: Record<string, string> = {
+        'anuncio_auditoria': 'EVT-AUD-001',
+        'reunion_apertura': 'EVT-AUD-002',
+        'recordatorio_plazo': 'EVT-AUD-003',
+        'seguimiento_trimestral': 'EVT-PM-001',
+        // Mapeo directo para cuando se envía el código directamente
+        'EVT-AUD-001': 'EVT-AUD-001',
+        'EVT-AUD-002': 'EVT-AUD-002',
+        'EVT-AUD-003': 'EVT-AUD-003',
+        'EVT-KANBAN-001': 'EVT-KANBAN-001',
+        'EVT-KANBAN-002': 'EVT-KANBAN-002',
+        'EVT-KANBAN-003': 'EVT-KANBAN-003',
+        'EVT-PM-001': 'EVT-PM-001',
+        'EVT-APR-001': 'EVT-APR-001',
+        'EVT-APR-002': 'EVT-APR-002',
+      };
+      
+      const evtCode = mapping[createDto.tipoNotificacion] || createDto.tipoNotificacion;
+      // Si no hay config en DB, usar el default. Si hay config, usar la de DB.
+      const configEvento = (configGlobal?.tiposNotificacion && configGlobal.tiposNotificacion[evtCode]) 
+        ? configGlobal.tiposNotificacion[evtCode] 
+        : defaults[evtCode];
+      
+      if (configEvento && configEvento.activo) {
+        if (configEvento.email && configEvento.sistema) canalFinal = CanalNotificacion.AMBOS;
+        else if (configEvento.email) canalFinal = CanalNotificacion.EMAIL;
+        else if (configEvento.sistema) canalFinal = CanalNotificacion.SISTEMA;
+        
+        // ✅ NUEVA LÓGICA: Si la configuración define roles (destinatarios), 
+        // podríamos expandir esto aquí, pero por ahora aseguramos que el 
+        // canal sea el correcto.
       }
+    } catch (e) {
+      console.warn(`[NotificacionesService.create] Error en sincronización, usando canal por defecto:`, e.message);
     }
 
     const notificacion = this.notificacionRepository.create({
       ...createDto,
+      titulo: tituloNormalizado,
+      mensaje: mensajeNormalizado,
       usuarioId: usuarioIdFinal,
       estado: EstadoNotificacion.PENDIENTE,
-      canal: createDto.canal || CanalNotificacion.SISTEMA,
+      canal: canalFinal,
       prioridad: createDto.prioridad || PrioridadNotificacion.NORMAL,
       leida: false,
       enviadaEmail: false,
     });
 
-    console.log(`[NotificacionesService.create] Creando notificación para usuarioId: ${usuarioIdFinal}, tipo: ${createDto.tipoNotificacion}, titulo: ${createDto.titulo}`);
+    console.log(`[NotificacionesService.create] Creando notificación para usuarioId: ${usuarioIdFinal}, tipo: ${createDto.tipoNotificacion}, titulo: ${tituloNormalizado}`);
+
+    // ✅ BUG 1 FIX: Evitar duplicados idénticos en un corto periodo de tiempo (5 segundos)
+    const hacePoco = new Date();
+    hacePoco.setSeconds(hacePoco.getSeconds() - 5);
+
+    const duplicada = await this.notificacionRepository.findOne({
+      where: {
+        usuarioId: usuarioIdFinal,
+        tipoNotificacion: createDto.tipoNotificacion,
+        titulo: tituloNormalizado,
+        createdAt: MoreThanOrEqual(hacePoco)
+      }
+    });
+
+    if (duplicada) {
+      console.warn(`[NotificacionesService.create] ⚠️ Notificación duplicada detectada (omitida): ${tituloNormalizado}`);
+      return duplicada;
+    }
 
     const saved = await this.notificacionRepository.save(notificacion);
 
@@ -222,40 +307,175 @@ export class NotificacionesService {
   }
 
   /**
-   * Envía la notificación según las preferencias del usuario
+   * Envía la notificación según las preferencias del usuario.
+   * Respeta tanto el canal global como la configuración por tipo de notificación.
    */
   private async enviarNotificacion(notificacion: Notificacion): Promise<void> {
     const preferencias = await this.preferenciaRepository.findOne({
       where: { usuarioId: notificacion.usuarioId },
     });
 
-    // Si no hay preferencias, usar defaults
+    // Si no hay preferencias, usar defaults (todo activo)
     const recibirEmail = preferencias?.recibirEmail ?? true;
     const recibirSistema = preferencias?.recibirSistema ?? true;
 
     // Verificar si el tipo de notificación está activo en preferencias
     if (preferencias?.tiposNotificacion) {
+      // Buscar por el ID del evento (puede ser el tipoNotificacion o una clave del mapa)
       const tipoConfig = preferencias.tiposNotificacion[notificacion.tipoNotificacion];
       if (tipoConfig && !tipoConfig.activo) {
-        // Tipo desactivado, no enviar
+        // Tipo desactivado, archivar sin enviar
         notificacion.estado = EstadoNotificacion.ARCHIVADA;
         await this.notificacionRepository.save(notificacion);
+        console.log(`[NotificacionesService.enviarNotificacion] Notificación ${notificacion.id} archivada por preferencia de tipo desactivado`);
         return;
+      }
+
+      // ✅ Lógica de Canal Directa: Si el canal es EMAIL o AMBOS, intentar enviar correo
+      const enviarPorEmail = (notificacion.canal === CanalNotificacion.EMAIL || notificacion.canal === CanalNotificacion.AMBOS) && recibirEmail;
+      const enviarPorSistema = (notificacion.canal === CanalNotificacion.SISTEMA || notificacion.canal === CanalNotificacion.AMBOS) && recibirSistema;
+
+      notificacion.estado = EstadoNotificacion.ENVIADA;
+      
+      if (enviarPorEmail) {
+        try {
+          const emailDestino = await this.obtenerEmailUsuario(notificacion.usuarioId);
+          if (emailDestino) {
+            await this.enviarCorreoReal(notificacion, emailDestino);
+            notificacion.enviadaEmail = true;
+            notificacion.fechaEnvioEmail = new Date();
+            console.log(`[Notificaciones] ✉️ Email enviado según canal para ${notificacion.usuarioId}`);
+          }
+        } catch (err) {
+          console.error(`[Notificaciones] Error enviando correo por canal:`, err.message);
+        }
+      }
+
+      if (!enviarPorEmail && !enviarPorSistema) {
+        notificacion.estado = EstadoNotificacion.ARCHIVADA;
+      }
+
+      await this.notificacionRepository.save(notificacion);
+      return;
+    }
+
+    // ✅ LÓGICA UNIFICADA: Si el canal es EMAIL o AMBOS, intentar enviar
+    const enviarPorEmail = (notificacion.canal === CanalNotificacion.EMAIL || notificacion.canal === CanalNotificacion.AMBOS) && recibirEmail;
+    
+    console.log(`[Notificaciones] 💡 Evaluando envío para ${notificacion.usuarioId}: Canal=${notificacion.canal}, EnviarEmail=${enviarPorEmail}`);
+
+    if (enviarPorEmail) {
+      try {
+        const emailDestino = await this.obtenerEmailUsuario(notificacion.usuarioId);
+        if (emailDestino) {
+          await this.enviarCorreoReal(notificacion, emailDestino);
+          notificacion.enviadaEmail = true;
+          notificacion.fechaEnvioEmail = new Date();
+          notificacion.estado = EstadoNotificacion.ENVIADA;
+        } else {
+          console.warn(`[Notificaciones] ⚠️ Abortando email: Usuario ${notificacion.usuarioId} no tiene correo registrado.`);
+        }
+      } catch (err) {
+        console.error(`[Notificaciones] ❌ Error en el proceso de despacho de email:`, err.message);
       }
     }
 
-    // Marcar como enviada
-    notificacion.estado = EstadoNotificacion.ENVIADA;
-
-    // Si debe enviarse por email
-    if (recibirEmail && (notificacion.canal === 'email' || notificacion.canal === 'ambos')) {
-      // Aquí se integraría con el servicio de email
-      notificacion.enviadaEmail = true;
-      notificacion.fechaEnvioEmail = new Date();
+    // Si el sistema está desactivado y el canal requiere solo sistema, archivar
+    if (!recibirSistema && notificacion.canal === CanalNotificacion.SISTEMA) {
+      notificacion.estado = EstadoNotificacion.ARCHIVADA;
+    } else {
+      notificacion.estado = EstadoNotificacion.ENVIADA;
     }
 
     await this.notificacionRepository.save(notificacion);
   }
+
+  /**
+   * Obtiene el correo electrónico de un usuario desde auth.personas
+   */
+  private async obtenerEmailUsuario(usuarioId: string): Promise<string | null> {
+    console.log(`[Notificaciones] 🔎 Buscando email para el ID: ${usuarioId}`);
+    try {
+      // Intento 1: Buscar por id_user o id_tercero en la unión de personas y usuarios
+      const result = await this.dataSource.query(`
+        SELECT p.dir_email as email
+        FROM auth.personas p
+        LEFT JOIN auth."user" u ON u.id_person = p.id_person
+        WHERE u.id_user = $1::uuid OR p.id_person = $1::uuid
+      `, [usuarioId]);
+
+      if (result[0]?.email) {
+        console.log(`[Notificaciones] ✅ Email encontrado en personas: ${result[0].email}`);
+        return result[0].email;
+      }
+
+      // Intento 2: Buscar directamente en la tabla de usuarios (por si el correo está allí)
+      const resultUser = await this.dataSource.query(`
+        SELECT email FROM auth."user" WHERE id_user = $1
+      `, [usuarioId]);
+
+      if (resultUser[0]?.email) {
+        console.log(`[Notificaciones] ✅ Email encontrado en tabla user: ${resultUser[0].email}`);
+        return resultUser[0].email;
+      }
+
+      console.warn(`[Notificaciones] ⚠️ No se encontró ningún email para el ID: ${usuarioId}`);
+      return null;
+    } catch (error) {
+      console.error(`[Notificaciones] ❌ Error en obtenerEmailUsuario:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Envía el correo real usando nodemailer
+   */
+  private async enviarCorreoReal(notificacion: Notificacion, emailDestino: string): Promise<void> {
+    console.log(`[Notificaciones] 🚀 Intentando enviar email a: ${emailDestino} para la notificación: ${notificacion.titulo}`);
+    
+    try {
+      const from = this.configService.get<string>('SMTP_FROM', '"Plataforma ESAP" <noreply@esap.edu.co>');
+      const appUrl = this.configService.get<string>('APP_URL', 'http://localhost:3000');
+      
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+          <div style="background-color: #003DA5; color: white; padding: 20px; text-align: center;">
+            <h1 style="margin: 0; font-size: 20px;">Control Interno de Gestión</h1>
+          </div>
+          <div style="padding: 30px; color: #374151;">
+            <h2 style="color: #003DA5; margin-top: 0;">${notificacion.titulo}</h2>
+            <p style="font-size: 16px; line-height: 1.5;">${notificacion.mensaje}</p>
+            ${notificacion.accionUrl ? `
+              <div style="margin-top: 30px; text-align: center;">
+                <a href="${appUrl}${notificacion.accionUrl}" 
+                   style="background-color: #F97316; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                  Ver en la Plataforma
+                </a>
+              </div>
+            ` : ''}
+          </div>
+          <div style="background-color: #f9fafb; padding: 20px; text-align: center; color: #9ca3af; font-size: 12px; border-top: 1px solid #e5e7eb;">
+            Este es un correo automático, por favor no respondas a este mensaje.
+            <br>ESAP - Escuela Superior de Administración Pública
+          </div>
+        </div>
+      `;
+
+      await this.transporter.sendMail({
+        from,
+        to: emailDestino,
+        subject: notificacion.titulo,
+        html,
+      });
+
+      console.log(`[Notificaciones] ✅ ¡ÉXITO! Correo entregado a ${emailDestino}`);
+    } catch (error) {
+      console.error(`[Notificaciones] ❌ ERROR CRÍTICO SMTP al enviar a ${emailDestino}:`, error.message);
+      // Opcionalmente podrías relanzar el error o manejarlo según política
+      throw error;
+    }
+  }
+
 
   /**
    * Marca una notificación como leída
@@ -380,17 +600,34 @@ export class NotificacionesService {
   }
 
   /**
-   * Obtiene las preferencias de notificación de un usuario
+   * Obtiene las preferencias de notificación de un usuario.
+   * Normaliza el usuarioId a id_tercero para consistencia con el sistema de notificaciones.
    */
   async getPreferencias(usuarioId: string): Promise<PreferenciaNotificacion> {
+    // Normalizar a id_tercero para consistencia
+    let idNormalizado: string;
+    try {
+      const idTercero = await this.getUserIdTerceroFromUUID(usuarioId);
+      idNormalizado = String(idTercero);
+    } catch {
+      idNormalizado = usuarioId; // fallback: usar tal cual
+    }
+
     let preferencias = await this.preferenciaRepository.findOne({
-      where: { usuarioId },
+      where: { usuarioId: idNormalizado },
     });
+
+    // Intentar con el id original si no se encontró con el normalizado
+    if (!preferencias && idNormalizado !== usuarioId) {
+      preferencias = await this.preferenciaRepository.findOne({
+        where: { usuarioId },
+      });
+    }
 
     if (!preferencias) {
       // Crear preferencias por defecto
       preferencias = this.preferenciaRepository.create({
-        usuarioId,
+        usuarioId: idNormalizado,
         recibirEmail: true,
         recibirSistema: true,
         diasAnticipacion: 7,
@@ -402,19 +639,36 @@ export class NotificacionesService {
   }
 
   /**
-   * Actualiza las preferencias de notificación de un usuario
+   * Actualiza las preferencias de notificación de un usuario.
+   * Normaliza el usuarioId a id_tercero para consistencia.
    */
   async updatePreferencias(
     usuarioId: string,
     preferencias: Partial<PreferenciaNotificacion>,
   ): Promise<PreferenciaNotificacion> {
+    // Normalizar a id_tercero para consistencia
+    let idNormalizado: string;
+    try {
+      const idTercero = await this.getUserIdTerceroFromUUID(usuarioId);
+      idNormalizado = String(idTercero);
+    } catch {
+      idNormalizado = usuarioId;
+    }
+
     let pref = await this.preferenciaRepository.findOne({
-      where: { usuarioId },
+      where: { usuarioId: idNormalizado },
     });
+
+    // Intentar con id original si no se encontró
+    if (!pref && idNormalizado !== usuarioId) {
+      pref = await this.preferenciaRepository.findOne({
+        where: { usuarioId },
+      });
+    }
 
     if (!pref) {
       pref = this.preferenciaRepository.create({
-        usuarioId,
+        usuarioId: idNormalizado,
         ...preferencias,
       });
     } else {
@@ -536,17 +790,26 @@ export class NotificacionesService {
    */
   private async obtenerJefesControlInterno(): Promise<string[]> {
     try {
+      // Buscar por múltiples variantes del código de rol para mayor compatibilidad
       const result = await this.dataSource.query(`
-        SELECT DISTINCT u.id_tercero
+        SELECT DISTINCT u.id_user
         FROM auth."user" u
         INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
         INNER JOIN auth.role r ON r.id = ur.id_rol
-        WHERE r.code = 'JEFE_CONTROL_INTERNO'
-          AND ur.is_active = true
+        WHERE UPPER(r.code) IN (
+          'JEFE_CONTROL_INTERNO',
+          'JEFE_OCI',
+          'JEFE_OCIG',
+          'CONTROL_INTERNO_JEFE',
+          'OCI_JEFE'
+        )
+          AND (ur.is_active = true OR ur.is_active IS NULL)
           AND u.is_active = true
       `);
 
-      return result.map((row: any) => String(row.id_tercero));
+      const uuids = result.map((row: any) => String(row.id_user)).filter(Boolean);
+      console.log(`[NotificacionesService.obtenerJefesControlInterno] Encontrados ${uuids.length} jefes OCI`);
+      return uuids;
     } catch (error) {
       console.error('Error al obtener Jefes de Control Interno:', error);
       return [];
@@ -561,31 +824,39 @@ export class NotificacionesService {
     tipo?: string;
     leida?: boolean;
     prioridad?: string;
-  }): Promise<Notificacion[]> {
-    console.log(`[NotificacionesService.findAll] Obteniendo TODAS las notificaciones con filtros:`, filters);
+  }): Promise<any[]> {
+    console.log(`[NotificacionesService.findAll] Obteniendo historial global`);
     
-    const query = this.notificacionRepository
-      .createQueryBuilder('notificacion')
-      .orderBy('notificacion.createdAt', 'DESC');
+    // Usar TypeORM para asegurar que los datos carguen
+    const notificaciones = await this.notificacionRepository.find({
+      order: { createdAt: 'DESC' },
+      take: 200
+    });
 
-    if (filters?.estado) {
-      query.andWhere('notificacion.estado = :estado', { estado: filters.estado });
+    // Mapear nombres para que el historial sea legible
+    const resultados: any[] = [];
+    for (const n of notificaciones) {
+      let nombreReal = n.usuarioId;
+      try {
+        const p = await this.dataSource.query(`
+          SELECT nom_largo FROM auth.personas 
+          WHERE id_person = $1 
+          OR id_person IN (SELECT id_person FROM auth."user" WHERE id_user = $1)
+          LIMIT 1
+        `, [n.usuarioId]);
+        
+        if (p && p.length > 0 && p[0].nom_largo) {
+          nombreReal = p[0].nom_largo;
+        }
+      } catch (e) {}
+
+      resultados.push({
+        ...n,
+        usuarioId: nombreReal,     // Forzamos nombre aquí
+        destinatario: nombreReal,  // Y aquí
+        fechaEnvio: n.createdAt
+      });
     }
-
-    if (filters?.tipo) {
-      query.andWhere('notificacion.tipoNotificacion = :tipo', { tipo: filters.tipo });
-    }
-
-    if (filters?.leida !== undefined) {
-      query.andWhere('notificacion.leida = :leida', { leida: filters.leida });
-    }
-
-    if (filters?.prioridad) {
-      query.andWhere('notificacion.prioridad = :prioridad', { prioridad: filters.prioridad });
-    }
-
-    const resultados = await query.getMany();
-    console.log(`[NotificacionesService.findAll] Encontradas ${resultados.length} notificaciones (TODAS)`);
     
     return resultados;
   }
@@ -596,7 +867,7 @@ export class NotificacionesService {
   async debugUsuario(usuarioId: string): Promise<any> {
     console.log(`[NotificacionesService.debugUsuario] Debug para usuarioId: ${usuarioId}`);
     
-    let idTercero: number | null = null;
+    let idTercero: string | null = null;
     let errorConversion: string | null = null;
     
     try {
@@ -606,8 +877,8 @@ export class NotificacionesService {
       errorConversion = error.message;
       console.error(`[NotificacionesService.debugUsuario] Error en conversión:`, error);
       if (/^\d+$/.test(usuarioId)) {
-        idTercero = Number(usuarioId);
-        console.log(`[NotificacionesService.debugUsuario] Usando directamente como numérico: ${idTercero}`);
+        idTercero = String(usuarioId);
+        console.log(`[NotificacionesService.debugUsuario] Usando directamente como texto: ${idTercero}`);
       }
     }
 
@@ -621,9 +892,9 @@ export class NotificacionesService {
       };
     }
 
-    // Buscar todas las notificaciones para este id_tercero (sin filtros)
+    // Buscar todas las notificaciones para este usuarioId (sin filtros)
     const todasNotificaciones = await this.notificacionRepository.find({
-      where: { usuarioId: String(idTercero) },
+      where: { usuarioId: usuarioId },
       order: { createdAt: 'DESC' },
       take: 100,
     });

@@ -8,7 +8,8 @@ import {
   FolderOpen,
   Settings,
   FileText,
-  Layers
+  Layers,
+  Bell
 } from "lucide-react";
 import { ModuleLayout, MenuItem } from "../shared/ModuleLayout";
 import { ControlInternoProvider } from "./ControlInternoContext";
@@ -18,6 +19,8 @@ import { HallazgosProvider } from "./HallazgosContext";
 import { TareasProvider } from "./TareasContext";
 import { toast } from "sonner";
 import { KanbanConfigProvider } from "./context/KanbanConfigContext";
+import { NotificacionesControlInternoDropdown } from "./NotificacionesControlInternoDropdown";
+import { useNotificacionesControlInterno } from "./hooks/useNotificacionesControlInterno";
 
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 
@@ -109,6 +112,22 @@ function ControlInternoContent({
   
   // ✅ HOOK DE BACKEND - Total de planes para badge
   const { planes: planesBackend, loading: loadingPlanes } = usePlanesMejoramiento();
+
+  // ✅ HOOK DE NOTIFICACIONES - Bell icon con conteo
+  const {
+    conteoNoLeidas,
+    cargarNotificaciones,
+  } = useNotificacionesControlInterno();
+  const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
+
+  // Polling: recargar conteo cada 60 segundos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      cargarNotificaciones();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [cargarNotificaciones]);
+
 
   // Mapeo de IDs de sección a módulos de permisos
   const MAPEO_SECCION_MODULO: Record<string, string> = {
@@ -270,6 +289,29 @@ function ControlInternoContent({
         setNavegacionManual(Date.now());
         if (section !== 'listas-chequeo') setListasChequeoTabActiva('BIBLIOTECA');
       }}
+      headerActions={
+        <div className="relative">
+          <button
+            onClick={() => setNotifDropdownOpen(prev => !prev)}
+            className="relative flex items-center justify-center w-9 h-9 rounded-xl hover:bg-orange-50 transition-colors border border-gray-200 hover:border-orange-300"
+            title="Notificaciones de Control Interno"
+            id="btn-notificaciones-ci"
+          >
+            <Bell className="w-5 h-5 text-gray-600" />
+            {conteoNoLeidas > 0 && (
+              <span
+                className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 shadow-lg animate-pulse"
+              >
+                {conteoNoLeidas > 99 ? '99+' : conteoNoLeidas}
+              </span>
+            )}
+          </button>
+          <NotificacionesControlInternoDropdown
+            isOpen={notifDropdownOpen}
+            onClose={() => setNotifDropdownOpen(false)}
+          />
+        </div>
+      }
     >
       {/* Navegación automática */}
       <MenuDinamicoWrapper

@@ -1586,59 +1586,45 @@ export class PlanesMejoramientoService {
       }
     }
 
-    // Obtener usuarios que deben recibir notificaciones
-    const usuariosNotificar: string[] = [];
+    // ✅ SINCRONIZACIÓN CON CONFIGURACIÓN: Obtener roles destinatarios
+    let rolesDestinatarios = ['Responsable Plan Mejoramiento', 'Jefe OCIG', 'Auditor Líder']; // Fallback
+    try {
+      const configGlobal = await this.notificacionesService.getGlobalConfig();
+      if (configGlobal && configGlobal.tiposNotificacion && configGlobal.tiposNotificacion['EVT-PM-001']) {
+        const configEvento = configGlobal.tiposNotificacion['EVT-PM-001'] as any;
+        rolesDestinatarios = configEvento.destinatarios || rolesDestinatarios;
+      }
+    } catch (e) {}
 
-    // 1. Buscar el responsable de implementación por nombre
-    if (plan.responsableImplementacion) {
+    const usuariosNotificar = new Set<string>();
+
+    // 1. Si los roles incluyen "Jefe OCIG"
+    if (rolesDestinatarios.includes('Jefe OCIG')) {
+      const jefesOCI = await this.obtenerJefesControlInterno();
+      jefesOCI.forEach(id => usuariosNotificar.add(id));
+    }
+
+    // 2. Si los roles incluyen "Auditor Líder"
+    if (rolesDestinatarios.includes('Auditor Líder') && auditoriaId) {
+       try {
+         const auditoria = await this.auditoriaRepository.findOne({ where: { id: auditoriaId } });
+         if (auditoria?.auditorLiderId) usuariosNotificar.add(String(auditoria.auditorLiderId));
+       } catch (e) {}
+    }
+
+    // 3. Si los roles incluyen "Responsable Plan Mejoramiento"
+    if (rolesDestinatarios.includes('Responsable Plan Mejoramiento') && plan.responsableImplementacion) {
       try {
-        console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Buscando responsable: "${plan.responsableImplementacion}"`);
         const responsable = await this.dataSource.query(
-          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR CONCAT(nom_tercero, ' ', pri_apellido) ILIKE $1 LIMIT 1`,
+          `SELECT id_user FROM auth.personas p JOIN auth."user" u ON u.id_person = p.id_person WHERE p.nom_largo ILIKE $1 LIMIT 1`,
           [`%${plan.responsableImplementacion}%`]
         );
-        
-        if (responsable && responsable.length > 0) {
-          const idTercero = String(responsable[0].id_tercero);
-          usuariosNotificar.push(idTercero);
-          console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Responsable encontrado: id_tercero=${idTercero}`);
-        } else {
-          console.warn(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] No se encontró responsable con nombre: "${plan.responsableImplementacion}"`);
-        }
-      } catch (error) {
-        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al buscar responsable:`, error);
-      }
-    }
-
-    // 2. Obtener Jefes de Control Interno
-    try {
-      const jefesOCI = await this.obtenerJefesControlInterno();
-      usuariosNotificar.push(...jefesOCI);
-      console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] ${jefesOCI.length} Jefe(s) de Control Interno encontrado(s)`);
-    } catch (error) {
-      console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener Jefes de Control Interno:`, error);
-    }
-
-    // 3. Obtener auditor líder si hay auditoría
-    if (auditoriaId) {
-      try {
-        const auditoria = await this.auditoriaRepository.findOne({
-          where: { id: auditoriaId },
-        });
-        if (auditoria?.auditorLiderId) {
-          const auditorLiderId = String(auditoria.auditorLiderId);
-          if (!usuariosNotificar.includes(auditorLiderId)) {
-            usuariosNotificar.push(auditorLiderId);
-            console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Auditor líder agregado: id_tercero=${auditorLiderId}`);
-          }
-        }
-      } catch (error) {
-        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener auditor líder:`, error);
-      }
+        if (responsable && responsable.length > 0) usuariosNotificar.add(responsable[0].id_user);
+      } catch (e) {}
     }
 
     // Eliminar duplicados
-    const usuariosUnicos = [...new Set(usuariosNotificar)];
+    const usuariosUnicos = [...usuariosNotificar];
     console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Total de usuarios a notificar: ${usuariosUnicos.length}`);
 
     // Crear notificaciones para cada usuario
@@ -1674,16 +1660,21 @@ export class PlanesMejoramientoService {
   private async obtenerJefesControlInterno(): Promise<string[]> {
     try {
       const result = await this.dataSource.query(`
-        SELECT DISTINCT u.id_tercero
+        SELECT DISTINCT u.id_user as id
         FROM auth."user" u
         INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
         INNER JOIN auth.role r ON r.id = ur.id_rol
-        WHERE r.code = 'JEFE_CONTROL_INTERNO'
-          AND ur.is_active = true
-          AND u.is_active = true
+        WHERE (
+          UPPER(r.code) IN ('JEFE_CONTROL_INTERNO', 'JEFE_OCIG', 'JEFE_OCI', 'ADMIN', 'SUPER_ADMIN')
+          OR r.name ILIKE '%Jefe%Control%Interno%'
+          OR r.name ILIKE '%Jefe%OCI%'
+        )
+        AND u.is_active = true
       `);
-
-      return result.map((row: any) => String(row.id_tercero));
+      
+      const ids = result.map(r => r.id);
+      console.log(`[Notificaciones-PM] Jefes OCI detectados: ${ids.length} usuarios`);
+      return ids;
     } catch (error) {
       console.error('[PlanesMejoramientoService.obtenerJefesControlInterno] Error:', error);
       return [];
