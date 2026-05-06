@@ -739,6 +739,12 @@ function SelectorProfesional({
 
 interface WizardCreacionProps {
   planAEditar?: PlanAnual;
+  /** Mismo asistente que edición, sin persistir cambios (solo consulta). */
+  soloLectura?: boolean;
+  /** Permiso approve/activate/super — muestra acceso rápido a la pestaña Aprobación del dashboard. */
+  puedeIrAAprobacion?: boolean;
+  /** Cierra el wizard y debe abrir el dashboard en la pestaña Aprobación. */
+  onIrAAprobacion?: () => void;
   onCancelar: () => void;
   onCrear: (
     vigencia: number,
@@ -753,7 +759,7 @@ interface WizardCreacionProps {
   planesExistentes?: PlanAnual[];
 }
 
-export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, planesExistentes = [] }: WizardCreacionProps) {
+export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprobacion = false, onIrAAprobacion, onCancelar, onCrear, onTerminado, planesExistentes = [] }: WizardCreacionProps) {
   // x Cargar borrador de localStorage
   const draftKey = planAEditar ? `esap:wizard_plan_anual_edit_${planAEditar.id}` : 'esap:wizard_plan_anual_draft';
   const draftStr = typeof window !== 'undefined' ? localStorage.getItem(draftKey) : null;
@@ -870,6 +876,16 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
   const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor | null>(draft?.jefeSeleccionado || null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  /** Modal de solo lectura: resumen del plan en el asistente (no confundir con «Ver» del listado inicial). */
+  const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
+
+  const { puedeRealizar: puedeRealizarWizard, esSuperUsuario: esSuperUsuarioWizard } = useControlInternoPermissions();
+  const puedeVerPlanAnual = puedeRealizarWizard('plan-anual', 'view');
+  const puedeMostrarVistaPrevia = puedeVerPlanAnual || esSuperUsuarioWizard;
+
+  useEffect(() => {
+    if (!puedeMostrarVistaPrevia) setMostrarVistaPrevia(false);
+  }, [puedeMostrarVistaPrevia]);
   
   const [draggedAprobadorIndex, setDraggedAprobadorIndex] = useState<number | null>(null);
   
@@ -1294,6 +1310,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
 
   // Autoguardado: localStorage siempre; servidor además en «Nuevo plan» (debounce).
   useEffect(() => {
+    if (soloLectura) return;
     if (isSubmitting || showSuccessModal) return;
     // Evita que el primer render (estado vacío por defecto) pise el borrador
     // que llega del backend antes de completar la hidratación inicial.
@@ -1348,6 +1365,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     isSubmitting,
     showSuccessModal,
     draftKey,
+    soloLectura,
   ]);
 
   // Validación del Paso 1: Fechas y vigencia
@@ -1481,12 +1499,15 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
   };
 
   const avanzarPaso = () => {
-    if (paso === 1 && !validarPaso1()) return;
-    if (paso === 2 && !validarPaso2()) return;
+    if (!soloLectura) {
+      if (paso === 1 && !validarPaso1()) return;
+      if (paso === 2 && !validarPaso2()) return;
+    }
     setPaso(paso + 1);
   };
 
     const handleFinalizar = async () => {
+    if (soloLectura) return;
     // Validación final de seguridad antes de crear el plan
     const rolesConActividades = rolesConfig.filter(rol => 
       contarActividadesIncluidas(rol) + (rol.actividadesCustom?.length || 0) > 0
@@ -1578,22 +1599,155 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
         </div>,
         document.body
       )}
+      {mostrarVistaPrevia && puedeMostrarVistaPrevia && createPortal(
+        <div className="fixed inset-0 z-[99998] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            aria-label="Cerrar vista previa"
+            onClick={() => setMostrarVistaPrevia(false)}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative bg-white rounded-2xl shadow-2xl border-2 border-gray-200 w-full max-w-2xl max-h-[88vh] flex flex-col z-10 overflow-hidden"
+          >
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3 bg-slate-50">
+              <div className="flex items-center gap-2 min-w-0">
+                <BookOpen className="w-5 h-5 text-blue-600 shrink-0" />
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 truncate">Vista previa del plan</h2>
+                  <p className="text-xs text-gray-500">Solo lectura · Paso {paso} de 3</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMostrarVistaPrevia(false)}
+                className="p-2 rounded-lg hover:bg-gray-200 text-gray-600 transition-colors"
+                aria-label="Cerrar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-6 py-4 overflow-y-auto text-sm space-y-5">
+              {planAEditar?.id && (
+                <p className="text-xs text-gray-500 font-mono break-all">ID plan: {planAEditar.id}</p>
+              )}
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vigencia</p>
+                  <p className="font-bold text-gray-900">{vigencia}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Periodo</p>
+                  <p className="font-bold text-gray-900">{fechaInicio || '—'} → {fechaFin || '—'}</p>
+                </div>
+              </div>
+              <div className="p-3 rounded-xl bg-blue-50/80 border border-blue-100">
+                <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide mb-1">Responsable del plan</p>
+                <p className="font-semibold text-gray-900">{jefeSeleccionado?.nombre || 'Sin asignar'}</p>
+                {jefeSeleccionado?.cargo && (
+                  <p className="text-xs text-gray-600 mt-0.5">{jefeSeleccionado.cargo}</p>
+                )}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Roles y actividades incluidas</p>
+                <ul className="space-y-2">
+                  {[...rolesConfig].sort((a, b) => a.numero - b.numero).map((rol) => {
+                    const nSel = contarActividadesIncluidas(rol);
+                    const nCustom = (rol.actividadesCustom || []).filter(actividadIncluidaEnPlan).length;
+                    const total = nSel + nCustom;
+                    return (
+                      <li key={rol.numero} className="flex justify-between gap-2 py-2 border-b border-gray-100 last:border-0">
+                        <span className="text-gray-800"><span className="font-bold text-blue-700">Rol {rol.numero}</span> · {rol.nombre}</span>
+                        <span className="text-gray-600 whitespace-nowrap">{total} actividad{total !== 1 ? 'es' : ''}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+              <div className="p-3 rounded-xl bg-amber-50/90 border border-amber-100">
+                <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide mb-1">Comité de aprobación (paso 3)</p>
+                <p className="text-gray-800">
+                  {comiteAprobacion.length} de 5 miembros · orden <strong>{ordenAprobacion === 'paralelo' ? 'paralelo' : 'secuencial'}</strong>
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setMostrarVistaPrevia(false)}
+                className="px-5 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg font-semibold text-sm"
+              >
+                Cerrar
+              </button>
+            </div>
+          </motion.div>
+        </div>,
+        document.body
+      )}
       {/* Header */}
       <div className="border-b-2 border-gray-200 px-8 py-6">
-        <div className="flex items-center justify-between mb-6">
+        {soloLectura && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <strong className="font-semibold">Solo consulta.</strong>{' '}
+            No tiene permiso para modificar la definición del plan; puede revisar los tres pasos del asistente y volver al panel.
+            {planAEditar && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={onCancelar}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-slate-300 bg-white text-slate-800 text-sm font-semibold hover:bg-slate-50 transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Volver al panel
+                </button>
+                {puedeIrAAprobacion && typeof onIrAAprobacion === 'function' && (
+                  <button
+                    type="button"
+                    onClick={onIrAAprobacion}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition-colors"
+                  >
+                    <FileCheck className="w-4 h-4 shrink-0" />
+                    Ir a aprobación
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div className="flex items-center gap-3">
             <button onClick={onCancelar} className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors">
               <ArrowLeft className="w-5 h-5 text-gray-700" />
             </button>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                {planAEditar ? 'Editar Plan Anual' : 'Crear Plan Anual'}
+                {soloLectura && planAEditar
+                  ? 'Consultar definición del Plan Anual'
+                  : planAEditar
+                    ? 'Editar Plan Anual'
+                    : 'Crear Plan Anual'}
               </h1>
               <p className="text-sm text-gray-600">Paso {paso} de 3</p>
             </div>
           </div>
-          
+
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            {puedeMostrarVistaPrevia && !soloLectura && (
+              <button
+                type="button"
+                onClick={() => setMostrarVistaPrevia(true)}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
+                title="Ver resumen del plan sin salir del asistente (solo lectura). Requiere permiso de consulta del plan anual."
+              >
+                <BookOpen className="w-4 h-4 shrink-0" />
+                Vista previa
+              </button>
+            )}
+
           {/* Zona de guardado (Borrador) */}
+          {!soloLectura && (
           <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg p-1.5">
             <AnimatePresence>
               {lastSaved && (
@@ -1652,6 +1806,8 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
               <Save className="w-5 h-5" />
             </button>
           </div>
+          )}
+          </div>
         </div>
 
         {/* Progress */}
@@ -1664,7 +1820,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto bg-gray-50 p-8">
-        <div className="max-w-7xl mx-auto">
+        <div className={`max-w-7xl mx-auto ${soloLectura ? 'pointer-events-none select-none opacity-[0.97]' : ''}`}>
           <AnimatePresence mode="wait">
             {paso === 1 && (
               <Paso1 
@@ -1682,6 +1838,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
                 onRecargarAuditores={cargarAuditores}
                 vigenciasExistentes={planesExistentes.filter(p => !planAEditar || p.id !== planAEditar.id).map(p => p.vigencia)}
                 vigenciasDisponibles={vigenciasDisponibles}
+                soloLectura={soloLectura}
               />
             )}
             {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={handleRolesChange} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} jefeOCI={jefeSeleccionado} />}
@@ -1710,51 +1867,74 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       {/* Footer */}
       <div className="border-t-2 border-gray-200 px-8 py-4 flex justify-between items-center bg-white">
         <div className="flex items-center gap-4">
-          <button onClick={onCancelar} className="px-6 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium">
-            Cancelar
+          <button type="button" onClick={onCancelar} className="px-6 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium">
+            {soloLectura ? 'Volver' : 'Cancelar'}
           </button>
         </div>
         
         <div className="flex gap-3">
-          {paso > 1 && (
-            <button onClick={() => setPaso(paso - 1)} className="px-6 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
-              Anterior
-            </button>
-          )}
-          {paso < 3 ? (
-            <button 
-              onClick={avanzarPaso} 
-              disabled={
-                (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
-                (paso === 2 && rolesConfig.some(r => (contarActividadesIncluidas(r) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
-              }
-              className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${
-                (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
-                (paso === 2 && rolesConfig.some(r => (contarActividadesIncluidas(r) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                  : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
-              }`}
-            >
-              Siguiente <ArrowRight className="w-4 h-4" />
-            </button>
-          ) : (
-            <button 
-              onClick={handleFinalizar} 
-              disabled={isSubmitting || comiteAprobacion.length !== 5}
-              title={comiteAprobacion.length !== 5 ? 'Seleccione los 5 miembros del comité de aprobación' : undefined}
-              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                  {planAEditar ? 'Guardando...' : 'Creando...'}
-                </>
-              ) : (
-                <>
-                  <Check className="w-4 h-4" /> {planAEditar ? 'Guardar Cambios' : 'Crear'}
-                </>
+          {soloLectura ? (
+            <>
+              {paso > 1 && (
+                <button type="button" onClick={() => setPaso(paso - 1)} className="px-6 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
+                  Anterior
+                </button>
               )}
-            </button>
+              {paso < 3 ? (
+                <button type="button" onClick={avanzarPaso} className="px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors bg-blue-600 hover:bg-blue-700 text-white cursor-pointer">
+                  Siguiente <ArrowRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <button type="button" onClick={onCancelar} className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-medium">
+                  Volver al panel
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              {paso > 1 && (
+                <button type="button" onClick={() => setPaso(paso - 1)} className="px-6 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
+                  Anterior
+                </button>
+              )}
+              {paso < 3 ? (
+                <button 
+                  type="button"
+                  onClick={avanzarPaso} 
+                  disabled={
+                    (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
+                    (paso === 2 && rolesConfig.some(r => (contarActividadesIncluidas(r) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
+                  }
+                  className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${
+                    (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
+                    (paso === 2 && rolesConfig.some(r => (contarActividadesIncluidas(r) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                      : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                  }`}
+                >
+                  Siguiente <ArrowRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <button 
+                  type="button"
+                  onClick={handleFinalizar} 
+                  disabled={isSubmitting || comiteAprobacion.length !== 5}
+                  title={comiteAprobacion.length !== 5 ? 'Seleccione los 5 miembros del comité de aprobación' : undefined}
+                  className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      {planAEditar ? 'Guardando...' : 'Creando...'}
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" /> {planAEditar ? 'Guardar Cambios' : 'Crear'}
+                    </>
+                  )}
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1763,7 +1943,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
 }
 
 // Paso 1: Configuración básica
-function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores, vigenciasExistentes = [], vigenciasDisponibles = [] }: any) {
+function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores, vigenciasExistentes = [], vigenciasDisponibles = [], soloLectura = false }: any) {
   const anioFechaInicio = fechaInicio ? parseInt(fechaInicio.split('-')[0], 10) : vigencia;
   const anioFechaFin = fechaFin ? parseInt(fechaFin.split('-')[0], 10) : vigencia;
   const errorFechaFinAnterior = fechaFin && fechaInicio && fechaFin < fechaInicio;
@@ -1827,6 +2007,14 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
       <div className="bg-white rounded-xl border-2 border-gray-200 p-8 space-y-6">
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-2">Vigencia <span className="text-red-500">*</span></label>
+          {soloLectura ? (
+            <div className="rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Vigencia del plan (solo consulta)</p>
+              <p className="text-3xl font-black text-slate-900 tabular-nums">{vigencia}</p>
+              <p className="text-xs text-slate-600 mt-2">No puede modificarse en modo consulta. Use <strong>Siguiente</strong> para ver roles y actividades.</p>
+            </div>
+          ) : (
+          <>
           <div className="relative" ref={comboRef}>
             <input 
               type="text"
@@ -1874,6 +2062,8 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
           ) : (
             <p className="text-xs text-gray-500 mt-1">Escribe un año o despliega la lista para ver los disponibles.</p>
           )}
+          </>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -1882,6 +2072,8 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             <input 
               type="date" 
               value={fechaInicio} 
+              readOnly={soloLectura}
+              disabled={soloLectura}
               onChange={(e) => handleFechaInicioChange(e.target.value)}
               min={`${vigencia}-01-01`}
               max={`${vigencia}-12-31`}
@@ -1905,6 +2097,8 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             <input 
               type="date" 
               value={fechaFin} 
+              readOnly={soloLectura}
+              disabled={soloLectura}
               onChange={(e) => onFechaFinChange(e.target.value)}
               min={fechaInicio || `${vigencia}-01-01`}
               max={`${vigencia}-12-31`}
@@ -1968,8 +2162,9 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             ) : (
               <select 
                 value={jefeOCI?.id || ''} 
+                disabled={soloLectura}
                 onChange={(e) => onJefeChange(responsablesAutorizados.find((a: any) => a.id === e.target.value))} 
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               >
                 <option value="">Seleccionar responsable...</option>
                 {responsablesAutorizados.map((a: any) => (
@@ -4128,12 +4323,17 @@ interface DashboardPlanProps {
   planesAnteriores?: PlanAnual[]; // Historial de planes anteriores
   planesDisponibles?: PlanAnual[]; // Lista de todos los planes para selector
   onCambiarPlan?: (planId: string) => void; // Callback para cambiar de plan activo
-  onEditarPlan?: (plan: PlanAnual) => void; // Callback para editar el plan actual
+  onEditarPlan?: (plan: PlanAnual) => void | Promise<void>; // Callback para editar el plan actual
+  /** Mismo asistente que edición, sin poder guardar (solo consulta). */
+  onVerDefinicionPlan?: (plan: PlanAnual) => void | Promise<void>;
+  /** Tras volver del asistente en solo lectura: abrir esta pestaña una vez. */
+  seccionForzada?: 'gestion' | 'aprobar' | null;
+  onSeccionForzadaAplicada?: () => void;
 }
 
 const PLAN_ANUAL_STORAGE_KEY = 'esap:plan_anual_activo';
 
-export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan, onEditarPlan }: DashboardPlanProps) {
+export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan, onEditarPlan, onVerDefinicionPlan, seccionForzada, onSeccionForzadaAplicada }: DashboardPlanProps) {
   const [seccion, setSeccion] = useState<'gestion' | 'asignar' | 'aprobar'>('gestion');
   const [mostrarModalExportacion, setMostrarModalExportacion] = useState(false);
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
@@ -4217,6 +4417,16 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const puedeVerGestion = puedeVerPlan || puedeSeguimiento || puedeEditarPlan || puedeAsignarActividades || esSuperUsuario;
   // Tab Aprobación: solo aprobadores
   const puedeVerAprobacion = puedeAprobarPlan || puedeActivarPlan || esSuperUsuario;
+
+  useEffect(() => {
+    if (!seccionForzada) return;
+    if (seccionForzada === 'aprobar' && !puedeVerAprobacion) {
+      onSeccionForzadaAplicada?.();
+      return;
+    }
+    setSeccion(seccionForzada);
+    onSeccionForzadaAplicada?.();
+  }, [seccionForzada, puedeVerAprobacion, onSeccionForzadaAplicada]);
 
   // Cargar auditores desde backend al montar el componente (profesionales OCI configurados)
   useEffect(() => {
@@ -4751,7 +4961,17 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               </button>
             )}
 
-
+            {onVerDefinicionPlan && (
+              <button
+                type="button"
+                onClick={() => onVerDefinicionPlan(plan)}
+                className="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-white border-2 border-slate-300 hover:bg-slate-50 text-slate-800 rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-sm text-xs sm:text-sm whitespace-nowrap"
+                title="Abrir el mismo asistente de definición del plan, solo para consulta"
+              >
+                <BookOpen className="w-4 h-4 shrink-0" />
+                Ver definición
+              </button>
+            )}
 
             {(puedeExportarPlan || puedeSeguimiento || esSuperUsuario) && (
             <button
@@ -5065,7 +5285,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       <div className="flex-1 overflow-y-auto bg-gray-50 px-8 py-6">
         <div className="max-w-7xl mx-auto">
           <AnimatePresence mode="wait">
-            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} cargandoAuditores={cargandoAuditores} onCambiarPlan={onCambiarPlan} onEditarPlan={onEditarPlan} />}
+            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} cargandoAuditores={cargandoAuditores} onEditarPlan={onEditarPlan} onVerDefinicionPlan={onVerDefinicionPlan} />}
             {seccion === 'aprobar' && <SeccionAprobacion key="aprobar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} puedeAprobarPlan={puedeAprobarPlan} puedeActivarPlan={puedeActivarPlan} puedeEditarPlan={puedeEditarPlan} auditores={auditores} />}
           </AnimatePresence>
         </div>
@@ -5088,8 +5308,8 @@ function SeccionGestionYSeguimiento({
   onAbrirRol4,
   auditores,
   cargandoAuditores = false,
-  onCambiarPlan,
-  onEditarPlan
+  onEditarPlan,
+  onVerDefinicionPlan
 }: { 
   plan: PlanAnual; 
   planesAnteriores?: PlanAnual[]; 
@@ -5098,8 +5318,8 @@ function SeccionGestionYSeguimiento({
   onAbrirRol4?: () => void;
   auditores: Auditor[];
   cargandoAuditores?: boolean;
-  onCambiarPlan?: (planId: string) => void;
-  onEditarPlan?: (plan: PlanAnual) => void;
+  onEditarPlan?: (plan: PlanAnual) => void | Promise<void>;
+  onVerDefinicionPlan?: (plan: PlanAnual) => void | Promise<void>;
 }) {
 
   // Estados para el seguimiento
@@ -5495,6 +5715,7 @@ function SeccionGestionYSeguimiento({
   const puedeEliminarPlan = puedeRealizar('plan-anual', 'delete');
   const puedeAprobarPlan = puedeRealizar('plan-anual', 'approve');
   const puedeAsignarActividades = puedeRealizar('plan-anual', 'assign');
+  const puedeVerPlan = puedeRealizar('plan-anual', 'view') || esSuperUsuario;
   // Permiso compuesto: editar O seguimiento para gestionar evidencias
   const puedeGestionarEvidencias = puedeEditarPlan || puedeSeguimiento;
 
@@ -6290,15 +6511,31 @@ function SeccionGestionYSeguimiento({
                     <p>{obtenerTotalActividadesPlanAnterior(planAnterior)} actividades</p>
                   </div>
                   
-                  {planAnterior.estado === 'BORRADOR' && onEditarPlan && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onEditarPlan(planAnterior); }}
-                      className="ml-2 p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors flex items-center justify-center group"
-                      title="Editar plan en formato de creación"
-                    >
-                      <Edit3 className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {onVerDefinicionPlan && puedeVerPlan && planAnterior.id !== plan.id && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onVerDefinicionPlan(planAnterior);
+                        }}
+                        className="p-2 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg transition-colors flex items-center justify-center border border-gray-200"
+                        title="Ver el plan en el asistente (pasos 1 a 3, solo consulta — igual que editar pero sin cambiar vigencia ni datos)"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
+                    )}
+                    {planAnterior.estado === 'BORRADOR' && onEditarPlan && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onEditarPlan(planAnterior); }}
+                        className="p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors flex items-center justify-center group"
+                        title="Editar plan en formato de creación"
+                      >
+                        <Edit3 className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -8491,6 +8728,17 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
     } catch(e) { return null; }
   })();
 
+  const emailSesion = (currentUser?.email || currentUser?.person?.email || currentUser?.usuario?.email || '').trim().toLowerCase();
+  const emailResponsablePlan = (plan.jefeOCI?.email || '').trim().toLowerCase();
+  const idsSesion = [currentUser?.idPerson, currentUser?.id, currentUser?.userId, currentUser?.sub]
+    .filter((v: unknown) => v != null && String(v).length > 0)
+    .map((v: unknown) => String(v));
+  const idResponsablePlan = plan.jefeOCI?.id != null && plan.jefeOCI.id !== '' ? String(plan.jefeOCI.id) : '';
+  const esResponsableDelPlan = !!currentUser && (
+    (idResponsablePlan && idsSesion.some((x) => x === idResponsablePlan))
+    || (emailSesion && emailResponsablePlan && emailSesion === emailResponsablePlan)
+  );
+
   const [modalObservacion, setModalObservacion] = useState<{ isOpen: boolean, auditorId: string | null, texto: string }>({ isOpen: false, auditorId: null, texto: '' });
   const [modalSubsanar, setModalSubsanar] = useState({ isOpen: false, texto: '' });
 
@@ -8526,6 +8774,42 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   }));
 
   const fueDevuelto = plan.estado === 'DEVUELTO' || historial.some(h => h.estado === 'OBSERVADA');
+
+  const { esMiTurnoComoAprobador, aprobadorMiTurno } = useMemo(() => {
+    const coincideSesionConAprobador = (a: Auditor) => {
+      const emA = (a.email || '').trim().toLowerCase();
+      if (emailSesion && emA && emailSesion === emA) return true;
+      const aid = a.id != null ? String(a.id) : '';
+      return !!(aid && idsSesion.some((id) => id === aid));
+    };
+    if (plan.estado !== 'EN_REVISION' || !equipo.length) {
+      return { esMiTurnoComoAprobador: false, aprobadorMiTurno: null as Auditor | null };
+    }
+    const idxUsuario = equipo.findIndex(coincideSesionConAprobador);
+    if (idxUsuario === -1) {
+      return { esMiTurnoComoAprobador: false, aprobadorMiTurno: null as Auditor | null };
+    }
+    const aprobador = equipo[idxUsuario];
+    const track = historial.find(h => h.auditorId === aprobador.id) || { estado: 'PENDIENTE' };
+    const isPendiente = track.estado === 'PENDIENTE';
+    if (!isPendiente) {
+      return { esMiTurnoComoAprobador: false, aprobadorMiTurno: null as Auditor | null };
+    }
+    const isSecuencial = plan.ordenAprobacion === 'secuencial';
+    let isWaitingTurn = false;
+    if (isSecuencial) {
+      const firstPendingIdx = equipo.findIndex((ap) => {
+        const t = historial.find(hi => hi.auditorId === ap.id);
+        return !t || t.estado === 'PENDIENTE';
+      });
+      if (firstPendingIdx !== -1 && idxUsuario > firstPendingIdx) isWaitingTurn = true;
+    }
+    const isActiveTurn = !isWaitingTurn && isPendiente;
+    return {
+      esMiTurnoComoAprobador: isActiveTurn,
+      aprobadorMiTurno: isActiveTurn ? aprobador : null,
+    };
+  }, [plan.estado, plan.ordenAprobacion, equipo, historial, emailSesion, idsSesion]);
 
   const cambiarEstadoGeneral = async (nuevoEstado: EstadoPlan, historialPersonalizado?: any[]) => {
     const arrHistorial = historialPersonalizado || plan.historialAprobaciones || historial;
@@ -8588,6 +8872,12 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   };
 
   const handleEnviarComiteOTP = () => {
+    if (!esResponsableDelPlan) {
+      toast.error('Solo el responsable del plan puede enviar al comité', {
+        description: `Coordina con ${plan.jefeOCI?.nombre || 'el responsable asignado'} o con el comité de aprobación PAI si necesitas continuar el trámite.`,
+      });
+      return;
+    }
     if (fueDevuelto) {
       setModalSubsanar({ isOpen: true, texto: '' });
     } else {
@@ -8662,7 +8952,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
     cambiarEstadoGeneral('DEVUELTO', nuevoHistorial);
   };
 
-  const exportarLogCSV = () => {
+  const exportarTrazabilidadAprobacionCSV = () => {
     try {
       const escapeCSV = (str?: string) => {
         if (!str) return '""';
@@ -8726,15 +9016,15 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `Trazabilidad_PAI_${plan.vigencia || new Date().getFullYear()}.csv`);
+      link.setAttribute('download', `Trazabilidad_Aprobacion_Plan_Anual_${plan.vigencia || new Date().getFullYear()}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       
-      toast.success('Log de aprobación exportado correctamente');
+      toast.success('Trazabilidad de aprobación exportada correctamente');
     } catch (e) {
-      toast.error('Error al exportar el log CSV');
+      toast.error('Error al exportar la trazabilidad en CSV');
       console.error(e);
     }
   };
@@ -8757,12 +9047,12 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
           </h2>
           <button 
             type="button"
-            onClick={exportarLogCSV}
+            onClick={exportarTrazabilidadAprobacionCSV}
             className="flex items-center justify-center gap-2 px-4 py-2 text-sm bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 border border-emerald-200 hover:border-emerald-300 rounded-xl transition-all font-semibold shadow-sm w-fit active:scale-95"
-            title="Descargar Logs completos en formato .CSV"
+            title="Descargar trazabilidad completa de aprobación en formato CSV"
           >
             <Download className="w-4 h-4" />
-            Descargar Logs (CSV)
+            Descargar trazabilidad de aprobación (CSV)
           </button>
         </div>
 
@@ -8819,7 +9109,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
               <Users className="w-5 h-5 text-gray-400" />
               Comité Aprobador PAI ({equipo.length})
             </h3>
-            {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && !isEditingCommittee && (
+            {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && esResponsableDelPlan && !isEditingCommittee && (
               <button 
                 onClick={() => {
                   setComiteDraft(plan.equipoAprobacion || []);
@@ -8945,7 +9235,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                 <div className="col-span-full p-8 text-center bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl">
                   <AlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                   <p className="text-gray-500 font-medium mb-4">No se ha designado un comité aprobador para este plan.</p>
-                  {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && (
+                  {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && esResponsableDelPlan && (
                     <button 
                       onClick={() => { setComiteDraft([]); setOrdenDraft('secuencial'); setIsEditingCommittee(true); }}
                       className="px-5 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold rounded-lg transition-colors border border-blue-200"
@@ -9202,7 +9492,54 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
         <h2 className="text-xl font-bold text-gray-900 mb-4">Acciones de Flujo</h2>
         
         <div className="space-y-3 relative z-0">
-          {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && (
+          {plan.estado === 'EN_REVISION' && puedeAprobarPlan && esMiTurnoComoAprobador && aprobadorMiTurno && (
+            <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl shadow-sm">
+              <p className="text-sm font-bold text-blue-950 mb-1 flex items-center gap-2">
+                <Shield className="w-5 h-5 text-blue-600 shrink-0" />
+                Tu turno de aprobación (comité PAI)
+              </p>
+              <p className="text-xs text-blue-900/90 mb-4">
+                Puedes firmar electrónicamente como <strong>{aprobadorMiTurno.nombre}</strong>. El plan permanece en revisión hasta completar todas las firmas del comité.
+              </p>
+              <button
+                type="button"
+                onClick={() =>
+                  handleAprobarAuditor(aprobadorMiTurno.id, aprobadorMiTurno.nombre, aprobadorMiTurno.email)
+                }
+                disabled={guardando}
+                className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 shadow-md"
+              >
+                {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
+                Aprobar plan (firma electrónica)
+              </button>
+            </div>
+          )}
+
+          {plan.estado === 'EN_REVISION' && !puedeAprobarPlan && esMiTurnoComoAprobador && aprobadorMiTurno && (
+            <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-700">
+              <p className="font-semibold text-gray-900 mb-1">Es tu turno en el comité</p>
+              <p className="text-xs text-gray-600">
+                Tu usuario coincide con un firmante pendiente, pero no tienes permiso de aprobación del plan anual en la plataforma. Solicita el permiso correspondiente o que otro miembro con facultad complete la firma.
+              </p>
+            </div>
+          )}
+
+          {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && !esResponsableDelPlan && (
+            <div className="p-4 bg-amber-50 border-2 border-amber-200 rounded-xl flex items-start gap-3 text-amber-950">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
+              <div className="text-sm leading-relaxed">
+                <p className="font-bold text-amber-900 mb-1">Aún no se envía al comité de aprobación</p>
+                <p className="text-amber-900/90">
+                  El trámite de <strong>envío y firma</strong> ante el comité PAI lo realiza únicamente el <strong>responsable del plan</strong>
+                  {plan.jefeOCI?.nombre ? (
+                    <> (<span className="font-semibold">{plan.jefeOCI.nombre}</span>)</>
+                  ) : null}
+                  . Si debes avanzar la prueba o el flujo, coordina con esa persona o con quien integre el comité de aprobación según corresponda.
+                </p>
+              </div>
+            </div>
+          )}
+          {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && esResponsableDelPlan && (
             <button onClick={handleEnviarComiteOTP} disabled={!puedeEnviarRevision || guardando} className="w-full px-6 py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
               {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
               {fueDevuelto ? 'Subsanar y Re-enviar a Comité de Aprobación (Firma)' : 'Enviar a Comité de Aprobación (Firma)'}

@@ -35,15 +35,14 @@ import { previsualizarNomenclatura } from './utils/nomenclaturaDocumentos';
 import { disciplinaryService, AutoConfiguration } from '../../../services/api/disciplinary.service';
 
 // Tipos de auto que disparan acciones automáticas al aprobarse
-const TIPOS_CON_ACCION = [
-  'AUTO_APERTURA',
-  'AUTO_APERTURA_INVESTIGACION',
-  'AUTO_APERTURA_INDAGACION',
+const TIPOS_CON_ACCION_ESTATICOS = [
   'AUTO_ARCHIVO',
   'AUTO_FORMULACION_PLIEGO',
   'PLIEGO_CARGOS',
   'AUTO_PRORROGA',
 ];
+const tieneAccion = (tipo: string): boolean =>
+  tipo?.startsWith('AUTO_APERTURA_') || TIPOS_CON_ACCION_ESTATICOS.includes(tipo);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -365,7 +364,7 @@ export function ModalGestionAutosWorldClass({
                             <p className="text-gray-600 text-xs">Tipo:</p>
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="font-bold text-gray-900">{auto.tipo}</p>
-                              {TIPOS_CON_ACCION.includes(auto.tipo) && (
+                              {tieneAccion(auto.tipo) && (
                                 <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-700 flex items-center gap-1">
                                   <Zap className="w-3 h-3" />
                                   Con acción
@@ -468,7 +467,7 @@ export function ModalGestionAutosWorldClass({
                           style={{ color: tipo.color }}
                         />
                         <p className="font-bold text-sm text-gray-900">{tipo.nombre}</p>
-                        {TIPOS_CON_ACCION.includes(tipo.id) && (
+                        {tieneAccion(tipo.id) && (
                           <span className="mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold bg-amber-100 text-amber-700">
                             <Zap className="w-3 h-3" />
                             Con acción
