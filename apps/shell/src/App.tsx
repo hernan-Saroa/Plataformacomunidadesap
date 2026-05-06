@@ -216,12 +216,11 @@ const SENSITIVE_SESSION_STORAGE_KEYS = [
 ];
 
 function migrateAuthTokensToSessionStorage() {
+  // OTIC-001: los tokens ya no se almacenan en sessionStorage ni localStorage.
+  // Solo limpiamos residuos de versiones anteriores.
   for (const key of AUTH_TOKEN_STORAGE_KEYS) {
-    const token = localStorage.getItem(key);
-    if (token && !sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, token);
-    }
     localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
   }
 
   const rememberedSession = localStorage.getItem('esap-remember-session');
@@ -449,15 +448,17 @@ export default function App() {
     migrateAuthTokensToSessionStorage();
     migrateSensitiveSessionDataToSessionStorage();
 
-    const authToken =
-      sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
-      sessionStorage.getItem('esap_access_token');
-    if (authToken && !sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN)) {
-      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, authToken);
-    }
+    // OTIC-001: el JWT viaja como cookie HttpOnly gestionada por el backend.
+    // El frontend solo guarda datos del usuario (sin tokens) para restaurar la UI.
+    // Limpiamos cualquier token residual de versiones anteriores.
+    AUTH_TOKEN_STORAGE_KEYS.forEach((key) => {
+      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
+    });
+
     const storedAuthUser = sessionStorage.getItem(USER_DATA_STORAGE_KEY);
     let sesionGuardada = sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
-    if (authToken && storedAuthUser) {
+    if (storedAuthUser) {
       try {
         applySessionFromUser(JSON.parse(storedAuthUser));
         return;
@@ -643,15 +644,14 @@ export default function App() {
   };
 
   // Handler para login con integración del backend
-  const handleLogin = (user: User, accessToken: string, rememberMe?: boolean) => {
+  const handleLogin = (user: User, _accessToken: string, rememberMe?: boolean) => {
     try {
       // console.log('🔐 Login handler called with user:', user);
       // console.log('🔐 Login handler called with roles:', user.roles);
       // console.log('🔐 Login handler called with accessToken:', accessToken);
       // console.log('🔐 Login handler called with rememberMe:', rememberMe);
-      // Guardar token JWT
-      sessionStorage.setItem('esap_auth_token', accessToken);
-      sessionStorage.setItem('esap_access_token', accessToken);
+      // Token JWT gestionado por cookie HttpOnly del backend (OTIC-001).
+      // El frontend NO almacena el token en ningún storage accesible por JS.
 
       // Extraer información del usuario
       const userEmail = user?.person?.email || user?.email || '';
@@ -849,6 +849,8 @@ export default function App() {
 
   // Handler para logout (desde cualquier ambiente)
   const handleLogout = (viewToast = true) => {
+    // Limpiar la cookie HttpOnly en el backend (OTIC-001)
+    authService.logout().catch(() => {/* el servidor puede estar caído; la cookie expira sola */});
     localStorage.clear();
     AUTH_TOKEN_STORAGE_KEYS.forEach((key) => sessionStorage.removeItem(key));
     clearSensitiveSessionState();

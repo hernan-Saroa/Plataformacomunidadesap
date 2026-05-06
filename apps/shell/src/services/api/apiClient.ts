@@ -635,67 +635,37 @@ export class ApiClient {
   }
 
   /**
-   * Refresh del access token
+   * Refresh del access token.
+   * El token viaja como cookie HttpOnly (OTIC-001): el navegador la envía automáticamente
+   * y el backend emite una nueva cookie en la respuesta. El frontend no almacena nada.
    */
   private async refreshAccessToken(): Promise<string | null> {
-    // Si ya está refrescando, esperar
     if (this.isRefreshing) {
       return new Promise((resolve) => {
-        this.refreshSubscribers.push((token: string) => {
-          resolve(token);
-        });
+        this.refreshSubscribers.push((token: string) => resolve(token));
       });
     }
 
     this.isRefreshing = true;
 
     try {
-      const refreshToken = sessionStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
-
-      if (!refreshToken) {
-        // Hacer logout automático cuando no hay refresh token
-        console.warn('No refresh token available - logging out');
-        this.handleLogout();
-        return null;
-      }
-
-      // 🔄 Nuevo endpoint versionado para refresh
       const response = await fetch(`${this.baseURL}${API_ENDPOINTS.AUTH.REFRESH}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-        ...CORS_CONFIG,
+        ...CORS_CONFIG, // credentials:'include' envía la cookie automáticamente
       });
 
       if (!response.ok) {
-        // Hacer logout automático cuando el refresh falla
-        console.warn('Token refresh failed with status:', response.status, '- logging out');
         this.handleLogout();
         return null;
       }
 
-      const data = await response.json();
-
-      // El backend expone el token en data.data.accessToken (contrato NestJS)
-      const newToken = data?.data?.accessToken || data?.accessToken;
-
-      if (!newToken) {
-        console.warn('Refresh response without accessToken - logging out');
-        this.handleLogout();
-        return null;
-      }
-
-      // Guardar nuevo token
-      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, newToken);
-      sessionStorage.setItem('esap_access_token', newToken);
-
-      // Notificar a todos los subscribers
-      this.refreshSubscribers.forEach((callback) => callback(newToken));
+      // El backend renueva la cookie; notificamos a los subscribers con un sentinel
+      // para que reintenten sin necesitar el token en memoria.
+      this.refreshSubscribers.forEach((cb) => cb('cookie-refreshed'));
       this.refreshSubscribers = [];
-
-      return newToken;
-    } catch (error) {
-      console.warn('Token refresh error:', error, '- logging out');
+      return 'cookie-refreshed';
+    } catch {
       this.handleLogout();
       return null;
     } finally {
@@ -704,12 +674,10 @@ export class ApiClient {
   }
 
   /**
-   * Logout y limpiar datos
+   * Logout y limpiar datos de sesión del cliente.
+   * Las cookies HttpOnly las limpia el backend en el endpoint /logout.
    */
   private handleLogout(): void {
-    sessionStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    sessionStorage.removeItem('esap_access_token');
-    sessionStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
     sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
 
     toast.error('Sesión expirada', {
