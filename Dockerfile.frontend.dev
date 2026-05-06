@@ -48,6 +48,8 @@ RUN npm run build && \
 # ============ STAGE 2: Serve con Nginx ============
 FROM nginx:alpine AS production
 
+COPY docker/nginx/nginx.main.conf /etc/nginx/nginx.conf
+
 # Copiar configuración personalizada de nginx
 RUN mkdir -p /opt/esap-nginx
 COPY nginx.conf /opt/esap-nginx/http.conf
