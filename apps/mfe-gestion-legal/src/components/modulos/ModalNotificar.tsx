@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { getServiceUrl } from '../../../../config/environment';
+import { legalService } from '../../../../services/api/legal.service';
 
 interface AbogadoDisponible {
   nombre: string;
@@ -44,17 +45,37 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
   const [enviarPorSistema, setEnviarPorSistema] = useState(true);
   const [enviando, setEnviando] = useState(false);
 
+  // Identificador especial para el Jefe de Gesti\u00f3n Legal (se notifica v\u00eda rol, no
+  // por email individual \u2014 el backend resuelve los usuarios reales del rol).
+  const JEFE_ROL_ID = 'jefe-gestion-legal-rol';
+
   // Build display list with avatars/emails derived from names
   const destinatarios = useMemo(() => {
-    return abogadosDisponibles
+    const abogados = abogadosDisponibles
       .filter(a => a.nombre && a.nombre.trim() !== '' && a.nombre.toLowerCase() !== 'sin asignar')
       .map((a, idx) => ({
         id: `abogado-${idx}`,
         nombre: a.nombre,
         cargo: a.rol,
         email: `${a.nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '.')}@esap.edu.co`,
-        avatar: a.nombre.split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase()
+        avatar: a.nombre.split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase(),
+        esJefe: false,
       }));
+
+    // Siempre a\u00f1adimos al Jefe de Gesti\u00f3n Legal como destinatario disponible.
+    // El backend (`POST /expedientes/:id/notify-role`) resuelve los usuarios reales
+    // que tienen el rol `JEFE_GESTION_LEGAL` y les env\u00eda notificaci\u00f3n + email.
+    return [
+      ...abogados,
+      {
+        id: JEFE_ROL_ID,
+        nombre: 'Jefe de Gesti\u00f3n Legal',
+        cargo: 'Rol institucional',
+        email: 'Notificaci\u00f3n a usuarios con rol JEFE_GESTION_LEGAL',
+        avatar: 'JL',
+        esJefe: true,
+      },
+    ];
   }, [abogadosDisponibles]);
 
   const toggleDestinatario = (id: string) => {
@@ -91,12 +112,36 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
     setEnviando(true);
 
     const seleccionados = destinatarios.filter(u => destinatariosSeleccionados.includes(u.id));
+    const jefeSeleccionado = seleccionados.some(s => s.id === JEFE_ROL_ID);
+    const abogadosSeleccionados = seleccionados.filter(s => s.id !== JEFE_ROL_ID);
     let emailsEnviados = 0;
     let emailsFallidos = 0;
+    let jefeNotificado = false;
 
     try {
-      // ========== 1. Enviar por correo electrónico ==========
-      if (enviarPorEmail) {
+      // ========== 0. Notificar al Jefe de Gestión Legal vía rol ==========
+      // El backend resuelve los usuarios reales con rol JEFE_GESTION_LEGAL y les
+      // envía notificación in-app + email (si aplica).
+      if (jefeSeleccionado) {
+        try {
+          const expedienteId = (expediente as any).uuid || (expediente as any).id;
+          await legalService.notifyExpedienteToRole(expedienteId, {
+            roleCode: 'JEFE_GESTION_LEGAL',
+            asunto,
+            mensaje,
+            enviarEmail: enviarPorEmail,
+            enviarSistema: enviarPorSistema,
+            radicado: expediente.id,
+            etapa: expediente.etapa,
+          });
+          jefeNotificado = true;
+        } catch (err) {
+          console.error('Error notificando al Jefe de Gestión Legal:', err);
+        }
+      }
+
+      // ========== 1. Enviar por correo electrónico (a abogados individuales) ==========
+      if (enviarPorEmail && abogadosSeleccionados.length > 0) {
         const notificacionesUrl = getServiceUrl('notificaciones');
 
         const htmlTemplate = (nombreDestinatario: string) => `
@@ -138,7 +183,7 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
         `;
 
         // Send one email per recipient (backend DTO expects single @IsEmail() `to`)
-        const emailPromises = seleccionados.map(async (dest) => {
+        const emailPromises = abogadosSeleccionados.map(async (dest) => {
           try {
             const response = await fetch(`${notificacionesUrl}/api/v1/emails/send`, {
               method: 'POST',
@@ -179,7 +224,11 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
       }
 
       // ========== 3. Mostrar resultados ==========
-      if (enviarPorEmail) {
+      if (jefeNotificado) {
+        toast.success('✅ Notificación enviada al Jefe de Gestión Legal', { duration: 4000 });
+      }
+
+      if (enviarPorEmail && abogadosSeleccionados.length > 0) {
         if (emailsEnviados > 0 && emailsFallidos === 0) {
           toast.success(`✅ ${emailsEnviados} correo(s) enviado(s) exitosamente`, { duration: 4000 });
         } else if (emailsEnviados > 0 && emailsFallidos > 0) {

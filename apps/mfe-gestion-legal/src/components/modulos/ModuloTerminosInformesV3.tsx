@@ -27,6 +27,7 @@ import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
 import { ModalNuevoTermino } from './ModalNuevoTermino';
 import { ModalDetalleTermino } from './ModalDetalleTermino';
 import { ModalDocumentosTermino } from './ModalDocumentosTermino';
@@ -146,6 +147,7 @@ export function ModuloTerminosInformesV3() {
         descripcion: t.observaciones ? t.observaciones.split('\n').filter((l: string) => !l.startsWith('[ARCHIVO_ADJUNTO]')).join('\n').trim() : '', 
 
         responsable: t.responsableNombre || t.responsableId || 'Sin asignar',
+        responsableId: t.responsableId || null, // Preserve UUID for filtering
         fechaSolicitud: new Date(t.fechaBase),
         fechaVencimiento: new Date(t.fechaVencimiento),
         diasTotales: t.diasTermino,
@@ -153,7 +155,57 @@ export function ModuloTerminosInformesV3() {
         datosRequeridos: [],
         metadata: { uuid: t.id } // Store real UUID here
       }));
-      setSolicitudes(mapped);
+
+      // ✅ Filtrado por rol RESUELVE_GESTION_LEGAL
+      const currentUser = authService.getCurrentUser() as any;
+      const isResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
+      let mappedFiltrado: SolicitudInforme[] = mapped;
+
+      if (isResuelve && currentUser) {
+        const cuEmail: string = (
+          currentUser.email ??
+          currentUser.person?.email ??
+          currentUser.mail ??
+          ''
+        ).toLowerCase();
+        const cuName: string = (
+          currentUser.fullName ??
+          currentUser.full_name ??
+          currentUser.name ??
+          (currentUser.firstName || currentUser.first_name
+            ? `${currentUser.firstName ?? currentUser.first_name ?? ''} ${currentUser.lastName ?? currentUser.last_name ?? ''}`.trim()
+            : null) ??
+          (currentUser.person?.first_name
+            ? `${currentUser.person.first_name ?? ''} ${currentUser.person.last_name ?? ''}`.trim()
+            : null) ??
+          ''
+        ).toLowerCase();
+        const cuIds = new Set<string>(
+          [
+            currentUser.id,
+            currentUser.id_user,
+            currentUser.user?.id,
+            currentUser.user?.id_user,
+            currentUser.person?.id,
+          ].filter(Boolean)
+        );
+
+        console.log('[DEBUG RESUELVE TERMINOS] email:', cuEmail, '| nombre:', cuName, '| ids:', [...cuIds]);
+
+        mappedFiltrado = mapped.filter((t: any) => {
+          // 1. Match por responsableId (UUID) — más preciso
+          if (t.responsableId && cuIds.has(t.responsableId)) return true;
+          // 2. Match por nombre (responsable texto)
+          const tNombre = (t.responsable || '').toLowerCase();
+          if (cuName && tNombre && tNombre === cuName) return true;
+          // 3. Match por email si el responsable coincide
+          if (cuEmail && tNombre && tNombre === cuEmail) return true;
+          return false;
+        });
+        console.log('[DEBUG RESUELVE TERMINOS] filtrados:', mappedFiltrado.length, 'de', mapped.length);
+      }
+
+      setSolicitudes(mappedFiltrado);
     } catch (error) {
       console.error('Error fetching terminos:', error);
       toast.error('Error al cargar términos');
@@ -161,6 +213,7 @@ export function ModuloTerminosInformesV3() {
       setLoading(false);
     }
   };
+
 
   useEffect(() => {
     fetchData();
@@ -233,12 +286,25 @@ export function ModuloTerminosInformesV3() {
       const solicitud = solicitudes.find(s => s.id === id);
       if (!solicitud) return;
 
-      const userStr = localStorage.getItem('user');
-      const user = userStr ? JSON.parse(userStr) : null;
-      const userName = user?.nombre || 'Usuario';
-      
+      // ✅ Resolver nombre de usuario de forma robusta (mismo patrón que el resto del sistema)
+      const currentUser = authService.getCurrentUser() as any;
+      const userName = (
+        currentUser?.fullName ??
+        currentUser?.full_name ??
+        currentUser?.nombre ??
+        (currentUser?.firstName || currentUser?.first_name
+          ? `${currentUser?.firstName ?? currentUser?.first_name ?? ''} ${currentUser?.lastName ?? currentUser?.last_name ?? ''}`.trim()
+          : null) ??
+        (currentUser?.person?.first_name
+          ? `${currentUser?.person?.first_name ?? ''} ${currentUser?.person?.last_name ?? ''}`.trim()
+          : null) ??
+        currentUser?.email ??
+        'Usuario'
+      );
+
+      // Formato compatible con parseObservaciones: "[fecha hora] Nombre:\nTexto"
       const newCommentText = `[${new Date().toLocaleDateString('es-CO')} ${new Date().toLocaleTimeString('es-CO')}] ${userName}:\n${comentario}`;
-      const updatedDescripcion = solicitud.descripcion 
+      const updatedDescripcion = solicitud.descripcion
         ? `${solicitud.descripcion}\n\n---\n${newCommentText}`
         : newCommentText;
 

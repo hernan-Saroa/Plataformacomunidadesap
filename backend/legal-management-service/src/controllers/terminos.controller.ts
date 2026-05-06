@@ -13,11 +13,28 @@ export class TerminosController {
 
     @Post('manual')
     async createManual(@Body() body: any) {
-        // Defaults for manual creation
+        // Normalizar origenModulo: el frontend puede mandar 'DEFENSA_JUDICIAL' pero la BD
+        // espera el código corto ('DEFENSA'). Mapeamos todos los posibles alias.
+        const MODULO_MAP: Record<string, string> = {
+            'DEFENSA_JUDICIAL': 'DEFENSA',
+            'DEFENSA': 'DEFENSA',
+            'JUZGAMIENTO': 'JUZGAMIENTO',
+            'JUZGAMIENTO_DISCIPLINARIO': 'JUZGAMIENTO',
+            'ASESORIA': 'ASESORIA',
+            'ASESORIA_JURIDICA': 'ASESORIA',
+            'ORGANOS_CONTROL': 'ORGANOS_CONTROL',
+            'PROCESOS_COACTIVOS': 'PROCESOS_COACTIVOS',
+            'MANUAL': 'MANUAL',
+        };
+        const origenModulo = MODULO_MAP[body.origenModulo] || body.origenModulo || 'MANUAL';
+
+        // Limpiar campos UUID: strings vacías deben ser null para evitar error de Postgres
+        const responsableId = body.responsableId && body.responsableId.trim() !== '' ? body.responsableId : null;
+        const referenciaId  = body.referenciaId  && body.referenciaId.trim()  !== '' ? body.referenciaId  : null;
+
         const fechaBase = body.fechaBase ? new Date(body.fechaBase) : new Date();
         const fechaVencimiento = body.fechaVencimiento ? new Date(body.fechaVencimiento) : null;
 
-        // Calculate days if dates exist
         let diasTermino = body.diasTermino || 0;
         if (fechaVencimiento && !diasTermino) {
             const diffTime = Math.abs(fechaVencimiento.getTime() - fechaBase.getTime());
@@ -26,7 +43,9 @@ export class TerminosController {
 
         return this.terminosService.create({
             ...body,
-            origenModulo: body.origenModulo || 'MANUAL',
+            origenModulo,
+            responsableId,
+            referenciaId,
             fechaBase,
             fechaVencimiento,
             diasTermino,
@@ -77,6 +96,13 @@ export class TerminosController {
 
     @Patch(':id')
     async update(@Param('id') id: string, @Body() body: any) {
+        // Limpiar UUIDs vacíos para evitar error de Postgres
+        if (body.responsableId !== undefined && (!body.responsableId || body.responsableId.trim() === '')) {
+            body.responsableId = null;
+        }
+        if (body.referenciaId !== undefined && (!body.referenciaId || body.referenciaId.trim() === '')) {
+            body.referenciaId = null;
+        }
         return this.terminosService.update(id, body);
     }
 

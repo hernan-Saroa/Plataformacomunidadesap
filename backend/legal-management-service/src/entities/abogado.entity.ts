@@ -1,5 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
-import { Audiencia } from './audiencia.entity';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity('abogados', { schema: 'legal_management' })
 export class Abogado {
@@ -33,6 +32,5 @@ export class Abogado {
     @UpdateDateColumn({ name: 'auditoria_updated_at' })
     updatedAt: Date;
 
-    @OneToMany(() => Audiencia, audiencia => audiencia.abogado)
-    audiencias: Audiencia[];
+
 }

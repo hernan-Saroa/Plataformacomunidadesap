@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { PlanAnual5Roles } from './entities/plan-anual-5-roles.entity';
@@ -6,6 +6,7 @@ import { RolPlanAnual5 } from './entities/rol-plan-anual-5.entity';
 import { ActividadPlanAnual5 } from './entities/actividad-plan-anual-5.entity';
 import { AdjuntoActividadPlanAnual5 } from './entities/adjunto-actividad-plan-anual-5.entity';
 import { HistorialPlanAnual, TipoEventoPlanAnual } from './entities/historial-plan-anual.entity';
+import { PlanAnualWizardBorrador } from './entities/plan-anual-wizard-borrador.entity';
 import { CreatePlanAnual5RolesDto } from './dto/create-plan-anual-5-roles.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
 import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
@@ -58,6 +59,8 @@ export class PlanAnual5RolesService {
     private readonly adjuntoRepository: Repository<AdjuntoActividadPlanAnual5>,
     @InjectRepository(HistorialPlanAnual)
     private readonly historialRepository: Repository<HistorialPlanAnual>,
+    @InjectRepository(PlanAnualWizardBorrador)
+    private readonly wizardBorradorRepository: Repository<PlanAnualWizardBorrador>,
     private readonly dataSource: DataSource,
     private readonly notificacionesService: NotificacionesService,
   ) {}
@@ -1700,6 +1703,49 @@ export class PlanAnual5RolesService {
         porcentajeCumplimiento: cumplimiento.porcentajeCumplimiento
       }
     };
+  }
+
+  // —— Borrador del wizard (Nuevo plan) por usuario ——
+  async getWizardBorrador(userId: string | undefined): Promise<{ payload: Record<string, unknown> | null; updatedAt: string | null }> {
+    if (!userId) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    const row = await this.wizardBorradorRepository.findOne({ where: { usuarioId: userId } });
+    return {
+      payload: (row?.payload as Record<string, unknown>) ?? null,
+      updatedAt: row?.updatedAt ? row.updatedAt.toISOString() : null,
+    };
+  }
+
+  async saveWizardBorrador(
+    userId: string | undefined,
+    payload: Record<string, unknown>,
+  ): Promise<{ ok: true; savedAt: string }> {
+    if (!userId) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    const enriched: Record<string, unknown> = {
+      ...payload,
+      savedAt: new Date().toISOString(),
+    };
+    if (typeof enriched.timestamp !== 'number') {
+      enriched.timestamp = Date.now();
+    }
+    let row = await this.wizardBorradorRepository.findOne({ where: { usuarioId: userId } });
+    if (!row) {
+      row = this.wizardBorradorRepository.create({ usuarioId: userId, payload: enriched });
+    } else {
+      row.payload = enriched;
+    }
+    await this.wizardBorradorRepository.save(row);
+    return { ok: true, savedAt: enriched.savedAt as string };
+  }
+
+  async deleteWizardBorrador(userId: string | undefined): Promise<void> {
+    if (!userId) {
+      throw new UnauthorizedException('Usuario no autenticado');
+    }
+    await this.wizardBorradorRepository.delete({ usuarioId: userId });
   }
 }
 

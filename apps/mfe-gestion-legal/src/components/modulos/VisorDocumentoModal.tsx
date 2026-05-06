@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
+import * as mammoth from 'mammoth';
 import { isViewableInBrowser, getFileTypeCategory } from '../../../../utils/fileUtils';
 
 interface VisorDocumentoModalProps {
@@ -34,6 +35,7 @@ export function VisorDocumentoModal({
   const [zoomLevel, setZoomLevel] = useState(100);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [docxHtml, setDocxHtml] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // Reset loading state when archivo changes
@@ -42,11 +44,51 @@ export function VisorDocumentoModal({
       const isMock = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:');
 
       const nombreParaExtension = (numero || archivo || '').toLowerCase();
-      const isViewable = nombreParaExtension.match(/\.(pdf|jpg|jpeg|png|gif|webp)/i) || archivo.match(/\.(pdf|jpg|jpeg|png|gif|webp)/i);
+      const isViewable = nombreParaExtension.match(/\.(pdf|jpg|jpeg|png|gif|webp|docx|doc)/i) || archivo.match(/\.(pdf|jpg|jpeg|png|gif|webp|docx|doc)/i);
 
       setIsLoading(!isMock && isViewable !== null);
       setHasError(false);
+      setDocxHtml(null);
     }
+  }, [archivo, numero]);
+
+  // Cargar y convertir DOCX a HTML cuando aplica
+  useEffect(() => {
+    if (!archivo) return;
+    const nombreParaExtension = (numero || archivo || '').toLowerCase();
+    const extension = nombreParaExtension.split('.').pop()?.toLowerCase();
+    const isDocx =
+      extension === 'docx' ||
+      archivo.toLowerCase().includes('.docx') ||
+      nombreParaExtension.includes('.docx');
+    const isMockFile = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:');
+
+    if (!isDocx || isMockFile) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setIsLoading(true);
+        const response = await fetch(archivo);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const arrayBuffer = await response.arrayBuffer();
+        if (cancelled) return;
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        if (cancelled) return;
+        setDocxHtml(result.value || '');
+        setIsLoading(false);
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Error convirtiendo DOCX:', err);
+          setHasError(true);
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [archivo, numero]);
 
   if (!archivo || !numero) {
@@ -178,6 +220,7 @@ export function VisorDocumentoModal({
               const extension = nombreParaExtension.split('.').pop()?.toLowerCase();
               const isPdf = extension === 'pdf' || archivo.includes('pdf') || archivo.includes('.pdf') || nombreParaExtension.includes('.pdf');
               const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '') || archivo.match(/\.(jpg|jpeg|png|gif|webp)/i) || nombreParaExtension.match(/\.(jpg|jpeg|png|gif|webp)/i);
+              const isDocx = extension === 'docx' || archivo.toLowerCase().includes('.docx') || nombreParaExtension.includes('.docx');
 
               // MODO SIMULADO: Si es un PDF mock (sin URL real), mostramos un documento HTML simulado
               // Esto evita que se cargue la app recursivamente en el iframe (error "mini ventana web")
@@ -268,6 +311,40 @@ export function VisorDocumentoModal({
                         <p>Calle 44 No. 53-37 CAN Bogotá D.C. - Código Postal: 111321</p>
                         <p>Documento generado por Plataforma Gestión Legal ESAP</p>
                       </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (isDocx && !isMockFile) {
+                if (docxHtml === null) {
+                  return null; // El useEffect está cargando, el spinner global se muestra
+                }
+                return (
+                  <div
+                    className="w-full h-full overflow-auto flex items-start justify-center p-8 bg-gray-200"
+                    style={{
+                      transform: `scale(${zoomLevel / 100})`,
+                      transformOrigin: 'top center',
+                    }}
+                  >
+                    <div
+                      className="bg-white shadow-2xl p-12 w-[800px] min-h-[1100px] text-gray-800"
+                      style={{ fontFamily: 'Calibri, Arial, sans-serif', lineHeight: 1.5 }}
+                    >
+                      <style>{`
+                        .docx-viewer-content p { margin-bottom: 10px; }
+                        .docx-viewer-content h1, .docx-viewer-content h2, .docx-viewer-content h3 { margin-top: 18px; margin-bottom: 10px; }
+                        .docx-viewer-content ul, .docx-viewer-content ol { margin-left: 20px; margin-bottom: 10px; }
+                        .docx-viewer-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+                        .docx-viewer-content td, .docx-viewer-content th { border: 1px solid #ddd; padding: 8px; }
+                        .docx-viewer-content th { background-color: #f5f5f5; }
+                        .docx-viewer-content img { max-width: 100%; height: auto; }
+                      `}</style>
+                      <div
+                        className="docx-viewer-content"
+                        dangerouslySetInnerHTML={{ __html: docxHtml }}
+                      />
                     </div>
                   </div>
                 );

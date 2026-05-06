@@ -298,6 +298,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         lugar: a.ubicacion || 'Sede Judicial',
         modalidad: a.modalidad,
         linkReunion: a.linkReunion,
+        abogadoId: a.abogadoId,
         abogadoResponsable: a.nombreAbogado || expediente.abogadoAsignado || 'Abogado Asignado',
         estado: a.estado || 'Programada',
         historial: a.historial || [],
@@ -933,10 +934,13 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       const modalidadVal = (audienciaData.modalidad === 'Virtual' ? 'VIRTUAL' : 'PRESENCIAL') as 'VIRTUAL' | 'PRESENCIAL';
 
       // Adaptar formato si es necesario
+      const abogadoSeleccionado = abogados.find((a: any) => a.id === audienciaData.abogadoResponsable);
       const dataToSend = {
         expedienteId: id,
-        abogadoId: audienciaData.abogadoResponsable || expediente.abogadoAsignado, // Asegurar ID
-        titulo: audienciaData.tipo + ' - ' + audienciaData.lugar, // TODO: Check if titulo logic needs adjustment for updates
+        abogadoId: audienciaData.abogadoResponsable || expediente.abogadoAsignado,
+        abogadoNombre: abogadoSeleccionado?.nombreCompleto || abogadoSeleccionado?.nombre || audienciaData.abogadoResponsable || '',
+        abogadoEmail: abogadoSeleccionado?.email || '',
+        titulo: audienciaData.tipo + ' - ' + audienciaData.lugar,
         fechaHoraInicio: new Date(`${audienciaData.fecha}T${audienciaData.hora}`).toISOString(),
         duracionMinutos: 60, // Default o pedir en modal
         modalidad: modalidadVal,

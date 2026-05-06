@@ -156,8 +156,30 @@ class AuthService {
    */
   hasPermission(permission: string): boolean {
     const user = this.getCurrentUser();
-    if (user?.roles.find(r => r.code === 'SUPER_ADMIN')) return true;
-    return user?.permissions?.includes(permission) || false;
+    const roles = user?.roles || [];
+    const isSuperAdmin = roles.some((role: any) =>
+      typeof role === 'string'
+        ? role === 'SUPER_ADMIN'
+        : role?.code === 'SUPER_ADMIN' || role?.name === 'SUPER_ADMIN',
+    );
+    if (isSuperAdmin) return true;
+
+    const directPermissions = Array.isArray(user?.permissions)
+      ? user.permissions
+      : [];
+    const rolePermissions = roles.flatMap((role: any) =>
+      Array.isArray(role?.permissions)
+        ? role.permissions
+            .map((rolePermission: any) =>
+              typeof rolePermission === 'string'
+                ? rolePermission
+                : rolePermission?.code,
+            )
+            .filter(Boolean)
+        : [],
+    );
+
+    return [...directPermissions, ...rolePermissions].includes(permission);
   }
 
   /**
@@ -165,8 +187,11 @@ class AuthService {
    */
   isSuperAdmin(): boolean {
     const user = this.getCurrentUser();
-    if (user?.roles.find(r => r.code === 'SUPER_ADMIN')) return true;
-    return false;
+    return (user?.roles || []).some((role: any) =>
+      typeof role === 'string'
+        ? role === 'SUPER_ADMIN'
+        : role?.code === 'SUPER_ADMIN' || role?.name === 'SUPER_ADMIN',
+    );
   }
 
   /**

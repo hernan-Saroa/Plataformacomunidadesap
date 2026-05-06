@@ -31,6 +31,7 @@ import { useSaveEvidencias, actividadesApi, planAnualApi, type CreateActividadDt
 import { configuracionesProfesionalesOCIApi } from './services/api';
 // Servicio para vinculación de auditorías con Rol 4
 import { controlInternoService } from '../../../services/api/controlInternoService';
+import { apiClient } from '../../../services/api/apiClient';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { cargarConfiguracionPDF } from './utils/configuracionHelper';
 import { 
@@ -739,7 +740,15 @@ function SelectorProfesional({
 interface WizardCreacionProps {
   planAEditar?: PlanAnual;
   onCancelar: () => void;
-  onCrear: (vigencia: number, jefeOCI: Auditor, rolesConfig: RolConfig[], fechaInicio: string, fechaFin: string) => Promise<boolean>;
+  onCrear: (
+    vigencia: number,
+    jefeOCI: Auditor,
+    rolesConfig: RolConfig[],
+    fechaInicio: string,
+    fechaFin: string,
+    comiteAprobacion?: Auditor[],
+    ordenAprobacion?: 'secuencial' | 'paralelo',
+  ) => Promise<boolean>;
   onTerminado?: () => void;
   planesExistentes?: PlanAnual[];
 }
@@ -776,6 +785,36 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
 
   const [paso, setPaso] = useState(draft?.paso || 1);
   const [lastSaved, setLastSaved] = useState<Date | null>(draft ? new Date() : null);
+  /** Indica si el último guardado llegó al backend (solo «Nuevo plan») */
+  const [serverDraftSynced, setServerDraftSynced] = useState(false);
+  const serverBorradorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Evita fusionar dos veces si cambian props tras el primer montaje */
+  const mergeWizardDesdeServidorHecho = useRef(false);
+  const wizardHydrationCompletedRef = useRef(false);
+  /** Evita sobreescribir cambios manuales con hidratación tardía de borrador remoto. */
+  const wizardTouchedByUserRef = useRef(false);
+  const controlInternoServiceApi = controlInternoService as any;
+  const wizardBorradorApi = {
+    get: async (): Promise<{ payload: Record<string, unknown> | null; updatedAt: string | null }> => {
+      if (typeof controlInternoServiceApi.getWizardBorradorPlanAnual === 'function') {
+        return controlInternoServiceApi.getWizardBorradorPlanAnual();
+      }
+      return apiClient.get('/control-institucional/api/v1/plan-anual-5-roles/wizard-borrador/me');
+    },
+    save: async (payload: Record<string, unknown>): Promise<{ ok: boolean; savedAt: string }> => {
+      if (typeof controlInternoServiceApi.saveWizardBorradorPlanAnual === 'function') {
+        return controlInternoServiceApi.saveWizardBorradorPlanAnual(payload);
+      }
+      return apiClient.put('/control-institucional/api/v1/plan-anual-5-roles/wizard-borrador/me', { payload });
+    },
+    delete: async (): Promise<void> => {
+      if (typeof controlInternoServiceApi.deleteWizardBorradorPlanAnual === 'function') {
+        await controlInternoServiceApi.deleteWizardBorradorPlanAnual();
+        return;
+      }
+      await apiClient.delete('/control-institucional/api/v1/plan-anual-5-roles/wizard-borrador/me');
+    },
+  };
   // Calcular años disponibles (no usados por planes existentes, excluyendo el plan en edición)
   const vigenciasOcupadas = (planesExistentes || [])
     .filter((p: any) => !planAEditar || p.id !== planAEditar.id)
@@ -1127,26 +1166,189 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
   }, [rolesConfig]);
 
   const handleRolesChange = (config: RolConfig[]) => {
+    wizardTouchedByUserRef.current = true;
     setRolesConfig(normalizarResponsables(config));
   };
 
-  // Autoguardado de borradores en localStorage.
-  useEffect(() => {
-    // Autoguardado silencioso de borradores (tanto para crear como para editar)
-    if (!isSubmitting && !showSuccessModal) {
-      const borrador = {
-        paso,
-        vigencia,
-        fechaInicio,
-        fechaFin,
-        ordenAprobacion,
-        jefeSeleccionado,
-        rolesConfig
-      };
-      localStorage.setItem(draftKey, JSON.stringify(borrador));
-      setLastSaved(new Date());
+  const handleVigenciaChange = (nuevaVigencia: number) => {
+    // Si el usuario re-selecciona la misma vigencia, no tocar borradores ni estado.
+    if (nuevaVigencia === vigencia) return;
+
+    // Mientras el borrador remoto aún no termina de hidratar, no marcar interacción
+    // ni borrar el draft del servidor para evitar perder la data recién recuperada.
+    if (!wizardHydrationCompletedRef.current) {
+      setVigencia(nuevaVigencia);
+      return;
     }
-  }, [paso, vigencia, fechaInicio, fechaFin, ordenAprobacion, jefeSeleccionado, rolesConfig, planAEditar, isSubmitting, showSuccessModal, draftKey]);
+
+    wizardTouchedByUserRef.current = true;
+    setVigencia(nuevaVigencia);
+
+    // En "Nuevo plan", al cambiar vigencia se descarta el borrador anterior para no arrastrar datos.
+    if (!planAEditar) {
+      localStorage.removeItem(draftKey);
+      setServerDraftSynced(false);
+      wizardBorradorApi.delete().catch(() => {});
+    }
+  };
+
+  // Al abrir «Nuevo plan»: fusionar borrador del servidor con localStorage (gana el más reciente por timestamp).
+  useEffect(() => {
+    if (planAEditar) return;
+    if (mergeWizardDesdeServidorHecho.current) return;
+    mergeWizardDesdeServidorHecho.current = true;
+    console.log('[WizardDraft][Hydration] inicio hidratacion Nuevo Plan');
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const remote = await wizardBorradorApi.get();
+        console.log('[WizardDraft][Hydration] respuesta backend:', remote);
+        if (cancelled) return;
+
+        const serverPayload = remote?.payload as Record<string, unknown> | null | undefined;
+        let localDraft: any = null;
+        try {
+          const localStr = localStorage.getItem('esap:wizard_plan_anual_draft');
+          localDraft = localStr ? JSON.parse(localStr) : null;
+        } catch {
+          localDraft = null;
+        }
+
+        const tsServer = Number(serverPayload?.timestamp ?? 0);
+        const tsLocal = Number(localDraft?.timestamp ?? 0);
+
+        const tieneServidor =
+          !!serverPayload &&
+          typeof serverPayload === 'object' &&
+          Object.keys(serverPayload).length > 0 &&
+          (serverPayload.paso !== undefined || serverPayload.rolesConfig !== undefined);
+
+        let winner: any = localDraft;
+        if (tieneServidor && (!localDraft || tsServer >= tsLocal)) {
+          winner = serverPayload;
+        }
+
+        if (wizardTouchedByUserRef.current) {
+          console.log('[WizardDraft][Hydration] cancelada por interacción de usuario');
+          return;
+        }
+        if (!winner) {
+          console.log('[WizardDraft][Hydration] sin winner (local/server vacíos)');
+          return;
+        }
+
+        console.log('[WizardDraft][Hydration] aplicando winner', {
+          tsServer,
+          tsLocal,
+          tieneServidor,
+          winnerVigencia: (winner as any)?.vigencia,
+          winnerPaso: (winner as any)?.paso,
+        });
+
+        const ocupadas = (planesExistentes || []).map((p: any) => p.vigencia);
+
+        if (typeof winner.paso === 'number') setPaso(winner.paso);
+        if (typeof winner.vigencia === 'number' && !ocupadas.includes(winner.vigencia)) {
+          setVigencia(winner.vigencia);
+        }
+        if (typeof winner.fechaInicio === 'string') setFechaInicio(winner.fechaInicio);
+        if (typeof winner.fechaFin === 'string') setFechaFin(winner.fechaFin);
+        if (winner.ordenAprobacion === 'secuencial' || winner.ordenAprobacion === 'paralelo') {
+          setOrdenAprobacion(winner.ordenAprobacion);
+        }
+        if (Array.isArray(winner.comiteAprobacion)) setComiteAprobacion(winner.comiteAprobacion);
+        if (winner.jefeSeleccionado) setJefeSeleccionado(winner.jefeSeleccionado as Auditor);
+        if (winner.rolesConfig) {
+          setRolesConfig(normalizarResponsables(winner.rolesConfig as RolConfig[]));
+        }
+
+        const savedAtStr =
+          (typeof serverPayload?.savedAt === 'string' && serverPayload.savedAt) ||
+          (typeof (winner as any).savedAt === 'string' && (winner as any).savedAt);
+        setLastSaved(savedAtStr ? new Date(savedAtStr) : new Date());
+        setServerDraftSynced(!!tieneServidor);
+
+        if (localDraft && tsLocal > tsServer && tieneServidor) {
+          await wizardBorradorApi.save({
+              ...localDraft,
+              timestamp: localDraft.timestamp ?? Date.now(),
+            })
+            .then(() => setServerDraftSynced(true))
+            .catch(() => {});
+        }
+      } catch (e) {
+        console.warn('[Wizard Plan Anual] Borrador servidor no disponible:', e);
+      } finally {
+        wizardHydrationCompletedRef.current = true;
+        console.log('[WizardDraft][Hydration] finalizada', {
+          hydrationReady: wizardHydrationCompletedRef.current,
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [planAEditar]);
+
+  // Autoguardado: localStorage siempre; servidor además en «Nuevo plan» (debounce).
+  useEffect(() => {
+    if (isSubmitting || showSuccessModal) return;
+    // Evita que el primer render (estado vacío por defecto) pise el borrador
+    // que llega del backend antes de completar la hidratación inicial.
+    if (!planAEditar && !wizardHydrationCompletedRef.current) {
+      console.log('[WizardDraft][Autosave] omitido hasta terminar hidratación');
+      return;
+    }
+
+    const borrador: Record<string, unknown> = {
+      paso,
+      vigencia,
+      fechaInicio,
+      fechaFin,
+      ordenAprobacion,
+      jefeSeleccionado,
+      rolesConfig,
+      comiteAprobacion,
+      timestamp: Date.now(),
+    };
+
+    localStorage.setItem(draftKey, JSON.stringify(borrador));
+    setLastSaved(new Date());
+
+    if (planAEditar) return;
+
+    if (serverBorradorTimerRef.current) clearTimeout(serverBorradorTimerRef.current);
+    serverBorradorTimerRef.current = setTimeout(() => {
+      wizardBorradorApi.save(borrador)
+        .then(() => {
+          setServerDraftSynced(true);
+          setLastSaved(new Date());
+        })
+        .catch((err: unknown) => {
+          console.warn('[Wizard Plan Anual] Autoguardado en servidor falló:', err);
+          setServerDraftSynced(false);
+        });
+    }, 2800);
+
+    return () => {
+      if (serverBorradorTimerRef.current) clearTimeout(serverBorradorTimerRef.current);
+    };
+  }, [
+    paso,
+    vigencia,
+    fechaInicio,
+    fechaFin,
+    ordenAprobacion,
+    jefeSeleccionado,
+    rolesConfig,
+    comiteAprobacion,
+    planAEditar,
+    isSubmitting,
+    showSuccessModal,
+    draftKey,
+  ]);
 
   // Validación del Paso 1: Fechas y vigencia
   const validarPaso1 = () => {
@@ -1321,8 +1523,15 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       setIsSubmitting(false);
       
       if (exito) {
-        // Limpiar el borrador local al guardar con éxito
+        // Limpiar el borrador local y el del servidor al crear plan nuevo con éxito
         localStorage.removeItem(draftKey);
+        if (!planAEditar) {
+          try {
+            await wizardBorradorApi.delete();
+          } catch (delErr) {
+            console.warn('[Wizard Plan Anual] No se pudo borrar borrador en servidor:', delErr);
+          }
+        }
         setShowSuccessModal(true);
       }
     } catch (e: any) {
@@ -1394,12 +1603,14 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 rounded-md border border-green-200"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  Guardado ({lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                  {!planAEditar && serverDraftSynced
+                    ? `Guardado local y en servidor (${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+                    : `Guardado (${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
                 </motion.div>
               )}
             </AnimatePresence>
             <button 
-              onClick={() => {
+              onClick={async () => {
                 const borradorActual = {
                   idPlan: planAEditar?.id,
                   vigencia,
@@ -1410,16 +1621,30 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
                   paso,
                   comiteAprobacion,
                   ordenAprobacion,
-                  timestamp: new Date().getTime()
+                  timestamp: Date.now(),
                 };
-                
-                const draftKey = planAEditar ? `esap:wizard_plan_anual_edit_${planAEditar.id}` : 'esap:wizard_plan_anual_draft';
                 localStorage.setItem(draftKey, JSON.stringify(borradorActual));
                 setLastSaved(new Date());
-                
-                toast.success('Borrador guardado manualmente', {
-                  description: 'Tu progreso está seguro.'
-                });
+
+                if (!planAEditar) {
+                  try {
+                    await wizardBorradorApi.save(borradorActual);
+                    setServerDraftSynced(true);
+                    setLastSaved(new Date());
+                    toast.success('Borrador guardado', {
+                      description: 'Guardado en este equipo y en el servidor.',
+                    });
+                  } catch (e: any) {
+                    setServerDraftSynced(false);
+                    toast.warning('Borrador guardado solo en el equipo', {
+                      description: e?.message || 'No se pudo sincronizar con el servidor. Revisa tu conexión.',
+                    });
+                  }
+                } else {
+                  toast.success('Borrador guardado manualmente', {
+                    description: 'Tu progreso está seguro en este equipo.',
+                  });
+                }
               }}
               title="Guardar borrador"
               className="p-2 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
@@ -1445,7 +1670,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
               <Paso1 
                 key="paso1" 
                 vigencia={vigencia} 
-                onVigenciaChange={setVigencia} 
+                onVigenciaChange={handleVigenciaChange} 
                 jefeOCI={jefeSeleccionado} 
                 onJefeChange={setJefeSeleccionado}
                 fechaInicio={fechaInicio}

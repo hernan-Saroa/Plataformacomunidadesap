@@ -85,6 +85,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
 
   const [tabActivo, setTabActivo] = useState('general');
   const [hasChanges, setHasChanges] = useState(false);
+  const [modalCerrarOpen, setModalCerrarOpen] = useState(false);
 
   // Fuente única para actuaciones con datos iniciales (se sobreescribe al cargar del backend)
   const [actuaciones, setActuaciones] = useState([
@@ -1127,6 +1128,15 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   };
 
 
+  // ==================== HANDLER CERRAR CON CAMBIOS SIN GUARDAR ====================
+  const handleCerrar = () => {
+    if (hasChanges) {
+      setModalCerrarOpen(true);
+    } else {
+      onClose();
+    }
+  };
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={handleCerrar}>
@@ -1147,7 +1157,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
               { texto: proceso.etapa, color: 'azul' },
               { texto: `${proceso.diasRestantes} días restantes`, color: 'naranja' }
             ]}
-            onClose={onClose}
+            onClose={handleCerrar}
           />
 
           <BarraProgresoExpediente
@@ -2139,6 +2149,49 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
             </DialogContent>
           </Dialog>
         )}
+      </Dialog>
+
+      {/* ==================== MODAL CAMBIOS SIN GUARDAR ==================== */}
+      <Dialog open={modalCerrarOpen} onOpenChange={setModalCerrarOpen}>
+        <DialogContent hideCloseButton className="max-w-md">
+          <DialogTitle className="sr-only">Cambios sin guardar</DialogTitle>
+          <DialogDescription className="sr-only">
+            Hay cambios sin guardar en el expediente. ¿Desea salir de todas formas?
+          </DialogDescription>
+          <div className="space-y-5 p-2">
+            <div className="flex items-start gap-4 p-4 bg-amber-50 rounded-xl border-2 border-amber-300">
+              <div className="p-2 bg-amber-100 rounded-lg flex-shrink-0">
+                <AlertTriangle className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-base">¿Salir sin guardar?</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Tiene cambios registrados en este expediente que podrían no haberse confirmado.
+                  Los documentos, actuaciones y notas ya subidos se guardan automáticamente.
+                  ¿Desea cerrar el expediente de todas formas?
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setModalCerrarOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                onClick={() => {
+                  setModalCerrarOpen(false);
+                  setHasChanges(false);
+                  onClose();
+                }}
+              >
+                Sí, cerrar
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
       </Dialog>
 
       {/* Modal Anexar Proceso Disciplinario */}
