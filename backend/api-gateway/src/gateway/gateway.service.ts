@@ -164,9 +164,25 @@ export class GatewayService {
         }
       : {};
 
+    // Si el request llegó con cookie HttpOnly (OTIC-001) y no trae Authorization header,
+    // extraer el token de la cookie e inyectarlo como Authorization para los microservicios.
+    const cookieToken = (() => {
+      const cookieHeader = req.headers.cookie || '';
+      for (const part of cookieHeader.split(';')) {
+        const [key, ...rest] = part.trim().split('=');
+        if (key.trim() === 'esap_access_token') return rest.join('=').trim() || null;
+      }
+      return null;
+    })();
+    const authHeaderFromCookie =
+      cookieToken && !req.headers.authorization
+        ? { authorization: `Bearer ${cookieToken}` }
+        : {};
+
     const forwardHeaders = {
       ...req.headers,
       ...userHeaders,
+      ...authHeaderFromCookie,
       host: undefined, // Eliminar host para evitar conflictos
       'x-forwarded-proto': (req.headers['x-forwarded-proto'] as string) || req.protocol,
       ...(clientIp ? { 'x-client-ip': clientIp } : {}),

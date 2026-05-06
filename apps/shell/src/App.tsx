@@ -216,12 +216,11 @@ const SENSITIVE_SESSION_STORAGE_KEYS = [
 ];
 
 function migrateAuthTokensToSessionStorage() {
+  // OTIC-001: los tokens ya no se almacenan en sessionStorage ni localStorage.
+  // Solo limpiamos residuos de versiones anteriores.
   for (const key of AUTH_TOKEN_STORAGE_KEYS) {
-    const token = localStorage.getItem(key);
-    if (token && !sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, token);
-    }
     localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
   }
 
   const rememberedSession = localStorage.getItem('esap-remember-session');
@@ -241,11 +240,10 @@ function migrateAuthTokensToSessionStorage() {
 }
 
 function migrateSensitiveSessionDataToSessionStorage() {
+  // OTIC-002: datos sensibles del usuario ya no se almacenan en sessionStorage/localStorage.
+  // Solo limpiamos residuos de versiones anteriores.
   for (const key of SENSITIVE_SESSION_STORAGE_KEYS) {
-    const value = localStorage.getItem(key);
-    if (value && !sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, value);
-    }
+    sessionStorage.removeItem(key);
     localStorage.removeItem(key);
   }
 }
@@ -257,15 +255,7 @@ function clearSensitiveSessionState() {
   }
 }
 
-function sanitizeUserForStorage(user: User) {
-  const sanitizedUser = { ...(user as Record<string, any>) };
-  delete sanitizedUser.accessToken;
-  delete sanitizedUser.refreshToken;
-  delete sanitizedUser.token;
-  delete sanitizedUser.idToken;
-  delete sanitizedUser.rememberMe;
-  return sanitizedUser;
-}
+
 const TIEMPO_ALERTA = 1 * 60 * 1000; // 1 minuto antes de cerrar sesión
 
 function DemoNoDisponible({ title }: { title: string }) {
@@ -321,6 +311,8 @@ export default function App() {
   );
   const [usuarioActual, setUsuarioActual] = useState<Usuario | null>(null);
   const [mostrarAlertaInactividad, setMostrarAlertaInactividad] = useState(false);
+  // OTIC-002: true mientras se verifica la cookie con el backend al recargar
+  const [isRestoringSession, setIsRestoringSession] = useState(true);
 
   const timerInactividadRef = useRef<NodeJS.Timeout | null>(null);
   const timerAlertaRef = useRef<NodeJS.Timeout | null>(null);
@@ -347,10 +339,12 @@ export default function App() {
   useEffect(() => {
     // No restaurar sesión para rutas públicas de expediente compartido
     if (window.location.pathname.startsWith('/expediente-compartido/')) {
+      setIsRestoringSession(false);
       return;
     }
     // Priorizar procesamiento de callback OAuth de Microsoft antes de restaurar sesión local
     if (hasMicrosoftOAuthCallback) {
+      setIsRestoringSession(false);
       return;
     }
 
@@ -449,63 +443,49 @@ export default function App() {
     migrateAuthTokensToSessionStorage();
     migrateSensitiveSessionDataToSessionStorage();
 
-    const authToken =
-      sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
-      sessionStorage.getItem('esap_access_token');
-    if (authToken && !sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN)) {
-      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, authToken);
-    }
-    const storedAuthUser = sessionStorage.getItem(USER_DATA_STORAGE_KEY);
-    let sesionGuardada = sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
-    if (authToken && storedAuthUser) {
+    // Limpiar cualquier token residual de versiones anteriores (OTIC-001)
+    AUTH_TOKEN_STORAGE_KEYS.forEach((key) => {
+      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
+    });
+
+    // OTIC-002: los datos de usuario ya no se guardan en sessionStorage.
+    // Usamos ACTIVE_SESSION_STORAGE_KEY solo como señal de que hubo sesión,
+    // y verificamos con el backend para restaurar los datos de usuario.
+    const sesionGuardada = sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+
+    (async () => {
       try {
-        applySessionFromUser(JSON.parse(storedAuthUser));
-        return;
-      } catch (error) {
-        console.error('Error al restaurar sesión de auth:', error);
-        clearSensitiveSessionState();
-        sesionGuardada = null;
-      }
-    } else {
-      if (sesionGuardada) {
-        toast.error('Sesión ha expirado', {
-          description: 'Por seguridad la sesión se ha cerrado',
-          duration: 5000,
-        });
-        clearSensitiveSessionState();
-        sesionGuardada = null;
-      }
-    }
-
-    if (sesionGuardada) {
-      try {
-        const sesionParsed = JSON.parse(sesionGuardada);
-        if (sesionParsed?.usuario && sesionParsed?.vista && sesionParsed?.timestamp) {
-          const sesion: SesionGuardada = sesionParsed;
-
-          const tiempoTranscurrido = Date.now() - sesion.timestamp;
-
-          if (tiempoTranscurrido < TIMEOUT_INACTIVIDAD) {
-            setUsuarioActual(sesion.usuario);
-            setVistaActual(sesion.vista);
-            console.log('✅ Sesión restaurada:', sesion.usuario.nombre);
-
-            toast.success('Sesión restaurada', {
-              description: `Bienvenido de nuevo, ${sesion.usuario.nombre}`,
-            });
-          } else {
-            // Sesión expirada
-            clearSensitiveSessionState();
-            console.log('⏰ Sesión expirada');
-          }
-        } else if (sesionParsed?.email || sesionParsed?.person?.email) {
-          applySessionFromUser(sesionParsed);
+        if (!sesionGuardada) {
+          setIsRestoringSession(false);
+          return;
         }
-      } catch (error) {
-        console.error('Error al restaurar sesión:', error);
+        const sesionParsed = JSON.parse(sesionGuardada);
+        const tiempoTranscurrido = Date.now() - (sesionParsed.timestamp || 0);
+        if (tiempoTranscurrido >= TIMEOUT_INACTIVIDAD) {
+          clearSensitiveSessionState();
+          console.log('⏰ Sesión expirada');
+          setIsRestoringSession(false);
+          return;
+        }
+        // Verificar cookie con el backend para obtener datos del usuario
+        const user = await authService.verifyToken();
+        authService.setCurrentUserCache(user as any);
+        applySessionFromUser(user);
+        console.log('✅ Sesión restaurada desde backend');
+      } catch {
+        // Cookie expirada o inválida — el usuario debe volver a iniciar sesión
+        if (sesionGuardada) {
+          toast.error('Sesión ha expirado', {
+            description: 'Por seguridad la sesión se ha cerrado',
+            duration: 5000,
+          });
+        }
         clearSensitiveSessionState();
+      } finally {
+        setIsRestoringSession(false);
       }
-    }
+    })();
   }, []);
 
   // Guardar sesión cuando cambie el usuario o vista
@@ -643,15 +623,14 @@ export default function App() {
   };
 
   // Handler para login con integración del backend
-  const handleLogin = (user: User, accessToken: string, rememberMe?: boolean) => {
+  const handleLogin = (user: User, _accessToken: string, rememberMe?: boolean) => {
     try {
       // console.log('🔐 Login handler called with user:', user);
       // console.log('🔐 Login handler called with roles:', user.roles);
       // console.log('🔐 Login handler called with accessToken:', accessToken);
       // console.log('🔐 Login handler called with rememberMe:', rememberMe);
-      // Guardar token JWT
-      sessionStorage.setItem('esap_auth_token', accessToken);
-      sessionStorage.setItem('esap_access_token', accessToken);
+      // Token JWT gestionado por cookie HttpOnly del backend (OTIC-001).
+      // El frontend NO almacena el token en ningún storage accesible por JS.
 
       // Extraer información del usuario
       const userEmail = user?.person?.email || user?.email || '';
@@ -748,13 +727,6 @@ export default function App() {
             module: module // Módulo específico de acceso
           };
           setUserData(userDataToSave);
-          // También guardar en esap_user_data para que otros componentes puedan acceder
-          sessionStorage.setItem(USER_DATA_STORAGE_KEY, JSON.stringify({
-            ...sanitizeUserForStorage(user),
-            roles: user?.roles || roles.map((code: string) => ({ code, name: code })),
-            permissions
-          }));
-          localStorage.removeItem(USER_DATA_STORAGE_KEY);
           portalRoles.push(rolStr);
         } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           userType = 'docente';
@@ -849,6 +821,8 @@ export default function App() {
 
   // Handler para logout (desde cualquier ambiente)
   const handleLogout = (viewToast = true) => {
+    // Limpiar la cookie HttpOnly en el backend (OTIC-001)
+    authService.logout().catch(() => {/* el servidor puede estar caído; la cookie expira sola */});
     localStorage.clear();
     AUTH_TOKEN_STORAGE_KEYS.forEach((key) => sessionStorage.removeItem(key));
     clearSensitiveSessionState();
@@ -1231,7 +1205,14 @@ export default function App() {
             path="/expediente-compartido/:token"
             element={<ExpedienteCompartidoPage />}
           />
-          <Route path="*" element={renderVista()} />
+          <Route path="*" element={isRestoringSession ? (
+            <div className="min-h-screen flex items-center justify-center bg-white">
+              <div className="text-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent mx-auto mb-3" />
+                <p className="text-sm text-slate-500">Verificando sesión...</p>
+              </div>
+            </div>
+          ) : renderVista()} />
         </Routes>
 
         {/* Modal de Alerta de Inactividad */}

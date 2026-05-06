@@ -43,10 +43,15 @@ RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
 # Build de producción (Vite lee .env.production automáticamente)
 RUN npm run build && \
     echo "Verificando que el bundle no exponga hosts sensibles..." && \
-    if grep -r -E "4\\.156\\.71\\.181|135\\.237\\.81\\.133|172\\.16\\.202\\.169|172\\.16\\.202\\.222|outlook\\.office\\.com|humanosoft\\.esap\\.edu\\.co|arca\\.esap\\.edu\\.co|onlyoffice:80" /app/build/assets/*.js; then exit 1; fi
+    if grep -r -E "4\\.156\\.71\\.181|135\\.237\\.81\\.133|172\\.16\\.202\\.169|172\\.16\\.202\\.222|outlook\\.office\\.com|humanosoft\\.esap\\.edu\\.co|arca\\.esap\\.edu\\.co|onlyoffice:80" /app/build/assets/*.js; then exit 1; fi && \
+    echo "ZAP-004: Verificando ausencia de comentarios sensibles en el bundle..." && \
+    if grep -rqE 'TODO|FIXME' /app/build/assets/*.js 2>/dev/null; then echo "ERROR ZAP-004: Comentarios TODO/FIXME encontrados en el bundle"; exit 1; fi && \
+    echo "ZAP-004: OK - bundle sin comentarios sensibles."
 
 # ============ STAGE 2: Serve con Nginx ============
 FROM nginx:alpine AS production
+
+COPY docker/nginx/nginx.main.conf /etc/nginx/nginx.conf
 
 # Copiar configuración personalizada de nginx
 RUN mkdir -p /opt/esap-nginx
