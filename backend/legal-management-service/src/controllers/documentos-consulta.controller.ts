@@ -32,13 +32,14 @@ export class DocumentosConsultaController {
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 'application/msword',
             ];
+            const ALLOWED_MIME_TYPES = ['application/pdf', ...WORD_MIME_TYPES];
             if (esFirmado) {
                 if (file.mimetype !== 'application/pdf') {
                     return cb(new BadRequestException('Los documentos firmados deben ser en formato PDF'), false);
                 }
             } else {
-                if (!WORD_MIME_TYPES.includes(file.mimetype) && !file.originalname.match(/\.(docx?|doc)$/i)) {
-                    return cb(new BadRequestException('Los documentos sin firmar deben ser en formato Word (.doc, .docx)'), false);
+                if (!ALLOWED_MIME_TYPES.includes(file.mimetype) && !file.originalname.match(/\.(pdf|docx?|doc)$/i)) {
+                    return cb(new BadRequestException('Solo se permiten archivos PDF o Word (.doc, .docx)'), false);
                 }
             }
             cb(null, true);
