@@ -39,7 +39,7 @@ export class CreateNotificacionDto {
   };
 
   @IsOptional()
-  @IsUrl()
+  @IsString()
   accionUrl?: string;
 }
 
