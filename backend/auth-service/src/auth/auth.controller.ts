@@ -95,8 +95,9 @@ export class AuthController {
       this.loginProtectionService.clearFailedAttempts(accountKeys);
       this.loginProtectionService.clearIpRateLimit(ipAddress);
       this.applyRateLimitHeaders(res, rateLimitState);
-      this.setAuthCookie(res, response.accessToken);
-      return response;
+      const { accessToken, ...responseBody } = response;
+      this.setAuthCookie(res, accessToken);
+      return responseBody;
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         const failedState =
@@ -138,8 +139,9 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const response = await this.authService.loginWithMicrosoft(dto);
-    this.setAuthCookie(res, response.accessToken);
-    return response;
+    const { accessToken, ...responseBody } = response;
+    this.setAuthCookie(res, accessToken);
+    return responseBody;
   }
 
   @Public()

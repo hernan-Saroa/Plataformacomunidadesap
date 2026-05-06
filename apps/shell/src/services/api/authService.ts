@@ -239,7 +239,7 @@ class AuthService {
   // MÉTODOS PRIVADOS
   // ==========================================================================
 
-  private saveTokens(_accessToken: string, _refreshToken: string): void {
+  private saveTokens(_accessToken?: string, _refreshToken?: string): void {
     // Los tokens JWT se gestionan como cookies HttpOnly por el backend (OTIC-001).
     // El frontend nunca los almacena en sessionStorage/localStorage.
   }
@@ -266,7 +266,7 @@ class AuthService {
    * Obtiene lista de profesionales/usuarios para asignación
    */
   async getProfesionales(): Promise<ProfesionalUser[]> {
-    return apiClient.get<ProfesionalUser[]>(`${API_ENDPOINTS.AUTH.BASE}/users`);
+    return apiClient.get<ProfesionalUser[]>('/auth/api/v1/users');
   }
 
   async getAbogadosRolResuelve(): Promise<AbogadoResuelve[]> {
