@@ -235,8 +235,16 @@ export class CompartirExpedienteController {
 
     // Obtener documentos del proceso
     const documentos = await this.processService.getEvidenceByProcessId(compartido.procesoId);
+    
+    // Obtener el proceso con sus autos
+    const proceso = await this.processService.findById(compartido.procesoId, true);
 
-    // Mapear al formato esperado por el frontend
+    // Filtrar autos procesales aprobados/firmados/notificados
+    const autosAprobados = (proceso.autos || []).filter((auto: any) =>
+      ['APROBADO', 'FIRMADO', 'NOTIFICADO'].includes(auto.estado)
+    );
+
+    // Mapear evidencias al formato esperado por el frontend
     const documentosMapeados = documentos.map(doc => ({
       id: doc.id,
       nombre: doc.documentName || doc.filename || 'Documento sin nombre',
@@ -257,12 +265,80 @@ export class CompartirExpedienteController {
       },
     }));
 
+    // Mapear autos procesales a documentos del expediente
+    const documentosAutos = autosAprobados.map((auto: any) => {
+      const sizeBytes = auto.documentSize || new TextEncoder().encode(auto.contenido || '').length;
+      const tamaño = sizeBytes >= 1024 * 1024
+        ? `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`
+        : `${Math.max(1, (sizeBytes / 1024)).toFixed(0)} KB`;
+
+      return {
+        id: auto.id,
+        nombre: `${auto.tipo || 'Auto'} ${auto.numero || ''}`.trim(),
+        tipo: 'auto',
+        etapa: auto.etapa || 'Sin etapa',
+        version: auto.currentVersion || 1,
+        tamaño,
+        fechaCarga: auto.createdAt?.toISOString() || new Date().toISOString(),
+        usuarioCarga: auto.usuarioCarga || 'Sistema',
+        descripcion: auto.asunto || '',
+        url: null,
+        urlExterna: null,
+        downloadUrl: `/compartir-expediente/documento/${token}/${auto.id}/download`,
+        processId: compartido.procesoId,
+        fileType: auto.documentUrl ? (auto.documentType || 'application/pdf') : 'text/html',
+        archivoNombre: auto.documentName || `Auto-${auto.numero || 'borrador'}.${auto.documentUrl ? 'pdf' : 'html'}`,
+        fileSize: auto.documentSize || sizeBytes,
+        versiones: [
+          {
+            numero: auto.currentVersion || 1,
+            fecha: auto.updatedAt || auto.createdAt,
+            usuario: 'Usuario Actual',
+            cambios: 'Versión Actual',
+            tamaño: sizeBytes >= 1024 * 1024
+              ? `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`
+              : `${Math.max(1, (sizeBytes / 1024)).toFixed(0)} KB`,
+            downloadUrl: `/compartir-expediente/documento/${token}/${auto.id}/download`
+          },
+          ...(auto.versions || []).map((v: any) => {
+            const vSizeBytes = new TextEncoder().encode(v.contenido || '').length;
+            const vTam = vSizeBytes >= 1024 * 1024
+              ? `${(vSizeBytes / (1024 * 1024)).toFixed(2)} MB`
+              : `${Math.max(1, (vSizeBytes / 1024)).toFixed(0)} KB`;
+
+            return {
+              numero: v.versionNumber,
+              fecha: v.createdAt,
+              usuario: v.createdBy || 'Sistema',
+              cambios: v.changeReason || 'Versión guardada',
+              tamaño: vTam,
+              downloadUrl: `/compartir-expediente/documento/${token}/${auto.id}/download`
+            };
+          })],
+        contenido: auto.contenido,
+        metadatos: {
+          firmado: auto.estado === 'FIRMADO' || auto.estado === 'NOTIFICADO',
+          notificado: auto.estado === 'NOTIFICADO',
+          esAutoDigital: true,
+          estado: auto.estado,
+          tipoAuto: auto.tipo,
+          numero: auto.numero
+        },
+      };
+    });
+
+    // Combinar y ordenar por fecha
+    const todosDocumentos = [...documentosMapeados, ...documentosAutos].sort((a, b) => {
+      return new Date(b.fechaCarga).getTime() - new Date(a.fechaCarga).getTime();
+    });
+
+
     return {
       proceso: {
         id: compartido.procesoId,
         radicadoProceso: compartido.proceso?.radicadoProceso || 'Sin radicado',
       },
-      documentos: documentosMapeados,
+      documentos: todosDocumentos,
     };
 
   }

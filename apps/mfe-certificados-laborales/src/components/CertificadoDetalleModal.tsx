@@ -73,7 +73,7 @@ export function CertificadoDetalleModal({ certificado, isOpen, onClose }: Certif
       certificado?.observations,
     templateType: certificado?.templateType || certificado?.template_type,
     includeCodeLabel: true,
-    codeLabel: 'Codigo',
+    codeLabel: 'Código',
   });
   const cargoMostrar =
     certificado?.empleado?.cargo_calculado ||

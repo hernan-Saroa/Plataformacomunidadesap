@@ -363,6 +363,8 @@ export class LegalService {
     async createAudiencia(data: {
         expedienteId: string;
         abogadoId: string;
+        abogadoNombre?: string;
+        abogadoEmail?: string;
         titulo: string;
         fechaHoraInicio: string; // ISO string
         duracionMinutos: number;
