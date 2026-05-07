@@ -4,6 +4,7 @@
  * ✅ Header azul corporativo con gradiente
  * ✅ Diseño limpio tipo SAP Fiori
  * ✅ Destinatarios dinámicos filtrados por rol del usuario actual
+ * ✅ Correos reales desde el servicio de autenticación
  */
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@esap-mfe/shared-ui/dialog';
@@ -18,12 +19,13 @@ import {
   Bell, X, Send, Mail,
   Users, AlertCircle
 } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { getServiceUrl } from '../../../../config/environment';
 import { legalService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
 
 interface AbogadoDisponible {
   nombre: string;
@@ -41,6 +43,10 @@ interface ModalNotificarProps {
 const MONITOREO_ROLE = 'MONITOREO_GESTION_LEGAL';
 const JEFE_ROLE = 'JEFE_GESTION_LEGAL';
 
+function normalizarNombre(nombre: string): string {
+  return nombre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
 export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponibles = [], rolUsuarioActual = '' }: ModalNotificarProps) {
   const [destinatariosSeleccionados, setDestinatariosSeleccionados] = useState<string[]>([]);
   const [asunto, setAsunto] = useState(`Expediente ${expediente.id} - Actualización`);
@@ -48,10 +54,39 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
   const [enviarPorEmail, setEnviarPorEmail] = useState(true);
   const [enviarPorSistema, setEnviarPorSistema] = useState(true);
   const [enviando, setEnviando] = useState(false);
+  // Mapa nombre normalizado → correo real del auth service
+  const [emailsMap, setEmailsMap] = useState<Record<string, string>>({});
 
   // Identificador especial para el Jefe de Gestión Legal (se notifica vía rol, no
   // por email individual — el backend resuelve los usuarios reales del rol).
   const JEFE_ROL_ID = 'jefe-gestion-legal-rol';
+
+  // Cargar correos reales desde el auth service al abrir el modal
+  useEffect(() => {
+    if (!isOpen) return;
+    authService.getProfesionales().then((response: any) => {
+      const users: any[] = Array.isArray(response) ? response : (response?.data ?? []);
+      const map: Record<string, string> = {};
+      users.forEach((u: any) => {
+        const email = u.person?.email ?? u.email ?? '';
+        if (!email) return;
+        const fullName = (
+          u.person?.full_name ??
+          `${u.person?.first_name ?? u.first_name ?? ''} ${u.person?.last_name ?? u.last_name ?? ''}`.trim()
+        );
+        if (fullName) map[normalizarNombre(fullName)] = email;
+        // También indexar por username por si coincide
+        if (u.username) map[normalizarNombre(u.username)] = email;
+      });
+      setEmailsMap(map);
+    }).catch(() => {/* si falla, se usa correo derivado */});
+  }, [isOpen]);
+
+  // Obtiene el correo real del auth service; si no hay, deriva del nombre
+  const getEmail = (nombre: string): string => {
+    const key = normalizarNombre(nombre);
+    return emailsMap[key] || `${key.replace(/\s+/g, '.')}@esap.edu.co`;
+  };
 
   // Build display list with avatars/emails derived from names
   const destinatarios = useMemo(() => {
@@ -72,7 +107,7 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
       id: `abogado-${idx}`,
       nombre: a.nombre,
       cargo: esJefe ? 'RESUELVE_GESTION_LEGAL' : a.rol,
-      email: `${a.nombre.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '.')}@esap.edu.co`,
+      email: getEmail(a.nombre),
       avatar: a.nombre.split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase(),
       esJefe: false,
     }));
@@ -95,7 +130,7 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
         esJefe: true,
       },
     ];
-  }, [abogadosDisponibles, rolUsuarioActual]);
+  }, [abogadosDisponibles, rolUsuarioActual, emailsMap]);
 
   const toggleDestinatario = (id: string) => {
     if (destinatariosSeleccionados.includes(id)) {
@@ -201,7 +236,7 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
           </div>
         `;
 
-        // Send one email per recipient (backend DTO expects single @IsEmail() `to`)
+        // Send one email per recipient using real email from auth service
         const emailPromises = abogadosSeleccionados.map(async (dest) => {
           try {
             const response = await fetch(`${notificacionesUrl}/api/v1/emails/send`, {
