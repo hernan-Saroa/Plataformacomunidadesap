@@ -9,7 +9,9 @@ export type LegalModuleKey =
   | 'JUZGAMIENTO_DISCIPLINARIO'
   | 'ASESORIA_JURIDICA'
   | 'ORGANOS_CONTROL'
-  | 'PROCESOS_COACTIVOS';
+  | 'PROCESOS_COACTIVOS'
+  | 'GESTION_RIESGOS';
+
 
 /**
  * `vista` corresponde al estado interno `VistaDisponible` del MFE de gestión legal
@@ -50,6 +52,13 @@ const MODULE_META: Record<LegalModuleKey, { label: string; vista: string; icon: 
     vista: 'procesos-coactivos',
     icon: 'DollarSign',
     color: '#F59E0B',
+    categoria: 'gestion-legal',
+  },
+  GESTION_RIESGOS: {
+    label: 'Gestión de Riesgos',
+    vista: 'riesgos',
+    icon: 'AlertTriangle',
+    color: '#DC2626',
     categoria: 'gestion-legal',
   },
 };
@@ -367,6 +376,71 @@ export class LegalNotificationsService {
       } catch (err: any) {
         this.logger.warn(`No se pudo notificar a abogados sobre anexo ${params.radicadoAnexado} → ${params.radicadoPrincipal}: ${err?.message}`);
       }
+    }
+  }
+
+  /**
+   * Notifica al responsable asignado de un riesgo.
+   */
+  async notifyRiesgoAsignado(params: {
+    radicado?: string;
+    riesgoId: string;
+    codigo: string;
+    nombreRiesgo: string;
+    abogadoId: string;
+    asignadoPor: string;
+    esReasignacion?: boolean;
+  }): Promise<void> {
+    const meta = MODULE_META['GESTION_RIESGOS'];
+    const url = buildUrl('GESTION_RIESGOS');
+    const accion = params.esReasignacion ? 'reasignado' : 'asignado';
+    this.logger.log(`[NOTIFY] Riesgo ${accion} — codigo=${params.codigo} abogadoId=${params.abogadoId}`);
+
+    try {
+      await this.notificationClient.notifyUserById(params.abogadoId, {
+        tipo_notificacion: params.esReasignacion ? 'RIESGO_REASIGNADO' : 'RIESGO_ASIGNADO',
+        titulo: `Riesgo ${accion} en ${meta.label}`,
+        mensaje: `Se te ha ${accion} el riesgo ${params.codigo} (${params.nombreRiesgo}) en ${meta.label}${params.asignadoPor !== params.abogadoId ? ` por ${params.asignadoPor}` : ''}.`,
+        descripcion_corta: `Riesgo ${params.codigo} ${accion}`,
+        icono: meta.icon,
+        color: meta.color,
+        prioridad: 'Alta',
+        categoria: meta.categoria,
+        tiene_accion: true,
+        texto_boton_accion: 'Ver riesgo',
+        url_accion: url,
+        datos_adicionales: {
+          modulo: 'GESTION_RIESGOS',
+          riesgoId: params.riesgoId,
+          codigo: params.codigo,
+          asignadoPor: params.asignadoPor,
+          esReasignacion: params.esReasignacion ?? false,
+        },
+      });
+
+      // Notificar al Jefe de Gestión Legal
+      await this.notificationClient.notifyByRole(ROLE_JEFE, {
+        tipo_notificacion: params.esReasignacion ? 'RIESGO_REASIGNADO' : 'RIESGO_ASIGNADO',
+        titulo: `Riesgo ${accion} en ${meta.label}`,
+        mensaje: `El riesgo ${params.codigo} (${params.nombreRiesgo}) fue ${accion} a un responsable${params.asignadoPor ? ` por ${params.asignadoPor}` : ''}.`,
+        descripcion_corta: `Riesgo ${params.codigo} ${accion}`,
+        icono: meta.icon,
+        color: meta.color,
+        prioridad: 'Media',
+        categoria: meta.categoria,
+        tiene_accion: true,
+        texto_boton_accion: 'Ver riesgo',
+        url_accion: url,
+        datos_adicionales: {
+          modulo: 'GESTION_RIESGOS',
+          riesgoId: params.riesgoId,
+          codigo: params.codigo,
+          asignadoPor: params.asignadoPor,
+          esReasignacion: params.esReasignacion ?? false,
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`No se pudo notificar asignación del riesgo ${params.codigo} al abogado ${params.abogadoId}: ${err?.message}`);
     }
   }
 }

@@ -12,6 +12,7 @@ import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { toast } from 'sonner';
 import { ModalHeaderClean } from './ModalHeaderClean';
 import { legalService, ocService } from '../../../../services/api/legal.service';
+import { authService, AbogadoResuelve } from '../../../../services/api/authService';
 
 interface ControlItem {
   id: string;
@@ -34,6 +35,7 @@ const initialFormState = {
   causas: '',
   consecuencias: '',
   responsable: '',
+  responsableId: '',
   probabilidadInherente: '3',
   impactoInherente: '3',
   probabilidadResidual: '2',
@@ -52,6 +54,10 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
   const [procesosDisponibles, setProcesosDisponibles] = useState<any[]>([]);
   const [loadingProcesos, setLoadingProcesos] = useState(false);
 
+  // Estados para cargar los abogados responsables
+  const [abogados, setAbogados] = useState<AbogadoResuelve[]>([]);
+  const [loadingAbogados, setLoadingAbogados] = useState(false);
+
   const isEditing = !!riesgoEditar;
 
   // Prellenar formulario cuando se edita
@@ -65,6 +71,7 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
         causas: Array.isArray(riesgoEditar.causas) ? riesgoEditar.causas.join('\n') : '',
         consecuencias: Array.isArray(riesgoEditar.consecuencias) ? riesgoEditar.consecuencias.join('\n') : '',
         responsable: riesgoEditar.responsable || '',
+        responsableId: riesgoEditar.responsableId || '',
         probabilidadInherente: String(riesgoEditar.probabilidadInherente || 3),
         impactoInherente: String(riesgoEditar.impactoInherente || 3),
         probabilidadResidual: String(riesgoEditar.probabilidadResidual || 2),
@@ -89,6 +96,25 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
       setControlesLista([]);
     }
   }, [riesgoEditar, open]);
+
+  // Cargar abogados al abrir el modal
+  useEffect(() => {
+    if (open) {
+      const loadAbogados = async () => {
+        setLoadingAbogados(true);
+        try {
+          const data = await authService.getAbogadosRolResuelve();
+          setAbogados(data);
+        } catch (error) {
+          console.error('Error cargando responsables:', error);
+          toast.error('Error al cargar la lista de responsables');
+        } finally {
+          setLoadingAbogados(false);
+        }
+      };
+      loadAbogados();
+    }
+  }, [open]);
 
   // Cargar procesos cuando cambia el módulo de origen
   useEffect(() => {
@@ -220,10 +246,6 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
   };
 
   const handleChange = (field: string, value: any) => {
-    // ✅ Filtro de solo letras y espacios para responsable
-    if (field === 'responsable') {
-      value = value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
-    }
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -608,14 +630,28 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                   <Label htmlFor="responsable" className="text-sm font-semibold text-gray-700">
                     Responsable del Riesgo <span className="text-red-600">*</span>
                   </Label>
-                  <Input
+                  <select
                     id="responsable"
-                    placeholder="Nombre del responsable"
-                    value={formData.responsable}
-                    onChange={(e) => handleChange('responsable', e.target.value)}
-                    className="border-2 border-gray-300 focus:border-blue-500"
+                    value={formData.responsableId}
+                    onChange={(e) => {
+                      const abogadoSeleccionado = abogados.find(a => a.id === e.target.value);
+                      setFormData(prev => ({
+                        ...prev,
+                        responsableId: e.target.value,
+                        responsable: abogadoSeleccionado ? abogadoSeleccionado.nombreCompleto : ''
+                      }));
+                    }}
+                    className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
                     required
-                  />
+                    disabled={loadingAbogados}
+                  >
+                    <option value="">{loadingAbogados ? 'Cargando responsables...' : 'Seleccione responsable...'}</option>
+                    {abogados.map((abogado) => (
+                      <option key={abogado.id} value={abogado.id}>
+                        {abogado.nombreCompleto} ({abogado.email})
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-2">

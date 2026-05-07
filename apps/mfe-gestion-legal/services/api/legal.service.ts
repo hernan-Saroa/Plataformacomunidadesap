@@ -1073,6 +1073,7 @@ export interface RiesgoAPI {
     controlesExistentes: { id: string; descripcion: string; efectividad: number; }[];
     planTratamiento: { accion: string; responsable: string; fechaLimite: Date; estado: string; avance: number; }[];
     responsable: string;
+    responsableId?: string;
     estado: 'ACTIVO' | 'ARCHIVADO' | 'ELIMINADO' | 'CERRADO';
     createdAt: string;
     updatedAt: string;
@@ -1101,6 +1102,7 @@ export interface CreateRiesgoData {
     consecuencias?: string[];
     controlesExistentes?: { id: string; descripcion: string; efectividad: number }[];
     responsable: string;
+    responsableId?: string;
     cuantiaEstimada?: number;
     // Asociación con Proceso
     moduloOrigen?: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO' | 'ASESORIA_JURIDICA' | 'COACTIVOS' | 'ORGANOS_CONTROL';

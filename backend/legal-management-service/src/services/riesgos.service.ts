@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
 import { Riesgo, TipoRiesgo, ZonaRiesgo, EtapaRiesgo, EstadoRiesgo } from '../entities/riesgo.entity';
 import { RiesgoHistorial, TipoEventoRiesgo } from '../entities/riesgo-historial.entity';
+import { LegalNotificationsService } from './legal-notifications.service';
 
 @Injectable()
 export class RiesgosService {
@@ -11,6 +12,7 @@ export class RiesgosService {
         private readonly riesgoRepo: Repository<Riesgo>,
         @InjectRepository(RiesgoHistorial)
         private readonly historialRepo: Repository<RiesgoHistorial>,
+        private readonly legalNotificationsService: LegalNotificationsService,
     ) { }
 
     // ============================================
@@ -120,6 +122,18 @@ export class RiesgosService {
             data['createdBy'] || 'Sistema'
         );
 
+        // Notificar asignación si hay responsableId
+        if (saved.responsableId) {
+            this.legalNotificationsService.notifyRiesgoAsignado({
+                riesgoId: saved.id,
+                codigo: saved.codigo,
+                nombreRiesgo: saved.nombre,
+                abogadoId: saved.responsableId,
+                asignadoPor: data['createdBy'] || 'Sistema',
+                esReasignacion: false
+            });
+        }
+
         return saved;
     }
 
@@ -205,6 +219,18 @@ export class RiesgosService {
                 saved.zonaResidual,
                 'Sistema'
             );
+        }
+
+        // Notificar si el responsable cambió
+        if (data.responsableId && data.responsableId !== riesgo.responsableId) {
+            this.legalNotificationsService.notifyRiesgoAsignado({
+                riesgoId: saved.id,
+                codigo: saved.codigo,
+                nombreRiesgo: saved.nombre,
+                abogadoId: saved.responsableId,
+                asignadoPor: data['createdBy'] || 'Sistema',
+                esReasignacion: !!riesgo.responsableId // Si ya había responsable, es reasignación
+            });
         }
 
         return saved;

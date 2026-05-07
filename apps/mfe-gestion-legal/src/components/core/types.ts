@@ -877,6 +877,7 @@ export interface Riesgo {
     avance: number;
   }[];
   responsable: string;
+  responsableId?: string;
   documentos: Documento[];
   timeline: EventoTimeline[];
   fechaCreacion: Date;

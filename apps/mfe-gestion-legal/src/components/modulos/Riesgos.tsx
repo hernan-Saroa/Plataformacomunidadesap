@@ -86,6 +86,7 @@ function apiToLocalRiesgo(api: RiesgoAPI): Riesgo {
       estado: p.estado as 'PENDIENTE' | 'EN_CURSO' | 'COMPLETADA'
     })),
     responsable: api.responsable,
+    responsableId: api.responsableId,
     documentos: [],
     timeline: [],
     fechaCreacion: new Date(api.createdAt),
