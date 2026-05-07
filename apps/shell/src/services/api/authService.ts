@@ -90,7 +90,11 @@ class AuthService {
    * Verificar token actual
    */
   async verifyToken(): Promise<AuthUser> {
-    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY);
+    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY, undefined, {
+      retries: 0,
+      skipAuthRefresh: true,
+      skipErrorToast: true,
+    });
   }
 
   /**

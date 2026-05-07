@@ -1621,9 +1621,8 @@ export class ProcesosCoactivosService {
             url = `${baseUrl}${SERVICE_PREFIX}/procesos-coactivos/pagos/soporte/${filename}`;
         }
 
-        const token = sessionStorage.getItem('esap_auth_token');
         const response = await fetch(url, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            credentials: 'include',
         });
         if (!response.ok) throw new Error('Error descargando soporte');
 

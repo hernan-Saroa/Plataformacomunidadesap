@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Servicio para Listas de Chequeo
  * Conecta con el backend: /listas-chequeo
  */
@@ -108,13 +108,9 @@ class ListasChequeoAPIClient {
       'Accept': 'application/json; charset=utf-8',
     };
 
-    const token = sessionStorage.getItem('esap_auth_token');
-    if (token) {
-      defaultHeaders['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: {
         ...defaultHeaders,
         ...options.headers,

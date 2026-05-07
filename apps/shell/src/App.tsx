@@ -454,6 +454,13 @@ export default function App() {
     // y verificamos con el backend para restaurar los datos de usuario.
     const sesionGuardada = sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
 
+    // Si esta pestana no tiene senal de sesion, no consultar /verify.
+    // Evita un 401 esperado antes del login sin exponer ni guardar tokens en JS.
+    if (!sesionGuardada) {
+      setIsRestoringSession(false);
+      return;
+    }
+
     (async () => {
       try {
         // Si hay señal de sesión y el timeout de inactividad ya pasó, cerrar sin llamar al backend
@@ -467,7 +474,7 @@ export default function App() {
             return;
           }
         }
-        // Siempre verificar con el backend — la cookie HttpOnly se envía automáticamente
+        // Verificar con el backend solo si hubo sesion previa en esta pestana.
         const user = await authService.verifyToken();
         authService.setCurrentUserCache(user as any);
         applySessionFromUser(user);
@@ -489,6 +496,10 @@ export default function App() {
 
   // Guardar sesión cuando cambie el usuario o vista
   useEffect(() => {
+    if (isRestoringSession) {
+      return;
+    }
+
     if (usuarioActual && (vistaActual === 'portal' || vistaActual === 'backoffice')) {
       const sesion: SesionGuardada = {
         vista: vistaActual,
@@ -500,7 +511,7 @@ export default function App() {
       sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     }
-  }, [usuarioActual, vistaActual]);
+  }, [usuarioActual, vistaActual, isRestoringSession]);
 
   // Deep links de certificados públicos (laborales y graduados)
   useEffect(() => {

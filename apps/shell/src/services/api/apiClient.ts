@@ -26,6 +26,7 @@ import { syncEngine } from './syncEngine';
 interface RequestConfig extends RequestInit {
   skipAuth?: boolean;
   skipErrorToast?: boolean;
+  skipAuthRefresh?: boolean;
   retries?: number;
 }
 
@@ -97,10 +98,11 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipAuthRefresh = false,
       ...fetchConfig
     } = customConfig || {};
 
-    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast);
+    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh);
   }
 
   /**
@@ -293,6 +295,7 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipAuthRefresh = false,
       retries = this.retryConfig.attempts,
       ...fetchConfig
     } = customConfig;
@@ -302,7 +305,7 @@ export class ApiClient {
 
     while (attempt <= retries) {
       try {
-        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast);
+        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh);
       } catch (error: any) {
         lastError = error;
         attempt++;
@@ -401,9 +404,6 @@ export class ApiClient {
         if (newToken) {
           return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false);
         }
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
         const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
         expiredError.status = 401;
         throw expiredError;
@@ -476,9 +476,6 @@ export class ApiClient {
         const newToken = await this.refreshAccessToken();
         if (newToken) {
           return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, false);
-        }
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
         }
         const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
         expiredError.status = 401;

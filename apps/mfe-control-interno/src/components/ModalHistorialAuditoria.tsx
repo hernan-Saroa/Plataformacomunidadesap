@@ -487,13 +487,12 @@ export function ModalHistorialAuditoria({ auditoria, open, onClose }: ModalHisto
 
     setCargando(true);
     try {
-      const token = sessionStorage.getItem('esap_auth_token');
       // Usar la URL configurada según el modo (gateway o direct)
       const response = await fetch(
         `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/auditorias/${auditoria.id}/historial`,
         {
+          credentials: 'include',
           headers: {
-            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
         }

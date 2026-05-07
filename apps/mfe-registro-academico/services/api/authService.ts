@@ -88,7 +88,11 @@ class AuthService {
    * Verificar token actual
    */
   async verifyToken(): Promise<AuthUser> {
-    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY);
+    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY, undefined, {
+      retries: 0,
+      skipAuthRefresh: true,
+      skipErrorToast: true,
+    });
   }
 
   /**
@@ -132,18 +136,24 @@ class AuthService {
    */
   setCurrentUserCache(user: AuthUser): void {
     this._cachedUser = user;
+    if (typeof window !== 'undefined') {
+      (window as any).__esap_auth_cache = user;
+    }
   }
   /**
    * Verifica si el usuario está autenticado
    */
   isAuthenticated(): boolean {
-    return this._cachedUser !== null;
+    return this.getCurrentUser() !== null;
   }
 
   /**
    * Obtiene el usuario actual del localStorage
    */
   getCurrentUser(): AuthUser | null {
+    if (!this._cachedUser && typeof window !== 'undefined' && (window as any).__esap_auth_cache) {
+      this._cachedUser = (window as any).__esap_auth_cache;
+    }
     return this._cachedUser;
   }
 
@@ -152,16 +162,18 @@ class AuthService {
    */
   hasPermission(permission: string): boolean {
     const user = this.getCurrentUser();
-    const roles = user?.roles || [];
-    const isSuperAdmin = roles.some((role: any) =>
-      typeof role === 'string'
-        ? role === 'SUPER_ADMIN'
-        : role?.code === 'SUPER_ADMIN' || role?.name === 'SUPER_ADMIN',
-    );
-    if (isSuperAdmin) return true;
+    if (!user) return false;
+    if (this.isSuperAdmin()) return true;
 
-    const directPermissions = Array.isArray(user?.permissions)
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+    const directPermissions = Array.isArray(user.permissions)
       ? user.permissions
+          .map((permissionItem: any) =>
+            typeof permissionItem === 'string'
+              ? permissionItem
+              : permissionItem?.code,
+          )
+          .filter(Boolean)
       : [];
     const rolePermissions = roles.flatMap((role: any) =>
       Array.isArray(role?.permissions)
@@ -228,11 +240,14 @@ class AuthService {
   }
 
   private saveUserData(user: AuthUser): void {
-    this._cachedUser = user;
+    this.setCurrentUserCache(user);
   }
 
   private clearAuthData(): void {
     this._cachedUser = null;
+    if (typeof window !== 'undefined') {
+      delete (window as any).__esap_auth_cache;
+    }
     sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     apiClient.clearCache();

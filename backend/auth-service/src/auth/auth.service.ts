@@ -275,6 +275,19 @@ export class AuthService {
     };
   }
 
+  async refreshSession(jwtUser: AuthenticatedJwtUser) {
+    if (!jwtUser?.userId) {
+      throw new UnauthorizedException('Sesion invalida');
+    }
+
+    const user = await this.usersService.findAuthUserById(jwtUser.userId);
+    if (!user || !user.is_active) {
+      throw new UnauthorizedException('Sesion invalida');
+    }
+
+    return this.buildLoginResponse(user);
+  }
+
   async logout() {
     // En JWT puro, el logout es del lado del cliente (borrar token).
     // Aquí podrías registrar la acción o manejar blacklists si más adelante quieres.

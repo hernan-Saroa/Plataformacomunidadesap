@@ -115,9 +115,9 @@ export async function cargarTablerosKanban(): Promise<ConfiguracionTablero[]> {
     const url = buildTableroKanbanUrl('/api/v1/tableros-kanban');
     const response = await fetch(url, {
       method: 'GET',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || sessionStorage.getItem('token')}`
       }
     });
 
@@ -152,9 +152,9 @@ export async function crearEtapa(tableroId: string, etapa: Partial<EtapaKanban>)
     const url = buildTableroKanbanUrl(`/api/v1/tableros-kanban/${tableroId}/etapas`);
     const response = await fetch(url, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || sessionStorage.getItem('token')}`
       },
       body: JSON.stringify(etapaData)
     });
@@ -190,9 +190,9 @@ export async function actualizarEtapa(tableroId: string, etapaId: string, etapa:
     const url = buildTableroKanbanUrl(`/api/v1/tableros-kanban/${tableroId}/etapas/${etapaId}`);
     const response = await fetch(url, {
       method: 'PATCH',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || sessionStorage.getItem('token')}`
       },
       body: JSON.stringify(etapaData)
     });
@@ -218,9 +218,9 @@ export async function eliminarEtapa(tableroId: string, etapaId: string): Promise
     const url = buildTableroKanbanUrl(`/api/v1/tableros-kanban/${tableroId}/etapas/${etapaId}`);
     const response = await fetch(url, {
       method: 'DELETE',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || sessionStorage.getItem('token')}`
       }
     });
 
@@ -245,9 +245,9 @@ export async function reordenarEtapas(tableroId: string, etapasIds: string[]): P
     const url = buildTableroKanbanUrl(`/api/v1/tableros-kanban/${tableroId}/etapas/reordenar`);
     const response = await fetch(url, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || sessionStorage.getItem('token')}`
       },
       body: JSON.stringify({ etapasIds })
     });

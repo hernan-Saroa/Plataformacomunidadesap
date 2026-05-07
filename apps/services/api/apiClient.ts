@@ -1,14 +1,14 @@
-Ôªø/**
+/**
  * Cliente API Base
  *
  * Maneja todas las requests HTTP al backend con:
- * - Autenticaci√≥n autom√°tica
+ * - AutenticaciÛn autom·tica
  * - Refresh de tokens
  * - Manejo de errores
  * - Retry logic
  * - Request/Response interceptors
  *
- * MODOS DE CONEXI√ìN:
+ * MODOS DE CONEXI”N:
  * - Gateway Mode: Todas las requests van a http://localhost:3000/{service}/api/v1/{path}
  * - Direct Mode: Cada servicio en su puerto http://localhost:300X/{path}
  */
@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 interface RequestConfig extends RequestInit {
   skipAuth?: boolean;
   skipErrorToast?: boolean;
+  skipAuthRefresh?: boolean;
   retries?: number;
 }
 
@@ -57,7 +58,7 @@ export class ApiClient {
   private refreshSubscribers: Array<(token: string) => void> = [];
 
   constructor(baseURL?: string) {
-    // Usar la URL base del API Gateway desde la configuraci√≥n de entorno
+    // Usar la URL base del API Gateway desde la configuraciÛn de entorno
     this.baseURL = baseURL || config.API_BASE_URL;
     this.timeout = config.API_TIMEOUT;
     this.retryConfig = {
@@ -68,7 +69,7 @@ export class ApiClient {
   }
 
   // ==========================================================================
-  // M√âTODOS P√öBLICOS
+  // M…TODOS P⁄BLICOS
   // ==========================================================================
 
   /**
@@ -95,10 +96,11 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipAuthRefresh = false,
       ...fetchConfig
     } = customConfig || {};
 
-    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast);
+    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh);
   }
 
   /**
@@ -188,7 +190,7 @@ export class ApiClient {
       timeoutMs,
     } = resolvedOptions;
 
-    // Para upload, no enviamos Content-Type header (el browser lo setea autom√°ticamente con boundary)
+    // Para upload, no enviamos Content-Type header (el browser lo setea autom·ticamente con boundary)
     const headers = getDefaultHeaders(true);
     delete (headers as any)['Content-Type'];
 
@@ -278,7 +280,7 @@ export class ApiClient {
   }
 
   // ==========================================================================
-  // M√âTODOS PRIVADOS
+  // M…TODOS PRIVADOS
   // ==========================================================================
 
   /**
@@ -291,6 +293,7 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipAuthRefresh = false,
       retries = this.retryConfig.attempts,
       ...fetchConfig
     } = customConfig;
@@ -300,7 +303,7 @@ export class ApiClient {
 
     while (attempt <= retries) {
       try {
-        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast);
+        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh);
       } catch (error: any) {
         lastError = error;
         attempt++;
@@ -360,14 +363,11 @@ export class ApiClient {
 
       clearTimeout(timeoutId);
 
-      // Token expirado: refrescar y reintentar UNA sola vez conservando m√©todo y body.
+      // Token expirado: refrescar y reintentar UNA sola vez conservando mÈtodo y body.
       if (response.status === 401 && !skipAuth && allowRefresh) {
         const newToken = await this.refreshAccessToken();
         if (newToken) {
           return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false);
-        }
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
         }
         const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
         expiredError.status = 401;
@@ -379,9 +379,9 @@ export class ApiClient {
     } catch (error: any) {
       clearTimeout(timeoutId);
       if (!error.status && (error.name === 'TypeError' || error.name === 'AbortError')) {
-        console.warn('‚ö†Ô∏è Servicio no disponible:', url);
+        console.warn('?? Servicio no disponible:', url);
       } else if (!url.includes(':3009/') && !url.includes('/notificaciones/')) {
-        console.log('üî¥ Error en request:', error);
+        console.log('?? Error en request:', error);
       }
 
       if (error.name === 'AbortError') {
@@ -431,9 +431,6 @@ export class ApiClient {
         const newToken = await this.refreshAccessToken();
         if (newToken) {
           return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, false);
-        }
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
         }
         const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
         expiredError.status = 401;
@@ -516,7 +513,7 @@ export class ApiClient {
       if (response.ok) {
         data = {} as any; // For 200 OK with empty body
       } else {
-        const emptyError: any = new Error('Error en la petici√≥n (sin detalles)');
+        const emptyError: any = new Error('Error en la peticiÛn (sin detalles)');
         emptyError.status = response.status;
         emptyError.response = { status: response.status, data: null };
         throw emptyError;
@@ -565,7 +562,7 @@ export class ApiClient {
           errorMessage = errObj.message.join(', ');
         }
       }
-      if ((data as any).error === 'Unauthorized' && 'message' in data && typeof (data as any).message === 'string') { // 3. Caso especial Unauthorized con message en la ra√≠z
+      if ((data as any).error === 'Unauthorized' && 'message' in data && typeof (data as any).message === 'string') { // 3. Caso especial Unauthorized con message en la raÌz
         errorMessage = (data as any).message;
         details = (data as any).message;
       }
@@ -589,7 +586,7 @@ export class ApiClient {
 
     // Fallback for when response is not OK but data structure is unexpected
     if (!response.ok) {
-      let errorMessage = 'Error en la petici√≥n';
+      let errorMessage = 'Error en la peticiÛn';
       if ('message' in data) {
         if (typeof (data as any).message === 'string') {
           errorMessage = (data as any).message;
@@ -603,7 +600,7 @@ export class ApiClient {
       throw error;
     }
 
-    throw new Error('Respuesta inv√°lida del servidor');
+    throw new Error('Respuesta inv·lida del servidor');
   }
 
   /**
@@ -651,15 +648,15 @@ export class ApiClient {
     this.refreshSubscribers = [];
   }
   /**
-   * Muestra toast de error seg√∫n el c√≥digo HTTP
+   * Muestra toast de error seg˙n el cÛdigo HTTP
    */
   private showErrorToast(status: number, message: string): void {
     const errorMessages: Record<number, string> = {
-      400: 'Solicitud inv√°lida',
+      400: 'Solicitud inv·lida',
       401: 'No autorizado',
       403: 'Acceso denegado',
       404: 'Recurso no encontrado',
-      422: 'Error de validaci√≥n',
+      422: 'Error de validaciÛn',
       429: 'Demasiadas solicitudes',
       500: 'Error interno del servidor',
       502: 'Gateway no disponible',
@@ -675,7 +672,7 @@ export class ApiClient {
   }
 
   /**
-   * Construye URL completa con par√°metros
+   * Construye URL completa con par·metros
    *
    * En modo 'gateway': /auth/api/v1/login -> http://localhost:3000/auth/api/v1/login
    * En modo 'direct':  /auth/api/v1/login -> http://localhost:3002/login
@@ -703,7 +700,7 @@ export class ApiClient {
           fullUrl = `${serviceUrl}${path}`;
         } else {
           // Servicio no encontrado, usar baseURL normal
-          console.warn(`‚ö†Ô∏è Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
+          console.warn(`?? Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
           fullUrl = `${this.baseURL}${endpoint}`;
         }
       } else {
@@ -721,7 +718,7 @@ export class ApiClient {
       }
     }
 
-    // Agregar par√°metros de query
+    // Agregar par·metros de query
     if (params && Object.keys(params).length > 0) {
       const url = new URL(fullUrl);
       Object.entries(params).forEach(([key, value]) => {
@@ -747,7 +744,7 @@ export class ApiClient {
   }
 
   /**
-   * Limpia cache (si est√° habilitado)
+   * Limpia cache (si est· habilitado)
    */
   public clearCache(): void {
     if (config.FEATURES.enableCache) {

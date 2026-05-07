@@ -193,6 +193,19 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('refresh')
+  @HttpCode(200)
+  async refresh(
+    @Req() req,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const response = await this.authService.refreshSession(req.user);
+    const { accessToken, ...responseBody } = response;
+    this.setAuthCookie(res, accessToken);
+    return responseBody;
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
     this.clearAuthCookie(res);
