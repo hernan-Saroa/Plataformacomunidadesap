@@ -15,10 +15,7 @@ import type { CreateRoleDto, UpdateRoleDto, RoleFilters, RoleStats } from './rol
 import { InternalServiceAccess } from '../auth/decorators/internal-service.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import {
-  AUTH_MANAGE_ROLES,
-  AUTH_READ_ROLES,
-} from '../auth/authorization.constants';
+import { AUTH_MANAGE_ROLES } from '../auth/authorization.constants';
 
 export interface RoleResponse {
   id: string;
@@ -45,7 +42,6 @@ export class RolesController {
 
   @Get()
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async findAll(@Query() filters: RoleFilters): Promise<{ roles: RoleResponse[], total: number }> {
     const result = await this.rolesService.findAll(filters);
     return {
@@ -72,14 +68,12 @@ export class RolesController {
 
   @Get('stats')
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async getStats(): Promise<RoleStats> {
     return this.rolesService.getStats();
   }
 
   @Get(':id')
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async findOne(@Param('id') id: string): Promise<RoleResponse> {
     const role = await this.rolesService.findOne(id) as any;
     return {
@@ -225,7 +219,6 @@ export class RolesController {
 
   @Get(':id/permissions')
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async getPermissions(@Param('id') id: string) {
     const permissions = await this.rolesService.getPermissions(id);
     // Mapear campos para consistencia con frontend
@@ -265,7 +258,6 @@ export class RolesController {
 
   @Get('permissions/all')
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async getAllPermissions() {
     return this.rolesService.getAllPermissions();
   }
