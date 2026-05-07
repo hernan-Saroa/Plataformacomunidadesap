@@ -365,6 +365,12 @@ export class ApiClient {
         if (newToken) {
           return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false);
         }
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
+        const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
+        expiredError.status = 401;
+        throw expiredError;
       }
 
       // Manejo de respuesta
@@ -421,6 +427,12 @@ export class ApiClient {
         if (newToken) {
           return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, false);
         }
+        if (typeof window !== 'undefined') {
+          window.location.href = '/login';
+        }
+        const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
+        expiredError.status = 401;
+        throw expiredError;
       }
 
       if (!response.ok) {
