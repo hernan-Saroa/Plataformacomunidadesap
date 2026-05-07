@@ -395,9 +395,10 @@ function VistaArbolSeccionalesSedes({
             No se encontraron resultados para "{busqueda}"
           </div>
         ) : (
-          <>
+          <div className="space-y-2">
             {sedeCentral && (
               <motion.div
+                key={`sede-central-${sedeCentral.idSeccional}`}
                 initial={{ opacity: 0, y: -5 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="mb-3"
@@ -438,26 +439,26 @@ function VistaArbolSeccionalesSedes({
               </motion.div>
             )}
             {expandidosSedeCentral && (
-            <div className="ml-6 space-y-2">
-              {territorialesFiltradas.map((item, index) => {
-                if (!item) return null;
-                const { seccional, sedes: sedesSeccional } = item;
-                const isExpandida = seccionalesExpandidas[seccional.idSeccional] ?? false;
+              <div key="territoriales-sede-central" className="ml-6 space-y-2">
+                {territorialesFiltradas.map((item, index) => {
+                  if (!item) return null;
+                  const { seccional, sedes: sedesSeccional } = item;
+                  const isExpandida = seccionalesExpandidas[seccional.idSeccional] ?? false;
 
-                return (
-                  <div key={seccional.idSeccional ?? `seccional-${index}`}>
-                <motion.div
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="group"
-                >
-                  <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-[#003DA5] hover:shadow-md transition-all bg-white">
-                    <button
-                      onClick={() => toggleSeccional(seccional.idSeccional)}
-                      className="w-6 h-6 rounded flex items-center justify-center hover:bg-gray-100 transition-colors"
+                  return (
+                    <motion.div
+                      key={seccional.idSeccional ?? `seccional-${index}`}
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="group"
                     >
-                      <ChevronRight className={`w-4 h-4 transition-transform ${isExpandida ? 'rotate-90' : ''}`} />
-                    </button>
+                      <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-[#003DA5] hover:shadow-md transition-all bg-white">
+                        <button
+                          onClick={() => toggleSeccional(seccional.idSeccional)}
+                          className="w-6 h-6 rounded flex items-center justify-center hover:bg-gray-100 transition-colors"
+                        >
+                          <ChevronRight className={`w-4 h-4 transition-transform ${isExpandida ? 'rotate-90' : ''}`} />
+                        </button>
 
                       <Badge className="bg-green-100 text-green-700 border-0">
                         Territorial
@@ -510,24 +511,24 @@ function VistaArbolSeccionalesSedes({
                       </button>
                     </div>
                   </div>
-                </motion.div>
 
-                {/* Sedes de esta seccional */}
-                <AnimatePresence>
-                  {isExpandida && sedesSeccional.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="mt-2 ml-6 space-y-1"
-                    >
-                      {sedesSeccional.map((sede, sedeIndex) => (
-                        <motion.div
-                          key={sede.idSede ?? `sede-${sedeIndex}`}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="group"
-                        >
+                      {/* Sedes de esta seccional */}
+                      <AnimatePresence>
+                        {isExpandida && sedesSeccional.length > 0 && (
+                          <motion.div
+                            key={`sedes-seccional-${seccional.idSeccional}`}
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="mt-2 ml-6 space-y-1"
+                          >
+                            {sedesSeccional.map((sede, sedeIndex) => (
+                              <motion.div
+                                key={sede.idSede ?? `sede-${sedeIndex}`}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                className="group"
+                              >
                           <div className="flex items-center gap-3 p-2 rounded-lg border border-gray-200 hover:border-[#003DA5] hover:shadow-sm transition-all bg-gray-50">
                             <div className="w-6" />
 
@@ -583,17 +584,17 @@ function VistaArbolSeccionalesSedes({
                               </button>
                             </div>
                           </div>
-                        </motion.div>
-                      ))}
+                              </motion.div>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </motion.div>
-                  )}
-                </AnimatePresence>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
             )}
-          </>
+          </div>
         )}
       </div>
     </Card>
@@ -1011,6 +1012,7 @@ function VistaListaTerritorialesCetap({
                       <AnimatePresence>
                         {isExpanded && sedesTerritorial.length > 0 && (
                           <motion.div
+                            key={`cetap-territorial-${seccional.idSeccional}`}
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
                             exit={{ opacity: 0, height: 0 }}

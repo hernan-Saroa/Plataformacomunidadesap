@@ -77,6 +77,7 @@ export function stripBundleComments() {
         format: 'esm',
         legalComments: 'none',
         loader: 'js',
+        minifyWhitespace: true,
         target: 'esnext',
       });
 
