@@ -8,13 +8,14 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
+import {
   FolderOpen, Search, Download, Upload, ChevronRight, ChevronDown, FileText,
   Eye, EyeOff, Calendar, User, AlertCircle, Trash2,
   FileCheck, FileWarning, Scale, Gavel, AlertTriangle, Shield,
   MessageSquare, Bell, X, Clock, Folders,
   ArrowUp, ArrowDown, History, Info,
-  Paperclip, Send, FileSpreadsheet, List, Printer, Share2, Loader2, Play, ExternalLink
+  Paperclip, Send, FileSpreadsheet, List, Printer, Share2, Loader2, Play, ExternalLink,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
