@@ -51,6 +51,13 @@ export class UsersService {
     });
   }
 
+  async findAuthUserById(userId: string): Promise<User | null> {
+    return this.userRepo.findOne({
+      where: { id_user: userId },
+      relations: ['person', 'roles', 'roles.permissions'],
+    });
+  }
+
   private get schemaName(): string {
     return process.env.DB_SCHEMA || 'auth';
   }

@@ -229,7 +229,9 @@ export function VisorDocumentoModal({
         </div>
 
         {/* ==================== DOCUMENT VIEWER AREA ==================== */}
-        <div className="flex-1 overflow-hidden bg-gray-200 relative">
+        {/* min-h-0 es crítico: sin él, flex-1 en un contenedor flex-col ignora overflow
+            y el hijo crece más allá del límite del Dialog, rompiendo el scroll */}
+        <div className="flex-1 min-h-0 overflow-hidden bg-gray-200 relative">
           {/* Loading indicator */}
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
@@ -364,8 +366,8 @@ export function VisorDocumentoModal({
                 return (
                   <div
                     ref={docxScrollRef}
-                    className="overflow-y-auto overflow-x-auto bg-gray-200"
-                    style={{ scrollBehavior: 'smooth', height: '100%', width: '100%' }}
+                    className="absolute inset-0 overflow-y-auto overflow-x-auto bg-gray-200"
+                    style={{ scrollBehavior: 'smooth' }}
                   >
                     <div className="flex justify-center p-8">
                       <div

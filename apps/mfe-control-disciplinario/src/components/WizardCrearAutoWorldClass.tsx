@@ -353,11 +353,10 @@ export function WizardCrearAutoWorldClass({
       try {
         setWordPreview({ loading: true, html: '', error: '' });
 
-        const token = sessionStorage.getItem('esap_access_token');
         const response = await fetch(getAutoDocumentUrl(documento.documentUrl), {
+          credentials: 'include',
           headers: {
             Accept: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
         });
 

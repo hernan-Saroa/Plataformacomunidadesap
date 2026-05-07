@@ -616,16 +616,10 @@ function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; p
         }
 
         const requestUrl = resolveArchivoRequestUrl(archivo, procesoId, true);
-        const token = sessionStorage.getItem('esap_access_token');
-        const headers: HeadersInit = { Accept: '*/*' };
-
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
-        }
-
         const response = await fetch(requestUrl, {
           method: 'GET',
-          headers,
+          credentials: 'include',
+          headers: { Accept: '*/*' },
         });
 
         if (!response.ok) {

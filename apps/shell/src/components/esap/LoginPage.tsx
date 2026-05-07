@@ -57,9 +57,9 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     if (autoLoginAttemptedRef.current) return;
     if (!authService.isAuthenticated()) return;
 
-    const token = sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    // Token gestionado por cookie HttpOnly (OTIC-001): ya no está en sessionStorage.
     const storedUser = sessionStorage.getItem(config.STORAGE_KEYS.USER_DATA);
-    if (!token || !storedUser) return;
+    if (!storedUser) return;
 
     try {
       const user = JSON.parse(storedUser);
@@ -68,7 +68,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         description: 'Estas conectado como ' + user.username,
         duration: 5000,
       });
-      onLogin(user, token, true);
+      onLogin(user, '', true);
     } catch (error) {
       console.error('Error al auto-iniciar sesión:', error);
     }

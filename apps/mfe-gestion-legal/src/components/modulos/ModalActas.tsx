@@ -189,16 +189,8 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
       toast.info('Iniciando descarga...');
       const fileUrl = getFileUrl(acta.archivoUrl);
 
-      // Obtener token para autenticación
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(fileUrl, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
       if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -343,16 +335,8 @@ export function ModalActas({ isOpen, onClose, expediente, modulo }: ModalActasPr
       const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/actas/expediente/${expedienteId}/download-zip`;
 
-      // Obtener token para autenticación
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(url, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
 

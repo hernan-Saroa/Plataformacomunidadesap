@@ -1854,8 +1854,8 @@ export function GestionAuditoriasKanbanSimple() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   useEffect(() => {
     try {
-      const userDataStr = sessionStorage.getItem('esap_user_data');
-      if (userDataStr) setCurrentUser(JSON.parse(userDataStr));
+      const userData = (window as any).__esap_auth_cache;
+      if (userData) setCurrentUser(userData);
     } catch (e) {}
   }, []);
 
