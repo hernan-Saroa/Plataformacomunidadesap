@@ -175,19 +175,14 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
     // 🔥 LIMPIAR CACHÉ COMPLETAMENTE AL HACER LOGIN
     sessionStorage.removeItem('esap-sesion-activa');
-    console.log('🗑️ LocalStorage limpiado');
 
     try {
-      console.log('📡 Llamando a authService.login');
-      
       // Llamar a la API de autenticación real
       const response = await authService.login({
         email: email.toLowerCase(),
         password,
         rememberMe,
       });
-
-      console.log('✅ [6] Auth service response received:', response);
 
       // Determinar el tipo de usuario basado en el email para mostrar mensaje personalizado
       const emailLower = email.toLowerCase();
@@ -250,21 +245,23 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         });
       }
 
-      console.log('🔄 [7] Calling onLogin handler with user data');
       // Pasar los datos del usuario autenticado al handler de login (igual que el LoginPage de esap)
       setRemainingAttempts(null);
       onLogin(response.user, response.accessToken, rememberMe);
-      console.log('✅ [8] onLogin handler completed');
     } catch (error: any) {
-      console.error('❌ Error de autenticación:', error);
       const statusCode =
+        error?.status ??
         error?.statusCode ??
+        error?.response?.status ??
         error?.response?.data?.statusCode ??
-        error?.response?.status;
+        null;
       const errorMessage =
         typeof error?.message === 'string' && error.message.trim()
           ? error.message
           : 'Ocurrió un error inesperado. Intenta nuevamente.';
+      if (![400, 401, 429].includes(statusCode)) {
+        console.error('Error de autenticación:', error);
+      }
 
       // Manejar diferentes tipos de errores
       if (statusCode === 429) {

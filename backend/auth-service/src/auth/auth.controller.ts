@@ -205,7 +205,7 @@ export class AuthController {
     return responseBody;
   }
 
-  @UseGuards(JwtAuthGuard)
+  @Public()
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
     this.clearAuthCookie(res);
