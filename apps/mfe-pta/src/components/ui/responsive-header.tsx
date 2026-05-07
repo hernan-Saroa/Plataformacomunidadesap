@@ -143,6 +143,9 @@ export function ResponsiveHeader({
     return `${baseClasses} ${variantClass} ${customClass || ''}`;
   };
 
+  const getActionKey = (scope: string, action: ResponsiveHeaderAction, index: number) =>
+    `${scope}-${action.label}-${index}`;
+
   const allActions = [
     ...(primaryAction ? [{ ...primaryAction, isPrimary: true }] : []),
     ...secondaryActions.map(action => ({ ...action, isPrimary: false }))
@@ -154,10 +157,11 @@ export function ResponsiveHeader({
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className={`flex flex-col lg:flex-row lg:items-center justify-between gap-3 md:gap-4 ${className}`}
+      className={className}
     >
-      {/* Left Section: Title, Description, Icon, Badge */}
-      <div className="flex-1 min-w-0">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 md:gap-4">
+        {/* Left Section: Title, Description, Icon, Badge */}
+        <div key="header-left" className="flex-1 min-w-0">
         {/* Breadcrumbs (opcional) */}
         {breadcrumbs && breadcrumbs.length > 0 && (
           <nav className="flex items-center gap-2 mb-2 text-xs text-gray-500">
@@ -216,20 +220,20 @@ export function ResponsiveHeader({
             )}
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* Right Section: Actions - RENDERIZADO ULTRA-AGRESIVO */}
-      {allActions.length > 0 && (
-        <>
+        {/* Right Section: Actions - RENDERIZADO ULTRA-AGRESIVO */}
+        {allActions.length > 0 && (
+          <div key="header-actions" className="flex items-center">
           {/* 🚀 MODO COMPLETO: Todos los botones (> 1200px) */}
           {shouldShowFull && (
-            <div className="flex flex-wrap items-center gap-2">
+            <div key="actions-full" className="flex flex-wrap items-center gap-2">
               {/* Secondary Actions */}
               {secondaryActions.map((action, index) => {
                 const ActionIcon = action.icon;
                 return (
                   <button
-                    key={`full-${index}`}
+                    key={getActionKey('full', action, index)}
                     onClick={action.onClick}
                     className={getActionClassName(action.variant || 'secondary', action.className)}
                     title={action.label}
@@ -244,6 +248,7 @@ export function ResponsiveHeader({
               {/* Primary Action */}
               {primaryAction && (
                 <button
+                  key="primary-full"
                   onClick={primaryAction.onClick}
                   className={getActionClassName(primaryAction.variant || 'primary', primaryAction.className)}
                   title={primaryAction.label}
@@ -257,13 +262,13 @@ export function ResponsiveHeader({
 
           {/* 📱 MODO COMPACTO: Iconos secundarios + botón primario (800-1199px) */}
           {shouldShowCompact && (
-            <div className="flex flex-wrap items-center gap-2">
+            <div key="actions-compact" className="flex flex-wrap items-center gap-2">
               {/* Secondary Actions - Solo iconos */}
               {secondaryActions.map((action, index) => {
                 const ActionIcon = action.icon;
                 return (
                   <button
-                    key={index}
+                    key={getActionKey('compact', action, index)}
                     onClick={action.onClick}
                     className={`${getActionClassName(action.variant || 'ghost', action.className)} min-w-[42px] px-2.5`}
                     title={action.label}
@@ -276,6 +281,7 @@ export function ResponsiveHeader({
               {/* Primary Action - Completo */}
               {primaryAction && (
                 <button
+                  key="primary-compact"
                   onClick={primaryAction.onClick}
                   className={getActionClassName(primaryAction.variant || 'primary', primaryAction.className)}
                   title={primaryAction.label}
@@ -289,10 +295,11 @@ export function ResponsiveHeader({
 
           {/* 🎯 MODO MINIMAL: Solo primario + menú "⋮" (< 800px) */}
           {shouldShowMinimal && (
-            <div className="flex items-center gap-2">
+            <div key="actions-minimal" className="flex items-center gap-2">
               {/* Primary Action - Siempre visible */}
               {primaryAction && (
                 <button
+                  key="primary-minimal"
                   onClick={primaryAction.onClick}
                   className={getActionClassName(primaryAction.variant || 'primary', primaryAction.className)}
                   title={primaryAction.label}
@@ -304,7 +311,7 @@ export function ResponsiveHeader({
 
               {/* Menú "Más opciones" - Solo si hay acciones secundarias */}
               {secondaryActions.length > 0 && (
-                <div className="relative">
+                <div key="secondary-menu" className="relative">
                   <button
                     onClick={() => setIsMenuOpen(!isMenuOpen)}
                     className={getActionClassName('ghost')}
@@ -316,14 +323,15 @@ export function ResponsiveHeader({
                   {/* Dropdown Menu */}
                   <AnimatePresence>
                     {isMenuOpen && (
-                      <>
-                        {/* Overlay */}
                         <div
+                          key="dropdown-overlay"
                           className="fixed inset-0 z-40"
                           onClick={() => setIsMenuOpen(false)}
                         />
-                        
+                    )}
+                    {isMenuOpen && (
                         <motion.div
+                          key="dropdown-menu"
                           initial={{ opacity: 0, y: -10, scale: 0.95 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -10, scale: 0.95 }}
@@ -342,7 +350,7 @@ export function ResponsiveHeader({
                               
                               return (
                                 <button
-                                  key={index}
+                                  key={getActionKey('dropdown', action, index)}
                                   onClick={() => {
                                     action.onClick();
                                     setIsMenuOpen(false);
@@ -358,15 +366,15 @@ export function ResponsiveHeader({
                             })}
                           </div>
                         </motion.div>
-                      </>
                     )}
                   </AnimatePresence>
                 </div>
               )}
             </div>
           )}
-        </>
-      )}
+          </div>
+        )}
+      </div>
     </motion.div>
   );
 }

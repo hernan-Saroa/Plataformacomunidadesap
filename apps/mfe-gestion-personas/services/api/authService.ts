@@ -67,7 +67,12 @@ class AuthService {
    */
   async logout(): Promise<void> {
     try {
-      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT);
+      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT, {}, {
+        skipAuth: true,
+        skipAuthRefresh: true,
+        skipErrorToast: true,
+        retries: 0,
+      });
     } finally {
       this.clearAuthData();
     }

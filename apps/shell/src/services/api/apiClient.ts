@@ -26,6 +26,7 @@ import { syncEngine } from './syncEngine';
 interface RequestConfig extends RequestInit {
   skipAuth?: boolean;
   skipErrorToast?: boolean;
+  skipErrorLog?: boolean;
   skipAuthRefresh?: boolean;
   retries?: number;
 }
@@ -295,6 +296,7 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipErrorLog = false,
       skipAuthRefresh = false,
       retries = this.retryConfig.attempts,
       ...fetchConfig
@@ -305,7 +307,7 @@ export class ApiClient {
 
     while (attempt <= retries) {
       try {
-        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh);
+        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh, skipErrorLog);
       } catch (error: any) {
         lastError = error;
         attempt++;
@@ -339,6 +341,7 @@ export class ApiClient {
     skipAuth: boolean,
     skipErrorToast: boolean,
     allowRefresh = true,
+    skipErrorLog = false,
   ): Promise<T> {
     const isGet = !fetchConfig.method || fetchConfig.method.toUpperCase() === 'GET';
     const isMutation = fetchConfig.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(fetchConfig.method.toUpperCase());
@@ -402,7 +405,7 @@ export class ApiClient {
       if (response.status === 401 && !skipAuth && allowRefresh) {
         const newToken = await this.refreshAccessToken();
         if (newToken) {
-          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false);
+          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false, skipErrorLog);
         }
         const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
         expiredError.status = 401;
@@ -421,7 +424,7 @@ export class ApiClient {
     } catch (error: any) {
       clearTimeout(timeoutId);
       // Errores de red (servicio no disponible) — solo warn, no spam
-      if (!url.includes('/notificaciones/') && !url.includes(':3009/') && !url.includes('/notifications')) {
+      if (!skipErrorLog && !url.includes('/notificaciones/') && !url.includes(':3009/') && !url.includes('/notifications')) {
         if (!error.status && (error.name === 'TypeError' || error.name === 'AbortError')) {
           console.warn('⚠️ Servicio no disponible:', url);
         } else {

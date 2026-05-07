@@ -212,6 +212,9 @@ const USER_DATA_STORAGE_KEY = config.STORAGE_KEYS.USER_DATA;
 const ACTIVE_SESSION_STORAGE_KEY = 'esap-sesion-activa';
 const SENSITIVE_SESSION_STORAGE_KEYS = [
   USER_DATA_STORAGE_KEY,
+];
+const CLEAR_SESSION_STATE_STORAGE_KEYS = [
+  USER_DATA_STORAGE_KEY,
   ACTIVE_SESSION_STORAGE_KEY,
 ];
 
@@ -249,7 +252,7 @@ function migrateSensitiveSessionDataToSessionStorage() {
 }
 
 function clearSensitiveSessionState() {
-  for (const key of SENSITIVE_SESSION_STORAGE_KEYS) {
+  for (const key of CLEAR_SESSION_STATE_STORAGE_KEYS) {
     sessionStorage.removeItem(key);
     localStorage.removeItem(key);
   }
@@ -635,6 +638,8 @@ export default function App() {
   // Handler para login con integración del backend
   const handleLogin = (user: User, _accessToken: string, rememberMe?: boolean) => {
     try {
+      authService.setCurrentUserCache(user as any);
+
       // console.log('🔐 Login handler called with user:', user);
       // console.log('🔐 Login handler called with roles:', user.roles);
       // console.log('🔐 Login handler called with accessToken:', accessToken);
@@ -833,6 +838,7 @@ export default function App() {
   const handleLogout = (viewToast = true) => {
     // Limpiar la cookie HttpOnly en el backend (OTIC-001)
     authService.logout().catch(() => {/* el servidor puede estar caído; la cookie expira sola */});
+    delete (window as any).__esap_auth_cache;
     localStorage.clear();
     AUTH_TOKEN_STORAGE_KEYS.forEach((key) => sessionStorage.removeItem(key));
     clearSensitiveSessionState();
@@ -1088,6 +1094,11 @@ export default function App() {
 
         return (
           <BackofficeApp
+            key={[
+              userData?.personId || usuarioActual?.id || 'anon',
+              ...(userData?.roles || []),
+              ...(userData?.permissions || []),
+            ].join(':')}
             // usuario={usuarioActual!}
             onLogout={handleLogout}
             onBackToSystemSelector={handleBackToSystemSelector}
