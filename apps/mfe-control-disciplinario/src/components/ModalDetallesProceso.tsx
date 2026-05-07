@@ -2,6 +2,7 @@
  * MODAL DETALLES PROCESO — WORLD CLASS ESAP SIGL v5.1
  * Diseño canónico: pestañas General | Archivos | Actuaciones | Tareas | Notas
  * Usa createPortal para que el backdrop cubra toda la pantalla (bypass motion stacking context)
+ * PLANTILLA REAL- USADA
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -2133,18 +2134,46 @@ export function ModalDetallesProceso({
 
   // ═══ Cargar noticia asociada ═══
   useEffect(() => {
+    console.log('[ModalDetallesProceso] useEffect ejecutándose, proceso:', proceso?.id);
     if (!proceso?.id) {
+      console.log('[ModalDetallesProceso] No hay proceso.id, limpiando noticia');
       setNoticia(null);
       return;
     }
 
+    console.log('[ModalDetallesProceso] Cargando noticia para proceso:', proceso.id);
     disciplinaryService.getAssociatedNewsToProcess(proceso.id)
       .then((noticias) => {
+        console.log('[ModalDetallesProceso] ✅ API llamada exitosa, noticias recibidas:', noticias);
         // Asumimos que hay solo una noticia asociada
-        setNoticia(noticias[0] || null);
+        const noticiaRecibida = noticias[0] || null;
+        console.log('[ModalDetallesProceso] Noticia seleccionada:', noticiaRecibida);
+        if (noticiaRecibida) {
+          console.log('[ModalDetallesProceso] Campos de noticia:', {
+            id: noticiaRecibida.id,
+            radicado: noticiaRecibida.radicado,
+            origen: noticiaRecibida.origen,
+            hechos: noticiaRecibida.hechos,
+            disciplinable: noticiaRecibida.disciplinable,
+            denunciante: noticiaRecibida.denunciante,
+            territorial: noticiaRecibida.territorial,
+            dependenciaDenunciado: noticiaRecibida.dependenciaDenunciado,
+            fechaQueja: noticiaRecibida.fechaQueja,
+            fechaRecepcion: noticiaRecibida.fechaRecepcion,
+            fechaHechos: noticiaRecibida.fechaHechos
+          });
+        } else {
+          console.log('[ModalDetallesProceso] ⚠️ No hay noticia asociada para este proceso');
+        }
+        setNoticia(noticiaRecibida);
       })
       .catch((err) => {
-        console.error('[ModalDetallesProceso] Error cargando noticia:', err);
+        console.error('[ModalDetallesProceso] ❌ Error cargando noticia:', err);
+        console.error('[ModalDetallesProceso] Detalles del error:', {
+          message: err?.message,
+          status: err?.status,
+          response: err?.response
+        });
         setNoticia(null);
       });
   }, [proceso?.id]);
@@ -3987,8 +4016,17 @@ export function ModalDetallesProceso({
                 {tabActiva === 'general' && (() => {
                   const origenVal = proceso.origenNoticia || (proceso as any).origen || '';
                   const fechaRecNoticia = proceso.fechaRecepcionNoticia || '';
-                  const cantDenunciados = proceso.denunciados?.length || (proceso.denunciado ? 1 : 0);
-                  const cantDenunciantes = proceso.denunciantes?.length || (proceso.denunciante ? 1 : 0);
+
+
+                  const cantDenunciados = proceso.denunciados?.length ||
+                    (Array.isArray(proceso.denunciado) ? proceso.denunciado.length : (proceso.denunciado ? 1 : 0));
+                  const cantDenunciantes = proceso.denunciantes?.length ||
+                    (Array.isArray(proceso.denunciante) ? proceso.denunciante.length : (proceso.denunciante ? 1 : 0));
+
+                  console.log('[ModalDetallesProceso] Cantidades calculadas:', {
+                    cantDenunciados,
+                    cantDenunciantes
+                  });
                   const cantHechos = proceso.hechosSeparados?.length || (proceso.hechos ? 1 : 0);
                   const cantAdjuntos = proceso.archivosAdjuntos?.length || 0;
                   const territorial = proceso.territorial || (proceso.denunciado && typeof proceso.denunciado !== 'string' ? (proceso.denunciado as any).dependencia : '');
@@ -4114,24 +4152,45 @@ export function ModalDetallesProceso({
                         </div>
                         
                         <div className="space-y-4">
-                           {(() => {
-                             // Use proceso.denunciados if available, otherwise try noticia.denunciados, otherwise fallback to proceso.denunciado
-                             const denunciados = proceso.denunciados && proceso.denunciados.length > 0
-                               ? proceso.denunciados
-                               : (noticia?.denunciados && noticia.denunciados.length > 0
-                                   ? noticia.denunciados
-                                   : (proceso.denunciado ? [{
-                                       id: 'fallback-denunciado',
-                                       nombre: getNombre(proceso.denunciado),
-                                       identificacion: getId(proceso.denunciado),
-                                       cargo: cargo || '',
-                                       lugarHechos: '',
-                                       dependencia: proceso.dependencia || '',
-                                     }] : []));
+                            
+                            {(() => {
+                              // Use proceso.denunciados if available, otherwise try proceso.denunciado if it's an array,
+                              // otherwise try noticia.disciplinable, otherwise fallback to proceso.denunciado as single object
 
-                             return denunciados.length > 0 ? (
-                               denunciados.map((d, idx) => (
-                                 <div key={d.id || idx} className={`${idx > 0 ? 'pt-4 border-t border-orange-100' : ''}`}>
+                              let denunciados: any[] = [];
+
+                              if (proceso.denunciados && proceso.denunciados.length > 0) {
+                                denunciados = proceso.denunciados;
+                              } else if (Array.isArray(proceso.denunciado) && proceso.denunciado.length > 0) {
+                                denunciados = proceso.denunciado;
+                              } else if (noticia?.disciplinable) {
+                                denunciados = [{
+                                  id: 'noticia-disciplinable',
+                                  nombre: noticia.disciplinable.nombre,
+                                  identificacion: noticia.disciplinable.documento || noticia.disciplinable.cedula || '',
+                                  cargo: noticia.disciplinable.cargo || '',
+                                  lugarHechos: noticia.disciplinable.lugarHechos || '',
+                                  dependencia: noticia.disciplinable.dependencia || '',
+                                  apoderado: noticia.disciplinable.apoderado
+                                }];
+                              } else if (proceso.denunciado && !Array.isArray(proceso.denunciado)) {
+                                denunciados = [{
+                                  id: 'fallback-denunciado',
+                                  nombre: getNombre(proceso.denunciado),
+                                  identificacion: getId(proceso.denunciado),
+                                  cargo: cargo || '',
+                                  lugarHechos: '',
+                                  dependencia: proceso.dependencia || '',
+                                }];
+                              }
+
+
+
+
+
+                              return denunciados.length > 0 ? (
+                                denunciados.map((d, idx) => (
+                                  <div key={`${d.id || 'no-id'}-${idx}`} className={`${idx > 0 ? 'pt-4 border-t border-orange-100' : ''}`}>
                                    <div className="flex items-center gap-2 mb-2">
                                      {denunciados.length > 1 && (
                                        <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-orange-500">{idx + 1}</div>
@@ -4190,27 +4249,51 @@ export function ModalDetallesProceso({
                         </div>
                         
                         <div className="space-y-4">
-                           {(() => {
-                             // Use proceso.denunciantes if available, otherwise try noticia.denunciantes, otherwise fallback to proceso.denunciante
-                             const denunciantes = proceso.denunciantes && proceso.denunciantes.length > 0
-                               ? proceso.denunciantes
-                               : (noticia?.denunciantes && noticia.denunciantes.length > 0
-                                   ? noticia.denunciantes
-                                   : (proceso.denunciante ? [{
-                                       id: 'fallback-denunciante',
-                                       nombre: getNombre(proceso.denunciante),
-                                       identificacion: getId(proceso.denunciante),
-                                       direccion: '',
-                                       telefono: '',
-                                       correo: '',
-                                       cargo: '',
-                                       entidad: '',
-                                       tipo: 'Denunciante' as const,
-                                     }] : []));
+                            
+                            {(() => {
+                              // Use proceso.denunciantes if available, otherwise try proceso.denunciante if it's an array,
+                              // otherwise try noticia.denunciante, otherwise fallback to proceso.denunciante as single object
 
-                             return denunciantes.length > 0 ? (
-                               denunciantes.map((d, idx) => (
-                                 <div key={d.id || idx} className={`${idx > 0 ? 'pt-4 border-t border-gray-100' : ''}`}>
+                              let denunciantes: any[] = [];
+
+                              if (proceso.denunciantes && proceso.denunciantes.length > 0) {
+                                denunciantes = proceso.denunciantes;
+                              } else if (Array.isArray(proceso.denunciante) && proceso.denunciante.length > 0) {
+                                denunciantes = proceso.denunciante;
+                              } else if (noticia?.denunciante) {
+                                denunciantes = [{
+                                  id: 'noticia-denunciante',
+                                  nombre: noticia.denunciante.nombre,
+                                  identificacion: noticia.denunciante.documento || noticia.denunciante.cedula || '',
+                                  direccion: noticia.denunciante.direccion || '',
+                                  telefono: noticia.denunciante.telefono || '',
+                                  correo: noticia.denunciante.email || '',
+                                  cargo: noticia.denunciante.cargo || '',
+                                  entidad: noticia.denunciante.entidad || '',
+                                  tipo: (noticia.denunciante.tipo as 'Denunciante' | 'Víctima') || 'Denunciante',
+                                  apoderado: noticia.denunciante.apoderado
+                                }];
+                              } else if (proceso.denunciante && !Array.isArray(proceso.denunciante)) {
+                                denunciantes = [{
+                                  id: 'fallback-denunciante',
+                                  nombre: getNombre(proceso.denunciante),
+                                  identificacion: getId(proceso.denunciante),
+                                  direccion: '',
+                                  telefono: '',
+                                  correo: '',
+                                  cargo: '',
+                                  entidad: '',
+                                  tipo: 'Denunciante' as const,
+                                }];
+                              }
+
+
+
+
+
+                              return denunciantes.length > 0 ? (
+                                denunciantes.map((d, idx) => (
+                                  <div key={`${d.id || 'no-id'}-${idx}`} className={`${idx > 0 ? 'pt-4 border-t border-gray-100' : ''}`}>
                                    <div className="flex items-center gap-2 mb-2">
                                      {denunciantes.length > 1 && (
                                        <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-blue-600">{idx + 1}</div>
@@ -4431,7 +4514,7 @@ export function ModalDetallesProceso({
                         </div>
                         <div className="space-y-2">
                           {proceso.hechosSeparados.map((h, idx) => (
-                            <div key={h.id || idx} className="flex items-start gap-2">
+                            <div key={`${h.id || 'no-id'}-${idx}`} className="flex items-start gap-2">
                               <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black text-white flex-shrink-0 mt-0.5" style={{ backgroundColor: '#003DA5' }}>{idx + 1}</div>
                               <div>
                                 <p className="text-xs text-gray-700 leading-relaxed">{h.descripcion}</p>
@@ -4522,7 +4605,7 @@ export function ModalDetallesProceso({
                         ) : (
                           <div className="space-y-2">
                             {noticiasAsociadas.map((noticia: any, idx: number) => (
-                              <div key={noticia.id || idx} className="flex items-start gap-3 p-3 rounded-lg border border-purple-100 bg-white hover:bg-purple-50/30 transition-colors">
+                              <div key={`${noticia.id || 'no-id'}-${idx}`} className="flex items-start gap-3 p-3 rounded-lg border border-purple-100 bg-white hover:bg-purple-50/30 transition-colors">
                                 <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F3E8FF' }}>
                                   <Share2 className="w-4 h-4" style={{ color: '#7C3AED' }} />
                                 </div>

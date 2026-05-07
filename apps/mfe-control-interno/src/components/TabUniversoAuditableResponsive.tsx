@@ -1,6 +1,6 @@
-/**
+﻿/**
  * ═══════════════════════════════════════════════════════════════════════════
- * TAB UNIVERSO AUDITABLE - VERSIÓN RESPONSIVE WORLD-CLASS
+ * TAB UNIVERSO AUDITABLE - VERSI\u00d3N RESPONSIVE WORLD-CLASS
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Componente optimizado para todos los dispositivos:
@@ -8,11 +8,11 @@
  * - Tablet/Desktop: Tabla completa
  * - 4K: Espaciado optimizado ESAP
  * 
- * Características:
+ * Caracter\u00edsticas:
  * ✅ ResponsiveTable con mobile cards
  * ✅ Filtros colapsables en mobile
- * ✅ Estadísticas adaptativas
- * ✅ Touch-friendly (44x44px mínimo)
+ * ✅ Estad\u00edsticas adaptativas
+ * ✅ Touch-friendly (44x44px m\u00ednimo)
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -30,15 +30,15 @@ import { FormularioEvaluacionDafpCompleta } from './FormularioEvaluacionDafpComp
 import { VisualizadorResultadosDafp } from './VisualizadorResultadosDafp';
 import type { ProcesoAuditable as ProcesoAuditableType, EvaluacionDafpCompleta } from '@/types/control-interno';
 import { ETIQUETAS_RIESGO } from '@/lib/dafp/constants'; // Nuevo import
-import { calcularPonderacionRiesgo } from './dafp-utils'; // Para recalcular ponderación
+import { calcularPonderacionRiesgo } from './dafp-utils'; // Para recalcular ponderaci\u00f3n
 import { exportarUniversoAuditableExcel, exportarUniversoAuditablePDF } from './services/exportarUniversoAuditablePDF';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
-type NivelRiesgo = 'Crítico' | 'Alto' | 'Medio' | 'Bajo';
-type TipoProceso = 'Estratégico' | 'Misional' | 'Apoyo' | 'Evaluación';
+type NivelRiesgo = 'Cr\u00edtico' | 'Alto' | 'Medio' | 'Bajo';
+type TipoProceso = 'Estrat\u00e9gico' | 'Misional' | 'Apoyo' | 'Evaluaci\u00f3n';
 
 interface ProcesoAuditable {
   id: string;
@@ -119,7 +119,7 @@ interface TabUniversoAuditableResponsiveProps {
 
 function getColorRiesgo(nivel: NivelRiesgo) {
   const colores = {
-    'Crítico': { bg: '#FEE2E2', text: '#991B1B', border: '#DC2626' },
+    'Cr\u00edtico': { bg: '#FEE2E2', text: '#991B1B', border: '#DC2626' },
     'Alto': { bg: '#FFEDD5', text: '#9A3412', border: '#EA580C' },
     'Medio': { bg: '#FEF9C3', text: '#854D0E', border: '#EAB308' },
     'Bajo': { bg: '#DBEAFE', text: '#1E40AF', border: '#3B82F6' }
@@ -159,7 +159,7 @@ export function TabUniversoAuditableResponsive({
   const estadisticasParaExportar = useMemo(() => {
     const total = procesos.length;
     const auditables = procesos.filter((p) => p.auditable).length;
-    const criticos = procesos.filter((p) => p.nivelRiesgo === 'Crítico').length;
+    const criticos = procesos.filter((p) => p.nivelRiesgo === 'Cr\u00edtico').length;
     const altos = procesos.filter((p) => p.nivelRiesgo === 'Alto').length;
     const medios = procesos.filter((p) => p.nivelRiesgo === 'Medio').length;
     const bajos = procesos.filter((p) => p.nivelRiesgo === 'Bajo').length;
@@ -227,13 +227,13 @@ export function TabUniversoAuditableResponsive({
     }
   };
   
-  // Estado para evaluación DAFP
+  // Estado para evaluaci\u00f3n DAFP
   const [modalDafpAbierto, setModalDafpAbierto] = useState(false);
   const [procesoSeleccionadoDafp, setProcesoSeleccionadoDafp] = useState<ProcesoAuditable | null>(null);
   const [panelDafpAbierto, setPanelDafpAbierto] = useState(false);
   const [procesoVisualizandoDafp, setProcesoVisualizandoDafp] = useState<ProcesoAuditable | null>(null);
   
-  // Handler para abrir modal de evaluación DAFP
+  // Handler para abrir modal de evaluaci\u00f3n DAFP
   const handleEvaluarDafp = (proceso: ProcesoAuditable) => {
     setProcesoSeleccionadoDafp(proceso);
     setModalDafpAbierto(true);
@@ -245,7 +245,7 @@ export function TabUniversoAuditableResponsive({
     setPanelDafpAbierto(true);
   };
   
-  // Handler para guardar evaluación DAFP
+  // Handler para guardar evaluaci\u00f3n DAFP
   // ✅ CONECTADO DIRECTAMENTE CON BACKEND via onGuardarEvaluacion
   const handleGuardarEvaluacionDafp = async (evaluacion: Partial<EvaluacionDafpCompleta>) => {
     if (!procesoSeleccionadoDafp) return;
@@ -257,15 +257,15 @@ export function TabUniversoAuditableResponsive({
     const mitigantes = (evaluacion as any).mitigantes ?? evRiesgo?.mitigantes ?? 0;
     const scoreRiesgo = (evaluacion as any).scoreRiesgo ?? evRiesgo?.scoreRiesgo ?? (Number(criticidad) + Number(exposicion) - Number(mitigantes));
 
-    // Convertir evaluación DAFP al formato del formulario que espera el backend
+    // Convertir evaluaci\u00f3n DAFP al formato del formulario que espera el backend
     const datosActualizados = {
-      // Mantener datos básicos del proceso
+      // Mantener datos b\u00e1sicos del proceso
       nombre: procesoSeleccionadoDafp.nombre,
       codigo: procesoSeleccionadoDafp.codigo,
       macroproceso: procesoSeleccionadoDafp.macroproceso,
       tipoProceso: procesoSeleccionadoDafp.tipoProceso,
       dependenciaResponsable: procesoSeleccionadoDafp.dependenciaResponsable,
-      // Agregar campos de evaluación DAFP
+      // Agregar campos de evaluaci\u00f3n DAFP
       riesgosExtremos: evaluacion.riesgosExtremos || 0,
       riesgosAltos: evaluacion.riesgosAltos || 0,
       riesgosModerados: evaluacion.riesgosModerados || 0,
@@ -278,7 +278,7 @@ export function TabUniversoAuditableResponsive({
       resultadoUltimaAuditoria: evaluacion.resultadoUltimaAuditoria || 'SIN_AUDITORIA',
       // Campos calculados
       ponderacionRiesgo: evaluacion.ponderacionRiesgo || 'BAJO',
-      decisionFinal: evaluacion.decisionFinal || 'AUDITORÍA POSTERIOR',
+      decisionFinal: evaluacion.decisionFinal || 'AUDITOR\u00cdA POSTERIOR',
       motivoDecision: evaluacion.motivoDecision || '',
       prioridadRegla: evaluacion.prioridadRegla || 5,
       // Score C+E-M para persistir en backend
@@ -288,11 +288,11 @@ export function TabUniversoAuditableResponsive({
       scoreRiesgo,
     };
     
-    // ✅ Guardar directamente al backend usando la función editarProceso del hook
+    // ✅ Guardar directamente al backend usando la funci\u00f3n editarProceso del hook
     if (onGuardarEvaluacion) {
       await onGuardarEvaluacion(procesoSeleccionadoDafp.id, datosActualizados);
     } else {
-      console.warn('[TabUniversoAuditableResponsive] onGuardarEvaluacion no está definido');
+      console.warn('[TabUniversoAuditableResponsive] onGuardarEvaluacion no est\u00e1 definido');
     }
     
     // Cerrar modal
@@ -305,11 +305,11 @@ export function TabUniversoAuditableResponsive({
    * TODO: Eliminar cuando se unifiquen los tipos
    */
   const convertirProceso = (proceso: ProcesoAuditable): ProcesoAuditableType => {
-    // ✅ Solo crear evaluacionDafp si hay datos REALES de evaluación DAFP
+    // ✅ Solo crear evaluacionDafp si hay datos REALES de evaluaci\u00f3n DAFP
     // Detectar si fue evaluado por: totalRiesgos > 0 o riesgos contados
     // Los campos ponderacionRiesgo y decisionFinal NO se persisten en backend
     const tieneEvaluacionDafp = proceso._evaluacionRiesgo && (
-      // Tiene riesgos contados (indica que se hizo la evaluación DAFP)
+      // Tiene riesgos contados (indica que se hizo la evaluaci\u00f3n DAFP)
       (proceso._evaluacionRiesgo.totalRiesgos !== undefined && proceso._evaluacionRiesgo.totalRiesgos > 0) ||
       // O tiene cualquier tipo de riesgo registrado
       ((proceso._evaluacionRiesgo.riesgosExtremos ?? 0) + 
@@ -325,7 +325,7 @@ export function TabUniversoAuditableResponsive({
       const bajos = proceso._evaluacionRiesgo.riesgosBajos ?? 0;
       const total = proceso._evaluacionRiesgo.totalRiesgos ?? (extremos + altos + moderados + bajos);
       
-      // Recalcular ponderación ya que el backend no la guarda
+      // Recalcular ponderaci\u00f3n ya que el backend no la guarda
       const ponderacionCalculada = calcularPonderacionRiesgo(extremos, altos, moderados, bajos, total);
       
       return {
@@ -338,7 +338,7 @@ export function TabUniversoAuditableResponsive({
         // Requerimientos especiales
         requerimientoComite: proceso._evaluacionRiesgo.requerimientoComite ?? false,
         requerimientoEntesReg: proceso._evaluacionRiesgo.requerimientoEntesReg ?? false,
-        // Auditoría anterior
+        // Auditor\u00eda anterior
         fechaUltimaAuditoria: proceso._evaluacionRiesgo.fechaUltimaAuditoria || proceso.ultimaAuditoria || '',
         resultadoUltimaAuditoria: proceso._evaluacionRiesgo.resultadoUltimaAuditoria || proceso.resultadoUltimaAuditoria || 'SIN_AUDITORIA',
         // Score legacy
@@ -347,7 +347,7 @@ export function TabUniversoAuditableResponsive({
         exposicion: proceso._evaluacionRiesgo.exposicion ?? 0,
         mitigantes: proceso._evaluacionRiesgo.mitigantes ?? 0,
         scoreRiesgo: proceso._evaluacionRiesgo.scoreRiesgo ?? 0,
-        // Criterios DAFP (migración 179)
+        // Criterios DAFP (migraci\u00f3n 179)
         tiempoUltimaAuditoria: proceso._evaluacionRiesgo.tiempoUltimaAuditoria ?? 0,
         temasAltaDireccion: proceso._evaluacionRiesgo.temasAltaDireccion ?? 0,
         objetivosEstrategicos: proceso._evaluacionRiesgo.objetivosEstrategicos ?? 0,
@@ -355,7 +355,7 @@ export function TabUniversoAuditableResponsive({
         ponderacionFinalDafp: proceso._evaluacionRiesgo.ponderacionFinalDafp ?? 0,
         nivelCriticidadDafp: proceso._evaluacionRiesgo.nivelCriticidadDafp ?? '',
         cicloRotacionDafp: proceso._evaluacionRiesgo.cicloRotacionDafp ?? '',
-        // Decisión
+        // Decisi\u00f3n
         decisionFinal: proceso._evaluacionRiesgo.decisionFinal ?? '',
         motivoDecision: proceso._evaluacionRiesgo.motivoDecision ?? '',
         prioridadRegla: proceso._evaluacionRiesgo.prioridadRegla ?? 0,
@@ -385,7 +385,7 @@ export function TabUniversoAuditableResponsive({
         horasEstimadas: proceso.horasEstimadas || 0,
         fechaEvaluacion: new Date().toISOString()
       },
-      evaluacionDafp, // ✅ Ahora se incluyen los datos de evaluación DAFP
+      evaluacionDafp, // ✅ Ahora se incluyen los datos de evaluaci\u00f3n DAFP
       auditable: proceso.auditable ?? true,
       frecuenciaAuditoria: proceso.frecuenciaSugerida || 'Anual',
       prioridad: 1
@@ -393,17 +393,17 @@ export function TabUniversoAuditableResponsive({
   };
 
   // ══════════════════════════════════════════════════════════════════════════
-  // DEFINICIÓN DE COLUMNAS
+  // DEFINICI\u00d3N DE COLUMNAS
   // ══════════════════════════════════════════════════════════════════════════
 
-  // Calcula años de priorización según ciclo de rotación DAFP
-  // Priorización DAFP RE-E-GE-034: años activos dentro del cuatrienio
+  // Calcula a\u00f1os de priorizaci\u00f3n seg\u00fan ciclo de rotaci\u00f3n DAFP
+  // Priorizaci\u00f3n DAFP RE-E-GE-034: a\u00f1os activos dentro del cuatrienio
   const calcPriorizacionAnos = (ciclo?: string) => {
     if (!ciclo) return [];
-    if (ciclo === 'Todos los años' || ciclo === 'Cada año') return [1, 2, 3, 4];
-    if (ciclo === 'Cada 2 años') return [2, 4];
-    if (ciclo === 'Cada 3 años') return [3];
-    if (ciclo === 'Cada 4 años') return [4];
+    if (ciclo === 'Todos los a\u00f1os' || ciclo === 'Cada a\u00f1o') return [1, 2, 3, 4];
+    if (ciclo === 'Cada 2 a\u00f1os') return [2, 4];
+    if (ciclo === 'Cada 3 a\u00f1os') return [3];
+    if (ciclo === 'Cada 4 a\u00f1os') return [4];
     return [];
   };
 
@@ -416,10 +416,10 @@ export function TabUniversoAuditableResponsive({
   };
 
   const columns: Column<ProcesoAuditable>[] = [
-    // 1. Código
+    // 1. C\u00f3digo
     {
       key: 'codigo',
-      label: 'Código',
+      label: 'C\u00f3digo',
       width: '70px',
       render: (value) => (
         <span className="font-mono text-[11px] font-bold text-gray-800">{value}</span>
@@ -446,9 +446,9 @@ export function TabUniversoAuditableResponsive({
       render: (value) => {
         const tipoColors: Record<string, string> = {
           'Misional': 'bg-blue-100 text-blue-700',
-          'Estratégico': 'bg-purple-100 text-purple-700',
+          'Estrat\u00e9gico': 'bg-purple-100 text-purple-700',
           'Apoyo': 'bg-gray-100 text-gray-700',
-          'Evaluación': 'bg-orange-100 text-orange-700',
+          'Evaluaci\u00f3n': 'bg-orange-100 text-orange-700',
         };
         return (
           <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${tipoColors[value as string] || 'bg-gray-100 text-gray-600'}`}>
@@ -470,7 +470,7 @@ export function TabUniversoAuditableResponsive({
         const m = ev?.riesgosModerados ?? 0;
         const b = ev?.riesgosBajos ?? 0;
         const total = e + a + m + b;
-        if (!total) return <span className="text-xs text-gray-300">—</span>;
+        if (!total) return <span className="text-xs text-gray-500">—</span>;
 
         let nivel: string;
         let style: { bg: string; text: string };
@@ -489,7 +489,7 @@ export function TabUniversoAuditableResponsive({
         );
       }
     },
-    // 5. Ponderación DAFP
+    // 5. Ponderaci\u00f3n DAFP
     {
       key: 'ponderacionDafp',
       label: 'Pond. DAFP',
@@ -497,10 +497,10 @@ export function TabUniversoAuditableResponsive({
       width: '85px',
       render: (_, p) => {
         const pond = p._evaluacionRiesgo?.ponderacionFinalDafp;
-        if (!pond) return <span className="text-xs text-gray-300">—</span>;
+        if (!pond) return <span className="text-xs text-gray-500">—</span>;
         return (
           <div className="text-center">
-            <span className="text-sm font-bold text-[#003DA5]">{Number(pond).toFixed(2)}</span>
+            <span className="text-sm font-bold text-[#003DA5]">{Number(pond).toFixed(1)}</span>
             <span className="text-[9px] text-gray-400"> /5</span>
           </div>
         );
@@ -514,7 +514,7 @@ export function TabUniversoAuditableResponsive({
       width: '80px',
       render: (_, p) => {
         const nivel = p._evaluacionRiesgo?.nivelCriticidadDafp;
-        if (!nivel) return <span className="text-xs text-gray-300">—</span>;
+        if (!nivel) return <span className="text-xs text-gray-500">—</span>;
         const c = CRITICIDAD_COLORS[nivel] || { bg: '#E5E7EB', text: '#374151' };
         return (
           <span
@@ -526,7 +526,7 @@ export function TabUniversoAuditableResponsive({
         );
       }
     },
-    // 7. Ciclo de rotación
+    // 7. Ciclo de rotaci\u00f3n
     {
       key: 'ciclo',
       label: 'Ciclo',
@@ -534,7 +534,7 @@ export function TabUniversoAuditableResponsive({
       width: '75px',
       render: (_, p) => {
         const ciclo = p._evaluacionRiesgo?.cicloRotacionDafp;
-        if (!ciclo) return <span className="text-xs text-gray-300">—</span>;
+        if (!ciclo) return <span className="text-xs text-gray-500">—</span>;
         return <span className="text-[10px] font-medium text-gray-700">{ciclo}</span>;
       }
     },
@@ -558,19 +558,19 @@ export function TabUniversoAuditableResponsive({
         value ? (
           <CheckCircle2 className="w-4 h-4 text-green-600 mx-auto" />
         ) : (
-          <X className="w-4 h-4 text-gray-300 mx-auto" />
+          <X className="w-4 h-4 text-gray-900 mx-auto" />
         )
     },
-    // 10. Priorización años
+    // 10. Priorizaci\u00f3n a\u00f1os
     {
       key: 'priorizacionAnos',
-      label: 'Años',
+      label: 'A\u00f1os',
       align: 'center',
       width: '100px',
       render: (_, p) => {
         const ciclo = p._evaluacionRiesgo?.cicloRotacionDafp;
         const anosActivos = calcPriorizacionAnos(ciclo);
-        if (!ciclo) return <span className="text-xs text-gray-300">—</span>;
+        if (!ciclo) return <span className="text-xs text-gray-500">—</span>;
         return (
           <div className="flex gap-0.5 justify-center">
             {[1, 2, 3, 4].map(ano => (
@@ -579,7 +579,7 @@ export function TabUniversoAuditableResponsive({
                 className={`w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center border ${
                   anosActivos.includes(ano)
                     ? 'bg-[#003DA5] text-white border-[#003DA5]'
-                    : 'bg-gray-50 text-gray-300 border-gray-200'
+                    : 'bg-gray-50 text-gray-950 border-gray-400'
                 }`}
               >
                 {ano}
@@ -601,7 +601,7 @@ export function TabUniversoAuditableResponsive({
             <button
               onClick={(e) => { e.stopPropagation(); onEditarProceso(proceso); }}
               className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-              title={proceso._evaluacionRiesgo?.ponderacionFinalDafp ? 'Editar evaluación DAFP' : 'Agregar evaluación DAFP'}
+              title={proceso._evaluacionRiesgo?.ponderacionFinalDafp ? 'Editar evaluaci\u00f3n DAFP' : 'Agregar evaluaci\u00f3n DAFP'}
             >
               <Edit2 className="w-3.5 h-3.5" />
             </button>
@@ -610,12 +610,12 @@ export function TabUniversoAuditableResponsive({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (confirm(`¿Eliminar la evaluación de "${proceso.nombre}"?`)) {
+                if (confirm(`¿Eliminar la evaluaci\u00f3n de "${proceso.nombre}"?`)) {
                   onEliminarProceso(proceso.id);
                 }
               }}
               className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors"
-              title="Eliminar evaluación"
+              title="Eliminar evaluaci\u00f3n"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -687,7 +687,7 @@ export function TabUniversoAuditableResponsive({
               className="w-full px-4 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg font-semibold min-h-[44px] hover:shadow-lg transition-all flex items-center justify-center gap-2"
             >
               <Eye className="w-4 h-4" />
-              <span>Ver Evaluación DAFP</span>
+              <span>Ver Evaluaci\u00f3n DAFP</span>
             </button>
           ) : (
             <button
@@ -700,7 +700,7 @@ export function TabUniversoAuditableResponsive({
           )}
         </div>
 
-        {/* Botones de acción - Touch-friendly */}
+        {/* Botones de acci\u00f3n - Touch-friendly */}
         {(puedeEditar || puedeEliminar) && (
         <div className="flex gap-2 pt-4 border-t border-gray-200">
           {puedeEditar && (
@@ -742,7 +742,7 @@ export function TabUniversoAuditableResponsive({
       exit={{ opacity: 0, y: -20 }}
       className="space-y-3"
     >
-      {/* ═══════════════ ESTADÍSTICAS - RESPONSIVE ═══════════════ */}
+      {/* ═══════════════ ESTAD\u00cdSTICAS - RESPONSIVE ═══════════════ */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* Total Procesos */}
         <div className="bg-white rounded-lg border border-gray-200 p-3">
@@ -754,14 +754,14 @@ export function TabUniversoAuditableResponsive({
           <p className="text-xs text-gray-500 mt-1">{estadisticas.procesosAuditables} auditables</p>
         </div>
 
-        {/* Nivel Crítico */}
+        {/* Nivel Cr\u00edtico */}
         <div className="bg-white rounded-lg border border-red-200 p-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs sm:text-sm font-semibold text-red-700">Nivel Crítico</span>
+            <span className="text-xs sm:text-sm font-semibold text-red-700">Nivel Cr\u00edtico</span>
             <AlertTriangle className="w-5 h-5 text-red-600" />
           </div>
           <p className="text-xl font-black text-red-700">{estadisticas.procesosCriticos}</p>
-          <p className="text-xs text-red-600 mt-1">Requieren auditoría anual</p>
+          <p className="text-xs text-red-600 mt-1">Requieren auditor\u00eda anual</p>
         </div>
 
         {/* Nivel Alto */}
@@ -771,7 +771,7 @@ export function TabUniversoAuditableResponsive({
             <AlertCircle className="w-5 h-5 text-orange-600" />
           </div>
           <p className="text-xl font-black text-orange-700">{estadisticas.procesosAltos}</p>
-          <p className="text-xs text-orange-600 mt-1">Auditoría anual o semestral</p>
+          <p className="text-xs text-orange-600 mt-1">Auditor\u00eda anual o semestral</p>
         </div>
 
         {/* Medio y Bajo */}
@@ -783,21 +783,21 @@ export function TabUniversoAuditableResponsive({
           <p className="text-xl font-black text-green-700">
             {estadisticas.procesosMedios + estadisticas.procesosBajos}
           </p>
-          <p className="text-xs text-green-600 mt-1">Auditoría bienal o trienal</p>
+          <p className="text-xs text-green-600 mt-1">Auditor\u00eda bienal o trienal</p>
         </div>
       </div>
 
-      {/* ═══════════════ INFO CÁLCULO DEL SCORE ═══════════════ */}
+      {/* ═══════════════ INFO C\u00c1LCULO DEL SCORE ═══════════════ */}
       <div className="bg-blue-50 border border-blue-300 rounded-lg p-2.5 flex items-start gap-2">
         <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-xs">
-          <p className="font-bold text-gray-900 mb-1">¿Cómo se calcula el Score?</p>
+          <p className="font-bold text-gray-900 mb-1">¿C\u00f3mo se calcula el Score?</p>
           <p className="text-gray-800 mb-1">
             Puntaje de prioridad (0-100) que ordena los procesos de mayor a menor urgencia.
-            <strong> Fórmula:</strong> riesgoResidual = (Probabilidad × Impacto) ÷ Nivel de Control → score = (riesgoResidual ÷ 9) × 100
+            <strong> F\u00f3rmula:</strong> riesgoResidual = (Probabilidad × Impacto) ÷ Nivel de Control → score = (riesgoResidual ÷ 9) × 100
           </p>
           <p className="text-xs text-gray-700">
-            <span className="inline-block mr-4">🔴 90-100: Prioridad alta (auditoría urgente)</span>
+            <span className="inline-block mr-4">🔴 90-100: Prioridad alta (auditor\u00eda urgente)</span>
             <span className="inline-block mr-4">🟡 50-89: Prioridad media</span>
             <span className="inline-block">🟢 0-49: Prioridad baja (postergable)</span>
           </p>
@@ -806,14 +806,14 @@ export function TabUniversoAuditableResponsive({
 
       {/* ═══════════════ FILTROS - COLAPSABLES EN MOBILE ═══════════════ */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        {/* Header de filtros con botón collapse (solo mobile) */}
+        {/* Header de filtros con bot\u00f3n collapse (solo mobile) */}
         <div className="px-3 py-2 border-b border-gray-200 bg-gray-50">
           <button
             onClick={() => setFiltrosAbiertos(!filtrosAbiertos)}
             className="lg:hidden w-full flex items-center justify-between text-left min-h-[44px]"
           >
             <span className="text-sm font-bold text-gray-700">
-              🔍 Filtros de búsqueda
+              🔍 Filtros de b\u00fasqueda
             </span>
             {filtrosAbiertos ? (
               <ChevronUp className="w-5 h-5 text-gray-600" />
@@ -823,7 +823,7 @@ export function TabUniversoAuditableResponsive({
           </button>
 
           <div className="hidden lg:block">
-            <span className="text-sm font-bold text-gray-700">🔍 Filtros de búsqueda</span>
+            <span className="text-sm font-bold text-gray-700">🔍 Filtros de b\u00fasqueda</span>
           </div>
         </div>
 
@@ -831,7 +831,7 @@ export function TabUniversoAuditableResponsive({
         {filtrosAbiertos && (
           <div className="p-3">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Búsqueda */}
+              {/* B\u00fasqueda */}
               <div>
                 <label className="block text-xs font-semibold text-gray-700 mb-1">
                   Buscar proceso
@@ -842,7 +842,7 @@ export function TabUniversoAuditableResponsive({
                     type="text"
                     value={busqueda}
                     onChange={(e) => onBusquedaChange(e.target.value)}
-                    placeholder="Nombre, código o dependencia..."
+                    placeholder="Nombre, c\u00f3digo o dependencia..."
                     className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:outline-none text-sm"
                   />
                 </div>
@@ -859,7 +859,7 @@ export function TabUniversoAuditableResponsive({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:outline-none text-sm"
                 >
                   <option value="TODOS">Todos los niveles</option>
-                  <option value="Crítico">🔴 Crítico</option>
+                  <option value="Cr\u00edtico">🔴 Cr\u00edtico</option>
                   <option value="Alto">🟠 Alto</option>
                   <option value="Medio">🟡 Medio</option>
                   <option value="Bajo">🔵 Bajo</option>
@@ -877,10 +877,10 @@ export function TabUniversoAuditableResponsive({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-blue-600 focus:outline-none text-sm"
                 >
                   <option value="TODOS">Todos los tipos</option>
-                  <option value="Estratégico">Estratégico</option>
+                  <option value="Estrat\u00e9gico">Estrat\u00e9gico</option>
                   <option value="Misional">Misional</option>
                   <option value="Apoyo">Apoyo</option>
-                  <option value="Evaluación">Evaluación</option>
+                  <option value="Evaluaci\u00f3n">Evaluaci\u00f3n</option>
                 </select>
               </div>
             </div>
@@ -898,7 +898,7 @@ export function TabUniversoAuditableResponsive({
                 Procesos Auditables ({procesos.filter((p) => p.auditable).length})
               </h2>
               <p className="text-xs text-gray-600">
-                Procesos del universo auditable institucional según el MECI
+                Procesos del universo auditable institucional seg\u00fan el MECI
               </p>
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -969,7 +969,7 @@ export function TabUniversoAuditableResponsive({
         />
       </div>
 
-      {/* ═══════════════ MODAL: EVALUACIÓN DAFP ═══════════════ */}
+      {/* ═══════════════ MODAL: EVALUACI\u00d3N DAFP ═══════════════ */}
       {modalDafpAbierto && procesoSeleccionadoDafp && (
         <FormularioEvaluacionDafpCompleta
           proceso={convertirProceso(procesoSeleccionadoDafp)}

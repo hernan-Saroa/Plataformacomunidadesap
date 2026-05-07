@@ -1026,17 +1026,23 @@ function TarjetaAuditoria({
                   className="text-[10px] md:text-xs"
                   style={{ background: '#E0EDFF', color: '#003DA5' }}
                 >
-                  {auditoria.auditorAsignado.iniciales}
+                  {auditoria.auditorAsignado.nombre === 'Por asignar' && auditoria.equipoAuditores?.length > 0 
+                    ? 'EQ' 
+                    : auditoria.auditorAsignado.iniciales}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
                 <p className="text-[10px] md:text-xs text-gray-500">👤 Auditor Asignado:</p>
                 <p className="font-bold text-[11px] md:text-sm text-gray-900 line-clamp-1 leading-tight">
-                  {auditoria.auditorAsignado.nombre}
+                  {auditoria.auditorAsignado.nombre === 'Por asignar' && auditoria.equipoAuditores?.length > 0
+                    ? auditoria.equipoAuditores.map((a: any) => typeof a === 'string' ? a : a.nombre).join(', ')
+                    : auditoria.auditorAsignado.nombre}
                 </p>
-                <p className="text-[10px] md:text-xs text-gray-600 leading-tight">
-                  {auditoria.auditorAsignado.tipoIdentificacion} {auditoria.auditorAsignado.numeroIdentificacion}
-                </p>
+                {auditoria.auditorAsignado.nombre !== 'Por asignar' && (
+                  <p className="text-[10px] md:text-xs text-gray-600 leading-tight">
+                    {auditoria.auditorAsignado.tipoIdentificacion} {auditoria.auditorAsignado.numeroIdentificacion}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -3898,11 +3904,19 @@ export function GestionAuditoriasKanbanSimple() {
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs text-white" style={{ background: '#2a6dbd' }}>
-                            {auditoria.auditorAsignado.iniciales}
+                            {auditoria.auditorAsignado.nombre === 'Por asignar' && auditoria.equipoAuditores?.length > 0 
+                              ? 'EQ' 
+                              : auditoria.auditorAsignado.iniciales}
                           </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">{auditoria.auditorAsignado.nombre}</p>
-                            <p className="text-xs text-gray-500">{auditoria.auditorAsignado.tipoIdentificacion} {auditoria.auditorAsignado.numeroIdentificacion}</p>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">
+                              {auditoria.auditorAsignado.nombre === 'Por asignar' && auditoria.equipoAuditores?.length > 0
+                                ? auditoria.equipoAuditores.map((a: any) => typeof a === 'string' ? a : a.nombre).join(', ')
+                                : auditoria.auditorAsignado.nombre}
+                            </p>
+                            {auditoria.auditorAsignado.nombre !== 'Por asignar' && (
+                              <p className="text-xs text-gray-500">{auditoria.auditorAsignado.tipoIdentificacion} {auditoria.auditorAsignado.numeroIdentificacion}</p>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -4408,12 +4422,25 @@ export function GestionAuditoriasKanbanSimple() {
                   cargo: auditoriaSeleccionada.auditorLider?.cargo || 'Auditor',
                   email: auditoriaSeleccionada.auditorLider?.nombre?.toLowerCase().replace(' ', '.') + '@esap.edu.co' || 'auditor@esap.edu.co'
                 },
-                equipoAuditores: auditoriaSeleccionada.auditorAsignado ? [
-                  {
-                    nombre: auditoriaSeleccionada.auditorAsignado?.nombre || 'Sin asignar',
-                    cargo: auditoriaSeleccionada.auditorAsignado?.cargo || 'Auditor'
-                  }
-                ] : [],
+                equipoAuditores: [
+                  // Incluir el auditor asignado principal (si no es "Por asignar")
+                  ...(auditoriaSeleccionada.auditorAsignado && auditoriaSeleccionada.auditorAsignado.nombre !== 'Por asignar' ? [{
+                    nombre: auditoriaSeleccionada.auditorAsignado.nombre,
+                    cargo: auditoriaSeleccionada.auditorAsignado.cargo || 'Auditor'
+                  }] : []),
+                  // Incluir el equipo adicional (vienen como objetos {personaId, nombre, cargo} o strings)
+                  ...(Array.isArray(auditoriaSeleccionada.equipoAuditores) 
+                    ? auditoriaSeleccionada.equipoAuditores
+                        .filter(a => {
+                          const name = typeof a === 'string' ? a : (a.nombre || '');
+                          return name && name !== auditoriaSeleccionada.auditorAsignado?.nombre;
+                        })
+                        .map(a => ({
+                          nombre: typeof a === 'string' ? a : (a.nombre || 'Auditor'),
+                          cargo: typeof a === 'object' ? (a.cargo || 'Auditor') : 'Auditor'
+                        }))
+                    : [])
+                ],
                 // Cronograma de 3 etapas - fechas reales
                 fechaInicio: auditoriaSeleccionada.fechaInicio,
                 fechaFinPlaneacion: auditoriaSeleccionada.fechaFinPlaneacion,
@@ -4471,9 +4498,10 @@ export function GestionAuditoriasKanbanSimple() {
             auditorActualId={auditoriaSeleccionada.auditorLiderId}
             onAsignar={async (auditorId) => {
               console.log('Auditor asignado:', auditorId);
-              // Actualizar auditoría en el backend
+              // Actualizar auditoría en el backend - asignar a ambos roles por defecto en este flujo
               const exito = await actualizarAuditoriaBackend(auditoriaSeleccionada.id, {
-                auditorLiderId: auditorId
+                auditorLiderId: auditorId,
+                auditorAsignadoId: auditorId
               });
               if (exito) {
                 // ✅ Actualizar también el estado local con los datos del auditor
@@ -4483,8 +4511,16 @@ export function GestionAuditoriasKanbanSimple() {
                     aud.id === auditoriaSeleccionada.id 
                       ? {
                           ...aud,
-                          auditorLiderId: auditorId, // ✅ Guardar también el ID (UUID string)
+                          auditorLiderId: auditorId,
+                          auditorAsignadoId: auditorId,
                           auditorLider: {
+                            nombre: auditorSeleccionado.nombre,
+                            cargo: auditorSeleccionado.cargo || 'Auditor',
+                            iniciales: auditorSeleccionado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+                            tipoIdentificacion: 'CC' as const,
+                            numeroIdentificacion: ''
+                          },
+                          auditorAsignado: {
                             nombre: auditorSeleccionado.nombre,
                             cargo: auditorSeleccionado.cargo || 'Auditor',
                             iniciales: auditorSeleccionado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
@@ -4497,6 +4533,8 @@ export function GestionAuditoriasKanbanSimple() {
                 }
                 setModalAsignarAuditorOpen(false);
                 setAuditoriaSeleccionada(null);
+                // Recargar desde backend para asegurar sincronización completa
+                await recargarAuditorias();
               }
             }}
             auditoresDisponibles={auditoresBackend}
