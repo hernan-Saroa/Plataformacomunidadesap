@@ -70,14 +70,10 @@ function getAuthApiBaseUrl(): string {
 async function fetchFromAuthService<T>(endpoint: string): Promise<T | null> {
   try {
     const baseUrl = getAuthApiBaseUrl();
-    const token = typeof localStorage !== 'undefined' 
-      ? sessionStorage.getItem('esap_auth_token') 
-      : null;
-    
     const response = await fetch(`${baseUrl}${endpoint}`, {
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
       },
     });
     

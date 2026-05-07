@@ -42,10 +42,15 @@ RUN echo "VITE_API_URL=${VITE_API_URL}" > .env.production && \
 # Build de producción (Vite lee .env.production automáticamente)
 RUN npm run build && \
     echo "Verificando build..." && \
-    grep -r "${VITE_API_URL}" /app/build/assets/*.js | head -1 || echo "URL no encontrada en build"
+    grep -r "${VITE_API_URL}" /app/build/assets/*.js | head -1 || echo "URL no encontrada en build" && \
+    echo "ZAP-004: Verificando ausencia de marcadores TODO/FIXME en comentarios del bundle..." && \
+    node scripts/check-bundle-comments.mjs /app/build/assets && \
+    echo "ZAP-004: OK - bundle sin comentarios sensibles."
 
 # ============ STAGE 2: Serve con Nginx ============
 FROM nginx:alpine AS production
+
+COPY docker/nginx/nginx.main.conf /etc/nginx/nginx.conf
 
 # Copiar configuración personalizada de nginx
 RUN mkdir -p /opt/esap-nginx

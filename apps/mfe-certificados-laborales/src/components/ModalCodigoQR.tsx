@@ -252,6 +252,7 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
       <div className="fixed inset-0 z-[9999] overflow-hidden">
         {/* Overlay */}
         <motion.div
+          key="overlay"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}

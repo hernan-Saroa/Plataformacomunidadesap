@@ -129,6 +129,7 @@ export function ModalHistorialCertificados({ isOpen, onClose }: ModalHistorialCe
       {/* Overlay */}
       <AnimatePresence>
         <motion.div
+          key="overlay"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}

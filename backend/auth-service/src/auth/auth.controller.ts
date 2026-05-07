@@ -95,7 +95,9 @@ export class AuthController {
       this.loginProtectionService.clearFailedAttempts(accountKeys);
       this.loginProtectionService.clearIpRateLimit(ipAddress);
       this.applyRateLimitHeaders(res, rateLimitState);
-      return response;
+      const { accessToken, ...responseBody } = response;
+      this.setAuthCookie(res, accessToken);
+      return responseBody;
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         const failedState =
@@ -132,8 +134,14 @@ export class AuthController {
   @Public()
   @Post('login/microsoft')
   @HttpCode(200)
-  loginMicrosoft(@Body() dto: MicrosoftLoginDto) {
-    return this.authService.loginWithMicrosoft(dto);
+  async loginMicrosoft(
+    @Body() dto: MicrosoftLoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const response = await this.authService.loginWithMicrosoft(dto);
+    const { accessToken, ...responseBody } = response;
+    this.setAuthCookie(res, accessToken);
+    return responseBody;
   }
 
   @Public()
@@ -185,8 +193,22 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('refresh')
+  @HttpCode(200)
+  async refresh(
+    @Req() req,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const response = await this.authService.refreshSession(req.user);
+    const { accessToken, ...responseBody } = response;
+    this.setAuthCookie(res, accessToken);
+    return responseBody;
+  }
+
+  @Public()
   @Post('logout')
-  logout() {
+  logout(@Res({ passthrough: true }) res: Response) {
+    this.clearAuthCookie(res);
     return this.authService.logout();
   }
 
@@ -229,6 +251,21 @@ export class AuthController {
     return identifier.includes('@')
       ? this.usersService.findByEmail(identifier)
       : this.usersService.findByUsername(identifier);
+  }
+
+  private setAuthCookie(res: Response, token: string): void {
+    const isProduction = process.env.NODE_ENV === 'production';
+    res.cookie('esap_access_token', token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'strict',
+      maxAge: 3600 * 1000, // 1 hora en ms (mismo que el JWT)
+      path: '/',
+    });
+  }
+
+  private clearAuthCookie(res: Response): void {
+    res.clearCookie('esap_access_token', { path: '/' });
   }
 
   private applyRateLimitHeaders(

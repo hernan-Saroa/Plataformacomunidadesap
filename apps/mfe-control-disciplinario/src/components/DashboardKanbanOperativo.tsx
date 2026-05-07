@@ -4659,11 +4659,11 @@ export function DashboardKanbanOperativo({
     const toastId = toast.loading('Apelando proceso a segunda instancia...');
 
     try {
-      await disciplinaryService.updateProcess(item.id, {
-        etapaActual: backendStage,
-        estado: 'ACTIVO',
-        kanbanStage: stageOrder as any,
-      } as any);
+      // First restore the process from archived state
+      await disciplinaryService.restoreProcess(item.id);
+
+      // Then change the stage to second instance
+      const updatedProcess = await disciplinaryService.cambiarEtapa(item.id, backendStage);
 
       setItems(prev => [
         ...prev,

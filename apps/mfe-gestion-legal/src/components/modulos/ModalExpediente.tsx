@@ -452,17 +452,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     try {
       toast.loading('⬇️ Iniciando descarga...', { id: 'descarga-doc' });
 
-      // Obtener token para autenticación
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(fullUrl, {
         method: 'GET',
-        headers,
-        credentials: 'include', // Importante para CORS en producción
+        credentials: 'include',
       });
 
       if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -522,16 +514,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       const id = expediente.uuid || expediente.id;
       const url = legalService.getDocumentosDownloadZipUrl(id);
 
-      // Obtener token para autenticación
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(url, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
       if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -2320,11 +2304,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       </Dialog>
 
       {/* ==================== MODALES SECUNDARIOS (FUERA DEL DIALOG PRINCIPAL) ==================== */}
-      < ModalNotificar
+      <ModalNotificar
         isOpen={modalNotificarAbierto}
-        onClose={() => setModalNotificarAbierto(false)
-        }
+        onClose={() => setModalNotificarAbierto(false)}
         expediente={expediente}
+        abogadosDisponibles={abogadosDisponibles}
+        rolUsuarioActual={
+          authService.hasRole('MONITOREO_GESTION_LEGAL') ? 'MONITOREO_GESTION_LEGAL' :
+          authService.hasRole('JEFE_GESTION_LEGAL') ? 'JEFE_GESTION_LEGAL' :
+          authService.hasRole('RESUELVE_GESTION_LEGAL') ? 'RESUELVE_GESTION_LEGAL' : ''
+        }
       />
       <ModalCompartir
         isOpen={modalCompartirAbierto}

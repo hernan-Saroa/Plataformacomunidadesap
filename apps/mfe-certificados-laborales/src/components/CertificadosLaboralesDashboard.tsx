@@ -43,6 +43,7 @@ import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoF
 // Tipo de certificado laboral - Solo autoservicio
 interface CertificadoLaboral {
   id: string;
+  rowKey?: string;
   consecutivo: string;
   certificateHash: string;
   qrCode: string;
@@ -175,7 +176,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     return fallback;
   };
 
-  const transformarCertificado = (cert: any): CertificadoLaboral => {
+  const transformarCertificado = (cert: any, index = 0): CertificadoLaboral => {
     const templateTypeRaw =
       cert.template_type ||
       cert.templateType ||
@@ -266,9 +267,25 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           false,
         )
       : false;
+    const certificadoId = String(
+      cert.id ||
+        cert.id_certificado ||
+        cert.idCertificado ||
+        cert.id_certificate ||
+        cert.idCertificate ||
+        cert.certificate_id ||
+        cert.certificateId ||
+        cert.certificate_number ||
+        cert.certificateNumber ||
+        cert.verification_code ||
+        cert.verificationCode ||
+        `${cert.id_number || cert.employee_document || 'cert'}-${cert.created_at || cert.issuance_timestamp || index}`
+    );
+    const rowKey = `${certificadoId}-${index}`;
 
     return {
-      id: cert.id,
+      id: certificadoId,
+      rowKey,
       consecutivo: cert.certificate_number,
       certificateHash: cert.verification_code,
       qrCode: cert.verification_code,
@@ -418,7 +435,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       console.log(`✅ Se cargaron ${items.length} certificados`);
 
       // Transformar datos del backend al formato del componente
-      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => transformarCertificado(cert));
+      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any, index: number) => transformarCertificado(cert, index));
 
       const certificadosOrdenados = [...certificadosTransformados].sort((a, b) => (
         new Date(b.fechaSolicitud).getTime() - new Date(a.fechaSolicitud).getTime()
@@ -508,7 +525,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         page += 1;
       }
 
-      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => transformarCertificado(cert));
+      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any, index: number) => transformarCertificado(cert, index));
       setCertificadosMetricas(certificadosTransformados);
     } catch (err) {
       console.error('❌ Error al cargar métricas de certificados:', err);
@@ -1237,8 +1254,8 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {paginatedCertificados.map((cert) => (
-                    <React.Fragment key={cert.id}>
+                  {paginatedCertificados.map((cert, index) => (
+                    <React.Fragment key={cert.rowKey || `${cert.id}-${index}`}>
                       <tr
                         className="hover:bg-gray-50 transition-colors cursor-pointer"
                         onClick={() => handleVerDetalle(cert)}

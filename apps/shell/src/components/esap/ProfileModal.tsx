@@ -7,7 +7,7 @@ import {
   Camera, Upload, Link as LinkIcon, MessageSquare, Hash
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar';
+import { Avatar, AvatarFallback } from '../ui/avatar';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
@@ -169,8 +169,7 @@ export function ProfileModal({
               <div className="flex items-center gap-2 md:gap-2.5">
                 <div className="relative group flex-shrink-0">
                   <Avatar className="w-12 h-12 md:w-14 md:h-14 ring-2 ring-white/40">
-                    <AvatarImage src={`https://ui-avatars.com/api/?name=${userName}&size=80&background=fff&color=1e5da8&bold=true`} />
-                    <AvatarFallback className="bg-white/20 backdrop-blur-md text-white text-base md:text-lg font-black">
+                    <AvatarFallback className="bg-white text-[#1e5da8] text-base md:text-lg font-black">
                       {userInitials}
                     </AvatarFallback>
                   </Avatar>

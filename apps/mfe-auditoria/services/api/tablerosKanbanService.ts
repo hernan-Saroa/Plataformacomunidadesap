@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Servicio para Tableros Kanban
  * Conecta con el backend: /tableros-kanban
  */
@@ -111,13 +111,9 @@ class TablerosKanbanAPIClient {
       'Accept': 'application/json; charset=utf-8',
     };
 
-    const token = sessionStorage.getItem('esap_auth_token');
-    if (token) {
-      defaultHeaders['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: {
         ...defaultHeaders,
         ...options.headers,

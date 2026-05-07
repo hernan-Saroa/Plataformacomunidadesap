@@ -277,10 +277,8 @@ export function ModalGestionDocumentos({
 
       const fullUrl = `${baseUrl}${prefix}/files/${filename}`;
 
-      // Fetching data to force download (with auth header)
-      const token = sessionStorage.getItem('esap_auth_token');
       const response = await fetch(fullUrl, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Network response was not ok.');
       const blob = await response.blob();
@@ -304,9 +302,8 @@ export function ModalGestionDocumentos({
     toast.info('Preparando descarga ZIP...');
     try {
       const url = ocService.getDocumentosDownloadUrl(requerimientoId, nombreRequerimiento);
-      const token = sessionStorage.getItem('esap_auth_token');
       const response = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        credentials: 'include',
       });
       if (!response.ok) throw new Error(`Error ${response.status}`);
       const blob = await response.blob();
