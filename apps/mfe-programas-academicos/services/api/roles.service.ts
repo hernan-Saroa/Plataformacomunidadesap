@@ -20,6 +20,7 @@ export interface SystemRole {
   icon: string;
   color: string;
   type: 'sistema' | 'personalizado';
+  sistema_destino?:string;
   is_active: boolean;
   requires_2fa: boolean;
   usuarios_count: number;

@@ -25,6 +25,9 @@ export class Role {
   @Column({ default: 'personalizado' })
   type: 'sistema' | 'personalizado';
 
+  @Column({ default: 'Backoffice' })
+  sistema_destino: string;
+
   @Column({ default: 'sistema' })
   category: 'backoffice' | 'portal' | 'sistema' | 'academico' | 'directivo' | 'administrativo';
 

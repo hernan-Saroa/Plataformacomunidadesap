@@ -14,6 +14,7 @@ export interface CreateRoleDto {
   icon?: string;
   color?: string;
   type?: 'sistema' | 'personalizado';
+  sistema_destino?: string;
   category?: 'backoffice' | 'portal' | 'sistema' | 'academico' | 'directivo' | 'administrativo';
   requires_2fa?: boolean;
   permissionIds?: string[];
@@ -26,6 +27,7 @@ export interface UpdateRoleDto {
   icon?: string;
   color?: string;
   type?: 'sistema' | 'personalizado';
+  sistema_destino?: string;
   category?: 'backoffice' | 'portal' | 'sistema' | 'academico' | 'directivo' | 'administrativo';
   requires_2fa?: boolean;
   permissionIds?: string[];
@@ -206,6 +208,7 @@ export class RolesService {
       icon: createRoleDto.icon || 'Shield',
       color: createRoleDto.color || '#003DA5',
       type: createRoleDto.type || 'personalizado',
+      sistema_destino: createRoleDto.sistema_destino || 'Backoffice',
       category: createRoleDto.category || 'sistema',
       requires_2fa: createRoleDto.requires_2fa || false,
       created_by: createdBy,
@@ -238,6 +241,7 @@ export class RolesService {
     if (updateRoleDto.description !== undefined) role.description = updateRoleDto.description;
     if (updateRoleDto.icon) role.icon = updateRoleDto.icon;
     if (updateRoleDto.color) role.color = updateRoleDto.color;
+    if (updateRoleDto.sistema_destino) role.sistema_destino = updateRoleDto.sistema_destino;
     if (updateRoleDto.category) role.category = updateRoleDto.category;
     if (updateRoleDto.requires_2fa !== undefined) role.requires_2fa = updateRoleDto.requires_2fa;
     if (updatedBy) role.updated_by = updatedBy;
@@ -285,6 +289,7 @@ export class RolesService {
       icon: originalRole.icon,
       color: originalRole.color,
       type: 'personalizado',
+      sistema_destino: originalRole.sistema_destino,
       requires_2fa: originalRole.requires_2fa,
       is_active: true,
       created_by: duplicatedBy,
