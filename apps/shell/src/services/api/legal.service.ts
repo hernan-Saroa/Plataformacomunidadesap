@@ -257,6 +257,18 @@ export class LegalService {
         return apiClient.post(`${SERVICE_PREFIX}/expedientes/${anexadoId}/desanexar`, { usuario });
     }
 
+    async notifyExpedienteToRole(expedienteId: string, payload: {
+        roleCode: string;
+        asunto: string;
+        mensaje: string;
+        enviarEmail?: boolean;
+        enviarSistema?: boolean;
+        radicado?: string;
+        etapa?: string;
+    }): Promise<{ ok: boolean }> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/notify-role`, payload);
+    }
+
     // Alias en español para mantener compatibilidad
     async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
         return this.createExpediente(data);

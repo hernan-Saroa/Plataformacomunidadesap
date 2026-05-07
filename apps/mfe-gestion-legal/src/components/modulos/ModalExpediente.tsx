@@ -2320,11 +2320,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       </Dialog>
 
       {/* ==================== MODALES SECUNDARIOS (FUERA DEL DIALOG PRINCIPAL) ==================== */}
-      < ModalNotificar
+      <ModalNotificar
         isOpen={modalNotificarAbierto}
-        onClose={() => setModalNotificarAbierto(false)
-        }
+        onClose={() => setModalNotificarAbierto(false)}
         expediente={expediente}
+        abogadosDisponibles={abogadosDisponibles}
+        rolUsuarioActual={
+          authService.hasRole('MONITOREO_GESTION_LEGAL') ? 'MONITOREO_GESTION_LEGAL' :
+          authService.hasRole('JEFE_GESTION_LEGAL') ? 'JEFE_GESTION_LEGAL' :
+          authService.hasRole('RESUELVE_GESTION_LEGAL') ? 'RESUELVE_GESTION_LEGAL' : ''
+        }
       />
       <ModalCompartir
         isOpen={modalCompartirAbierto}
