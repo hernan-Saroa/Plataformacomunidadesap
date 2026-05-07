@@ -311,6 +311,7 @@ export class ApiClient {
           error.status === 403 || // Forbidden
           error.status === 404 || // Not found
           error.status === 422 || // Validation error
+          !error.status ||        // Error de red: servicio no disponible
           attempt > retries
         ) {
           throw error;
@@ -376,8 +377,12 @@ export class ApiClient {
       // Manejo de respuesta
       return await this.handleResponse<T>(response, skipErrorToast, skipAuth);
     } catch (error: any) {
-      console.log('🔴 Error en request:', error);
       clearTimeout(timeoutId);
+      if (!error.status && (error.name === 'TypeError' || error.name === 'AbortError')) {
+        console.warn('⚠️ Servicio no disponible:', url);
+      } else if (!url.includes(':3009/') && !url.includes('/notificaciones/')) {
+        console.log('🔴 Error en request:', error);
+      }
 
       if (error.name === 'AbortError') {
         throw new Error('Request timeout');

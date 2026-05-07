@@ -456,25 +456,24 @@ export default function App() {
 
     (async () => {
       try {
-        if (!sesionGuardada) {
-          setIsRestoringSession(false);
-          return;
+        // Si hay señal de sesión y el timeout de inactividad ya pasó, cerrar sin llamar al backend
+        if (sesionGuardada) {
+          const sesionParsed = JSON.parse(sesionGuardada);
+          const tiempoTranscurrido = Date.now() - (sesionParsed.timestamp || 0);
+          if (tiempoTranscurrido >= TIMEOUT_INACTIVIDAD) {
+            clearSensitiveSessionState();
+            console.log('⏰ Sesión expirada');
+            setIsRestoringSession(false);
+            return;
+          }
         }
-        const sesionParsed = JSON.parse(sesionGuardada);
-        const tiempoTranscurrido = Date.now() - (sesionParsed.timestamp || 0);
-        if (tiempoTranscurrido >= TIMEOUT_INACTIVIDAD) {
-          clearSensitiveSessionState();
-          console.log('⏰ Sesión expirada');
-          setIsRestoringSession(false);
-          return;
-        }
-        // Verificar cookie con el backend para obtener datos del usuario
+        // Siempre verificar con el backend — la cookie HttpOnly se envía automáticamente
         const user = await authService.verifyToken();
         authService.setCurrentUserCache(user as any);
         applySessionFromUser(user);
         console.log('✅ Sesión restaurada desde backend');
       } catch {
-        // Cookie expirada o inválida — el usuario debe volver a iniciar sesión
+        // Cookie inexistente, expirada o inválida
         if (sesionGuardada) {
           toast.error('Sesión ha expirado', {
             description: 'Por seguridad la sesión se ha cerrado',
