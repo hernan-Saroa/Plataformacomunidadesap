@@ -1657,6 +1657,18 @@ export class ProcesosCoactivosService {
             throw error;
         }
     }
+
+    async notifyExpedienteToRole(id: string, data: {
+        roleCode: string;
+        asunto: string;
+        mensaje: string;
+        enviarEmail?: boolean;
+        enviarSistema?: boolean;
+        radicado?: string;
+        etapa?: string;
+    }): Promise<{ ok: boolean }> {
+        return apiClient.post<{ ok: boolean }>(`${SERVICE_PREFIX}/expedientes/${id}/notify-role`, data);
+    }
 }
 
 export const legalService = new LegalService();
