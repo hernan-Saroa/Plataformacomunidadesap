@@ -145,22 +145,29 @@ class AuthService {
 
   /**
    * Permite que App.tsx restaure el caché tras verifyToken() en recarga de página (OTIC-002)
+   * También escribe en window para que instancias de authService en MFEs remotos puedan leerlo.
    */
   setCurrentUserCache(user: AuthUser): void {
     this._cachedUser = user;
+    // Compartir con otros MFEs en la misma ventana (no es almacenamiento persistente — OTIC-002)
+    (window as any).__esap_auth_cache = user;
   }
 
   /**
    * Verifica si el usuario está autenticado
    */
   isAuthenticated(): boolean {
-    return this._cachedUser !== null;
+    return this.getCurrentUser() !== null;
   }
 
   /**
-   * Obtiene el usuario actual de la sesión
+   * Obtiene el usuario actual de la sesión.
+   * Si esta instancia (MFE remoto) no tiene caché propio, lee del puente en window.
    */
   getCurrentUser(): AuthUser | null {
+    if (!this._cachedUser && (window as any).__esap_auth_cache) {
+      this._cachedUser = (window as any).__esap_auth_cache;
+    }
     return this._cachedUser;
   }
 
@@ -248,10 +255,12 @@ class AuthService {
   private saveUserData(user: any): void {
     // Datos del usuario en memoria únicamente — nunca en sessionStorage/localStorage (OTIC-002)
     this._cachedUser = user as AuthUser;
+    (window as any).__esap_auth_cache = user;
   }
 
   private clearAuthData(): void {
     this._cachedUser = null;
+    delete (window as any).__esap_auth_cache;
     // Limpiar residuos de versiones anteriores que pudieran quedar en storage
     sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
