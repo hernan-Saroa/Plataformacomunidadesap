@@ -4016,18 +4016,7 @@ export function ModalDetallesProceso({
                 {tabActiva === 'general' && (() => {
                   const origenVal = proceso.origenNoticia || (proceso as any).origen || '';
                   const fechaRecNoticia = proceso.fechaRecepcionNoticia || '';
-                  console.log('[ModalDetallesProceso] Calculando cantidades para proceso:', {
-                    procesoId: proceso.id,
-                    denunciadosLength: proceso.denunciados?.length,
-                    denunciadoType: Array.isArray(proceso.denunciado) ? 'array' : typeof proceso.denunciado,
-                    denunciadoLength: Array.isArray(proceso.denunciado) ? proceso.denunciado.length : (proceso.denunciado ? 1 : 0),
-                    denunciantesLength: proceso.denunciantes?.length,
-                    denuncianteType: Array.isArray(proceso.denunciante) ? 'array' : typeof proceso.denunciante,
-                    denuncianteLength: Array.isArray(proceso.denunciante) ? proceso.denunciante.length : (proceso.denunciante ? 1 : 0),
-                    noticia: !!noticia,
-                    noticiaDisciplinable: !!noticia?.disciplinable,
-                    noticiaDenunciante: !!noticia?.denunciante
-                  });
+
 
                   const cantDenunciados = proceso.denunciados?.length ||
                     (Array.isArray(proceso.denunciado) ? proceso.denunciado.length : (proceso.denunciado ? 1 : 0));
@@ -4163,13 +4152,7 @@ export function ModalDetallesProceso({
                         </div>
                         
                         <div className="space-y-4">
-                            {console.log('[ModalDetallesProceso] Construyendo denunciados:', {
-                              noticia: !!noticia,
-                              disciplinable: noticia?.disciplinable,
-                              procesoDenunciados: proceso.denunciados,
-                              procesoDenunciado: proceso.denunciado,
-                              procesoDenunciadoIsArray: Array.isArray(proceso.denunciado)
-                            })}
+                            
                             {(() => {
                               // Use proceso.denunciados if available, otherwise try proceso.denunciado if it's an array,
                               // otherwise try noticia.disciplinable, otherwise fallback to proceso.denunciado as single object
@@ -4201,13 +4184,13 @@ export function ModalDetallesProceso({
                                 }];
                               }
 
-                              console.log('[ModalDetallesProceso] Denunciados finales:', denunciados);
 
 
 
-                             return denunciados.length > 0 ? (
-                               denunciados.map((d, idx) => (
-                                 <div key={d.id || idx} className={`${idx > 0 ? 'pt-4 border-t border-orange-100' : ''}`}>
+
+                              return denunciados.length > 0 ? (
+                                denunciados.map((d, idx) => (
+                                  <div key={`${d.id || 'no-id'}-${idx}`} className={`${idx > 0 ? 'pt-4 border-t border-orange-100' : ''}`}>
                                    <div className="flex items-center gap-2 mb-2">
                                      {denunciados.length > 1 && (
                                        <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-orange-500">{idx + 1}</div>
@@ -4266,13 +4249,7 @@ export function ModalDetallesProceso({
                         </div>
                         
                         <div className="space-y-4">
-                            {console.log('[ModalDetallesProceso] Construyendo denunciantes:', {
-                              noticia: !!noticia,
-                              denunciante: noticia?.denunciante,
-                              procesoDenunciantes: proceso.denunciantes,
-                              procesoDenunciante: proceso.denunciante,
-                              procesoDenuncianteIsArray: Array.isArray(proceso.denunciante)
-                            })}
+                            
                             {(() => {
                               // Use proceso.denunciantes if available, otherwise try proceso.denunciante if it's an array,
                               // otherwise try noticia.denunciante, otherwise fallback to proceso.denunciante as single object
@@ -4310,13 +4287,13 @@ export function ModalDetallesProceso({
                                 }];
                               }
 
-                              console.log('[ModalDetallesProceso] Denunciantes finales:', denunciantes);
 
 
 
-                             return denunciantes.length > 0 ? (
-                               denunciantes.map((d, idx) => (
-                                 <div key={d.id || idx} className={`${idx > 0 ? 'pt-4 border-t border-gray-100' : ''}`}>
+
+                              return denunciantes.length > 0 ? (
+                                denunciantes.map((d, idx) => (
+                                  <div key={`${d.id || 'no-id'}-${idx}`} className={`${idx > 0 ? 'pt-4 border-t border-gray-100' : ''}`}>
                                    <div className="flex items-center gap-2 mb-2">
                                      {denunciantes.length > 1 && (
                                        <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-blue-600">{idx + 1}</div>
@@ -4537,7 +4514,7 @@ export function ModalDetallesProceso({
                         </div>
                         <div className="space-y-2">
                           {proceso.hechosSeparados.map((h, idx) => (
-                            <div key={h.id || idx} className="flex items-start gap-2">
+                            <div key={`${h.id || 'no-id'}-${idx}`} className="flex items-start gap-2">
                               <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black text-white flex-shrink-0 mt-0.5" style={{ backgroundColor: '#003DA5' }}>{idx + 1}</div>
                               <div>
                                 <p className="text-xs text-gray-700 leading-relaxed">{h.descripcion}</p>
@@ -4628,7 +4605,7 @@ export function ModalDetallesProceso({
                         ) : (
                           <div className="space-y-2">
                             {noticiasAsociadas.map((noticia: any, idx: number) => (
-                              <div key={noticia.id || idx} className="flex items-start gap-3 p-3 rounded-lg border border-purple-100 bg-white hover:bg-purple-50/30 transition-colors">
+                              <div key={`${noticia.id || 'no-id'}-${idx}`} className="flex items-start gap-3 p-3 rounded-lg border border-purple-100 bg-white hover:bg-purple-50/30 transition-colors">
                                 <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F3E8FF' }}>
                                   <Share2 className="w-4 h-4" style={{ color: '#7C3AED' }} />
                                 </div>
