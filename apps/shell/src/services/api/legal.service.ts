@@ -1644,7 +1644,11 @@ export class ProcesosCoactivosService {
             if (error?.response?.status === 404) {
                 return null; // Si no existe, retorna null
             }
-            console.error(`Error getConfiguration(${key}):`, error);
+            if (!error?.status) {
+                console.warn(`[legal] Servicio no disponible al obtener config "${key}"`);
+            } else {
+                console.error(`Error getConfiguration(${key}):`, error);
+            }
             throw error;
         }
     }

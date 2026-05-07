@@ -313,6 +313,7 @@ export class ApiClient {
           error.status === 403 || // Forbidden
           error.status === 404 || // Not found
           error.status === 422 || // Validation error
+          !error.status ||        // Error de red: servicio no disponible (ERR_CONNECTION_REFUSED, timeout, etc.)
           attempt > retries
         ) {
           throw error;
@@ -418,11 +419,15 @@ export class ApiClient {
       
       return responseData;
     } catch (error: any) {
-      // Solo loguear errores de requests que no sean del servicio de notificaciones
-      if (!url.includes('/notificaciones/') && !url.includes(':3009/') && !url.includes('/notifications')) {
-        console.log('🔴 Error en request:', error);
-      }
       clearTimeout(timeoutId);
+      // Errores de red (servicio no disponible) — solo warn, no spam
+      if (!url.includes('/notificaciones/') && !url.includes(':3009/') && !url.includes('/notifications')) {
+        if (!error.status && (error.name === 'TypeError' || error.name === 'AbortError')) {
+          console.warn('⚠️ Servicio no disponible:', url);
+        } else {
+          console.log('🔴 Error en request:', error);
+        }
+      }
 
       if (error.name === 'AbortError') {
         throw new Error('Request timeout');

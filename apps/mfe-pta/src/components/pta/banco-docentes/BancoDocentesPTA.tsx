@@ -125,17 +125,22 @@ export function BancoDocentesPTA() {
 
   const loadData = useCallback(async (p = page) => {
     setLoading(true);
-    const [res, statsRes] = await Promise.all([
-      getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50 }),
-      getBancoDocenteStats(),
-    ]);
-    if (res.success && res.data) {
-      setDocentes(res.data.data || []);
-      setTotal(res.data.total || 0);
-      setPages(res.data.pages || 1);
+    try {
+      const [res, statsRes] = await Promise.all([
+        getBancoDocentes({ territorial: filterTerritorial || undefined, dedicacion: filterDedicacion || undefined, estado: filterEstado || undefined, search: search || undefined, page: p, limit: 50 }),
+        getBancoDocenteStats(),
+      ]);
+      if (res.success && res.data) {
+        setDocentes(res.data.data || []);
+        setTotal(res.data.total || 0);
+        setPages(res.data.pages || 1);
+      }
+      if (statsRes.success && statsRes.data) setStats(statsRes.data);
+    } catch {
+      // Fallback silencioso: los servicios ya manejan errores internamente
+    } finally {
+      setLoading(false);
     }
-    if (statsRes.success && statsRes.data) setStats(statsRes.data);
-    setLoading(false);
   }, [filterTerritorial, filterDedicacion, filterEstado, search, page]);
 
   useEffect(() => { loadData(1); setPage(1); }, [filterTerritorial, filterDedicacion, filterEstado]);
