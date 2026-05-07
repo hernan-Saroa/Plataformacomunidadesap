@@ -130,25 +130,6 @@ function SkeletonPulse({
 }
 
 const shimmerStyleId = 'portal-shimmer-style';
-if (typeof document !== 'undefined' && !document.getElementById(shimmerStyleId)) {
-  const style = document.createElement('style');
-  style.id = shimmerStyleId;
-  style.textContent = `
-    @keyframes shimmer {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
-    @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes progressPulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.7; }
-    }
-  `;
-  document.head.appendChild(style);
-}
 
 const DND_ITEM_TYPE = 'PORTAL_SERVICE';
 
@@ -196,6 +177,28 @@ export function PortalTransaccional({
   const [vistaGrid, setVistaGrid] = useState<'grid' | 'list'>('grid');
   const [currentView, setCurrentView] = useState<InternalView>({ type: 'dashboard' });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (!document.getElementById(shimmerStyleId)) {
+      const style = document.createElement('style');
+      style.id = shimmerStyleId;
+      style.textContent = `
+        @keyframes shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes progressPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
 
   useEffect(() => {
     if (!navbarNavigateTo) return;
