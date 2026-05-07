@@ -18,7 +18,6 @@
  * - > 1200px:  Todos los botones completos
  */
 
-import { motion, AnimatePresence } from 'motion/react';
 import { LucideIcon, MoreVertical } from 'lucide-react';
 import { Badge } from './badge';
 import { useState, useEffect, useRef } from 'react';
@@ -152,11 +151,8 @@ export function ResponsiveHeader({
   ];
 
   return (
-    <motion.div
+    <div
       ref={headerRef}
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
       className={className}
     >
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 md:gap-4">
@@ -321,21 +317,13 @@ export function ResponsiveHeader({
                   </button>
 
                   {/* Dropdown Menu */}
-                  <AnimatePresence>
-                    {isMenuOpen && (
+                  {isMenuOpen && (
+                    <>
                         <div
-                          key="dropdown-overlay"
                           className="fixed inset-0 z-40"
                           onClick={() => setIsMenuOpen(false)}
                         />
-                    )}
-                    {isMenuOpen && (
-                        <motion.div
-                          key="dropdown-menu"
-                          initial={{ opacity: 0, y: -10, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                          transition={{ duration: 0.2 }}
+                        <div
                           className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-2xl border-2 border-gray-200 overflow-hidden z-50"
                         >
                           {/* Header del menú */}
@@ -365,9 +353,9 @@ export function ResponsiveHeader({
                               );
                             })}
                           </div>
-                        </motion.div>
-                    )}
-                  </AnimatePresence>
+                        </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -375,6 +363,6 @@ export function ResponsiveHeader({
           </div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
