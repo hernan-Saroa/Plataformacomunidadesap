@@ -14,6 +14,8 @@ import type {
 } from '../../types';
 
 class AuthService {
+  // Cache en memoria: los JWT siguen protegidos como cookies HttpOnly.
+  private _cachedUser: AuthUser | null = null;
   /**
    * Login con Microsoft (OAuth)
    */
@@ -72,27 +74,16 @@ class AuthService {
   }
 
   /**
-   * Refresh del access token
+   * Refresh de sesion con cookie HttpOnly.
+   * El frontend no lee ni guarda refresh tokens.
    */
   async refreshToken(): Promise<RefreshTokenResponse> {
-    const refreshToken = this.getRefreshToken();
-    
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
-
-    const response = await apiClient.post<RefreshTokenResponse>(
+    return apiClient.post<RefreshTokenResponse>(
       API_ENDPOINTS.AUTH.REFRESH,
-      { refreshToken },
+      {},
       { skipAuth: true }
     );
-
-    // Actualizar access token
-    this.saveAccessToken(response.accessToken);
-
-    return response;
   }
-
   /**
    * Verificar token actual
    */
@@ -137,18 +128,23 @@ class AuthService {
   // ==========================================================================
 
   /**
+   * Permite restaurar el usuario tras verifyToken sin persistir datos sensibles.
+   */
+  setCurrentUserCache(user: AuthUser): void {
+    this._cachedUser = user;
+  }
+  /**
    * Verifica si el usuario está autenticado
    */
   isAuthenticated(): boolean {
-    return !!this.getAccessToken();
+    return this._cachedUser !== null;
   }
 
   /**
    * Obtiene el usuario actual del localStorage
    */
   getCurrentUser(): AuthUser | null {
-    const userData = sessionStorage.getItem(config.STORAGE_KEYS.USER_DATA);
-    return userData ? JSON.parse(userData) : null;
+    return this._cachedUser;
   }
 
   /**
@@ -226,38 +222,19 @@ class AuthService {
   // MÉTODOS PRIVADOS
   // ==========================================================================
 
-  private saveTokens(accessToken: string, refreshToken: string): void {
-    sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
-    // Compatibilidad con cliente legacy que usa otra clave.
-    sessionStorage.setItem('esap_access_token', accessToken);
-    sessionStorage.setItem(config.STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
-  }
-
-  private saveAccessToken(accessToken: string): void {
-    sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
-    sessionStorage.setItem('esap_access_token', accessToken);
+  private saveTokens(_accessToken?: string, _refreshToken?: string): void {
+    // Los tokens JWT se gestionan como cookies HttpOnly por el backend.
+    // El frontend no los almacena en sessionStorage/localStorage.
   }
 
   private saveUserData(user: AuthUser): void {
-    sessionStorage.setItem(config.STORAGE_KEYS.USER_DATA, JSON.stringify(user));
-  }
-
-  private getAccessToken(): string | null {
-    return (
-      sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
-      sessionStorage.getItem('esap_access_token')
-    );
-  }
-
-  private getRefreshToken(): string | null {
-    return sessionStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+    this._cachedUser = user;
   }
 
   private clearAuthData(): void {
-    sessionStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    sessionStorage.removeItem('esap_access_token');
-    sessionStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+    this._cachedUser = null;
     sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
+    localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     apiClient.clearCache();
   }
 
