@@ -380,5 +380,4 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
       </motion.div>
     </div>, document.body
   );
-}</content>
-<parameter name="filePath">apps/mfe-gestion-personas/src/components/admin/ScopeConfigModal.tsx
+}

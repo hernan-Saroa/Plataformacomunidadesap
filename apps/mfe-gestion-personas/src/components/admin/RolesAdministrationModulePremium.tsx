@@ -1275,7 +1275,7 @@ export function RolesAdministrationModulePremium() {
           </div>
 
           {/* Empty State */}
-          {filteredRoles.length === 0 && (
+          {paginatedRoles.length === 0 && (
             <div className="py-16 px-4 text-center">
               <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
                 <Shield className="w-10 h-10 text-gray-400" />
