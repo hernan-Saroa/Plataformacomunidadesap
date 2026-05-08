@@ -25,6 +25,36 @@ interface ProfileModalProps {
   onLogout?: () => void;
 }
 
+const ROLE_NAME_BY_CODE: Record<string, string> = {
+  SUPER_ADMIN: 'Super Administrador',
+  ADMIN: 'Administrador',
+};
+
+const formatRoleName = (code?: string) => {
+  if (!code) return 'Sin Rol Activo';
+  if (ROLE_NAME_BY_CODE[code]) return ROLE_NAME_BY_CODE[code];
+
+  return code
+    .toLowerCase()
+    .split('_')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+const normalizePermissions = (permissions: any[] = []) =>
+  permissions
+    .filter(Boolean)
+    .map((permission: any) =>
+      typeof permission === 'string'
+        ? { code: permission, name: permission }
+        : {
+            ...permission,
+            code: permission?.code || permission?.id || '',
+            name: permission?.name || permission?.code || permission?.id || 'Permiso',
+          },
+    );
+
 export function ProfileModal({ 
   isOpen, 
   onClose, 
@@ -51,14 +81,31 @@ export function ProfileModal({
 
   // Mock: Roles activos del usuario (basado en sistema Usuario-Persona)
   const userLogged = authService.getCurrentUser();
-  userRole = userLogged?.roles[0].name || userRole;
+  const currentRoles = Array.isArray(userLogged?.roles) ? userLogged.roles : [];
+  const directPermissions = normalizePermissions(
+    Array.isArray(userLogged?.permissions) ? userLogged.permissions : [],
+  );
   // const rolesActivos = ['Super Administrador', 'Administrativo'];
-  const rolesActivos = userLogged?.roles?.map((role: any) => ({
-    code: role.code,
-    name: role.name,
-    permissions: role.permissions || []
-  })) || [{ name: 'Sin Rol Activo', permissions: [], code: '' }];
-  const isSuperAdmin = userLogged?.roles?.some((role: any) => role.code === 'SUPER_ADMIN');
+  const rolesActivos = currentRoles.length > 0
+    ? currentRoles.map((role: any) => {
+        const code = typeof role === 'string' ? role : role?.code || '';
+        const rolePermissions = typeof role === 'string'
+          ? currentRoles.length === 1 ? directPermissions : []
+          : role?.permissions || [];
+
+        return {
+          code,
+          name: typeof role === 'string' ? formatRoleName(code) : role?.name || formatRoleName(code),
+          permissions: normalizePermissions(rolePermissions),
+        };
+      })
+    : [{ name: 'Sin Rol Activo', permissions: [], code: '' }];
+  userRole = rolesActivos[0]?.name || userRole;
+  const isSuperAdmin = currentRoles.some((role: any) =>
+    typeof role === 'string'
+      ? role === 'SUPER_ADMIN'
+      : role?.code === 'SUPER_ADMIN' || role?.name === 'SUPER_ADMIN',
+  );
   // Mock: Última sesión
   const lastSession = {
     date: new Date().toLocaleDateString('es-CO'),
