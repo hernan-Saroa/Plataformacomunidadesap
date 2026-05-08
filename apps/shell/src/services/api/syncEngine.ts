@@ -2,6 +2,7 @@
 
 import { offlineCache } from './offlineCache';
 import { toast } from 'sonner';
+import { getAppOnlineStatus } from '../../utils/connectivity';
 
 class SyncEngine {
   private isSyncing = false;
@@ -21,7 +22,7 @@ class SyncEngine {
     if (this.isSyncing) return;
     
     // Si no hay conexión real, abortar
-    if (!navigator.onLine) return;
+    if (!getAppOnlineStatus()) return;
 
     this.isSyncing = true;
 
