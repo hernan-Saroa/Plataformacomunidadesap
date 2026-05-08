@@ -45,6 +45,7 @@ export interface CreateRoleRequest {
   icon?: string;
   color?: string;
   type?: 'sistema' | 'personalizado';
+  sistema_destino?: string;
   requires_2fa?: boolean;
   permissionIds?: string[];
   alcance?: any; // JSONB field for administrative scope
@@ -65,6 +66,7 @@ export interface RoleFilters {
   type?: 'todos' | 'sistema' | 'personalizado';
   status?: 'todos' | 'activo' | 'inactivo';
   requires_2fa?: 'todos' | 'con2fa' | 'sin2fa';
+  sistema_destino?: 'todos' | 'Backoffice' | 'Portal' | 'Ambos';
   page?: number;
   limit?: number;
 }

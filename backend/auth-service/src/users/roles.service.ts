@@ -40,6 +40,7 @@ export interface RoleFilters {
   type?: 'sistema' | 'personalizado';
   is_active?: boolean;
   requires_2fa?: boolean;
+  sistema_destino?: 'Backoffice' | 'Portal' | 'Ambos';
   page?: number;
   limit?: number;
 }
@@ -110,6 +111,10 @@ export class RolesService {
 
     if (filters.requires_2fa !== undefined) {
       query.andWhere('role.requires_2fa = :requires_2fa', { requires_2fa: filters.requires_2fa });
+    }
+
+    if (filters.sistema_destino) {
+      query.andWhere('role.sistema_destino = :sistema_destino', { sistema_destino: filters.sistema_destino });
     }
 
     // Agregar subqueries para conteos

@@ -83,6 +83,17 @@ export function ModalDetallePlan({ open, onClose, plan }: ModalDetallePlanProps)
             return;
         }
 
+        // Bug 4: Validación cliente — máx 200MB. El backend acepta 250MB pero damos margen.
+        const MAX_SIZE_MB = 200;
+        const fileSizeMb = selectedFile.size / (1024 * 1024);
+        if (fileSizeMb > MAX_SIZE_MB) {
+            toast.error(
+                `El archivo pesa ${fileSizeMb.toFixed(1)} MB y supera el límite de ${MAX_SIZE_MB} MB. Comprima el archivo o súbalo dividido.`,
+                { duration: 6000 },
+            );
+            return;
+        }
+
         setUploading(true);
         try {
             const formData = new FormData();
@@ -96,8 +107,17 @@ export function ModalDetallePlan({ open, onClose, plan }: ModalDetallePlanProps)
             setTitulo('');
             if (fileInputRef.current) fileInputRef.current.value = '';
             fetchDocumentos();
-        } catch {
-            toast.error('Error al cargar el documento');
+        } catch (err: any) {
+            // Bug 4: manejar 413 explícitamente para mensaje claro al usuario
+            const status = err?.response?.status || err?.status;
+            if (status === 413) {
+                toast.error(
+                    `El archivo es demasiado grande para el servidor. Tamaño máximo permitido: ${MAX_SIZE_MB} MB.`,
+                    { duration: 6000 },
+                );
+            } else {
+                toast.error(err?.message || 'Error al cargar el documento');
+            }
         } finally {
             setUploading(false);
         }
@@ -326,11 +346,11 @@ export function ModalDetallePlan({ open, onClose, plan }: ModalDetallePlanProps)
                         )}
                     </div>
 
-                    {/* Timeline / Seguimientos */}
+                    {/* Bug 5: Renombrado a "Historial de Avances" */}
                     <div>
                         <h4 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
                             <FileText className="w-4 h-4" />
-                            Historial de Seguimientos
+                            Historial de Avances
                         </h4>
 
                         <div className="relative pl-4 border-l-2 border-gray-200 space-y-6">
