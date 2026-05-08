@@ -17,6 +17,7 @@ import { RolesController } from './roles.controller';
 import { ModulesController } from './modules.controller';
 import { EstructuraOrganizacionalController } from './estructura-organizacional.controller';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { DatosMaestrosModule } from './datos-maestros.module';
 
 @NestModule({
   imports: [
@@ -30,6 +31,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
       Sede,
       Seccional,
     ]),
+    DatosMaestrosModule,
   ],
   providers: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService, RolesGuard],
   controllers: [

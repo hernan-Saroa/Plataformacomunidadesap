@@ -398,6 +398,21 @@ const getRoleDisplayName = (role: SystemRole | null) =>
 const getRoleDisplayDescription = (role: SystemRole | null) =>
   repairRoleDisplayText(role?.description || '');
 
+const generateRoleCode = (name: string): string => {
+  if (!name.trim()) return 'ROL_SIN_NOMBRE';
+
+  const normalized = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const cleaned = normalized
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+
+  return cleaned.slice(0, 50) || 'ROL_GENERADO';
+};
+
 const getSistemaBadge = (sistemaDestino: string) => {
   const sistema = sistemaDestino || 'Backoffice';
 
@@ -534,16 +549,23 @@ export function RolesAdministrationModulePremium() {
   // Crear nuevo rol
   const handleCreateRole = async (roleData: any) => {
     try {
+      // Generar código automáticamente si no viene
+      const roleCode = roleData.codigo || generateRoleCode(roleData.nombre);
+
       const newRole = await rolesService.createRole({
         name: roleData.nombre,
         description: roleData.descripcion,
-        code: roleData.codigo,
+        code: roleCode,
         icon: roleData.icono,
         color: roleData.color,
         type: 'personalizado',
         requires_2fa: roleData.requiere_2fa || false,
         permissionIds: roleData.permissionIds || []
       });
+
+      // Aquí podríamos guardar la información adicional del alcance administrativo
+      // por ahora solo se maneja en el frontend
+      console.log('Alcance administrativo:', roleData.alcance);
 
       // Recargar datos
       await loadRoles();
@@ -1413,9 +1435,9 @@ export function RolesAdministrationModulePremium() {
 
       {/* Modals */}
       <CreateRoleModal
-        open={isCreateModalOpen}
-        onOpenChange={setIsCreateModalOpen}
-        onCreateRole={handleCreateRole}
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSave={handleCreateRole}
       />
 
       {selectedRoleForModal && selectedRoleForPermissions && (
