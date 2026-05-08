@@ -64,8 +64,10 @@ export interface CreateRoleRequest {
   icon?: string;
   color?: string;
   type?: 'sistema' | 'personalizado';
+  sistema_destino?: string;
   requires_2fa?: boolean;
   permissionIds?: string[];
+  alcance?: any;
 }
 
 export interface UpdateRoleRequest {
@@ -75,6 +77,7 @@ export interface UpdateRoleRequest {
   color?: string;
   requires_2fa?: boolean;
   permissionIds?: string[];
+  alcance?: any;
 }
 
 export interface RoleFilters {
@@ -82,7 +85,7 @@ export interface RoleFilters {
   type?: 'todos' | 'sistema' | 'personalizado';
   status?: 'todos' | 'activo' | 'inactivo';
   requires_2fa?: 'todos' | 'con2fa' | 'sin2fa';
-  sistema_destino?: 'todos' | 'backoffice' | 'control-interno' | 'control-disciplinario';
+  sistema_destino?: 'todos' | 'Backoffice' | 'Sistema' | undefined ;
   page?: number;
   limit?: number;
 }
