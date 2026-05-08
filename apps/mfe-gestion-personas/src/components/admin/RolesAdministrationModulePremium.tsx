@@ -560,12 +560,9 @@ export function RolesAdministrationModulePremium() {
         color: roleData.color,
         type: 'personalizado',
         requires_2fa: roleData.requiere_2fa || false,
-        permissionIds: roleData.permissionIds || []
+        permissionIds: roleData.permissionIds || [],
+        alcance: roleData.alcance
       });
-
-      // Aquí podríamos guardar la información adicional del alcance administrativo
-      // por ahora solo se maneja en el frontend
-      console.log('Alcance administrativo:', roleData.alcance);
 
       // Recargar datos
       await loadRoles();

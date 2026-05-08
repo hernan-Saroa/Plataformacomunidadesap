@@ -47,6 +47,7 @@ export interface CreateRoleRequest {
   type?: 'sistema' | 'personalizado';
   requires_2fa?: boolean;
   permissionIds?: string[];
+  alcance?: any; // JSONB field for administrative scope
 }
 
 export interface UpdateRoleRequest {
@@ -56,6 +57,7 @@ export interface UpdateRoleRequest {
   color?: string;
   requires_2fa?: boolean;
   permissionIds?: string[];
+  alcance?: any; // JSONB field for administrative scope
 }
 
 export interface RoleFilters {
