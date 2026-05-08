@@ -117,8 +117,9 @@ export class DocumentosConsultaController {
             }
         }
 
-        // Actualizar con el nuevo archivo firmado
+        // Actualizar con el nuevo archivo firmado (incluyendo nombre visible)
         return this.documentosService.update(documentoId, {
+            nombre: file.originalname,
             archivoUrl: `files/${file.filename}`,
             archivoNombreOriginal: file.originalname,
             tamanoBytes: file.size,

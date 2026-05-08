@@ -67,7 +67,12 @@ class AuthService {
    */
   async logout(): Promise<void> {
     try {
-      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT);
+      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT, {}, {
+        skipAuth: true,
+        skipAuthRefresh: true,
+        skipErrorToast: true,
+        retries: 0,
+      });
     } finally {
       this.clearAuthData();
     }
@@ -148,12 +153,25 @@ class AuthService {
   }
 
   /**
-   * Obtiene el usuario actual del localStorage
+   * Obtiene el usuario actual de la sesion en memoria.
+   * Los MFEs pueden quedar cargados entre logout/login; por eso siempre se
+   * sincroniza contra la cache global de la pestana antes de responder.
    */
   getCurrentUser(): AuthUser | null {
-    if (!this._cachedUser && typeof window !== 'undefined' && (window as any).__esap_auth_cache) {
-      this._cachedUser = (window as any).__esap_auth_cache;
+    if (typeof window === 'undefined') {
+      return this._cachedUser;
     }
+
+    const sharedUser = (window as any).__esap_auth_cache ?? null;
+    if (!sharedUser) {
+      this._cachedUser = null;
+      return null;
+    }
+
+    if (this._cachedUser !== sharedUser) {
+      this._cachedUser = sharedUser;
+    }
+
     return this._cachedUser;
   }
 

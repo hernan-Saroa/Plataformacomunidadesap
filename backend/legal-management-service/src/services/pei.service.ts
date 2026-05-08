@@ -84,29 +84,51 @@ export class PeiService {
         return ind;
     }
 
-    async registrarAvance(id: number, valorReportado: number, observaciones?: string, usuarioId?: string) {
+    /**
+     * Bug 6: registra avance, persiste observaciones y evidencia (URL relativa
+     * al archivo subido o URL externa proporcionada). Tras guardar, recalcula
+     * el porcentaje del indicador (el dashboard ya promediará al consultar).
+     */
+    async registrarAvance(
+        id: number,
+        valorReportado: number,
+        observaciones?: string,
+        usuarioId?: string,
+        evidenciaUrl?: string,
+    ) {
         const indicador = await this.findOne(id);
 
         // Calculate percentage
-        let porcentaje = 0;
         const meta = Number(indicador.metaObjetivo);
-
+        let porcentaje = 0;
         if (meta !== 0) {
-            porcentaje = (valorReportado / meta) * 100;
+            porcentaje = (Number(valorReportado) / meta) * 100;
         }
+        // Cap a 100 para no romper restricciones decimal(5,2) y mantener lógica visual sana
+        if (porcentaje > 100) porcentaje = 100;
+        if (porcentaje < 0) porcentaje = 0;
 
         const registro = this.registroRepo.create({
             indicadorId: id,
             valorReportado,
-            porcentajeAvance: porcentaje > 100 ? 100 : porcentaje,
-            observaciones,
-            usuarioRegistraId: usuarioId
+            porcentajeAvance: porcentaje,
+            observaciones: observaciones ?? null as any,
+            evidenciaUrl: evidenciaUrl ?? null as any,
+            usuarioRegistraId: usuarioId,
         });
+        const saved = await this.registroRepo.save(registro);
 
-        // Recalculate percentage strictly
-        registro.porcentajeAvance = (valorReportado / meta) * 100;
+        // Bug 6: tras guardar, devolvemos el indicador con su histórico actualizado
+        // y el % global recalculado a partir de TODOS los indicadores activos.
+        // Esto permite al frontend reflejar el nuevo avance sin un refetch extra.
+        const indicadorActualizado = await this.findOne(id);
+        const dashboard = await this.getDashboard();
 
-        return this.registroRepo.save(registro);
+        return {
+            registro: saved,
+            indicador: indicadorActualizado,
+            avanceGlobal: dashboard.stats.avance_global,
+        };
     }
 
     // ==================== ARCHIVADO ====================

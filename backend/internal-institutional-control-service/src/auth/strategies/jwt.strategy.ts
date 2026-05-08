@@ -9,7 +9,14 @@ const fromHttpOnlyCookie = (req: Request): string | null => {
   for (const part of cookieHeader.split(';')) {
     const [key, ...rest] = part.trim().split('=');
     if (key.trim() === 'esap_access_token') {
-      return rest.join('=').trim() || null;
+      const value = rest.join('=').trim();
+      if (!value) return null;
+
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return value;
+      }
     }
   }
   return null;

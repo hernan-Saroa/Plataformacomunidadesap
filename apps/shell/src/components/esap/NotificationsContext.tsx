@@ -8,8 +8,7 @@ import { notificationsService, Notification as ApiNotification } from '../../ser
 import { authService } from '../../services/api/authService';
 import { API_MODE } from '../../config/environment';
 
-const REMOTE_NOTIFICATIONS_ENABLED =
-  API_MODE !== 'direct' || import.meta.env.VITE_ENABLE_NOTIFICATIONS === 'true';
+const REMOTE_NOTIFICATIONS_ENABLED = true;
 
 // ============ TIPOS ============
 

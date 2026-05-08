@@ -240,6 +240,7 @@ class APIClient {
             return this.request<T>(endpoint, { ...options, _authRetry: true });
           } catch (error) {
             this.onTokenRefreshed('');
+            throw new APIClientError(401, 'UNAUTHORIZED', 'Sesion expirada. Por favor, inicia sesion nuevamente.');
           } finally {
             this.isRefreshing = false;
           }

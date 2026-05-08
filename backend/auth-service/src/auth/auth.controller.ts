@@ -192,20 +192,21 @@ export class AuthController {
     return this.authService.verifySignatureOtp(req.user, dto.code);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @Public()
   @Post('refresh')
   @HttpCode(200)
   async refresh(
-    @Req() req,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const response = await this.authService.refreshSession(req.user);
+    const rawCookie = req.headers.cookie || '';
+    const response = await this.authService.refreshUserToken(rawCookie);
     const { accessToken, ...responseBody } = response;
     this.setAuthCookie(res, accessToken);
     return responseBody;
   }
 
-  @UseGuards(JwtAuthGuard)
+  @Public()
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
     this.clearAuthCookie(res);
@@ -223,7 +224,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('verify')
   verify(@Req() req) {
-    return req.user;
+    return this.authService.getVerifiedUser(req.user);
   }
 
   private extractLoginIdentifier(dto: LoginDto): string {
