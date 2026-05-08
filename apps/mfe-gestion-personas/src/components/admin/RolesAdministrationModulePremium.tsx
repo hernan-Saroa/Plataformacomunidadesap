@@ -475,15 +475,6 @@ export function RolesAdministrationModulePremium() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const itemsPerPage = 20;
-
-  // Debug: verificar que los cálculos sean correctos
-  const debugInfo = {
-    totalItems,
-    itemsPerPage,
-    totalPages: Math.ceil(totalItems / itemsPerPage),
-    currentPage,
-    rolesLength: roles.length
-  };
   const { confirm, ConfirmationDialog } = useConfirmation();
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
@@ -886,11 +877,7 @@ export function RolesAdministrationModulePremium() {
         )}
       </motion.div>
 
-      {/* Debug Info - Temporal */}
-      <div className="bg-yellow-100 p-4 mb-4 rounded-lg text-sm">
-        <strong>Debug Info:</strong> totalItems: {debugInfo.totalItems}, itemsPerPage: {debugInfo.itemsPerPage},
-        totalPages: {debugInfo.totalPages}, currentPage: {debugInfo.currentPage}, rolesLength: {debugInfo.rolesLength}
-      </div>
+
 
       {/* Búsqueda y Filtros Premium */}
       <motion.div
@@ -1085,14 +1072,15 @@ export function RolesAdministrationModulePremium() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 bg-white">
-                    <AnimatePresence mode="popLayout">
+                    <AnimatePresence>
                       {paginatedRoles.map((role, index) => (
-                        <motion.tr
-                          key={`role-row-${role.id}`}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          transition={{ duration: 0.2, delay: index * 0.05 }}
+                        <React.Fragment key={`role-group-${role.id}-${index}`}>
+                          <motion.tr
+                            key={`role-main-row-${role.id}`}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.2, delay: index * 0.05 }}
                             className="hover:bg-gray-50 transition-colors cursor-pointer group"
                             onClick={() => setExpandedRoleId(expandedRoleId === role.id ? null : role.id)}
                           >
@@ -1172,62 +1160,63 @@ export function RolesAdministrationModulePremium() {
                                       <MoreVertical className="w-5 h-5 text-gray-600" />
                                     </button>
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end" className="w-48">
-                                    <DropdownMenuItem onClick={() => handleManagePermissions(role)}>
-                                      <Shield className="w-4 h-4 mr-2" />
-                                      Gestionar Permisos
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => {
-                                      setSelectedRole(role);
-                                      setIsEditModalOpen(true);
-                                    }}>
-                                      <Edit className="w-4 h-4 mr-2" />
-                                      Editar Rol
-                                    </DropdownMenuItem>
-                                    {/* <DropdownMenuItem onClick={() => handleDuplicateRole(role)}>
-                                      <Copy className="w-4 h-4 mr-2" />
-                                      Duplicar Rol
-                                    </DropdownMenuItem> */}
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => handleToggleActive(role)}>
-                                      {role.is_active ? (
-                                        <>
-                                          <X className="w-4 h-4 mr-2" />
-                                          Desactivar
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Check className="w-4 h-4 mr-2" />
-                                          Activar
-                                        </>
-                                      )}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleToggle2FA(role)}>
-                                      {role.requires_2fa ? (
-                                        <>
-                                          <Unlock className="w-4 h-4 mr-2" />
-                                          Desactivar 2FA
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Lock className="w-4 h-4 mr-2" />
-                                          Activar 2FA
-                                        </>
-                                      )}
-                                    </DropdownMenuItem>
-                                    {role.type === 'personalizado' && (
-                                      <>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem
-                                          onClick={() => handleDeleteRole(role)}
-                                          className="text-red-600"
-                                        >
-                                          <Trash2 className="w-4 h-4 mr-2" />
-                                          Eliminar Rol
-                                        </DropdownMenuItem>
-                                      </>
-                                    )}
-                                  </DropdownMenuContent>
+                                   <DropdownMenuContent align="end" className="w-48">
+                                     <DropdownMenuItem key="manage-permissions" onClick={() => handleManagePermissions(role)}>
+                                       <Shield className="w-4 h-4 mr-2" />
+                                       Gestionar Permisos
+                                     </DropdownMenuItem>
+                                     <DropdownMenuItem key="edit-role" onClick={() => {
+                                       setSelectedRole(role);
+                                       setIsEditModalOpen(true);
+                                     }}>
+                                       <Edit className="w-4 h-4 mr-2" />
+                                       Editar Rol
+                                     </DropdownMenuItem>
+                                     <DropdownMenuItem key="duplicate-role" onClick={() => handleDuplicateRole(role)}>
+                                       <Copy className="w-4 h-4 mr-2" />
+                                       Duplicar Rol
+                                     </DropdownMenuItem>
+                                     <DropdownMenuSeparator key="separator-1" />
+                                     <DropdownMenuItem key="toggle-active" onClick={() => handleToggleActive(role)}>
+                                       {role.is_active ? (
+                                         <>
+                                           <X className="w-4 h-4 mr-2" />
+                                           Desactivar
+                                         </>
+                                       ) : (
+                                         <>
+                                           <Check className="w-4 h-4 mr-2" />
+                                           Activar
+                                         </>
+                                       )}
+                                     </DropdownMenuItem>
+                                     <DropdownMenuItem key="toggle-2fa" onClick={() => handleToggle2FA(role)}>
+                                       {role.requires_2fa ? (
+                                         <>
+                                           <Unlock className="w-4 h-4 mr-2" />
+                                           Desactivar 2FA
+                                         </>
+                                       ) : (
+                                         <>
+                                           <Lock className="w-4 h-4 mr-2" />
+                                           Activar 2FA
+                                         </>
+                                       )}
+                                     </DropdownMenuItem>
+                                     {/* {role.type === 'personalizado' && (
+                                       <>
+                                         <DropdownMenuSeparator key="separator-2" />
+                                         <DropdownMenuItem
+                                           key="delete-role"
+                                           onClick={() => handleDeleteRole(role)}
+                                           className="text-red-600"
+                                         >
+                                           <Trash2 className="w-4 h-4 mr-2" />
+                                           Eliminar Rol
+                                         </DropdownMenuItem>
+                                       </>
+                                     )} */}
+                                   </DropdownMenuContent>
                                 </DropdownMenu>
                                 <button
                                   onClick={() => setExpandedRoleId(expandedRoleId === role.id ? null : role.id)}
@@ -1245,7 +1234,7 @@ export function RolesAdministrationModulePremium() {
                           <AnimatePresence>
                             {expandedRoleId === role.id && (
                               <motion.tr
-                                key={`${role.id}-expanded`}
+                                key={`role-expanded-row-${role.id}`}
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
@@ -1391,7 +1380,7 @@ export function RolesAdministrationModulePremium() {
                               </motion.tr>
                             )}
                           </AnimatePresence>
-                        </motion.tr>
+                        </React.Fragment>
                       ))}
                     </AnimatePresence>
                   </tbody>
@@ -1402,10 +1391,10 @@ export function RolesAdministrationModulePremium() {
 
           {/* Vista Mobile - Cards */}
           <div className="lg:hidden divide-y divide-gray-200">
-            <AnimatePresence mode="popLayout">
+            <AnimatePresence>
               {paginatedRoles.map((role, index) => (
                 <motion.div
-                  key={role.id}
+                  key={`mobile-role-${role.id}-${index}`}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
