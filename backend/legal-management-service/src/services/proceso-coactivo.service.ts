@@ -485,8 +485,31 @@ export class ProcesoCoactivoService {
         proceso.saldoPendiente = nuevoSaldo;
         proceso.ultimaActuacion = new Date();
 
+        // Eliminar el adjunto/soporte asociado al pago (si existe)
+        if (pago.soporteUrl) {
+            const adjunto = await this.adjuntoRepository.findOne({
+                where: { proceso: { id: proceso.id }, nombreArchivo: pago.soporteUrl }
+            });
+            if (adjunto) {
+                // Eliminar archivo físico del soporte
+                const filePath = path.join(process.cwd(), 'uploads', adjunto.nombreArchivo);
+                if (fs.existsSync(filePath)) {
+                    try {
+                        fs.unlinkSync(filePath);
+                    } catch (err) {
+                        console.error(`Error eliminando archivo soporte ${filePath}:`, err);
+                    }
+                }
+                await this.adjuntoRepository.remove(adjunto);
+            }
+        }
+
         // Eliminar el pago
         await this.pagoRepository.delete(pagoId);
+
+        // Recalcular contador de documentos adjuntos
+        const count = await this.adjuntoRepository.count({ where: { proceso: { id: proceso.id } } });
+        proceso.documentosAdjuntos = count;
 
         // Guardar proceso actualizado
         await this.procesoCoactivoRepository.save(proceso);
