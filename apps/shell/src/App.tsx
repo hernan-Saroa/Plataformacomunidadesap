@@ -190,13 +190,23 @@ interface UserData {
 }
 
 const extractPermissionCodes = (user: any): string[] => {
-  if (!user?.roles || !Array.isArray(user.roles)) return [];
-  const codes = user.roles.flatMap((role: any) =>
-    Array.isArray(role?.permissions)
-      ? role.permissions.map((perm: any) => perm?.code).filter(Boolean)
-      : []
-  );
-  return Array.from(new Set(codes));
+  const directCodes = Array.isArray(user?.permissions)
+    ? user.permissions
+        .map((permission: any) => (typeof permission === 'string' ? permission : permission?.code))
+        .filter(Boolean)
+    : [];
+
+  const roleCodes = Array.isArray(user?.roles)
+    ? user.roles.flatMap((role: any) =>
+        Array.isArray(role?.permissions)
+          ? role.permissions
+              .map((perm: any) => (typeof perm === 'string' ? perm : perm?.code))
+              .filter(Boolean)
+          : []
+      )
+    : [];
+
+  return Array.from(new Set([...directCodes, ...roleCodes]));
 };
 
 // Configuración de timeout (15 minutos en milisegundos)
@@ -355,7 +365,7 @@ export default function App() {
       const userEmail = user?.person?.email || user?.email || '';
       const userName = user?.person?.first_name
         ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
-        : user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
+        : user?.fullName || user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
 
       const roles = Array.isArray(user?.roles)
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
@@ -429,14 +439,14 @@ export default function App() {
       setUserData({
         name: userName,
         email: userEmail,
-        personId: user?.person?.id || user?.id,
+        personId: user?.person?.id || user?.id || user?.userId,
         modules: user?.modules || [],
         roles,
         permissions,
         module
       });
       setUsuarioActual({
-        id: user?.id || user?.person?.id || 'unknown',
+        id: user?.id || user?.person?.id || user?.userId || 'unknown',
         nombre: userName,
         email: userEmail,
         tipo: nextView === 'backoffice' ? 'interno' : 'externo'
@@ -651,12 +661,14 @@ export default function App() {
       const userEmail = user?.person?.email || user?.email || '';
       const userName = user?.person?.first_name
         ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
-        : user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
+        : user?.fullName || user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
 
       console.log('👤 User info extracted:', { userEmail, userName });
 
       // Determinar tipo de usuario basado en roles del backend
-      const roles = user?.roles?.map((role: any) => role.code) || [];
+      const roles = Array.isArray(user?.roles)
+        ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
+        : [];
       const permissions = extractPermissionCodes(user);
       const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
       const hasConfigRole = !(roles.includes('ESTUDIANTE') || roles.includes('DOCENTE') || roles.includes('GRADUADO') || roles.includes('ASPIRANTE'))
@@ -673,13 +685,13 @@ export default function App() {
         setUserData({
           name: userName,
           email: userEmail,
-          personId: user?.person?.id || user?.id,
+          personId: user?.person?.id || user?.id || user?.userId,
           modules: user?.modules || [],
           roles,
           permissions
         });
         setUsuarioActual({
-          id: user?.id || user?.person?.id || 'unknown',
+          id: user?.id || user?.person?.id || user?.userId || 'unknown',
           nombre: userName,
           email: userEmail,
           tipo: 'interno'
@@ -716,7 +728,7 @@ export default function App() {
           const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
             : hasGestionLegal ? 'gestion-legal'
               : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
-                : user.modules.length > 0 ? user.modules[0]
+                : Array.isArray(user?.modules) && user.modules.length > 0 ? user.modules[0]
                   : 'control-interno';
         const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
           : roles.includes('JEFE_GESTION_LEGAL') ? 'Jefe Gestión Legal'
@@ -735,7 +747,7 @@ export default function App() {
           const userDataToSave = {
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id,
+            personId: user?.person?.id || user?.id || user?.userId,
             modules: user?.modules || [],
             roles,
             permissions,
@@ -751,7 +763,7 @@ export default function App() {
           const userDataWithDetails = {
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id,
+            personId: user?.person?.id || user?.id || user?.userId,
             modules: user?.modules || [],
             datos_por_rol: {
               Docente: {
@@ -775,7 +787,7 @@ export default function App() {
           setUserData({
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id,
+            personId: user?.person?.id || user?.id || user?.userId,
             modules: user?.modules || [],
             roles,
             permissions
@@ -786,7 +798,7 @@ export default function App() {
           setUserData({
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id,
+            personId: user?.person?.id || user?.id || user?.userId,
             modules: user?.modules || [],
             roles,
             permissions
@@ -800,7 +812,7 @@ export default function App() {
         setVistaActual(vistaActualCurrent);
         sessionVista = vistaActualCurrent;
         setUsuarioActual({
-          id: user?.id || user?.person?.id || 'unknown',
+          id: user?.id || user?.person?.id || user?.userId || 'unknown',
           nombre: userName,
           email: userEmail,
           tipo: currentView === 'backoffice' ? 'interno' : 'externo'

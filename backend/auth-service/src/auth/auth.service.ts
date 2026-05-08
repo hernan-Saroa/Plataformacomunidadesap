@@ -288,6 +288,20 @@ export class AuthService {
     return this.buildLoginResponse(user);
   }
 
+  async getVerifiedUser(jwtUser: AuthenticatedJwtUser) {
+    if (!jwtUser?.userId) {
+      throw new UnauthorizedException('Sesion invalida');
+    }
+
+    const user = await this.usersService.findAuthUserById(jwtUser.userId);
+    if (!user || !user.is_active) {
+      throw new UnauthorizedException('Sesion invalida');
+    }
+
+    const response = await this.buildLoginResponse(user);
+    return response.user;
+  }
+
   /**
    * Refresh a partir de la cookie HttpOnly — acepta tokens expirados dentro
    * de una ventana de gracia de 24 h para poder renovarlos.
@@ -374,7 +388,7 @@ export class AuthService {
       if (role.code === 'SUPER_ADMIN') {
         super_admin = true;
       }
-      for (const permission of role.permissions) {
+      for (const permission of role.permissions || []) {
         const code = permission.code.split('.')[0].toLowerCase().replace(/_/g, '-');
         if (!modules.includes(code)) {
           modules.push(code);
