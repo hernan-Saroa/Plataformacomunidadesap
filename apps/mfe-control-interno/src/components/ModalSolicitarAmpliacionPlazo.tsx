@@ -185,18 +185,6 @@ export function ModalSolicitarAmpliacionPlazo({
 
     setEnviando(true);
     try {
-      // Verificar que existe token de autenticación
-      const token = sessionStorage.getItem('esap_auth_token');
-      
-      if (!token) {
-        toast.error('❌ Error de autenticación', {
-          description: 'No se encontró token de autenticación. Por favor, inicia sesión nuevamente.'
-        });
-        setEnviando(false);
-        return;
-      }
-
-
       const response = await auditoriasApi.solicitarAmpliacionPlazo(auditoria.id, {
         nuevaFechaFin,
         justificacion: justificacion.trim()

@@ -117,12 +117,11 @@ export function ModalVerExpedienteCoactivo({
   const handleExportarPdf = async () => {
     setExportandoPdf(true);
     try {
-      const token = sessionStorage.getItem('esap_auth_token');
       const url = procesosCoactivosService.getExportPdfUrl(proceso.id);
 
       const response = await fetch(url, {
         method: 'GET',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
       });
 
       if (!response.ok) throw new Error('Error al generar el PDF');

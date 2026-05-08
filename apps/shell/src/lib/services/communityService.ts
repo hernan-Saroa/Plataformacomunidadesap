@@ -50,7 +50,6 @@ let MOCK_POSTS: CommunityPost[] = [
     autor_id: 'user-001',
     autor_nombre: 'Rector ESAP',
     autor_rol: 'Administrativo',
-    autor_foto: 'https://ui-avatars.com/api/?name=Rector+ESAP&background=003DA5&color=fff',
     estado: 'Publicado',
     requiere_moderacion: false,
     categoria: 'General',

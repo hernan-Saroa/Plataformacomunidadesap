@@ -1056,7 +1056,7 @@ export function FormularioProcesoDafpVisual({
                     RI×0.4 + Tiempo×0.1 + Alta Dirección×0.1 + Objetivos×0.1 + Hallazgos×0.3
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
-                    {riesgoInherenteCuantitativo || 0}×0.4 + {formData.tiempoUltimaAuditoria || 0}×0.1 + {formData.temasAltaDireccion || 0}×0.1 + {formData.objetivosEstrategicos || 0}×0.1 + {formData.hallazgosAnteriores || 0}×0.3
+                    {riesgoInherenteCuantitativo || 0}×0.4 + {formData.tiempoUltimaAuditoria || 0}×0.1 + {formData.temasAltaDireccion || 0}×0.1 + {formData.objetivosEstrategicos || 0}×0.1 + {formData.hallazgosAnteriores || 0}×0.3 = <span className="font-bold text-[#003DA5]">{criteriosCompletos ? ponderacionFinalDafp.toFixed(1) : '—'}</span>
                   </div>
                 </div>
 
@@ -1064,7 +1064,7 @@ export function FormularioProcesoDafpVisual({
                   <div className="rounded-xl border-2 border-green-200 bg-white p-4">
                     <div className="text-xs font-bold text-gray-500">Ponderación</div>
                     <div className="mt-1 text-2xl font-black text-[#003DA5]">
-                      {criteriosCompletos ? ponderacionFinalDafp.toFixed(2) : '—'}
+                      {criteriosCompletos ? ponderacionFinalDafp.toFixed(1) : '—'}
                     </div>
                   </div>
                   <div className="rounded-xl border-2 border-green-200 bg-white p-4">

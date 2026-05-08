@@ -340,33 +340,17 @@ export function NotificacionesModule() {
   const [error, setError] = useState<string | null>(null);
   const yaCargadoRef = useRef(false); // ✅ Ref para evitar múltiples cargas (no causa re-render)
 
-  // ✅ Obtener el usuarioId del localStorage
+  // ✅ Obtener el usuarioId desde el cache de autenticación en memoria
   const getUsuarioId = useCallback(() => {
     try {
-      // Intentar con la key principal: esap_user_data
-      let userStr = sessionStorage.getItem('esap_user_data');
-      console.log('[NotificacionesModule] sessionStorage esap_user_data:', userStr?.slice(0, 200));
-      
-      if (userStr) {
-        const user = JSON.parse(userStr);
-        console.log('[NotificacionesModule] User object parsed:', user);
-        // Buscar en diferentes propiedades donde puede estar el ID
-        const userId = user.id || user.userId || user.id_user || user.uid || user.terceroId;
-        console.log('[NotificacionesModule] UserId extraído:', userId, '| tipo:', typeof userId);
-        if (userId) return String(userId);
-      }
-      
-      // Fallback: esap_auth_user (legacy)
-      userStr = localStorage.getItem('esap_auth_user');
-      if (userStr) {
-        const user = JSON.parse(userStr);
+      const user = (window as any).__esap_auth_cache;
+      if (user) {
         const userId = user.id || user.userId || user.id_user || user.uid || user.terceroId;
         if (userId) return String(userId);
       }
     } catch (e) {
-      console.error('[NotificacionesModule] Error parsing localStorage:', e);
+      console.error('[NotificacionesModule] Error leyendo usuario:', e);
     }
-    console.log('[NotificacionesModule] Usando fallback admin');
     return 'admin';
   }, []);
 

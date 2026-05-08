@@ -275,6 +275,72 @@ export class AuthService {
     };
   }
 
+  async refreshSession(jwtUser: AuthenticatedJwtUser) {
+    if (!jwtUser?.userId) {
+      throw new UnauthorizedException('Sesion invalida');
+    }
+
+    const user = await this.usersService.findAuthUserById(jwtUser.userId);
+    if (!user || !user.is_active) {
+      throw new UnauthorizedException('Sesion invalida');
+    }
+
+    return this.buildLoginResponse(user);
+  }
+
+  async getVerifiedUser(jwtUser: AuthenticatedJwtUser) {
+    if (!jwtUser?.userId) {
+      throw new UnauthorizedException('Sesion invalida');
+    }
+
+    const user = await this.usersService.findAuthUserById(jwtUser.userId);
+    if (!user || !user.is_active) {
+      throw new UnauthorizedException('Sesion invalida');
+    }
+
+    const response = await this.buildLoginResponse(user);
+    return response.user;
+  }
+
+  /**
+   * Refresh a partir de la cookie HttpOnly — acepta tokens expirados dentro
+   * de una ventana de gracia de 24 h para poder renovarlos.
+   */
+  async refreshUserToken(rawCookieHeader: string) {
+    const cookiePart = (rawCookieHeader || '')
+      .split(';')
+      .map((c) => c.trim())
+      .find((c) => c.startsWith('esap_access_token='));
+
+    if (!cookiePart) {
+      throw new UnauthorizedException('No hay sesion activa');
+    }
+
+    const token = decodeURIComponent(cookiePart.split('=').slice(1).join('='));
+
+    let payload: any;
+    try {
+      payload = this.jwtService.verify(token, {
+        secret: process.env.JWT_SECRET || 'esap-super-secret-jwt-key-2024',
+        ignoreExpiration: true,
+      });
+    } catch {
+      throw new UnauthorizedException('Token invalido');
+    }
+
+    const userId = payload.sub;
+    if (!userId) {
+      throw new UnauthorizedException('Token invalido');
+    }
+
+    const user = await this.usersService.findAuthUserById(userId);
+    if (!user || !user.is_active) {
+      throw new UnauthorizedException('Sesion invalida');
+    }
+
+    return this.buildLoginResponse(user);
+  }
+
   async logout() {
     // En JWT puro, el logout es del lado del cliente (borrar token).
     // Aquí podrías registrar la acción o manejar blacklists si más adelante quieres.
@@ -288,7 +354,6 @@ export class AuthService {
 
     // Optimización: Solo incluir códigos de roles en el JWT para reducir tamaño
     const rolesCodes = user.roles.map((r) => r.code);
-    const rolesIds = user.roles.map((r) => r.id);
     const permissionCodes: string[] = Array.from(
       new Set(
         user.roles.flatMap((role) =>
@@ -310,8 +375,6 @@ export class AuthService {
         [user.person?.first_name, user.person?.last_name].filter(Boolean).join(' ') ||
         user.username,
       roles: rolesCodes,
-      rolesIds: rolesIds,
-      permissions: permissionCodes,
     };
 
     const accessToken = await this.jwtService.signAsync(payload, {
@@ -325,8 +388,8 @@ export class AuthService {
       if (role.code === 'SUPER_ADMIN') {
         super_admin = true;
       }
-      for (const permission of role.permissions) {
-        const code = permission.code.split('.')[0];
+      for (const permission of role.permissions || []) {
+        const code = permission.code.split('.')[0].toLowerCase().replace(/_/g, '-');
         if (!modules.includes(code)) {
           modules.push(code);
         }

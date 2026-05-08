@@ -653,17 +653,7 @@ export function GraduatesManagementModule() {
     try {
       const response = await fetch(fileUrl, {
         method: 'GET',
-        headers: (
-          sessionStorage.getItem('esap_auth_token') ||
-          sessionStorage.getItem('esap_access_token')
-        )
-          ? {
-              Authorization: `Bearer ${
-                sessionStorage.getItem('esap_auth_token') ||
-                sessionStorage.getItem('esap_access_token')
-              }`,
-            }
-          : undefined,
+        credentials: 'include',
       });
       if (!response.ok) {
         throw new Error('No se pudo descargar el archivo');

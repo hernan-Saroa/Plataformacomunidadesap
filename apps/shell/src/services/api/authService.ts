@@ -16,6 +16,7 @@ import type {
 class AuthService {
   // In-memory user cache — never written to sessionStorage/localStorage (OTIC-002)
   private _cachedUser: AuthUser | null = null;
+  private _cacheRevision = 0;
 
   /**
    * Login con Microsoft (OAuth)
@@ -51,7 +52,7 @@ class AuthService {
     const response = await apiClient.post<LoginResponse>(
       API_ENDPOINTS.AUTH.LOGIN,
       loginData,
-      { skipAuth: true }
+      { skipAuth: true, skipErrorToast: true, skipErrorLog: true, retries: 0 }
     );
 
     // Guardar tokens
@@ -67,10 +68,19 @@ class AuthService {
    * Logout de usuario
    */
   async logout(): Promise<void> {
+    const logoutRevision = this._cacheRevision;
     try {
-      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT);
+      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT, {}, {
+        skipAuth: true,
+        skipAuthRefresh: true,
+        skipErrorToast: true,
+        skipErrorLog: true,
+        retries: 0,
+      });
     } finally {
-      this.clearAuthData();
+      if (this._cacheRevision === logoutRevision) {
+        this.clearAuthData();
+      }
     }
   }
 
@@ -90,7 +100,11 @@ class AuthService {
    * Verificar token actual
    */
   async verifyToken(): Promise<AuthUser> {
-    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY);
+    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY, undefined, {
+      retries: 0,
+      skipAuthRefresh: true,
+      skipErrorToast: true,
+    });
   }
 
   /**
@@ -145,22 +159,42 @@ class AuthService {
 
   /**
    * Permite que App.tsx restaure el caché tras verifyToken() en recarga de página (OTIC-002)
+   * También escribe en window para que instancias de authService en MFEs remotos puedan leerlo.
    */
   setCurrentUserCache(user: AuthUser): void {
+    this._cacheRevision += 1;
     this._cachedUser = user;
+    // Compartir con otros MFEs en la misma ventana (no es almacenamiento persistente — OTIC-002)
+    (window as any).__esap_auth_cache = user;
   }
 
   /**
    * Verifica si el usuario está autenticado
    */
   isAuthenticated(): boolean {
-    return this._cachedUser !== null;
+    return this.getCurrentUser() !== null;
   }
 
   /**
-   * Obtiene el usuario actual de la sesión
+   * Obtiene el usuario actual de la sesión.
+   * Si la caché global cambió por logout/login en la misma pestaña, actualiza
+   * también esta instancia para no conservar roles/permisos anteriores.
    */
   getCurrentUser(): AuthUser | null {
+    if (typeof window === 'undefined') {
+      return this._cachedUser;
+    }
+
+    const sharedUser = (window as any).__esap_auth_cache ?? null;
+    if (!sharedUser) {
+      this._cachedUser = null;
+      return null;
+    }
+
+    if (this._cachedUser !== sharedUser) {
+      this._cachedUser = sharedUser;
+    }
+
     return this._cachedUser;
   }
 
@@ -247,11 +281,13 @@ class AuthService {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private saveUserData(user: any): void {
     // Datos del usuario en memoria únicamente — nunca en sessionStorage/localStorage (OTIC-002)
-    this._cachedUser = user as AuthUser;
+    this.setCurrentUserCache(user as AuthUser);
   }
 
   private clearAuthData(): void {
+    this._cacheRevision += 1;
     this._cachedUser = null;
+    delete (window as any).__esap_auth_cache;
     // Limpiar residuos de versiones anteriores que pudieran quedar en storage
     sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);

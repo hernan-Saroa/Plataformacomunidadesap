@@ -108,9 +108,9 @@ export class UniversoAuditoriasService {
     prioridad: number;
     priorizacionAnos: number;
   } {
-    const probabilidad = evaluacionRiesgo.probabilidad;
-    const impacto = evaluacionRiesgo.impacto;
-    const nivelControl = evaluacionRiesgo.nivelControl;
+    const probabilidad = evaluacionRiesgo.probabilidad || 1;
+    const impacto = evaluacionRiesgo.impacto || 1;
+    const nivelControl = evaluacionRiesgo.nivelControl || 1;
 
     const riesgoInherente = this.calcularRiesgoInherente(probabilidad, impacto);
     const riesgoResidual = this.calcularRiesgoResidual(riesgoInherente, nivelControl);
@@ -119,6 +119,19 @@ export class UniversoAuditoriasService {
     const nivelRiesgo = evaluacionRiesgo.nivelRiesgo || this.determinarNivelRiesgo(riesgoResidual);
     const priorizacionAnos = this.calcularPriorizacionAnos(nivelRiesgo);
     const prioridad = this.calcularPrioridad(priorizacionAnos);
+
+    // ✅ Lógica de Horas Estimadas (Hrs) según Nivel de Riesgo
+    let horasEstimadas = evaluacionRiesgo.horasEstimadas || 0;
+    if (!horasEstimadas) {
+      if (nivelRiesgo.toLowerCase() === 'alto') horasEstimadas = 120;
+      else if (nivelRiesgo.toLowerCase() === 'medio') horasEstimadas = 80;
+      else horasEstimadas = 40;
+    }
+
+    // ✅ Ponderación DAFP (Valor decimal 0.0 - 5.0)
+    const ponderacionFinalDafp = evaluacionRiesgo.ponderacionFinalDafp || 
+                                (nivelRiesgo.toLowerCase() === 'alto' ? 4.5 : 
+                                 nivelRiesgo.toLowerCase() === 'medio' ? 3.0 : 1.5);
 
     return {
       evaluacionRiesgo: {
@@ -131,19 +144,29 @@ export class UniversoAuditoriasService {
         madurezControl: evaluacionRiesgo.madurezControl,
         controles: evaluacionRiesgo.controles,
         factoresRiesgo: evaluacionRiesgo.factoresRiesgo || [],
-        // Campos DAFP - preservar si vienen del frontend
-        riesgosExtremos: evaluacionRiesgo.riesgosExtremos,
-        riesgosAltos: evaluacionRiesgo.riesgosAltos,
-        riesgosModerados: evaluacionRiesgo.riesgosModerados,
-        riesgosBajos: evaluacionRiesgo.riesgosBajos,
-        totalRiesgos: evaluacionRiesgo.totalRiesgos,
-        requerimientoComite: evaluacionRiesgo.requerimientoComite,
-        requerimientoEntesReg: evaluacionRiesgo.requerimientoEntesReg,
-        // Score C+E-M (modelo simplificado DAFP) — siempre incluir para persistir en JSONB
-        criticidad: evaluacionRiesgo.criticidad ?? 0,
+        
+        // 📊 Campos DAFP requeridos por la UI
+        riesgosExtremos: evaluacionRiesgo.riesgosExtremos || 0,
+        riesgosAltos: evaluacionRiesgo.riesgosAltos || 0,
+        riesgosModerados: evaluacionRiesgo.riesgosModerados || 0,
+        riesgosBajos: evaluacionRiesgo.riesgosBajos || 0,
+        totalRiesgos: evaluacionRiesgo.totalRiesgos || 0,
+        requerimientoComite: evaluacionRiesgo.requerimientoComite || false,
+        requerimientoEntesReg: evaluacionRiesgo.requerimientoEntesReg || false,
+        
+        // 🛡️ Criticidad y Score
+        nivelCriticidadDafp: evaluacionRiesgo.nivelCriticidadDafp || nivelRiesgo,
         exposicion: evaluacionRiesgo.exposicion ?? 0,
         mitigantes: evaluacionRiesgo.mitigantes ?? 0,
         scoreRiesgo: evaluacionRiesgo.scoreRiesgo ?? 0,
+        
+        // 🕒 Cálculo de Horas y Ciclo
+        horasEstimadas,
+        ponderacionFinalDafp,
+        auditable: evaluacionRiesgo.auditable ?? (nivelRiesgo.toLowerCase() !== 'bajo'),
+        decisionFinal: evaluacionRiesgo.decisionFinal || (nivelRiesgo.toLowerCase() === 'alto' ? 'INCLUIR PLAN ANUAL' : 'POR EVALUAR'),
+        cicloRotacionDafp: evaluacionRiesgo.cicloRotacionDafp || `${priorizacionAnos} años`,
+        añosProgramados: evaluacionRiesgo.añosProgramados || Array.from({length: priorizacionAnos}, (_, i) => i + 1),
       },
       prioridad,
       priorizacionAnos,

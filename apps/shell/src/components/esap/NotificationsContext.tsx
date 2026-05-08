@@ -6,6 +6,9 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
 import { notificationsService, Notification as ApiNotification } from '../../services/api/notificationsService';
 import { authService } from '../../services/api/authService';
+import { API_MODE } from '../../config/environment';
+
+const REMOTE_NOTIFICATIONS_ENABLED = true;
 
 // ============ TIPOS ============
 
@@ -147,6 +150,8 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
 
   // Cargar notificaciones desde el backend
   const loadNotifications = useCallback(async () => {
+    if (!REMOTE_NOTIFICATIONS_ENABLED) return;
+
     // Si ha fallado repetidamente, pausar el polling para evitar spam en la consola
     if (consecutiveFailures.current >= 3) return;
 
@@ -166,6 +171,8 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
 
   // Carga inicial: espera a que el usuario esté en localStorage (máx 5 intentos)
   useEffect(() => {
+    if (!REMOTE_NOTIFICATIONS_ENABLED) return;
+
     let attempts = 0;
     const tryLoad = () => {
       const user = authService.getCurrentUser();
@@ -181,6 +188,8 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
 
   // Polling cada 30 segundos para actualizar el badge
   useEffect(() => {
+    if (!REMOTE_NOTIFICATIONS_ENABLED) return;
+
     const interval = setInterval(() => {
       if (consecutiveFailures.current < 3) {
         loadNotifications();

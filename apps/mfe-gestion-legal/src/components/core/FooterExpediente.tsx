@@ -3,7 +3,7 @@
  * ✅ Usada por ModalExpediente.tsx y ModalProcesoDisciplinario.tsx
  */
 
-import { X, Bell, Share2, Download, ExternalLink, CheckCircle } from 'lucide-react';
+import { X, Bell, Share2, Download, ExternalLink, CheckCircle, Archive } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 
 interface FooterExpedienteProps {
@@ -18,6 +18,8 @@ interface FooterExpedienteProps {
   onDescargarPDF: () => void;
   onAbrirPestana?: () => void;
   onGuardar?: () => void;
+  /** Bug 2: callback opcional para archivar el proceso (juzgamiento disciplinario) */
+  onArchivar?: () => void;
   hasChanges?: boolean;
   labelId?: string; // "Expediente" o "Proceso"
 }
@@ -33,6 +35,7 @@ export function FooterExpediente({
   onDescargarPDF,
   onAbrirPestana,
   onGuardar,
+  onArchivar,
   hasChanges = false,
   labelId = 'Expediente'
 }: FooterExpedienteProps) {
@@ -79,6 +82,17 @@ export function FooterExpediente({
             <Download className="w-3.5 h-3.5 mr-1" />
             PDF
           </Button>
+          {onArchivar && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onArchivar}
+              className="font-bold text-xs text-orange-600 border-orange-300 hover:bg-orange-50"
+            >
+              <Archive className="w-3.5 h-3.5 mr-1" />
+              Archivar
+            </Button>
+          )}
           {onAbrirPestana && (
             <Button
               size="sm"

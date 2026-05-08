@@ -21,8 +21,13 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
+    const hasAuthCookie =
+      typeof request.headers.cookie === 'string' &&
+      request.headers.cookie
+        .split(';')
+        .some((part: string) => part.trim().startsWith('esap_access_token='));
 
-    if (!authHeader) {
+    if (!authHeader && !hasAuthCookie) {
       throw new UnauthorizedException('No authorization header');
     }
 

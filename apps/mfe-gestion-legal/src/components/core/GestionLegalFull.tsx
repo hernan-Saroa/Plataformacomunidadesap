@@ -55,6 +55,7 @@ import { useNotifications } from '../../../esap/NotificationsContext';
 import { legalService } from '../../services/api/legal.service';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
+import { Toaster } from 'sonner';
 
 type VistaDisponible =
   | 'defensa-judicial'
@@ -391,6 +392,7 @@ export function GestionLegalFull() {
   return (
     <ConfiguracionesSIGLProvider>
       <PermisosProvider>
+        <Toaster position="top-right" richColors closeButton duration={4000} />
         <ModuleLayout
           moduleName="GESTIÓN LEGAL"
           moduleDescription="Sistema Integrado de Gestión Legal (SIGL v5.0)"

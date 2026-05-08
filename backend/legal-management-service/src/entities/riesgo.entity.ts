@@ -80,10 +80,6 @@ export class Riesgo {
     @Column({ name: 'responsable_id', type: 'uuid', nullable: true })
     responsableId: string;
 
-    @ManyToOne(() => Abogado, { nullable: true })
-    @JoinColumn({ name: 'responsable_id' })
-    responsableAbogado: Abogado;
-
     // Provisión Contable
     @Column({ name: 'cuantia_estimada', type: 'decimal', precision: 15, scale: 2, default: 0 })
     cuantiaEstimada: number;

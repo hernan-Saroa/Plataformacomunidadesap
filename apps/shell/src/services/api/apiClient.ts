@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cliente API Base
  *
  * Maneja todas las requests HTTP al backend con:
@@ -26,6 +26,8 @@ import { syncEngine } from './syncEngine';
 interface RequestConfig extends RequestInit {
   skipAuth?: boolean;
   skipErrorToast?: boolean;
+  skipErrorLog?: boolean;
+  skipAuthRefresh?: boolean;
   retries?: number;
 }
 
@@ -97,10 +99,11 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipAuthRefresh = false,
       ...fetchConfig
     } = customConfig || {};
 
-    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast);
+    return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh);
   }
 
   /**
@@ -293,6 +296,8 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipErrorLog = false,
+      skipAuthRefresh = false,
       retries = this.retryConfig.attempts,
       ...fetchConfig
     } = customConfig;
@@ -302,7 +307,7 @@ export class ApiClient {
 
     while (attempt <= retries) {
       try {
-        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast);
+        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh, skipErrorLog);
       } catch (error: any) {
         lastError = error;
         attempt++;
@@ -313,6 +318,7 @@ export class ApiClient {
           error.status === 403 || // Forbidden
           error.status === 404 || // Not found
           error.status === 422 || // Validation error
+          !error.status ||        // Error de red: servicio no disponible (ERR_CONNECTION_REFUSED, timeout, etc.)
           attempt > retries
         ) {
           throw error;
@@ -335,6 +341,7 @@ export class ApiClient {
     skipAuth: boolean,
     skipErrorToast: boolean,
     allowRefresh = true,
+    skipErrorLog = false,
   ): Promise<T> {
     const isGet = !fetchConfig.method || fetchConfig.method.toUpperCase() === 'GET';
     const isMutation = fetchConfig.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(fetchConfig.method.toUpperCase());
@@ -398,8 +405,11 @@ export class ApiClient {
       if (response.status === 401 && !skipAuth && allowRefresh) {
         const newToken = await this.refreshAccessToken();
         if (newToken) {
-          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false);
+          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false, skipErrorLog);
         }
+        const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
+        expiredError.status = 401;
+        throw expiredError;
       }
 
       // Manejo de respuesta
@@ -412,11 +422,15 @@ export class ApiClient {
       
       return responseData;
     } catch (error: any) {
-      // Solo loguear errores de requests que no sean del servicio de notificaciones
-      if (!url.includes('/notificaciones/') && !url.includes(':3009/') && !url.includes('/notifications')) {
-        console.log('🔴 Error en request:', error);
-      }
       clearTimeout(timeoutId);
+      // Errores de red (servicio no disponible) — solo warn, no spam
+      if (!skipErrorLog && !url.includes('/notificaciones/') && !url.includes(':3009/') && !url.includes('/notifications')) {
+        if (!error.status && (error.name === 'TypeError' || error.name === 'AbortError')) {
+          console.warn('⚠️ Servicio no disponible:', url);
+        } else {
+          console.log('🔴 Error en request:', error);
+        }
+      }
 
       if (error.name === 'AbortError') {
         throw new Error('Request timeout');
@@ -466,6 +480,9 @@ export class ApiClient {
         if (newToken) {
           return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, false);
         }
+        const expiredError: any = new Error('Sesion expirada. Por favor, inicia sesion nuevamente.');
+        expiredError.status = 401;
+        throw expiredError;
       }
 
       if (!response.ok) {
@@ -636,37 +653,35 @@ export class ApiClient {
 
   /**
    * Refresh del access token.
-   * El token viaja como cookie HttpOnly (OTIC-001): el navegador la envía automáticamente
-   * y el backend emite una nueva cookie en la respuesta. El frontend no almacena nada.
+   * El token viaja como cookie HttpOnly: el frontend no lo lee ni lo guarda.
    */
   private async refreshAccessToken(): Promise<string | null> {
     if (this.isRefreshing) {
       return new Promise((resolve) => {
-        this.refreshSubscribers.push((token: string) => resolve(token));
+        this.refreshSubscribers.push((token: string) => resolve(token || null));
       });
     }
 
     this.isRefreshing = true;
 
     try {
-      const response = await fetch(`${this.baseURL}${API_ENDPOINTS.AUTH.REFRESH}`, {
+      const response = await fetch(this.buildURL(API_ENDPOINTS.AUTH.REFRESH), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        ...CORS_CONFIG, // credentials:'include' envía la cookie automáticamente
+        ...CORS_CONFIG,
       });
 
       if (!response.ok) {
-        this.handleLogout();
+        console.warn('Token refresh failed with status:', response.status);
+        this.resolveRefreshSubscribers(null);
         return null;
       }
 
-      // El backend renueva la cookie; notificamos a los subscribers con un sentinel
-      // para que reintenten sin necesitar el token en memoria.
-      this.refreshSubscribers.forEach((cb) => cb('cookie-refreshed'));
-      this.refreshSubscribers = [];
+      this.resolveRefreshSubscribers('cookie-refreshed');
       return 'cookie-refreshed';
-    } catch {
-      this.handleLogout();
+    } catch (error) {
+      console.warn('Token refresh error:', error);
+      this.resolveRefreshSubscribers(null);
       return null;
     } finally {
       this.isRefreshing = false;
@@ -674,20 +689,12 @@ export class ApiClient {
   }
 
   /**
-   * Logout y limpiar datos de sesión del cliente.
-   * Las cookies HttpOnly las limpia el backend en el endpoint /logout.
+   * Resuelve las solicitudes que esperaban el refresh sin exponer tokens al frontend.
    */
-  private handleLogout(): void {
-    sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
-
-    toast.error('Sesión expirada', {
-      description: 'Por favor, inicia sesión nuevamente',
-    });
-
-    // Redirigir a login
-    window.location.href = '/login';
+  private resolveRefreshSubscribers(token: string | null): void {
+    this.refreshSubscribers.forEach((callback) => callback(token || ''));
+    this.refreshSubscribers = [];
   }
-
   /**
    * Muestra toast de error según el código HTTP
    */

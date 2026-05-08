@@ -20,6 +20,8 @@ export interface SystemRole {
   icon: string;
   color: string;
   type: 'sistema' | 'personalizado';
+  sistema_destino: string;
+  alcance?: any;
   is_active: boolean;
   requires_2fa: boolean;
   usuarios_count: number;
@@ -28,6 +30,24 @@ export interface SystemRole {
   updated_by?: string;
   created_at: string;
   updated_at: string;
+}
+
+// Interfaces para datos maestros
+export interface Territorial {
+  id: string;
+  nombre: string;
+}
+
+export interface CETAP {
+  id: string;
+  nombre: string;
+  territorialId: string;
+}
+
+export interface ProgramaAcademico {
+  id: string;
+  nombre: string;
+  codigo: string;
 }
 
 export interface RoleStats {
@@ -62,6 +82,7 @@ export interface RoleFilters {
   type?: 'todos' | 'sistema' | 'personalizado';
   status?: 'todos' | 'activo' | 'inactivo';
   requires_2fa?: 'todos' | 'con2fa' | 'sin2fa';
+  sistema_destino?: 'todos' | 'backoffice' | 'control-interno' | 'control-disciplinario';
   page?: number;
   limit?: number;
 }
@@ -172,6 +193,28 @@ export const rolesService = {
    */
   async getAllPermissions(): Promise<Permission[]> {
     return apiClient.get<Permission[]>(`${SERVICE_PREFIX}/roles/permissions/all`);
+  },
+
+  /**
+   * Obtener territoriales disponibles
+   */
+  async getTerritoriales(): Promise<Territorial[]> {
+    return apiClient.get<Territorial[]>(`${SERVICE_PREFIX}/datos-maestros/territoriales`);
+  },
+
+  /**
+   * Obtener CETAPs disponibles (filtrados por territorial si se especifica)
+   */
+  async getCETAPs(territorialId?: string): Promise<CETAP[]> {
+    const params = territorialId ? { territorialId } : {};
+    return apiClient.get<CETAP[]>(`${SERVICE_PREFIX}/datos-maestros/cetaps`, params);
+  },
+
+  /**
+   * Obtener programas académicos disponibles
+   */
+  async getProgramasAcademicos(): Promise<ProgramaAcademico[]> {
+    return apiClient.get<ProgramaAcademico[]>(`${SERVICE_PREFIX}/datos-maestros/programas-academicos`);
   },
 };
 

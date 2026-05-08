@@ -1073,6 +1073,7 @@ export interface RiesgoAPI {
     controlesExistentes: { id: string; descripcion: string; efectividad: number; }[];
     planTratamiento: { accion: string; responsable: string; fechaLimite: Date; estado: string; avance: number; }[];
     responsable: string;
+    responsableId?: string;
     estado: 'ACTIVO' | 'ARCHIVADO' | 'ELIMINADO' | 'CERRADO';
     createdAt: string;
     updatedAt: string;
@@ -1101,6 +1102,7 @@ export interface CreateRiesgoData {
     consecuencias?: string[];
     controlesExistentes?: { id: string; descripcion: string; efectividad: number }[];
     responsable: string;
+    responsableId?: string;
     cuantiaEstimada?: number;
     // Asociación con Proceso
     moduloOrigen?: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO' | 'ASESORIA_JURIDICA' | 'COACTIVOS' | 'ORGANOS_CONTROL';
@@ -1598,9 +1600,8 @@ export class ProcesosCoactivosService {
             url = `${baseUrl}${SERVICE_PREFIX}/procesos-coactivos/pagos/soporte/${filename}`;
         }
 
-        const token = sessionStorage.getItem('esap_auth_token');
         const response = await fetch(url, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            credentials: 'include',
         });
         if (!response.ok) throw new Error('Error descargando soporte');
 
@@ -1657,6 +1658,18 @@ export class ProcesosCoactivosService {
             console.error(`Error updateConfiguration(${key}):`, error);
             throw error;
         }
+    }
+
+    async notifyExpedienteToRole(id: string, data: {
+        roleCode: string;
+        asunto: string;
+        mensaje: string;
+        enviarEmail?: boolean;
+        enviarSistema?: boolean;
+        radicado?: string;
+        etapa?: string;
+    }): Promise<{ ok: boolean }> {
+        return apiClient.post<{ ok: boolean }>(`${SERVICE_PREFIX}/expedientes/${id}/notify-role`, data);
     }
 }
 

@@ -3,7 +3,8 @@
  * ✅ Diseño corporativo ESAP 2025
  * ✅ Header azul corporativo con gradiente
  * ✅ Diseño limpio tipo SAP Fiori
- * ✅ Destinatarios dinámicos: abogados del proceso
+ * ✅ Destinatarios dinámicos filtrados por rol del usuario actual
+ * ✅ Correos reales desde el servicio de autenticación
  */
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@esap-mfe/shared-ui/dialog';
@@ -14,15 +15,14 @@ import { Input } from '@esap-mfe/shared-ui/input';
 import { Textarea } from '@esap-mfe/shared-ui/textarea';
 import { Checkbox } from '@esap-mfe/shared-ui/checkbox';
 import { Label } from '@esap-mfe/shared-ui/label';
-import { 
-  Bell, X, Send, User, Mail, MessageSquare, 
-  CheckCircle, Users, AlertCircle
+import {
+  Bell, X, Send, Mail,
+  Users, AlertCircle
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import { toast } from 'sonner';
 import type { ExpedienteJudicial } from '../core/types';
 import { ModalHeaderClean } from './ModalHeaderClean';
-import { getServiceUrl } from '../../../../config/environment';
 import { legalService } from '../../../../services/api/legal.service';
 
 interface AbogadoDisponible {
@@ -35,9 +35,14 @@ interface ModalNotificarProps {
   onClose: () => void;
   expediente: ExpedienteJudicial;
   abogadosDisponibles?: AbogadoDisponible[];
+  rolUsuarioActual?: string;
 }
 
-export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponibles = [] }: ModalNotificarProps) {
+const MONITOREO_ROLE = 'MONITOREO_GESTION_LEGAL';
+const JEFE_ROLE = 'JEFE_GESTION_LEGAL';
+const RESUELVE_ROLE = 'RESUELVE_GESTION_LEGAL';
+
+export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponibles = [], rolUsuarioActual = '' }: ModalNotificarProps) {
   const [destinatariosSeleccionados, setDestinatariosSeleccionados] = useState<string[]>([]);
   const [asunto, setAsunto] = useState(`Expediente ${expediente.id} - Actualización`);
   const [mensaje, setMensaje] = useState('');
@@ -45,38 +50,53 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
   const [enviarPorSistema, setEnviarPorSistema] = useState(true);
   const [enviando, setEnviando] = useState(false);
 
-  // Identificador especial para el Jefe de Gesti\u00f3n Legal (se notifica v\u00eda rol, no
-  // por email individual \u2014 el backend resuelve los usuarios reales del rol).
   const JEFE_ROL_ID = 'jefe-gestion-legal-rol';
 
-  // Build display list with avatars/emails derived from names
   const destinatarios = useMemo(() => {
-    const abogados = abogadosDisponibles
-      .filter(a => a.nombre && a.nombre.trim() !== '' && a.nombre.toLowerCase() !== 'sin asignar')
-      .map((a, idx) => ({
-        id: `abogado-${idx}`,
-        nombre: a.nombre,
-        cargo: a.rol,
-        email: `${a.nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '.')}@esap.edu.co`,
-        avatar: a.nombre.split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase(),
-        esJefe: false,
-      }));
+    const esMonitoreo = rolUsuarioActual === MONITOREO_ROLE;
+    const esJefe = rolUsuarioActual === JEFE_ROLE;
+    const esResuelve = rolUsuarioActual === RESUELVE_ROLE;
 
-    // Siempre a\u00f1adimos al Jefe de Gesti\u00f3n Legal como destinatario disponible.
-    // El backend (`POST /expedientes/:id/notify-role`) resuelve los usuarios reales
-    // que tienen el rol `JEFE_GESTION_LEGAL` y les env\u00eda notificaci\u00f3n + email.
-    return [
-      ...abogados,
-      {
-        id: JEFE_ROL_ID,
-        nombre: 'Jefe de Gesti\u00f3n Legal',
-        cargo: 'Rol institucional',
-        email: 'Notificaci\u00f3n a usuarios con rol JEFE_GESTION_LEGAL',
-        avatar: 'JL',
-        esJefe: true,
-      },
-    ];
-  }, [abogadosDisponibles]);
+    const jefeEntry = {
+      id: JEFE_ROL_ID,
+      nombre: 'Jefe de Gestión Legal',
+      cargo: 'Rol institucional',
+      email: 'Notificación a usuarios con rol JEFE_GESTION_LEGAL',
+      avatar: 'JL',
+      esJefe: true,
+    };
+
+    // RESUELVE: solo puede notificar al Jefe
+    if (esResuelve) {
+      return [jefeEntry];
+    }
+
+    let abogadosFiltrados = abogadosDisponibles.filter(
+      a => a.nombre && a.nombre.trim() !== '' && a.nombre.toLowerCase() !== 'sin asignar'
+    );
+
+    // MONITOREO y JEFE: solo el abogado principal del caso
+    if (esMonitoreo || esJefe) {
+      abogadosFiltrados = abogadosFiltrados.filter(a => a.rol === 'Abogado del caso');
+    }
+
+    const abogados = abogadosFiltrados.map((a, idx) => ({
+      id: `abogado-${idx}`,
+      nombre: a.nombre,
+      cargo: esJefe ? 'RESUELVE_GESTION_LEGAL' : a.rol,
+      email: 'Notificación vía backend (RESUELVE_GESTION_LEGAL)',
+      avatar: a.nombre.split(' ').filter(Boolean).map(n => n[0]).join('').substring(0, 2).toUpperCase(),
+      esJefe: false,
+    }));
+
+    // JEFE: solo puede notificar al abogado
+    if (esJefe) {
+      return abogados;
+    }
+
+    // MONITOREO (y otros): abogado + jefe
+    return [...abogados, jefeEntry];
+  }, [abogadosDisponibles, rolUsuarioActual]);
 
   const toggleDestinatario = (id: string) => {
     if (destinatariosSeleccionados.includes(id)) {
@@ -114,17 +134,14 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
     const seleccionados = destinatarios.filter(u => destinatariosSeleccionados.includes(u.id));
     const jefeSeleccionado = seleccionados.some(s => s.id === JEFE_ROL_ID);
     const abogadosSeleccionados = seleccionados.filter(s => s.id !== JEFE_ROL_ID);
-    let emailsEnviados = 0;
-    let emailsFallidos = 0;
-    let jefeNotificado = false;
+    const expedienteId = (expediente as any).uuid || (expediente as any).id;
+    const resultados: string[] = [];
+    const errores: string[] = [];
 
     try {
-      // ========== 0. Notificar al Jefe de Gestión Legal vía rol ==========
-      // El backend resuelve los usuarios reales con rol JEFE_GESTION_LEGAL y les
-      // envía notificación in-app + email (si aplica).
+      // Notificar al Jefe de Gestión Legal vía rol (backend resuelve usuarios y envía email + in-app)
       if (jefeSeleccionado) {
         try {
-          const expedienteId = (expediente as any).uuid || (expediente as any).id;
           await legalService.notifyExpedienteToRole(expedienteId, {
             roleCode: 'JEFE_GESTION_LEGAL',
             asunto,
@@ -134,117 +151,40 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
             radicado: expediente.id,
             etapa: expediente.etapa,
           });
-          jefeNotificado = true;
+          resultados.push('Jefe de Gestión Legal');
         } catch (err) {
-          console.error('Error notificando al Jefe de Gestión Legal:', err);
+          console.error('Error notificando al Jefe:', err);
+          errores.push('Jefe de Gestión Legal');
         }
       }
 
-      // ========== 1. Enviar por correo electrónico (a abogados individuales) ==========
-      if (enviarPorEmail && abogadosSeleccionados.length > 0) {
-        const notificacionesUrl = getServiceUrl('notificaciones');
-
-        const htmlTemplate = (nombreDestinatario: string) => `
-          <div style="font-family: 'Inter', Arial, sans-serif; background: #f5f7fb; padding: 24px; color: #1f2937;">
-            <table width="100%" cellspacing="0" cellpadding="0" style="max-width: 520px; border: 1px solid #0b68d1; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 25px rgba(0,0,0,0.3);">
-              <tr>
-                <td style="background: linear-gradient(135deg, #003DA5 0%, #0b68d1 100%); padding: 18px 24px; color: #ffffff; font-weight: 700; font-size: 18px;">
-                  Gestión Legal ESAP
-                </td>
-              </tr>
-              <tr>
-                <td style="padding: 24px 24px 8px 24px; font-size: 16px; font-weight: 600; color: #111827;">
-                  ${asunto}
-                </td>
-              </tr>
-              <tr>
-                <td style="padding: 0 24px 8px 24px; font-size: 13px; color: #6b7280;">
-                  Estimado/a <strong>${nombreDestinatario}</strong>,
-                </td>
-              </tr>
-              <tr>
-                <td style="padding: 0 24px 16px 24px; font-size: 14px; color: #4b5563; line-height: 1.6; white-space: pre-line;">
-                  ${mensaje}
-                </td>
-              </tr>
-              <tr>
-                <td style="padding: 12px 24px; font-size: 12px; color: #6b7280; background: #f0f7ff; border-top: 1px solid #d7e9ff;">
-                  <strong>Expediente:</strong> ${expediente.id}<br/>
-                  <strong>Etapa:</strong> ${expediente.etapa || 'N/A'}
-                </td>
-              </tr>
-              <tr>
-                <td style="padding: 15px 24px; font-size: 12px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
-                  ESAP - Escuela Superior de Administración Pública
-                </td>
-              </tr>
-            </table>
-          </div>
-        `;
-
-        // Send one email per recipient (backend DTO expects single @IsEmail() `to`)
-        const emailPromises = abogadosSeleccionados.map(async (dest) => {
-          try {
-            const response = await fetch(`${notificacionesUrl}/api/v1/emails/send`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                to: dest.email,
-                subject: asunto,
-                text: mensaje,
-                html: htmlTemplate(dest.nombre)
-              })
-            });
-
-            if (!response.ok) {
-              const errorData = await response.json().catch(() => ({}));
-              console.error(`Error enviando email a ${dest.email}:`, errorData);
-              emailsFallidos++;
-            } else {
-              emailsEnviados++;
-            }
-          } catch (err) {
-            console.error(`Error de red enviando email a ${dest.email}:`, err);
-            emailsFallidos++;
-          }
-        });
-
-        await Promise.all(emailPromises);
-      }
-
-      // ========== 2. Notificación en el sistema (log de trazabilidad) ==========
-      if (enviarPorSistema) {
-        console.log('🔔 NOTIFICACIÓN INTERNA DEL SISTEMA:', {
-          expediente: expediente.id,
-          asunto,
-          mensaje,
-          destinatarios: seleccionados.map(d => ({ nombre: d.nombre, email: d.email })),
-          fecha: new Date().toISOString()
-        });
-      }
-
-      // ========== 3. Mostrar resultados ==========
-      if (jefeNotificado) {
-        toast.success('✅ Notificación enviada al Jefe de Gestión Legal', { duration: 4000 });
-      }
-
-      if (enviarPorEmail && abogadosSeleccionados.length > 0) {
-        if (emailsEnviados > 0 && emailsFallidos === 0) {
-          toast.success(`✅ ${emailsEnviados} correo(s) enviado(s) exitosamente`, { duration: 4000 });
-        } else if (emailsEnviados > 0 && emailsFallidos > 0) {
-          toast.warning(`⚠️ ${emailsEnviados} correo(s) enviado(s), ${emailsFallidos} fallido(s)`, { duration: 5000 });
-        } else if (emailsFallidos > 0) {
-          toast.error(`❌ No se pudieron enviar los correos (${emailsFallidos} fallido(s))`, { duration: 5000 });
+      // Notificar al/los abogado(s) vía rol RESUELVE_GESTION_LEGAL
+      // El backend resuelve los usuarios reales y envía email + in-app
+      if (abogadosSeleccionados.length > 0) {
+        try {
+          await legalService.notifyExpedienteToRole(expedienteId, {
+            roleCode: 'RESUELVE_GESTION_LEGAL',
+            asunto,
+            mensaje,
+            enviarEmail: enviarPorEmail,
+            enviarSistema: enviarPorSistema,
+            radicado: expediente.id,
+            etapa: expediente.etapa,
+          });
+          resultados.push('Abogado del caso');
+        } catch (err) {
+          console.error('Error notificando al abogado:', err);
+          errores.push('Abogado del caso');
         }
       }
 
-      if (enviarPorSistema) {
-        toast.info('🔔 Notificación registrada en el sistema', {
-          description: `${seleccionados.length} destinatario(s) notificado(s)`,
-          duration: 3000
-        });
+      // Mostrar resultados
+      if (resultados.length > 0) {
+        toast.success(`✅ Notificación enviada a: ${resultados.join(', ')}`, { duration: 4000 });
       }
-
+      if (errores.length > 0) {
+        toast.error(`❌ Error notificando a: ${errores.join(', ')}`, { duration: 5000 });
+      }
       if (!enviarPorEmail && !enviarPorSistema) {
         toast.warning('⚠️ No se seleccionó ningún canal de envío');
       }
@@ -356,8 +296,8 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
                 {destinatarios.map((usuario) => {
                   const isSelected = destinatariosSeleccionados.includes(usuario.id);
                   return (
-                    <Card 
-                      key={usuario.id} 
+                    <Card
+                      key={usuario.id}
                       className={`p-3 cursor-pointer transition-all hover:shadow-md ${
                         isSelected ? 'border-2 bg-blue-50' : 'border-2 border-transparent'
                       }`}
@@ -371,7 +311,7 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
                           className="mt-1"
                         />
                         <div className="flex items-center gap-3 flex-1">
-                          <div 
+                          <div
                             className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
                             style={{ background: '#2962FF', color: '#FFFFFF' }}
                           >
@@ -433,9 +373,9 @@ export function ModalNotificar({ isOpen, onClose, expediente, abogadosDisponible
         </div>
 
         {/* ==================== FOOTER STICKY CON BOTONES ==================== */}
-        <div 
+        <div
           className="flex-shrink-0 bg-white border-t-2 px-6 py-4"
-          style={{ 
+          style={{
             borderTopColor: '#2962FF',
             boxShadow: '0 -4px 12px rgba(0, 0, 0, 0.05)'
           }}

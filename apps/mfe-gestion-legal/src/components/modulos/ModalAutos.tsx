@@ -127,16 +127,8 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
 
     toast.loading('⏳ Descargando...', { id: 'download-auto' });
     try {
-      // Obtener token para autenticación
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(fileUrl, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
       if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -243,15 +235,8 @@ export function ModalAutos({ isOpen, onClose, expediente, modulo }: ModalAutosPr
       const url = `${baseUrl}${prefix}/autos/expediente/${radicadoTarget}/download-zip`;
 
       // Obtener token para autenticación
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(url, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
 
