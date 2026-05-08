@@ -82,6 +82,7 @@ export interface RoleFilters {
   type?: 'todos' | 'sistema' | 'personalizado';
   status?: 'todos' | 'activo' | 'inactivo';
   requires_2fa?: 'todos' | 'con2fa' | 'sin2fa';
+  sistema_destino?: 'todos' | 'backoffice' | 'control-interno' | 'control-disciplinario';
   page?: number;
   limit?: number;
 }

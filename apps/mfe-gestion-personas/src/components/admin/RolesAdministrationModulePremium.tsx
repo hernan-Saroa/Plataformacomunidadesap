@@ -54,241 +54,6 @@ import { useAuth } from '../../hooks';
 
 // Usar tipos del servicio API
 
-// ============================================================================
-// DATA MOCK
-// ============================================================================
-
-const MOCK_ROLES: SystemRole[] = [
-  {
-    id: '1',
-    name: 'Super Administrador',
-    description: 'Acceso total al sistema con todos los permisos administrativos',
-    icon: 'Shield',
-    color: '#dc2626',
-    type: 'sistema',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 3,
-    permisos_count: 45,
-    created_at: '2024-01-01',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: '2',
-    name: 'Estudiante',
-    description: 'Rol básico para estudiantes activos de la institución',
-    icon: 'GraduationCap',
-    color: '#003DA5',
-    type: 'sistema',
-    sistema_destino: 'Portal',
-    is_active: true,
-    requires_2fa: false,
-    usuarios_count: 1247,
-    permisos_count: 12,
-    created_at: '2024-01-01',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: '3',
-    name: 'Docente',
-    description: 'Acceso para profesores con permisos de gestión académica',
-    icon: 'BookOpen',
-    color: '#16a34a',
-    type: 'sistema',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: false,
-    usuarios_count: 89,
-    permisos_count: 18,
-    created_at: '2024-01-01',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: '4',
-    name: 'Administrativo',
-    description: 'Personal administrativo con permisos de gestión operativa',
-    icon: 'Briefcase',
-    color: '#f97316',
-    type: 'sistema',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 45,
-    permisos_count: 28,
-    created_at: '2024-01-01',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: '5',
-    name: 'Graduado',
-    description: 'Ex-estudiantes graduados con acceso a servicios alumni',
-    icon: 'Award',
-    color: '#10b981',
-    type: 'sistema',
-    sistema_destino: 'Portal',
-    is_active: true,
-    requires_2fa: false,
-    usuarios_count: 3421,
-    permisos_count: 10,
-    created_at: '2024-01-01',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: '6',
-    name: 'Aspirante',
-    description: 'Personas en proceso de admisión a la institución',
-    icon: 'UserCircle',
-    color: '#9333ea',
-    type: 'sistema',
-    sistema_destino: 'Portal',
-    is_active: true,
-    requires_2fa: false,
-    usuarios_count: 234,
-    permisos_count: 5,
-    created_at: '2024-01-01',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: '7',
-    name: 'Coordinador Regional',
-    description: 'Gestión de operaciones en sedes regionales',
-    icon: 'Building2',
-    color: '#0891b2',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 12,
-    permisos_count: 22,
-    created_at: '2024-03-15',
-    created_by: 'Admin Principal',
-    updated_at: '2024-10-20',
-    updated_by: 'Admin Principal'
-  },
-  // ============ ROLES PARA CONTROL DISCIPLINARIO ============
-  {
-    id: 'cd-1',
-    name: 'Profesional Especializado Disciplinario',
-    description: 'Profesional especializado del equipo disciplinario con capacidad de gestión completa de procesos',
-    icon: 'Scale',
-    color: '#dc2626',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 5,
-    permisos_count: 75,
-    created_at: '2026-01-21',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: 'cd-2',
-    name: 'Profesional Universitario Disciplinario',
-    description: 'Profesional universitario del equipo disciplinario con permisos de gestión operativa',
-    icon: 'Scale',
-    color: '#dc2626',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 8,
-    permisos_count: 60,
-    created_at: '2026-01-21',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: 'cd-3',
-    name: 'Profesional Senior Disciplinario',
-    description: 'Profesional senior con permisos avanzados incluyendo revisión y aprobación',
-    icon: 'Scale',
-    color: '#dc2626',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 3,
-    permisos_count: 85,
-    created_at: '2026-01-21',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: 'cd-4',
-    name: 'Coordinador Disciplinario',
-    description: 'Coordinador del equipo disciplinario con permisos ejecutivos y de supervisión',
-    icon: 'Scale',
-    color: '#dc2626',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 2,
-    permisos_count: 95,
-    created_at: '2026-01-21',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: 'cd-5',
-    name: 'Jefe Control Disciplinario',
-    description: 'Jefe de Control Disciplinario con acceso completo incluyendo configuración y administración',
-    icon: 'Shield',
-    color: '#7c2d12',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 1,
-    permisos_count: 95,
-    created_at: '2026-01-21',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: 'cd-6',
-    name: 'Consultor Disciplinario',
-    description: 'Rol de solo lectura para consulta de procesos disciplinarios sin permisos de modificación',
-    icon: 'Eye',
-    color: '#64748b',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: false,
-    usuarios_count: 4,
-    permisos_count: 15,
-    created_at: '2026-01-21',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  }
-];
-
-const MOCK_STATS: RoleStats = {
-  total_roles: 12,
-  roles_sistema: 10,
-  usuarios_asignados: 5067,
-  permisos_disponibles: 45
-};
 
 // ============================================================================
 // ICONOS HELPER
@@ -521,6 +286,8 @@ export function RolesAdministrationModulePremium() {
       const response = await rolesService.getRoles(filters);
       setRoles(response.roles);
       setTotalItems(response.total);
+      console.log("Roles cargados:", response.roles);
+      console.log("Total de roles:", response.total);
     } catch (error) {
       console.error('Error loading roles:', error);
       toast.error('Error al cargar roles', {
@@ -862,7 +629,7 @@ export function RolesAdministrationModulePremium() {
             Roles y Permisos
           </h1>
           <p className="text-xs lg:text-[11px] xl:text-xs text-[--esap-gray-600]">
-            Administra roles del sistema y asigna permisos granulares
+            Administra roles del sistema y asigna permisos granularess
           </p>
         </div>
 
@@ -1259,7 +1026,7 @@ export function RolesAdministrationModulePremium() {
                                               <p className="text-gray-900 font-medium">{getRoleDisplayDescription(role)}</p>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2">
-                                              <div>
+                                              <div key="created">
                                                 <span className="text-gray-600 text-xs">Creado:</span>
                                                 <p className="text-gray-900 font-medium text-xs">
                                                   {new Date(role.created_at).toLocaleDateString('es-CO')}
@@ -1267,7 +1034,7 @@ export function RolesAdministrationModulePremium() {
                                                 <p className="text-gray-600 text-xs">por {role.created_by}</p>
                                               </div>
                                               {role.updated_at && (
-                                                <div>
+                                                <div key="updated">
                                                   <span className="text-gray-600 text-xs">Modificado:</span>
                                                   <p className="text-gray-900 font-medium text-xs">
                                                     {new Date(role.updated_at).toLocaleDateString('es-CO')}
