@@ -224,7 +224,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('verify')
   verify(@Req() req) {
-    return req.user;
+    return this.authService.getVerifiedUser(req.user);
   }
 
   private extractLoginIdentifier(dto: LoginDto): string {
