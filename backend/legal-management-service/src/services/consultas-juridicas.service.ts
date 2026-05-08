@@ -113,7 +113,8 @@ export class ConsultasJuridicasService implements OnModuleInit {
             numeroRadicado,
             fechaRecepcion: new Date(),
             fechaMaximaRespuesta: fechaMaxima,
-            estado: 'en_radicacion'
+            estado: data.abogadoAsignadoId ? 'asignado' : 'en_radicacion',
+            fechaAsignacion: data.abogadoAsignadoId ? new Date() : undefined
         });
 
         const savedConsulta = await this.consultaRepository.save(nuevaConsulta);

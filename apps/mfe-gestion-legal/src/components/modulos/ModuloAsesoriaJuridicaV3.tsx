@@ -258,6 +258,8 @@ export function ModuloAsesoriaJuridicaV3() {
       'asignado': 'Asignado',
       'en_analisis': 'En Análisis',
       'en_revision': 'En Revisión',
+      'pendiente_revision_jefe': 'Pendiente Revisión Jefe',
+      'devuelta_por_jefe': 'Devuelta por Jefe',
       'respondido': 'Respondido',
       'cerrado': 'Respondido',
       'vencido': 'Vencida'
