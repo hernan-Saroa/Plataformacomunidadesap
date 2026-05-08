@@ -662,6 +662,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     <AnimatePresence>
       {isOpen && (
         <motion.div
+          key="panel-content"
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
           exit={{ opacity: 0, height: 0 }}

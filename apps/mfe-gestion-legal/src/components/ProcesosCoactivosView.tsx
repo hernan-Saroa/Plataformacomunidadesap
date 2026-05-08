@@ -163,29 +163,41 @@ export function ProcesosCoactivosView() {
     toast.success('Proceso creado y agregado a la lista');
   };
 
-  const handleRegistrarPago = (pago: any) => {
-    toast.success('Pago registrado en el sistema');
-    // Actualizar el proceso con el nuevo pago
+  const handleRegistrarPago = async (pago: any) => {
+    // Recargar datos del proceso desde el backend para sincronizar estado
     if (procesoSeleccionado) {
-      const procesosActualizados = procesos.map(p => {
-        if (p.id === procesoSeleccionado.id) {
-          return {
-            ...p,
-            valorPagado: p.valorPagado + pago.valor,
-            historialPagos: [
-              ...p.historialPagos,
-              {
-                fecha: pago.fecha,
-                valor: pago.valor,
-                concepto: pago.tipo === 'ACUERDO' ? 'Acuerdo de pago registrado' : 'Pago registrado',
-                comprobante: pago.comprobante
-              }
-            ]
-          };
+      try {
+        const { procesosCoactivosService } = await import('../../../../services/api/legal.service');
+        const procesoActualizado = await procesosCoactivosService.getOne(procesoSeleccionado.id);
+        if (procesoActualizado) {
+          const procesosActualizados = procesos.map(p => {
+            if (p.id === procesoSeleccionado.id) {
+              return {
+                ...p,
+                valorPagado: Number(procesoActualizado.valorPagado || 0),
+                documentos: p.documentos, // mantener documentos locales
+              };
+            }
+            return p;
+          });
+          setProcesos(procesosActualizados);
         }
-        return p;
-      });
-      setProcesos(procesosActualizados);
+      } catch (err) {
+        console.warn('Error recargando proceso, usando fallback local:', err);
+        // Fallback: si el pago tiene valor, hacer el cálculo local
+        if (pago?.valor && typeof pago.valor === 'number') {
+          const procesosActualizados = procesos.map(p => {
+            if (p.id === procesoSeleccionado.id) {
+              return {
+                ...p,
+                valorPagado: p.valorPagado + pago.valor,
+              };
+            }
+            return p;
+          });
+          setProcesos(procesosActualizados);
+        }
+      }
     }
     setModalPagos(false);
   };

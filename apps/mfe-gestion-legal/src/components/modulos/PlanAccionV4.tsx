@@ -64,6 +64,16 @@ interface Indicador {
   tipoIndicador: 'EFICIENCIA' | 'EFICACIA' | 'GESTION' | 'TRANSPARENCIA';
   unidadMedida: string;
   ultimaActualizacion: Date;
+  // Bug 6b: registros del backend para mostrar historial con observaciones
+  registros?: Array<{
+    id: number | string;
+    valorReportado: number;
+    porcentajeAvance: number;
+    observaciones?: string;
+    evidenciaUrl?: string;
+    fechaRegistro: string | Date;
+    usuarioRegistraId?: string;
+  }>;
 }
 
 type VistaModulo = 'dashboard' | 'lista' | 'timeline' | 'matriz' | 'archivados';
@@ -222,6 +232,22 @@ const getSemaforoColor = (avance: number) => {
   return '#DC2626'; // Rojo
 };
 
+/** Variant del componente Progress según porcentaje (Bug 3) */
+const getSemaforoVariant = (avance: number): 'success' | 'warning' | 'danger' => {
+  if (avance >= 90) return 'success';
+  if (avance >= 50) return 'warning';
+  return 'danger';
+};
+
+/** Badge tipo "chip" para % cumplimiento que cambia color según el porcentaje (Bug 3) */
+const getCumplimientoBadge = (avance: number) => {
+  if (avance >= 90) return { bg: '#D1FAE5', color: '#065F46', label: 'Óptimo' };
+  if (avance >= 70) return { bg: '#DBEAFE', color: '#1E40AF', label: 'Bueno' };
+  if (avance >= 50) return { bg: '#FEF3C7', color: '#92400E', label: 'Medio' };
+  if (avance >= 30) return { bg: '#FED7AA', color: '#9A3412', label: 'Bajo' };
+  return { bg: '#FEE2E2', color: '#991B1B', label: 'Crítico' };
+};
+
 /** Convierte el enum unidadMedida al símbolo visual correcto */
 const fmtUnidad = (unidad: string): string => {
   if (unidad === 'PORCENTAJE' || unidad === '%') return '%';
@@ -282,7 +308,9 @@ export function ModuloPlanAccionV4() {
         periodicidad: ind.frecuenciaMedicion || 'MENSUAL',
         tipoIndicador: ind.tipoIndicador || 'GESTION',
         unidadMedida: ind.unidadMedida || '%',
-        ultimaActualizacion: new Date()
+        ultimaActualizacion: new Date(),
+        // Bug 6b: propagamos los registros del backend para mostrar el historial
+        registros: Array.isArray(ind.registros) ? ind.registros : [],
       }));
 
       setIndicadores(mapped);
@@ -355,6 +383,7 @@ export function ModuloPlanAccionV4() {
           tipoIndicador: ind.tipoIndicador || 'GESTION',
           unidadMedida: ind.unidadMedida || '%',
           ultimaActualizacion: new Date(),
+          registros: Array.isArray(ind.registros) ? ind.registros : [],
         })));
       }).catch(() => {});
     } catch (error) {
@@ -497,12 +526,15 @@ export function ModuloPlanAccionV4() {
   const handleGuardarAvance = async (data: any) => {
     try {
       if (!indicadorSeleccionado) return;
-      await legalService.registrarAvanceIndicador(indicadorSeleccionado.id, {
-        valor: data.valorActual,
-        observaciones: data.observacionesAvance
-      });
-      // Success toast is handled in the modal already? 
-      // Actually v4 ModalCargarAvance calls onGuardar but also has toast.
+      // Bug 6a: enviamos archivo si vino, observaciones siempre.
+      await legalService.registrarAvanceIndicador(
+        indicadorSeleccionado.id,
+        {
+          valor: data.valorActual,
+          observaciones: data.observacionesAvance,
+        },
+        data.evidenciaFile || undefined,
+      );
       setModalAvanceOpen(false);
       fetchData();
     } catch (error) {
@@ -979,14 +1011,34 @@ function VistaLista({
                             <span className="text-sm font-semibold text-blue-600">{fmtValor(ind.valorActual, ind.unidadMedida)}</span>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 min-w-[100px]">
-                                <Progress value={ind.avance} className="h-2" />
-                              </div>
-                              <span className="text-sm font-bold min-w-[3rem] text-right" style={{ color: getSemaforoColor(ind.avance) }}>
-                                {ind.avance}%
-                              </span>
-                            </div>
+                            {(() => {
+                              const cb = getCumplimientoBadge(ind.avance);
+                              return (
+                                <div className="space-y-1.5 min-w-[160px]">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1">
+                                      <Progress
+                                        value={ind.avance}
+                                        variant={getSemaforoVariant(ind.avance)}
+                                        size="sm"
+                                      />
+                                    </div>
+                                    <span
+                                      className="text-sm font-bold min-w-[3rem] text-right"
+                                      style={{ color: getSemaforoColor(ind.avance) }}
+                                    >
+                                      {ind.avance}%
+                                    </span>
+                                  </div>
+                                  <span
+                                    className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold"
+                                    style={{ backgroundColor: cb.bg, color: cb.color }}
+                                  >
+                                    {cb.label}
+                                  </span>
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-4 py-3 text-center">
                             <Badge

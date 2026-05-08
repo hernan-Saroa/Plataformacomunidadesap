@@ -271,38 +271,21 @@ La estructura del proyecto sigue una organización modular y escalable, separand
 
 ```
 /
-├── src/                           # Código fuente del frontend
-│   ├── components/                # Componentes React reutilizables
-│   │   ├── esap/                  # Módulos específicos de ESAP
-│   │   │   ├── admin/             # Gestión de usuarios y permisos
-│   │   │   ├── alertas/           # Sistema de alertas y notificaciones
-│   │   │   ├── audit/             # Utilidades de auditoría
-│   │   │   ├── auth/              # Componentes de autenticación
-│   │   │   ├── control-interno/   # Módulo completo de control interno
-│   │   │   ├── disciplinario/     # Gestión de procesos disciplinarios
-│   │   │   ├── firma-electronica/ # Sistema de firma digital
-│   │   │   ├── gestion-legal/     # Gestión de procesos legales
-│   │   │   ├── registro-academico/# Validación de certificados
-│   │   │   └── shared/            # Componentes compartidos
-│   │   └── portal/                # Componentes del portal público
-│   ├── hooks/                     # Custom hooks de React
-│   ├── contexts/                  # Contextos de React para estado global
-│   ├── context/                   # (Duplicado - revisar)
-│   ├── services/                  # Servicios para llamadas a API
-│   ├── types/                     # Definiciones TypeScript
-│   ├── enums/                     # Enumeraciones del dominio
-│   ├── utils/                     # Funciones utilitarias
-│   ├── lib/                       # Librerías y configuraciones
-│   ├── pages/                     # Páginas principales de la aplicación
-│   ├── config/                    # Configuraciones de la aplicación
-│   ├── data/                      # Datos estáticos y mocks
-│   ├── styles/                    # Estilos CSS adicionales
-│   ├── assets/                    # Recursos estáticos (imágenes, íconos)
-│   ├── guidelines/                # Guías y documentación interna
-│   ├── App.tsx                    # Componente raíz de la aplicación
-│   ├── main.tsx                   # Punto de entrada de Vite
-│   ├── index.css                  # Estilos globales
-│   └── Attributions.md            # Atribuciones de librerías
+├── apps/                          # Aplicaciones y Micro-Frontends (MFE)
+│   ├── shell/                     # Aplicación principal (Host)
+│   ├── mfe-auditoria/             # Micro-frontend de Auditoría
+│   ├── mfe-certificados-laborales/# Micro-frontend de Certificados Laborales
+│   ├── mfe-control-disciplinario/ # Micro-frontend de Control Disciplinario
+│   ├── mfe-control-interno/       # Micro-frontend de Control Interno
+│   ├── mfe-firma-electronica/     # Micro-frontend de Firma Electrónica
+│   ├── mfe-gestion-legal/         # Micro-frontend de Gestión Legal
+│   ├── mfe-registro-academico/    # Micro-frontend de Registro Académico
+│   └── ...                        # Otros MFE específicos
+├── packages/                      # Paquetes y librerías compartidas
+│   ├── shared-ui/                 # Componentes de UI compartidos
+│   ├── shared-hooks/              # Hooks de React compartidos
+│   └── shared-types/              # Definiciones TypeScript compartidas
+├── _src_legacy_backup/            # Respaldo del código fuente anterior (SPA monolítica)
 ├── backend/                       # Microservicios del backend
 │   ├── api-gateway/               # API Gateway principal
 │   ├── auth-service/              # Servicio de autenticación
@@ -393,68 +376,33 @@ Los módulos del frontend siguen una estructura organizada, aunque no todos los 
 
 #### Estructura Ideal (Propuesta)
 ```
-src/components/esap/[modulo]/
-├── [Modulo]Module.tsx            # Componente principal del módulo
-├── components/                   # Subcomponentes específicos del módulo
-│   ├── [Componente].tsx         # Componentes individuales
-│   └── index.ts                 # Exportaciones del módulo
-├── hooks/                        # Hooks personalizados del módulo
-│   ├── use[Modulo].ts           # Hook principal
-│   └── use[Subfuncionalidad].ts # Hooks específicos
-├── services/                     # Servicios del módulo
-│   ├── [modulo]Service.ts       # Servicio principal
-│   ├── [modulo]Api.ts           # Cliente API específico
-│   ├── types.ts                 # Tipos de servicios
-│   └── index.ts                 # Exportaciones de servicios
-├── types/                        # Tipos TypeScript del módulo
-│   ├── [Modulo]Types.ts         # Tipos principales
-│   └── [Modulo]Enums.ts         # Enumeraciones
-├── utils/                        # Utilidades del módulo
-│   ├── [modulo]Utils.ts         # Funciones utilitarias
-│   ├── constants.ts             # Constantes del módulo
-│   └── tooltips-config.ts       # Configuraciones específicas
-├── index.ts                      # Punto de entrada del módulo
-└── README.md                     # Documentación del módulo
+apps/mfe-[modulo]/
+├── src/                          # Código fuente del Micro-Frontend
+│   ├── components/               # Componentes específicos del MFE
+│   ├── hooks/                    # Hooks personalizados del MFE
+│   ├── services/                 # Servicios del MFE y llamadas a API
+│   ├── types/                    # Tipos TypeScript del MFE
+│   ├── utils/                    # Utilidades específicas
+│   ├── App.tsx                   # Componente raíz del MFE
+│   ├── main.tsx                  # Punto de entrada
+│   └── index.css                 # Estilos locales
+├── package.json                  # Dependencias del MFE
+├── vite.config.ts                # Configuración de compilación del MFE
+└── README.md                     # Documentación del MFE
 ```
 
 #### Estructura Real Implementada (Ejemplo: Módulo Control Interno)
 ```
-src/components/esap/control-interno/
-├── index.ts                      # Exportaciones principales
-├── ControlInternoContext.tsx     # Contexto React del módulo
-├── ControlInternoFull.tsx        # Componente principal completo
-├── HeaderModuloCIG.tsx           # Header específico del módulo
-├── ConfiguracionesModulePremium.tsx # Configuraciones avanzadas
-├── [50+ componentes .tsx]        # Componentes específicos del módulo
-├── hooks/                        # Directorio de hooks
-│   ├── useAuditLog.ts            # Hook para logs de auditoría
-│   ├── useControlInternoPermissions.ts # Hook de permisos
-│   ├── useCrearNotificacion.ts   # Hook para notificaciones
-│   ├── useNotificacionesControlInterno.ts # Hook de notificaciones
-│   └── EJEMPLOS_USO_NOTIFICACIONES.md # Documentación de hooks
-├── services/                     # Directorio de servicios
-│   ├── index.ts                  # Exportaciones de servicios
-│   ├── api.ts                    # Cliente API principal
-│   ├── auditLogService.ts        # Servicio de logs de auditoría
-│   ├── listasChequeoService.ts   # Servicio de listas de chequeo
-│   ├── tablerosKanbanService.ts  # Servicio de tableros Kanban
-│   ├── tiposAuditoriaService.ts  # Servicio de tipos de auditoría
-│   ├── authDebug.ts              # Utilidades de debug de auth
-│   ├── hooks.ts                  # Configuraciones de hooks
-│   └── types.ts                  # Tipos de servicios
-├── utils/                        # Directorio de utilidades
-│   ├── tooltips-config.ts        # Configuración de tooltips
-│   ├── DatosEjemploAuditorias.ts # Datos de ejemplo
-│   └── index.ts                  # Exportaciones de utilidades
-└── [Archivos de documentación .md]
-```
-
-#### Estructura Simplificada (Ejemplo: Módulo Auth)
-```
-src/components/esap/auth/
-├── EjemploPasswordSegura.tsx     # Componente de ejemplo
-├── PasswordStrengthInput.tsx     # Componente de input de contraseña
-└── PoliticaPasswordESAP.tsx      # Componente de política de contraseña
+apps/mfe-control-interno/
+├── src/                          # Código fuente del Micro-Frontend
+│   ├── components/               # Componentes de Control Interno
+│   ├── hooks/                    # Hooks como useAuditLog, etc.
+│   ├── services/                 # Servicios de API de Control Interno
+│   ├── utils/                    # Utilidades y configuración
+│   ├── App.tsx                   # Entrypoint del componente principal
+│   └── main.tsx                  # Integración del MFE
+├── package.json                  # Script y dependencias locales
+└── vite.config.ts                # Configuración de module federation
 ```
 
 **Nota**: No todos los módulos siguen la estructura ideal. Algunos módulos tienen todos los archivos en el directorio raíz, mientras que módulos más complejos como `control-interno` implementan una organización jerárquica completa con subdirectorios para hooks, services y utils.
@@ -2192,17 +2140,17 @@ Esta sección documenta las decisiones técnicas implementadas en la Plataforma 
 - JSX/TSX para templates
 - Hot reload en desarrollo
 
-### 15.2 Arquitectura Frontend: SPA Modular (No Micro-Frontends)
+### 15.2 Arquitectura Frontend: Micro-Frontends (MFE)
 
 **Implementación Actual:**
-- **Arquitectura**: Single Page Application (SPA) con módulos organizados por dominio
-- **Estructura**: Componentes organizados en carpetas `/esap/*` y `/portal/*`
-- **Evidencia**: Estructura de archivos en `/src/components/` sin implementación de Module Federation o single-spa
+- **Arquitectura**: Micro-Frontends (MFE) organizados en un esquema de Monorepo utilizando Vite.
+- **Estructura**: La aplicación está segmentada por dominios de negocio alojados en `/apps/mfe-*` (ej: `/apps/mfe-control-interno`, `/apps/mfe-auditoria`), integrados por una aplicación central o host (`/apps/shell`).
+- **Evidencia**: Se usa el esquema de dependencias locales y workspaces en el `package.json` raíz (`"workspaces": ["apps/*", "packages/*"]`), permitiendo compartir paquetes transversales almacenados en `/packages/`.
 
 **Estado Actual:**
-- La documentación menciona "micro-frontends" pero la implementación actual es una SPA tradicional
-- Los módulos están organizados lógicamente pero comparten el mismo bundle
-- No hay aislamiento de runtime entre módulos
+- La migración a micro-frontends se ha llevado a cabo satisfactoriamente reemplazando la antigua SPA monolítica.
+- Cada módulo tiene un ciclo de compilación que permite su desarrollo aislado o en conjunto mediante la aplicación shell.
+- La ejecución en entorno local y productivo está orquestada para montar estos frontends modulares.
 
 ### 15.3 Gestión de Estado: TanStack Query + Context API
 

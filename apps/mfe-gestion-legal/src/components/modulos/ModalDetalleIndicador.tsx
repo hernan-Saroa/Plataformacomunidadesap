@@ -3,12 +3,22 @@
  * Modal para ver detalles completos y seguimiento de un indicador
  */
 
-import { Eye, Target, Calendar, User, TrendingUp, Activity, FileText, Clock, Award, AlertCircle, CheckCircle, Archive } from 'lucide-react';
+import { Eye, Target, Calendar, User, TrendingUp, Activity, FileText, Clock, Award, AlertCircle, CheckCircle, Archive, Paperclip, Download } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Progress } from '@esap-mfe/shared-ui/progress';
 import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { ModalHeaderClean } from './ModalHeaderClean';
+
+interface RegistroAvance {
+  id: number | string;
+  valorReportado: number;
+  porcentajeAvance: number;
+  observaciones?: string;
+  evidenciaUrl?: string;
+  fechaRegistro: string | Date;
+  usuarioRegistraId?: string;
+}
 
 interface Indicador {
   id: string;
@@ -28,6 +38,8 @@ interface Indicador {
   tipoIndicador: string;
   unidadMedida: string;
   ultimaActualizacion: Date;
+  // Bug 6b: historial de avances con observaciones
+  registros?: RegistroAvance[];
 }
 
 interface ModalDetalleIndicadorProps {
@@ -399,6 +411,118 @@ export function ModalDetalleIndicador({ isOpen, onClose, indicador, onEditar, on
                   </p>
                 </div>
               </div>
+            </div>
+
+            {/* Bug 6b: Historial de Avances con Observaciones y Evidencias */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b-2 border-gray-200">
+                <Clock className="w-5 h-5 text-gray-700" />
+                <h3 className="font-bold text-gray-900">Historial de Avances</h3>
+                {indicador.registros && indicador.registros.length > 0 && (
+                  <Badge className="bg-blue-100 text-blue-700 ml-1">
+                    {indicador.registros.length}
+                  </Badge>
+                )}
+              </div>
+
+              {!indicador.registros || indicador.registros.length === 0 ? (
+                <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                  <Clock className="w-10 h-10 mx-auto mb-2 text-gray-400 opacity-60" />
+                  <p className="text-sm text-gray-500">Aún no se han registrado avances</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Usa "Actualizar Avance" para registrar el primer avance
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+                  {[...indicador.registros]
+                    .sort((a, b) => new Date(b.fechaRegistro).getTime() - new Date(a.fechaRegistro).getTime())
+                    .map((reg, idx) => {
+                      const fecha = new Date(reg.fechaRegistro);
+                      const semColor = getSemaforoColor(Number(reg.porcentajeAvance || 0));
+                      return (
+                        <div
+                          key={reg.id ?? idx}
+                          className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow"
+                        >
+                          {/* Header del registro */}
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-2 h-2 rounded-full"
+                                style={{ backgroundColor: semColor }}
+                              />
+                              <span className="text-xs font-semibold text-gray-500">
+                                {fecha.toLocaleDateString('es-CO', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })}
+                                {' · '}
+                                {fecha.toLocaleTimeString('es-CO', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                            </div>
+                            <Badge
+                              className="font-bold text-xs"
+                              style={{
+                                backgroundColor: `${semColor}20`,
+                                color: semColor,
+                                border: `1px solid ${semColor}`,
+                              }}
+                            >
+                              {Math.round(Number(reg.porcentajeAvance || 0))}%
+                            </Badge>
+                          </div>
+
+                          {/* Valor reportado */}
+                          <div className="flex items-center gap-2 mb-2 text-xs text-gray-600">
+                            <Activity className="w-3.5 h-3.5" />
+                            <span>
+                              Valor reportado:{' '}
+                              <strong className="text-gray-900">
+                                {Number(reg.valorReportado).toLocaleString('es-CO')}
+                                {indicador.unidadMedida === 'PORCENTAJE' ? '%' : ''}
+                              </strong>
+                            </span>
+                          </div>
+
+                          {/* Observaciones */}
+                          {reg.observaciones && (
+                            <div className="bg-gray-50 rounded-lg p-3 border border-gray-100 mb-2">
+                              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">
+                                Observación
+                              </p>
+                              <p className="text-sm text-gray-700 whitespace-pre-line">
+                                {reg.observaciones}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Evidencia */}
+                          {reg.evidenciaUrl && (
+                            <a
+                              href={
+                                reg.evidenciaUrl.startsWith('http')
+                                  ? reg.evidenciaUrl
+                                  : `/services/legal/${reg.evidenciaUrl}`
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 hover:underline font-semibold"
+                            >
+                              <Paperclip className="w-3.5 h-3.5" />
+                              Ver evidencia
+                              <Download className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
 
             {/* Acciones Rápidas */}

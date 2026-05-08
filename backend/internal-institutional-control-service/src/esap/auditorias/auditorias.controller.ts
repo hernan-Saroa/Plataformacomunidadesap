@@ -56,12 +56,11 @@ export class AuditoriasController {
    */
   private extractUserFromToken(req: any): any | null {
     try {
-      const authHeader = req.headers?.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      const token = this.extractJwtFromRequest(req);
+      if (!token) {
         return null;
       }
 
-      const token = authHeader.substring(7);
       const payload = this.jwtService.verify(token, {
         secret: process.env.JWT_SECRET || 'esap-super-secret-jwt-key-2024',
       });
@@ -90,6 +89,38 @@ export class AuditoriasController {
       // Si el token es inválido o expirado, simplemente retornar null
       // No lanzar error para permitir acceso sin autenticación
       return null;
+    }
+  }
+
+  private extractJwtFromRequest(req: any): string | null {
+    const authHeader = req.headers?.authorization;
+    if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+      return authHeader.substring(7);
+    }
+
+    const cookieHeader = req.headers?.cookie;
+    if (typeof cookieHeader !== 'string') {
+      return null;
+    }
+
+    const cookiePart = cookieHeader
+      .split(';')
+      .map((part: string) => part.trim())
+      .find((part: string) => part.startsWith('esap_access_token='));
+
+    if (!cookiePart) {
+      return null;
+    }
+
+    const token = cookiePart.split('=').slice(1).join('=');
+    if (!token) {
+      return null;
+    }
+
+    try {
+      return decodeURIComponent(token);
+    } catch {
+      return token;
     }
   }
 

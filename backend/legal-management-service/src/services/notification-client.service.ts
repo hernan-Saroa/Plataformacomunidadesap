@@ -3,8 +3,6 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import axios from 'axios';
 
-const DEFAULT_INTERNAL_SERVICE_TOKEN = 'esap-super-secret-jwt-key-2024';
-
 export interface SendNotificationDto {
   id_usuario_destinatario: string;
   tipo_notificacion: string;
@@ -25,83 +23,35 @@ export interface SendNotificationDto {
 export class NotificationClientService {
   private readonly logger = new Logger(NotificationClientService.name);
   private readonly baseUrl: string;
-  private readonly authUrl: string;
-  private readonly internalServiceToken?: string;
 
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {
     this.baseUrl = process.env.NOTIFICATION_SERVICE_URL ?? 'http://localhost:3009';
-    this.authUrl = process.env.AUTH_SERVICE_URL ?? 'http://localhost:3001';
-    this.internalServiceToken =
-      process.env.INTERNAL_SERVICE_TOKEN ??
-      process.env.JWT_SECRET ??
-      DEFAULT_INTERNAL_SERVICE_TOKEN;
-  }
-
-  /**
-   * Fallback directo a BD: lee usuarios con un rol dado consultando auth.user_roles
-   * y auth."user". Útil cuando la llamada HTTP a auth-service falla por token o red.
-   */
-  private async getUsersByRoleFromDb(roleCode: string): Promise<{ id_user: string; email: string }[]> {
-    try {
-      const rows = await this.dataSource.query(
-        `SELECT u.id_user::text AS id_user, u.username AS email
-         FROM auth.role r
-         JOIN auth.user_roles ur ON ur.id_rol = r.id
-         JOIN auth."user" u      ON u.id_user = ur.id_user
-         WHERE r.code = $1 AND COALESCE(r.is_active, true) = true
-           AND COALESCE(u.is_active, true) = true
-           AND COALESCE(ur.is_active, true) = true`,
-        [roleCode],
-      );
-      this.logger.log(`[notifyByRole][DB] Rol ${roleCode}: ${rows.length} usuario(s) activos`);
-      return rows;
-    } catch (err: any) {
-      this.logger.warn(`[notifyByRole][DB] Error consultando BD para rol ${roleCode}: ${err?.message}`);
-      return [];
-    }
   }
 
   /**
    * Obtiene los detalles de usuario (ID y correo) que tienen asignado un rol específico.
+   * Lee directo de BD — ambos servicios comparten la misma base de datos,
+   * por lo que no se necesita token ni configuración adicional entre ambientes.
    */
   async getUsersDetailsByRole(roleCode: string): Promise<{ id_user: string; email: string }[]> {
-    // Estrategia: intentar HTTP primero (más rica en datos), si falla o viene vacío, leer BD directo.
     try {
-      const rolesRes = await axios.get(`${this.authUrl}/roles`, {
-        params: { limit: 200 },
-        headers: this.buildAuthHeaders(),
-        timeout: 3000,
-      });
-      const roles: any[] = rolesRes.data?.roles ?? [];
-      const role = roles.find((r) => r.code === roleCode);
-      if (!role) {
-        this.logger.warn(`[notifyByRole][HTTP] Rol "${roleCode}" no encontrado vía auth-service, intentando BD directa`);
-        return this.getUsersByRoleFromDb(roleCode);
-      }
-      this.logger.log(`[notifyByRole][HTTP] Rol "${roleCode}" resuelto a UUID ${role.id}`);
-
-      const usersRes = await axios.get(`${this.authUrl}/users`, {
-        params: { role: role.id, limit: 100 },
-        headers: this.buildAuthHeaders(),
-        timeout: 3000,
-      });
-      const users: any[] = usersRes.data?.data ?? [];
-      const mapped = users
-        .filter((u: any) => u?.user?.id_user)
-        .map((u: any) => ({ id_user: u.user.id_user, email: u.email }));
-      this.logger.log(`[notifyByRole][HTTP] auth devolvió ${users.length} usuarios; ${mapped.length} válidos`);
-
-      if (mapped.length === 0) {
-        this.logger.warn(`[notifyByRole][HTTP] 0 usuarios desde auth-service, fallback a BD directa`);
-        return this.getUsersByRoleFromDb(roleCode);
-      }
-      return mapped;
-    } catch (err: any) {
-      const status = err?.response?.status;
-      this.logger.warn(
-        `[notifyByRole][HTTP] Error (auth=${this.authUrl}, status=${status ?? 'n/a'}): ${err?.message}. Fallback a BD directa.`,
+      const rows = await this.dataSource.query(
+        `SELECT u.id_user::text AS id_user, COALESCE(p.dir_email, u.username) AS email
+         FROM auth.role r
+         JOIN auth.user_roles ur ON ur.id_rol = r.id
+         JOIN auth."user" u      ON u.id_user = ur.id_user
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE r.code = $1
+           AND COALESCE(r.is_active, true) = true
+           AND COALESCE(u.is_active, true) = true
+           AND COALESCE(ur.is_active, true) = true`,
+        [roleCode],
       );
-      return this.getUsersByRoleFromDb(roleCode);
+      this.logger.log(`[notifyByRole] Rol "${roleCode}": ${rows.length} usuario(s)`);
+      return rows;
+    } catch (err: any) {
+      this.logger.error(`[notifyByRole] Error BD para rol "${roleCode}": ${err?.message}`);
+      return [];
     }
   }
 
@@ -163,6 +113,30 @@ export class NotificationClientService {
           await this.sendEmail(email, emailOptions.subject, emailOptions.html);
         }
       }
+    }
+  }
+
+  /**
+   * Resuelve el id_user correcto desde BD (acepta id_user o id_person) y envía la notificación.
+   * Mismo patrón que notifyByRole — garantiza que el UUID coincide con el que usa el frontend.
+   */
+  async notifyUserById(userId: string, dto: Omit<SendNotificationDto, 'id_usuario_destinatario'>): Promise<void> {
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT u.id_user::text AS id_user
+         FROM auth."user" u
+         WHERE (u.id_user::text = $1 OR u.public_id::text = $1 OR u.id_person::text = $1)
+           AND COALESCE(u.is_active, true) = true
+         LIMIT 1`,
+        [userId],
+      );
+      if (!rows.length) {
+        this.logger.warn(`[notifyUser] No se encontró usuario con id="${userId}"`);
+        return;
+      }
+      await this.sendMany([{ ...dto, id_usuario_destinatario: rows[0].id_user }]);
+    } catch (err: any) {
+      this.logger.error(`[notifyUser] Error resolviendo usuario "${userId}": ${err?.message}`);
     }
   }
 
@@ -234,12 +208,4 @@ export class NotificationClientService {
     }
   }
 
-  private buildAuthHeaders(): Record<string, string> | undefined {
-    if (!this.internalServiceToken) {
-      return undefined;
-    }
-    return {
-      'x-internal-service-token': this.internalServiceToken,
-    };
-  }
 }

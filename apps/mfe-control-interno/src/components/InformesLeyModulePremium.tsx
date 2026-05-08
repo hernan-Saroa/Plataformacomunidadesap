@@ -604,98 +604,34 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
   const [modalRechazar, setModalRechazar] = useState(false);
   const [procesando, setProcesando] = useState(false);
 
-  // Obtener roles del usuario desde localStorage
+  // Obtener roles del usuario desde el cache de autenticación en memoria
   const obtenerRolesUsuario = (): { codes: string[]; names: string[] } => {
     try {
-      // 1. Intentar desde esap_user_data (guardado por authService)
-      const userData = sessionStorage.getItem('esap_user_data');
-      if (userData) {
-        const user = JSON.parse(userData);
-        // Los roles pueden venir en diferentes formatos
-        if (user.roles && Array.isArray(user.roles)) {
-          const codes: string[] = [];
-          const names: string[] = [];
-          user.roles.forEach((r: any) => {
-            if (typeof r === 'string') {
-              codes.push(r);
-              names.push(r);
-            } else if (r && typeof r === 'object') {
-              if (r.code) codes.push(r.code);
-              if (r.name) names.push(r.name);
-            }
-          });
-          if (codes.length > 0 || names.length > 0) {
-            return { codes, names };
+      const windowUser = (window as any).__esap_auth_cache;
+      if (windowUser) {
+        const userRoles: any[] = Array.isArray(windowUser.roles) ? windowUser.roles : [];
+        const codes: string[] = [];
+        const names: string[] = [];
+        userRoles.forEach((r: any) => {
+          if (typeof r === 'string') {
+            codes.push(r);
+            names.push(r);
+          } else if (r && typeof r === 'object') {
+            if (r.code) codes.push(r.code);
+            if (r.name) names.push(r.name);
           }
+        });
+        if (windowUser.role) {
+          codes.push(windowUser.role);
+          names.push(windowUser.role);
         }
-        if (user.role) {
-          return { codes: [user.role], names: [user.role] };
-        }
-      }
-      
-      // 2. Intentar desde esap-sesion-activa (guardado por App.tsx)
-      const sesion = sessionStorage.getItem('esap-sesion-activa');
-      if (sesion) {
-        const sesionData = JSON.parse(sesion);
-        
-        // Buscar roles directamente en sesionData.roles
-        if (sesionData.roles) {
-          const roles = Array.isArray(sesionData.roles) ? sesionData.roles : [sesionData.roles];
-          return { codes: roles, names: roles };
-        }
-        
-        // Buscar en sesionData.user.roles (formato usado por App.tsx)
-        if (sesionData.user && sesionData.user.roles) {
-          const userRoles = sesionData.user.roles;
-          const codes: string[] = [];
-          const names: string[] = [];
-          
-          if (Array.isArray(userRoles)) {
-            userRoles.forEach((r: any) => {
-              if (typeof r === 'string') {
-                codes.push(r);
-                names.push(r);
-              } else if (r && typeof r === 'object') {
-                if (r.code) codes.push(r.code);
-                if (r.name) names.push(r.name);
-              }
-            });
-          } else {
-            codes.push(userRoles);
-            names.push(userRoles);
-          }
-          
-          if (codes.length > 0 || names.length > 0) {
-            return { codes, names };
-          }
-        }
-        
-        // También buscar en userData dentro de la sesión
-        if (sesionData.userData && sesionData.userData.roles) {
-          const roles = Array.isArray(sesionData.userData.roles) 
-            ? sesionData.userData.roles 
-            : [sesionData.userData.roles];
-          return { codes: roles, names: roles };
-        }
-      }
-      
-      // 3. Intentar decodificar el token JWT para extraer roles
-      const token = sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || sessionStorage.getItem('esap-auth-token');
-      if (token) {
-        try {
-          const payload = JSON.parse(atob(token.split('.')[1]));
-          if (payload.roles) {
-            const roles = Array.isArray(payload.roles) ? payload.roles : [payload.roles];
-            return { codes: roles, names: roles };
-          }
-        } catch (e) {
-          console.warn('⚠️ No se pudo decodificar el token JWT:', e);
+        if (codes.length > 0 || names.length > 0) {
+          return { codes, names };
         }
       }
     } catch (error) {
       console.error('❌ Error obteniendo roles del usuario:', error);
     }
-    console.warn('⚠️ No se encontraron roles en ningún lugar de localStorage');
     return { codes: [], names: [] };
   };
 
@@ -797,9 +733,7 @@ function CardInformeGenerado({ informe, onInformeActualizado }: { informe: Infor
       // Descargar el archivo
       const response = await fetch(urlDescarga, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token')}`,
-        },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -1472,9 +1406,7 @@ function ModalDetalleInformeGenerado({ informe, onClose, onInformeActualizado }:
       // Descargar el archivo
       const response = await fetch(urlDescarga, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token')}`,
-        },
+        credentials: 'include',
       });
 
       if (!response.ok) {

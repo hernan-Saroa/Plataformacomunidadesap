@@ -56,7 +56,8 @@ export class ConsultasJuridicasController {
             prioridad: body.prioridad || 'media',
             complejidad: body.complejidad,
             terminoLegalDias: parseInt(body.terminoLegalDias) || 30,
-            abogadoAsignadoId: body.abogadoAsignadoId || null
+            abogadoAsignadoId: body.abogadoAsignadoId || null,
+            abogadoAsignadoNombre: body.abogadoAsignadoNombre || null
         };
 
         const fileData = file ? {

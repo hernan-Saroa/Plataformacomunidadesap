@@ -1,13 +1,15 @@
-server {
+﻿server {
     listen 80;
     server_name ${TLS_SERVER_NAME};
     server_tokens off;
+    add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
 
     location = /health {
         access_log off;
         return 200 "healthy\n";
         add_header Content-Type text/plain;
+        add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
     }
 
@@ -27,7 +29,7 @@ server {
     server_tokens off;
     root /usr/share/nginx/html;
     index index.html;
-    set $esap_csp "default-src 'self'; base-uri 'self'; frame-ancestors 'self'; object-src 'self' blob: https:; script-src 'self'; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https: ws: wss:; frame-src 'self' blob: https:; worker-src 'self' blob: https://cdnjs.cloudflare.com; media-src 'self' data: blob: https:; form-action 'self'; manifest-src 'self';";
+    set $esap_csp "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; script-src 'self'; style-src 'self' 'nonce-$request_id'; img-src 'self' data: blob: https://unpkg.com https://images.unsplash.com https://ui-avatars.com https://api.dicebear.com https://api.qrserver.com; font-src 'self' data:; connect-src 'self' https://login.microsoftonline.com https://login.microsoft.com; frame-src 'self' blob: https://login.microsoftonline.com; object-src 'none'; worker-src 'self' blob: https://cdnjs.cloudflare.com; media-src 'self' data: blob:; manifest-src 'self';";
 
     ssl_certificate ${TLS_CERT_PATH};
     ssl_certificate_key ${TLS_KEY_PATH};
@@ -56,6 +58,7 @@ server {
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
         add_header X-ESAP-Frontend-Gateway "prebuilt" always;
         add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
     }
 
@@ -65,6 +68,7 @@ server {
         expires 30d;
         add_header Cache-Control "public";
         add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
     }
 
@@ -93,12 +97,15 @@ server {
         add_header Content-Security-Policy $esap_csp always;
         add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
         add_header X-Content-Type-Options "nosniff" always;
+        sub_filter '__ESAP_CSP_NONCE__' '$request_id';
+        sub_filter_once off;
     }
 
     location ~ ^/remotes/[^/]+/assets/remoteEntry\.js$ {
         expires -1;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
         add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
         try_files $uri =404;
     }
@@ -110,6 +117,8 @@ server {
         add_header Content-Security-Policy $esap_csp always;
         add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
         add_header X-Content-Type-Options "nosniff" always;
+        sub_filter '__ESAP_CSP_NONCE__' '$request_id';
+        sub_filter_once off;
         try_files $uri/index.html =404;
     }
 
@@ -117,6 +126,7 @@ server {
         expires 1y;
         add_header Cache-Control "public, immutable";
         add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
         try_files $uri =404;
     }
@@ -128,6 +138,8 @@ server {
         add_header Content-Security-Policy $esap_csp always;
         add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
         add_header X-Content-Type-Options "nosniff" always;
+        sub_filter '__ESAP_CSP_NONCE__' '$request_id';
+        sub_filter_once off;
         try_files $uri $uri/ /index.html;
     }
 
@@ -136,6 +148,7 @@ server {
         return 200 "healthy\n";
         add_header Content-Type text/plain;
         add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
         add_header X-Content-Type-Options "nosniff" always;
     }
 }

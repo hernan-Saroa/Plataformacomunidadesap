@@ -143,6 +143,17 @@ export class ExpedienteService {
             creadoPor,
         });
 
+        if (saved.abogadoSustanciador) {
+            await this.legalNotifications.notifyAbogadoAsignado({
+                modulo,
+                radicado: saved.radicado,
+                procesoId: saved.id,
+                abogadoId: saved.abogadoSustanciador,
+                asignadoPor: creadoPor,
+                esReasignacion: false,
+            });
+        }
+
         return saved;
     }
 
@@ -252,7 +263,9 @@ export class ExpedienteService {
         }
 
         // 2b. Detectar reasignación de abogado
+        let nuevoAbogadoId: string | undefined;
         if (data.abogadoSustanciador && data.abogadoSustanciador !== currentExpediente.abogadoSustanciador) {
+            nuevoAbogadoId = data.abogadoSustanciador;
             const abogadoAnterior = currentExpediente.abogadoSustanciador;
             if (abogadoAnterior) {
                 // Append to abogadosAnteriores (deduplicated)
@@ -268,6 +281,26 @@ export class ExpedienteService {
         await this.expedienteRepository.update(id, data);
         const updated = await this.findOne(id);
         if (!updated) throw new Error('Expediente no encontrado post-update');
+
+        // Notificar al nuevo abogado si hubo reasignación
+        if (nuevoAbogadoId) {
+            const esDisciplinario =
+                updated.jurisdiccion === 'DISCIPLINARIO' ||
+                updated.jurisdiccion === 'Disciplinaria' ||
+                updated.tipoProceso === 'DISCIPLINARIO' ||
+                updated.tipoProceso === 'Disciplinario';
+            const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+
+            await this.legalNotifications.notifyAbogadoAsignado({
+                modulo,
+                radicado: updated.radicado,
+                procesoId: updated.id,
+                abogadoId: nuevoAbogadoId,
+                asignadoPor: 'Sistema',
+                esReasignacion: true,
+            });
+        }
+
         return updated;
     }
 
@@ -580,6 +613,17 @@ export class ExpedienteService {
             radicadoPrincipal: updated.radicado,
             procesoPrincipalId: updated.id,
             anexadoPor: usuario,
+        });
+
+        await this.legalNotifications.notifyAbogadosProcesoAnexado({
+            modulo,
+            radicadoAnexado: anexado.radicado,
+            radicadoPrincipal: updated.radicado,
+            procesoPrincipalId: updated.id,
+            procesoAnexadoId: anexado.id,
+            anexadoPor: usuario,
+            abogadoPrincipalId: updated.abogadoSustanciador ?? undefined,
+            abogadoAnexadoId: anexado.abogadoSustanciador ?? undefined,
         });
 
         return updated;

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * MODAL RESPONSIVE UNIFICADO
  * Componente de modal optimizado para mobile y desktop
  * Usado en todos los módulos del Backoffice
