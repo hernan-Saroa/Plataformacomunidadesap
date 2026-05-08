@@ -1025,11 +1025,23 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       // But user wanted "Fully functional".
       // Let's assume createNota is available or we mock it via actuacion.
 
+      const autorNota = ((): string => {
+        const u = authService.getCurrentUser() as any;
+        return (
+          u?.fullName ||
+          u?.person?.full_name ||
+          `${u?.person?.first_name ?? ''} ${u?.person?.last_name ?? ''}`.trim() ||
+          u?.username ||
+          'Un usuario'
+        );
+      })();
+
       await legalService.createActuacion({
         expedienteId: id,
         tipoActuacion: 'NOTA_INTERNA',
         descripcion: `[${notaData.tipo}] ${notaData.titulo}: ${notaData.contenido}`,
-        fechaActuacion: new Date().toISOString()
+        fechaActuacion: new Date().toISOString(),
+        responsable: autorNota,
       });
 
       toast.success('✅ Nota interna agregada');

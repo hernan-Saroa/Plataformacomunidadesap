@@ -25,6 +25,8 @@ export interface RoleResponse {
   icon: string;
   color: string;
   type: 'sistema' | 'personalizado';
+  sistema_destino: string;
+  alcance?: any;
   is_active: boolean;
   requires_2fa: boolean;
   usuarios_count: number;
@@ -53,6 +55,8 @@ export class RolesController {
         icon: role.icon,
         color: role.color,
         type: role.type,
+        sistema_destino: role.sistema_destino,
+        alcance: role.alcance,
         is_active: role.is_active,
         requires_2fa: role.requires_2fa,
         usuarios_count: role.usuarios_count || 0,
@@ -84,6 +88,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: role.usuarios_count || 0,
@@ -107,6 +113,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: 0,
@@ -130,6 +138,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: role.usuarios_count || 0,
@@ -160,6 +170,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: 0,
@@ -183,6 +195,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: role.usuarios_count || 0,
@@ -206,6 +220,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: role.usuarios_count || 0,
@@ -245,6 +261,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: role.usuarios_count || 0,

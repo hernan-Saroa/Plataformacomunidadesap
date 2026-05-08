@@ -30,7 +30,10 @@ import {
   Eye,
   Filter,
   Loader2,
-  Scale
+  Scale,
+  Monitor,
+  Tablet,
+  Menu
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -41,7 +44,7 @@ import { RolePermissionsEditor } from './RolePermissionsEditor';
 import { useConfirmation } from './ConfirmationModal';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@esap-mfe/shared-ui/dropdown-menu';
 import { PaginationPremium } from '../shared/PaginationPremium';
-import { rolesService, type SystemRole, type RoleStats, type RoleFilters } from '../../services/api';
+import { localRolesService as rolesService, type SystemRole, type RoleStats, type RoleFilters } from '../../services/api';
 import { useAuth } from '../../hooks';
 
 // ============================================================================
@@ -57,188 +60,225 @@ import { useAuth } from '../../hooks';
 const MOCK_ROLES: SystemRole[] = [
   {
     id: '1',
-    nombre: 'Super Administrador',
-    descripcion: 'Acceso total al sistema con todos los permisos administrativos',
-    icono: 'Shield',
+    name: 'Super Administrador',
+    description: 'Acceso total al sistema con todos los permisos administrativos',
+    icon: 'Shield',
     color: '#dc2626',
-    tipo: 'sistema',
+    type: 'sistema',
+    sistema_destino: 'Backoffice',
+    is_active: true,
+    requires_2fa: true,
     usuarios_count: 3,
     permisos_count: 45,
-    esta_activo: true,
-    requiere_2fa: true,
-    fecha_creacion: '2024-01-01',
-    creado_por: 'Sistema'
+    created_at: '2024-01-01',
+    created_by: 'Sistema',
+    updated_at: undefined,
+    updated_by: undefined
   },
   {
     id: '2',
-    nombre: 'Estudiante',
-    descripcion: 'Rol básico para estudiantes activos de la institución',
-    icono: 'GraduationCap',
+    name: 'Estudiante',
+    description: 'Rol básico para estudiantes activos de la institución',
+    icon: 'GraduationCap',
     color: '#003DA5',
-    tipo: 'sistema',
+    type: 'sistema',
+    sistema_destino: 'Portal',
+    is_active: true,
+    requires_2fa: false,
     usuarios_count: 1247,
     permisos_count: 12,
-    esta_activo: true,
-    requiere_2fa: false,
-    fecha_creacion: '2024-01-01',
-    creado_por: 'Sistema'
+    created_at: '2024-01-01',
+    created_by: 'Sistema',
+    updated_at: undefined,
+    updated_by: undefined
   },
   {
     id: '3',
-    nombre: 'Docente',
-    descripcion: 'Acceso para profesores con permisos de gestión académica',
-    icono: 'BookOpen',
+    name: 'Docente',
+    description: 'Acceso para profesores con permisos de gestión académica',
+    icon: 'BookOpen',
     color: '#16a34a',
-    tipo: 'sistema',
+    type: 'sistema',
+    sistema_destino: 'Backoffice',
+    is_active: true,
+    requires_2fa: false,
     usuarios_count: 89,
     permisos_count: 18,
-    esta_activo: true,
-    requiere_2fa: false,
-    fecha_creacion: '2024-01-01',
-    creado_por: 'Sistema'
+    created_at: '2024-01-01',
+    created_by: 'Sistema',
+    updated_at: undefined,
+    updated_by: undefined
   },
   {
     id: '4',
-    nombre: 'Administrativo',
-    descripcion: 'Personal administrativo con permisos de gestión operativa',
-    icono: 'Briefcase',
+    name: 'Administrativo',
+    description: 'Personal administrativo con permisos de gestión operativa',
+    icon: 'Briefcase',
     color: '#f97316',
-    tipo: 'sistema',
+    type: 'sistema',
+    sistema_destino: 'Backoffice',
+    is_active: true,
+    requires_2fa: true,
     usuarios_count: 45,
     permisos_count: 28,
-    esta_activo: true,
-    requiere_2fa: true,
-    fecha_creacion: '2024-01-01',
-    creado_por: 'Sistema'
+    created_at: '2024-01-01',
+    created_by: 'Sistema',
+    updated_at: undefined,
+    updated_by: undefined
   },
   {
     id: '5',
-    nombre: 'Graduado',
-    descripcion: 'Ex-estudiantes graduados con acceso a servicios alumni',
-    icono: 'Award',
+    name: 'Graduado',
+    description: 'Ex-estudiantes graduados con acceso a servicios alumni',
+    icon: 'Award',
     color: '#10b981',
-    tipo: 'sistema',
+    type: 'sistema',
+    sistema_destino: 'Portal',
+    is_active: true,
+    requires_2fa: false,
     usuarios_count: 3421,
     permisos_count: 10,
-    esta_activo: true,
-    requiere_2fa: false,
-    fecha_creacion: '2024-01-01',
-    creado_por: 'Sistema'
+    created_at: '2024-01-01',
+    created_by: 'Sistema',
+    updated_at: undefined,
+    updated_by: undefined
   },
   {
     id: '6',
-    nombre: 'Aspirante',
-    descripcion: 'Personas en proceso de admisión a la institución',
-    icono: 'UserCircle',
+    name: 'Aspirante',
+    description: 'Personas en proceso de admisión a la institución',
+    icon: 'UserCircle',
     color: '#9333ea',
-    tipo: 'sistema',
+    type: 'sistema',
+    sistema_destino: 'Portal',
+    is_active: true,
+    requires_2fa: false,
     usuarios_count: 234,
     permisos_count: 5,
-    esta_activo: true,
-    requiere_2fa: false,
-    fecha_creacion: '2024-01-01',
-    creado_por: 'Sistema'
+    created_at: '2024-01-01',
+    created_by: 'Sistema',
+    updated_at: undefined,
+    updated_by: undefined
   },
   {
     id: '7',
-    nombre: 'Coordinador Regional',
-    descripcion: 'Gestión de operaciones en sedes regionales',
-    icono: 'Building2',
+    name: 'Coordinador Regional',
+    description: 'Gestión de operaciones en sedes regionales',
+    icon: 'Building2',
     color: '#0891b2',
-    tipo: 'personalizado',
+    type: 'personalizado',
+    sistema_destino: 'Backoffice',
+    is_active: true,
+    requires_2fa: true,
     usuarios_count: 12,
     permisos_count: 22,
-    esta_activo: true,
-    requiere_2fa: true,
-    fecha_creacion: '2024-03-15',
-    creado_por: 'Admin Principal',
-    ultima_modificacion: '2024-10-20',
-    modificado_por: 'Admin Principal'
+    created_at: '2024-03-15',
+    created_by: 'Admin Principal',
+    updated_at: '2024-10-20',
+    updated_by: 'Admin Principal'
   },
   // ============ ROLES PARA CONTROL DISCIPLINARIO ============
   {
     id: 'cd-1',
-    nombre: 'Profesional Especializado Disciplinario',
-    descripcion: 'Profesional especializado del equipo disciplinario con capacidad de gestión completa de procesos',
-    icono: 'Scale',
+    name: 'Profesional Especializado Disciplinario',
+    description: 'Profesional especializado del equipo disciplinario con capacidad de gestión completa de procesos',
+    icon: 'Scale',
     color: '#dc2626',
-    tipo: 'personalizado',
+    type: 'personalizado',
+    sistema_destino: 'Backoffice',
+    is_active: true,
+    requires_2fa: true,
     usuarios_count: 5,
     permisos_count: 75,
-    esta_activo: true,
-    requiere_2fa: true,
-    fecha_creacion: '2026-01-21',
-    creado_por: 'Sistema'
+    created_at: '2026-01-21',
+    created_by: 'Sistema',
+    updated_at: undefined,
+    updated_by: undefined
   },
   {
     id: 'cd-2',
-    nombre: 'Profesional Universitario Disciplinario',
-    descripcion: 'Profesional universitario del equipo disciplinario con permisos de gestión operativa',
-    icono: 'Scale',
+    name: 'Profesional Universitario Disciplinario',
+    description: 'Profesional universitario del equipo disciplinario con permisos de gestión operativa',
+    icon: 'Scale',
     color: '#dc2626',
-    tipo: 'personalizado',
+    type: 'personalizado',
+    sistema_destino: 'Backoffice',
+    is_active: true,
+    requires_2fa: true,
     usuarios_count: 8,
     permisos_count: 60,
-    esta_activo: true,
-    requiere_2fa: true,
-    fecha_creacion: '2026-01-21',
-    creado_por: 'Sistema'
+    created_at: '2026-01-21',
+    created_by: 'Sistema',
+    updated_at: undefined,
+    updated_by: undefined
   },
   {
     id: 'cd-3',
-    nombre: 'Profesional Senior Disciplinario',
-    descripcion: 'Profesional senior con permisos avanzados incluyendo revisión y aprobación',
-    icono: 'Scale',
+    name: 'Profesional Senior Disciplinario',
+    description: 'Profesional senior con permisos avanzados incluyendo revisión y aprobación',
+    icon: 'Scale',
     color: '#dc2626',
-    tipo: 'personalizado',
+    type: 'personalizado',
+    sistema_destino: 'Backoffice',
+    is_active: true,
+    requires_2fa: true,
     usuarios_count: 3,
     permisos_count: 85,
-    esta_activo: true,
-    requiere_2fa: true,
-    fecha_creacion: '2026-01-21',
-    creado_por: 'Sistema'
+    created_at: '2026-01-21',
+    created_by: 'Sistema',
+    updated_at: undefined,
+    updated_by: undefined
   },
   {
     id: 'cd-4',
-    nombre: 'Coordinador Disciplinario',
-    descripcion: 'Coordinador del equipo disciplinario con permisos ejecutivos y de supervisión',
-    icono: 'Scale',
+    name: 'Coordinador Disciplinario',
+    description: 'Coordinador del equipo disciplinario con permisos ejecutivos y de supervisión',
+    icon: 'Scale',
     color: '#dc2626',
-    tipo: 'personalizado',
+    type: 'personalizado',
+    sistema_destino: 'Backoffice',
+    is_active: true,
+    requires_2fa: true,
     usuarios_count: 2,
     permisos_count: 95,
-    esta_activo: true,
-    requiere_2fa: true,
-    fecha_creacion: '2026-01-21',
-    creado_por: 'Sistema'
+    created_at: '2026-01-21',
+    created_by: 'Sistema',
+    updated_at: undefined,
+    updated_by: undefined
   },
   {
     id: 'cd-5',
-    nombre: 'Jefe Control Disciplinario',
-    descripcion: 'Jefe de Control Disciplinario con acceso completo incluyendo configuración y administración',
-    icono: 'Shield',
+    name: 'Jefe Control Disciplinario',
+    description: 'Jefe de Control Disciplinario con acceso completo incluyendo configuración y administración',
+    icon: 'Shield',
     color: '#7c2d12',
-    tipo: 'personalizado',
+    type: 'personalizado',
+    sistema_destino: 'Backoffice',
+    is_active: true,
+    requires_2fa: true,
     usuarios_count: 1,
     permisos_count: 95,
-    esta_activo: true,
-    requiere_2fa: true,
-    fecha_creacion: '2026-01-21',
-    creado_por: 'Sistema'
+    created_at: '2026-01-21',
+    created_by: 'Sistema',
+    updated_at: undefined,
+    updated_by: undefined
   },
   {
     id: 'cd-6',
-    nombre: 'Consultor Disciplinario',
-    descripcion: 'Rol de solo lectura para consulta de procesos disciplinarios sin permisos de modificación',
-    icono: 'Eye',
+    name: 'Consultor Disciplinario',
+    description: 'Rol de solo lectura para consulta de procesos disciplinarios sin permisos de modificación',
+    icon: 'Eye',
     color: '#64748b',
-    tipo: 'personalizado',
+    type: 'personalizado',
+    sistema_destino: 'Backoffice',
+    is_active: true,
+    requires_2fa: false,
     usuarios_count: 4,
     permisos_count: 15,
-    esta_activo: true,
-    requiere_2fa: false,
-    fecha_creacion: '2026-01-21',
-    creado_por: 'Sistema'
+    created_at: '2026-01-21',
+    created_by: 'Sistema',
+    updated_at: undefined,
+    updated_by: undefined
   }
 ];
 
@@ -353,10 +393,59 @@ const repairRoleDisplayText = (value?: string | null) => {
 };
 
 const getRoleDisplayName = (role: SystemRole | null) =>
-  repairRoleDisplayText(role?.name || (role as any)?.nombre);
+  repairRoleDisplayText(role?.name || '');
 
 const getRoleDisplayDescription = (role: SystemRole | null) =>
-  repairRoleDisplayText(role?.description || (role as any)?.descripcion);
+  repairRoleDisplayText(role?.description || '');
+
+const generateRoleCode = (name: string): string => {
+  if (!name.trim()) return 'ROL_SIN_NOMBRE';
+
+  const normalized = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const cleaned = normalized
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+
+  return cleaned.slice(0, 50) || 'ROL_GENERADO';
+};
+
+const getSistemaBadge = (sistemaDestino: string) => {
+  const sistema = sistemaDestino || 'Backoffice';
+
+  switch (sistema.toLowerCase()) {
+    case 'backoffice':
+      return (
+        <Badge className="inline-flex items-center justify-center rounded-md border px-2 py-0.5 w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden [a&]:hover:bg-primary/90 bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-50 font-semibold text-[11px] gap-1">
+          <Monitor className="w-3 h-3" />
+          Backoffice
+        </Badge>
+      );
+    case 'portal':
+      return (
+        <Badge className="inline-flex items-center justify-center rounded-md border px-2 py-0.5 w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden [a&]:hover:bg-primary/90 bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-50 font-semibold text-[11px] gap-1">
+          <Tablet className="w-3 h-3" />
+          Portal
+        </Badge>
+      );
+    case 'ambos':
+      return (
+        <Badge className="inline-flex items-center justify-center rounded-md border px-2 py-0.5 w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 [&>svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden [a&]:hover:bg-primary/90 bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-50 font-semibold text-[11px] gap-1">
+          <Menu className="w-3 h-3" />
+          Ambos
+        </Badge>
+      );
+    default:
+      return (
+        <Badge className="bg-green-100 text-green-700 border-green-300 hover:bg-green-100 font-semibold text-xs">
+          {sistema}
+        </Badge>
+      );
+  }
+};
 
 // ============================================================================
 // COMPONENTE PRINCIPAL
@@ -393,9 +482,9 @@ export function RolesAdministrationModulePremium() {
         id: selectedRole.id,
         nombre: getRoleDisplayName(selectedRole),
         descripcion: getRoleDisplayDescription(selectedRole),
-        icono: (selectedRole as any).icono || selectedRole.icon || 'Shield',
+        icono: selectedRole.icon || 'Shield',
         color: selectedRole.color || '#003DA5',
-        tipo: ((selectedRole as any).tipo || selectedRole.type || 'personalizado') as 'sistema' | 'personalizado',
+        tipo: (selectedRole.type || 'personalizado') as 'sistema' | 'personalizado',
       }
     : null;
 
@@ -460,15 +549,19 @@ export function RolesAdministrationModulePremium() {
   // Crear nuevo rol
   const handleCreateRole = async (roleData: any) => {
     try {
+      // Generar código automáticamente si no viene
+      const roleCode = roleData.codigo || generateRoleCode(roleData.nombre);
+
       const newRole = await rolesService.createRole({
         name: roleData.nombre,
         description: roleData.descripcion,
-        code: roleData.codigo,
+        code: roleCode,
         icon: roleData.icono,
         color: roleData.color,
         type: 'personalizado',
         requires_2fa: roleData.requiere_2fa || false,
-        permissionIds: roleData.permissionIds || []
+        permissionIds: roleData.permissionIds || [],
+        alcance: roleData.alcance
       });
 
       // Recargar datos
@@ -908,6 +1001,9 @@ export function RolesAdministrationModulePremium() {
                         Tipo
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
+                        Sistema
+                      </th>
+                      <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
                         Usuarios
                       </th>
                       <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
@@ -961,6 +1057,11 @@ export function RolesAdministrationModulePremium() {
                               >
                                 {role.type === 'sistema' ? 'Sistema' : 'Personalizado'}
                               </Badge>
+                            </td>
+
+                            {/* Sistema */}
+                            <td className="px-6 py-4">
+                              {getSistemaBadge(role.sistema_destino)}
                             </td>
 
                             {/* Usuarios */}
@@ -1084,7 +1185,7 @@ export function RolesAdministrationModulePremium() {
                                 exit={{ opacity: 0 }}
                                 transition={{ duration: 0.2 }}
                               >
-                                <td colSpan={6} className="px-0 py-0">
+                                <td colSpan={7} className="px-0 py-0">
                                   <motion.div
                                     initial={{ height: 0 }}
                                     animate={{ height: 'auto' }}
@@ -1132,6 +1233,10 @@ export function RolesAdministrationModulePremium() {
                                               {getStatusBadge(role)}
                                             </div>
                                             <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                              <span className="text-sm text-gray-700">Sistema destino</span>
+                                              {getSistemaBadge(role.sistema_destino)}
+                                            </div>
+                                            <div className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
                                               <span className="text-sm text-gray-700">Autenticación 2FA</span>
                                               <Badge className={role.requires_2fa ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-gray-100 text-gray-700 border-gray-300'}>
                                                 {role.requires_2fa ? 'Activa' : 'Inactiva'}
@@ -1143,6 +1248,7 @@ export function RolesAdministrationModulePremium() {
                                                 {role.type === 'sistema' ? 'Sistema' : 'Personalizado'}
                                               </Badge>
                                             </div>
+                                          
                                           </div>
                                         </div>
                                       </div>
@@ -1326,9 +1432,9 @@ export function RolesAdministrationModulePremium() {
 
       {/* Modals */}
       <CreateRoleModal
-        open={isCreateModalOpen}
-        onOpenChange={setIsCreateModalOpen}
-        onCreateRole={handleCreateRole}
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onSave={handleCreateRole}
       />
 
       {selectedRoleForModal && selectedRoleForPermissions && (

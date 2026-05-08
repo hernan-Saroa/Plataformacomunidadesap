@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { createPortal } from 'react-dom';
 import {
@@ -12,18 +12,6 @@ import {
   Check
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { localRolesService } from '../../services/api';
-
-interface Territorial {
-  id: string;
-  nombre: string;
-}
-
-interface CETAP {
-  id: string;
-  nombre: string;
-  territorialId: string;
-}
 
 interface CreateRoleModalProps {
   isOpen: boolean;
@@ -56,10 +44,6 @@ const ICONS_MAP: Record<string, React.ComponentType<any>> = {
 
 export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProps) {
   const [step, setStep] = useState<1 | 2>(1);
-  const [territoriales, setTerritoriales] = useState<Territorial[]>([]);
-  const [cetaps, setCetaps] = useState<CETAP[]>([]);
-  const [loadingTerritoriales, setLoadingTerritoriales] = useState(false);
-  const [loadingCetaps, setLoadingCetaps] = useState(false);
 
   // Paso 1 State
   const [nombre, setNombre] = useState('');
@@ -74,52 +58,6 @@ export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProp
   const [selTerritorial, setSelTerritorial] = useState<string>('Todas');
   const [selCetap, setSelCetap] = useState<string>('Todos');
   const [selPrograma, setSelPrograma] = useState<string>('Todos');
-
-  // Fetch territoriales when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      loadTerritoriales();
-    }
-  }, [isOpen]);
-
-  // Fetch CETAPs when territorial changes
-  useEffect(() => {
-    if (selTerritorial !== 'Todas' && territoriales.length > 0) {
-      loadCetaps(selTerritorial);
-    } else {
-      setCetaps([]);
-    }
-  }, [selTerritorial, territoriales]);
-
-  const loadTerritoriales = async () => {
-    try {
-      setLoadingTerritoriales(true);
-      const territorialesData = await localRolesService.getTerritoriales();
-      setTerritoriales(territorialesData);
-    } catch (error) {
-      console.error('Error loading territoriales:', error);
-      toast.error('Error al cargar territoriales', {
-        description: 'No se pudieron cargar las territoriales disponibles'
-      });
-    } finally {
-      setLoadingTerritoriales(false);
-    }
-  };
-
-  const loadCetaps = async (territorialId: string) => {
-    try {
-      setLoadingCetaps(true);
-      const cetapsData = await localRolesService.getCETAPs(territorialId);
-      setCetaps(cetapsData);
-    } catch (error) {
-      console.error('Error loading CETAPs:', error);
-      toast.error('Error al cargar CETAPs', {
-        description: 'No se pudieron cargar los CETAPs disponibles'
-      });
-    } finally {
-      setLoadingCetaps(false);
-    }
-  };
 
   if (!isOpen) return null;
 
@@ -168,8 +106,6 @@ export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProp
     setSelTerritorial('Todas');
     setSelCetap('Todos');
     setSelPrograma('Todos');
-    setTerritoriales([]);
-    setCetaps([]);
     onClose();
   };
 
@@ -364,15 +300,10 @@ export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProp
                         <label className="block text-xs font-bold text-gray-700 mb-1">Unidad Territorial</label>
                         <select
                           value={selTerritorial} onChange={e => handleTerritorialChange(e.target.value)}
-                          disabled={loadingTerritoriales}
-                          className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] font-medium disabled:bg-gray-100 disabled:text-gray-400"
+                          className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] font-medium"
                         >
                           <option value="Todas">Todas las territoriales</option>
-                          {territoriales.map(territorial => (
-                            <option key={territorial.id} value={territorial.id}>
-                              {territorial.nombre}
-                            </option>
-                          ))}
+                          {/* Aquí irían las opciones dinámicas */}
                         </select>
                       </div>
 
@@ -380,15 +311,11 @@ export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProp
                         <label className="block text-xs font-bold text-gray-700 mb-1">CETAP Jurisdiccional</label>
                         <select
                           value={selCetap} onChange={e => setSelCetap(e.target.value)}
-                          disabled={selTerritorial === 'Todas' || loadingCetaps}
+                          disabled={selTerritorial === 'Todas'}
                           className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] disabled:bg-gray-100 disabled:text-gray-400 font-medium"
                         >
                           <option value="Todos">Todos los CETAPs</option>
-                          {cetaps.map(cetap => (
-                            <option key={cetap.id} value={cetap.id}>
-                              {cetap.nombre}
-                            </option>
-                          ))}
+                          {/* Aquí irían las opciones dinámicas */}
                         </select>
                       </div>
 

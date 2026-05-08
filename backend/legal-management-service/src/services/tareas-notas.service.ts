@@ -3,7 +3,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TareaExpediente } from '../entities/tarea-expediente.entity';
 import { NotaExpediente } from '../entities/nota-expediente.entity';
+import { Expediente } from '../entities/expediente.entity';
 import { NotificationClientService } from './notification-client.service';
+import { LegalNotificationsService } from './legal-notifications.service';
 
 @Injectable()
 export class TareasNotasService {
@@ -14,7 +16,10 @@ export class TareasNotasService {
         private readonly tareaRepository: Repository<TareaExpediente>,
         @InjectRepository(NotaExpediente)
         private readonly notaRepository: Repository<NotaExpediente>,
-        private readonly notificationClient: NotificationClientService
+        @InjectRepository(Expediente)
+        private readonly expedienteRepository: Repository<Expediente>,
+        private readonly notificationClient: NotificationClientService,
+        private readonly legalNotifications: LegalNotificationsService,
     ) { }
 
     // ==================== TAREAS ====================
@@ -41,7 +46,54 @@ export class TareasNotasService {
             ...data,
             fechaCreacion: new Date()
         });
-        return this.tareaRepository.save(tarea);
+        const saved = await this.tareaRepository.save(tarea);
+
+        if (saved.responsableId) {
+            this.notificarTareaAsignada(saved).catch(err =>
+                this.logger.warn(`Error enviando notificación de tarea asignada: ${err?.message}`)
+            );
+        }
+
+        return saved;
+    }
+
+    private async notificarTareaAsignada(tarea: TareaExpediente): Promise<void> {
+        const expediente = await this.expedienteRepository.findOne({
+            where: { id: tarea.expedienteId },
+            select: ['id', 'radicado', 'jurisdiccion', 'tipoProceso'],
+        });
+
+        const radicado = expediente?.radicado ?? tarea.expedienteId;
+        const esDisciplinario =
+            expediente?.jurisdiccion === 'DISCIPLINARIO' ||
+            expediente?.jurisdiccion === 'Disciplinaria' ||
+            expediente?.tipoProceso === 'DISCIPLINARIO' ||
+            expediente?.tipoProceso === 'Disciplinario';
+        const moduloVista = esDisciplinario ? 'juzgamiento' : 'defensa-judicial';
+        const url = `/gestion-legal?modulo=${moduloVista}&radicado=${encodeURIComponent(radicado)}`;
+
+        await this.notificationClient.sendMany([{
+            id_usuario_destinatario: tarea.responsableId,
+            tipo_notificacion: 'TAREA_ASIGNADA',
+            titulo: 'Nueva tarea asignada',
+            mensaje: `Se te asignó la tarea "${tarea.titulo}" en el proceso ${radicado}.`,
+            descripcion_corta: `Tarea "${tarea.titulo}" en ${radicado}`,
+            icono: 'ClipboardList',
+            color: '#6366F1',
+            prioridad: tarea.prioridad === 'alta' ? 'Alta' : 'Media',
+            categoria: 'gestion-legal',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver proceso',
+            url_accion: url,
+            datos_adicionales: {
+                tareaId: tarea.id,
+                expedienteId: tarea.expedienteId,
+                radicado,
+                tareaTitulo: tarea.titulo,
+            },
+        }]);
+
+        this.logger.log(`Notificación de tarea asignada enviada — Tarea: ${tarea.titulo}, Responsable: ${tarea.responsableId}`);
     }
 
     async updateTarea(id: string, data: Partial<TareaExpediente>): Promise<TareaExpediente> {
@@ -161,7 +213,42 @@ export class TareasNotasService {
 
     async createNota(data: Partial<NotaExpediente>): Promise<NotaExpediente> {
         const nota = this.notaRepository.create(data);
-        return this.notaRepository.save(nota);
+        const saved = await this.notaRepository.save(nota);
+
+        if (saved.expedienteId) {
+            this.notificarObservacionAbogado(saved).catch(err =>
+                this.logger.warn(`Error enviando notificación de observación: ${err?.message}`)
+            );
+        }
+
+        return saved;
+    }
+
+    private async notificarObservacionAbogado(nota: NotaExpediente): Promise<void> {
+        const expediente = await this.expedienteRepository.findOne({
+            where: { id: nota.expedienteId },
+            select: ['id', 'radicado', 'abogadoSustanciador', 'jurisdiccion', 'tipoProceso'],
+        });
+
+        if (!expediente?.abogadoSustanciador) return;
+
+        const autorNombre = nota.autorNombre || 'Un usuario';
+        if (nota.autorId === expediente.abogadoSustanciador) return;
+
+        const esDisciplinario =
+            expediente.jurisdiccion === 'DISCIPLINARIO' ||
+            expediente.jurisdiccion === 'Disciplinaria' ||
+            expediente.tipoProceso === 'DISCIPLINARIO' ||
+            expediente.tipoProceso === 'Disciplinario';
+        const moduloVista = esDisciplinario ? 'juzgamiento' : 'defensa-judicial';
+
+        await this.legalNotifications.notifyObservacionAgregada({
+            radicado: expediente.radicado,
+            procesoId: expediente.id,
+            abogadoId: expediente.abogadoSustanciador,
+            autorNombre,
+            moduloVista,
+        });
     }
 
     async updateNota(id: string, data: Partial<NotaExpediente>): Promise<NotaExpediente> {

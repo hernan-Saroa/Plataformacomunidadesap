@@ -20,6 +20,7 @@ export interface SystemRole {
   icon: string;
   color: string;
   type: 'sistema' | 'personalizado';
+  sistema_destino?:string;
   is_active: boolean;
   requires_2fa: boolean;
   usuarios_count: number;
@@ -46,6 +47,7 @@ export interface CreateRoleRequest {
   type?: 'sistema' | 'personalizado';
   requires_2fa?: boolean;
   permissionIds?: string[];
+  alcance?: any; // JSONB field for administrative scope
 }
 
 export interface UpdateRoleRequest {
@@ -55,6 +57,7 @@ export interface UpdateRoleRequest {
   color?: string;
   requires_2fa?: boolean;
   permissionIds?: string[];
+  alcance?: any; // JSONB field for administrative scope
 }
 
 export interface RoleFilters {

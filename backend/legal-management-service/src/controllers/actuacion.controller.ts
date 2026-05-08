@@ -71,29 +71,47 @@ export class ActuacionController {
 
         const result = await this.actuacionService.registrarActuacion(id, data);
 
-        if (file) {
-            const expediente = await this.expedienteRepository.findOne({ where: { id } });
+        // Cargar expediente si es necesario para notificaciones
+        const necesitaExpediente = file || body.tipoActuacion === 'NOTA_INTERNA';
+        if (necesitaExpediente) {
+            const expediente = await this.expedienteRepository.findOne({
+                where: { id },
+                select: ['id', 'radicado', 'jurisdiccion', 'tipoProceso', 'abogadoSustanciador'],
+            });
             if (expediente) {
-                let modulo: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO_DISCIPLINARIO';
-                if (body.modulo === 'DEFENSA_JUDICIAL' || body.modulo === 'JUZGAMIENTO_DISCIPLINARIO') {
-                    modulo = body.modulo;
-                } else {
-                    const radicado = (expediente.radicado || '').toUpperCase();
-                    const esDisciplinario =
-                        expediente.jurisdiccion === 'DISCIPLINARIO' ||
-                        expediente.jurisdiccion === 'Disciplinaria' ||
-                        expediente.tipoProceso === 'DISCIPLINARIO' ||
-                        expediente.tipoProceso === 'Disciplinario' ||
-                        radicado.startsWith('PD-');
-                    modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+                const radicado = (expediente.radicado || '').toUpperCase();
+                const esDisciplinario =
+                    expediente.jurisdiccion === 'DISCIPLINARIO' ||
+                    expediente.jurisdiccion === 'Disciplinaria' ||
+                    expediente.tipoProceso === 'DISCIPLINARIO' ||
+                    expediente.tipoProceso === 'Disciplinario' ||
+                    radicado.startsWith('PD-');
+                const modulo: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO_DISCIPLINARIO' =
+                    (body.modulo === 'DEFENSA_JUDICIAL' || body.modulo === 'JUZGAMIENTO_DISCIPLINARIO')
+                        ? body.modulo
+                        : esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+
+                if (file) {
+                    await this.legalNotifications.notifyDocumentoSubido({
+                        modulo,
+                        radicado: expediente.radicado,
+                        procesoId: expediente.id,
+                        nombreDocumento: file.originalname,
+                        subidoPor: body.subidoPor || body.responsable || body.usuario || 'Sistema',
+                    });
                 }
-                await this.legalNotifications.notifyDocumentoSubido({
-                    modulo,
-                    radicado: expediente.radicado,
-                    procesoId: expediente.id,
-                    nombreDocumento: file.originalname,
-                    subidoPor: body.subidoPor || body.responsable || body.usuario || 'Sistema',
-                });
+
+                if (body.tipoActuacion === 'NOTA_INTERNA' && expediente.abogadoSustanciador) {
+                    const autorNombre = body.responsable || body.usuario || body.autorNombre || 'Un usuario';
+                    const moduloVista = esDisciplinario ? 'juzgamiento' : 'defensa-judicial';
+                    this.legalNotifications.notifyObservacionAgregada({
+                        radicado: expediente.radicado,
+                        procesoId: expediente.id,
+                        abogadoId: expediente.abogadoSustanciador,
+                        autorNombre,
+                        moduloVista,
+                    }).catch(() => {});
+                }
             }
         }
 
