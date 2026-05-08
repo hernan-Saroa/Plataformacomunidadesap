@@ -18,6 +18,7 @@ import type { ApiResponse, ApiError } from '../../types';
 import { toast } from 'sonner';
 import { offlineCache } from './offlineCache';
 import { syncEngine } from './syncEngine';
+import { getAppOnlineStatus } from '../../utils/connectivity';
 
 // ============================================================================
 // TIPOS INTERNOS
@@ -347,7 +348,7 @@ export class ApiClient {
     const isMutation = fetchConfig.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(fetchConfig.method.toUpperCase());
 
     // 🔴 MODO OFFLINE: Interceptar si no hay conexión
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    if (!getAppOnlineStatus()) {
       if (isGet) {
         try {
           const cached = await offlineCache.getCache(url);
