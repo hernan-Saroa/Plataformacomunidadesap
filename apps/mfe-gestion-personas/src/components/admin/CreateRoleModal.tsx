@@ -147,6 +147,27 @@ export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProp
   const handleSubmit = () => {
     if (!nombre.trim()) return;
 
+    // Función auxiliar para obtener nombre del territorial
+    const getTerritorialName = (territorialId: string) => {
+      if (territorialId === 'Todas') return 'Todas';
+      const territorial = territoriales.find(t => t.id === territorialId);
+      return territorial ? territorial.nombre : territorialId;
+    };
+
+    // Función auxiliar para obtener nombre del CETAP
+    const getCetapName = (cetapId: string) => {
+      if (cetapId === 'Todos') return 'Todos';
+      const cetap = cetaps.find(c => c.id === cetapId);
+      return cetap ? cetap.nombre : cetapId;
+    };
+
+    // Función auxiliar para obtener nombre del programa
+    const getProgramaName = (programaId: string) => {
+      if (programaId === 'Todos') return 'Todos';
+      const programa = programas.find(p => p.id === programaId);
+      return programa ? programa.nombre : programaId;
+    };
+
     // Preparar el objeto con la data del Wizard
     onSave?.({
       nombre,
@@ -157,9 +178,9 @@ export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProp
       requiere_2fa: requiere2FA,
       alcance: {
         tipo: tipoAlcance,
-        territorial: selTerritorial,
-        cetap: selCetap,
-        programa: selPrograma
+        territorial: getTerritorialName(selTerritorial),
+        cetap: getCetapName(selCetap),
+        programa: getProgramaName(selPrograma)
       }
     });
 
