@@ -629,7 +629,7 @@ export function RolesAdministrationModulePremium() {
             Roles y Permisos
           </h1>
           <p className="text-xs lg:text-[11px] xl:text-xs text-[--esap-gray-600]">
-            Administra roles del sistema y asigna permisos granularess
+            Administra roles del sistema y asigna permisos granulares
           </p>
         </div>
 
@@ -1082,18 +1082,18 @@ export function RolesAdministrationModulePremium() {
                                             <Filter className="w-4 h-4 text-[#003DA5]" />
                                             Alcance Administrativo
                                           </h4>
-                                          {role.type === 'personalizado' && (
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedRole(role);
-                                                setIsScopeConfigOpen(true);
-                                              }}
-                                              className="px-3 py-1.5 text-xs font-bold text-[#003DA5] border border-[#003DA5] rounded-lg hover:bg-[#003DA5] hover:text-white transition-all"
-                                            >
-                                              Configurar
-                                            </button>
-                                          )}
+                                           {(
+                                             <button
+                                               onClick={(e) => {
+                                                 e.stopPropagation();
+                                                 setSelectedRole(role);
+                                                 setIsScopeConfigOpen(true);
+                                               }}
+                                               className="px-3 py-1.5 text-xs font-bold text-[#003DA5] border border-[#003DA5] rounded-lg hover:bg-[#003DA5] hover:text-white transition-all"
+                                             >
+                                               {(!role.alcance || role.alcance.tipo === 'Global') ? 'Configurar' : 'Editar Alcance'}
+                                             </button>
+                                           )}
                                         </div>
                                         {role.alcance ? (
                                           <div className="space-y-2">
