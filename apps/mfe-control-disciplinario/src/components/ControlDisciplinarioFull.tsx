@@ -37,7 +37,8 @@ export interface ResultadoRevision {
   fecha: string;
 }
 
-const BORRADORES_INICIALES: BorradorPendiente[] = [
+const BORRADORES_INICIALES: BorradorPendiente[] = [];
+const BORRADORES_INICIALES_MOCK: BorradorPendiente[] = [
   {
     id: 'b1',
     numeroProceso: 'P-120-2025',
@@ -105,7 +106,7 @@ export function ControlDisciplinarioFull() {
   const [currentSection, setCurrentSection] = useState<Section>('dashboard');
   const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
   const [navegandoDesdeProfesional, setNavegandoDesdeProfesional] = useState(false);
-  const [borradores, setBorradores] = useState<BorradorPendiente[]>([]);
+  const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_INICIALES);
   const [revisionLog, setRevisionLog] = useState<ResultadoRevision[]>([]);
 
   // Cargar autos reales con estado REVISION_JEFE desde el backend
@@ -113,12 +114,14 @@ export function ControlDisciplinarioFull() {
     const cargarAutosEnRevision = async () => {
       try {
         const todos = await disciplinaryService.getAllAutos();
+        console.log("todos",todos)
         const enRevision = todos.filter((a: any) => a.estado === 'REVISION_JEFE');
         const pliegosAprobados = todos.filter((a: any) =>
           a.estado === 'APROBADO' &&
           (a.tipo === 'PLIEGO_CARGOS' || a.tipo === 'AUTO_FORMULACION_PLIEGO')
         );
         const autosAMostrar = [...enRevision, ...pliegosAprobados];
+        console.log("autosAMostrar",autosAMostrar)
         if (autosAMostrar.length > 0) {
           const borradoresReales: BorradorPendiente[] = autosAMostrar.map((auto: any) => ({
             id: `auto-${auto.id}`,
@@ -150,6 +153,7 @@ export function ControlDisciplinarioFull() {
             tiempoEspera: '',
           }));
           setBorradores(borradoresReales);
+          console.log("borradoresReales", borradoresReales)
         }
       } catch {
         // Si falla la carga, conservar los datos de demostración
