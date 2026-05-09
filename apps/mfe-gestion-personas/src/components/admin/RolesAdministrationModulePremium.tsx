@@ -37,7 +37,7 @@ import {
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import { CreateRoleModal } from './CreateRoleModal';
 import { EditRoleModal } from './EditRoleModal';
 import { RolePermissionsEditor } from './RolePermissionsEditor';
@@ -310,9 +310,12 @@ export function RolesAdministrationModulePremium() {
     try {
       const statsData = await rolesService.getStats();
       setStats(statsData);
-    } catch (error) {
-      console.error('Error loading stats:', error);
-    }
+   } catch (error) {
+     console.error('Error loading stats:', error);
+     toast.error('Error al cargar estadísticas', {
+       description: 'No se pudieron cargar las estadísticas de roles'
+     });
+   }
   };
 
   // Los roles ya vienen paginados del backend
@@ -492,8 +495,9 @@ export function RolesAdministrationModulePremium() {
   // Toggle estado activo con validación
   const handleToggleActive = async (role: SystemRole) => {
     const roleDisplayName = getRoleDisplayName(role);
-    // Si está desactivando un rol con usuarios, pedir confirmación
-    if (role.is_active && role.usuarios_count > 0) {
+
+    // Pedir confirmación solo para desactivar
+    if (role.is_active) {
       const confirmed = await confirm({
         onConfirm: () => {},
         title: '¿Desactivar rol con usuarios asignados?',
@@ -512,7 +516,7 @@ export function RolesAdministrationModulePremium() {
       // Recargar datos
       await loadRoles();
 
-      toast.info(
+      toast.success(
         role.is_active ? 'Rol Desactivado' : 'Rol Activado',
         {
           description: role.is_active
@@ -531,19 +535,34 @@ export function RolesAdministrationModulePremium() {
   // Toggle 2FA con validación
   const handleToggle2FA = async (role: SystemRole) => {
     const roleDisplayName = getRoleDisplayName(role);
-    // Si está desactivando 2FA en rol administrativo, advertir
-    if (role.requires_2fa && (role.name.toLowerCase().includes('admin') || role.name.toLowerCase().includes('super'))) {
-      const confirmed = await confirm({
-        onConfirm: () => {},
-        title: '⚠️ Desactivar 2FA en rol de seguridad',
-        description: `"${roleDisplayName}" es un rol de alto privilegio. Desactivar la autenticación de dos factores puede comprometer la seguridad del sistema. ¿Estás seguro?`,
-        confirmText: 'Desactivar 2FA',
-        cancelText: 'Mantener 2FA',
-        type: 'danger'
-      });
+    const action = role.requires_2fa ? 'desactivar' : 'activar';
+    const confirmText = role.requires_2fa ? 'Desactivar 2FA' : 'Activar 2FA';
+    const cancelText = role.requires_2fa ? 'Mantener 2FA' : 'Cancelar';
 
-      if (!confirmed) return;
-    }
+  // Pedir confirmación siempre
+  let confirmed = false;
+  if (role.requires_2fa && (role.name.toLowerCase().includes('admin') || role.name.toLowerCase().includes('super'))) {
+    confirmed = await confirm({
+      onConfirm: () => {},
+      title: 'Desactivar 2FA en rol de seguridad',
+      description: '"' + roleDisplayName + '" es un rol de alto privilegio. Desactivar la autenticación de dos factores puede comprometer la seguridad del sistema. ¿Estás seguro?',
+      confirmText: 'Desactivar 2FA',
+      cancelText: 'Mantener 2FA',
+      type: 'danger'
+    });
+  } else {
+    confirmed = await confirm({
+      onConfirm: () => {},
+      title: `¿${action} 2FA?`,
+      description: `¿Estás seguro de que deseas ${action} la autenticación de dos factores para el rol "${roleDisplayName}"?`,
+      confirmText,
+      cancelText,
+      type: 'info'
+    });
+  }
+  if (!confirmed) return;
+
+    if (!confirmed) return;
 
     try {
       await rolesService.toggle2FA(role.id);
@@ -572,7 +591,7 @@ export function RolesAdministrationModulePremium() {
     setSelectedRole(role);
     setIsPermissionsEditorOpen(true);
 
-    toast.info('Editor de Permisos', {
+    toast.success('Editor de Permisos', {
       description: `Gestionando ${role.permisos_count} permisos para "${getRoleDisplayName(role)}"`
     });
   };
@@ -1373,6 +1392,8 @@ export function RolesAdministrationModulePremium() {
 
       {/* Confirmation Dialog */}
       <ConfirmationDialog />
+
+      <Toaster position="top-right" richColors />
     </div>
   );
 }
