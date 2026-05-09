@@ -60,19 +60,19 @@ import { useAuth } from '../../hooks';
 // ============================================================================
 
 const ICON_MAP: Record<string, any> = {
-  Shield,
-  GraduationCap,
-  BookOpen,
-  Briefcase,
-  Award,
-  UserCircle,
-  Building2,
-  FileText,
-  MessageSquare,
-  FolderOpen,
-  BarChart3,
-  Cog,
-  Scale
+  shield: Shield,
+  'Graduation-cap': GraduationCap,
+  'Book-open': BookOpen,
+  'Briefcase': Briefcase,
+  'Award': Award,
+  'User-circle': UserCircle,
+  'Building-2': Building2,
+  'File-text': FileText,
+  'Message-square': MessageSquare,
+  'Folder-open': FolderOpen,
+  'Bar-chart-3': BarChart3,
+  Cog: Cog,
+  Scale: Scale
 };
 
 const getIconComponent = (iconName: string) => {
@@ -250,11 +250,19 @@ export function RolesAdministrationModulePremium() {
         id: selectedRole.id,
         nombre: getRoleDisplayName(selectedRole),
         descripcion: getRoleDisplayDescription(selectedRole),
-        icono: selectedRole.icon || 'Shield',
+        icono: selectedRole.icon || 'shield',
         color: selectedRole.color || '#003DA5',
         tipo: (selectedRole.type || 'personalizado') as 'sistema' | 'personalizado',
+        sistema_destino: selectedRole.sistema_destino || 'Backoffice',
+        requiere_2fa: selectedRole.requires_2fa || false,
+        usuarios_count: selectedRole.usuarios_count || 0,
+        permisos_count: selectedRole.permisos_count || 0,
+        created_at: selectedRole.created_at,
+        created_by: selectedRole.created_by,
       }
     : null;
+
+    console.log("Roles cargados:", selectedRoleForModal);
 
   const selectedRoleForPermissions = selectedRole
     ? {
@@ -369,6 +377,7 @@ export function RolesAdministrationModulePremium() {
         description: roleData.descripcion,
         icon: roleData.icono,
         color: roleData.color,
+        sistema_destino: roleData.sistema_destino,
         requires_2fa: roleData.requiere_2fa,
         permissionIds: roleData.permissionIds
       });
@@ -932,6 +941,13 @@ export function RolesAdministrationModulePremium() {
                                        <Shield className="w-4 h-4 mr-2" />
                                        Gestionar Permisos
                                      </DropdownMenuItem>
+                                     <DropdownMenuItem key="configure-scope" onClick={() => {
+                                        setSelectedRole(role);
+                                        setIsScopeConfigOpen(true);
+                                      }}>
+                                        <Filter className="w-4 h-4 mr-2" />
+                                        Configurar Alcance
+                                      </DropdownMenuItem>
                                      <DropdownMenuItem key="edit-role" onClick={() => {
                                        setSelectedRole(role);
                                        setIsEditModalOpen(true);
@@ -939,11 +955,12 @@ export function RolesAdministrationModulePremium() {
                                        <Edit className="w-4 h-4 mr-2" />
                                        Editar Rol
                                      </DropdownMenuItem>
-                                     <DropdownMenuItem key="duplicate-role" onClick={() => handleDuplicateRole(role)}>
-                                       <Copy className="w-4 h-4 mr-2" />
-                                       Duplicar Rol
-                                     </DropdownMenuItem>
-                                     <DropdownMenuSeparator key="separator-1" />
+                                      <DropdownMenuItem key="duplicate-role" onClick={() => handleDuplicateRole(role)}>
+                                        <Copy className="w-4 h-4 mr-2" />
+                                        Duplicar Rol
+                                      </DropdownMenuItem>
+                                      
+                                      <DropdownMenuSeparator key="separator-1" />
                                      <DropdownMenuItem key="toggle-active" onClick={() => handleToggleActive(role)}>
                                        {role.is_active ? (
                                          <>

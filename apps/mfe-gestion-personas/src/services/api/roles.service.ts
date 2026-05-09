@@ -75,6 +75,7 @@ export interface UpdateRoleRequest {
   description?: string;
   icon?: string;
   color?: string;
+  sistema_destino?: string;
   requires_2fa?: boolean;
   permissionIds?: string[];
   alcance?: any;
