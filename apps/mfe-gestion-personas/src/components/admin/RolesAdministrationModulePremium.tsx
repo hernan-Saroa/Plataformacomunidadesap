@@ -454,14 +454,14 @@ export function RolesAdministrationModulePremium() {
   // Duplicar rol con confirmación
   const handleDuplicateRole = async (role: SystemRole) => {
     const roleDisplayName = getRoleDisplayName(role);
-    const confirmed = await confirm({
-      onConfirm: () => {},
-      title: '¿Duplicar rol?',
-      description: `Se creará una copia de "${roleDisplayName}" con los mismos permisos. Podrás editarlo después de la duplicación.`,
-      confirmText: 'Duplicar',
-      cancelText: 'Cancelar',
-      type: 'info'
-    });
+  const confirmed = await confirm({
+    onConfirm: () => {},
+    title: '¿Duplicar rol?',
+    description: `Se creará una copia de "${roleDisplayName}" con los mismos permisos. Podrás editarlo después de la duplicación.`,
+    confirmText: 'Duplicar',
+    cancelText: 'Cancelar',
+    type: 'warning'
+  });
 
     if (confirmed) {
       try {
@@ -955,7 +955,7 @@ export function RolesAdministrationModulePremium() {
                                        <Edit className="w-4 h-4 mr-2" />
                                        Editar Rol
                                      </DropdownMenuItem>
-                                      <DropdownMenuItem key="duplicate-role" onClick={() => handleDuplicateRole(role)}>
+                                      <DropdownMenuItem key="duplicate-role" onClick={() => handleDuplicateRole(role)} className="text-gray-900 hover:text-blue-600">
                                         <Copy className="w-4 h-4 mr-2" />
                                         Duplicar Rol
                                       </DropdownMenuItem>
