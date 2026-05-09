@@ -297,6 +297,7 @@ export class RolesService {
     const code = this.generateCode(duplicatedName);
 
     const duplicatedRole = this.roleRepo.create({
+      id: uuidv4(),
       code,
       name: duplicatedName,
       description: originalRole.description,
