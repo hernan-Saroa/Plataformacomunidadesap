@@ -95,9 +95,8 @@ export class AuthController {
       this.loginProtectionService.clearFailedAttempts(accountKeys);
       this.loginProtectionService.clearIpRateLimit(ipAddress);
       this.applyRateLimitHeaders(res, rateLimitState);
-      const { accessToken, ...responseBody } = response;
-      this.setAuthCookie(res, accessToken);
-      return responseBody;
+      this.setAuthCookie(res, response.accessToken, req);
+      return response;
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         const failedState =
@@ -136,12 +135,12 @@ export class AuthController {
   @HttpCode(200)
   async loginMicrosoft(
     @Body() dto: MicrosoftLoginDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const response = await this.authService.loginWithMicrosoft(dto);
-    const { accessToken, ...responseBody } = response;
-    this.setAuthCookie(res, accessToken);
-    return responseBody;
+    this.setAuthCookie(res, response.accessToken, req);
+    return response;
   }
 
   @Public()
@@ -201,15 +200,17 @@ export class AuthController {
   ) {
     const rawCookie = req.headers.cookie || '';
     const response = await this.authService.refreshUserToken(rawCookie);
-    const { accessToken, ...responseBody } = response;
-    this.setAuthCookie(res, accessToken);
-    return responseBody;
+    this.setAuthCookie(res, response.accessToken, req);
+    return response;
   }
 
   @Public()
   @Post('logout')
-  logout(@Res({ passthrough: true }) res: Response) {
-    this.clearAuthCookie(res);
+  logout(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    this.clearAuthCookie(res, req);
     return this.authService.logout();
   }
 
@@ -254,19 +255,40 @@ export class AuthController {
       : this.usersService.findByUsername(identifier);
   }
 
-  private setAuthCookie(res: Response, token: string): void {
-    const isProduction = process.env.NODE_ENV === 'production';
+  private setAuthCookie(res: Response, token: string, req?: Request): void {
+    const secure = this.shouldUseSecureCookie(req);
     res.cookie('esap_access_token', token, {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: 'strict',
+      secure,
+      sameSite: 'lax',
       maxAge: 3600 * 1000, // 1 hora en ms (mismo que el JWT)
       path: '/',
     });
   }
 
-  private clearAuthCookie(res: Response): void {
-    res.clearCookie('esap_access_token', { path: '/' });
+  private clearAuthCookie(res: Response, req?: Request): void {
+    res.clearCookie('esap_access_token', {
+      path: '/',
+      secure: this.shouldUseSecureCookie(req),
+      sameSite: 'lax',
+    });
+  }
+
+  private shouldUseSecureCookie(req?: Request): boolean {
+    const configured = process.env.AUTH_COOKIE_SECURE?.toLowerCase();
+    if (configured === 'true' || configured === '1' || configured === 'yes') {
+      return true;
+    }
+    if (configured === 'false' || configured === '0' || configured === 'no') {
+      return false;
+    }
+
+    const forwardedProtoHeader = req?.headers['x-forwarded-proto'];
+    const forwardedProto = Array.isArray(forwardedProtoHeader)
+      ? forwardedProtoHeader[0]
+      : forwardedProtoHeader;
+
+    return forwardedProto?.split(',')[0]?.trim() === 'https' || req?.secure === true;
   }
 
   private applyRateLimitHeaders(
