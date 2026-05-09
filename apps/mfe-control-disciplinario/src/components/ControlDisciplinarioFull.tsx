@@ -105,7 +105,7 @@ export function ControlDisciplinarioFull() {
   const [currentSection, setCurrentSection] = useState<Section>('dashboard');
   const [filtroProfesional, setFiltroProfesional] = useState<string | null>(null);
   const [navegandoDesdeProfesional, setNavegandoDesdeProfesional] = useState(false);
-  const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_INICIALES);
+  const [borradores, setBorradores] = useState<BorradorPendiente[]>([]);
   const [revisionLog, setRevisionLog] = useState<ResultadoRevision[]>([]);
 
   // Cargar autos reales con estado REVISION_JEFE desde el backend
