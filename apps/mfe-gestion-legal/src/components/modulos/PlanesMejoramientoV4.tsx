@@ -67,8 +67,12 @@ interface AccionMejora {
 interface Hallazgo {
   id: string;
   codigo: string;
+  nombre: string;
   descripcion: string;
   severidad: SeveridadHallazgo;
+  porcentajeAvance: number;
+  archivoUrl?: string;
+  archivoNombre?: string;
   acciones: AccionMejora[];
 }
 
@@ -278,7 +282,17 @@ export function ModuloPlanesMejoramientoV4() {
         fechaInicio: p.fechaInicio ? new Date(p.fechaInicio) : new Date(),
         fechaFin: p.fechaFinEstimada ? new Date(p.fechaFinEstimada) : new Date(),
         estado: p.estado === 'ABIERTO' ? 'EN_EJECUCION' : p.estado === 'CERRADO' ? 'COMPLETADO' : 'FORMULACION',
-        hallazgos: [], // Backend pending relationship
+        hallazgos: p.hallazgos ? p.hallazgos.map((h: any) => ({
+          id: h.id,
+          codigo: h.id.substring(0, 8),
+          nombre: h.nombre,
+          descripcion: h.descripcion || '',
+          severidad: 'MEDIA' as SeveridadHallazgo,
+          porcentajeAvance: Number(h.porcentajeAvance || 0),
+          archivoUrl: h.archivoUrl,
+          archivoNombre: h.archivoNombre,
+          acciones: []
+        })) : [],
         totalAcciones: 0,
         accionesCompletadas: 0,
         avanceGeneral: Number(p.avancePorcentaje) || 0,
@@ -1327,9 +1341,53 @@ function VistaLista({
                 <h4 className="text-sm font-black text-gray-900 mb-3">
                   📋 Hallazgos y Acciones de Mejora ({plan.hallazgos.length})
                 </h4>
-                <div className="text-center p-4">
-                  <p className="text-sm text-gray-500">Funcionalidad de detalle de hallazgos pendiente de integración backend.</p>
-                </div>
+                {plan.hallazgos.length === 0 ? (
+                  <div className="text-center p-4">
+                    <p className="text-sm text-gray-500">No hay hallazgos registrados para este plan.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {plan.hallazgos.map(h => (
+                      <div key={h.id} className="bg-white border rounded-lg p-3">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <p className="font-bold text-sm text-gray-900 truncate">{h.nombre}</p>
+                              <Badge
+                                className={`font-bold text-xs flex-shrink-0 ${
+                                  h.porcentajeAvance >= 100 ? 'bg-green-100 text-green-700' :
+                                  h.porcentajeAvance >= 70 ? 'bg-blue-100 text-blue-700' :
+                                  h.porcentajeAvance >= 30 ? 'bg-amber-100 text-amber-700' :
+                                  'bg-red-100 text-red-700'
+                                }`}
+                              >
+                                {h.porcentajeAvance}%
+                              </Badge>
+                            </div>
+                            {h.descripcion && (
+                              <p className="text-xs text-gray-600 mb-2">{h.descripcion}</p>
+                            )}
+                            <Progress value={h.porcentajeAvance} className="h-1.5" />
+                            {h.archivoUrl && (
+                              <div className="mt-2">
+                                <a
+                                  href={legalService.getPlanFileViewUrl(h.archivoUrl.replace(/^files\//, ''))}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <FileText className="w-3 h-3" />
+                                  {h.archivoNombre || 'Ver documento adjunto'}
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </Card>

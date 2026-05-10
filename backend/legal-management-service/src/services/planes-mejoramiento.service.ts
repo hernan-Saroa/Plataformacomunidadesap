@@ -122,7 +122,7 @@ export class PlanesMejoramientoService {
         const planes = await this.planRepo.find({
             where: { archivedAt: IsNull() },
             order: { createdAt: 'DESC' },
-            relations: ['evidencias', 'seguimientos', 'comentarios']
+            relations: ['evidencias', 'seguimientos', 'comentarios', 'hallazgos']
         });
 
         // Enhance with Risk Title if origin is RIESGO
@@ -179,7 +179,7 @@ export class PlanesMejoramientoService {
     async findOne(id: string) {
         const plan = await this.planRepo.findOne({
             where: { id },
-            relations: ['evidencias', 'seguimientos', 'comentarios']
+            relations: ['evidencias', 'seguimientos', 'comentarios', 'hallazgos']
         });
         if (!plan) throw new NotFoundException(`Plan ${id} no encontrado`);
 
