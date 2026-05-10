@@ -9,6 +9,7 @@
 
 import { getBaseURL, STORAGE_KEYS, API_CONFIG, APIResponse, APIError } from './config';
 import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
+import { clearAuthTokens, getAccessToken, getRefreshToken, setAuthTokens } from './authTokenStore';
 
 /**
  * Custom error para errores de API
@@ -52,23 +53,21 @@ class APIClient {
    * Obtener token de acceso del localStorage
    */
   private getAccessToken(): string | null {
-    // Los JWT viajan como cookies HttpOnly; no se leen desde storage.
-    return null;
+    return getAccessToken();
   }
 
   /**
    * Obtener refresh token del localStorage
    */
   private getRefreshToken(): string | null {
-    // Conservado solo por compatibilidad de interfaz legacy.
-    return null;
+    return getRefreshToken();
   }
 
   /**
    * Guardar tokens en localStorage
    */
-  private setTokens(_accessToken?: string, _refreshToken?: string): void {
-    // Los tokens los administra el backend mediante cookies HttpOnly.
+  private setTokens(accessToken?: string, refreshToken?: string): void {
+    setAuthTokens(accessToken, refreshToken);
   }
 
   /**
@@ -76,6 +75,7 @@ class APIClient {
    */
   private clearTokens(): void {
     this.currentUser = null;
+    clearAuthTokens();
     sessionStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
     sessionStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
     sessionStorage.removeItem(STORAGE_KEYS.USER_DATA);
@@ -155,8 +155,13 @@ class APIClient {
    * Agregar token de autorización al header
    */
   private addAuthHeader(headers: HeadersInit = {}): HeadersInit {
-    // La autenticacion viaja por cookie HttpOnly; no inyectamos Bearer tokens.
-    return headers;
+    const token = this.getAccessToken();
+    if (!token) return headers;
+
+    return {
+      ...headers,
+      Authorization: `Bearer ${token}`,
+    };
   }
 
   /**
@@ -174,7 +179,14 @@ class APIClient {
       throw new Error(`Token refresh failed with status ${response.status}`);
     }
 
-    return 'cookie-refreshed';
+    const data = await response.json().catch(() => null);
+    const accessToken = data?.data?.accessToken || data?.accessToken;
+    const refreshToken = data?.data?.refreshToken || data?.refreshToken;
+    if (accessToken) {
+      this.setTokens(accessToken, refreshToken || accessToken);
+    }
+
+    return accessToken || 'cookie-refreshed';
   }
   /**
    * Agregar suscriptor para esperar refresh token

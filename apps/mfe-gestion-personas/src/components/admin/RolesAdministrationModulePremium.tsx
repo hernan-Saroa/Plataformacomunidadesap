@@ -37,7 +37,7 @@ import {
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import { CreateRoleModal } from './CreateRoleModal';
 import { EditRoleModal } from './EditRoleModal';
 import { RolePermissionsEditor } from './RolePermissionsEditor';
@@ -54,260 +54,25 @@ import { useAuth } from '../../hooks';
 
 // Usar tipos del servicio API
 
-// ============================================================================
-// DATA MOCK
-// ============================================================================
-
-const MOCK_ROLES: SystemRole[] = [
-  {
-    id: '1',
-    name: 'Super Administrador',
-    description: 'Acceso total al sistema con todos los permisos administrativos',
-    icon: 'Shield',
-    color: '#dc2626',
-    type: 'sistema',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 3,
-    permisos_count: 45,
-    created_at: '2024-01-01',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: '2',
-    name: 'Estudiante',
-    description: 'Rol básico para estudiantes activos de la institución',
-    icon: 'GraduationCap',
-    color: '#003DA5',
-    type: 'sistema',
-    sistema_destino: 'Portal',
-    is_active: true,
-    requires_2fa: false,
-    usuarios_count: 1247,
-    permisos_count: 12,
-    created_at: '2024-01-01',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: '3',
-    name: 'Docente',
-    description: 'Acceso para profesores con permisos de gestión académica',
-    icon: 'BookOpen',
-    color: '#16a34a',
-    type: 'sistema',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: false,
-    usuarios_count: 89,
-    permisos_count: 18,
-    created_at: '2024-01-01',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: '4',
-    name: 'Administrativo',
-    description: 'Personal administrativo con permisos de gestión operativa',
-    icon: 'Briefcase',
-    color: '#f97316',
-    type: 'sistema',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 45,
-    permisos_count: 28,
-    created_at: '2024-01-01',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: '5',
-    name: 'Graduado',
-    description: 'Ex-estudiantes graduados con acceso a servicios alumni',
-    icon: 'Award',
-    color: '#10b981',
-    type: 'sistema',
-    sistema_destino: 'Portal',
-    is_active: true,
-    requires_2fa: false,
-    usuarios_count: 3421,
-    permisos_count: 10,
-    created_at: '2024-01-01',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: '6',
-    name: 'Aspirante',
-    description: 'Personas en proceso de admisión a la institución',
-    icon: 'UserCircle',
-    color: '#9333ea',
-    type: 'sistema',
-    sistema_destino: 'Portal',
-    is_active: true,
-    requires_2fa: false,
-    usuarios_count: 234,
-    permisos_count: 5,
-    created_at: '2024-01-01',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: '7',
-    name: 'Coordinador Regional',
-    description: 'Gestión de operaciones en sedes regionales',
-    icon: 'Building2',
-    color: '#0891b2',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 12,
-    permisos_count: 22,
-    created_at: '2024-03-15',
-    created_by: 'Admin Principal',
-    updated_at: '2024-10-20',
-    updated_by: 'Admin Principal'
-  },
-  // ============ ROLES PARA CONTROL DISCIPLINARIO ============
-  {
-    id: 'cd-1',
-    name: 'Profesional Especializado Disciplinario',
-    description: 'Profesional especializado del equipo disciplinario con capacidad de gestión completa de procesos',
-    icon: 'Scale',
-    color: '#dc2626',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 5,
-    permisos_count: 75,
-    created_at: '2026-01-21',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: 'cd-2',
-    name: 'Profesional Universitario Disciplinario',
-    description: 'Profesional universitario del equipo disciplinario con permisos de gestión operativa',
-    icon: 'Scale',
-    color: '#dc2626',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 8,
-    permisos_count: 60,
-    created_at: '2026-01-21',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: 'cd-3',
-    name: 'Profesional Senior Disciplinario',
-    description: 'Profesional senior con permisos avanzados incluyendo revisión y aprobación',
-    icon: 'Scale',
-    color: '#dc2626',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 3,
-    permisos_count: 85,
-    created_at: '2026-01-21',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: 'cd-4',
-    name: 'Coordinador Disciplinario',
-    description: 'Coordinador del equipo disciplinario con permisos ejecutivos y de supervisión',
-    icon: 'Scale',
-    color: '#dc2626',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 2,
-    permisos_count: 95,
-    created_at: '2026-01-21',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: 'cd-5',
-    name: 'Jefe Control Disciplinario',
-    description: 'Jefe de Control Disciplinario con acceso completo incluyendo configuración y administración',
-    icon: 'Shield',
-    color: '#7c2d12',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: true,
-    usuarios_count: 1,
-    permisos_count: 95,
-    created_at: '2026-01-21',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  },
-  {
-    id: 'cd-6',
-    name: 'Consultor Disciplinario',
-    description: 'Rol de solo lectura para consulta de procesos disciplinarios sin permisos de modificación',
-    icon: 'Eye',
-    color: '#64748b',
-    type: 'personalizado',
-    sistema_destino: 'Backoffice',
-    is_active: true,
-    requires_2fa: false,
-    usuarios_count: 4,
-    permisos_count: 15,
-    created_at: '2026-01-21',
-    created_by: 'Sistema',
-    updated_at: undefined,
-    updated_by: undefined
-  }
-];
-
-const MOCK_STATS: RoleStats = {
-  total_roles: 12,
-  roles_sistema: 10,
-  usuarios_asignados: 5067,
-  permisos_disponibles: 45
-};
 
 // ============================================================================
 // ICONOS HELPER
 // ============================================================================
 
 const ICON_MAP: Record<string, any> = {
-  Shield,
-  GraduationCap,
-  BookOpen,
-  Briefcase,
-  Award,
-  UserCircle,
-  Building2,
-  FileText,
-  MessageSquare,
-  FolderOpen,
-  BarChart3,
-  Cog,
-  Scale
+  shield: Shield,
+  'Graduation-cap': GraduationCap,
+  'Book-open': BookOpen,
+  'Briefcase': Briefcase,
+  'Award': Award,
+  'User-circle': UserCircle,
+  'Building-2': Building2,
+  'File-text': FileText,
+  'Message-square': MessageSquare,
+  'Folder-open': FolderOpen,
+  'Bar-chart-3': BarChart3,
+  Cog: Cog,
+  Scale: Scale
 };
 
 const getIconComponent = (iconName: string) => {
@@ -485,11 +250,19 @@ export function RolesAdministrationModulePremium() {
         id: selectedRole.id,
         nombre: getRoleDisplayName(selectedRole),
         descripcion: getRoleDisplayDescription(selectedRole),
-        icono: selectedRole.icon || 'Shield',
+        icono: selectedRole.icon || 'shield',
         color: selectedRole.color || '#003DA5',
         tipo: (selectedRole.type || 'personalizado') as 'sistema' | 'personalizado',
+        sistema_destino: selectedRole.sistema_destino || 'Backoffice',
+        requiere_2fa: selectedRole.requires_2fa || false,
+        usuarios_count: selectedRole.usuarios_count || 0,
+        permisos_count: selectedRole.permisos_count || 0,
+        created_at: selectedRole.created_at,
+        created_by: selectedRole.created_by,
       }
     : null;
+
+    console.log("Roles cargados:", selectedRoleForModal);
 
   const selectedRoleForPermissions = selectedRole
     ? {
@@ -521,6 +294,8 @@ export function RolesAdministrationModulePremium() {
       const response = await rolesService.getRoles(filters);
       setRoles(response.roles);
       setTotalItems(response.total);
+      console.log("Roles cargados:", response.roles);
+      console.log("Total de roles:", response.total);
     } catch (error) {
       console.error('Error loading roles:', error);
       toast.error('Error al cargar roles', {
@@ -535,9 +310,12 @@ export function RolesAdministrationModulePremium() {
     try {
       const statsData = await rolesService.getStats();
       setStats(statsData);
-    } catch (error) {
-      console.error('Error loading stats:', error);
-    }
+   } catch (error) {
+     console.error('Error loading stats:', error);
+     toast.error('Error al cargar estadísticas', {
+       description: 'No se pudieron cargar las estadísticas de roles'
+     });
+   }
   };
 
   // Los roles ya vienen paginados del backend
@@ -602,6 +380,7 @@ export function RolesAdministrationModulePremium() {
         description: roleData.descripcion,
         icon: roleData.icono,
         color: roleData.color,
+        sistema_destino: roleData.sistema_destino,
         requires_2fa: roleData.requiere_2fa,
         permissionIds: roleData.permissionIds
       });
@@ -678,14 +457,14 @@ export function RolesAdministrationModulePremium() {
   // Duplicar rol con confirmación
   const handleDuplicateRole = async (role: SystemRole) => {
     const roleDisplayName = getRoleDisplayName(role);
-    const confirmed = await confirm({
-      onConfirm: () => {},
-      title: '¿Duplicar rol?',
-      description: `Se creará una copia de "${roleDisplayName}" con los mismos permisos. Podrás editarlo después de la duplicación.`,
-      confirmText: 'Duplicar',
-      cancelText: 'Cancelar',
-      type: 'info'
-    });
+  const confirmed = await confirm({
+    onConfirm: () => {},
+    title: '¿Duplicar rol?',
+    description: `Se creará una copia de "${roleDisplayName}" con los mismos permisos. Podrás editarlo después de la duplicación.`,
+    confirmText: 'Duplicar',
+    cancelText: 'Cancelar',
+    type: 'warning'
+  });
 
     if (confirmed) {
       try {
@@ -716,8 +495,9 @@ export function RolesAdministrationModulePremium() {
   // Toggle estado activo con validación
   const handleToggleActive = async (role: SystemRole) => {
     const roleDisplayName = getRoleDisplayName(role);
-    // Si está desactivando un rol con usuarios, pedir confirmación
-    if (role.is_active && role.usuarios_count > 0) {
+
+    // Pedir confirmación solo para desactivar
+    if (role.is_active) {
       const confirmed = await confirm({
         onConfirm: () => {},
         title: '¿Desactivar rol con usuarios asignados?',
@@ -736,7 +516,7 @@ export function RolesAdministrationModulePremium() {
       // Recargar datos
       await loadRoles();
 
-      toast.info(
+      toast.success(
         role.is_active ? 'Rol Desactivado' : 'Rol Activado',
         {
           description: role.is_active
@@ -755,19 +535,34 @@ export function RolesAdministrationModulePremium() {
   // Toggle 2FA con validación
   const handleToggle2FA = async (role: SystemRole) => {
     const roleDisplayName = getRoleDisplayName(role);
-    // Si está desactivando 2FA en rol administrativo, advertir
-    if (role.requires_2fa && (role.name.toLowerCase().includes('admin') || role.name.toLowerCase().includes('super'))) {
-      const confirmed = await confirm({
-        onConfirm: () => {},
-        title: '⚠️ Desactivar 2FA en rol de seguridad',
-        description: `"${roleDisplayName}" es un rol de alto privilegio. Desactivar la autenticación de dos factores puede comprometer la seguridad del sistema. ¿Estás seguro?`,
-        confirmText: 'Desactivar 2FA',
-        cancelText: 'Mantener 2FA',
-        type: 'danger'
-      });
+    const action = role.requires_2fa ? 'desactivar' : 'activar';
+    const confirmText = role.requires_2fa ? 'Desactivar 2FA' : 'Activar 2FA';
+    const cancelText = role.requires_2fa ? 'Mantener 2FA' : 'Cancelar';
 
-      if (!confirmed) return;
-    }
+  // Pedir confirmación siempre
+  let confirmed = false;
+  if (role.requires_2fa && (role.name.toLowerCase().includes('admin') || role.name.toLowerCase().includes('super'))) {
+    confirmed = await confirm({
+      onConfirm: () => {},
+      title: 'Desactivar 2FA en rol de seguridad',
+      description: '"' + roleDisplayName + '" es un rol de alto privilegio. Desactivar la autenticación de dos factores puede comprometer la seguridad del sistema. ¿Estás seguro?',
+      confirmText: 'Desactivar 2FA',
+      cancelText: 'Mantener 2FA',
+      type: 'danger'
+    });
+  } else {
+    confirmed = await confirm({
+      onConfirm: () => {},
+      title: `¿${action} 2FA?`,
+      description: `¿Estás seguro de que deseas ${action} la autenticación de dos factores para el rol "${roleDisplayName}"?`,
+      confirmText,
+      cancelText,
+      type: 'info'
+    });
+  }
+  if (!confirmed) return;
+
+    if (!confirmed) return;
 
     try {
       await rolesService.toggle2FA(role.id);
@@ -796,7 +591,7 @@ export function RolesAdministrationModulePremium() {
     setSelectedRole(role);
     setIsPermissionsEditorOpen(true);
 
-    toast.info('Editor de Permisos', {
+    toast.success('Editor de Permisos', {
       description: `Gestionando ${role.permisos_count} permisos para "${getRoleDisplayName(role)}"`
     });
   };
@@ -1165,6 +960,13 @@ export function RolesAdministrationModulePremium() {
                                        <Shield className="w-4 h-4 mr-2" />
                                        Gestionar Permisos
                                      </DropdownMenuItem>
+                                     <DropdownMenuItem key="configure-scope" onClick={() => {
+                                        setSelectedRole(role);
+                                        setIsScopeConfigOpen(true);
+                                      }}>
+                                        <Filter className="w-4 h-4 mr-2" />
+                                        Configurar Alcance
+                                      </DropdownMenuItem>
                                      <DropdownMenuItem key="edit-role" onClick={() => {
                                        setSelectedRole(role);
                                        setIsEditModalOpen(true);
@@ -1172,11 +974,12 @@ export function RolesAdministrationModulePremium() {
                                        <Edit className="w-4 h-4 mr-2" />
                                        Editar Rol
                                      </DropdownMenuItem>
-                                     <DropdownMenuItem key="duplicate-role" onClick={() => handleDuplicateRole(role)}>
-                                       <Copy className="w-4 h-4 mr-2" />
-                                       Duplicar Rol
-                                     </DropdownMenuItem>
-                                     <DropdownMenuSeparator key="separator-1" />
+                                      <DropdownMenuItem key="duplicate-role" onClick={() => handleDuplicateRole(role)} className="text-gray-900 hover:text-blue-600">
+                                        <Copy className="w-4 h-4 mr-2" />
+                                        Duplicar Rol
+                                      </DropdownMenuItem>
+                                      
+                                      <DropdownMenuSeparator key="separator-1" />
                                      <DropdownMenuItem key="toggle-active" onClick={() => handleToggleActive(role)}>
                                        {role.is_active ? (
                                          <>
@@ -1259,7 +1062,7 @@ export function RolesAdministrationModulePremium() {
                                               <p className="text-gray-900 font-medium">{getRoleDisplayDescription(role)}</p>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2">
-                                              <div>
+                                              <div key="created">
                                                 <span className="text-gray-600 text-xs">Creado:</span>
                                                 <p className="text-gray-900 font-medium text-xs">
                                                   {new Date(role.created_at).toLocaleDateString('es-CO')}
@@ -1267,7 +1070,7 @@ export function RolesAdministrationModulePremium() {
                                                 <p className="text-gray-600 text-xs">por {role.created_by}</p>
                                               </div>
                                               {role.updated_at && (
-                                                <div>
+                                                <div key="updated">
                                                   <span className="text-gray-600 text-xs">Modificado:</span>
                                                   <p className="text-gray-900 font-medium text-xs">
                                                     {new Date(role.updated_at).toLocaleDateString('es-CO')}
@@ -1315,18 +1118,18 @@ export function RolesAdministrationModulePremium() {
                                             <Filter className="w-4 h-4 text-[#003DA5]" />
                                             Alcance Administrativo
                                           </h4>
-                                          {role.type === 'personalizado' && (
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedRole(role);
-                                                setIsScopeConfigOpen(true);
-                                              }}
-                                              className="px-3 py-1.5 text-xs font-bold text-[#003DA5] border border-[#003DA5] rounded-lg hover:bg-[#003DA5] hover:text-white transition-all"
-                                            >
-                                              Configurar
-                                            </button>
-                                          )}
+                                           {(
+                                             <button
+                                               onClick={(e) => {
+                                                 e.stopPropagation();
+                                                 setSelectedRole(role);
+                                                 setIsScopeConfigOpen(true);
+                                               }}
+                                               className="px-3 py-1.5 text-xs font-bold text-[#003DA5] border border-[#003DA5] rounded-lg hover:bg-[#003DA5] hover:text-white transition-all"
+                                             >
+                                               {(!role.alcance || role.alcance.tipo === 'Global') ? 'Configurar' : 'Editar Alcance'}
+                                             </button>
+                                           )}
                                         </div>
                                         {role.alcance ? (
                                           <div className="space-y-2">
@@ -1508,7 +1311,7 @@ export function RolesAdministrationModulePremium() {
           </div>
 
           {/* Empty State */}
-          {filteredRoles.length === 0 && (
+          {paginatedRoles.length === 0 && (
             <div className="py-16 px-4 text-center">
               <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-gray-100 flex items-center justify-center">
                 <Shield className="w-10 h-10 text-gray-400" />
@@ -1589,6 +1392,8 @@ export function RolesAdministrationModulePremium() {
 
       {/* Confirmation Dialog */}
       <ConfirmationDialog />
+
+      <Toaster position="top-right" richColors />
     </div>
   );
 }

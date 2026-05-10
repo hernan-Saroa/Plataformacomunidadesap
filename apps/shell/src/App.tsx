@@ -24,6 +24,7 @@ import { config } from './config/environment';
 import { NotificacionesProvider } from './contexts/NotificacionesContext';
 import { EditorPlantillasPage } from './pages/EditorPlantillasPage';
 import { ExpedienteCompartidoPage } from './pages/ExpedienteCompartidoPage';
+import { getAppOnlineStatus } from './utils/connectivity';
 
 
 // Importar componentes de servicios públicos
@@ -304,7 +305,7 @@ export default function App() {
     );
   }
 
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [isOnline, setIsOnline] = useState(getAppOnlineStatus);
   const [currentView, setCurrentView] = useState<AppView>('landing');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userData, setUserData] = useState<any>({ name: '', email: '', personId: '', modules: [], roles: [], permissions: [] });
@@ -336,15 +337,19 @@ export default function App() {
 
   // Detector de conexión a internet
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const refreshOnlineStatus = () => setIsOnline(getAppOnlineStatus());
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    refreshOnlineStatus();
+    window.addEventListener('online', refreshOnlineStatus);
+    window.addEventListener('offline', refreshOnlineStatus);
+    window.addEventListener('focus', refreshOnlineStatus);
+    document.addEventListener('visibilitychange', refreshOnlineStatus);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', refreshOnlineStatus);
+      window.removeEventListener('offline', refreshOnlineStatus);
+      window.removeEventListener('focus', refreshOnlineStatus);
+      document.removeEventListener('visibilitychange', refreshOnlineStatus);
     };
   }, []);
 

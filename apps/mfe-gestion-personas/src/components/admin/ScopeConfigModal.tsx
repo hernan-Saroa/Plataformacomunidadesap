@@ -56,9 +56,9 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
 
   // Paso 2 State
   const [tipoAlcance, setTipoAlcance] = useState<'Global' | 'Filtrado'>('Global');
-  const [selTerritorial, setSelTerritorial] = useState<string>('Todas');
-  const [selCetap, setSelCetap] = useState<string>('Todos');
-  const [selPrograma, setSelPrograma] = useState<string>('Todos');
+  const [selTerritorial, setSelTerritorial] = useState<string>('');
+  const [selCetap, setSelCetap] = useState<string>('');
+  const [selPrograma, setSelPrograma] = useState<string>('');
 
   // Load initial data
   useEffect(() => {
@@ -69,23 +69,24 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
       // Load existing alcance data
       if (role?.alcance) {
         setTipoAlcance(role.alcance.tipo);
-        setSelTerritorial(role.alcance.territorial || 'Todas');
-        setSelCetap(role.alcance.cetap || 'Todos');
-        setSelPrograma(role.alcance.programa || 'Todos');
+        setSelTerritorial(role.alcance.territorial === 'Todas' ? '' : role.alcance.territorial);
+        setSelCetap(role.alcance.cetap === 'Todos' ? '' : role.alcance.cetap);
+        setSelPrograma(role.alcance.programa === 'Todos' ? '' : role.alcance.programa);
       } else {
         // Default values
         setTipoAlcance('Global');
-        setSelTerritorial('Todas');
-        setSelCetap('Todos');
-        setSelPrograma('Todos');
+        setSelTerritorial('');
+        setSelCetap('');
+        setSelPrograma('');
       }
     }
   }, [isOpen, role]);
 
   // Fetch CETAPs when territorial changes
   useEffect(() => {
-    if (selTerritorial !== 'Todas' && territoriales.length > 0) {
-      loadCetaps(selTerritorial);
+    if (selTerritorial !== '' && territoriales.length > 0) {
+      const territorial = territoriales.find(t => t.nombre === selTerritorial);
+      if (territorial) loadCetaps(territorial.id);
     } else {
       setCetaps([]);
     }
@@ -138,44 +139,34 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
 
   const handleTerritorialChange = (v: string) => {
     setSelTerritorial(v);
-    setSelCetap('Todos'); // reset cascade
+    setSelCetap(''); // reset cascade
+    if (v !== '') {
+      const territorial = territoriales.find(t => t.nombre === v);
+      if (territorial) loadCetaps(territorial.id);
+    } else {
+      setCetaps([]);
+    }
   };
 
-  const getTerritorialName = (territorialId: string) => {
-    if (territorialId === 'Todas') return 'Todas';
-    const territorial = territoriales.find(t => t.id === territorialId);
-    return territorial ? territorial.nombre : territorialId;
-  };
 
-  const getCetapName = (cetapId: string) => {
-    if (cetapId === 'Todos') return 'Todos';
-    const cetap = cetaps.find(c => c.id === cetapId);
-    return cetap ? cetap.nombre : cetapId;
-  };
-
-  const getProgramaName = (programaId: string) => {
-    if (programaId === 'Todos') return 'Todos';
-    const programa = programas.find(p => p.id === programaId);
-    return programa ? programa.nombre : programaId;
-  };
 
   const handleSubmit = () => {
     if (!role) return;
 
     const alcanceData = {
       tipo: tipoAlcance,
-      territorial: getTerritorialName(selTerritorial),
-      cetap: getCetapName(selCetap),
-      programa: getProgramaName(selPrograma)
+      territorial: selTerritorial === '' ? 'Todas' : selTerritorial,
+      cetap: selCetap === '' ? 'Todos' : selCetap,
+      programa: selPrograma === '' ? 'Todos' : selPrograma
     };
 
     onSave?.(role.id, alcanceData);
 
     // Resetear el estado
     setTipoAlcance('Global');
-    setSelTerritorial('Todas');
-    setSelCetap('Todos');
-    setSelPrograma('Todos');
+    setSelTerritorial('');
+    setSelCetap('');
+    setSelPrograma('');
     setTerritoriales([]);
     setCetaps([]);
     setProgramas([]);
@@ -185,9 +176,9 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
   const getUsuariosSimulados = () => {
     if (tipoAlcance === 'Global') return role?.usuarios_count || 1250;
     let count = role?.usuarios_count || 1250;
-    if (selTerritorial !== 'Todas') count = Math.floor(count / 7); // approx divider
-    if (selCetap !== 'Todos') count = Math.floor(count / 3);
-    if (selPrograma !== 'Todos') count = Math.floor(count / 5);
+    if (selTerritorial !== '') count = Math.floor(count / 7); // approx divider
+    if (selCetap !== '') count = Math.floor(count / 3);
+    if (selPrograma !== '') count = Math.floor(count / 5);
     return count;
   };
 
@@ -283,9 +274,9 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
                       disabled={loadingTerritoriales}
                       className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] disabled:bg-gray-100 disabled:text-gray-400 font-medium"
                     >
-                      <option value="Todas">Todas las territoriales</option>
+                      <option value="">Todas las territoriales</option>
                       {territoriales.map(territorial => (
-                        <option key={territorial.id} value={territorial.id}>
+                        <option key={territorial.id} value={territorial.nombre}>
                           {territorial.nombre}
                         </option>
                       ))}
@@ -296,12 +287,12 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
                     <label className="block text-xs font-bold text-gray-700 mb-1">CETAP Jurisdiccional</label>
                     <select
                       value={selCetap} onChange={e => setSelCetap(e.target.value)}
-                      disabled={selTerritorial === 'Todas' || loadingCetaps}
+                      disabled={selTerritorial === '' || loadingCetaps}
                       className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] disabled:bg-gray-100 disabled:text-gray-400 font-medium"
                     >
-                      <option value="Todos">Todos los CETAPs</option>
+                      <option value="">Todos los CETAPs</option>
                       {cetaps.map(cetap => (
-                        <option key={cetap.id} value={cetap.id}>
+                        <option key={cetap.id} value={cetap.nombre}>
                           {cetap.nombre}
                         </option>
                       ))}
@@ -315,9 +306,9 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
                       disabled={loadingProgramas}
                       className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] disabled:bg-gray-100 disabled:text-gray-400 font-medium"
                     >
-                      <option value="Todos">Todos los programas</option>
+                      <option value="">Todos los programas</option>
                       {programas.map(programa => (
-                        <option key={programa.id} value={programa.id}>
+                        <option key={programa.id} value={programa.nombre}>
                           {programa.nombre}
                         </option>
                       ))}
@@ -380,5 +371,4 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
       </motion.div>
     </div>, document.body
   );
-}</content>
-<parameter name="filePath">apps/mfe-gestion-personas/src/components/admin/ScopeConfigModal.tsx
+}

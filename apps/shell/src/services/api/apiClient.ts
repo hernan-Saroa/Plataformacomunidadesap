@@ -18,6 +18,8 @@ import type { ApiResponse, ApiError } from '../../types';
 import { toast } from 'sonner';
 import { offlineCache } from './offlineCache';
 import { syncEngine } from './syncEngine';
+import { getAppOnlineStatus } from '../../utils/connectivity';
+import { getAccessToken, setAuthTokens } from './authTokenStore';
 
 // ============================================================================
 // TIPOS INTERNOS
@@ -194,7 +196,7 @@ export class ApiClient {
     } = resolvedOptions;
 
     // Para upload, no enviamos Content-Type header (el browser lo setea automáticamente con boundary)
-    const headers = getDefaultHeaders(true);
+    const headers = this.addAuthHeader(getDefaultHeaders(true));
     delete (headers as any)['Content-Type'];
 
     return new Promise((resolve, reject) => {
@@ -347,7 +349,7 @@ export class ApiClient {
     const isMutation = fetchConfig.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(fetchConfig.method.toUpperCase());
 
     // 🔴 MODO OFFLINE: Interceptar si no hay conexión
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    if (!getAppOnlineStatus()) {
       if (isGet) {
         try {
           const cached = await offlineCache.getCache(url);
@@ -378,7 +380,7 @@ export class ApiClient {
     // 🟢 MODO ONLINE
     const headers = skipAuth
       ? { 'Content-Type': 'application/json; charset=utf-8' }
-      : getDefaultHeaders(true);
+      : this.addAuthHeader(getDefaultHeaders(true));
 
     // Si el body es FormData, quitamos el Content-Type para que el navegador lo ponga con el boundary
     if (fetchConfig.body instanceof FormData) {
@@ -452,7 +454,7 @@ export class ApiClient {
   ): Promise<Blob> {
     const headers = skipAuth
       ? { Accept: '*/*' }
-      : getDefaultHeaders(true);
+      : this.addAuthHeader(getDefaultHeaders(true));
 
     // Para descargas no enviamos Content-Type JSON.
     delete (headers as any)['Content-Type'];
@@ -677,6 +679,13 @@ export class ApiClient {
         return null;
       }
 
+      const data = await response.json().catch(() => null);
+      const accessToken = data?.data?.accessToken || data?.accessToken;
+      const refreshToken = data?.data?.refreshToken || data?.refreshToken;
+      if (accessToken) {
+        setAuthTokens(accessToken, refreshToken || accessToken);
+      }
+
       this.resolveRefreshSubscribers('cookie-refreshed');
       return 'cookie-refreshed';
     } catch (error) {
@@ -694,6 +703,16 @@ export class ApiClient {
   private resolveRefreshSubscribers(token: string | null): void {
     this.refreshSubscribers.forEach((callback) => callback(token || ''));
     this.refreshSubscribers = [];
+  }
+
+  public addAuthHeader(headers: HeadersInit = {}): HeadersInit {
+    const accessToken = getAccessToken();
+    if (!accessToken) return headers;
+
+    return {
+      ...headers,
+      Authorization: `Bearer ${accessToken}`,
+    };
   }
   /**
    * Muestra toast de error según el código HTTP
