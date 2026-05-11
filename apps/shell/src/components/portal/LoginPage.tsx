@@ -374,62 +374,14 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         minHeight: '100dvh',
         margin: 0,
         maxWidth: 'none',
+        position: 'fixed',
+        inset: 0,
+        display: 'grid',
+        overflow: 'hidden',
+        backgroundColor: '#fff',
         zIndex: 0,
       }}
     >
-      <style>{`
-        html:has([data-login-page-root]),
-        body:has([data-login-page-root]),
-        #root:has([data-login-page-root]) {
-          width: 100vw !important;
-          width: 100dvw !important;
-          max-width: none !important;
-          min-width: 100vw !important;
-          min-width: 100dvw !important;
-          height: 100vh !important;
-          height: 100dvh !important;
-          min-height: 100vh !important;
-          min-height: 100dvh !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          overflow: hidden !important;
-        }
-
-        [data-login-page-root] {
-          grid-template-columns: minmax(0, 1fr);
-          width: 100vw !important;
-          width: 100dvw !important;
-          max-width: none !important;
-          min-width: 100vw !important;
-          min-width: 100dvw !important;
-        }
-
-        @media (min-width: 1024px) {
-          [data-login-page-root] {
-            grid-template-columns: 37.4vw minmax(0, 1fr) !important;
-          }
-
-          .esap-login-left {
-            width: 37.4vw !important;
-            min-width: 0 !important;
-            max-width: 37.4vw !important;
-          }
-
-          .esap-login-hero {
-            width: auto !important;
-            min-width: 0 !important;
-            max-width: none !important;
-          }
-        }
-
-        @media (max-width: 1023px) {
-          .esap-login-left,
-          .esap-login-hero {
-            width: 100% !important;
-            max-width: 100% !important;
-          }
-        }
-      `}</style>
       <div data-login-left-pane className="esap-login-left flex flex-col min-h-screen lg:min-h-0 bg-white relative">
         <div className="flex-shrink-0 px-6 sm:px-10 pt-6 sm:pt-8">
           <motion.button
@@ -774,7 +726,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
-        className="esap-login-hero hidden lg:flex relative overflow-hidden"
+        className="esap-login-hero relative overflow-hidden"
       >
         <div className="absolute inset-0">
           <img
