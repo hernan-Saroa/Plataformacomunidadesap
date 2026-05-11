@@ -432,6 +432,12 @@ export interface AuditoriaCreateData {
   auditorAsignado?: string;
   equipoAuditores?: string[];
   supervisorAsignado?: string;
+  // Responsable del área auditada (auditado). Permite enviar al backend la persona
+  // que recibirá el informe preliminar y entrará al portal del auditado.
+  responsableAreaIdPersona?: string;
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
   fechaInicio: string;
   fechaFinPlaneacion?: string; // Fin de Planeaci\u00f3n
   fechaInicioEjecucion?: string; // Inicio de Ejecuci\u00f3n
@@ -665,6 +671,11 @@ export function useProgramaAnualData(
         equipoAuditores: data.equipoAuditores,
         supervisorAsignado: data.supervisorAsignado,
         responsable: data.auditorLider || 'Por asignar',
+        // Responsable del área auditada (auditado): se envía al servicio para que
+        // viaje al backend y la auditoría quede vinculada a esa persona.
+        responsableAreaNombre: data.responsableAreaNombre,
+        responsableAreaCargo: data.responsableAreaCargo,
+        responsableAreaEmail: data.responsableAreaEmail,
         fechaInicio: data.fechaInicio,
         fechaFinPlaneacion: data.fechaFinPlaneacion,
         fechaInicioEjecucion: data.fechaInicioEjecucion,

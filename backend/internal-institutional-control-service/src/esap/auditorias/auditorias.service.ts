@@ -427,6 +427,198 @@ export class AuditoriasService {
   }
 
   /**
+   * Obtiene las auditorías en las que el usuario autenticado figura como
+   * responsable del área auditada (auditado). Solo retorna auditorías que
+   * ya fueron notificadas al área (fase >= comunicación o estado kanban
+   * Comunicación/Seguimiento/Finalizada), porque antes de eso el auditado
+   * no tiene visibilidad por norma.
+   *
+   * Match por email (case-insensitive). Si email es vacío, intenta username.
+   */
+  async findMisAuditoriasByUsuario(opts: {
+    email?: string | null;
+    username?: string | null;
+  }): Promise<Auditoria[]> {
+    const claves = [opts?.email, opts?.username]
+      .filter((v): v is string => Boolean(v && v.trim()))
+      .map((v) => v.trim().toLowerCase());
+
+    if (claves.length === 0) {
+      return [];
+    }
+
+    const fasesVisibles = [
+      FaseAuditoria.EN_CURSO,
+      FaseAuditoria.REVISION,
+      FaseAuditoria.COMPLETADA,
+    ];
+
+    const estadosVisibles = [
+      EstadoKanban.COMUNICACION,
+      EstadoKanban.SEGUIMIENTO,
+      EstadoKanban.FINALIZADA,
+    ];
+
+    const auditorias = await this.auditoriaRepository
+      .createQueryBuilder('auditoria')
+      .leftJoinAndSelect('auditoria.objetivos', 'objetivos')
+      .leftJoinAndSelect('auditoria.criterios', 'criterios')
+      .leftJoinAndSelect('auditoria.equipoAuditores', 'equipoAuditores')
+      .where('LOWER(auditoria.responsable_area_email) IN (:...claves)', { claves })
+      .andWhere(
+        '(auditoria.fase IN (:...fases) OR auditoria.estado_kanban IN (:...estados))',
+        { fases: fasesVisibles, estados: estadosVisibles },
+      )
+      // Excluir auditorías archivadas o desactivadas (soft delete) para que
+      // no aparezcan en el portal del auditado.
+      .andWhere('COALESCE(auditoria.activa, TRUE) = TRUE')
+      .andWhere('COALESCE(auditoria.archivada, FALSE) = FALSE')
+      .orderBy('auditoria.createdAt', 'DESC')
+      .getMany();
+
+    const serializadas = auditorias.map((aud) => this.serializeAuditoria(aud)) as any[];
+
+    // Resolver los nombres del auditor líder y asignado en una sola consulta
+    // para evitar N+1.
+    const personIds = Array.from(
+      new Set(
+        serializadas
+          .flatMap((a) => [a.auditorLiderId, a.auditorAsignadoId])
+          .filter((id) => !!id && this.isValidUUID(id)),
+      ),
+    );
+
+    if (personIds.length > 0) {
+      try {
+        const rows = await this.auditoriaRepository.query(
+          `SELECT id_person, nom_largo, tip_identificacion, num_identificacion
+             FROM auth.personas
+            WHERE id_person = ANY($1::uuid[])`,
+          [personIds],
+        );
+        const byId = new Map<string, any>();
+        for (const p of rows) byId.set(String(p.id_person), p);
+
+        for (const a of serializadas) {
+          if (a.auditorLiderId && byId.has(a.auditorLiderId)) {
+            const p = byId.get(a.auditorLiderId);
+            const nombre = p.nom_largo || 'Auditor Líder';
+            a.auditorLider = {
+              nombre,
+              cargo: 'Auditor Líder',
+              iniciales: this.getIniciales(nombre),
+              tipoIdentificacion: (p.tip_identificacion || 'CC') as 'CC' | 'CE' | 'TI' | 'PA',
+              numeroIdentificacion: p.num_identificacion || '',
+            };
+          }
+          if (a.auditorAsignadoId && byId.has(a.auditorAsignadoId)) {
+            const p = byId.get(a.auditorAsignadoId);
+            const nombre = p.nom_largo || 'Auditor';
+            a.auditorAsignado = {
+              nombre,
+              cargo: 'Auditor',
+              iniciales: this.getIniciales(nombre),
+              tipoIdentificacion: (p.tip_identificacion || 'CC') as 'CC' | 'CE' | 'TI' | 'PA',
+              numeroIdentificacion: p.num_identificacion || '',
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('[findMisAuditoriasByUsuario] no se pudo enriquecer personas:', err);
+      }
+    }
+
+    // Conteo de documentos y hallazgos para mostrarlos en la lista del portal.
+    try {
+      const ids = serializadas.map((a) => a.id);
+      if (ids.length > 0) {
+        const conteos = await this.auditoriaRepository.query(
+          `
+          SELECT a.id::text AS id,
+                 COALESCE(d.total_documentos, 0)::int AS total_documentos,
+                 COALESCE(h.total_hallazgos, 0)::int  AS total_hallazgos
+            FROM control_interno.auditoria a
+            LEFT JOIN (
+              SELECT auditoria_id, COUNT(*) AS total_documentos
+                FROM control_interno.documento
+               WHERE auditoria_id = ANY($1::uuid[])
+               GROUP BY auditoria_id
+            ) d ON d.auditoria_id = a.id
+            LEFT JOIN (
+              SELECT auditoria_id, COUNT(*) AS total_hallazgos
+                FROM control_interno.hallazgo
+               WHERE auditoria_id = ANY($1::uuid[])
+               GROUP BY auditoria_id
+            ) h ON h.auditoria_id = a.id
+           WHERE a.id = ANY($1::uuid[])
+          `,
+          [ids],
+        );
+        const conteosById = new Map<string, any>();
+        for (const c of conteos) conteosById.set(String(c.id), c);
+        for (const a of serializadas) {
+          const c = conteosById.get(a.id);
+          if (c) {
+            a.totalDocumentos = c.total_documentos;
+            a.totalHallazgos = c.total_hallazgos;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[findMisAuditoriasByUsuario] no se pudo enriquecer conteos:', err);
+    }
+
+    return serializadas;
+  }
+
+  /**
+   * Verifica que la auditoría pertenezca al usuario autenticado
+   * (es decir, que su email/username coincida con responsable_area_email).
+   * Lanza ForbiddenException si no es así.
+   */
+  async assertAuditadoOwnership(
+    auditoriaId: string,
+    opts: { email?: string | null; username?: string | null },
+  ): Promise<Auditoria> {
+    if (!this.isValidUUID(auditoriaId)) {
+      throw new NotFoundException(
+        `Auditoría con ID ${auditoriaId} no encontrada (formato inválido)`,
+      );
+    }
+
+    const auditoria = await this.auditoriaRepository.findOne({
+      where: { id: auditoriaId },
+    });
+
+    if (!auditoria) {
+      throw new NotFoundException(
+        `Auditoría con ID ${auditoriaId} no encontrada`,
+      );
+    }
+
+    const correoAuditado = (auditoria.responsableAreaEmail || '').toLowerCase();
+    const claves = [opts?.email, opts?.username]
+      .filter((v): v is string => Boolean(v && v.trim()))
+      .map((v) => v.trim().toLowerCase());
+
+    if (!correoAuditado || !claves.includes(correoAuditado)) {
+      throw new ForbiddenException(
+        'No tienes permiso para acceder a esta auditoría: el usuario autenticado no figura como responsable del área auditada.',
+      );
+    }
+
+    // Coherencia con el listado: si la auditoría fue archivada o desactivada,
+    // tampoco debe ser consultable por el auditado.
+    if ((auditoria as any).archivada === true || (auditoria as any).activa === false) {
+      throw new ForbiddenException(
+        'Esta auditoría ya no está disponible (archivada o inactiva).',
+      );
+    }
+
+    return auditoria;
+  }
+
+  /**
    * Obtiene una auditoría por ID
    */
   async findOne(id: string): Promise<Auditoria> {
@@ -3147,6 +3339,45 @@ export class AuditoriasService {
     } catch (error) {
       console.error(`Error al buscar persona con identificación ${numeroIdentificacion}:`, error);
       return null;
+    }
+  }
+
+  /**
+   * Búsqueda libre de personas en auth.personas por texto.
+   * Útil para autocompletar selectores como "responsable del área auditada".
+   * Busca por nombre, email o número de identificación (case-insensitive).
+   */
+  async searchPersonasByText(query: string): Promise<any[]> {
+    const q = String(query || '').trim();
+    if (q.length < 2) {
+      return [];
+    }
+    try {
+      const rows = await this.auditoriaRepository.query(
+        `
+        SELECT id_person, nom_largo, nom_tercero, pri_apellido,
+               num_identificacion, tip_identificacion, dir_email
+          FROM auth.personas
+         WHERE nom_largo ILIKE $1
+            OR dir_email ILIKE $1
+            OR num_identificacion ILIKE $1
+         ORDER BY nom_largo ASC
+         LIMIT 20
+        `,
+        [`%${q}%`],
+      );
+      return rows.map((p: any) => ({
+        idPersona: p.id_person,
+        id: p.id_person,
+        nombre: p.nom_largo || `${p.nom_tercero || ''} ${p.pri_apellido || ''}`.trim(),
+        email: p.dir_email || '',
+        numeroIdentificacion: p.num_identificacion || '',
+        tipoIdentificacion: p.tip_identificacion || 'CC',
+        iniciales: this.getIniciales(p.nom_largo || ''),
+      }));
+    } catch (err) {
+      console.error('[searchPersonasByText] error:', err);
+      return [];
     }
   }
 

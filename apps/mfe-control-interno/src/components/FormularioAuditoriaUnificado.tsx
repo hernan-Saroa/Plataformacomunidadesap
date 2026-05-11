@@ -80,6 +80,22 @@ export interface HitoAuditoria {
   responsable: string;
 }
 
+/**
+ * Persona que será responsable del área auditada (auditado).
+ * Es la persona que recibirá las notificaciones del informe preliminar y
+ * accederá al portal del auditado para responder los hallazgos.
+ *
+ * Se selecciona desde el catálogo `auth.personas` mediante el endpoint
+ * `GET /auditorias/personas/search?q=...`.
+ */
+export interface ResponsableArea {
+  idPersona: string;
+  nombre: string;
+  email: string;
+  cargo?: string;
+  numeroIdentificacion?: string;
+}
+
 export interface AuditoriaUnificadaFormData {
   // 1. INFORMACIÓN BÁSICA
   codigo?: string;
@@ -93,6 +109,9 @@ export interface AuditoriaUnificadaFormData {
   procesoAuditado: string;
   alcance: string;
   focos?: string[]; // Focos de la auditoría (opcional, multi-select)
+  // Responsable del área auditada (persona del catálogo auth.personas).
+  // Es OBLIGATORIO: define quién recibe el informe preliminar y entra al portal del auditado.
+  responsableArea?: ResponsableArea;
   
   // 3. EQUIPO AUDITOR
   auditorLider: string;
@@ -287,6 +306,7 @@ export function FormularioAuditoriaUnificado({
     areaObjetivo: initialData?.areaObjetivo || '',
     procesoAuditado: initialData?.procesoAuditado || '',
     alcance: initialData?.alcance || '',
+    responsableArea: initialData?.responsableArea,
     auditorLider: initialData?.auditorLider || '',
     auditorAsignado: initialData?.auditorAsignado || '',
     equipoAuditores: initialData?.equipoAuditores || [],
@@ -347,6 +367,13 @@ export function FormularioAuditoriaUnificado({
   // Estado para búsqueda de procesos
   const [busquedaProceso, setBusquedaProceso] = useState('');
   const [mostrarSugerenciasProcesos, setMostrarSugerenciasProcesos] = useState(false);
+
+  // Estado para autocompletado del Responsable del Área Auditada (Paso 2).
+  // Se busca contra el catálogo `auth.personas` por nombre, email o identificación.
+  const [busquedaResponsable, setBusquedaResponsable] = useState('');
+  const [resultadosResponsable, setResultadosResponsable] = useState<ResponsableArea[]>([]);
+  const [buscandoResponsable, setBuscandoResponsable] = useState(false);
+  const [mostrarSugerenciasResponsable, setMostrarSugerenciasResponsable] = useState(false);
   
   // Estado para evaluaciones completas (incluye datos de riesgo)
   const [evaluacionesDisponibles, setEvaluacionesDisponibles] = useState<EvaluacionProceso[]>([]);
@@ -508,6 +535,49 @@ export function FormularioAuditoriaUnificado({
     }
   }, [formData.titulo, formData.procesoAuditado, busquedaProceso]);
 
+  // ========== AUTOCOMPLETADO DEL RESPONSABLE DEL ÁREA AUDITADA (Paso 2) ==========
+  // Tras 350ms sin cambios en la consulta, llama a `auditoriasApi.searchPersonas(q)`
+  // contra el endpoint protegido `GET /auditorias/personas/search?q=...`.
+  useEffect(() => {
+    const q = busquedaResponsable.trim();
+    if (q.length < 2) {
+      setResultadosResponsable([]);
+      return;
+    }
+    let cancelado = false;
+    setBuscandoResponsable(true);
+    const timer = setTimeout(async () => {
+      try {
+        const resp = await auditoriasApi.searchPersonas(q);
+        if (cancelado) return;
+        if (resp.success && Array.isArray(resp.data)) {
+          setResultadosResponsable(
+            resp.data.map((p: any) => ({
+              idPersona: String(p.idPersona ?? p.id ?? ''),
+              nombre: p.nombre ?? '',
+              email: p.email ?? '',
+              cargo: p.cargo,
+              numeroIdentificacion: p.numeroIdentificacion,
+            })),
+          );
+        } else {
+          setResultadosResponsable([]);
+        }
+      } catch (err) {
+        if (!cancelado) {
+          console.warn('[FormularioAuditoriaUnificado] Error buscando personas:', err);
+          setResultadosResponsable([]);
+        }
+      } finally {
+        if (!cancelado) setBuscandoResponsable(false);
+      }
+    }, 350);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [busquedaResponsable]);
+
   // Handlers
   const handleChange = (field: keyof AuditoriaUnificadaFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -651,6 +721,19 @@ export function FormularioAuditoriaUnificado({
     if (!formData.titulo || formData.titulo.length < 5) {
       toast.error('Debe seleccionar un proceso auditable como título');
       setPasoActual(1);
+      return;
+    }
+
+    // Validar Responsable del Área Auditada (Paso 2). Es obligatorio porque define
+    // quién recibe el informe preliminar y entra al portal del auditado.
+    if (!formData.responsableArea || !formData.responsableArea.idPersona) {
+      toast.error('Debe seleccionar el responsable del área auditada');
+      setPasoActual(2);
+      return;
+    }
+    if (!formData.responsableArea.email || !formData.responsableArea.email.includes('@')) {
+      toast.error('La persona seleccionada como responsable del área no tiene un correo válido');
+      setPasoActual(2);
       return;
     }
 
@@ -819,7 +902,19 @@ export function FormularioAuditoriaUnificado({
           />
         );
       case 2:
-        return <Paso2ClasificacionAlcance formData={formData} onChange={handleChange} evaluaciones={evaluacionesDisponibles} />;
+        return (
+          <Paso2ClasificacionAlcance
+            formData={formData}
+            onChange={handleChange}
+            evaluaciones={evaluacionesDisponibles}
+            busquedaResponsable={busquedaResponsable}
+            setBusquedaResponsable={setBusquedaResponsable}
+            resultadosResponsable={resultadosResponsable}
+            buscandoResponsable={buscandoResponsable}
+            mostrarSugerenciasResponsable={mostrarSugerenciasResponsable}
+            setMostrarSugerenciasResponsable={setMostrarSugerenciasResponsable}
+          />
+        );
       case 3:
         return <Paso3EquipoAuditor formData={formData} onChange={handleChange} auditores={auditoresDisponibles} />;
       case 4:
@@ -1431,9 +1526,25 @@ function Paso1InformacionBasica({
 
 interface Paso2Props extends PasoProps {
   evaluaciones: EvaluacionProceso[];
+  busquedaResponsable: string;
+  setBusquedaResponsable: (v: string) => void;
+  resultadosResponsable: ResponsableArea[];
+  buscandoResponsable: boolean;
+  mostrarSugerenciasResponsable: boolean;
+  setMostrarSugerenciasResponsable: (v: boolean) => void;
 }
 
-function Paso2ClasificacionAlcance({ formData, onChange, evaluaciones }: Paso2Props) {
+function Paso2ClasificacionAlcance({
+  formData,
+  onChange,
+  evaluaciones,
+  busquedaResponsable,
+  setBusquedaResponsable,
+  resultadosResponsable,
+  buscandoResponsable,
+  mostrarSugerenciasResponsable,
+  setMostrarSugerenciasResponsable,
+}: Paso2Props) {
   // Buscar la evaluación del proceso seleccionado para obtener la dependencia
   const evaluacionProceso = evaluaciones.find(
     (ev: EvaluacionProceso) => ev.proceso?.nombre === formData.titulo || ev.proceso?.nombre === formData.procesoAuditado
@@ -1630,6 +1741,118 @@ function Paso2ClasificacionAlcance({ formData, onChange, evaluaciones }: Paso2Pr
               rows={5}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
             />
+          </FieldWrapper>
+
+          {/* Responsable del Área Auditada */}
+          <FieldWrapper
+            label="Responsable del Área Auditada"
+            required
+            helpText="Persona del área auditada que recibirá el informe preliminar y accederá al portal del auditado. Búsqueda por nombre, correo o número de identificación."
+          >
+            {formData.responsableArea ? (
+              <div className="p-4 rounded-lg border-2 border-blue-200 bg-blue-50 flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="w-10 h-10 shrink-0 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold">
+                    {(formData.responsableArea.nombre || '')
+                      .split(' ')
+                      .filter(Boolean)
+                      .slice(0, 2)
+                      .map((s) => s[0])
+                      .join('')
+                      .toUpperCase() || 'RA'}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm text-gray-900 truncate">
+                      {formData.responsableArea.nombre}
+                    </p>
+                    <p className="text-xs text-gray-700 truncate">
+                      {formData.responsableArea.email}
+                    </p>
+                    {formData.responsableArea.numeroIdentificacion && (
+                      <p className="text-[11px] text-gray-500">
+                        CC {formData.responsableArea.numeroIdentificacion}
+                      </p>
+                    )}
+                    {formData.responsableArea.cargo && (
+                      <p className="text-[11px] text-gray-500">
+                        {formData.responsableArea.cargo}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange('responsableArea', undefined);
+                    setBusquedaResponsable('');
+                    setMostrarSugerenciasResponsable(false);
+                  }}
+                  className="shrink-0 text-xs text-blue-700 hover:text-blue-900 underline"
+                >
+                  Cambiar
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Ej. Carlos Pérez, jose.perez@esap.edu.co o 1.234.567.890"
+                  value={busquedaResponsable}
+                  onChange={(e) => {
+                    setBusquedaResponsable(e.target.value);
+                    setMostrarSugerenciasResponsable(true);
+                  }}
+                  onFocus={() => setMostrarSugerenciasResponsable(true)}
+                  onBlur={() => setTimeout(() => setMostrarSugerenciasResponsable(false), 150)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                />
+
+                {mostrarSugerenciasResponsable && busquedaResponsable.trim().length >= 2 && (
+                  <div className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                    {buscandoResponsable && (
+                      <div className="px-3 py-2 text-xs text-gray-500">Buscando…</div>
+                    )}
+                    {!buscandoResponsable && resultadosResponsable.length === 0 && (
+                      <div className="px-3 py-2 text-xs text-gray-500">
+                        No se encontraron personas. Verifica el nombre, correo o identificación.
+                      </div>
+                    )}
+                    {resultadosResponsable.map((p) => (
+                      <button
+                        key={p.idPersona}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          onChange('responsableArea', p);
+                          setBusquedaResponsable('');
+                          setMostrarSugerenciasResponsable(false);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 shrink-0 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-[10px] font-bold">
+                            {(p.nombre || '')
+                              .split(' ')
+                              .filter(Boolean)
+                              .slice(0, 2)
+                              .map((s) => s[0])
+                              .join('')
+                              .toUpperCase() || 'P'}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm text-gray-900 truncate">{p.nombre}</p>
+                            <p className="text-xs text-gray-500 truncate">
+                              {p.email}
+                              {p.numeroIdentificacion ? ` · CC ${p.numeroIdentificacion}` : ''}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </FieldWrapper>
         </div>
       </Card>

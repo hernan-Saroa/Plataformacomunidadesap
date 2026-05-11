@@ -366,43 +366,23 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   return (
     <div
       data-login-page-root
-      className="min-h-screen flex flex-col lg:flex-row"
+      className="esap-login-root fixed inset-0 grid h-screen w-screen max-w-none overflow-hidden bg-white"
       style={{
-        width: '100vw',
-        minWidth: '100vw',
-        height: '100vh',
-        minHeight: '100vh',
+        width: '100dvw',
+        minWidth: '100dvw',
+        height: '100dvh',
+        minHeight: '100dvh',
         margin: 0,
+        maxWidth: 'none',
         position: 'fixed',
         inset: 0,
+        display: 'grid',
         overflow: 'hidden',
+        backgroundColor: '#fff',
         zIndex: 0,
       }}
     >
-      <style>{`
-        @media (min-width: 1024px) {
-          [data-login-left-pane] {
-            flex: 0 0 37.4% !important;
-            width: 37.4% !important;
-            max-width: 37.4% !important;
-          }
-
-          [data-login-hero-pane] {
-            flex: 0 0 62.6% !important;
-            width: 62.6% !important;
-            max-width: 62.6% !important;
-          }
-        }
-
-        @media (max-width: 1023px) {
-          [data-login-left-pane],
-          [data-login-hero-pane] {
-            width: 100% !important;
-            max-width: 100% !important;
-          }
-        }
-      `}</style>
-      <div data-login-left-pane className="flex flex-col min-h-screen lg:min-h-0 bg-white relative">
+      <div data-login-left-pane className="esap-login-left flex flex-col min-h-screen lg:min-h-0 bg-white relative">
         <div className="flex-shrink-0 px-6 sm:px-10 pt-6 sm:pt-8">
           <motion.button
             initial={{ opacity: 0, x: -10 }}
@@ -746,7 +726,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
-        className="hidden lg:flex relative overflow-hidden"
+        className="esap-login-hero relative overflow-hidden"
       >
         <div className="absolute inset-0">
           <img
