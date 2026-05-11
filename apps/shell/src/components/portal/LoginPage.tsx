@@ -24,7 +24,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     ((import.meta.env.VITE_LOGIN_OPTIONS as string | undefined) || 'both')
       .trim()
       .toLowerCase();
-  const showMicrosoftLogin = false;
+  const showMicrosoftLogin = true;
   const showCredentialLogin = !showMicrosoftLogin || loginOptions !== 'microsoft';
 
   const [email, setEmail] = useState('');

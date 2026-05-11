@@ -86,7 +86,7 @@ export interface RoleFilters {
   type?: 'todos' | 'sistema' | 'personalizado';
   status?: 'todos' | 'activo' | 'inactivo';
   requires_2fa?: 'todos' | 'con2fa' | 'sin2fa';
-  sistema_destino?: 'todos' | 'Backoffice' | 'Sistema' | undefined ;
+  sistema_destino?: 'todos' | 'Backoffice' | 'Portal' | undefined ;
   page?: number;
   limit?: number;
 }
@@ -114,6 +114,9 @@ export const rolesService = {
     }
     if (filters.requires_2fa && filters.requires_2fa !== 'todos') {
       backendFilters.requires_2fa = filters.requires_2fa === 'con2fa';
+    }
+    if (filters.sistema_destino && filters.sistema_destino !== 'todos') {
+      backendFilters.sistema_destino = filters.sistema_destino;
     }
     if (filters.page) backendFilters.page = filters.page;
     if (filters.limit) backendFilters.limit = filters.limit;
