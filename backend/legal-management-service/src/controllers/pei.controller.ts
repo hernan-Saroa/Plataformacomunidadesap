@@ -1,22 +1,29 @@
-import { Controller, Get, Post, Body, Param, Put, Patch, Delete, Res, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Patch, Delete, Res, UseInterceptors, UploadedFile, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import type { Response } from 'express';
 import { PeiService } from '../services/pei.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('pei')
 export class PeiController {
     constructor(private readonly peiService: PeiService) { }
 
     @Get('dashboard')
-    async getDashboard() {
-        return this.peiService.getDashboard();
+    async getDashboard(@Req() req?: any) {
+        const access = getLegalAccessFromRequest(req);
+        return this.peiService.getDashboard({
+            responsableKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Get('archivados')
-    async getArchivados() {
-        return this.peiService.getArchivados();
+    async getArchivados(@Req() req?: any) {
+        const access = getLegalAccessFromRequest(req);
+        return this.peiService.getArchivados({
+            responsableKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Post('indicador')

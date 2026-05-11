@@ -479,6 +479,47 @@ export const getDefaultHeaders = (_includeAuth = true): HeadersInit => {
   };
 };
 
+export const getUserContextHeaders = (): HeadersInit => {
+  const user =
+    typeof window !== 'undefined'
+      ? (window as any).__esap_auth_cache
+      : null;
+  const userId =
+    user?.id_user ??
+    user?.user?.id_user ??
+    user?.userId ??
+    user?.id ??
+    user?.sub;
+  const userEmail =
+    user?.email ??
+    user?.person?.email ??
+    user?.mail;
+  const userName =
+    user?.fullName ??
+    user?.full_name ??
+    user?.name ??
+    user?.person?.full_name ??
+    (user?.person?.first_name || user?.person?.last_name
+      ? `${user.person.first_name ?? ''} ${user.person.last_name ?? ''}`.trim()
+      : undefined);
+  const roles = Array.isArray(user?.roles)
+    ? user.roles
+        .map((role: any) =>
+          typeof role === 'string'
+            ? role
+            : role?.code || role?.name || '',
+        )
+        .filter(Boolean)
+    : [];
+
+  return {
+    ...(userId ? { 'X-User-ID': userId } : {}),
+    ...(userEmail ? { 'X-User-Email': userEmail } : {}),
+    ...(userName ? { 'X-User-Name': userName } : {}),
+    ...(roles.length ? { 'X-User-Roles': roles.join(',') } : {}),
+  };
+};
+
 // Configuración de CORS para desarrollo
 export const CORS_CONFIG = {
   credentials: 'include' as RequestCredentials,

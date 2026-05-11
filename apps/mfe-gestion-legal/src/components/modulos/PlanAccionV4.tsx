@@ -264,6 +264,7 @@ const fmtValor = (valor: any, unidad: string): string => {
 export function ModuloPlanAccionV4() {
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
+  const canMutatePlanAccion = authService.hasPermission(Permissions.GESTION_LEGAL_PLAN_ACCION_CREATE);
 
   const [tipoVista, setTipoVista] = useState<VistaModulo>('lista');
   const [busqueda, setBusqueda] = useState('');
@@ -819,10 +820,10 @@ export function ModuloPlanAccionV4() {
               expandedGroups={expandedGroups}
               toggleGroup={toggleGroup}
               onVerDetalles={handleVerDetalles}
-              onEditarIndicador={handleEditarIndicador}
-              onCargarAvance={handleCargarAvance}
-              onArchivar={handleArchivar}
-            onEliminar={handleEliminar}
+              onEditarIndicador={canMutatePlanAccion ? handleEditarIndicador : undefined}
+              onCargarAvance={canMutatePlanAccion ? handleCargarAvance : undefined}
+              onArchivar={canMutatePlanAccion ? handleArchivar : undefined}
+              onEliminar={canMutatePlanAccion ? handleEliminar : undefined}
             />
           )}
           {tipoVista === 'timeline' && <VistaTimeline indicadores={indicadoresFiltrados} />}
@@ -831,8 +832,8 @@ export function ModuloPlanAccionV4() {
             <VistaArchivados
               items={itemsArchivados}
               moduloNombre="Plan de Acción"
-              onRestaurar={handleRestaurar}
-              onEliminarPermanente={handleEliminarPermanente}
+              onRestaurar={canMutatePlanAccion ? handleRestaurar : undefined}
+              onEliminarPermanente={canMutatePlanAccion ? handleEliminarPermanente : undefined}
               onVolver={() => setTipoVista('lista')}
             />
           )}
@@ -873,13 +874,13 @@ export function ModuloPlanAccionV4() {
           setIndicadorSeleccionado(null);
         }}
         indicador={indicadorSeleccionado}
-        onEditar={() => handleEditarIndicador(indicadorSeleccionado!)}
-        onCargarAvance={() => handleCargarAvance(indicadorSeleccionado!)}
-        onArchivar={() => {
+        onEditar={canMutatePlanAccion ? () => handleEditarIndicador(indicadorSeleccionado!) : undefined}
+        onCargarAvance={canMutatePlanAccion ? () => handleCargarAvance(indicadorSeleccionado!) : undefined}
+        onArchivar={canMutatePlanAccion ? () => {
           if (indicadorSeleccionado) handleArchivar(indicadorSeleccionado);
           setModalDetalleOpen(false);
           setIndicadorSeleccionado(null);
-        }}
+        } : undefined}
       />
 
     </div>
@@ -892,10 +893,10 @@ interface VistaListaProps {
   expandedGroups: Set<string>;
   toggleGroup: (eje: string) => void;
   onVerDetalles: (indicador: Indicador) => void;
-  onEditarIndicador: (indicador: Indicador) => void;
-  onCargarAvance: (indicador: Indicador) => void;
-  onArchivar: (indicador: Indicador) => void;
-  onEliminar: (indicador: Indicador) => void;
+  onEditarIndicador?: (indicador: Indicador) => void;
+  onCargarAvance?: (indicador: Indicador) => void;
+  onArchivar?: (indicador: Indicador) => void;
+  onEliminar?: (indicador: Indicador) => void;
 }
 
 function VistaLista({
@@ -1067,21 +1068,35 @@ function VistaLista({
                                   <DropdownMenuItem onClick={() => onVerDetalles(ind)}>
                                     <Eye className="w-4 h-4 mr-2" /> Ver Detalles
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => onCargarAvance(ind)}>
-                                    <Activity className="w-4 h-4 mr-2" /> Actualizar Avance
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => onEditarIndicador(ind)}>
-                                    <Edit className="w-4 h-4 mr-2" /> Editar
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => onArchivar(ind)} className="text-orange-600 focus:text-orange-600 focus:bg-orange-50">
-                                    <Archive className="w-4 h-4 mr-2" /> Archivar
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => onEliminar(ind)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
-                                    <Trash2 className="w-4 h-4 mr-2" /> Eliminar
-                                  </DropdownMenuItem>
+                                  {onCargarAvance && (
+                                    <DropdownMenuItem onClick={() => onCargarAvance(ind)}>
+                                      <Activity className="w-4 h-4 mr-2" /> Actualizar Avance
+                                    </DropdownMenuItem>
+                                  )}
+                                  {onEditarIndicador && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => onEditarIndicador(ind)}>
+                                        <Edit className="w-4 h-4 mr-2" /> Editar
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                  {onArchivar && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => onArchivar(ind)} className="text-orange-600 focus:text-orange-600 focus:bg-orange-50">
+                                        <Archive className="w-4 h-4 mr-2" /> Archivar
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
+                                  {onEliminar && (
+                                    <>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem onClick={() => onEliminar(ind)} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                        <Trash2 className="w-4 h-4 mr-2" /> Eliminar
+                                      </DropdownMenuItem>
+                                    </>
+                                  )}
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>

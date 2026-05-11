@@ -113,6 +113,7 @@ import { PlantillasService } from './services/plantillas.service';
 import { NotificationClientService } from './services/notification-client.service';
 import { LegalNotificationsService } from './services/legal-notifications.service';
 import { ReportesService } from './services/reportes.service';
+import { AuthModule } from './auth/auth.module';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -121,6 +122,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
 @Module({
   imports: [
     TypeOrmModule.forRoot(databaseConfig),
+    AuthModule,
     ScheduleModule.forRoot(),
     TypeOrmModule.forFeature([
       Expediente,

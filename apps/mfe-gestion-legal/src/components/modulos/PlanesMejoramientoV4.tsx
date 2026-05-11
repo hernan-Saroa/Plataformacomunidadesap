@@ -230,6 +230,7 @@ export function ModuloPlanesMejoramientoV4() {
   const { entesControlPM } = useConfiguracionesSIGL();
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
+  const canMutatePlanesMejoramiento = authService.hasPermission(Permissions.GESTION_LEGAL_PLANES_MEJORAMIENTO_CREATE);
 
   const [tipoVista, setTipoVista] = useState<VistaModulo>('dashboard');
   const [busqueda, setBusqueda] = useState('');
@@ -713,7 +714,7 @@ export function ModuloPlanesMejoramientoV4() {
                 expandedPlans={expandedPlans}
                 onTogglePlan={togglePlan}
                 onVerDetalle={handleVerDetalle}
-                onArchivar={handleArchivar}
+                onArchivar={canMutatePlanesMejoramiento ? handleArchivar : undefined}
               />
             )}
             {tipoVista === 'timeline' && (
@@ -725,8 +726,8 @@ export function ModuloPlanesMejoramientoV4() {
           <VistaArchivados
             items={itemsArchivados}
             moduloNombre="Planes de Mejoramiento"
-            onRestaurar={handleRestaurar}
-            onEliminarPermanente={handleEliminarPermanente}
+            onRestaurar={canMutatePlanesMejoramiento ? handleRestaurar : undefined}
+            onEliminarPermanente={canMutatePlanesMejoramiento ? handleEliminarPermanente : undefined}
           />
         )}
       </motion.div>
@@ -1313,10 +1314,14 @@ function VistaLista({
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onVerDetalle?.(plan.id); }}>
                             <Eye className="w-4 h-4 mr-2" /> Ver Detalle
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onArchivar?.(plan.id); }} className="text-red-600 focus:text-red-600 focus:bg-red-50">
-                            <Archive className="w-4 h-4 mr-2" /> Archivar
-                          </DropdownMenuItem>
+                          {onArchivar && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onArchivar(plan.id); }} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                                <Archive className="w-4 h-4 mr-2" /> Archivar
+                              </DropdownMenuItem>
+                            </>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                       {isExpanded ? (

@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, Not } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { PeiIndicador } from '../entities/pei-indicador.entity';
 import { PeiRegistroAvance } from '../entities/pei-registro-avance.entity';
 
@@ -13,13 +13,30 @@ export class PeiService {
         private registroRepo: Repository<PeiRegistroAvance>,
     ) { }
 
-    async getDashboard() {
+    async getDashboard(filtros: { responsableKeys?: string[] } = {}) {
         // 1. Get all active indicators with their latest records
-        const indicadores = await this.indicadorRepo.find({
-            where: { estado: 'ACTIVO', archivedAt: IsNull() },
-            relations: ['registros'],
-            order: { id: 'ASC' } // Stable order
-        });
+        const query = this.indicadorRepo
+            .createQueryBuilder('indicador')
+            .leftJoinAndSelect('indicador.registros', 'registros')
+            .where('indicador.estado = :estado', { estado: 'ACTIVO' })
+            .andWhere('indicador.archivedAt IS NULL');
+
+        if (filtros.responsableKeys?.length) {
+            const responsableUuidKeys = filtros.responsableKeys.filter((key) =>
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key),
+            );
+            const normalizedKeys = filtros.responsableKeys.map((key) => key.toLowerCase());
+            query.andWhere(new Brackets((qb) => {
+                if (responsableUuidKeys.length) {
+                    qb.where('indicador.responsableId IN (:...responsableUuidKeys)', { responsableUuidKeys })
+                        .orWhere('LOWER(indicador.responsableNombre) IN (:...normalizedKeys)', { normalizedKeys });
+                } else {
+                    qb.where('LOWER(indicador.responsableNombre) IN (:...normalizedKeys)', { normalizedKeys });
+                }
+            }));
+        }
+
+        const indicadores = await query.orderBy('indicador.id', 'ASC').getMany();
 
         // 2. Process data for the dashboard
         let sumAvance = 0;
@@ -132,12 +149,28 @@ export class PeiService {
     }
 
     // ==================== ARCHIVADO ====================
-    async getArchivados() {
-        return this.indicadorRepo.find({
-            where: { archivedAt: Not(IsNull()) },
-            relations: ['registros'],
-            order: { id: 'DESC' },
-        });
+    async getArchivados(filtros: { responsableKeys?: string[] } = {}) {
+        const query = this.indicadorRepo
+            .createQueryBuilder('indicador')
+            .leftJoinAndSelect('indicador.registros', 'registros')
+            .where('indicador.archivedAt IS NOT NULL');
+
+        if (filtros.responsableKeys?.length) {
+            const responsableUuidKeys = filtros.responsableKeys.filter((key) =>
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key),
+            );
+            const normalizedKeys = filtros.responsableKeys.map((key) => key.toLowerCase());
+            query.andWhere(new Brackets((qb) => {
+                if (responsableUuidKeys.length) {
+                    qb.where('indicador.responsableId IN (:...responsableUuidKeys)', { responsableUuidKeys })
+                        .orWhere('LOWER(indicador.responsableNombre) IN (:...normalizedKeys)', { normalizedKeys });
+                } else {
+                    qb.where('LOWER(indicador.responsableNombre) IN (:...normalizedKeys)', { normalizedKeys });
+                }
+            }));
+        }
+
+        return query.orderBy('indicador.id', 'DESC').getMany();
     }
 
     async archivar(id: number) {

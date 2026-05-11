@@ -100,8 +100,22 @@ function getVistaInicialDesdeQuery(): VistaDisponible {
   return 'defensa-judicial';
 }
 
+function getAuthContextKey(): string {
+  const user = authService.getCurrentUser() as any;
+  const userId = user?.id_user ?? user?.user?.id_user ?? user?.userId ?? user?.id ?? user?.sub ?? 'anon';
+  const roles = Array.isArray(user?.roles)
+    ? user.roles
+        .map((role: any) => (typeof role === 'string' ? role : role?.code || role?.name || ''))
+        .filter(Boolean)
+        .sort()
+        .join('|')
+    : '';
+  return `${userId}:${roles}`;
+}
+
 export function GestionLegalFull() {
   const [vistaActual, setVistaActual] = useState<VistaDisponible>(getVistaInicialDesdeQuery);
+  const [authContextKey, setAuthContextKey] = useState(getAuthContextKey);
 
   // ✅ Estados del tour guiado multi-módulo
   const [isTourOpen, setIsTourOpen] = useState(false);
@@ -110,6 +124,16 @@ export function GestionLegalFull() {
   // Sistema de notificaciones para términos urgentes/críticos
   const { addNotification } = useNotifications();
   const notificacionesGeneradas = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const handleAuthChange = () => {
+      notificacionesGeneradas.current.clear();
+      setAuthContextKey(getAuthContextKey());
+    };
+
+    window.addEventListener('esap:auth-user-changed', handleAuthChange);
+    return () => window.removeEventListener('esap:auth-user-changed', handleAuthChange);
+  }, []);
 
   // Cargar y verificar términos al entrar a Gestión Legal
   useEffect(() => {
@@ -377,7 +401,7 @@ export function GestionLegalFull() {
   };
 
   return (
-    <ConfiguracionesSIGLProvider>
+    <ConfiguracionesSIGLProvider key={authContextKey}>
       <PermisosProvider>
         <Toaster position="top-right" richColors closeButton duration={4000} />
         <ModuleLayout

@@ -527,20 +527,24 @@ export function ModalDetalleIndicador({ isOpen, onClose, indicador, onEditar, on
 
             {/* Acciones Rápidas */}
             <div className="flex items-center gap-3 pt-4 border-t-2 border-gray-200 flex-wrap">
-              <Button
-                onClick={onCargarAvance}
-                className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold"
-              >
-                <TrendingUp className="w-4 h-4 mr-2" />
-                Actualizar Avance
-              </Button>
-              <Button
-                onClick={onEditar}
-                variant="outline"
-                className="flex-1 border-2 border-blue-500 text-blue-600 hover:bg-blue-50 font-semibold"
-              >
-                Editar Indicador
-              </Button>
+              {onCargarAvance && (
+                <Button
+                  onClick={onCargarAvance}
+                  className="flex-1 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold"
+                >
+                  <TrendingUp className="w-4 h-4 mr-2" />
+                  Actualizar Avance
+                </Button>
+              )}
+              {onEditar && (
+                <Button
+                  onClick={onEditar}
+                  variant="outline"
+                  className="flex-1 border-2 border-blue-500 text-blue-600 hover:bg-blue-50 font-semibold"
+                >
+                  Editar Indicador
+                </Button>
+              )}
               {onArchivar && (
                 <Button
                   onClick={() => { onArchivar(); onClose(); }}

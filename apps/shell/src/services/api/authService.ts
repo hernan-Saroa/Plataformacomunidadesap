@@ -167,6 +167,7 @@ class AuthService {
     this._cachedUser = user;
     // Compartir con otros MFEs en la misma ventana (no es almacenamiento persistente — OTIC-002)
     (window as any).__esap_auth_cache = user;
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user } }));
   }
 
   /**
@@ -288,6 +289,7 @@ class AuthService {
     this._cacheRevision += 1;
     this._cachedUser = null;
     delete (window as any).__esap_auth_cache;
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user: null } }));
     clearAuthTokens();
     // Limpiar residuos de versiones anteriores que pudieran quedar en storage
     sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
