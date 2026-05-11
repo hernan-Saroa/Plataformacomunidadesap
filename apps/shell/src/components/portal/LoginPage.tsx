@@ -373,6 +373,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         height: '100vh',
         minHeight: '100vh',
         margin: 0,
+        maxWidth: 'none',
         position: 'fixed',
         inset: 0,
         overflow: 'hidden',
@@ -380,17 +381,34 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
       }}
     >
       <style>{`
+        html:has([data-login-page-root]),
+        body:has([data-login-page-root]),
+        #root:has([data-login-page-root]) {
+          width: 100% !important;
+          max-width: none !important;
+          margin: 0 !important;
+          overflow: hidden !important;
+        }
+
+        [data-login-page-root] {
+          left: 0 !important;
+          right: 0 !important;
+          width: 100vw !important;
+          width: 100dvw !important;
+          max-width: none !important;
+        }
+
         @media (min-width: 1024px) {
           [data-login-left-pane] {
-            flex: 0 0 37.4% !important;
-            width: 37.4% !important;
-            max-width: 37.4% !important;
+            flex: 0 0 37.4vw !important;
+            width: 37.4vw !important;
+            max-width: 37.4vw !important;
           }
 
           [data-login-hero-pane] {
-            flex: 0 0 62.6% !important;
-            width: 62.6% !important;
-            max-width: 62.6% !important;
+            flex: 1 1 auto !important;
+            width: 62.6vw !important;
+            max-width: none !important;
           }
         }
 
