@@ -16,9 +16,11 @@ import { HallazgosModule } from '../hallazgos/hallazgos.module';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { ConfiguracionesModule } from '../configuraciones/configuraciones.module';
 import { PlanesMejoramientoModule } from '../planes-mejoramiento/planes-mejoramiento.module';
+import { DocumentosModule } from '../documentos/documentos.module';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { AuthModule } from '../../auth/auth.module';
 import { TemplatesController } from './templates.controller';
+import { AuditadoController } from './auditado.controller';
 
 @Module({
   imports: [
@@ -38,9 +40,10 @@ import { TemplatesController } from './templates.controller';
     NotificacionesModule,
     ConfiguracionesModule, // Para obtener profesionales OCI
     PlanesMejoramientoModule, // Para validar acciones en aprobar informe cierre
+    DocumentosModule, // Para que el portal del auditado pueda subir/listar documentos
     AuthModule, // Para tener acceso a JwtService
   ],
-  controllers: [AuditoriasController, TemplatesController],
+  controllers: [AuditoriasController, TemplatesController, AuditadoController],
   providers: [AuditoriasService, RolesGuard],
   exports: [AuditoriasService, TypeOrmModule],
 })

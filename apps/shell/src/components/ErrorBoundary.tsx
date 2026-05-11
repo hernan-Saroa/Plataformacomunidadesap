@@ -76,7 +76,13 @@ export class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
-      const debug = import.meta.env?.DEV
+      const isLocalhost =
+        typeof window !== 'undefined' &&
+        (window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1' ||
+          window.location.hostname.endsWith('.local'));
+
+      const debug = (import.meta.env?.DEV || isLocalhost)
         ? {
             message: this.state.error?.message,
             stack: this.state.error?.stack,

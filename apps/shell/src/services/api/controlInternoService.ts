@@ -1924,6 +1924,124 @@ class ControlInternoService {
   }
 
   // ==========================================================================
+  // PORTAL AUDITADO (responsable del área auditada)
+  // Endpoints específicos protegidos por ownership (no requieren permisos de OCI)
+  // ==========================================================================
+
+  /**
+   * Lista las auditorías en las que el usuario autenticado figura como
+   * responsable del área auditada. Solo expone las que ya fueron notificadas.
+   *
+   * Backend: GET /auditorias/auditado/mis-auditorias
+   */
+  async getMisAuditoriasAuditado(): Promise<any[]> {
+    return client.get<any[]>('/auditorias/auditado/mis-auditorias');
+  }
+
+  /**
+   * Detalle de una de mis auditorías (auditado).
+   * Backend: GET /auditorias/auditado/:id
+   */
+  async getMiAuditoria(auditoriaId: string): Promise<any> {
+    return client.get<any>(`/auditorias/auditado/${auditoriaId}`);
+  }
+
+  /**
+   * Hallazgos de una de mis auditorías (auditado).
+   * Backend: GET /auditorias/auditado/:id/hallazgos
+   */
+  async getMisHallazgosAuditoria(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/auditorias/auditado/${auditoriaId}/hallazgos`);
+  }
+
+  /**
+   * Documentos de una de mis auditorías (auditado).
+   * Backend: GET /auditorias/auditado/:id/documentos
+   */
+  async getMisDocumentosAuditoria(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/auditorias/auditado/${auditoriaId}/documentos`);
+  }
+
+  /**
+   * Estado del flujo de comunicación visible para el auditado.
+   * Backend: GET /auditorias/auditado/:id/comunicacion/estado
+   */
+  async getEstadoComunicacionAuditado(auditoriaId: string): Promise<{
+    informePreliminarGenerado: boolean;
+    informeFinalGenerado?: boolean;
+    informeEjecutivoGenerado?: boolean;
+    hayControversiasPendientes: boolean;
+    conteo: { pendiente: number; aceptado: number; enControversia: number };
+  }> {
+    return client.get<any>(
+      `/auditorias/auditado/${auditoriaId}/comunicacion/estado`,
+    );
+  }
+
+  /**
+   * Subir un documento (típicamente evidencia para una controversia).
+   * Backend: POST /auditorias/auditado/:id/documentos
+   */
+  async uploadDocumentoAuditado(
+    auditoriaId: string,
+    file: File,
+    metadata: {
+      nombre: string;
+      descripcion?: string;
+      tipoDocumento: string;
+      etapa?: string;
+      hallazgoId?: string;
+      planMejoramientoId?: string;
+    },
+    onProgress?: (progress: number) => void,
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('nombre', metadata.nombre);
+    if (metadata.descripcion) formData.append('descripcion', metadata.descripcion);
+    formData.append('tipoDocumento', metadata.tipoDocumento);
+    if (metadata.etapa) formData.append('etapa', metadata.etapa);
+    if (metadata.hallazgoId) formData.append('hallazgoId', metadata.hallazgoId);
+    if (metadata.planMejoramientoId)
+      formData.append('planMejoramientoId', metadata.planMejoramientoId);
+
+    return client.upload<any>(
+      `/auditorias/auditado/${auditoriaId}/documentos`,
+      formData,
+      onProgress,
+    );
+  }
+
+  /**
+   * El auditado acepta un hallazgo notificado.
+   * Backend: POST /auditorias/auditado/:id/hallazgos/:hallazgoId/aceptar
+   */
+  async aceptarMiHallazgo(
+    auditoriaId: string,
+    hallazgoId: string,
+  ): Promise<any> {
+    return client.post<any>(
+      `/auditorias/auditado/${auditoriaId}/hallazgos/${hallazgoId}/aceptar`,
+      {},
+    );
+  }
+
+  /**
+   * El auditado presenta controversia (con documento ya subido previamente).
+   * Backend: POST /auditorias/auditado/:id/hallazgos/:hallazgoId/controversia
+   */
+  async presentarMiControversia(
+    auditoriaId: string,
+    hallazgoId: string,
+    data: { argumentos: string; documentoId: string; documentoNombre: string },
+  ): Promise<any> {
+    return client.post<any>(
+      `/auditorias/auditado/${auditoriaId}/hallazgos/${hallazgoId}/controversia`,
+      data,
+    );
+  }
+
+  // ==========================================================================
   // AUDITORÍAS (Gestión de Auditorías)
   // ==========================================================================
   

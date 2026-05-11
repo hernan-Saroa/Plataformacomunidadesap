@@ -176,6 +176,18 @@ export const auditoriasApi = {
   },
 
   /**
+   * Búsqueda libre de personas (auth.personas) por nombre, email o identificación.
+   * Devuelve { idPersona, id, nombre, email, numeroIdentificacion, ... }.
+   * Pensado para autocompletar selectores del formulario.
+   */
+  searchPersonas: async (q: string): Promise<ApiResponse<any[]>> => {
+    if (!q || q.trim().length < 2) {
+      return { success: true, data: [] } as ApiResponse<any[]>;
+    }
+    return apiRequest<any[]>(`/auditorias/personas/search?q=${encodeURIComponent(q.trim())}`);
+  },
+
+  /**
    * Obtener notas de una auditoría
    */
   getNotas: async (auditoriaId: string): Promise<ApiResponse<any[]>> => {
