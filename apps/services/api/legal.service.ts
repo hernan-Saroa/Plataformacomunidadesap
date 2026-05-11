@@ -1776,6 +1776,18 @@ export class ProcesosCoactivosService {
             throw error;
         }
     }
+
+    // =========================================================================
+    // REPORTES Y ESTADÍSTICAS
+    // =========================================================================
+
+    async getReportesStats(): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/reportes/stats`);
+    }
+
+    async getReporteData(reportId: string): Promise<any[]> {
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/reportes/data/${reportId}`);
+    }
 }
 
 export const legalService = new LegalService();

@@ -44,7 +44,6 @@ import { Riesgos } from '../modulos/Riesgos';
 import { ModuloPlanesMejoramientoV4 } from '../modulos/PlanesMejoramientoV4';
 import { ConfiguracionesSIGL } from '../modulos/ConfiguracionesSIGL';
 import { ExpedientesModuloSIGL } from '../modulos/ExpedientesModuloSIGL';
-import { ReportesGestionLegal } from '../modulos/ReportesGestionLegal';
 
 // ✅ Tour Guiado Multi-Módulo
 import { GuidedTour, TourButton, useTourCompleted } from '../design-system/GuidedTour';
@@ -69,7 +68,6 @@ type VistaDisponible =
   | 'plan-accion'
   | 'riesgos'
   | 'planes-mejoramiento'
-  | 'reportes'
   | 'configuraciones';
 
 /**
@@ -90,7 +88,6 @@ const VISTAS_VALIDAS: VistaDisponible[] = [
   'plan-accion',
   'riesgos',
   'planes-mejoramiento',
-  'reportes',
   'configuraciones',
 ];
 
@@ -338,14 +335,6 @@ export function GestionLegalFull() {
       visible: authService.hasPermission(Permissions.GESTION_LEGAL_PLANES_MEJORAMIENTO_MANAGE),
     },
     {
-      id: 'reportes',
-      label: 'Reportes',
-      subtitle: 'Analítica y trazabilidad legal',
-      icon: <BarChart3 className="w-5 h-5" />,
-      color: '#003DA5',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_REPORTES_MANAGE),
-    },
-    {
       id: 'configuraciones',
       label: 'Configuraciones del Sistema',
       subtitle: 'Ajustes y parámetros del SIGL',
@@ -380,8 +369,6 @@ export function GestionLegalFull() {
         return <Riesgos />;
       case 'planes-mejoramiento':
         return <ModuloPlanesMejoramientoV4 />;
-      case 'reportes':
-        return <ReportesGestionLegal />;
       case 'configuraciones':
         return <ConfiguracionesSIGL />;
       default:
