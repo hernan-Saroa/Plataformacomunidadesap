@@ -12,41 +12,13 @@ import {
   Clock,
   BookOpen,
   Save,
-  AlertCircle
+  AlertCircle,
+  CheckCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { programasService, apiClient, type ProgramaAcademicoDTO } from '../../services/api';
 
-interface ProgramaAcademico {
-  id: number;
-  codigo: string;
-  nombre: string;
-  nivelFormacion: string;
-  modalidad: string;
-  jornada: string;
-  duracionSemestres: number;
-  creditos: number;
-  sede: string;
-  facultad: string;
-  estado: string;
-  registroCalificado: {
-    numero: string;
-    fechaEmision: string;
-    vigencia: string;
-  };
-  acreditacion?: {
-    tipo: string;
-    vigencia: string;
-  };
-  descripcion: string;
-  perfilEgresado: string;
-  requisitosIngreso: string[];
-  costoMatricula: number;
-  estudiantesActivos: number;
-  graduados: number;
-  docentesAsignados: number;
-  fechaCreacion: string;
-  ultimaActualizacion: string;
-}
+type ProgramaAcademico = ProgramaAcademicoDTO;
 
 interface CreateProgramaModalProps {
   onClose: () => void;
@@ -63,20 +35,20 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
     nivelFormacion: programaToEdit?.nivelFormacion || 'Profesional Universitario',
     modalidad: programaToEdit?.modalidad || 'Presencial',
     jornada: programaToEdit?.jornada || 'Diurna',
-    duracionSemestres: programaToEdit?.duracionSemestres || 10,
+    duracion: programaToEdit?.duracion || 10,
     creditos: programaToEdit?.creditos || 160,
     sede: programaToEdit?.sede || 'Bogotá',
     facultad: programaToEdit?.facultad || '',
-    estado: programaToEdit?.estado || 'Activo',
-    rcNumero: programaToEdit?.registroCalificado.numero || '',
-    rcFechaEmision: programaToEdit?.registroCalificado.fechaEmision || '',
-    rcVigencia: programaToEdit?.registroCalificado.vigencia || '',
-    tieneAcreditacion: !!programaToEdit?.acreditacion,
-    acreditacionTipo: programaToEdit?.acreditacion?.tipo || 'Alta Calidad',
-    acreditacionVigencia: programaToEdit?.acreditacion?.vigencia || '',
+    estado: programaToEdit?.estado || 'ACTIVO',
+    registroCalificado: programaToEdit?.registroCalificado || {
+      numero_registro_calificado: '',
+      fecha_emision: '',
+      vigencia: '',
+      acreditacion: undefined
+    },
     descripcion: programaToEdit?.descripcion || '',
     perfilEgresado: programaToEdit?.perfilEgresado || '',
-    requisitosIngreso: programaToEdit?.requisitosIngreso?.join('\n') || '',
+    requisitosDeIngreso: programaToEdit?.requisitosDeIngreso || '',
     costoMatricula: programaToEdit?.costoMatricula || 0,
   });
 
@@ -85,7 +57,35 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
   const totalSteps = 4;
 
   const handleChange = (field: string, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    if (field.startsWith('registroCalificado.')) {
+      const parts = field.split('.');
+      if (parts.length === 2) {
+        // registroCalificado.field
+        const [, rcField] = parts;
+        setFormData(prev => ({
+          ...prev,
+          registroCalificado: {
+            ...prev.registroCalificado,
+            [rcField]: value
+          }
+        }));
+      } else if (parts.length === 3) {
+        // registroCalificado.acreditacion.field
+        const [, , acreditacionField] = parts;
+        setFormData(prev => ({
+          ...prev,
+          registroCalificado: {
+            ...prev.registroCalificado,
+            acreditacion: {
+              ...prev.registroCalificado?.acreditacion,
+              [acreditacionField]: value
+            }
+          }
+        }));
+      }
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
     // Limpiar error del campo al escribir
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -102,15 +102,15 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
     }
 
     if (step === 2) {
-      if (formData.duracionSemestres < 1) newErrors.duracionSemestres = 'La duración debe ser mayor a 0';
+      if (formData.duracion < 1) newErrors.duracion = 'La duración debe ser mayor a 0';
       if (formData.creditos < 1) newErrors.creditos = 'Los créditos deben ser mayores a 0';
       if (formData.costoMatricula < 0) newErrors.costoMatricula = 'El costo no puede ser negativo';
     }
 
     if (step === 3) {
-      if (!formData.rcNumero.trim()) newErrors.rcNumero = 'El número de registro es requerido';
-      if (!formData.rcFechaEmision) newErrors.rcFechaEmision = 'La fecha de emisión es requerida';
-      if (!formData.rcVigencia) newErrors.rcVigencia = 'La fecha de vigencia es requerida';
+      if (!formData.registroCalificado?.numero_registro_calificado?.trim()) newErrors.rcNumero = 'El número de registro es requerido';
+      if (!formData.registroCalificado?.fecha_emision) newErrors.rcFechaEmision = 'La fecha de emisión es requerida';
+      if (!formData.registroCalificado?.vigencia || formData.registroCalificado.vigencia < 1) newErrors.rcVigencia = 'Los años de vigencia son requeridos';
     }
 
     if (step === 4) {
@@ -136,13 +136,46 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (validateStep(currentStep)) {
-      const action = isEditMode ? 'actualizado' : 'creado';
-      toast.success(`Programa ${action} exitosamente`, {
-        description: `${formData.nombre} ha sido ${action} correctamente`
-      });
-      onClose();
+      try {
+        const programaData = {
+          codigo: formData.codigo,
+          nombre: formData.nombre,
+          descripcion: formData.descripcion,
+          nivelFormacion: formData.nivelFormacion,
+          facultad: formData.facultad,
+          modalidad: formData.modalidad,
+          duracion: formData.duracion,
+          creditos: formData.creditos,
+          costoMatricula: formData.costoMatricula,
+          requisitosDeIngreso: formData.requisitosDeIngreso,
+          jornada: formData.jornada,
+          sede: formData.sede,
+          registroCalificado: formData.registroCalificado,
+          perfilEgresado: formData.perfilEgresado,
+          estado: formData.estado,
+        };
+
+        if (isEditMode && programaToEdit) {
+          await apiClient.put(`/auth/api/v1/programas-academicos/${programaToEdit.id}`, programaData);
+        } else {
+          await apiClient.post('/auth/api/v1/programas-academicos', programaData);
+        }
+
+        const action = isEditMode ? 'actualizado' : 'creado';
+        toast.success(`Programa ${action} exitosamente`, {
+          description: `${formData.nombre} ha sido ${action} correctamente`
+        });
+        onClose();
+        // Refresh the parent component
+        window.location.reload();
+      } catch (error) {
+        console.error('Error saving programa:', error);
+        toast.error('Error al guardar el programa', {
+          description: 'Por favor, inténtalo de nuevo'
+        });
+      }
     }
   };
 
@@ -389,16 +422,14 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
                       <input
                         type="number"
                         min="1"
-                        value={formData.duracionSemestres}
-                        onChange={(e) => handleChange('duracionSemestres', parseInt(e.target.value) || 0)}
-                        className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 transition-all ${
-                          errors.duracionSemestres ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
-                        }`}
+                        value={formData.duracion}
+                        onChange={(e) => handleChange('duracion', parseInt(e.target.value) || 0)}
+                        className={errors.duracion ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'}
                       />
-                      {errors.duracionSemestres && (
+                      {errors.duracion && (
                         <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3" />
-                          {errors.duracionSemestres}
+                          {errors.duracion}
                         </p>
                       )}
                     </div>
@@ -458,8 +489,8 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
                       Requisitos de Ingreso
                     </label>
                     <textarea
-                      value={formData.requisitosIngreso}
-                      onChange={(e) => handleChange('requisitosIngreso', e.target.value)}
+                      value={formData.requisitosDeIngreso}
+                      onChange={(e) => handleChange('requisitosDeIngreso', e.target.value)}
                       placeholder="Un requisito por línea&#10;Ej: Título de bachiller&#10;Pruebas Saber 11&#10;Entrevista"
                       rows={5}
                       className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all resize-none"
@@ -493,18 +524,17 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
                     </p>
                   </div>
 
+                  <div className="grid md:grid-cols-2 gap-4">
+
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">
                       Número de Registro Calificado *
                     </label>
                     <input
                       type="text"
-                      value={formData.rcNumero}
-                      onChange={(e) => handleChange('rcNumero', e.target.value.toUpperCase())}
-                      placeholder="Ej: RC-2023-001"
-                      className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 transition-all ${
-                        errors.rcNumero ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
-                      }`}
+                      value={formData.registroCalificado?.numero_registro_calificado || ''}
+                      onChange={(e) => handleChange('registroCalificado.numero_registro_calificado', e.target.value.toUpperCase())}
+                      className={errors.rcNumero ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'}
                     />
                     {errors.rcNumero && (
                       <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
@@ -514,18 +544,16 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
                     )}
                   </div>
 
-                  <div className="grid md:grid-cols-2 gap-4">
+                  
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
                         Fecha de Emisión *
                       </label>
                       <input
                         type="date"
-                        value={formData.rcFechaEmision}
-                        onChange={(e) => handleChange('rcFechaEmision', e.target.value)}
-                        className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 transition-all ${
-                          errors.rcFechaEmision ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
-                        }`}
+                        value={formData.registroCalificado?.fecha_emision || ''}
+                        onChange={(e) => handleChange('registroCalificado.fecha_emision', e.target.value)}
+                        className={errors.rcFechaEmision ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'}
                       />
                       {errors.rcFechaEmision && (
                         <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
@@ -537,15 +565,15 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
 
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-2">
-                        Vigencia del Registro *
+                        Vigencia del Registro (años) *
                       </label>
                       <input
-                        type="date"
-                        value={formData.rcVigencia}
-                        onChange={(e) => handleChange('rcVigencia', e.target.value)}
-                        className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 transition-all ${
-                          errors.rcVigencia ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'
-                        }`}
+                        type="number"
+                        min="1"
+                        placeholder="Ej: 5"
+                        value={formData.registroCalificado?.vigencia || ''}
+                        onChange={(e) => handleChange('registroCalificado.vigencia', parseInt(e.target.value) || '')}
+                        className={errors.rcVigencia ? 'border-red-500' : 'border-gray-200 focus:border-[#003DA5]'}
                       />
                       {errors.rcVigencia && (
                         <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
@@ -561,8 +589,8 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
                       <input
                         type="checkbox"
                         id="tieneAcreditacion"
-                        checked={formData.tieneAcreditacion}
-                        onChange={(e) => handleChange('tieneAcreditacion', e.target.checked)}
+                        checked={!!formData.registroCalificado?.acreditacion}
+                        onChange={(e) => handleChange('registroCalificado.acreditacion', e.target.checked ? { tipo_acreditacion: 'Alta Calidad', vigencia: '' } : undefined)}
                         className="w-5 h-5 text-[#003DA5] border-gray-300 rounded focus:ring-[#003DA5]"
                       />
                       <label htmlFor="tieneAcreditacion" className="font-semibold text-gray-900">
@@ -570,7 +598,7 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
                       </label>
                     </div>
 
-                    {formData.tieneAcreditacion && (
+                    {formData.registroCalificado?.acreditacion && (
                       <div className="space-y-4 pl-8">
                         <div className="grid md:grid-cols-2 gap-4">
                           <div>
@@ -578,8 +606,8 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
                               Tipo de Acreditación
                             </label>
                             <select
-                              value={formData.acreditacionTipo}
-                              onChange={(e) => handleChange('acreditacionTipo', e.target.value)}
+                              value={formData.registroCalificado?.acreditacion?.tipo_acreditacion || 'Alta Calidad'}
+                              onChange={(e) => handleChange('registroCalificado.acreditacion.tipo_acreditacion', e.target.value)}
                               className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all"
                             >
                               <option value="Alta Calidad">Alta Calidad</option>
@@ -589,12 +617,14 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
 
                           <div>
                             <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Vigencia de Acreditación
+                              Vigencia de Acreditación (años)
                             </label>
                             <input
-                              type="date"
-                              value={formData.acreditacionVigencia}
-                              onChange={(e) => handleChange('acreditacionVigencia', e.target.value)}
+                              type="number"
+                              min="1"
+                              placeholder="Ej: 5"
+                              value={formData.registroCalificado?.acreditacion?.vigencia || ''}
+                              onChange={(e) => handleChange('registroCalificado.acreditacion.vigencia', parseInt(e.target.value) || '')}
                               className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] transition-all"
                             />
                           </div>

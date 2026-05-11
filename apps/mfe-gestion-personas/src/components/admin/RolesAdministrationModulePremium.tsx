@@ -230,7 +230,7 @@ export function RolesAdministrationModulePremium() {
   const [filterType, setFilterType] = useState<'todos' | 'sistema' | 'personalizado'>('todos');
   const [filterStatus, setFilterStatus] = useState<'todos' | 'activo' | 'inactivo'>('todos');
   const [filter2FA, setFilter2FA] = useState<'todos' | 'con2fa' | 'sin2fa'>('todos');
-  const [filterSistemaDestino, setFilterSistemaDestino] = useState<'todos' | 'Backoffice' | 'Portal' | 'Ambos'>('todos');
+  const [filterSistemaDestino, setFilterSistemaDestino] = useState<'todos' | 'Backoffice' | 'Portal'>('todos');
   const [selectedRole, setSelectedRole] = useState<SystemRole | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -748,7 +748,6 @@ export function RolesAdministrationModulePremium() {
               <option value="todos">Todos los sistemas</option>
               <option value="Backoffice">Backoffice</option>
               <option value="Portal">Portal</option>
-              <option value="Ambos">Ambos</option>
             </select>
           </div>
         </div>
