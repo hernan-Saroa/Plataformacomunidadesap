@@ -37,7 +37,8 @@ import {
   Bell,
   Scale,
   Clock,
-  Loader2
+  Loader2,
+  CheckSquare
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -50,6 +51,7 @@ import { rolesService } from '../../services/api';
 interface SystemRole {
   id: string;
   name: string;
+  code?: string;
   description?: string;
   icon: string;
   color: string;
@@ -571,8 +573,26 @@ const getActiveAcademicProfile = (
   ) || null;
 };
 
-export function RolePermissionsEditor({ 
-  open, 
+const isSuperAdminRole = (role: SystemRole) =>
+  role.code === 'SUPER_ADMIN' ||
+  role.name.toLowerCase().includes('super admin') ||
+  role.name.toLowerCase().includes('super administrador');
+
+const selectAllPermissions = (
+  modules: PermissionModuleWithCodes[],
+): { permissions: Set<string>; academicProfile: AcademicProfileId } => {
+  const headProfile = ACADEMIC_PROFILES.find((p) => p.id === 'head')!;
+  const { codeToId } = getPermissionMaps(modules);
+  const allIds = new Set(modules.flatMap((m) => m.permissions.map((p) => p.id)));
+  headProfile.required.forEach((code) => {
+    const id = codeToId.get(code);
+    if (id) allIds.add(id);
+  });
+  return { permissions: allIds, academicProfile: 'head' };
+};
+
+export function RolePermissionsEditor({
+  open,
   onOpenChange,
   role,
   onSaved
@@ -589,6 +609,7 @@ export function RolePermissionsEditor({
   const activeAcademicProfile = activeAcademicProfileId
     ? ACADEMIC_PROFILES.find((profile) => profile.id === activeAcademicProfileId) || null
     : null;
+  const isSuperAdmin = isSuperAdminRole(role);
 
   const iconMap: Record<string, any> = {
     Shield,
@@ -652,16 +673,22 @@ export function RolePermissionsEditor({
         const mappedModules = normalizePermissionModulesText(
           modulesService.mapToPermissionModules(modules) as PermissionModuleWithCodes[],
         );
-        const loadedPermissions = new Set(rolePermissions.map((permission) => permission.id));
-        const loadedAcademicProfile = getActiveAcademicProfile(
-          loadedPermissions,
-          mappedModules,
-        );
 
-        setPermissionModules(mappedModules);
-        setSelectedPermissions(loadedPermissions);
-        setActiveAcademicProfileId(loadedAcademicProfile?.id || null);
-        setHasChanges(false);
+        if (isSuperAdmin) {
+          // Super Admin: marcar todos los permisos con perfil Jefe para Registro Académico
+          const { permissions: allIds, academicProfile } = selectAllPermissions(mappedModules);
+          setPermissionModules(mappedModules);
+          setSelectedPermissions(allIds);
+          setActiveAcademicProfileId(academicProfile);
+          setHasChanges(true);
+        } else {
+          const loadedPermissions = new Set(rolePermissions.map((permission) => permission.id));
+          const loadedAcademicProfile = getActiveAcademicProfile(loadedPermissions, mappedModules);
+          setPermissionModules(mappedModules);
+          setSelectedPermissions(loadedPermissions);
+          setActiveAcademicProfileId(loadedAcademicProfile?.id || null);
+          setHasChanges(false);
+        }
       } catch (error) {
         console.error('Error loading permissions:', error);
         toast.error('Error al cargar permisos', {
@@ -861,8 +888,25 @@ export function RolePermissionsEditor({
     setHasChanges(true);
   };
 
+  // Marcar todos los permisos (perfil Jefe para Registro Académico)
+  const handleSelectAll = () => {
+    const { permissions: allIds, academicProfile } = selectAllPermissions(permissionModules);
+    setSelectedPermissions(allIds);
+    setActiveAcademicProfileId(academicProfile);
+    setHasChanges(true);
+    toast.success('Todos los permisos marcados', {
+      description: 'Se seleccionaron todos los permisos. Perfil "Jefe" aplicado para Registro Académico.',
+    });
+  };
+
   // Save permissions
   const handleSave = async () => {
+    if (selectedPermissions.size === 0) {
+      toast.warning('Sin permisos asignados', {
+        description: 'Debes asignar al menos un permiso al rol antes de guardar.',
+      });
+      return;
+    }
     try {
       setIsSaving(true);
       await rolesService.updateRolePermissions(role.id, Array.from(selectedPermissions));
@@ -887,6 +931,9 @@ export function RolePermissionsEditor({
     setSelectedPermissions(new Set());
     setActiveAcademicProfileId(null);
     setHasChanges(selectedPermissions.size > 0);
+    toast.info('Permisos limpiados', {
+      description: 'Recuerda asignar al menos un permiso antes de guardar.',
+    });
   };
 
   // Filter modules
@@ -1242,14 +1289,24 @@ export function RolePermissionsEditor({
         {/* Actions Footer */}
         <div className="px-6 py-4 border-t bg-gray-50">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-            <Button
-              variant="outline"
-              onClick={handleReset}
-              className="w-full sm:w-auto font-bold border-2 border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Limpiar Todo
-            </Button>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Button
+                variant="outline"
+                onClick={handleReset}
+                className="flex-1 sm:flex-none font-bold border-2 border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
+              >
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Limpiar Todo
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleSelectAll}
+                className="flex-1 sm:flex-none font-bold border-2 border-green-400 text-green-700 hover:bg-green-50 hover:border-green-500"
+              >
+                <CheckSquare className="w-4 h-4 mr-2" />
+                Marcar Todo
+              </Button>
+            </div>
             <div className="flex gap-3 w-full sm:w-auto">
               <Button
                 variant="outline"

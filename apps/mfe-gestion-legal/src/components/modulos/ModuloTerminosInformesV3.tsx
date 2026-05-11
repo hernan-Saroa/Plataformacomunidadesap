@@ -42,6 +42,10 @@ type VistaModulo = 'timeline' | 'calendario' | 'lista' | 'archivados';
 export function ModuloTerminosInformesV3() {
   // ========== PERMISOS ==========
   const { usuario } = usePermisos();
+  const esMonitoreoGestionLegal = authService.hasRole('MONITOREO_GESTION_LEGAL');
+  const esResuelveGestionLegal = authService.hasRole('RESUELVE_GESTION_LEGAL');
+  const canModifyTerminos = !esMonitoreoGestionLegal;
+  const canEnviarRecordatorio = !esMonitoreoGestionLegal && !esResuelveGestionLegal;
 
   // ========== ESTADO ==========
   const [solicitudes, setSolicitudes] = useState<SolicitudInforme[]>(solicitudesConsolidadas);
@@ -399,7 +403,7 @@ export function ModuloTerminosInformesV3() {
             { label: 'Archivados', icon: <FileText className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
-        buttons={[
+        buttons={canModifyTerminos ? [
           {
             label: 'Nueva Solicitud',
             labelMobile: 'Nuevo',
@@ -407,7 +411,7 @@ export function ModuloTerminosInformesV3() {
             onClick: () => setModalNuevaSolicitudOpen(true),
             variant: 'primary'
           }
-        ]}
+        ] : []}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Términos e Informes"
@@ -503,15 +507,15 @@ export function ModuloTerminosInformesV3() {
       />
 
       {/* Contenido principal */}
-      {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={handleArchivar} onEliminar={handleEliminar} />}
+      {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={canModifyTerminos ? handleArchivar : undefined} onEliminar={canModifyTerminos ? handleEliminar : undefined} />}
       {vistaActual === 'calendario' && <VistaCalendario solicitudes={solicitudesFiltradas} mesActual={mesActual} setMesActual={setMesActual} onVerDetalle={handleVerDetalle} />}
-      {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={handleArchivar} onEliminar={handleEliminar} />}
+      {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={canModifyTerminos ? handleArchivar : undefined} onEliminar={canModifyTerminos ? handleEliminar : undefined} />}
       {vistaActual === 'archivados' && (
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Términos e Informes"
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={canModifyTerminos ? handleRestaurar : undefined}
+          onEliminarPermanente={canModifyTerminos ? handleEliminarPermanente : undefined}
         />
       )}
 
@@ -537,10 +541,11 @@ export function ModuloTerminosInformesV3() {
         isOpen={modalDetalleOpen}
         onClose={() => setModalDetalleOpen(false)}
         solicitud={solicitudSeleccionada}
-        onCambiarEtapa={handleCambiarEtapa}
-        onAgregarComentario={handleAgregarComentario}
-        onArchivar={handleArchivar}
-        onEliminar={handleEliminar}
+        onCambiarEtapa={canModifyTerminos ? handleCambiarEtapa : undefined}
+        onArchivar={canModifyTerminos ? handleArchivar : undefined}
+        onEliminar={canModifyTerminos ? handleEliminar : undefined}
+        canModify={canModifyTerminos}
+        canEnviarRecordatorio={canEnviarRecordatorio}
       />
 
       {/* Modal Confirmar Eliminar */}
@@ -589,8 +594,8 @@ export function ModuloTerminosInformesV3() {
 interface VistaTimelineProps {
   solicitudes: SolicitudInforme[];
   onVerDetalle: (s: SolicitudInforme) => void;
-  onArchivar: (id: string) => void;
-  onEliminar: (id: string) => void;
+  onArchivar?: (id: string) => void;
+  onEliminar?: (id: string) => void;
 }
 
 function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaTimelineProps) {
@@ -689,6 +694,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
                     <Eye className="w-3.5 h-3.5" />
                     Ver Detalle
                   </button>
+                  {onArchivar && (
                   <button
                     onClick={() => onArchivar(solicitud.id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95 bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100"
@@ -697,6 +703,8 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
                     <Archive className="w-3.5 h-3.5" />
                     Archivar
                   </button>
+                  )}
+                  {onEliminar && (
                   <button
                     onClick={() => onEliminar(solicitud.id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95 bg-red-50 text-red-600 border border-red-300 hover:bg-red-100"
@@ -704,6 +712,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -826,8 +835,8 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
 interface VistaListaProps {
   solicitudes: SolicitudInforme[];
   onVerDetalle: (solicitud: SolicitudInforme) => void;
-  onArchivar: (id: string) => void;
-  onEliminar: (id: string) => void;
+  onArchivar?: (id: string) => void;
+  onEliminar?: (id: string) => void;
 }
 
 function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaListaProps) {
@@ -885,6 +894,7 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
                         <Eye className="w-3.5 h-3.5" />
                         Ver
                       </button>
+                      {onArchivar && (
                       <Button
                         onClick={() => onArchivar(solicitud.id)}
                         size="sm"
@@ -894,6 +904,8 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
                       >
                         <Archive className="w-3 h-3" />
                       </Button>
+                      )}
+                      {onEliminar && (
                       <Button
                         onClick={() => onEliminar(solicitud.id)}
                         size="sm"
@@ -903,6 +915,7 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
                       >
                         <Trash2 className="w-3 h-3" />
                       </Button>
+                      )}
                     </div>
                   </td>
                 </tr>

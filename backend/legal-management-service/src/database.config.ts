@@ -41,6 +41,7 @@ import { DecisionDisciplinaria } from './entities/decision-disciplinaria.entity'
 
 // Planes de Mejoramiento
 import { PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario } from './entities/planes-mejoramiento.entity';
+import { PlanHallazgo } from './entities/plan-hallazgo.entity';
 
 // Documentos de Consultas Jurídicas
 import { DocumentoConsulta } from './entities/documento-consulta.entity';
@@ -99,7 +100,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
         // Decisiones
         DecisionDisciplinaria,
         // Planes de Mejoramiento
-        PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario,
+        PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario, PlanHallazgo,
         // Documentos de Consultas Jurídicas
         DocumentoConsulta, ComentarioConsulta, ConsultaJuridicaHistorial,
         // Correos Jurídicos

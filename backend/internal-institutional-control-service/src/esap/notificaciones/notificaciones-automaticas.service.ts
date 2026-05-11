@@ -134,11 +134,45 @@ export class NotificacionesAutomaticasService {
               continue; // Ya se envió esta notificación
             }
 
-            // Obtener usuarios a notificar (auditor líder, auditor asignado, responsable del área)
-            const usuariosNotificar = await this.obtenerUsuariosAuditoria(auditoria);
+            // ✅ SINCRONIZACIÓN CON CONFIGURACIÓN: Obtener roles para alertas de vencimiento (EVT-AUD-002)
+            let rolesDestinatarios = ['Auditor Líder', 'Auditor de Equipo']; // Fallback
+            try {
+              const configGlobal = await this.notificacionesService.getGlobalConfig();
+              if (configGlobal && configGlobal.tiposNotificacion && configGlobal.tiposNotificacion['EVT-AUD-002']) {
+                const configEvento = configGlobal.tiposNotificacion['EVT-AUD-002'] as any;
+                rolesDestinatarios = configEvento.destinatarios || rolesDestinatarios;
+              }
+            } catch (e) {}
+
+            const usuariosNotificarSet = new Set<string>();
+
+            // 1. Si los roles incluyen "Jefe OCIG"
+            if (rolesDestinatarios.includes('Jefe OCIG')) {
+              try {
+                const result = await this.dataSource.query(`
+                  SELECT DISTINCT u.id_tercero FROM auth."user" u 
+                  INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+                  INNER JOIN auth.role r ON r.id = ur.id_rol
+                  WHERE r.code = 'JEFE_CONTROL_INTERNO' AND ur.is_active = true AND u.is_active = true
+                `);
+                result.forEach((row: any) => usuariosNotificarSet.add(String(row.id_tercero)));
+              } catch (e) {}
+            }
+
+            // 2. Si los roles incluyen "Auditor Líder"
+            if (rolesDestinatarios.includes('Auditor Líder') && auditoria.auditorLiderId) {
+              usuariosNotificarSet.add(String(auditoria.auditorLiderId));
+            }
+
+            // 3. Si los roles incluyen "Auditor de Equipo" (asignado)
+            if (rolesDestinatarios.includes('Auditor de Equipo') && auditoria.auditorAsignadoId) {
+              usuariosNotificarSet.add(String(auditoria.auditorAsignadoId));
+            }
+
+            const usuariosNotificar = [...usuariosNotificarSet];
 
             if (usuariosNotificar.length === 0) {
-              this.logger.warn(`No se encontraron usuarios para notificar en auditoría ${auditoria.codigo}`);
+              this.logger.warn(`No se encontraron usuarios (según roles config) para notificar en auditoría ${auditoria.codigo}`);
               continue;
             }
 

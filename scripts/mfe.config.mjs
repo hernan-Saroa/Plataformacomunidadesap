@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { transformWithEsbuild } from 'vite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -65,4 +66,22 @@ export function getDockerDistDir(appDir) {
 
 export function getFrontendApp(appDir) {
   return frontendApps.find((app) => app.appDir === appDir);
+}
+
+export function stripBundleComments() {
+  return {
+    name: 'strip-bundle-comments',
+    async renderChunk(code, chunk) {
+      const result = await transformWithEsbuild(code, chunk.fileName, {
+        charset: 'utf8',
+        format: 'esm',
+        legalComments: 'none',
+        loader: 'js',
+        minifyWhitespace: true,
+        target: 'esnext',
+      });
+
+      return { code: result.code, map: null };
+    },
+  };
 }

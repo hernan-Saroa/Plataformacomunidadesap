@@ -4452,49 +4452,21 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const [currentUser, setCurrentUser] = useState<any>(null);
   useEffect(() => {
     try {
-      // Intentar múltiples fuentes de datos del usuario
-      const userDataStr = sessionStorage.getItem('esap_user_data');
-      const sesionStr = sessionStorage.getItem('esap-sesion-activa');
-      
-      let userData: any = null;
-      
-      if (userDataStr) {
-        userData = JSON.parse(userDataStr);
-      }
-      
-      // Si no hay esap_user_data, intentar con sesion activa
-      if (!userData && sesionStr) {
-        const sesion = JSON.parse(sesionStr);
-        userData = sesion?.user || sesion?.usuario || sesion;
-      }
-      
+      const userData = (window as any).__esap_auth_cache;
       if (userData) {
-        // Normalizar campos para que el matching funcione
         const normalized: any = { ...userData };
-        
-        // Extraer nombre completo de person si existe
         if (userData.person?.first_name) {
           normalized.nombre = `${userData.person.first_name} ${userData.person.last_name || ''}`.trim();
         }
         if (!normalized.nombre && !normalized.nombres) {
           normalized.nombre = userData.fullName || userData.name || userData.username || '';
         }
-        // Extraer email
         if (!normalized.email && userData.person?.email) {
           normalized.email = userData.person.email;
         }
-        // Extraer IDs de person
         if (userData.person?.id && !normalized.idPerson) {
           normalized.idPerson = userData.person.id;
         }
-        
-        console.log('x [PlanAnual] Usuario actual cargado:', {
-          nombre: normalized.nombre || normalized.nombres,
-          email: normalized.email,
-          id: normalized.id,
-          idPerson: normalized.idPerson || normalized.idPersona,
-        });
-        
         setCurrentUser(normalized);
       }
     } catch (e) {
@@ -5824,8 +5796,8 @@ function SeccionGestionYSeguimiento({
   const [currentUser, setCurrentUser] = useState<any>(null);
   useEffect(() => {
     try {
-      const userDataStr = sessionStorage.getItem('esap_user_data');
-      if (userDataStr) setCurrentUser(JSON.parse(userDataStr));
+      const userData = (window as any).__esap_auth_cache;
+      if (userData) setCurrentUser(userData);
     } catch (e) {}
   }, []);
 
@@ -6688,18 +6660,15 @@ function SeccionGestionYSeguimiento({
           const hasIdentity = currentUser?.nombre || currentUser?.email || currentUser?.nombres;
           const user = hasIdentity ? currentUser : (() => {
             try {
-              const raw = sessionStorage.getItem('esap_user_data') || sessionStorage.getItem('esap-sesion-activa');
-              if (!raw) return currentUser; // al menos devolver lo que tenemos
-              const d = JSON.parse(raw);
-              const u = d?.user || d?.usuario || d;
-              const result = {
+              const u = (window as any).__esap_auth_cache;
+              if (!u) return currentUser;
+              return {
                 ...(currentUser || {}),
                 ...u,
                 nombre: u?.person?.first_name ? `${u.person.first_name} ${u.person.last_name || ''}`.trim() : u?.fullName || u?.name || u?.username || u?.nombre || '',
                 email: u?.person?.email || u?.email || '',
                 idPerson: u?.person?.id || u?.idPerson || currentUser?.idPerson,
               };
-              return result;
             } catch (_e) { return currentUser; }
           })();
           if (!user) return false;
@@ -8822,12 +8791,7 @@ const ESTADO_PLAN_A_BACKEND: Record<EstadoPlan, string> = {
 
 function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan = false, puedeActivarPlan = false, puedeEditarPlan = false, auditores = [] }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; puedeAprobarPlan?: boolean; puedeActivarPlan?: boolean; puedeEditarPlan?: boolean; auditores?: Auditor[] }) {
   const [guardando, setGuardando] = useState(false);
-  const currentUser = (() => {
-    try {
-      const userDataStr = sessionStorage.getItem('esap_user_data');
-      return userDataStr ? JSON.parse(userDataStr) : null;
-    } catch(e) { return null; }
-  })();
+  const currentUser = (window as any).__esap_auth_cache || null;
 
   const emailSesion = (currentUser?.email || currentUser?.person?.email || currentUser?.usuario?.email || '').trim().toLowerCase();
   const emailResponsablePlan = (plan.jefeOCI?.email || '').trim().toLowerCase();
@@ -8961,7 +8925,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   };
 
   const handleAprobarAuditor = (auditorId: string, nombre: string, email?: string) => {
-    const sessionUser = JSON.parse(sessionStorage.getItem('esap_user_data') || '{}');
+    const sessionUser = (window as any).__esap_auth_cache || {};
     setModalOTPConfig({
       isOpen: true,
       accion: 'aprobar_auditor',
@@ -8982,13 +8946,13 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
     if (fueDevuelto) {
       setModalSubsanar({ isOpen: true, texto: '' });
     } else {
-      const sessionUser = JSON.parse(sessionStorage.getItem('esap_user_data') || '{}');
+      const sessionUser = (window as any).__esap_auth_cache || {};
       setModalOTPConfig({
         isOpen: true,
         accion: 'enviar_comite',
         auditorId: null,
         userName: sessionUser.nombre || plan.responsable || 'Responsable del Plan',
-        userEmail: sessionUser.email || '', 
+        userEmail: sessionUser.email || '',
         detalle: 'Envío del Proyecto al Comité de Aprobación',
       });
     }

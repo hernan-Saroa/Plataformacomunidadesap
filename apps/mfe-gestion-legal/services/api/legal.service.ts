@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { getUserContextHeaders } from '../../config/environment';
 import { API_MODE, MICROSERVICE_URLS, getServiceUrl, buildApiUrl } from '../../config/environment';
 import { authService } from './authService';
 
@@ -83,6 +84,10 @@ export interface Audiencia {
 }
 
 export class LegalService {
+    private legalContextConfig() {
+        return { headers: getUserContextHeaders() };
+    }
+
     async getExpedientes(filtros?: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
         return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, filtros);
     }
@@ -264,7 +269,7 @@ export class LegalService {
 
     // ==================== CONSULTAS JURÍDICAS ====================
     async getConsultasJuridicas(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas`);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas`, undefined, this.legalContextConfig());
     }
 
     async getConsultaJuridica(id: string): Promise<any> {
@@ -646,7 +651,20 @@ export class LegalService {
     }
 
     async addNotaTermino(id: string, texto: string): Promise<any> {
-        return apiClient.post(`${SERVICE_PREFIX}/terminos/${id}/notas`, { texto });
+        const currentUser = authService.getCurrentUser() as any;
+        const usuario = (
+            currentUser?.fullName ??
+            currentUser?.full_name ??
+            currentUser?.name ??
+            currentUser?.nombre ??
+            (currentUser?.person?.first_name
+                ? `${currentUser.person.first_name ?? ''} ${currentUser.person.last_name ?? ''}`.trim()
+                : null) ??
+            currentUser?.email ??
+            currentUser?.person?.email ??
+            'Usuario'
+        );
+        return apiClient.post(`${SERVICE_PREFIX}/terminos/${id}/notas`, { texto, usuario });
     }
 
 
@@ -694,7 +712,7 @@ export class LegalService {
 
     // ==================== PEI (PLAN DE ACCIÓN) ====================
     async getPeiDashboard(): Promise<any> {
-        return apiClient.get<any>(`${SERVICE_PREFIX}/pei/dashboard`);
+        return apiClient.get<any>(`${SERVICE_PREFIX}/pei/dashboard`, undefined, this.legalContextConfig());
     }
 
     async createIndicador(data: any): Promise<any> {
@@ -715,7 +733,7 @@ export class LegalService {
 
     // ==================== PEI - ARCHIVADO ====================
     async getPeiArchivados(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/pei/archivados`);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/pei/archivados`, undefined, this.legalContextConfig());
     }
 
     async archivarPeiIndicador(id: string): Promise<any> {
@@ -1073,6 +1091,7 @@ export interface RiesgoAPI {
     controlesExistentes: { id: string; descripcion: string; efectividad: number; }[];
     planTratamiento: { accion: string; responsable: string; fechaLimite: Date; estado: string; avance: number; }[];
     responsable: string;
+    responsableId?: string;
     estado: 'ACTIVO' | 'ARCHIVADO' | 'ELIMINADO' | 'CERRADO';
     createdAt: string;
     updatedAt: string;
@@ -1101,6 +1120,7 @@ export interface CreateRiesgoData {
     consecuencias?: string[];
     controlesExistentes?: { id: string; descripcion: string; efectividad: number }[];
     responsable: string;
+    responsableId?: string;
     cuantiaEstimada?: number;
     // Asociación con Proceso
     moduloOrigen?: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO' | 'ASESORIA_JURIDICA' | 'COACTIVOS' | 'ORGANOS_CONTROL';
@@ -1598,9 +1618,8 @@ export class ProcesosCoactivosService {
             url = `${baseUrl}${SERVICE_PREFIX}/procesos-coactivos/pagos/soporte/${filename}`;
         }
 
-        const token = sessionStorage.getItem('esap_auth_token');
         const response = await fetch(url, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            credentials: 'include',
         });
         if (!response.ok) throw new Error('Error descargando soporte');
 
@@ -1657,6 +1676,18 @@ export class ProcesosCoactivosService {
             console.error(`Error updateConfiguration(${key}):`, error);
             throw error;
         }
+    }
+
+    async notifyExpedienteToRole(id: string, data: {
+        roleCode: string;
+        asunto: string;
+        mensaje: string;
+        enviarEmail?: boolean;
+        enviarSistema?: boolean;
+        radicado?: string;
+        etapa?: string;
+    }): Promise<{ ok: boolean }> {
+        return apiClient.post<{ ok: boolean }>(`${SERVICE_PREFIX}/expedientes/${id}/notify-role`, data);
     }
 }
 

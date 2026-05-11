@@ -348,14 +348,9 @@ class ControlInternoAPIClient {
       'Accept': 'application/json; charset=utf-8',
     };
 
-    // Agregar token si existe
-    const token = sessionStorage.getItem('esap_auth_token');
-    if (token) {
-      defaultHeaders['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: {
         ...defaultHeaders,
         ...options.headers,
@@ -419,16 +414,11 @@ class ControlInternoAPIClient {
   ): Promise<T> {
     const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
     
-    // Agregar token si existe
-    const headers: HeadersInit = {};
-    const token = sessionStorage.getItem('esap_auth_token');
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
     // NO establecer Content-Type para FormData - el navegador lo hará automáticamente con el boundary
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+      xhr.withCredentials = true;
 
       // Manejar progreso
       if (onProgress) {
@@ -444,8 +434,8 @@ class ControlInternoAPIClient {
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
-            const response = xhr.responseText 
-              ? JSON.parse(xhr.responseText) 
+            const response = xhr.responseText
+              ? JSON.parse(xhr.responseText)
               : {};
             resolve(response as T);
           } catch (error) {
@@ -453,8 +443,8 @@ class ControlInternoAPIClient {
           }
         } else {
           try {
-            const error = xhr.responseText 
-              ? JSON.parse(xhr.responseText) 
+            const error = xhr.responseText
+              ? JSON.parse(xhr.responseText)
               : { message: `HTTP ${xhr.status}` };
             reject(new Error(error.message || `HTTP ${xhr.status}`));
           } catch {
@@ -474,12 +464,6 @@ class ControlInternoAPIClient {
 
       // Abrir y enviar
       xhr.open('POST', url);
-      
-      // Establecer headers
-      Object.keys(headers).forEach(key => {
-        xhr.setRequestHeader(key, headers[key]);
-      });
-
       xhr.send(formData);
     });
   }
@@ -1445,16 +1429,14 @@ class ControlInternoService {
    */
   async descargarDocumentoAccion(planId: string, documentoId: string): Promise<Blob> {
     const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/planes-mejoramiento/${planId}/documentos/${documentoId}/descargar`;
-    const token = sessionStorage.getItem('esap_auth_token');
-    
     const response = await fetch(url, {
-      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      credentials: 'include',
     });
-    
+
     if (!response.ok) {
       throw new Error(`Error al descargar documento: ${response.status}`);
     }
-    
+
     return response.blob();
   }
 
@@ -1790,12 +1772,8 @@ class ControlInternoService {
    */
   async downloadEvidencia(id: string): Promise<Blob> {
     const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/evidencias/${id}/download`;
-    const token = sessionStorage.getItem('esap_auth_token');
-    
     const response = await fetch(url, {
-      headers: {
-        'Authorization': token ? `Bearer ${token}` : '',
-      },
+      credentials: 'include',
     });
 
     if (!response.ok) {

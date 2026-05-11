@@ -104,6 +104,13 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
   }, [isOpen, consulta?.uuid, consulta?.respuesta, consulta?.destinatariosAdicionales]);
 
+  // Recargar documentos al cambiar a la pestaña de respuesta (para validación de firmado)
+  useEffect(() => {
+    if (isOpen && consulta?.uuid && tabActivo === 'respuesta') {
+      loadDocumentos();
+    }
+  }, [tabActivo]);
+
   const loadDocumentos = async () => {
     if (!consulta?.uuid) return;
     try {
@@ -206,12 +213,21 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       return;
     }
 
+    // Validar que todos los documentos estén firmados antes de enviar
+    if (documentos.length > 0) {
+      const sinFirmar = documentos.filter(d => !d.firmado);
+      if (sinFirmar.length > 0) {
+        toast.error(`No se puede enviar: hay ${sinFirmar.length} documento(s) sin firmar. Todos los documentos deben estar firmados antes de enviar la respuesta.`);
+        return;
+      }
+    }
+
     const todosDestinatarios = [consulta.emailSolicitante, ...destinatariosAdicionales];
     const listaDestinatarios = todosDestinatarios.join(', ');
 
     const confirmado = await confirm({
       title: 'Plataforma ESAP',
-      description: `¿Aprobar y enviar esta respuesta al solicitante (${listaDestinatarios})?`,
+      description: `¿Aprobar y enviar esta respuesta al solicitante (${listaDestinatarios})?${documentos.length > 0 ? ` Se adjuntarán ${documentos.length} documento(s) firmado(s).` : ''}`,
       variant: 'info',
       confirmText: 'Aprobar y Enviar',
       cancelText: 'Cancelar'
@@ -220,14 +236,49 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     if (!confirmado) return;
 
     try {
-      toast.loading('Aprobando y enviando respuesta...', { id: 'approve-response' });
+      toast.loading('Aprobando y enviando respuesta con documentos...', { id: 'approve-response' });
+
+      // Preparar documentos firmados como adjuntos base64 para el correo
+      const attachments: { name: string; contentBytes: string; contentType: string }[] = [];
+      const docsParaAdjuntar = documentos.filter(d => d.firmado && (d.archivoUrl || d.url));
+      for (const doc of docsParaAdjuntar) {
+        try {
+          const fullUrl = getFullUrl(doc.archivoUrl || doc.url);
+          if (!fullUrl) {
+            console.warn(`⚠️ No se pudo construir URL para doc: ${doc.nombre}`);
+            continue;
+          }
+          console.log(`📎 Descargando adjunto: ${doc.nombre} desde ${fullUrl}`);
+          const response = await fetch(fullUrl);
+          if (!response.ok) {
+            console.error(`❌ Error descargando adjunto ${doc.nombre}: HTTP ${response.status} ${response.statusText}`);
+            continue;
+          }
+          const blob = await response.blob();
+          const buffer = await blob.arrayBuffer();
+          const base64 = btoa(
+            new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+          );
+          attachments.push({
+            name: doc.archivoNombreOriginal || doc.nombre || 'documento.pdf',
+            contentBytes: base64,
+            contentType: doc.mimeType || 'application/pdf',
+          });
+        } catch (err) {
+          console.error(`Error preparando adjunto ${doc.nombre}:`, err);
+        }
+      }
+      if (docsParaAdjuntar.length > 0 && attachments.length < docsParaAdjuntar.length) {
+        toast.warning(`⚠️ ${docsParaAdjuntar.length - attachments.length} documento(s) no se pudieron adjuntar al correo`);
+      }
 
       const asunto = `Respuesta a Consulta Jurídica ${consulta.id} - ${consulta.funcionarioSolicitante}`;
       await correosJuridicosService.sendEmail({
         to: consulta.emailSolicitante,
         cc: destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined,
         subject: asunto,
-        body: consulta.respuesta || respuestaTexto
+        body: consulta.respuesta || respuestaTexto,
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
 
       const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
@@ -239,7 +290,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
       toast.success('✅ Respuesta aprobada y enviada al solicitante', {
         id: 'approve-response',
-        description: `Correo enviado a ${listaDestinatarios}`
+        description: `Correo enviado a ${listaDestinatarios}${attachments.length > 0 ? ` con ${attachments.length} documento(s) adjunto(s)` : ''}`
       });
 
       if (onUpdate) onUpdate();
@@ -667,15 +718,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/consultas-juridicas/${consulta.uuid}/documentos/download-zip`;
 
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(url, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
 
@@ -761,8 +805,15 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
    * Abrir modal para seleccionar si el documento está firmado o no
    */
   const handleIniciarSubida = () => {
-    setFirmadoSelection(null);
-    setShowFirmadoModal(true);
+    if (esAbogadoResuelve && !esJefe) {
+      // Abogado solo puede subir documentos sin firmar — no mostrar selector
+      setFirmadoSelection(false);
+      fileInputRef.current?.click();
+    } else {
+      // Jefe puede elegir firmado o sin firmar
+      setFirmadoSelection(null);
+      setShowFirmadoModal(true);
+    }
   };
 
   /**
@@ -1349,8 +1400,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                             </div>
                           </div>
                           <div className="flex-shrink-0 flex items-center gap-2">
-                            {/* Botón Subir Firmado — solo para docs sin firmar */}
-                            {!doc.firmado && authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
+                            {/* Botón Subir Firmado — solo para jefe (JEFE_GESTION_LEGAL), no abogados */}
+                            {!doc.firmado && esJefe && authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
                               <Button
                                 variant="outline"
                                 size="sm"

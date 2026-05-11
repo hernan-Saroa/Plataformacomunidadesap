@@ -144,16 +144,8 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
       const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/evidencias/expediente/${expedienteId}/download-zip`;
 
-      // Obtener token para autenticación
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(url, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
 
@@ -244,15 +236,8 @@ export function ModalEvidencias({ isOpen, onClose, expediente, modulo }: ModalEv
     toast.loading('⏳ Descargando...', { id: 'download-evidencia' });
     try {
       // Obtener token para autenticación
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(fileUrl, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
       if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);

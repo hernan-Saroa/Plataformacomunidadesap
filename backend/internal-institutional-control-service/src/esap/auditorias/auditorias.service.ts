@@ -209,9 +209,33 @@ export class AuditoriasService {
   }
 
   /**
+   * Obtiene los nombres de personas desde sus UUIDs (auth.personas)
+   */
+  private async getPersonasNames(personaIds: string[]): Promise<Map<string, string>> {
+    const validIds = personaIds.filter(id => id && this.isValidUUID(String(id)));
+    if (validIds.length === 0) return new Map();
+
+    try {
+      const results = await this.auditoriaRepository.query(
+        `SELECT id_person, nom_largo FROM auth.personas WHERE id_person = ANY($1::uuid[])`,
+        [validIds]
+      );
+
+      const namesMap = new Map<string, string>();
+      results.forEach(p => {
+        namesMap.set(String(p.id_person).toLowerCase(), p.nom_largo || 'Usuario Desconocido');
+      });
+      return namesMap;
+    } catch (error) {
+      console.error('[AuditoriasService.getPersonasNames] Error:', error);
+      return new Map();
+    }
+  }
+
+  /**
    * Serializa una auditoría para la respuesta JSON
    */
-  private serializeAuditoria(auditoria: Auditoria): any {
+  private serializeAuditoria(auditoria: Auditoria, namesMap?: Map<string, string>): any {
     const serialized: any = {
       ...auditoria,
       fechaInicio: this.serializeDate(auditoria.fechaInicio),
@@ -258,12 +282,20 @@ export class AuditoriasService {
     }
 
     if (auditoria.equipoAuditores && Array.isArray(auditoria.equipoAuditores)) {
-      serialized.equipoAuditores = auditoria.equipoAuditores.map(eq => ({
-        ...eq,
-        // ✅ FIX: id y personaId son UUIDs en la DB — NO convertir con Number() (daría NaN→null)
-        id: eq.id ? String(eq.id) : null,
-        personaId: eq.personaId ? String(eq.personaId) : null,
-      }));
+      serialized.equipoAuditores = auditoria.equipoAuditores.map(eq => {
+        const personaId = eq.personaId ? String(eq.personaId).toLowerCase() : null;
+        const nombre = personaId ? namesMap?.get(personaId) : null;
+        
+        // Si tenemos el nombre resuelto, lo devolvemos como string para el DTO
+        if (nombre) return nombre;
+
+        return {
+          ...eq,
+          // ✅ FIX: id y personaId son UUIDs en la DB — NO convertir con Number() (daría NaN→null)
+          id: eq.id ? String(eq.id) : null,
+          personaId: eq.personaId ? String(eq.personaId) : null,
+        };
+      });
     }
 
     return serialized;
@@ -320,8 +352,78 @@ export class AuditoriasService {
       .leftJoinAndSelect('auditoria.criterios', 'criterios')
       .leftJoinAndSelect('auditoria.equipoAuditores', 'equipoAuditores')
       .getMany();
-    // Serializar fechas para evitar problemas de zona horaria
-    return auditorias.map(aud => this.serializeAuditoria(aud));
+
+    // ✅ RESOLVER NOMBRES: Recolectar IDs de personas para resolver nombres en lote
+    const personaIds = new Set<string>();
+    auditorias.forEach(aud => {
+      if (aud.auditorLiderId) personaIds.add(String(aud.auditorLiderId));
+      if (aud.auditorAsignadoId) personaIds.add(String(aud.auditorAsignadoId));
+      aud.equipoAuditores?.forEach(eq => {
+        if (eq.personaId) personaIds.add(String(eq.personaId));
+      });
+    });
+
+    const namesMap = await this.getPersonasNames(Array.from(personaIds));
+
+    // ✅ RESOLVER PROCESOS: Buscar datos técnicos de los procesos asociados
+    const procesoIds = Array.from(new Set(auditorias.map(a => a.procesoAuditado).filter(id => id && this.isValidUUID(id))));
+    const procesosMap = new Map<string, any>();
+    
+    if (procesoIds.length > 0) {
+      try {
+        const procesosData = await this.auditoriaRepository.query(
+          `SELECT id, nombre, tipo, evaluacion_riesgo FROM control_interno.proceso_auditable WHERE id = ANY($1::uuid[])`,
+          [procesoIds]
+        );
+        procesosData.forEach(p => procesosMap.set(String(p.id), p));
+      } catch (error) {
+        console.error('[AuditoriasService] Error al obtener procesos asociados:', error);
+      }
+    }
+
+    // Serializar fechas e inyectar nombres y datos de procesos
+    return auditorias.map(aud => {
+      const serialized = this.serializeAuditoria(aud, namesMap);
+      
+      // ✅ Inyectar datos del proceso (Tipo, Horas, Riesgo)
+      const procesoData = procesosMap.get(String(aud.procesoAuditado));
+      if (procesoData) {
+        const ev = procesoData.evaluacion_riesgo || {};
+        serialized.proceso = {
+          id: procesoData.id,
+          nombre: procesoData.nombre,
+          codigo: procesoData.codigo || '',
+          tipo: procesoData.tipo,
+          evaluacionRiesgo: ev,
+          // Mapear campos específicos para el frontend
+          horasEstimadas: ev.horasEstimadas || 40,
+          nivelRiesgo: ev.nivelRiesgo || 'medio',
+          ponderacionFinalDafp: ev.ponderacionFinalDafp || 0
+        };
+        // Asegurar que las horas y el tipo se propaguen al nivel superior si faltan
+        serialized.horasEstimadas = serialized.horasEstimadas || ev.horasEstimadas || 40;
+        serialized.tipo = serialized.tipo || procesoData.tipo || 'CUMPLIMIENTO';
+      } else {
+        // Fallback si no hay proceso asociado
+        serialized.proceso = { nombre: aud.procesoAuditado || 'Proceso no vinculado' };
+      }
+
+      // Inyectar objetos de persona para líder y asignado si están en el map
+      if (aud.auditorLiderId) {
+        const nombre = namesMap.get(String(aud.auditorLiderId).toLowerCase());
+        if (nombre) {
+          serialized.auditorLider = { nombre, cargo: 'Auditor Líder', iniciales: this.getIniciales(nombre) };
+        }
+      }
+      if (aud.auditorAsignadoId) {
+        const nombre = namesMap.get(String(aud.auditorAsignadoId).toLowerCase());
+        if (nombre) {
+          serialized.auditorAsignado = { nombre, cargo: 'Auditor', iniciales: this.getIniciales(nombre) };
+        }
+      }
+      
+      return serialized;
+    });
   }
 
   /**
@@ -399,8 +501,12 @@ export class AuditoriasService {
       }
     }
 
+    // ✅ RESOLVER NOMBRES DEL EQUIPO
+    const teamPersonaIds = auditoria.equipoAuditores?.map(eq => String(eq.personaId)) || [];
+    const teamNamesMap = await this.getPersonasNames(teamPersonaIds);
+
     // Serializar fechas para evitar problemas de zona horaria
-    const serialized = this.serializeAuditoria(auditoria) as any;
+    const serialized = this.serializeAuditoria(auditoria, teamNamesMap) as any;
     
     // Agregar objetos de personas si existen
     if (auditorLider) {
@@ -1219,6 +1325,43 @@ export class AuditoriasService {
     }
 
     const saved = await this.auditoriaRepository.save(auditoria);
+    
+    // ✅ SINCRONIZACIÓN CON CONFIGURACIÓN: Notificar movimiento (EVT-KANBAN-001)
+    try {
+      const configGlobal = await this.notificacionesService.getGlobalConfig();
+      let rolesDestinatarios = ['Auditor Líder', 'Jefe OCIG']; // Fallback
+      if (configGlobal && configGlobal.tiposNotificacion && configGlobal.tiposNotificacion['EVT-KANBAN-001']) {
+        const configEvento = configGlobal.tiposNotificacion['EVT-KANBAN-001'] as any;
+        rolesDestinatarios = configEvento.destinatarios || rolesDestinatarios;
+      }
+
+      const usuariosNotificar = new Set<string>();
+      if (rolesDestinatarios.includes('Jefe OCIG')) {
+        const jefesOCI = await this.obtenerJefesControlInterno();
+        jefesOCI.forEach(id => usuariosNotificar.add(id));
+      }
+      if (rolesDestinatarios.includes('Auditor Líder') && saved.auditorLiderId) {
+        usuariosNotificar.add(String(saved.auditorLiderId));
+      }
+
+      for (const usuarioId of usuariosNotificar) {
+        await this.notificacionesService.create({
+          usuarioId,
+          tipoNotificacion: TipoNotificacion.OTRO, 
+          titulo: `Auditoria movida: ${saved.codigo}`,
+          mensaje: `La auditoria "${saved.nombre}" ha sido movida a la etapa: ${nuevoEstadoKanban}.`,
+          prioridad: PrioridadNotificacion.NORMAL,
+          canal: CanalNotificacion.AMBOS,
+          metadata: {
+            auditoriaId: saved.id,
+            nuevoEstado: nuevoEstadoKanban,
+          },
+          accionUrl: `/control-interno/auditorias/${saved.id}`,
+        });
+      }
+    } catch (e) {
+      console.error('Error al enviar notificaciones de movimiento Kanban:', e);
+    }
     
     // ✅ Registrar en el historial
     const ahora = new Date();
@@ -3060,43 +3203,55 @@ export class AuditoriasService {
    * Los duplicados se eliminan automáticamente usando Set.
    */
   private async crearNotificacionesAuditoriaCreada(auditoria: Auditoria): Promise<void> {
-    console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Iniciando creación de notificaciones para auditoría ${auditoria.codigo}`);
+    console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] 🚀 Iniciando notificaciones para auditoría: ${auditoria.codigo} (${auditoria.id})`);
     
-    const usuariosNotificar: string[] = [];
+    const usuariosNotificar = new Set<string>();
 
-    // 1. Notificar al auditor líder si está asignado
+    // 1. Notificar al auditor líder
     if (auditoria.auditorLiderId) {
-      usuariosNotificar.push(String(auditoria.auditorLiderId));
-      console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Auditor líder agregado: ${auditoria.auditorLiderId}`);
+      usuariosNotificar.add(String(auditoria.auditorLiderId));
+      console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] 👤 Auditor líder incluido: ${auditoria.auditorLiderId}`);
     }
 
-    // 2. Notificar al auditor asignado si está asignado
+    // 2. Notificar al auditor asignado
     if (auditoria.auditorAsignadoId) {
-      usuariosNotificar.push(String(auditoria.auditorAsignadoId));
-      console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Auditor asignado agregado: ${auditoria.auditorAsignadoId}`);
+      usuariosNotificar.add(String(auditoria.auditorAsignadoId));
+      console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] 👤 Auditor asignado incluido: ${auditoria.auditorAsignadoId}`);
     }
 
-    // 3. Notificar al supervisor si está asignado
-    if (auditoria.supervisorAsignadoId) {
-      usuariosNotificar.push(String(auditoria.supervisorAsignadoId));
-      console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Supervisor agregado: ${auditoria.supervisorAsignadoId}`);
-    }
-
-    // 4. Obtener Jefes de Control Interno (todos los usuarios con rol JEFE_CONTROL_INTERNO activo)
+    // 3. Notificar al supervisor
+    // ✅ SINCRONIZACIÓN CON CONFIGURACIÓN: Obtener roles destinatarios desde la configuración global
+    let rolesDestinatarios = ['Jefe OCIG', 'Auditor Líder', 'Auditor Equipo']; // Fallback por defecto
     try {
-      const jefesOCI = await this.obtenerJefesControlInterno();
-      usuariosNotificar.push(...jefesOCI);
-      console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] ${jefesOCI.length} Jefe(s) de Control Interno encontrado(s)`);
-    } catch (error) {
-      console.error(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Error al obtener Jefes de Control Interno:`, error);
+      const configGlobal = await this.notificacionesService.getGlobalConfig();
+      if (configGlobal && configGlobal.tiposNotificacion && configGlobal.tiposNotificacion['EVT-AUD-001']) {
+        const configEvento = configGlobal.tiposNotificacion['EVT-AUD-001'] as any;
+        rolesDestinatarios = configEvento.destinatarios || rolesDestinatarios;
+      }
+    } catch (e) {}
+
+    // Limpiar usuarios previos para aplicar la lógica de roles de la configuración
+    usuariosNotificar.clear();
+
+    // 1. Si los roles incluyen "Auditor Líder"
+    if (rolesDestinatarios.includes('Auditor Líder') && auditoria.auditorLiderId) {
+      usuariosNotificar.add(String(auditoria.auditorLiderId));
     }
 
-    // Eliminar duplicados (por si un usuario tiene múltiples roles o está en múltiples listas)
-    const usuariosUnicos = [...new Set(usuariosNotificar)];
-    console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Total de usuarios únicos a notificar: ${usuariosUnicos.length}`);
+    // 2. Si los roles incluyen "Auditor Equipo"
+    if (rolesDestinatarios.includes('Auditor Equipo') && auditoria.auditorAsignadoId) {
+      usuariosNotificar.add(String(auditoria.auditorAsignadoId));
+    }
 
-    // Crear notificaciones para cada usuario
-    for (const usuarioId of usuariosUnicos) {
+    // 3. Si los roles incluyen "Jefe OCIG"
+    if (rolesDestinatarios.includes('Jefe OCIG')) {
+      const jefesOCI = await this.obtenerJefesControlInterno();
+      jefesOCI.forEach(id => usuariosNotificar.add(id));
+    }
+
+    console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] 📤 Enviando ${usuariosNotificar.size} notificaciones...`);
+
+    for (const usuarioId of usuariosNotificar) {
       try {
         await this.notificacionesService.create({
           usuarioId,
@@ -3104,22 +3259,20 @@ export class AuditoriasService {
           titulo: `Nueva Auditoría Creada: ${auditoria.codigo}`,
           mensaje: `Se ha creado la auditoría "${auditoria.nombre}" (${auditoria.codigo}). Tipo: ${auditoria.tipo}, Territorial: ${auditoria.territorial}, Sede: ${auditoria.sede}.`,
           prioridad: PrioridadNotificacion.ALTA,
-          canal: CanalNotificacion.SISTEMA,
+          canal: CanalNotificacion.AMBOS,
           metadata: {
             auditoriaId: auditoria.id,
             codigoAuditoria: auditoria.codigo,
             nombreAuditoria: auditoria.nombre,
-            tipoAuditoria: auditoria.tipo,
+            generadoPor: 'AuditoriasService.create'
           },
           accionUrl: `/control-interno/auditorias/${auditoria.id}`,
         });
-        console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Notificación creada para usuario: ${usuarioId}`);
+        console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] ✅ Notificación enviada a: ${usuarioId}`);
       } catch (error) {
-        console.error(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Error al crear notificación para usuario ${usuarioId}:`, error);
+        console.error(`[AuditoriasService.crearNotificacionesAuditoriaCreada] ❌ Error al notificar a usuario ${usuarioId}:`, error.message);
       }
     }
-
-    console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] Proceso de notificaciones completado para auditoría ${auditoria.codigo}`);
   }
 
   /**
@@ -3153,7 +3306,7 @@ export class AuditoriasService {
           titulo: `Cambio de Estado - Auditoría ${auditoria.codigo}`,
           mensaje: `El estado de la auditoría "${auditoria.nombre}" ha cambiado de "${estadoAnterior}" a "${estadoNuevo}".`,
           prioridad: PrioridadNotificacion.NORMAL,
-          canal: CanalNotificacion.SISTEMA,
+          canal: CanalNotificacion.AMBOS,
           metadata: {
             auditoriaId: auditoria.id,
             codigoAuditoria: auditoria.codigo,
@@ -3190,7 +3343,7 @@ export class AuditoriasService {
           titulo: `Auditoría Editada: ${auditoria.codigo}`,
           mensaje: `La auditoría "${auditoria.nombre}" ha sido editada. Cambios: ${cambios.join(', ')}.`,
           prioridad: PrioridadNotificacion.NORMAL,
-          canal: CanalNotificacion.SISTEMA,
+          canal: CanalNotificacion.AMBOS,
           metadata: {
             auditoriaId: auditoria.id,
             codigoAuditoria: auditoria.codigo,
@@ -3204,24 +3357,33 @@ export class AuditoriasService {
     }
   }
 
-  /**
-   * Obtiene los IDs de usuarios con rol JEFE_CONTROL_INTERNO
-   */
   private async obtenerJefesControlInterno(): Promise<string[]> {
     try {
       const result = await this.dataSource.query(`
-        SELECT DISTINCT u.id_tercero
+        SELECT DISTINCT u.id_user as id
         FROM auth."user" u
         INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
         INNER JOIN auth.role r ON r.id = ur.id_rol
-        WHERE r.code = 'JEFE_CONTROL_INTERNO'
-          AND ur.is_active = true
-          AND u.is_active = true
+        WHERE (
+          UPPER(r.code) IN ('JEFE_CONTROL_INTERNO', 'JEFE_OCIG', 'JEFE_OCI', 'ADMIN', 'SUPER_ADMIN')
+          OR r.name ILIKE '%Jefe%Control%Interno%'
+          OR r.name ILIKE '%Jefe%OCI%'
+          OR r.name ILIKE '%Administrador%'
+        )
+        AND u.is_active = true
       `);
 
-      return result.map((row: any) => String(row.id_tercero));
+      const uuids = result.map((row: any) => String(row.id)).filter(Boolean);
+      console.log(`[AuditoriasService.obtenerJefesControlInterno] 🔍 Búsqueda finalizada. Encontrados: ${uuids.length} usuarios con roles de gestión/OCI`);
+      
+      // Si aún no hay nadie, loguear advertencia crítica
+      if (uuids.length === 0) {
+        console.warn('[AuditoriasService.obtenerJefesControlInterno] ⚠️ CRÍTICO: No se encontró ningún usuario con roles de Jefe OCI o Admin en la base de datos.');
+      }
+
+      return uuids;
     } catch (error) {
-      console.error('[AuditoriasService.obtenerJefesControlInterno] Error:', error);
+      console.error('[AuditoriasService.obtenerJefesControlInterno] ❌ Error en query SQL:', error);
       return [];
     }
   }

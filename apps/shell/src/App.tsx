@@ -24,6 +24,7 @@ import { config } from './config/environment';
 import { NotificacionesProvider } from './contexts/NotificacionesContext';
 import { EditorPlantillasPage } from './pages/EditorPlantillasPage';
 import { ExpedienteCompartidoPage } from './pages/ExpedienteCompartidoPage';
+import { getAppOnlineStatus } from './utils/connectivity';
 
 
 // Importar componentes de servicios públicos
@@ -190,13 +191,23 @@ interface UserData {
 }
 
 const extractPermissionCodes = (user: any): string[] => {
-  if (!user?.roles || !Array.isArray(user.roles)) return [];
-  const codes = user.roles.flatMap((role: any) =>
-    Array.isArray(role?.permissions)
-      ? role.permissions.map((perm: any) => perm?.code).filter(Boolean)
-      : []
-  );
-  return Array.from(new Set(codes));
+  const directCodes = Array.isArray(user?.permissions)
+    ? user.permissions
+        .map((permission: any) => (typeof permission === 'string' ? permission : permission?.code))
+        .filter(Boolean)
+    : [];
+
+  const roleCodes = Array.isArray(user?.roles)
+    ? user.roles.flatMap((role: any) =>
+        Array.isArray(role?.permissions)
+          ? role.permissions
+              .map((perm: any) => (typeof perm === 'string' ? perm : perm?.code))
+              .filter(Boolean)
+          : []
+      )
+    : [];
+
+  return Array.from(new Set([...directCodes, ...roleCodes]));
 };
 
 // Configuración de timeout (15 minutos en milisegundos)
@@ -212,16 +223,18 @@ const USER_DATA_STORAGE_KEY = config.STORAGE_KEYS.USER_DATA;
 const ACTIVE_SESSION_STORAGE_KEY = 'esap-sesion-activa';
 const SENSITIVE_SESSION_STORAGE_KEYS = [
   USER_DATA_STORAGE_KEY,
+];
+const CLEAR_SESSION_STATE_STORAGE_KEYS = [
+  USER_DATA_STORAGE_KEY,
   ACTIVE_SESSION_STORAGE_KEY,
 ];
 
 function migrateAuthTokensToSessionStorage() {
+  // OTIC-001: los tokens ya no se almacenan en sessionStorage ni localStorage.
+  // Solo limpiamos residuos de versiones anteriores.
   for (const key of AUTH_TOKEN_STORAGE_KEYS) {
-    const token = localStorage.getItem(key);
-    if (token && !sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, token);
-    }
     localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
   }
 
   const rememberedSession = localStorage.getItem('esap-remember-session');
@@ -241,31 +254,22 @@ function migrateAuthTokensToSessionStorage() {
 }
 
 function migrateSensitiveSessionDataToSessionStorage() {
-  for (const key of SENSITIVE_SESSION_STORAGE_KEYS) {
-    const value = localStorage.getItem(key);
-    if (value && !sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, value);
-    }
-    localStorage.removeItem(key);
-  }
-}
-
-function clearSensitiveSessionState() {
+  // OTIC-002: datos sensibles del usuario ya no se almacenan en sessionStorage/localStorage.
+  // Solo limpiamos residuos de versiones anteriores.
   for (const key of SENSITIVE_SESSION_STORAGE_KEYS) {
     sessionStorage.removeItem(key);
     localStorage.removeItem(key);
   }
 }
 
-function sanitizeUserForStorage(user: User) {
-  const sanitizedUser = { ...(user as Record<string, any>) };
-  delete sanitizedUser.accessToken;
-  delete sanitizedUser.refreshToken;
-  delete sanitizedUser.token;
-  delete sanitizedUser.idToken;
-  delete sanitizedUser.rememberMe;
-  return sanitizedUser;
+function clearSensitiveSessionState() {
+  for (const key of CLEAR_SESSION_STATE_STORAGE_KEYS) {
+    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
+  }
 }
+
+
 const TIEMPO_ALERTA = 1 * 60 * 1000; // 1 minuto antes de cerrar sesión
 
 function DemoNoDisponible({ title }: { title: string }) {
@@ -301,7 +305,7 @@ export default function App() {
     );
   }
 
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [isOnline, setIsOnline] = useState(getAppOnlineStatus);
   const [currentView, setCurrentView] = useState<AppView>('landing');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userData, setUserData] = useState<any>({ name: '', email: '', personId: '', modules: [], roles: [], permissions: [] });
@@ -321,6 +325,8 @@ export default function App() {
   );
   const [usuarioActual, setUsuarioActual] = useState<Usuario | null>(null);
   const [mostrarAlertaInactividad, setMostrarAlertaInactividad] = useState(false);
+  // OTIC-002: true mientras se verifica la cookie con el backend al recargar
+  const [isRestoringSession, setIsRestoringSession] = useState(true);
 
   const timerInactividadRef = useRef<NodeJS.Timeout | null>(null);
   const timerAlertaRef = useRef<NodeJS.Timeout | null>(null);
@@ -331,15 +337,19 @@ export default function App() {
 
   // Detector de conexión a internet
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const refreshOnlineStatus = () => setIsOnline(getAppOnlineStatus());
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    refreshOnlineStatus();
+    window.addEventListener('online', refreshOnlineStatus);
+    window.addEventListener('offline', refreshOnlineStatus);
+    window.addEventListener('focus', refreshOnlineStatus);
+    document.addEventListener('visibilitychange', refreshOnlineStatus);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', refreshOnlineStatus);
+      window.removeEventListener('offline', refreshOnlineStatus);
+      window.removeEventListener('focus', refreshOnlineStatus);
+      document.removeEventListener('visibilitychange', refreshOnlineStatus);
     };
   }, []);
 
@@ -347,10 +357,12 @@ export default function App() {
   useEffect(() => {
     // No restaurar sesión para rutas públicas de expediente compartido
     if (window.location.pathname.startsWith('/expediente-compartido/')) {
+      setIsRestoringSession(false);
       return;
     }
     // Priorizar procesamiento de callback OAuth de Microsoft antes de restaurar sesión local
     if (hasMicrosoftOAuthCallback) {
+      setIsRestoringSession(false);
       return;
     }
 
@@ -358,7 +370,7 @@ export default function App() {
       const userEmail = user?.person?.email || user?.email || '';
       const userName = user?.person?.first_name
         ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
-        : user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
+        : user?.fullName || user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
 
       const roles = Array.isArray(user?.roles)
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
@@ -432,14 +444,14 @@ export default function App() {
       setUserData({
         name: userName,
         email: userEmail,
-        personId: user?.person?.id || user?.id,
+        personId: user?.person?.id || user?.id || user?.userId,
         modules: user?.modules || [],
         roles,
         permissions,
         module
       });
       setUsuarioActual({
-        id: user?.id || user?.person?.id || 'unknown',
+        id: user?.id || user?.person?.id || user?.userId || 'unknown',
         nombre: userName,
         email: userEmail,
         tipo: nextView === 'backoffice' ? 'interno' : 'externo'
@@ -449,67 +461,63 @@ export default function App() {
     migrateAuthTokensToSessionStorage();
     migrateSensitiveSessionDataToSessionStorage();
 
-    const authToken =
-      sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
-      sessionStorage.getItem('esap_access_token');
-    if (authToken && !sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN)) {
-      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, authToken);
-    }
-    const storedAuthUser = sessionStorage.getItem(USER_DATA_STORAGE_KEY);
-    let sesionGuardada = sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
-    if (authToken && storedAuthUser) {
-      try {
-        applySessionFromUser(JSON.parse(storedAuthUser));
-        return;
-      } catch (error) {
-        console.error('Error al restaurar sesión de auth:', error);
-        clearSensitiveSessionState();
-        sesionGuardada = null;
-      }
-    } else {
-      if (sesionGuardada) {
-        toast.error('Sesión ha expirado', {
-          description: 'Por seguridad la sesión se ha cerrado',
-          duration: 5000,
-        });
-        clearSensitiveSessionState();
-        sesionGuardada = null;
-      }
+    // Limpiar cualquier token residual de versiones anteriores (OTIC-001)
+    AUTH_TOKEN_STORAGE_KEYS.forEach((key) => {
+      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
+    });
+
+    // OTIC-002: los datos de usuario ya no se guardan en sessionStorage.
+    // Usamos ACTIVE_SESSION_STORAGE_KEY solo como señal de que hubo sesión,
+    // y verificamos con el backend para restaurar los datos de usuario.
+    const sesionGuardada = sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+
+    // Si esta pestana no tiene senal de sesion, no consultar /verify.
+    // Evita un 401 esperado antes del login sin exponer ni guardar tokens en JS.
+    if (!sesionGuardada) {
+      setIsRestoringSession(false);
+      return;
     }
 
-    if (sesionGuardada) {
+    (async () => {
       try {
-        const sesionParsed = JSON.parse(sesionGuardada);
-        if (sesionParsed?.usuario && sesionParsed?.vista && sesionParsed?.timestamp) {
-          const sesion: SesionGuardada = sesionParsed;
-
-          const tiempoTranscurrido = Date.now() - sesion.timestamp;
-
-          if (tiempoTranscurrido < TIMEOUT_INACTIVIDAD) {
-            setUsuarioActual(sesion.usuario);
-            setVistaActual(sesion.vista);
-            console.log('✅ Sesión restaurada:', sesion.usuario.nombre);
-
-            toast.success('Sesión restaurada', {
-              description: `Bienvenido de nuevo, ${sesion.usuario.nombre}`,
-            });
-          } else {
-            // Sesión expirada
+        // Si hay señal de sesión y el timeout de inactividad ya pasó, cerrar sin llamar al backend
+        if (sesionGuardada) {
+          const sesionParsed = JSON.parse(sesionGuardada);
+          const tiempoTranscurrido = Date.now() - (sesionParsed.timestamp || 0);
+          if (tiempoTranscurrido >= TIMEOUT_INACTIVIDAD) {
             clearSensitiveSessionState();
             console.log('⏰ Sesión expirada');
+            setIsRestoringSession(false);
+            return;
           }
-        } else if (sesionParsed?.email || sesionParsed?.person?.email) {
-          applySessionFromUser(sesionParsed);
         }
-      } catch (error) {
-        console.error('Error al restaurar sesión:', error);
+        // Verificar con el backend solo si hubo sesion previa en esta pestana.
+        const user = await authService.verifyToken();
+        authService.setCurrentUserCache(user as any);
+        applySessionFromUser(user);
+        console.log('✅ Sesión restaurada desde backend');
+      } catch {
+        // Cookie inexistente, expirada o inválida
+        if (sesionGuardada) {
+          toast.error('Sesión ha expirado', {
+            description: 'Por seguridad la sesión se ha cerrado',
+            duration: 5000,
+          });
+        }
         clearSensitiveSessionState();
+      } finally {
+        setIsRestoringSession(false);
       }
-    }
+    })();
   }, []);
 
   // Guardar sesión cuando cambie el usuario o vista
   useEffect(() => {
+    if (isRestoringSession) {
+      return;
+    }
+
     if (usuarioActual && (vistaActual === 'portal' || vistaActual === 'backoffice')) {
       const sesion: SesionGuardada = {
         vista: vistaActual,
@@ -521,7 +529,7 @@ export default function App() {
       sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     }
-  }, [usuarioActual, vistaActual]);
+  }, [usuarioActual, vistaActual, isRestoringSession]);
 
   // Deep links de certificados públicos (laborales y graduados)
   useEffect(() => {
@@ -643,26 +651,29 @@ export default function App() {
   };
 
   // Handler para login con integración del backend
-  const handleLogin = (user: User, accessToken: string, rememberMe?: boolean) => {
+  const handleLogin = (user: User, _accessToken: string, rememberMe?: boolean) => {
     try {
+      authService.setCurrentUserCache(user as any);
+
       // console.log('🔐 Login handler called with user:', user);
       // console.log('🔐 Login handler called with roles:', user.roles);
       // console.log('🔐 Login handler called with accessToken:', accessToken);
       // console.log('🔐 Login handler called with rememberMe:', rememberMe);
-      // Guardar token JWT
-      sessionStorage.setItem('esap_auth_token', accessToken);
-      sessionStorage.setItem('esap_access_token', accessToken);
+      // Token JWT gestionado por cookie HttpOnly del backend (OTIC-001).
+      // El frontend NO almacena el token en ningún storage accesible por JS.
 
       // Extraer información del usuario
       const userEmail = user?.person?.email || user?.email || '';
       const userName = user?.person?.first_name
         ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
-        : user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
+        : user?.fullName || user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
 
       console.log('👤 User info extracted:', { userEmail, userName });
 
       // Determinar tipo de usuario basado en roles del backend
-      const roles = user?.roles?.map((role: any) => role.code) || [];
+      const roles = Array.isArray(user?.roles)
+        ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
+        : [];
       const permissions = extractPermissionCodes(user);
       const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
       const hasConfigRole = !(roles.includes('ESTUDIANTE') || roles.includes('DOCENTE') || roles.includes('GRADUADO') || roles.includes('ASPIRANTE'))
@@ -679,13 +690,13 @@ export default function App() {
         setUserData({
           name: userName,
           email: userEmail,
-          personId: user?.person?.id || user?.id,
+          personId: user?.person?.id || user?.id || user?.userId,
           modules: user?.modules || [],
           roles,
           permissions
         });
         setUsuarioActual({
-          id: user?.id || user?.person?.id || 'unknown',
+          id: user?.id || user?.person?.id || user?.userId || 'unknown',
           nombre: userName,
           email: userEmail,
           tipo: 'interno'
@@ -722,7 +733,7 @@ export default function App() {
           const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
             : hasGestionLegal ? 'gestion-legal'
               : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
-                : user.modules.length > 0 ? user.modules[0]
+                : Array.isArray(user?.modules) && user.modules.length > 0 ? user.modules[0]
                   : 'control-interno';
         const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
           : roles.includes('JEFE_GESTION_LEGAL') ? 'Jefe Gestión Legal'
@@ -741,20 +752,13 @@ export default function App() {
           const userDataToSave = {
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id,
+            personId: user?.person?.id || user?.id || user?.userId,
             modules: user?.modules || [],
             roles,
             permissions,
             module: module // Módulo específico de acceso
           };
           setUserData(userDataToSave);
-          // También guardar en esap_user_data para que otros componentes puedan acceder
-          sessionStorage.setItem(USER_DATA_STORAGE_KEY, JSON.stringify({
-            ...sanitizeUserForStorage(user),
-            roles: user?.roles || roles.map((code: string) => ({ code, name: code })),
-            permissions
-          }));
-          localStorage.removeItem(USER_DATA_STORAGE_KEY);
           portalRoles.push(rolStr);
         } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           userType = 'docente';
@@ -764,7 +768,7 @@ export default function App() {
           const userDataWithDetails = {
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id,
+            personId: user?.person?.id || user?.id || user?.userId,
             modules: user?.modules || [],
             datos_por_rol: {
               Docente: {
@@ -788,7 +792,7 @@ export default function App() {
           setUserData({
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id,
+            personId: user?.person?.id || user?.id || user?.userId,
             modules: user?.modules || [],
             roles,
             permissions
@@ -799,7 +803,7 @@ export default function App() {
           setUserData({
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id,
+            personId: user?.person?.id || user?.id || user?.userId,
             modules: user?.modules || [],
             roles,
             permissions
@@ -813,7 +817,7 @@ export default function App() {
         setVistaActual(vistaActualCurrent);
         sessionVista = vistaActualCurrent;
         setUsuarioActual({
-          id: user?.id || user?.person?.id || 'unknown',
+          id: user?.id || user?.person?.id || user?.userId || 'unknown',
           nombre: userName,
           email: userEmail,
           tipo: currentView === 'backoffice' ? 'interno' : 'externo'
@@ -849,6 +853,9 @@ export default function App() {
 
   // Handler para logout (desde cualquier ambiente)
   const handleLogout = (viewToast = true) => {
+    // Limpiar la cookie HttpOnly en el backend (OTIC-001)
+    authService.logout().catch(() => {/* el servidor puede estar caído; la cookie expira sola */});
+    delete (window as any).__esap_auth_cache;
     localStorage.clear();
     AUTH_TOKEN_STORAGE_KEYS.forEach((key) => sessionStorage.removeItem(key));
     clearSensitiveSessionState();
@@ -1104,6 +1111,11 @@ export default function App() {
 
         return (
           <BackofficeApp
+            key={[
+              userData?.personId || usuarioActual?.id || 'anon',
+              ...(userData?.roles || []),
+              ...(userData?.permissions || []),
+            ].join(':')}
             // usuario={usuarioActual!}
             onLogout={handleLogout}
             onBackToSystemSelector={handleBackToSystemSelector}
@@ -1231,7 +1243,14 @@ export default function App() {
             path="/expediente-compartido/:token"
             element={<ExpedienteCompartidoPage />}
           />
-          <Route path="*" element={renderVista()} />
+          <Route path="*" element={isRestoringSession ? (
+            <div className="min-h-screen flex items-center justify-center bg-white">
+              <div className="text-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent mx-auto mb-3" />
+                <p className="text-sm text-slate-500">Verificando sesión...</p>
+              </div>
+            </div>
+          ) : renderVista()} />
         </Routes>
 
         {/* Modal de Alerta de Inactividad */}

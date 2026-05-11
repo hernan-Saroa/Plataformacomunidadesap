@@ -10,31 +10,31 @@ export class Notification {
   @PrimaryGeneratedColumn('uuid', { name: 'id_notificacion' })
   id_notificacion: string;
 
-  @Column({ name: 'id_usuario_destinatario' })
+  @Column({ name: 'id_usuario_destinatario', type: 'uuid' })
   id_usuario_destinatario: string;
 
-  @Column({ name: 'tipo_notificacion' })
+  @Column({ name: 'tipo_notificacion', length: 100 })
   tipo_notificacion: string;
 
-  @Column()
+  @Column({ length: 255 })
   titulo: string;
 
   @Column({ type: 'text' })
   mensaje: string;
 
-  @Column({ name: 'descripcion_corta', nullable: true })
+  @Column({ name: 'descripcion_corta', length: 255, nullable: true })
   descripcion_corta: string;
 
-  @Column({ nullable: true })
+  @Column({ length: 100, nullable: true })
   icono: string;
 
-  @Column({ nullable: true })
+  @Column({ length: 50, nullable: true })
   color: string;
 
-  @Column({ default: 'Media' })
+  @Column({ length: 20, default: 'Media' })
   prioridad: string;
 
-  @Column({ nullable: true })
+  @Column({ length: 100, nullable: true })
   categoria: string;
 
   @Column({ default: false })
@@ -55,10 +55,10 @@ export class Notification {
   @Column({ name: 'tiene_accion', default: false })
   tiene_accion: boolean;
 
-  @Column({ name: 'texto_boton_accion', nullable: true })
+  @Column({ name: 'texto_boton_accion', length: 100, nullable: true })
   texto_boton_accion: string;
 
-  @Column({ name: 'url_accion', nullable: true })
+  @Column({ name: 'url_accion', length: 500, nullable: true })
   url_accion: string;
 
   @Column({ name: 'datos_adicionales', type: 'jsonb', nullable: true })

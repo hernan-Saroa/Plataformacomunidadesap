@@ -6,6 +6,7 @@
 
 import { apiClient } from './apiClient';
 import { API_ENDPOINTS, config } from '../../config/environment';
+import { clearAuthTokens, setAuthTokens } from './authTokenStore';
 import type { 
   LoginCredentials, 
   LoginResponse, 
@@ -14,6 +15,10 @@ import type {
 } from '../../types';
 
 class AuthService {
+  // In-memory user cache — never written to sessionStorage/localStorage (OTIC-002)
+  private _cachedUser: AuthUser | null = null;
+  private _cacheRevision = 0;
+
   /**
    * Login con Microsoft (OAuth)
    */
@@ -48,7 +53,7 @@ class AuthService {
     const response = await apiClient.post<LoginResponse>(
       API_ENDPOINTS.AUTH.LOGIN,
       loginData,
-      { skipAuth: true }
+      { skipAuth: true, skipErrorToast: true, skipErrorLog: true, retries: 0 }
     );
 
     // Guardar tokens
@@ -64,40 +69,43 @@ class AuthService {
    * Logout de usuario
    */
   async logout(): Promise<void> {
+    const logoutRevision = this._cacheRevision;
     try {
-      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT);
+      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT, {}, {
+        skipAuth: true,
+        skipAuthRefresh: true,
+        skipErrorToast: true,
+        skipErrorLog: true,
+        retries: 0,
+      });
     } finally {
-      this.clearAuthData();
+      if (this._cacheRevision === logoutRevision) {
+        this.clearAuthData();
+      }
     }
   }
 
   /**
-   * Refresh del access token
+   * Refresh del access token — el token viaja en cookie HttpOnly (OTIC-001),
+   * el backend lo lee directamente y emite una nueva cookie.
    */
   async refreshToken(): Promise<RefreshTokenResponse> {
-    const refreshToken = this.getRefreshToken();
-    
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
-
-    const response = await apiClient.post<RefreshTokenResponse>(
+    return apiClient.post<RefreshTokenResponse>(
       API_ENDPOINTS.AUTH.REFRESH,
-      { refreshToken },
+      {},
       { skipAuth: true }
     );
-
-    // Actualizar access token
-    this.saveAccessToken(response.accessToken);
-
-    return response;
   }
 
   /**
    * Verificar token actual
    */
   async verifyToken(): Promise<AuthUser> {
-    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY);
+    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY, undefined, {
+      retries: 0,
+      skipAuthRefresh: true,
+      skipErrorToast: true,
+    });
   }
 
   /**
@@ -151,18 +159,45 @@ class AuthService {
   // ==========================================================================
 
   /**
-   * Verifica si el usuario está autenticado
+   * Permite que App.tsx restaure el caché tras verifyToken() en recarga de página (OTIC-002)
+   * También escribe en window para que instancias de authService en MFEs remotos puedan leerlo.
    */
-  isAuthenticated(): boolean {
-    return !!this.getAccessToken();
+  setCurrentUserCache(user: AuthUser): void {
+    this._cacheRevision += 1;
+    this._cachedUser = user;
+    // Compartir con otros MFEs en la misma ventana (no es almacenamiento persistente — OTIC-002)
+    (window as any).__esap_auth_cache = user;
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user } }));
   }
 
   /**
-   * Obtiene el usuario actual del localStorage
+   * Verifica si el usuario está autenticado
+   */
+  isAuthenticated(): boolean {
+    return this.getCurrentUser() !== null;
+  }
+
+  /**
+   * Obtiene el usuario actual de la sesión.
+   * Si la caché global cambió por logout/login en la misma pestaña, actualiza
+   * también esta instancia para no conservar roles/permisos anteriores.
    */
   getCurrentUser(): AuthUser | null {
-    const userData = sessionStorage.getItem(config.STORAGE_KEYS.USER_DATA);
-    return userData ? JSON.parse(userData) : null;
+    if (typeof window === 'undefined') {
+      return this._cachedUser;
+    }
+
+    const sharedUser = (window as any).__esap_auth_cache ?? null;
+    if (!sharedUser) {
+      this._cachedUser = null;
+      return null;
+    }
+
+    if (this._cachedUser !== sharedUser) {
+      this._cachedUser = sharedUser;
+    }
+
+    return this._cachedUser;
   }
 
   /**
@@ -240,38 +275,25 @@ class AuthService {
   // MÉTODOS PRIVADOS
   // ==========================================================================
 
-  private saveTokens(accessToken: string, refreshToken: string): void {
-    sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
-    // Compatibilidad con cliente legacy que usa otra clave.
-    sessionStorage.setItem('esap_access_token', accessToken);
-    sessionStorage.setItem(config.STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+  private saveTokens(accessToken?: string, refreshToken?: string): void {
+    setAuthTokens(accessToken, refreshToken);
   }
 
-  private saveAccessToken(accessToken: string): void {
-    sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
-    sessionStorage.setItem('esap_access_token', accessToken);
-  }
-
-  private saveUserData(user: AuthUser): void {
-    sessionStorage.setItem(config.STORAGE_KEYS.USER_DATA, JSON.stringify(user));
-  }
-
-  private getAccessToken(): string | null {
-    return (
-      sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
-      sessionStorage.getItem('esap_access_token')
-    );
-  }
-
-  private getRefreshToken(): string | null {
-    return sessionStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private saveUserData(user: any): void {
+    // Datos del usuario en memoria únicamente — nunca en sessionStorage/localStorage (OTIC-002)
+    this.setCurrentUserCache(user as AuthUser);
   }
 
   private clearAuthData(): void {
-    sessionStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    sessionStorage.removeItem('esap_access_token');
-    sessionStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+    this._cacheRevision += 1;
+    this._cachedUser = null;
+    delete (window as any).__esap_auth_cache;
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user: null } }));
+    clearAuthTokens();
+    // Limpiar residuos de versiones anteriores que pudieran quedar en storage
     sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
+    localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     apiClient.clearCache();
   }
 
@@ -283,7 +305,7 @@ class AuthService {
    * Obtiene lista de profesionales/usuarios para asignación
    */
   async getProfesionales(): Promise<ProfesionalUser[]> {
-    return apiClient.get<ProfesionalUser[]>(`${API_ENDPOINTS.AUTH.BASE}/users`);
+    return apiClient.get<ProfesionalUser[]>('/auth/api/v1/users');
   }
 
   async getAbogadosRolResuelve(): Promise<AbogadoResuelve[]> {
