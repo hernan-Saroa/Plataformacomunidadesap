@@ -366,17 +366,14 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   return (
     <div
       data-login-page-root
-      className="min-h-screen flex flex-col lg:flex-row"
+      className="esap-login-root fixed inset-0 grid h-screen w-screen max-w-none overflow-hidden bg-white"
       style={{
-        width: '100vw',
-        minWidth: '100vw',
-        height: '100vh',
-        minHeight: '100vh',
+        width: '100dvw',
+        minWidth: '100dvw',
+        height: '100dvh',
+        minHeight: '100dvh',
         margin: 0,
         maxWidth: 'none',
-        position: 'fixed',
-        inset: 0,
-        overflow: 'hidden',
         zIndex: 0,
       }}
     >
@@ -384,43 +381,56 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         html:has([data-login-page-root]),
         body:has([data-login-page-root]),
         #root:has([data-login-page-root]) {
-          width: 100% !important;
+          width: 100vw !important;
+          width: 100dvw !important;
           max-width: none !important;
+          min-width: 100vw !important;
+          min-width: 100dvw !important;
+          height: 100vh !important;
+          height: 100dvh !important;
+          min-height: 100vh !important;
+          min-height: 100dvh !important;
           margin: 0 !important;
+          padding: 0 !important;
           overflow: hidden !important;
         }
 
         [data-login-page-root] {
-          left: 0 !important;
-          right: 0 !important;
+          grid-template-columns: minmax(0, 1fr);
           width: 100vw !important;
           width: 100dvw !important;
           max-width: none !important;
+          min-width: 100vw !important;
+          min-width: 100dvw !important;
         }
 
         @media (min-width: 1024px) {
-          [data-login-left-pane] {
-            flex: 0 0 37.4vw !important;
+          [data-login-page-root] {
+            grid-template-columns: 37.4vw minmax(0, 1fr) !important;
+          }
+
+          .esap-login-left {
             width: 37.4vw !important;
+            min-width: 0 !important;
             max-width: 37.4vw !important;
           }
 
-          [data-login-hero-pane] {
-            flex: 1 1 auto !important;
-            width: 62.6vw !important;
+          .esap-login-hero {
+            width: auto !important;
+            min-width: 0 !important;
             max-width: none !important;
           }
         }
 
         @media (max-width: 1023px) {
-          [data-login-left-pane],
-          [data-login-hero-pane] {
+          .esap-login-left,
+          .esap-login-hero {
             width: 100% !important;
             max-width: 100% !important;
           }
         }
       `}</style>
-      <div data-login-left-pane className="flex flex-col min-h-screen lg:min-h-0 bg-white relative">
+      <div data-login-left-pane className="esap-login-left flex flex-col min-h-screen lg:min-h-0 bg-white relative">
         <div className="flex-shrink-0 px-6 sm:px-10 pt-6 sm:pt-8">
           <motion.button
             initial={{ opacity: 0, x: -10 }}
@@ -764,7 +774,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
-        className="hidden lg:flex relative overflow-hidden"
+        className="esap-login-hero hidden lg:flex relative overflow-hidden"
       >
         <div className="absolute inset-0">
           <img
