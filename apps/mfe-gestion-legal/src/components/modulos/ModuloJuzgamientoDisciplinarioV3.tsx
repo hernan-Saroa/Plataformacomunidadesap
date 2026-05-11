@@ -72,6 +72,10 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const [filtroGravedad, setFiltroGravedad] = useState<string>('TODAS');
   const [modalNuevoProcesoOpen, setModalNuevoProcesoOpen] = useState(false);
   const [procesoAbiertoExternamente, setProcesoAbiertoExternamente] = useState<ProcesoDisciplinario | null>(null);
+  const esMonitoreoGestionLegal = authService.hasRole('MONITOREO_GESTION_LEGAL');
+  const canMutateJuzgamiento =
+    !esMonitoreoGestionLegal &&
+    authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT);
 
   // Estado local para manejar drag and drop
   const [procesos, setProcesos] = useState<ProcesoDisciplinario[]>([]);
@@ -332,6 +336,11 @@ export function ModuloJuzgamientoDisciplinarioV3() {
 
   // Manejar movimiento de proceso entre etapas - AHORA REQUIERE JUSTIFICACIÓN
   const handleMoverProceso = async (procesoId: string, nuevaEtapa: string) => {
+    if (!canMutateJuzgamiento) {
+      toast.info('Este rol solo tiene permisos de consulta en Juzgamiento Disciplinario');
+      return;
+    }
+
     // Buscar el proceso para obtener info adicional
     const proceso = procesos.find(p => p.id === procesoId);
     if (!proceso) {
@@ -484,7 +493,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
           ]
         }}
         buttons={
-          authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT)
+          canMutateJuzgamiento
             ? [{
                 label: 'Nuevo Proceso',
                 labelMobile: 'Nuevo',
@@ -623,6 +632,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
                   isMobile={isMobile}
                   isTablet={isTablet}
                   handleMoverProceso={handleMoverProceso}
+                  canMove={canMutateJuzgamiento}
                   onRefresh={fetchProcesos}
                   onVerExpedienteAnexado={handleVerExpedienteAnexado}
                 />
@@ -638,6 +648,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
           procesos={procesos} // Nota: VistaLista podría necesitar ajuste si espera usar las etapas dinámicas para algo, pero por ahora pasamos los procesos crudos.
           isMobile={isMobile}
           isTablet={isTablet}
+          readOnly={esMonitoreoGestionLegal}
         />
       )}
 
@@ -760,8 +771,8 @@ export function ModuloJuzgamientoDisciplinarioV3() {
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Juzgamiento Disciplinario"
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={canMutateJuzgamiento ? handleRestaurar : undefined}
+          onEliminarPermanente={canMutateJuzgamiento ? handleEliminarPermanente : undefined}
         />
       )}
 
@@ -781,6 +792,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
         onClose={() => setProcesoAbiertoExternamente(null)}
         proceso={procesoAbiertoExternamente as any}
         onRefresh={fetchProcesos}
+        readOnly={esMonitoreoGestionLegal}
       />
     </div>
   );
@@ -800,14 +812,18 @@ interface ColumnaKanbanProps {
   isMobile: boolean;
   isTablet: boolean;
   handleMoverProceso: (procesoId: string, nuevaEtapa: string) => void;
+  canMove: boolean;
   onRefresh: () => void;
   onVerExpedienteAnexado: (id: string) => void;
 }
 
-function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, onRefresh, onVerExpedienteAnexado }: ColumnaKanbanProps) {
+function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, canMove, onRefresh, onVerExpedienteAnexado }: ColumnaKanbanProps) {
   const [{ isOver }, drop] = useDrop({
     accept: ItemTypes.PROCESO,
-    drop: (item: { id: string }) => handleMoverProceso(item.id, etapa.valor),
+    canDrop: () => canMove,
+    drop: (item: { id: string }) => {
+      if (canMove) handleMoverProceso(item.id, etapa.valor);
+    },
     collect: (monitor) => ({
       isOver: !!monitor.isOver(),
     }),
@@ -866,6 +882,7 @@ function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, onRefres
               proceso={proceso}
               isMobile={isMobile}
               handleMoverProceso={handleMoverProceso}
+              canMove={canMove}
               nuevaEtapa={etapa.valor}
               onRefresh={onRefresh}
               onVerExpedienteAnexado={onVerExpedienteAnexado}
@@ -891,12 +908,13 @@ interface TarjetaProcesoProps {
   proceso: ProcesoDisciplinario;
   isMobile: boolean;
   handleMoverProceso: (procesoId: string, nuevaEtapa: string) => void;
+  canMove: boolean;
   nuevaEtapa: string;
   onRefresh: () => void;
   onVerExpedienteAnexado?: (id: string) => void;
 }
 
-function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa, onRefresh, onVerExpedienteAnexado }: TarjetaProcesoProps) {
+function TarjetaProceso({ proceso, isMobile, handleMoverProceso, canMove, nuevaEtapa, onRefresh, onVerExpedienteAnexado }: TarjetaProcesoProps) {
   // Estados para modales
   const [modalProcesoOpen, setModalProcesoOpen] = useState(false);
   const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
@@ -905,6 +923,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa, onR
   const [{ isDragging }, drag] = useDrag({
     type: ItemTypes.PROCESO,
     item: { id: proceso.id },
+    canDrag: () => canMove,
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging(),
     }),
@@ -938,7 +957,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa, onR
   };
 
   return (
-    <div ref={drag as unknown as React.LegacyRef<HTMLDivElement>} style={{ opacity, cursor: 'move' }}>
+    <div ref={drag as unknown as React.LegacyRef<HTMLDivElement>} style={{ opacity, cursor: canMove ? 'move' : 'default' }}>
       <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
         <div className="h-1" style={{ background: '#003DA5' }} />
 
@@ -1055,6 +1074,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa, onR
           onClose={() => setModalProcesoOpen(false)}
           proceso={proceso as any}
           onRefresh={onRefresh}
+          readOnly={authService.hasRole('MONITOREO_GESTION_LEGAL')}
           onVerExpedienteAnexado={(id) => {
             setModalProcesoOpen(false); // Close current nested
             if (onVerExpedienteAnexado) onVerExpedienteAnexado(id);
@@ -1064,6 +1084,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa, onR
           isOpen={modalComunicacionesOpen}
           onClose={() => setModalComunicacionesOpen(false)}
           expediente={expedienteParaModales as any}
+          readOnly={authService.hasRole('MONITOREO_GESTION_LEGAL')}
         />
       </Card>
     </div>

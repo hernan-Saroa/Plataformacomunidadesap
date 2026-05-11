@@ -65,10 +65,12 @@ interface ModalDetalleSolicitudInformeProps {
   isOpen: boolean;
   onClose: () => void;
   solicitud: SolicitudInforme | null;
-  onCambiarEtapa: (id: string, nuevaEtapa: EtapaSolicitudInforme) => void;
-  onAgregarComentario: (id: string, comentario: string) => void;
+  onCambiarEtapa?: (id: string, nuevaEtapa: EtapaSolicitudInforme) => void;
+  onAgregarComentario?: (id: string, comentario: string) => void;
   onArchivar?: (id: string) => void;
   onEliminar?: (id: string) => void;
+  canModify?: boolean;
+  canEnviarRecordatorio?: boolean;
 }
 
 export function ModalDetalleSolicitudInforme({
@@ -78,7 +80,9 @@ export function ModalDetalleSolicitudInforme({
   onCambiarEtapa,
   onAgregarComentario,
   onArchivar,
-  onEliminar
+  onEliminar,
+  canModify = true,
+  canEnviarRecordatorio = true
 }: ModalDetalleSolicitudInformeProps) {
   const [comentarioNuevo, setComentarioNuevo] = useState('');
   const [mostrarCambioEtapa, setMostrarCambioEtapa] = useState(false);
@@ -87,11 +91,13 @@ export function ModalDetalleSolicitudInforme({
   const [visorOpen, setVisorOpen] = useState(false);
   const [visorDoc, setVisorDoc] = useState<{ archivo: string; numero: string } | null>(null);
   const [mostrarModalRecordatorio, setMostrarModalRecordatorio] = useState(false);
+  const [notasTermino, setNotasTermino] = useState<Array<{ texto: string; usuario: string; fecha: string | Date }>>([]);
 
   useEffect(() => {
     if (isOpen && solicitud) {
       const backendId = solicitud.metadata?.uuid || solicitud.id;
       fetchDocs(backendId);
+      fetchNotas(backendId);
     }
   }, [isOpen, solicitud]);
 
@@ -142,18 +148,34 @@ export function ModalDetalleSolicitudInforme({
   };
 
   const handleCambiarEtapa = (nuevaEtapa: EtapaSolicitudInforme) => {
+    if (!onCambiarEtapa) return;
     onCambiarEtapa(solicitud.id, nuevaEtapa);
     setMostrarCambioEtapa(false);
   };
 
-  const handleAgregarComentario = () => {
-    if (comentarioNuevo.trim()) {
-      onAgregarComentario(solicitud.id, comentarioNuevo);
-      setComentarioNuevo('');
-      toast.success('Comentario agregado', {
-        icon: <MessageSquare className="w-4 h-4" />
-      });
+  const fetchNotas = async (id: string) => {
+    try {
+      const notas = await legalService.getNotasTermino(id);
+      setNotasTermino(Array.isArray(notas) ? notas : []);
+    } catch (error) {
+      console.error('Error fetching term notes', error);
+      setNotasTermino([]);
     }
+  };
+
+  const handleAgregarComentario = () => {
+    if (!comentarioNuevo.trim()) return;
+    const backendId = solicitud.metadata?.uuid || solicitud.id;
+    legalService.addNotaTermino(backendId, comentarioNuevo.trim())
+      .then((nota) => {
+        setNotasTermino(prev => [nota, ...prev]);
+        setComentarioNuevo('');
+        onAgregarComentario?.(solicitud.id, comentarioNuevo.trim());
+        toast.success('Comentario agregado', {
+          icon: <MessageSquare className="w-4 h-4" />
+        });
+      })
+      .catch(() => toast.error('Error al guardar el comentario. Intente nuevamente.'));
   };
 
   /**
@@ -428,14 +450,16 @@ export function ModalDetalleSolicitudInforme({
                   <Target className="w-4 h-4 text-gray-600" />
                   Etapa del Proceso
                 </h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setMostrarCambioEtapa(!mostrarCambioEtapa)}
-                >
-                  <Edit className="w-3 h-3 mr-1" />
-                  Cambiar Etapa
-                </Button>
+                {canModify && onCambiarEtapa && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setMostrarCambioEtapa(!mostrarCambioEtapa)}
+                  >
+                    <Edit className="w-3 h-3 mr-1" />
+                    Cambiar Etapa
+                  </Button>
+                )}
               </div>
 
               {/* Etapa actual */}
@@ -450,7 +474,7 @@ export function ModalDetalleSolicitudInforme({
               </div>
 
               {/* Selector de nueva etapa */}
-              {mostrarCambioEtapa && (
+              {canModify && mostrarCambioEtapa && (
                 <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
                   <p className="text-xs font-bold text-blue-900 mb-2">Seleccionar nueva etapa:</p>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -494,7 +518,7 @@ export function ModalDetalleSolicitudInforme({
 
             {/* ASUNTO Y DESCRIPCIÓN */}
             {(() => {
-              const { descripcionBase, notas } = solicitud.descripcion
+              const { descripcionBase } = solicitud.descripcion
                 ? parseObservaciones(solicitud.descripcion)
                 : { descripcionBase: '', notas: [] };
               return (
@@ -514,14 +538,14 @@ export function ModalDetalleSolicitudInforme({
                   )}
 
                   {/* Notas guardadas — visual timeline */}
-                  {notas.length > 0 && (
+                  {notasTermino.length > 0 && (
                     <div className="mt-4 space-y-2">
                       <h3 className="font-bold text-gray-900 flex items-center gap-2">
                         <MessageSquare className="w-4 h-4 text-gray-600" />
-                        Notas y Comentarios ({notas.length})
+                        Notas y Comentarios ({notasTermino.length})
                       </h3>
                       <div className="space-y-2">
-                        {notas.map((nota, i) => (
+                        {notasTermino.map((nota, i) => (
                           <div key={i} className="flex gap-3">
                             <div className="flex-shrink-0 w-7 h-7 bg-[#003DA5] rounded-full flex items-center justify-center text-white text-xs font-bold mt-0.5">
                               {(nota.usuario || 'S')[0].toUpperCase()}
@@ -529,7 +553,9 @@ export function ModalDetalleSolicitudInforme({
                             <div className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 shadow-sm">
                               <div className="flex items-center justify-between mb-1">
                                 <span className="text-xs font-bold text-gray-700">{nota.usuario}</span>
-                                <span className="text-xs text-gray-400">{nota.fecha}</span>
+                                <span className="text-xs text-gray-400">
+                                  {nota.fecha ? new Date(nota.fecha).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }) : ''}
+                                </span>
                               </div>
                               <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">{nota.texto}</p>
                             </div>
@@ -627,6 +653,7 @@ export function ModalDetalleSolicitudInforme({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-gray-900">Documentos Adjuntos</h3>
+                {canModify && (
                 <div>
                   <input
                     type="file"
@@ -655,6 +682,7 @@ export function ModalDetalleSolicitudInforme({
                     )}
                   </Button>
                 </div>
+                )}
               </div>
               
               {/* Mostrar documentos cargados */}
@@ -715,6 +743,7 @@ export function ModalDetalleSolicitudInforme({
             </div>
 
             {/* AGREGAR COMENTARIO */}
+            {canModify && (
             <div className="space-y-3 border-t pt-4">
               <h3 className="font-bold text-gray-900 flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-gray-600" />
@@ -738,6 +767,7 @@ export function ModalDetalleSolicitudInforme({
                 Agregar Comentario
               </Button>
             </div>
+            )}
 
             {/* INFO AYUDA */}
             <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
@@ -797,14 +827,16 @@ export function ModalDetalleSolicitudInforme({
               <Download className="w-4 h-4 mr-2" />
               Exportar
             </Button>
-            <Button
-              style={{ background: '#F57C00' }}
-              className="text-white"
-              onClick={handleEnviarRecordatorio}
-            >
-              <Send className="w-4 h-4 mr-2" />
-              Enviar Recordatorio
-            </Button>
+            {canEnviarRecordatorio && (
+              <Button
+                style={{ background: '#F57C00' }}
+                className="text-white"
+                onClick={handleEnviarRecordatorio}
+              >
+                <Send className="w-4 h-4 mr-2" />
+                Enviar Recordatorio
+              </Button>
+            )}
           </div>
         </div>
       </DialogContent>

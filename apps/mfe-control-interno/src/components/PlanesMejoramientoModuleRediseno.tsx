@@ -18,7 +18,7 @@
  * - Headers sticky con métricas
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, AlertTriangle, Target, Users, Calendar, Clock,
@@ -44,6 +44,7 @@ import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesCont
 
 // ✅ Hook de backend para planes de mejoramiento
 import { usePlanesMejoramiento, PlanMejoramientoKanban } from './services/usePlanesMejoramiento';
+import { controlInternoService } from '../../services/api/controlInternoService';
 
 // Validaciones
 import { validarPlanParaAuditoriaCompleta, mostrarErroresValidacion } from './utils/validaciones';
@@ -381,6 +382,7 @@ export function PlanesMejoramientoModuleRediseno() {
   } = usePlanesMejoramiento();
 
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
+  const [auditoriasElegiblesBackend, setAuditoriasElegiblesBackend] = useState<any[]>([]);
 
 
 
@@ -406,6 +408,104 @@ export function PlanesMejoramientoModuleRediseno() {
     return plan?.id ?? null;
   }, [auditoriaIdParaVerPlan, planes]);
 
+  const normalizarTexto = (valor: unknown): string =>
+    String(valor || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+  const contarHallazgos = (auditoria: any): number => {
+    if (Array.isArray(auditoria?.hallazgos)) return auditoria.hallazgos.length;
+    const candidatos = [
+      auditoria?.hallazgos,
+      auditoria?.totalHallazgos,
+      auditoria?.total_hallazgos,
+      auditoria?.numeroHallazgos,
+      auditoria?.hallazgosDetectados,
+    ];
+    for (const c of candidatos) {
+      const n = Number(c);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return 0;
+  };
+
+  const auditoriasElegiblesParaCrear = useMemo(() => {
+    const fuente = Array.isArray(auditoriasElegiblesBackend) ? auditoriasElegiblesBackend : [];
+    const porId = new Map<string, any>();
+
+    for (const aud of fuente) {
+      if (aud?.id) porId.set(aud.id, aud);
+    }
+
+    for (const aud of auditoriasConHallazgos) {
+      if (aud?.id && !porId.has(aud.id)) porId.set(aud.id, aud);
+    }
+
+    return Array.from(porId.values());
+  }, [auditoriasElegiblesBackend, auditoriasConHallazgos]);
+
+  const cargarAuditoriasElegibles = useCallback(async () => {
+    try {
+      const [auditoriasResp, planesResp] = await Promise.all([
+        controlInternoService.getAuditorias(),
+        controlInternoService.getPlanesMejoramiento().catch(() => []),
+      ]);
+
+      const auditorias = Array.isArray(auditoriasResp) ? auditoriasResp : [];
+      const planesExistentes = Array.isArray(planesResp) ? planesResp : [];
+      const idsConPlan = new Set(
+        planesExistentes
+          .map((p: any) => p?.auditoriaId || p?.auditoria_id || p?.auditoria?.id)
+          .filter((id: any) => typeof id === 'string' && id.length > 0)
+      );
+
+      const elegibles = auditorias
+        .filter((a: any) => {
+          const estado = normalizarTexto(a?.estadoKanban || a?.fase || a?.estado);
+          const enEstadoPermitido =
+            estado === 'comunicacion' || estado === 'seguimiento' || estado === 'finalizada';
+          const hallazgos = contarHallazgos(a);
+          return enEstadoPermitido && hallazgos > 0 && !idsConPlan.has(a?.id);
+        })
+        .map((a: any) => {
+          const fechaFin = String(
+            a?.fechaFinComunicacion || a?.fechaFin || a?.fecha_fin || new Date().toISOString().split('T')[0]
+          );
+          const fechaFinIso = fechaFin.includes('T') ? fechaFin.split('T')[0] : fechaFin;
+          const fechaLimiteObj = new Date(`${fechaFinIso}T00:00:00`);
+          if (!Number.isNaN(fechaLimiteObj.getTime())) fechaLimiteObj.setDate(fechaLimiteObj.getDate() + 30);
+          const fechaLimitePlan = !Number.isNaN(fechaLimiteObj.getTime())
+            ? fechaLimiteObj.toISOString().split('T')[0]
+            : calcularFechaLimite();
+
+          return {
+            id: a.id,
+            codigo: a.codigo || 'AUD',
+            nombre: a.nombre || a.titulo || a.proceso || 'Auditoría',
+            areaResponsable: a.areaResponsable || a.areaObjetivo || a.proceso || 'N/A',
+            responsable:
+              typeof a.auditorLider === 'string'
+                ? a.auditorLider
+                : a.auditorLider?.nombre || a.responsable || 'N/A',
+            cargo:
+              typeof a.auditorLider === 'object' && a.auditorLider?.cargo ? a.auditorLider.cargo : '',
+            fechaFinalizacion: fechaFinIso,
+            estadoPlan: 'SIN_PLAN' as const,
+            fechaLimitePlan,
+            plazoFormulacion: 30,
+            hallazgos: Array.isArray(a.hallazgos) ? a.hallazgos : [],
+          };
+        });
+
+      setAuditoriasElegiblesBackend(elegibles);
+    } catch (err) {
+      console.error('[PlanesMejoramiento] Error cargando auditorias elegibles:', err);
+      setAuditoriasElegiblesBackend([]);
+    }
+  }, []);
+
   // Auto-abrir modal CREAR solo si viene desde auditorías para crear (no para ver)
   useEffect(() => {
     if (auditoriaSeleccionada && navegarAFormulacion && !auditoriaIdParaVerPlan) {
@@ -413,6 +513,16 @@ export function PlanesMejoramientoModuleRediseno() {
       setNavegarAFormulacion(false);
     }
   }, [auditoriaSeleccionada, navegarAFormulacion, setNavegarAFormulacion, auditoriaIdParaVerPlan]);
+
+  useEffect(() => {
+    cargarAuditoriasElegibles();
+  }, [cargarAuditoriasElegibles]);
+
+  useEffect(() => {
+    if (planes.length > 0) {
+      cargarAuditoriasElegibles();
+    }
+  }, [planes, cargarAuditoriasElegibles]);
 
   const handleCrearPlanDesdeAuditoria = async (auditoria: any) => {
     if (!auditoria) return;
@@ -587,7 +697,7 @@ export function PlanesMejoramientoModuleRediseno() {
         <SeguimientoView 
           planes={planes} 
           onAbrirCrearPlan={() => setModalCrearPlanOpen(true)}
-          auditoriasDisponibles={auditoriasConHallazgos}
+          auditoriasDisponibles={auditoriasElegiblesParaCrear}
           onCompletarPlan={handleCompletarPlan}
           planIdParaAbrir={planIdParaAbrir}
           onPlanAbiertoParaVer={limpiarVerPlan}
@@ -598,7 +708,7 @@ export function PlanesMejoramientoModuleRediseno() {
         {modalCrearPlanOpen && (
           <ModalCrearPlanDesdeAuditoria
             auditoria={auditoriaSeleccionada}
-            auditoriasDisponibles={auditoriasConHallazgos}
+            auditoriasDisponibles={auditoriasElegiblesParaCrear}
             onCrear={handleCrearPlanDesdeAuditoria}
             onCerrar={() => {
               setModalCrearPlanOpen(false);

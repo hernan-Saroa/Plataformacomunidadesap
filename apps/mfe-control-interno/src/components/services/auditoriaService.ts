@@ -82,6 +82,9 @@ export interface AuditoriaFormData {
   equipoAuditores?: string[];
   supervisorAsignado?: string;
   responsable?: string;
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
   
   // Fechas - Cronograma de 3 etapas
   fechaInicio: string; // Inicio de Planeación
@@ -165,7 +168,8 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     tipo: mapearTipoBackend(form.tipoAuditoria),
     territorial: form.territorial || 'Sede Central',
     sede: form.sede || form.territorial || 'Sede Principal',
-    responsable: form.auditorLider || form.responsable || 'Por asignar',
+    // Regla actual acordada: "responsable" es el auditado (dueño del proceso/área).
+    responsable: form.responsable || form.responsableAreaNombre || 'Por asignar',
     fechaInicio,
     fechaFinPlaneacion,
     fechaInicioEjecucion,
@@ -187,6 +191,9 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     auditorLiderId: form.auditorLider,
     auditorAsignadoId: form.auditorAsignado,
     supervisorAsignadoId: form.supervisorAsignado,
+    responsableAreaNombre: form.responsableAreaNombre || form.responsable,
+    responsableAreaCargo: form.responsableAreaCargo,
+    responsableAreaEmail: form.responsableAreaEmail,
     objetivos: form.objetivos,
     criteriosAuditoria: form.criteriosAuditoria,
     normatividadAplicable: form.normatividadAplicable,

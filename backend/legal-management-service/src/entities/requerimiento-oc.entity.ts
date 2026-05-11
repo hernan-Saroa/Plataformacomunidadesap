@@ -60,7 +60,7 @@ export class RequerimientoOC {
     @Column({ name: 'abogado_asignado_id', type: 'uuid', nullable: true })
     abogadoAsignadoId: string;
 
-    @ManyToOne(() => Abogado, { eager: true, nullable: true })
+    @ManyToOne(() => Abogado, { eager: true, nullable: true, createForeignKeyConstraints: false })
     @JoinColumn({ name: 'abogado_asignado_id' })
     abogadoAsignado: Abogado;
 

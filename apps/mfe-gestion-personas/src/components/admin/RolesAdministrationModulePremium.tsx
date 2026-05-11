@@ -37,7 +37,7 @@ import {
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
-import { toast } from 'sonner';
+import { toast, Toaster } from 'sonner';
 import { CreateRoleModal } from './CreateRoleModal';
 import { EditRoleModal } from './EditRoleModal';
 import { RolePermissionsEditor } from './RolePermissionsEditor';
@@ -60,19 +60,19 @@ import { useAuth } from '../../hooks';
 // ============================================================================
 
 const ICON_MAP: Record<string, any> = {
-  Shield,
-  GraduationCap,
-  BookOpen,
-  Briefcase,
-  Award,
-  UserCircle,
-  Building2,
-  FileText,
-  MessageSquare,
-  FolderOpen,
-  BarChart3,
-  Cog,
-  Scale
+  shield: Shield,
+  'Graduation-cap': GraduationCap,
+  'Book-open': BookOpen,
+  'Briefcase': Briefcase,
+  'Award': Award,
+  'User-circle': UserCircle,
+  'Building-2': Building2,
+  'File-text': FileText,
+  'Message-square': MessageSquare,
+  'Folder-open': FolderOpen,
+  'Bar-chart-3': BarChart3,
+  Cog: Cog,
+  Scale: Scale
 };
 
 const getIconComponent = (iconName: string) => {
@@ -250,11 +250,19 @@ export function RolesAdministrationModulePremium() {
         id: selectedRole.id,
         nombre: getRoleDisplayName(selectedRole),
         descripcion: getRoleDisplayDescription(selectedRole),
-        icono: selectedRole.icon || 'Shield',
+        icono: selectedRole.icon || 'shield',
         color: selectedRole.color || '#003DA5',
         tipo: (selectedRole.type || 'personalizado') as 'sistema' | 'personalizado',
+        sistema_destino: selectedRole.sistema_destino || 'Backoffice',
+        requiere_2fa: selectedRole.requires_2fa || false,
+        usuarios_count: selectedRole.usuarios_count || 0,
+        permisos_count: selectedRole.permisos_count || 0,
+        created_at: selectedRole.created_at,
+        created_by: selectedRole.created_by,
       }
     : null;
+
+    console.log("Roles cargados:", selectedRoleForModal);
 
   const selectedRoleForPermissions = selectedRole
     ? {
@@ -302,9 +310,12 @@ export function RolesAdministrationModulePremium() {
     try {
       const statsData = await rolesService.getStats();
       setStats(statsData);
-    } catch (error) {
-      console.error('Error loading stats:', error);
-    }
+   } catch (error) {
+     console.error('Error loading stats:', error);
+     toast.error('Error al cargar estadísticas', {
+       description: 'No se pudieron cargar las estadísticas de roles'
+     });
+   }
   };
 
   // Los roles ya vienen paginados del backend
@@ -369,6 +380,7 @@ export function RolesAdministrationModulePremium() {
         description: roleData.descripcion,
         icon: roleData.icono,
         color: roleData.color,
+        sistema_destino: roleData.sistema_destino,
         requires_2fa: roleData.requiere_2fa,
         permissionIds: roleData.permissionIds
       });
@@ -445,14 +457,14 @@ export function RolesAdministrationModulePremium() {
   // Duplicar rol con confirmación
   const handleDuplicateRole = async (role: SystemRole) => {
     const roleDisplayName = getRoleDisplayName(role);
-    const confirmed = await confirm({
-      onConfirm: () => {},
-      title: '¿Duplicar rol?',
-      description: `Se creará una copia de "${roleDisplayName}" con los mismos permisos. Podrás editarlo después de la duplicación.`,
-      confirmText: 'Duplicar',
-      cancelText: 'Cancelar',
-      type: 'info'
-    });
+  const confirmed = await confirm({
+    onConfirm: () => {},
+    title: '¿Duplicar rol?',
+    description: `Se creará una copia de "${roleDisplayName}" con los mismos permisos. Podrás editarlo después de la duplicación.`,
+    confirmText: 'Duplicar',
+    cancelText: 'Cancelar',
+    type: 'warning'
+  });
 
     if (confirmed) {
       try {
@@ -483,8 +495,9 @@ export function RolesAdministrationModulePremium() {
   // Toggle estado activo con validación
   const handleToggleActive = async (role: SystemRole) => {
     const roleDisplayName = getRoleDisplayName(role);
-    // Si está desactivando un rol con usuarios, pedir confirmación
-    if (role.is_active && role.usuarios_count > 0) {
+
+    // Pedir confirmación solo para desactivar
+    if (role.is_active) {
       const confirmed = await confirm({
         onConfirm: () => {},
         title: '¿Desactivar rol con usuarios asignados?',
@@ -503,7 +516,7 @@ export function RolesAdministrationModulePremium() {
       // Recargar datos
       await loadRoles();
 
-      toast.info(
+      toast.success(
         role.is_active ? 'Rol Desactivado' : 'Rol Activado',
         {
           description: role.is_active
@@ -522,19 +535,34 @@ export function RolesAdministrationModulePremium() {
   // Toggle 2FA con validación
   const handleToggle2FA = async (role: SystemRole) => {
     const roleDisplayName = getRoleDisplayName(role);
-    // Si está desactivando 2FA en rol administrativo, advertir
-    if (role.requires_2fa && (role.name.toLowerCase().includes('admin') || role.name.toLowerCase().includes('super'))) {
-      const confirmed = await confirm({
-        onConfirm: () => {},
-        title: '⚠️ Desactivar 2FA en rol de seguridad',
-        description: `"${roleDisplayName}" es un rol de alto privilegio. Desactivar la autenticación de dos factores puede comprometer la seguridad del sistema. ¿Estás seguro?`,
-        confirmText: 'Desactivar 2FA',
-        cancelText: 'Mantener 2FA',
-        type: 'danger'
-      });
+    const action = role.requires_2fa ? 'desactivar' : 'activar';
+    const confirmText = role.requires_2fa ? 'Desactivar 2FA' : 'Activar 2FA';
+    const cancelText = role.requires_2fa ? 'Mantener 2FA' : 'Cancelar';
 
-      if (!confirmed) return;
-    }
+  // Pedir confirmación siempre
+  let confirmed = false;
+  if (role.requires_2fa && (role.name.toLowerCase().includes('admin') || role.name.toLowerCase().includes('super'))) {
+    confirmed = await confirm({
+      onConfirm: () => {},
+      title: 'Desactivar 2FA en rol de seguridad',
+      description: '"' + roleDisplayName + '" es un rol de alto privilegio. Desactivar la autenticación de dos factores puede comprometer la seguridad del sistema. ¿Estás seguro?',
+      confirmText: 'Desactivar 2FA',
+      cancelText: 'Mantener 2FA',
+      type: 'danger'
+    });
+  } else {
+    confirmed = await confirm({
+      onConfirm: () => {},
+      title: `¿${action} 2FA?`,
+      description: `¿Estás seguro de que deseas ${action} la autenticación de dos factores para el rol "${roleDisplayName}"?`,
+      confirmText,
+      cancelText,
+      type: 'info'
+    });
+  }
+  if (!confirmed) return;
+
+    if (!confirmed) return;
 
     try {
       await rolesService.toggle2FA(role.id);
@@ -563,7 +591,7 @@ export function RolesAdministrationModulePremium() {
     setSelectedRole(role);
     setIsPermissionsEditorOpen(true);
 
-    toast.info('Editor de Permisos', {
+    toast.success('Editor de Permisos', {
       description: `Gestionando ${role.permisos_count} permisos para "${getRoleDisplayName(role)}"`
     });
   };
@@ -932,6 +960,13 @@ export function RolesAdministrationModulePremium() {
                                        <Shield className="w-4 h-4 mr-2" />
                                        Gestionar Permisos
                                      </DropdownMenuItem>
+                                     <DropdownMenuItem key="configure-scope" onClick={() => {
+                                        setSelectedRole(role);
+                                        setIsScopeConfigOpen(true);
+                                      }}>
+                                        <Filter className="w-4 h-4 mr-2" />
+                                        Configurar Alcance
+                                      </DropdownMenuItem>
                                      <DropdownMenuItem key="edit-role" onClick={() => {
                                        setSelectedRole(role);
                                        setIsEditModalOpen(true);
@@ -939,11 +974,12 @@ export function RolesAdministrationModulePremium() {
                                        <Edit className="w-4 h-4 mr-2" />
                                        Editar Rol
                                      </DropdownMenuItem>
-                                     <DropdownMenuItem key="duplicate-role" onClick={() => handleDuplicateRole(role)}>
-                                       <Copy className="w-4 h-4 mr-2" />
-                                       Duplicar Rol
-                                     </DropdownMenuItem>
-                                     <DropdownMenuSeparator key="separator-1" />
+                                      <DropdownMenuItem key="duplicate-role" onClick={() => handleDuplicateRole(role)} className="text-gray-900 hover:text-blue-600">
+                                        <Copy className="w-4 h-4 mr-2" />
+                                        Duplicar Rol
+                                      </DropdownMenuItem>
+                                      
+                                      <DropdownMenuSeparator key="separator-1" />
                                      <DropdownMenuItem key="toggle-active" onClick={() => handleToggleActive(role)}>
                                        {role.is_active ? (
                                          <>
@@ -1356,6 +1392,8 @@ export function RolesAdministrationModulePremium() {
 
       {/* Confirmation Dialog */}
       <ConfirmationDialog />
+
+      <Toaster position="top-right" richColors />
     </div>
   );
 }

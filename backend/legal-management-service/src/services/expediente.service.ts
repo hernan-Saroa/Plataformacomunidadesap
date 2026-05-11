@@ -170,7 +170,7 @@ export class ExpedienteService {
         return currentDate;
     }
 
-    async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
+    async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string; abogadoSustanciadorKeys?: string[] }): Promise<Expediente[]> {
         const queryBuilder = this.expedienteRepository.createQueryBuilder('expediente');
         // queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones'); // Removed due to loose coupling
         queryBuilder.leftJoinAndSelect('expediente.evidencias', 'evidencias');
@@ -201,6 +201,14 @@ export class ExpedienteService {
 
         if (filtros.search) {
             queryBuilder.andWhere('(expediente.radicado ILIKE :search OR expediente.demandante ILIKE :search OR expediente.demandado ILIKE :search)', { search: `%${filtros.search}%` });
+        }
+
+        if (filtros.abogadoSustanciadorKeys?.length) {
+            const normalizedKeys = filtros.abogadoSustanciadorKeys.map((key) => key.toLowerCase());
+            queryBuilder.andWhere(
+                '(expediente.abogadoSustanciador IN (:...abogadoSustanciadorKeys) OR LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys))',
+                { abogadoSustanciadorKeys: filtros.abogadoSustanciadorKeys, normalizedKeys },
+            );
         }
 
         const { entities, raw } = await queryBuilder.orderBy('expediente.createdAt', 'DESC').getRawAndEntities();

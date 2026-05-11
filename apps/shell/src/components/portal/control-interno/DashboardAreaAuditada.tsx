@@ -16,7 +16,7 @@
  * ROL: Área Auditada
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import {
   Shield,
@@ -38,12 +38,14 @@ import {
   MessageSquare,
   CheckSquare,
   Info,
-  ArrowLeft
+  ArrowLeft,
+  Loader2
 } from 'lucide-react';
 import { Card } from '../../ui/card';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { toast } from 'sonner';
+import { controlInternoService } from '../../../services/api/controlInternoService';
 
 // Tipos
 interface Notificacion {
@@ -153,51 +155,108 @@ export function DashboardAreaAuditada({ onVolver }: DashboardAreaAuditadaProps) 
     }
   ]);
 
-  // Planes de mejoramiento activos
-  const [planesActivos] = useState<PlanMejoramientoActivo[]>([
-    {
-      id: 'PM-2024-045',
-      auditoria: 'Gestión Contractual',
-      codigoAuditoria: 'AUD-2024-032',
-      fechaInicio: '2024-08-01',
-      fechaFin: '2025-11-15',
-      estado: 'vencido',
-      avance: 40,
-      accionesTotales: 8,
-      accionesCompletadas: 3,
-      accionesVencidas: 3,
-      proximoSeguimiento: '2025-12-01',
-      diasParaSeguimiento: -12
-    },
-    {
-      id: 'PM-2025-012',
-      auditoria: 'Gestión Administrativa',
-      codigoAuditoria: 'AUD-2025-008',
-      fechaInicio: '2025-03-01',
-      fechaFin: '2026-02-28',
-      estado: 'proximo-vencimiento',
-      avance: 75,
-      accionesTotales: 4,
-      accionesCompletadas: 3,
-      accionesVencidas: 0,
-      proximoSeguimiento: '2025-11-28',
-      diasParaSeguimiento: 13
-    },
-    {
-      id: 'PM-2025-018',
-      auditoria: 'Talento Humano',
-      codigoAuditoria: 'AUD-2025-015',
-      fechaInicio: '2025-06-01',
-      fechaFin: '2026-05-31',
-      estado: 'al-dia',
-      avance: 100,
-      accionesTotales: 3,
-      accionesCompletadas: 3,
-      accionesVencidas: 0,
-      proximoSeguimiento: '2026-01-15',
-      diasParaSeguimiento: 58
-    }
-  ]);
+  // Planes de mejoramiento activos del auditado (cargados desde el backend real).
+  // Combina sus auditorías propias con los planes vinculados a cada auditoría.
+  const [planesActivos, setPlanesActivos] = useState<PlanMejoramientoActivo[]>([]);
+  const [cargandoPlanes, setCargandoPlanes] = useState<boolean>(true);
+
+  useEffect(() => {
+    let cancelado = false;
+
+    const calcularEstadoSemaforo = (
+      diasParaSeguimiento: number,
+      avance: number,
+    ): 'al-dia' | 'proximo-vencimiento' | 'vencido' => {
+      if (diasParaSeguimiento < 0) return 'vencido';
+      if (diasParaSeguimiento <= 15 || avance < 50) return 'proximo-vencimiento';
+      return 'al-dia';
+    };
+
+    const calcularDias = (fechaIso?: string): number => {
+      if (!fechaIso) return 0;
+      const fecha = new Date(`${String(fechaIso).split('T')[0]}T00:00:00`);
+      if (Number.isNaN(fecha.getTime())) return 0;
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      return Math.ceil((fecha.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+    };
+
+    const cargarPlanes = async () => {
+      setCargandoPlanes(true);
+      try {
+        const misAuditorias = await controlInternoService
+          .getMisAuditoriasAuditado()
+          .catch(() => [] as any[]);
+
+        if (!Array.isArray(misAuditorias) || misAuditorias.length === 0) {
+          if (!cancelado) setPlanesActivos([]);
+          return;
+        }
+
+        const planesPorAuditoria = await Promise.all(
+          misAuditorias.map((a: any) =>
+            controlInternoService
+              .getPlanesMejoramientoByAuditoria(a.id)
+              .then((planes) =>
+                (Array.isArray(planes) ? planes : []).map((p: any) => ({
+                  plan: p,
+                  auditoria: a,
+                })),
+              )
+              .catch(() => [] as { plan: any; auditoria: any }[]),
+          ),
+        );
+
+        const planesPlanos = planesPorAuditoria.flat();
+
+        const mapeados: PlanMejoramientoActivo[] = planesPlanos.map(({ plan, auditoria }) => {
+          const acciones = Array.isArray(plan?.acciones) ? plan.acciones : [];
+          const totales = acciones.length || Number(plan?.totalAcciones || 0) || 0;
+          const completadas =
+            acciones.filter((acc: any) => {
+              const est = String(acc?.estado || '').toLowerCase();
+              return est === 'completada' || est === 'implementada' || est === 'completado';
+            }).length || Number(plan?.accionesCompletadas || 0) || 0;
+          const vencidas = acciones.filter((acc: any) => {
+            const est = String(acc?.estado || '').toLowerCase();
+            return est === 'vencida' || est === 'vencido';
+          }).length;
+          const avance = totales > 0 ? Math.round((completadas / totales) * 100) : Number(plan?.porcentajeAvance || 0) || 0;
+          const fechaFinPlan = plan?.fechaLimite || plan?.fecha_limite || plan?.fechaFin || auditoria?.fechaFin || '';
+          const fechaInicio = plan?.createdAt || plan?.fecha_creacion || auditoria?.fechaInicio || '';
+          const proximoSeguimiento = plan?.proximoSeguimiento || fechaFinPlan;
+          const dias = calcularDias(proximoSeguimiento);
+          return {
+            id: plan?.codigo || plan?.id || `PM-${auditoria?.codigo || 'SIN-COD'}`,
+            auditoria: auditoria?.nombre || auditoria?.titulo || 'Auditoría',
+            codigoAuditoria: auditoria?.codigo || '',
+            fechaInicio: String(fechaInicio).split('T')[0],
+            fechaFin: String(fechaFinPlan).split('T')[0],
+            estado: calcularEstadoSemaforo(dias, avance),
+            avance,
+            accionesTotales: totales,
+            accionesCompletadas: completadas,
+            accionesVencidas: vencidas,
+            proximoSeguimiento: String(proximoSeguimiento).split('T')[0],
+            diasParaSeguimiento: dias,
+          };
+        });
+
+        if (!cancelado) setPlanesActivos(mapeados);
+      } catch (err: any) {
+        console.error('[DashboardAreaAuditada] Error cargando planes:', err);
+        if (!cancelado) setPlanesActivos([]);
+      } finally {
+        if (!cancelado) setCargandoPlanes(false);
+      }
+    };
+
+    cargarPlanes();
+
+    return () => {
+      cancelado = true;
+    };
+  }, []);
 
   // Hallazgos
   const [hallazgos] = useState<Hallazgo[]>([

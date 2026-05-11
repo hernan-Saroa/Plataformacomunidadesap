@@ -28,7 +28,9 @@
  * 12. Verificación de Títulos
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiClient } from '../../../services/api/apiClient';
+import { exportToCSV, exportToExcel, exportToPDF } from '../../utils/reportExport';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Download, RefreshCw, Filter, Calendar, Search,
@@ -689,6 +691,28 @@ export function ReportsModuleV2() {
   // Estados para reportes
   const [allReports, setAllReports] = useState<Report[]>([...REPORTES_PREDEFINIDOS, ...customReports]);
 
+  // Cargar estadísticas reales de Gestión Legal
+  useEffect(() => {
+    const fetchLegalStats = async () => {
+      try {
+        const response = await apiClient.get<any[]>('/legal/api/v1/reportes/stats');
+        const stats = response.data || response; // En caso de que axios devuelva data, y fetch no (apiClient lo unifica)
+        setAllReports(prev => prev.map(report => {
+          if (report.categoria === 'gestion-legal') {
+            const stat = (Array.isArray(stats) ? stats : []).find(s => s.id === report.id);
+            if (stat) {
+              return { ...report, registros: stat.registros, tamanoEstimado: stat.tamanoEstimado };
+            }
+          }
+          return report;
+        }));
+      } catch (error) {
+        console.error('Error cargando estadísticas de reportes legales:', error);
+      }
+    };
+    fetchLegalStats();
+  }, []);
+
   // Categorías con contador (13 módulos principales + Gestión Legal)
   const categories = [
     { id: 'todos', label: 'Todas las Categorías', icon: Package },
@@ -717,16 +741,44 @@ export function ReportsModuleV2() {
   });
 
   // Handlers
-  const handleGenerateReport = (report: Report, format: ExportFormat) => {
-    toast.success(`Generando reporte "${report.nombre}" en formato ${format.toUpperCase()}...`, {
-      description: `Se descargará automáticamente cuando esté listo (${report.tamanoEstimado})`,
-      duration: 3000,
-    });
+  const handleGenerateReport = async (report: Report, format: ExportFormat) => {
+    if (report.categoria === 'gestion-legal') {
+      const toastId = toast.loading(`Generando reporte "${report.nombre}" en formato ${format.toUpperCase()}...`);
+      try {
+        const response = await apiClient.get<any[]>(`/legal/api/v1/reportes/data/${report.id}`);
+        const data = response.data || response; // manejar si apiClient devuelve data o el objeto directo
+        
+        const reportConfig = {
+          name: report.nombre,
+          description: report.descripcion,
+          source: 'Gestión Legal',
+          fields: report.campos,
+          filters: [],
+          exportFormat: format,
+          dateRange: 'Todo el historial',
+        };
 
-    // Simular descarga
-    setTimeout(() => {
-      toast.success('✅ Reporte descargado exitosamente');
-    }, 2000);
+        if (format === 'csv') exportToCSV(data, reportConfig.name);
+        else if (format === 'excel') exportToExcel(data, reportConfig.name);
+        else if (format === 'pdf') exportToPDF(data, reportConfig.name, reportConfig as any);
+        
+        // Simulando que json no está soportado en los botones directos, pero si llegara
+        toast.success('✅ Reporte descargado exitosamente', { id: toastId });
+      } catch (error) {
+        toast.error('❌ Error al generar el reporte', { id: toastId });
+        console.error(error);
+      }
+    } else {
+      toast.success(`Generando reporte "${report.nombre}" en formato ${format.toUpperCase()}...`, {
+        description: `Se descargará automáticamente cuando esté listo (${report.tamanoEstimado})`,
+        duration: 3000,
+      });
+
+      // Simular descarga para otros módulos
+      setTimeout(() => {
+        toast.success('✅ Reporte descargado exitosamente');
+      }, 2000);
+    }
   };
 
   const handleToggleFavorite = (reportId: string) => {

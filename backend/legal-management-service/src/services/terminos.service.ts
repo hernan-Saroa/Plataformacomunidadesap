@@ -5,6 +5,7 @@ import { TerminoProcesal } from '../entities/termino-procesal.entity';
 import { Expediente } from '../entities/expediente.entity';
 import { ConsultaJuridica } from '../entities/consulta-juridica.entity';
 import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
+import type { LegalAccess } from '../auth/legal-access';
 import { ProcesoCoactivo } from '../entities/proceso-coactivo.entity';
 import { Actuacion } from '../entities/actuacion.entity';
 
@@ -185,6 +186,21 @@ export class TerminosService {
             query.andWhere('termino.responsableId = :responsableId', { responsableId: filtros.responsableId });
         }
 
+        if (filtros.responsableKeys?.length) {
+            const responsableUuidKeys = filtros.responsableKeys.filter((key: string) =>
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key),
+            );
+            const normalizedKeys = filtros.responsableKeys.map((key: string) => key.toLowerCase());
+            if (responsableUuidKeys.length) {
+                query.andWhere(
+                    '(termino.responsableId IN (:...responsableUuidKeys) OR LOWER(termino.responsableNombre) IN (:...normalizedKeys))',
+                    { responsableUuidKeys, normalizedKeys },
+                );
+            } else {
+                query.andWhere('LOWER(termino.responsableNombre) IN (:...normalizedKeys)', { normalizedKeys });
+            }
+        }
+
         if (filtros.estado) {
             query.andWhere('termino.estado = :estado', { estado: filtros.estado });
         }
@@ -194,15 +210,31 @@ export class TerminosService {
         return query.getMany();
     }
 
-    async getCalendario(start: string, end: string, responsableId?: string): Promise<any[]> {
+    async getCalendario(start: string, end: string, filtros: { responsableId?: string; responsableKeys?: string[] } | string = {}): Promise<any[]> {
+        const resolvedFiltros = typeof filtros === 'string' ? { responsableId: filtros } : filtros;
         const query = this.terminoRepository.createQueryBuilder('termino')
             .where('termino.fechaVencimiento BETWEEN :start AND :end', {
                 start: new Date(start),
                 end: new Date(end)
             });
 
-        if (responsableId) {
-            query.andWhere('termino.responsableId = :responsableId', { responsableId });
+        if (resolvedFiltros.responsableId) {
+            query.andWhere('termino.responsableId = :responsableId', { responsableId: resolvedFiltros.responsableId });
+        }
+
+        if (resolvedFiltros.responsableKeys?.length) {
+            const responsableUuidKeys = resolvedFiltros.responsableKeys.filter((key) =>
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key),
+            );
+            const normalizedKeys = resolvedFiltros.responsableKeys.map((key) => key.toLowerCase());
+            if (responsableUuidKeys.length) {
+                query.andWhere(
+                    '(termino.responsableId IN (:...responsableUuidKeys) OR LOWER(termino.responsableNombre) IN (:...normalizedKeys))',
+                    { responsableUuidKeys, normalizedKeys },
+                );
+            } else {
+                query.andWhere('LOWER(termino.responsableNombre) IN (:...normalizedKeys)', { normalizedKeys });
+            }
         }
 
         const terminos = await query.getMany();
@@ -220,7 +252,8 @@ export class TerminosService {
         }));
     }
 
-    async getSemaforoList(responsableId?: string): Promise<any[]> {
+    async getSemaforoList(filtros: { responsableId?: string; responsableKeys?: string[] } | string = {}): Promise<any[]> {
+        const resolvedFiltros = typeof filtros === 'string' ? { responsableId: filtros } : filtros;
         // Auto-sincronizar al consultar el listado para tener datos actualizados
         // try {
         //     await this.sincronizar();
@@ -229,7 +262,7 @@ export class TerminosService {
         //     // Continuar aunque falle la sincronización
         // }
 
-        const terminos = await this.findAll({ responsableId });
+        const terminos = await this.findAll(resolvedFiltros);
 
         return terminos.map(t => {
             const now = new Date();
@@ -463,26 +496,36 @@ export class TerminosService {
     }
 
     // Notes stored inline in observaciones using [NOTA] markers
-    async getNotas(id: string): Promise<any[]> {
+    async getNotas(id: string, access?: LegalAccess): Promise<any[]> {
         const termino = await this.findOne(id);
         if (!termino.observaciones) return [];
         const matches = termino.observaciones.match(/\[NOTA\] [^\n]*/g) || [];
-        return matches.map(m => {
+        const notas = matches.map(m => {
             const parts = m.replace('[NOTA] ', '').split('|');
             return {
                 texto: parts[0] || '',
                 usuario: parts[1] || 'Sistema',
                 fecha: parts[2] ? new Date(parts[2]) : new Date(),
+                usuarioId: parts[3] || null,
             };
         }).reverse(); // most recent first
+
+        if (access?.esResuelveSolo) {
+            return notas.filter(nota => nota.usuarioId && nota.usuarioId === access.userId);
+        }
+
+        return notas;
     }
 
-    async addNota(id: string, texto: string, usuario: string = 'Sistema'): Promise<any> {
+    async addNota(id: string, texto: string, usuario: string = 'Sistema', usuarioId?: string): Promise<any> {
         const termino = await this.findOne(id);
-        const marker = `\n[NOTA] ${texto}|${usuario}|${new Date().toISOString()}`;
+        const safeTexto = texto.replace(/\r?\n/g, ' ').replace(/\|/g, '/');
+        const safeUsuario = usuario.replace(/\r?\n/g, ' ').replace(/\|/g, '/');
+        const fecha = new Date();
+        const marker = `\n[NOTA] ${safeTexto}|${safeUsuario}|${fecha.toISOString()}|${usuarioId || ''}`;
         termino.observaciones = (termino.observaciones || '') + marker;
         await this.terminoRepository.save(termino);
-        return { texto, usuario, fecha: new Date() };
+        return { texto: safeTexto, usuario: safeUsuario, fecha, usuarioId: usuarioId || null };
     }
 
     // NEW: Add Document logic without altering schema

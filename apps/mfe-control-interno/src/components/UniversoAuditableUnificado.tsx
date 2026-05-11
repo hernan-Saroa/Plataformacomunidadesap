@@ -656,6 +656,15 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
               auditorAsignado: data.auditorAsignado,
               equipoAuditores: data.equipoAuditores,
               supervisorAsignado: data.supervisorAsignado,
+              // Responsable del Área Auditada (auditado). Se selecciona en el Paso 2
+              // del formulario y debe llegar al backend en campos planos para
+              // habilitar el portal del auditado.
+              ...(data.responsableArea && {
+                responsableAreaIdPersona: data.responsableArea.idPersona,
+                responsableAreaNombre: data.responsableArea.nombre,
+                responsableAreaCargo: data.responsableArea.cargo || 'Responsable de Área Auditada',
+                responsableAreaEmail: data.responsableArea.email,
+              }),
               // ✅ FECHAS: Usar los campos correctos del formulario con valores por defecto
               fechaInicio: data.fechaInicioPlaneacion || data.fechaInicio || new Date().toISOString().split('T')[0],
               fechaFinPlaneacion: data.fechaFinPlaneacion,

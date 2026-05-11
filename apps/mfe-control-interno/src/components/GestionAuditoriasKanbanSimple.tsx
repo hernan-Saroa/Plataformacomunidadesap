@@ -2431,6 +2431,15 @@ export function GestionAuditoriasKanbanSimple() {
         auditorAsignadoId: data.auditorAsignado || undefined,
         supervisorAsignadoId: data.supervisorAsignado || undefined,
         equipoAuditores: data.equipoAuditores || [],
+        // Responsable del Área Auditada (Paso 2 del formulario). Se envía en campos
+        // planos al backend para que la auditoría quede asociada al auditado y este
+        // pueda verla en su portal (`/auditorias/auditado/mis-auditorias`).
+        ...(data.responsableArea && {
+          responsableAreaIdPersona: data.responsableArea.idPersona,
+          responsableAreaNombre: data.responsableArea.nombre,
+          responsableAreaCargo: data.responsableArea.cargo || 'Responsable de Área Auditada',
+          responsableAreaEmail: data.responsableArea.email,
+        }),
         // ✅ Incluir TODAS las fechas del cronograma de 3 etapas
         // Etapa 1: Planeación
         ...(data.fechaFinPlaneacion && { fechaFinPlaneacion: data.fechaFinPlaneacion }),
@@ -2612,6 +2621,67 @@ export function GestionAuditoriasKanbanSimple() {
     }
   };
 
+  /**
+   * Valida que al menos un Plan de Mejoramiento de la auditoría esté aprobado
+   * (o más adelante en el ciclo) antes de permitir el paso a Seguimiento.
+   * Si la auditoría no tiene hallazgos no requiere plan.
+   */
+  const validarPlanAprobadoParaSeguimiento = async (
+    auditoriaId: string,
+  ): Promise<boolean> => {
+    try {
+      const auditoria = auditorias.find(a => a.id === auditoriaId);
+      const tieneHallazgos =
+        (typeof auditoria?.hallazgos === 'number' && auditoria.hallazgos > 0) ||
+        (Array.isArray((auditoria as any)?.hallazgos) && (auditoria as any).hallazgos.length > 0);
+      if (!tieneHallazgos) return true;
+
+      const planes = await controlInternoService
+        .getPlanesMejoramientoByAuditoria(auditoriaId)
+        .catch(() => [] as any[]);
+
+      if (!Array.isArray(planes) || planes.length === 0) {
+        toast.error('Sin Plan de Mejoramiento', {
+          description:
+            'Esta auditoría tiene hallazgos pero no existe un Plan de Mejoramiento. Cree y apruebe el plan antes de pasar a Seguimiento.',
+          duration: 6000,
+        });
+        return false;
+      }
+
+      const estadosValidos = new Set([
+        'aprobado',
+        'en_ejecucion',
+        'en-ejecucion',
+        'en ejecucion',
+        'en_seguimiento',
+        'en-seguimiento',
+        'completado',
+        'cumplido',
+      ]);
+      const algunoAprobado = planes.some((p: any) => {
+        const estado = String(p?.estado || '')
+          .trim()
+          .toLowerCase()
+          .replace(/-/g, '_');
+        return estadosValidos.has(estado.replace(/_/g, ' ')) || estadosValidos.has(estado);
+      });
+
+      if (!algunoAprobado) {
+        const codigos = planes.map((p: any) => p?.codigo).filter(Boolean).join(', ');
+        toast.error('Plan de Mejoramiento sin aprobar', {
+          description: `Debe aprobar el plan ${codigos || 'asociado a la auditoría'} antes de pasar a Seguimiento. Vaya al módulo Planes de Mejoramiento, abra el detalle y pulse "Aprobar Plan".`,
+          duration: 8000,
+        });
+        return false;
+      }
+      return true;
+    } catch {
+      toast.error('No se pudo verificar el Plan de Mejoramiento');
+      return false;
+    }
+  };
+
   const handleDrop = async (item: Auditoria, nuevoEstado: EstadoAuditoria) => {
     if (item.estado === nuevoEstado) return;
 
@@ -2633,6 +2703,7 @@ export function GestionAuditoriasKanbanSimple() {
     }
     if (estadoAnterior === 'Comunicación' && nuevoEstado === 'Seguimiento') {
       if (!(await validarDocumentosEtapa(item.id, 'comunicacion', 'Comunicación', 'Seguimiento'))) return;
+      if (!(await validarPlanAprobadoParaSeguimiento(item.id))) return;
     }
 
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
@@ -2745,6 +2816,7 @@ export function GestionAuditoriasKanbanSimple() {
     }
     if (estadoAnterior === 'Comunicación' && nuevoEstado === 'Seguimiento') {
       if (!(await validarDocumentosEtapa(auditoriaId, 'comunicacion', 'Comunicación', 'Seguimiento'))) return;
+      if (!(await validarPlanAprobadoParaSeguimiento(auditoriaId))) return;
     }
 
     // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============

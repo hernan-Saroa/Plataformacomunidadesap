@@ -13,7 +13,7 @@
  * - Direct Mode: Cada servicio en su puerto http://localhost:300X/{path}
  */
 
-import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../config/environment';
+import { config, getDefaultHeaders, getUserContextHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../config/environment';
 import type { ApiResponse, ApiError } from '../../types';
 import { toast } from 'sonner';
 import { offlineCache } from './offlineCache';
@@ -381,6 +381,7 @@ export class ApiClient {
     const headers = skipAuth
       ? { 'Content-Type': 'application/json; charset=utf-8' }
       : this.addAuthHeader(getDefaultHeaders(true));
+    this.addLegalContextHeaders(url, headers);
 
     // Si el body es FormData, quitamos el Content-Type para que el navegador lo ponga con el boundary
     if (fetchConfig.body instanceof FormData) {
@@ -819,6 +820,15 @@ export class ApiClient {
         .filter((key) => key.startsWith(config.STORAGE_KEYS.CACHE_PREFIX))
         .forEach((key) => localStorage.removeItem(key));
     }
+  }
+
+  private addLegalContextHeaders(url: string, headers: HeadersInit): void {
+    if (!this.isLegalManagementUrl(url)) return;
+    Object.assign(headers as Record<string, string>, getUserContextHeaders());
+  }
+
+  private isLegalManagementUrl(url: string): boolean {
+    return url.includes('/legal/api/') || url.includes(':3008/');
   }
 }
 
