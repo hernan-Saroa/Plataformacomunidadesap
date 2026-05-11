@@ -935,6 +935,21 @@ function ModalNuevaAuditoria({ onClose }: { onClose: () => void }) {
         procesoId: auditoria.areaAuditable?.id || null,
         procesoNombre: auditoria.areaAuditable?.nombre || '',
         areaAuditable: auditoria.areaAuditable?.nombre || '',
+        areaObjetivo: auditoria.areaAuditable?.nombre || '',
+        procesoAuditado: Array.isArray(auditoria.procesosIncluidos)
+          ? auditoria.procesosIncluidos.join(', ')
+          : '',
+        // Regla actual: responsable = auditado (responsable del área auditada)
+        responsable: auditoria.responsableArea?.nombre
+          || auditoria.areaAuditable?.responsable
+          || 'Por asignar',
+        responsableAreaNombre: auditoria.responsableArea?.nombre
+          || auditoria.areaAuditable?.responsable
+          || '',
+        responsableAreaCargo: auditoria.responsableArea?.cargo
+          || 'Responsable de área',
+        responsableAreaEmail: auditoria.responsableArea?.email || '',
+        responsableAreaIdPersona: auditoria.responsableArea?.idPersona || undefined,
         fechaInicio: auditoria.fechaInicio,
         fechaFin: auditoria.fechaFin,
         fechaFinPlaneacion: auditoria.fechaFinPlaneacion,

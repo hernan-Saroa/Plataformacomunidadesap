@@ -48,12 +48,21 @@ export class ConsultasJuridicasService implements OnModuleInit {
         }
     }
 
-    async findAll(): Promise<any[]> {
-        const consultas = await this.consultaRepository.find({
-            where: { estadoArchivo: 'ACTIVO' },
-            relations: ['abogadoAsignado'],
-            order: { fechaRecepcion: 'DESC' }
-        });
+    async findAll(filtros: { asignadoKeys?: string[] } = {}): Promise<any[]> {
+        const query = this.consultaRepository
+            .createQueryBuilder('consulta')
+            .leftJoinAndSelect('consulta.abogadoAsignado', 'abogadoAsignado')
+            .where('consulta.estadoArchivo = :estadoArchivo', { estadoArchivo: 'ACTIVO' });
+
+        if (filtros.asignadoKeys?.length) {
+            const normalizedKeys = filtros.asignadoKeys.map((key) => key.toLowerCase());
+            query.andWhere(
+                '(consulta.abogadoAsignadoId IN (:...asignadoKeys) OR LOWER(consulta.abogadoAsignadoNombre) IN (:...normalizedKeys))',
+                { asignadoKeys: filtros.asignadoKeys, normalizedKeys },
+            );
+        }
+
+        const consultas = await query.orderBy('consulta.fechaRecepcion', 'DESC').getMany();
 
         // Return with calculated diasRestantes and prioridad
         return consultas.map(c => {

@@ -109,7 +109,7 @@
                                             responsableGeneral: string;
                                             fechaCreacion: string;
                                             fechaVencimiento: string;
-                                            estado: 'FORMULACION' | 'APROBACION' | 'EN_EJECUCION' | 'EN_SEGUIMIENTO' | 'CUMPLIDO';
+                                            estado: 'BORRADOR' | 'REVISION' | 'FORMULACION' | 'APROBACION' | 'EN_EJECUCION' | 'EN_SEGUIMIENTO' | 'CUMPLIDO' | 'RECHAZADO' | 'VENCIDO';
                                             progresoGlobal: number;
                                             hallazgos: Hallazgo[];
                                             acciones: AccionCorrectiva[];
@@ -405,7 +405,14 @@
                                             const [tabActiva, setTabActiva] = useState<TabActiva>('resumen');
                                             const [modalActualizacion, setModalActualizacion] = useState(false);
                                             const [modalCrearAccion, setModalCrearAccion] = useState(false);
-                                            
+
+                                            // Aprobación / Rechazo del plan (usa endpoints existentes del backend)
+                                            const [procesandoAprobacion, setProcesandoAprobacion] = useState(false);
+                                            const [modalRechazoAbierto, setModalRechazoAbierto] = useState(false);
+                                            const [motivoRechazo, setMotivoRechazo] = useState('');
+                                            const [observacionesAprobacion, setObservacionesAprobacion] = useState('');
+                                            const [modalAprobacionAbierto, setModalAprobacionAbierto] = useState(false);
+
                                             // ✅ HOOK DE BACKEND - Carga datos reales
                                             const {
                                               plan,
@@ -417,6 +424,54 @@
                                               actualizarAccion,
                                               eliminarAccion
                                             } = usePlanMejoramientoDetalle(planId);
+
+                                            const handleAprobarPlan = useCallback(async () => {
+                                              if (!plan) return;
+                                              setProcesandoAprobacion(true);
+                                              try {
+                                                await controlInternoService.aprobarPlanMejoramiento(
+                                                  plan.id,
+                                                  observacionesAprobacion.trim() || undefined,
+                                                );
+                                                toast.success(`Plan ${plan.codigo} aprobado exitosamente`);
+                                                setModalAprobacionAbierto(false);
+                                                setObservacionesAprobacion('');
+                                                await refetch();
+                                                onPlanActualizado?.();
+                                              } catch (err: any) {
+                                                toast.error('Error al aprobar el plan', {
+                                                  description: err?.message || 'Intenta de nuevo en unos segundos.',
+                                                });
+                                              } finally {
+                                                setProcesandoAprobacion(false);
+                                              }
+                                            }, [plan, observacionesAprobacion, refetch, onPlanActualizado]);
+
+                                            const handleRechazarPlan = useCallback(async () => {
+                                              if (!plan) return;
+                                              const motivo = motivoRechazo.trim();
+                                              if (motivo.length < 10) {
+                                                toast.error('El motivo de rechazo debe tener al menos 10 caracteres');
+                                                return;
+                                              }
+                                              setProcesandoAprobacion(true);
+                                              try {
+                                                await controlInternoService.rechazarPlanMejoramiento(plan.id, motivo);
+                                                toast.success(`Plan ${plan.codigo} rechazado`, {
+                                                  description: 'El responsable deberá ajustar y reenviar.',
+                                                });
+                                                setModalRechazoAbierto(false);
+                                                setMotivoRechazo('');
+                                                await refetch();
+                                                onPlanActualizado?.();
+                                              } catch (err: any) {
+                                                toast.error('Error al rechazar el plan', {
+                                                  description: err?.message || 'Intenta de nuevo en unos segundos.',
+                                                });
+                                              } finally {
+                                                setProcesandoAprobacion(false);
+                                              }
+                                            }, [plan, motivoRechazo, refetch, onPlanActualizado]);
 
                                             const crearAccionYNotificar = useCallback(
                                               async (data: any) => {
@@ -827,12 +882,16 @@
                                               }
                                             };
 
-                                            const estadoConfig = {
+                                            const estadoConfig: Record<PlanMejoramientoDetalle['estado'], { bg: string; text: string; label: string }> = {
+                                              BORRADOR: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Borrador' },
+                                              REVISION: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'En Revisión' },
                                               FORMULACION: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Formulación' },
-                                              APROBACION: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Aprobación' },
+                                              APROBACION: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Aprobado' },
                                               EN_EJECUCION: { bg: 'bg-green-100', text: 'text-green-700', label: 'En Ejecución' },
                                               EN_SEGUIMIENTO: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'En Seguimiento' },
-                                              CUMPLIDO: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Cumplido' }
+                                              CUMPLIDO: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Cumplido' },
+                                              RECHAZADO: { bg: 'bg-red-100', text: 'text-red-700', label: 'Rechazado' },
+                                              VENCIDO: { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Vencido' },
                                             };
 
                                             // ═══════════════════════════════════════════════════════════════════════════
@@ -930,12 +989,37 @@
                                                         </div>
                                                       </div>
 
-                                                      <button
-                                                        onClick={onClose}
-                                                        className="ml-4 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors flex-shrink-0"
-                                                      >
-                                                        <X className="w-5 h-5" />
-                                                      </button>
+                                                      <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                                                        {(plan.estado === 'BORRADOR' || plan.estado === 'REVISION' || plan.estado === 'FORMULACION') && (
+                                                          <>
+                                                            <button
+                                                              onClick={() => setModalAprobacionAbierto(true)}
+                                                              disabled={procesandoAprobacion}
+                                                              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                                              title="Aprobar el plan de mejoramiento"
+                                                            >
+                                                              <Check className="w-4 h-4" />
+                                                              <span className="hidden sm:inline">Aprobar Plan</span>
+                                                            </button>
+                                                            <button
+                                                              onClick={() => setModalRechazoAbierto(true)}
+                                                              disabled={procesandoAprobacion}
+                                                              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                                              title="Rechazar el plan y solicitar ajustes"
+                                                            >
+                                                              <XCircle className="w-4 h-4" />
+                                                              <span className="hidden sm:inline">Rechazar</span>
+                                                            </button>
+                                                          </>
+                                                        )}
+                                                        <button
+                                                          onClick={onClose}
+                                                          className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+                                                          title="Cerrar"
+                                                        >
+                                                          <X className="w-5 h-5" />
+                                                        </button>
+                                                      </div>
                                                     </div>
 
                                                     {/* Barra de Progreso Global */}
@@ -1103,6 +1187,135 @@
                                                     </div>
                                                   </div>
                                                 </div>
+
+                                                {/* Modal de Aprobación del Plan */}
+                                                {modalAprobacionAbierto && (
+                                                  <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4">
+                                                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !procesandoAprobacion && setModalAprobacionAbierto(false)} />
+                                                    <div className="relative w-full max-w-md bg-white rounded-xl shadow-2xl flex flex-col">
+                                                      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+                                                        <div className="flex items-center gap-2">
+                                                          <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center">
+                                                            <Check className="w-5 h-5 text-emerald-700" />
+                                                          </div>
+                                                          <h3 className="text-base font-semibold text-gray-900">Aprobar Plan de Mejoramiento</h3>
+                                                        </div>
+                                                        <button
+                                                          onClick={() => !procesandoAprobacion && setModalAprobacionAbierto(false)}
+                                                          className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500"
+                                                          disabled={procesandoAprobacion}
+                                                        >
+                                                          <X className="w-4 h-4" />
+                                                        </button>
+                                                      </div>
+                                                      <div className="p-5 space-y-3">
+                                                        <p className="text-sm text-gray-700">
+                                                          Vas a aprobar el plan <strong>{plan.codigo}</strong>. El plan pasará a estado <em>Aprobado</em> y se notificará al responsable.
+                                                        </p>
+                                                        <div>
+                                                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                            Observaciones (opcional)
+                                                          </label>
+                                                          <textarea
+                                                            value={observacionesAprobacion}
+                                                            onChange={(e) => setObservacionesAprobacion(e.target.value)}
+                                                            rows={3}
+                                                            maxLength={500}
+                                                            placeholder="Comentarios sobre la aprobación..."
+                                                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                            disabled={procesandoAprobacion}
+                                                          />
+                                                          <div className="text-xs text-gray-400 text-right mt-1">{observacionesAprobacion.length}/500</div>
+                                                        </div>
+                                                      </div>
+                                                      <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+                                                        <button
+                                                          onClick={() => setModalAprobacionAbierto(false)}
+                                                          disabled={procesandoAprobacion}
+                                                          className="px-4 py-2 text-sm rounded-lg text-gray-700 hover:bg-gray-200 disabled:opacity-60"
+                                                        >
+                                                          Cancelar
+                                                        </button>
+                                                        <button
+                                                          onClick={handleAprobarPlan}
+                                                          disabled={procesandoAprobacion}
+                                                          className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium disabled:opacity-60"
+                                                        >
+                                                          {procesandoAprobacion ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                                                          Confirmar Aprobación
+                                                        </button>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                )}
+
+                                                {/* Modal de Rechazo del Plan */}
+                                                {modalRechazoAbierto && (
+                                                  <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4">
+                                                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !procesandoAprobacion && setModalRechazoAbierto(false)} />
+                                                    <div className="relative w-full max-w-md bg-white rounded-xl shadow-2xl flex flex-col">
+                                                      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+                                                        <div className="flex items-center gap-2">
+                                                          <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center">
+                                                            <XCircle className="w-5 h-5 text-red-700" />
+                                                          </div>
+                                                          <h3 className="text-base font-semibold text-gray-900">Rechazar Plan de Mejoramiento</h3>
+                                                        </div>
+                                                        <button
+                                                          onClick={() => !procesandoAprobacion && setModalRechazoAbierto(false)}
+                                                          className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500"
+                                                          disabled={procesandoAprobacion}
+                                                        >
+                                                          <X className="w-4 h-4" />
+                                                        </button>
+                                                      </div>
+                                                      <div className="p-5 space-y-3">
+                                                        <p className="text-sm text-gray-700">
+                                                          Vas a rechazar el plan <strong>{plan.codigo}</strong>. El responsable deberá ajustar las acciones y reenviar.
+                                                        </p>
+                                                        <div>
+                                                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                            Motivo del rechazo <span className="text-red-500">*</span>
+                                                          </label>
+                                                          <textarea
+                                                            value={motivoRechazo}
+                                                            onChange={(e) => setMotivoRechazo(e.target.value)}
+                                                            rows={4}
+                                                            maxLength={1000}
+                                                            placeholder="Indica con claridad las razones del rechazo (mínimo 10 caracteres)..."
+                                                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                            disabled={procesandoAprobacion}
+                                                          />
+                                                          <div className="flex items-center justify-between mt-1">
+                                                            <div className={`text-xs ${motivoRechazo.trim().length < 10 ? 'text-red-500' : 'text-gray-400'}`}>
+                                                              {motivoRechazo.trim().length < 10
+                                                                ? `Faltan ${10 - motivoRechazo.trim().length} caracteres`
+                                                                : 'Motivo válido'}
+                                                            </div>
+                                                            <div className="text-xs text-gray-400">{motivoRechazo.length}/1000</div>
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                      <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+                                                        <button
+                                                          onClick={() => setModalRechazoAbierto(false)}
+                                                          disabled={procesandoAprobacion}
+                                                          className="px-4 py-2 text-sm rounded-lg text-gray-700 hover:bg-gray-200 disabled:opacity-60"
+                                                        >
+                                                          Cancelar
+                                                        </button>
+                                                        <button
+                                                          onClick={handleRechazarPlan}
+                                                          disabled={procesandoAprobacion || motivoRechazo.trim().length < 10}
+                                                          className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                                                        >
+                                                          {procesandoAprobacion ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                                                          Confirmar Rechazo
+                                                        </button>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                )}
 
                                                 {/* Modal de Actualización */}
                                                 {modalActualizacion && (

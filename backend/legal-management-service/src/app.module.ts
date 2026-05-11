@@ -75,6 +75,7 @@ import { ConfigurationsController } from './controllers/configurations.controlle
 import { OficiosController } from './controllers/oficios.controller';
 import { TasaReferenciaController } from './controllers/tasa-referencia.controller';
 import { PlantillasController } from './controllers/plantillas.controller';
+import { ReportesController } from './controllers/reportes.controller';
 
 // Services
 import { ExpedienteService } from './services/expediente.service';
@@ -111,6 +112,8 @@ import { TasaReferenciaService } from './services/tasa-referencia.service';
 import { PlantillasService } from './services/plantillas.service';
 import { NotificationClientService } from './services/notification-client.service';
 import { LegalNotificationsService } from './services/legal-notifications.service';
+import { ReportesService } from './services/reportes.service';
+import { AuthModule } from './auth/auth.module';
 
 // Modules
 import { PeiModule } from './pei/pei.module';
@@ -119,6 +122,7 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
 @Module({
   imports: [
     TypeOrmModule.forRoot(databaseConfig),
+    AuthModule,
     ScheduleModule.forRoot(),
     TypeOrmModule.forFeature([
       Expediente,
@@ -213,7 +217,8 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     // Oficios
     OficiosController,
     TasaReferenciaController,
-    PlantillasController
+    PlantillasController,
+    ReportesController
   ],
   providers: [
     AppService,
@@ -254,7 +259,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
     PlantillasService,
     // Notificaciones
     NotificationClientService,
-    LegalNotificationsService
+    LegalNotificationsService,
+    // Reportes
+    ReportesService
   ],
 })
 export class AppModule { }

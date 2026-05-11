@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { getUserContextHeaders } from '../../config/environment';
 import { API_MODE, MICROSERVICE_URLS, getServiceUrl, buildApiUrl } from '../../config/environment';
 import { authService } from './authService';
 
@@ -83,6 +84,10 @@ export interface Audiencia {
 }
 
 export class LegalService {
+    private legalContextConfig() {
+        return { headers: getUserContextHeaders() };
+    }
+
     async getExpedientes(filtros?: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
         return apiClient.get<Expediente[]>(`${SERVICE_PREFIX}/expedientes`, filtros);
     }
@@ -264,7 +269,7 @@ export class LegalService {
 
     // ==================== CONSULTAS JURÍDICAS ====================
     async getConsultasJuridicas(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas`);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas`, undefined, this.legalContextConfig());
     }
 
     async getConsultaJuridica(id: string): Promise<any> {
@@ -646,7 +651,20 @@ export class LegalService {
     }
 
     async addNotaTermino(id: string, texto: string): Promise<any> {
-        return apiClient.post(`${SERVICE_PREFIX}/terminos/${id}/notas`, { texto });
+        const currentUser = authService.getCurrentUser() as any;
+        const usuario = (
+            currentUser?.fullName ??
+            currentUser?.full_name ??
+            currentUser?.name ??
+            currentUser?.nombre ??
+            (currentUser?.person?.first_name
+                ? `${currentUser.person.first_name ?? ''} ${currentUser.person.last_name ?? ''}`.trim()
+                : null) ??
+            currentUser?.email ??
+            currentUser?.person?.email ??
+            'Usuario'
+        );
+        return apiClient.post(`${SERVICE_PREFIX}/terminos/${id}/notas`, { texto, usuario });
     }
 
 
@@ -694,7 +712,7 @@ export class LegalService {
 
     // ==================== PEI (PLAN DE ACCIÓN) ====================
     async getPeiDashboard(): Promise<any> {
-        return apiClient.get<any>(`${SERVICE_PREFIX}/pei/dashboard`);
+        return apiClient.get<any>(`${SERVICE_PREFIX}/pei/dashboard`, undefined, this.legalContextConfig());
     }
 
     async createIndicador(data: any): Promise<any> {
@@ -715,7 +733,7 @@ export class LegalService {
 
     // ==================== PEI - ARCHIVADO ====================
     async getPeiArchivados(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/pei/archivados`);
+        return apiClient.get<any[]>(`${SERVICE_PREFIX}/pei/archivados`, undefined, this.legalContextConfig());
     }
 
     async archivarPeiIndicador(id: string): Promise<any> {

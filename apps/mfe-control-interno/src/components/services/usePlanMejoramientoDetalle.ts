@@ -143,7 +143,7 @@ export interface PlanMejoramientoDetalle {
   responsableGeneral: string;
   fechaCreacion: string;
   fechaVencimiento: string;
-  estado: 'FORMULACION' | 'APROBACION' | 'EN_EJECUCION' | 'EN_SEGUIMIENTO' | 'CUMPLIDO';
+  estado: 'BORRADOR' | 'REVISION' | 'FORMULACION' | 'APROBACION' | 'EN_EJECUCION' | 'EN_SEGUIMIENTO' | 'CUMPLIDO' | 'RECHAZADO' | 'VENCIDO';
   progresoGlobal: number;
   hallazgos: HallazgoDetalle[];
   acciones: AccionCorrectiva[];
@@ -237,6 +237,10 @@ function mapearEstadoAccion(estado: string): 'PENDIENTE' | 'EN_EJECUCION' | 'COM
 
 function mapearEstadoPlan(estado: string): PlanMejoramientoDetalle['estado'] {
   const mapa: Record<string, PlanMejoramientoDetalle['estado']> = {
+    'borrador': 'BORRADOR',
+    'BORRADOR': 'BORRADOR',
+    'revision': 'REVISION',
+    'REVISION': 'REVISION',
     'formulacion': 'FORMULACION',
     'FORMULACION': 'FORMULACION',
     'aprobacion': 'APROBACION',
@@ -251,8 +255,12 @@ function mapearEstadoPlan(estado: string): PlanMejoramientoDetalle['estado'] {
     'CUMPLIDO': 'CUMPLIDO',
     'completado': 'CUMPLIDO',
     'COMPLETADO': 'CUMPLIDO',
+    'rechazado': 'RECHAZADO',
+    'RECHAZADO': 'RECHAZADO',
+    'vencido': 'VENCIDO',
+    'VENCIDO': 'VENCIDO',
   };
-  return mapa[estado] || 'FORMULACION';
+  return mapa[estado] || 'BORRADOR';
 }
 
 /**

@@ -292,14 +292,21 @@ export class RolesService {
   async duplicate(id: string, duplicatedBy?: string): Promise<Role> {
     const originalRole = await this.findOne(id);
 
+    // Generar código único para el rol duplicado
+    const duplicatedName = `${originalRole.name} (Copia)`;
+    const code = this.generateCode(duplicatedName);
+
     const duplicatedRole = this.roleRepo.create({
-      name: `${originalRole.name} (Copia)`,
+      id: uuidv4(),
+      code,
+      name: duplicatedName,
       description: originalRole.description,
       icon: originalRole.icon,
       color: originalRole.color,
       type: 'personalizado',
       sistema_destino: originalRole.sistema_destino,
       alcance: originalRole.alcance,
+      category: originalRole.category,
       requires_2fa: originalRole.requires_2fa,
       is_active: true,
       created_by: duplicatedBy,
