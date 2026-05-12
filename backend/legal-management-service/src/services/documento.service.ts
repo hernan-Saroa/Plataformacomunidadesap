@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Documento } from '../entities/documento.entity';
+import { Expediente } from '../entities/expediente.entity';
+import { LegalNotificationsService } from './legal-notifications.service';
 
 export class CreateDocumentoDto {
     expedienteId: string;
@@ -18,6 +20,8 @@ export class CreateDocumentoDto {
     subidoPor?: string;
     categoria?: string;
     etapa?: string;
+    /** Override explícito del módulo: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO_DISCIPLINARIO'. Si no viene, se infiere de la jurisdicción del expediente. */
+    modulo?: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO_DISCIPLINARIO';
 }
 
 export class UpdateDocumentoDto {
@@ -37,6 +41,9 @@ export class DocumentoService {
     constructor(
         @InjectRepository(Documento)
         private documentoRepository: Repository<Documento>,
+        @InjectRepository(Expediente)
+        private expedienteRepository: Repository<Expediente>,
+        private readonly legalNotifications: LegalNotificationsService,
     ) { }
 
     async listarPorExpediente(expedienteId: string): Promise<Documento[]> {
@@ -67,7 +74,39 @@ export class DocumentoService {
             categoria: dto.categoria || 'documentos',
             etapa: dto.etapa || undefined,
         });
-        return this.documentoRepository.save(documento);
+        const saved = await this.documentoRepository.save(documento);
+
+        const expediente = await this.expedienteRepository.findOne({ where: { id: dto.expedienteId } });
+        if (expediente) {
+            // Prioridad: override explícito del cliente > inferencia por jurisdicción/radicado
+            let modulo: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO_DISCIPLINARIO';
+            if (dto.modulo === 'DEFENSA_JUDICIAL' || dto.modulo === 'JUZGAMIENTO_DISCIPLINARIO') {
+                modulo = dto.modulo;
+            } else {
+                const radicado = (expediente.radicado || '').toUpperCase();
+                const esDisciplinario =
+                    expediente.jurisdiccion === 'DISCIPLINARIO' ||
+                    expediente.jurisdiccion === 'Disciplinaria' ||
+                    expediente.tipoProceso === 'DISCIPLINARIO' ||
+                    expediente.tipoProceso === 'Disciplinario' ||
+                    radicado.startsWith('PD-');
+                modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+            }
+
+            try {
+                await this.legalNotifications.notifyDocumentoSubido({
+                    modulo,
+                    radicado: expediente.radicado,
+                    procesoId: expediente.id,
+                    nombreDocumento: saved.archivoNombreOriginal || saved.nombre,
+                    subidoPor: saved.subidoPor || 'Sistema',
+                });
+            } catch (e: any) {
+                console.error('[DocumentoService.crear] notify falló:', e?.message);
+            }
+        }
+
+        return saved;
     }
 
     async actualizar(id: string, dto: UpdateDocumentoDto): Promise<Documento | null> {

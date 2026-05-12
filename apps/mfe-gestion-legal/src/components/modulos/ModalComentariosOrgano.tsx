@@ -16,6 +16,7 @@ import {
 import { toast } from 'sonner';
 import { ocService } from '../../../../services/api/legal.service';
 import { authService } from '../../../../services/api/authService';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 interface Comentario {
   id: string;
@@ -203,7 +204,7 @@ export function ModalComentariosOrgano({
           </div>
 
           {/* AGREGAR NUEVO COMENTARIO */}
-          <div className="space-y-3 border border-gray-200 rounded-lg p-4 bg-white">
+          {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_ELABORAR) && <div className="space-y-3 border border-gray-200 rounded-lg p-4 bg-white">
             <div className="flex items-center gap-2 mb-2">
               <h3 className="font-bold text-gray-900 flex-1">✍️ Agregar Comentario o Actuación</h3>
               <div className="flex items-center gap-2">
@@ -274,7 +275,7 @@ export function ModalComentariosOrgano({
                 )}
               </Button>
             </div>
-          </div>
+          </div>}
 
 
           {/* FILTROS */}

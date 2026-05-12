@@ -7,10 +7,12 @@ import {
   CheckCircle2,
   Download,
   FileSpreadsheet,
+  FileText,
   Loader2,
   PencilLine,
   Percent,
   Plus,
+  RotateCcw,
   Save,
   Search,
   Trash2,
@@ -114,12 +116,12 @@ const CATEGORY_META: Record<
 > = {
   DIRECTIVOS: {
     label: 'Directivos',
-    description: 'Gestion de porcentajes para directivos.',
+    description: 'Gestión de porcentajes para directivos.',
     icon: Building2,
   },
   COORDINADORES: {
     label: 'Coordinadores',
-    description: 'Gestion de porcentajes para coordinadores.',
+    description: 'Gestión de porcentajes para coordinadores.',
     icon: Users,
   },
 };
@@ -183,7 +185,39 @@ const getHeaderIndex = (headers: string[], aliases: string[]) => {
   return headers.findIndex((header) => normalizedAliases.includes(normalizeHeaderText(header)));
 };
 
+const TEMPLATE_PLACEHOLDER_REGEX = /(\{porcentaje\}|\{valor_letras\}|\{valor_numerico\})/g;
+
+const PLACEHOLDER_COLORS: Record<string, string> = {
+  '{porcentaje}':    'bg-amber-100 text-amber-700 border-amber-200',
+  '{valor_letras}':  'bg-indigo-100 text-indigo-700 border-indigo-200',
+  '{valor_numerico}': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+};
+
+function renderTemplateHighlighted(text: string): React.ReactNode {
+  if (!text) return null;
+  const parts = text.split(TEMPLATE_PLACEHOLDER_REGEX);
+  return parts.map((part, index) => {
+    const colorClass = PLACEHOLDER_COLORS[part];
+    if (colorClass) {
+      return (
+        <code
+          key={index}
+          className={`inline rounded px-1 py-0.5 text-xs font-mono border ${colorClass}`}
+        >
+          {part}
+        </code>
+      );
+    }
+    return <React.Fragment key={index}>{part}</React.Fragment>;
+  });
+}
+
 const MODAL_ITEMS_PER_PAGE = 20;
+
+const DEFAULT_BONUS_TEMPLATES: Record<PrimaTecnicaCategoria, string> = {
+  DIRECTIVOS: 'Percibe una prima técnica en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+  COORDINADORES: 'Percibe una prima de coordinación en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+};
 const BULK_PREVIEW_ITEMS_LIMIT = 20;
 const BULK_NAME_ALLOWED_REGEX = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s'.-]+$/;
 const BULK_ID_NUMBER_REGEX = /^\d+$/;
@@ -270,6 +304,14 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
   const [bulkRows, setBulkRows] = React.useState<PrimaTecnicaBulkRow[]>([]);
   const [bulkParseError, setBulkParseError] = React.useState<string | null>(null);
   const [bulkResult, setBulkResult] = React.useState<PrimaTecnicaBulkResult | null>(null);
+  const [templateTextByCategory, setTemplateTextByCategory] = React.useState<
+    Record<PrimaTecnicaCategoria, string>
+  >({ DIRECTIVOS: '', COORDINADORES: '' });
+  const [isEditingTemplate, setIsEditingTemplate] = React.useState(false);
+  const [templateDraft, setTemplateDraft] = React.useState('');
+  const [isSavingTemplate, setIsSavingTemplate] = React.useState(false);
+  const [isLoadingTemplate, setIsLoadingTemplate] = React.useState(false);
+
   const searchRequestRef = React.useRef(0);
   const savePulseTimeoutRef = React.useRef<number | null>(null);
   const saveHighlightTimeoutRef = React.useRef<number | null>(null);
@@ -312,10 +354,23 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
         COORDINADORES: Array.isArray(coordinadores) ? coordinadores : [],
       });
     } catch (error: any) {
-      const message = String(error?.message || 'No se pudo cargar la informacion de Prima Tecnica.');
+      const message = String(error?.message || 'No se pudo cargar la información de prima técnica y/o coordinación.');
       toast.error(message);
     } finally {
       setIsLoadingRecords(false);
+    }
+  }, [isOpen]);
+
+  const fetchTemplate = React.useCallback(async (category: PrimaTecnicaCategoria) => {
+    if (!isOpen) return;
+    setIsLoadingTemplate(true);
+    try {
+      const result = await certificadosService.laborales.obtenerPlantillaPrimaTecnica(category);
+      setTemplateTextByCategory((prev) => ({ ...prev, [category]: result.template_text }));
+    } catch {
+      // Si falla, simplemente no se muestra texto precargado
+    } finally {
+      setIsLoadingTemplate(false);
     }
   }, [isOpen]);
 
@@ -348,11 +403,21 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
         COORDINADORES: 1,
       });
       setActiveCategory('DIRECTIVOS');
+      setTemplateTextByCategory({ DIRECTIVOS: '', COORDINADORES: '' });
+      setIsEditingTemplate(false);
+      setTemplateDraft('');
       return;
     }
 
     void fetchRecords();
   }, [isOpen, fetchRecords]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    void fetchTemplate(activeCategory);
+    setIsEditingTemplate(false);
+    setTemplateDraft('');
+  }, [isOpen, activeCategory, fetchTemplate]);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -383,7 +448,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
         if (requestId !== searchRequestRef.current) return;
         setSearchResults([]);
         setSearchPage(1);
-        setSearchError(String(error?.message || 'No se pudo realizar la busqueda.'));
+        setSearchError(String(error?.message || 'No se pudo realizar la búsqueda.'));
       } finally {
         if (requestId === searchRequestRef.current) {
           setSearchLoading(false);
@@ -441,7 +506,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
         errors.push('El nombre es obligatorio.');
       } else {
         if (/\d/.test(fullName)) {
-          errors.push('El nombre no puede contener numeros.');
+          errors.push('El nombre no puede contener números.');
         }
         if (!BULK_NAME_ALLOWED_REGEX.test(fullName)) {
           errors.push('El nombre contiene caracteres no permitidos.');
@@ -449,18 +514,18 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       }
 
       if (!idNumber) {
-        errors.push('El numero de documento es obligatorio.');
+        errors.push('El número de documento es obligatorio.');
       } else if (!BULK_ID_NUMBER_REGEX.test(idNumber)) {
-        errors.push('El documento solo permite numeros (sin puntos, guiones ni espacios).');
+        errors.push('El documento solo permite números (sin puntos, guiones ni espacios).');
       }
 
       let normalizedPercentage: number | null = null;
       if (!percentage) {
         errors.push('El porcentaje es obligatorio.');
       } else if (percentageHasSymbol) {
-        errors.push('El porcentaje no debe incluir simbolos como %. Escribe solo el numero.');
+        errors.push('El porcentaje no debe incluir símbolos como %. Escribe solo el número.');
       } else if (!BULK_PERCENTAGE_REGEX.test(percentage)) {
-        errors.push('El porcentaje solo permite numeros (hasta 2 decimales).');
+        errors.push('El porcentaje solo permite números (hasta 2 decimales).');
       } else {
         const parsed = Number(percentage.replace(',', '.'));
         if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 100) {
@@ -542,7 +607,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       const existingCategory = existingRecord.category;
       const categoryLabel = CATEGORY_META[existingCategory].label;
       toast.error(
-        `${candidate.fullName} ya tiene Prima Tecnica registrada en ${categoryLabel}.`,
+        `${candidate.fullName} ya tiene prima técnica y/o coordinación registrada en ${categoryLabel}.`,
       );
 
       setCategoryState((prev) => ({
@@ -662,7 +727,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     const parsed = Number(String(editingRecordState.percentage || '').replace(',', '.'));
     const isValid = Number.isFinite(parsed) && parsed > 0 && parsed <= 100;
     if (!isValid) {
-      toast.error('Ingresa un porcentaje valido entre 0 y 100.');
+      toast.error('Ingresa un porcentaje válido entre 0 y 100.');
       return;
     }
 
@@ -686,7 +751,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       await fetchRecords(activeCategory);
     } catch (error: any) {
       const message = String(
-        error?.message || 'No se pudo actualizar el porcentaje de Prima Tecnica.',
+        error?.message || 'No se pudo actualizar el porcentaje de prima técnica y/o coordinación.',
       );
       setSaveError(message);
       toast.error(message);
@@ -707,7 +772,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       await fetchRecords(activeCategory);
     } catch (error: any) {
       const message = String(
-        error?.message || 'No se pudo eliminar el registro de Prima Tecnica.',
+        error?.message || 'No se pudo eliminar el registro de prima técnica y/o coordinación.',
       );
       setSaveError(message);
       toast.error(message);
@@ -769,7 +834,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     try {
       const isExcelFile = /\.xlsx?$/.test(file.name.toLowerCase());
       if (!isExcelFile) {
-        throw new Error('Selecciona un archivo Excel valido (.xlsx o .xls).');
+        throw new Error('Selecciona un archivo Excel válido (.xlsx o .xls).');
       }
 
       const XLSX = await import('xlsx');
@@ -851,7 +916,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
 
       setBulkRows(rows);
       toast.success(
-        `Archivo listo: ${rows.length} fila(s) detectadas. Revisa la validacion en la vista previa.`,
+        `Archivo listo: ${rows.length} fila(s) detectadas. Revisa la validación en la vista previa.`,
       );
     } catch (error: any) {
       const message = String(error?.message || 'No se pudo leer el archivo de carga masiva.');
@@ -869,7 +934,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
 
     if (!validBulkRows.length) {
       setBulkParseError(
-        'No hay filas validas para cargar. Corrige los errores de la vista previa.',
+        'No hay filas válidas para cargar. Corrige los errores de la vista previa.',
       );
       return;
     }
@@ -881,7 +946,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     try {
       if (invalidBulkRows.length > 0) {
         toast.warning(
-          `Se omitiran ${invalidBulkRows.length} fila(s) con errores. Solo se enviaran ${validBulkRows.length} fila(s) validas.`,
+          `Se omitirán ${invalidBulkRows.length} fila(s) con errores. Solo se enviarán ${validBulkRows.length} fila(s) válidas.`,
         );
       }
 
@@ -923,7 +988,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       }
     } catch (error: any) {
       const message = String(
-        error?.message || 'No se pudo procesar la carga masiva de Prima Tecnica.',
+        error?.message || 'No se pudo procesar la carga masiva de prima técnica y/o coordinación.',
       );
       setBulkParseError(message);
       toast.error(message);
@@ -939,7 +1004,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     }
 
     if (!isValidPercentage) {
-      toast.error('Ingresa un porcentaje valido entre 0 y 100.');
+      toast.error('Ingresa un porcentaje válido entre 0 y 100.');
       return;
     }
 
@@ -979,12 +1044,53 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       await fetchRecords(activeCategory);
     } catch (error: any) {
       const message = String(
-        error?.message || 'No se pudo guardar el registro de Prima Tecnica.',
+        error?.message || 'No se pudo guardar el registro de prima técnica y/o coordinación.',
       );
       setSaveError(message);
       toast.error(message);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSaveTemplate = async () => {
+    const trimmed = templateDraft.trim();
+    if (!trimmed) return;
+    setIsSavingTemplate(true);
+    try {
+      const result = await certificadosService.laborales.actualizarPlantillaPrimaTecnica(
+        activeCategory,
+        trimmed,
+      );
+      setTemplateTextByCategory((prev) => ({ ...prev, [activeCategory]: result.template_text }));
+      setIsEditingTemplate(false);
+      setTemplateDraft('');
+      toast.success('Plantilla de párrafo actualizada correctamente.');
+    } catch (error: any) {
+      toast.error(
+        String(error?.message || 'No se pudo guardar la plantilla.'),
+      );
+    } finally {
+      setIsSavingTemplate(false);
+    }
+  };
+
+  const handleResetTemplate = async () => {
+    setIsSavingTemplate(true);
+    try {
+      const defaultText = DEFAULT_BONUS_TEMPLATES[activeCategory];
+      const result = await certificadosService.laborales.actualizarPlantillaPrimaTecnica(
+        activeCategory,
+        defaultText,
+      );
+      setTemplateTextByCategory((prev) => ({ ...prev, [activeCategory]: result.template_text }));
+      setIsEditingTemplate(false);
+      setTemplateDraft('');
+      toast.success('Párrafo restablecido al texto original.');
+    } catch (error: any) {
+      toast.error(String(error?.message || 'No se pudo restablecer el párrafo.'));
+    } finally {
+      setIsSavingTemplate(false);
     }
   };
 
@@ -1034,10 +1140,10 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-white text-xl sm:text-2xl font-bold tracking-tight">
-                  Prima Tecnica
+                  Prima técnica y/o coordinación
                 </h2>
                 <p className="text-blue-100 text-sm sm:text-[15px] mt-1">
-                  Configura porcentajes para Directivos y Coordinadores con busqueda por nombre o identificacion.
+                  Configura porcentajes de prima técnica y/o coordinación con búsqueda por nombre o identificación.
                 </p>
               </div>
 
@@ -1118,6 +1224,134 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                 exit="exit"
                 className="flex min-h-[320px] flex-1 flex-col gap-5"
               >
+
+            {/* ── Editor de párrafo de prima ── */}
+            <section className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 sm:p-5 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-700" />
+                  <h3 className="text-slate-900 font-semibold text-sm sm:text-base">
+                    Párrafo de {activeCategory === 'DIRECTIVOS' ? 'prima técnica' : 'prima de coordinación'}
+                  </h3>
+                </div>
+                {!isEditingTemplate && (
+                  <div className="flex items-center gap-2">
+                    <motion.button
+                      type="button"
+                      onClick={handleResetTemplate}
+                      disabled={isSavingTemplate}
+                      title="Restablecer al texto original"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                      whileHover={isSavingTemplate ? {} : { y: -1 }}
+                      whileTap={isSavingTemplate ? {} : { scale: 0.97 }}
+                    >
+                      {isSavingTemplate ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      )}
+                      <span>Restablecer</span>
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      onClick={() => {
+                        setTemplateDraft(templateTextByCategory[activeCategory]);
+                        setIsEditingTemplate(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all hover:bg-blue-100"
+                      whileHover={{ y: -1 }}
+                      whileTap={{ scale: 0.97 }}
+                    >
+                      <PencilLine className="w-3.5 h-3.5" />
+                      <span>Editar párrafo</span>
+                    </motion.button>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-xs text-slate-500">
+                Usa <code className="bg-white border border-slate-200 rounded px-1 py-0.5 font-mono text-indigo-700">{'{porcentaje}'}</code>{' '}
+                para el porcentaje,{' '}
+                <code className="bg-white border border-slate-200 rounded px-1 py-0.5 font-mono text-indigo-700">{'{valor_letras}'}</code>{' '}
+                para el valor en letras y{' '}
+                <code className="bg-white border border-slate-200 rounded px-1 py-0.5 font-mono text-indigo-700">{'{valor_numerico}'}</code>{' '}
+                para el valor numérico formateado.
+              </p>
+
+              {isLoadingTemplate ? (
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Cargando...</span>
+                </div>
+              ) : isEditingTemplate ? (
+                <div className="space-y-3">
+                  <textarea
+                    rows={3}
+                    value={templateDraft}
+                    onChange={(e) => setTemplateDraft(e.target.value)}
+                    className="w-full border-2 border-blue-200 rounded-lg p-3 text-sm outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100 resize-none bg-white"
+                    placeholder="Escribe el párrafo usando los placeholders indicados..."
+                    disabled={isSavingTemplate}
+                  />
+                  <div className="flex flex-wrap gap-2 justify-end">
+                    <motion.button
+                      type="button"
+                      onClick={handleSaveTemplate}
+                      disabled={isSavingTemplate || !templateDraft.trim()}
+                      className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                      whileHover={isSavingTemplate || !templateDraft.trim() ? {} : { y: -1 }}
+                      whileTap={isSavingTemplate || !templateDraft.trim() ? {} : { scale: 0.97 }}
+                    >
+                      {isSavingTemplate ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Guardando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-3.5 h-3.5" />
+                          <span>Guardar párrafo</span>
+                        </>
+                      )}
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      onClick={() => setTemplateDraft(DEFAULT_BONUS_TEMPLATES[activeCategory])}
+                      disabled={isSavingTemplate}
+                      title="Rellenar con el texto original"
+                      className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition-all hover:bg-slate-100 disabled:opacity-60"
+                      whileHover={isSavingTemplate ? {} : { y: -1 }}
+                      whileTap={isSavingTemplate ? {} : { scale: 0.97 }}
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Restablecer</span>
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingTemplate(false);
+                        setTemplateDraft('');
+                      }}
+                      disabled={isSavingTemplate}
+                      className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100 disabled:opacity-60"
+                      whileHover={isSavingTemplate ? {} : { y: -1 }}
+                      whileTap={isSavingTemplate ? {} : { scale: 0.97 }}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Cancelar</span>
+                    </motion.button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-700 bg-white rounded-lg border border-blue-100 px-3 py-2.5 leading-relaxed">
+                  {templateTextByCategory[activeCategory]
+                    ? renderTemplateHighlighted(templateTextByCategory[activeCategory])
+                    : <span className="text-slate-400 italic">Sin plantilla cargada.</span>
+                  }
+                </p>
+              )}
+            </section>
+
             <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <Search className="w-4 h-4 text-blue-700" />
@@ -1131,7 +1365,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Escribe nombre o numero de identificacion..."
+                    placeholder="Escribe nombre o número de identificación..."
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
                     className="w-full border-2 border-slate-200 rounded-lg py-2.5 pl-10 pr-4 text-sm sm:text-[15px] outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
@@ -1231,7 +1465,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                 <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                      Porcentaje de Prima Tecnica
+                      Porcentaje de prima técnica y/o coordinación
                     </label>
                     <div className="relative">
                       <Percent className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -1301,7 +1535,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                 </div>
               ) : activeRecords.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-5 text-sm text-slate-600 flex-1">
-                  Todavia no hay registros para esta categoria.
+                  Todavía no hay registros para esta categoría.
                 </div>
               ) : (
                 <div className="flex flex-1 min-h-0 flex-col gap-3">
@@ -1447,7 +1681,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                               transition={{ duration: 0.18, ease: 'easeOut' }}
                             >
                               <p className="text-xs sm:text-sm text-red-800">
-                                Esta accion eliminara el registro de forma permanente.
+                                Esta acción eliminará el registro de forma permanente.
                               </p>
                               <div className="flex items-center gap-2 sm:flex-shrink-0">
                                 <motion.button
@@ -1517,7 +1751,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
               >
                 <CheckCircle2 className="w-4 h-4 text-green-600" />
               </motion.span>
-              Gestiona y actualiza los porcentajes de Prima Tecnica por categoria.
+              Gestiona y actualiza los porcentajes de prima técnica y/o coordinación por categoría.
             </p>
             <motion.button
               onClick={onClose}
@@ -1579,10 +1813,10 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h3 className="text-white text-lg sm:text-xl font-bold">
-                      Carga masiva de Prima Tecnica ({categoryMeta.label})
+                      Carga masiva de prima técnica y/o coordinación ({categoryMeta.label})
                     </h3>
                     <p className="text-blue-100 text-sm mt-1">
-                      Carga registros desde Excel. La validacion se realiza por numero de
+                      Carga registros desde Excel. La validación se realiza por número de
                       documento y se reporta fila por fila.
                     </p>
                   </div>
@@ -1622,7 +1856,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                         <code>numero_documento</code>, <code>numero_primaTecnica</code>.
                       </p>
                       <p className="mt-1 text-slate-600">
-                        El nombre y el porcentaje se validan fila por fila. El numero de
+                        El nombre y el porcentaje se validan fila por fila. El número de
                         documento se usa como identificador principal para la carga.
                       </p>
                     </div>
@@ -1703,11 +1937,11 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                   <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <h4 className="font-semibold text-slate-900">
-                        Vista previa y validacion del archivo
+                        Vista previa y validación del archivo
                       </h4>
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">
-                          Validas: {validBulkRows.length}
+                          Válidas: {validBulkRows.length}
                         </span>
                         <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-1 font-semibold text-red-700">
                           Con error: {invalidBulkRows.length}
@@ -1724,7 +1958,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                         <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                         <span>
                           Se detectaron {invalidBulkRows.length} fila(s) con errores. Esas filas no
-                          se enviaran al cargar.
+                          se enviarán al cargar.
                         </span>
                       </div>
                     )}
@@ -1738,7 +1972,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                               <th className="px-3 py-2 text-left font-semibold">Nombre</th>
                               <th className="px-3 py-2 text-left font-semibold">Documento</th>
                               <th className="px-3 py-2 text-left font-semibold">Porcentaje</th>
-                              <th className="px-3 py-2 text-left font-semibold">Validacion</th>
+                              <th className="px-3 py-2 text-left font-semibold">Validación</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -1794,7 +2028,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                         Enviadas: <strong>{validBulkRows.length}</strong>
                       </span>
                       <span>
-                        Omitidas por validacion: <strong>{invalidBulkRows.length}</strong>
+                        Omitidas por validación: <strong>{invalidBulkRows.length}</strong>
                       </span>
                       <span>
                         Procesadas por servidor: <strong>{bulkResult.summary.total}</strong>

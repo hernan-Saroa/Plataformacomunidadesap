@@ -95,7 +95,7 @@ const ConfiguracionReglasPTA = React.lazy(() => import('./ConfiguracionReglasPTA
 const MapeoSincronizacionPTA = React.lazy(() => import('./MapeoSincronizacionPTA').then(m => ({ default: m.MapeoSincronizacionPTA })));
 const SaludSistemaPTA = React.lazy(() => import('./SaludSistemaPTA').then(m => ({ default: m.SaludSistemaPTA })));
 const ReconciliacionMasivaPTA = React.lazy(() => import('./ReconciliacionMasivaPTA').then(m => ({ default: m.ReconciliacionMasivaPTA })));
-const BancoDocentesView = React.lazy(() => import('../esap/BancoDocentesView').then(m => ({ default: m.BancoDocentesView })));
+const BancoDocentesPTA = React.lazy(() => import('./banco-docentes/BancoDocentesPTA').then(m => ({ default: m.BancoDocentesPTA })));
 
 const ESTADOS_FILTRO = [
   { key: '', label: 'Todos los estados' },
@@ -729,10 +729,10 @@ function SeguimientoDocumentosAdmin({ aprobadorNombre, rolLabel }: { aprobadorNo
   );
 }
 
-export function PtaBackofficeModule() {
+export function PtaBackofficeModule({ initialView }: { initialView?: string } = {}) {
   return (
     <PermisosPTAProvider>
-      <PtaBackofficeModuleInner />
+      <PtaBackofficeModuleInner initialView={initialView} />
     </PermisosPTAProvider>
   );
 }
@@ -841,7 +841,7 @@ function NavDropdownPortal({ id, label, icon: Icon, isActive, isOpen, onToggle, 
   );
 }
 
-function PtaBackofficeModuleInner() {
+function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}) {
   const { permisos, tieneVista, rolLabel, isSimulando, perfil, rolColor, rolBg } = usePermisosPTA();
   const auth = useAuth();
   const { addNotification } = useNotifications();
@@ -871,7 +871,7 @@ function PtaBackofficeModuleInner() {
   const [approvalObs, setApprovalObs] = useState('');
   const [devolucionMotivo, setDevolucionMotivo] = useState('');
   const [procesando, setProcesando] = useState(false);
-  const [moduleView, setModuleView] = useState<ModuleView>('gestion');
+  const [moduleView, setModuleView] = useState<ModuleView>((initialView as ModuleView) || 'gestion');
   const [concertacionPtaId, setConcertacionPtaId] = useState<string | null>(null);
   const [showFirmaDigital, setShowFirmaDigital] = useState(false);
   const [showReporteR01, setShowReporteR01] = useState(false);
@@ -1651,6 +1651,7 @@ function PtaBackofficeModuleInner() {
     {
       type: 'direct' as const,
       items: [
+        { key: 'banco_docentes', label: 'Banco Docentes', icon: Users },
         { key: 'configuracion', label: 'Configuración', icon: Sliders },
       ],
     },
@@ -2289,6 +2290,8 @@ function PtaBackofficeModuleInner() {
         <PreferenciasNotificacionesPTA />
       ) : moduleView === 'verificacion_qr' ? (
         <VerificacionQRPublicaPTA embedded />
+      ) : moduleView === 'banco_docentes' ? (
+        <BancoDocentesPTA />
       ) : (
         /* ═══ GESTIÓN — Vista principal ═══ */
         <div className="py-6 px-2 max-w-none mx-auto flex flex-col gap-6 w-full">
@@ -3876,7 +3879,7 @@ function PtaBackofficeModuleInner() {
               </motion.div>
             </div>
           )}
-          {selectedPTA && !showReporteR01 && !showFirmaDigital && (
+          {selectedPTA && !showReporteR01 && (
             <PTADetallePanelBackoffice
               pta={selectedPTA}
               onClose={() => { setSelectedPTA(null); setShowReporteR01(false); setShowApproval(false); setShowDevolucion(false); }}

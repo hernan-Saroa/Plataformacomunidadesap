@@ -230,13 +230,63 @@ export function ModuloProcesosCoactivosV3() {
   const loadProcesos = async () => {
     try {
       setLoading(true);
-      const [procesosData, statsData] = await Promise.all([
+      const [procesosData, statsData, abogadosData] = await Promise.all([
         procesosCoactivosService.getAll().catch(() => []),
-        procesosCoactivosService.getStats().catch(() => ({ total: 0, activos: 0, criticos: 0, totalMonto: 0, porEstado: {} }))
+        procesosCoactivosService.getStats().catch(() => ({ total: 0, activos: 0, criticos: 0, totalMonto: 0, porEstado: {} })),
+        authService.getAbogadosRolResuelve().catch(() => [] as any[]),
       ]);
-      // Asegurar que procesosData sea un array
       const procesosArray = Array.isArray(procesosData) ? procesosData : [];
-      setProcesos(procesosArray.map(mapApiToLocal));
+      const mapped = procesosArray.map(mapApiToLocal);
+
+      const currentUser = authService.getCurrentUser() as any;
+      const isResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
+      let procesosFiltrados = mapped;
+      if (isResuelve && currentUser) {
+        const cuEmail: string = (
+          currentUser.email ?? currentUser.person?.email ?? currentUser.mail ?? ''
+        ).toLowerCase();
+        const cuName: string = (
+          currentUser.fullName ??
+          currentUser.full_name ??
+          currentUser.name ??
+          (currentUser.firstName || currentUser.first_name
+            ? `${currentUser.firstName ?? currentUser.first_name ?? ''} ${currentUser.lastName ?? currentUser.last_name ?? ''}`.trim()
+            : null) ??
+          (currentUser.person?.first_name
+            ? `${currentUser.person.first_name ?? ''} ${currentUser.person.last_name ?? ''}`.trim()
+            : null) ??
+          ''
+        ).toLowerCase();
+        const cuIds = new Set<string>(
+          [currentUser.id, currentUser.id_user, currentUser.user?.id, currentUser.user?.id_user, currentUser.person?.id].filter(Boolean)
+        );
+
+        const myAbogado = Array.isArray(abogadosData)
+          ? abogadosData.find((a: any) => {
+              if (a.id && cuIds.has(a.id)) return true;
+              if (a.rawId && cuIds.has(a.rawId)) return true;
+              if (a.authId && cuIds.has(a.authId)) return true;
+              if (cuEmail && a.email && (a.email as string).toLowerCase() === cuEmail) return true;
+              const aNombre = (a.nombre ?? a.nombreCompleto ?? '').toLowerCase();
+              if (cuName && aNombre && aNombre === cuName) return true;
+              return false;
+            })
+          : null;
+
+        if (myAbogado) {
+          procesosFiltrados = mapped.filter(p => {
+            if (myAbogado.id && p.responsable === myAbogado.id) return true;
+            if (myAbogado.rawId && p.responsable === myAbogado.rawId) return true;
+            if (myAbogado.nombre && p.responsable === myAbogado.nombre) return true;
+            if (myAbogado.nombreCompleto && p.responsable === myAbogado.nombreCompleto) return true;
+            return false;
+          });
+        } else {
+          procesosFiltrados = mapped.filter(p => cuIds.has(p.responsable));
+        }
+      }
+
+      setProcesos(procesosFiltrados);
       setStats(statsData);
     } catch (error) {
       console.error('Error cargando procesos coactivos:', error);
@@ -337,8 +387,8 @@ export function ModuloProcesosCoactivosV3() {
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Procesos Coactivos"
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) ? handleRestaurar : undefined}
+          onEliminarPermanente={authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) ? handleEliminarPermanente : undefined}
           onVolver={() => setVistaActual('activos')}
         />
       ) : (
@@ -367,17 +417,19 @@ export function ModuloProcesosCoactivosV3() {
                     </span>
                   )}
                 </button>
-                <button
-                  onClick={() => setModalNuevoProceso(true)}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
-                  style={{
-                    background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
-                    boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
-                  }}
-                >
-                  <Plus className="w-4 h-4" />
-                  {!isMobile && 'Nuevo Proceso'}
-                </button>
+                {authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_CREATE) && (
+                  <button
+                    onClick={() => setModalNuevoProceso(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm text-white transition-all hover:shadow-lg flex-shrink-0"
+                    style={{
+                      background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)',
+                      boxShadow: '0 2px 4px rgba(41, 98, 255, 0.2)'
+                    }}
+                  >
+                    <Plus className="w-4 h-4" />
+                    {!isMobile && 'Nuevo Proceso'}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -439,9 +491,9 @@ export function ModuloProcesosCoactivosV3() {
                   <TarjetaProceso
                     proceso={proceso}
                     onVerDetalle={handleVerDetalle}
-                    onEliminar={handleEliminarProceso} // Eliminar -> Soft Delete (Trash)
-                    onArchivar={handleArchivarProceso} // Archivar -> Archive
-                    onEditar={handleEditarProceso}
+                    onEliminar={authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) ? handleEliminarProceso : undefined}
+                    onArchivar={authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_DELETE) ? handleArchivarProceso : undefined}
+                    onEditar={authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT) ? handleEditarProceso : undefined}
                     onPagar={handlePagar}
                     onHistorial={handleHistorial}
                   />
@@ -495,9 +547,10 @@ export function ModuloProcesosCoactivosV3() {
                 valorPagado: procesoParaPago.obligacion.valorPagado
               }}
               onRegistrarPago={() => {
-                loadProcesos(); // Recargar para actualizar saldos
+                loadProcesos();
                 setModalPagos(false);
               }}
+              canRegistrarPago={authService.hasPermission(Permissions.GESTION_LEGAL_PROCESOS_COACTIVOS_EDIT)}
             />
           )}
 
@@ -585,11 +638,11 @@ function TarjetaProceso({
 }: {
   proceso: ProcesoCoactivo;
   onVerDetalle: (proceso: ProcesoCoactivo) => void;
-  onEliminar: (id: string) => void;
-  onEditar: (proceso: ProcesoCoactivo) => void;
+  onEliminar?: (id: string) => void;
+  onEditar?: (proceso: ProcesoCoactivo) => void;
   onPagar: (proceso: ProcesoCoactivo) => void;
   onHistorial: (proceso: ProcesoCoactivo) => void;
-  onArchivar: (proceso: ProcesoCoactivo) => void;
+  onArchivar?: (proceso: ProcesoCoactivo) => void;
 }) {
   const getEstadoConfig = (estado: ProcesoCoactivo['estado']) => {
     const configs = {
@@ -744,30 +797,35 @@ function TarjetaProceso({
             Historial
           </button>
 
-          <button
-            onClick={() => onEditar(proceso)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
-          >
-            <Edit className="w-4 h-4" />
-            Editar
-          </button>
-          <button
-            onClick={() => onArchivar(proceso)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-orange-200 text-orange-700 hover:bg-orange-50 transition-all"
-            title="Mover a Archivo"
-          >
-            <Archive className="w-4 h-4" />
-            Archivar
-          </button>
-
-          <button
-            onClick={() => onEliminar(proceso.id)}
-            className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
-            title="Mover a Papelera"
-          >
-            <Trash2 className="w-4 h-4" />
-            Eliminar
-          </button>
+          {onEditar && (
+            <button
+              onClick={() => onEditar(proceso)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all"
+            >
+              <Edit className="w-4 h-4" />
+              Editar
+            </button>
+          )}
+          {onArchivar && (
+            <button
+              onClick={() => onArchivar(proceso)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm border border-orange-200 text-orange-700 hover:bg-orange-50 transition-all"
+              title="Mover a Archivo"
+            >
+              <Archive className="w-4 h-4" />
+              Archivar
+            </button>
+          )}
+          {onEliminar && (
+            <button
+              onClick={() => onEliminar(proceso.id)}
+              className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium flex items-center gap-2"
+              title="Mover a Papelera"
+            >
+              <Trash2 className="w-4 h-4" />
+              Eliminar
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -804,6 +862,13 @@ function ModalNuevoProceso({
   const [loading, setLoading] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [dragActive, setDragActive] = useState(false);
+  const [abogados, setAbogados] = useState<{ id: string; nombre: string }[]>([]);
+
+  useEffect(() => {
+    authService.getAbogadosRolResuelve()
+      .then(data => setAbogados((data || []).map((a: any) => ({ id: a.id, nombre: a.nombre ?? a.nombreCompleto ?? '' }))))
+      .catch(() => {});
+  }, []);
 
   // ✅ Helpers de validación de formato
   const onlyLetters = (value: string): string => value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
@@ -817,7 +882,6 @@ function ModalNuevoProceso({
 
     switch (field) {
       case 'deudorNombre':
-      case 'responsable':
         filteredValue = onlyLetters(value);
         break;
       case 'deudorIdentificacion':
@@ -1123,13 +1187,16 @@ function ModalNuevoProceso({
             <div className="space-y-3">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Responsable</label>
-                <input
-                  type="text"
+                <select
                   value={formData.responsable}
-                  onChange={(e) => handleInputChange('responsable', e.target.value)}
+                  onChange={(e) => setFormData(prev => ({ ...prev, responsable: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ej: Dra. María Fernández López"
-                />
+                >
+                  <option value="">Seleccione un responsable</option>
+                  {abogados.map(a => (
+                    <option key={a.id} value={a.nombre}>{a.nombre}</option>
+                  ))}
+                </select>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -1214,12 +1281,11 @@ function ModalDetalleProceso({
   const handleExportarPdf = async () => {
     setExportandoPdf(true);
     try {
-      const token = localStorage.getItem('esap_auth_token');
       const url = procesosCoactivosService.getExportPdfUrl(proceso.id);
 
       const response = await fetch(url, {
         method: 'GET',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
       });
 
       if (!response.ok) throw new Error('Error al generar el PDF');

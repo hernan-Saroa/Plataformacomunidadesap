@@ -312,14 +312,13 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
       
       // Usar endpoint del servidor en lugar de archivo estático
       const apiBaseUrl = getApiBaseUrl();
-      const token = localStorage.getItem('esap_auth_token');
       const url = `${apiBaseUrl}/templates/EM-FO-010`;
-      
+
       fetch(url, {
         method: 'GET',
+        credentials: 'include',
         headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-          'Accept': 'application/pdf',  // Importante: para que el gateway detecte archivo binario
+          'Accept': 'application/pdf',
         },
       })
         .then(response => {
@@ -361,14 +360,13 @@ function descargarDocumentoPDF(documento: DocumentoGenerado): void {
       
       // Usar endpoint del servidor en lugar de archivo estático
       const apiBaseUrl = getApiBaseUrl();
-      const token = localStorage.getItem('esap_auth_token');
       const url = `${apiBaseUrl}/templates/EM-FO-009`;
-      
+
       fetch(url, {
         method: 'GET',
+        credentials: 'include',
         headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-          'Accept': 'application/pdf',  // Importante: para que el gateway detecte archivo binario
+          'Accept': 'application/pdf',
         },
       })
         .then(response => {

@@ -6,6 +6,7 @@
 
 import { apiClient } from './apiClient';
 import { API_ENDPOINTS, config } from '../../config/environment';
+import { clearAuthTokens, setAuthTokens } from './authTokenStore';
 import type { 
   LoginCredentials, 
   LoginResponse, 
@@ -14,6 +15,10 @@ import type {
 } from '../../types';
 
 class AuthService {
+  // In-memory user cache — never written to sessionStorage/localStorage (OTIC-002)
+  private _cachedUser: AuthUser | null = null;
+  private _cacheRevision = 0;
+
   /**
    * Login con Microsoft (OAuth)
    */
@@ -48,7 +53,7 @@ class AuthService {
     const response = await apiClient.post<LoginResponse>(
       API_ENDPOINTS.AUTH.LOGIN,
       loginData,
-      { skipAuth: true }
+      { skipAuth: true, skipErrorToast: true, skipErrorLog: true, retries: 0 }
     );
 
     // Guardar tokens
@@ -64,40 +69,43 @@ class AuthService {
    * Logout de usuario
    */
   async logout(): Promise<void> {
+    const logoutRevision = this._cacheRevision;
     try {
-      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT);
+      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT, {}, {
+        skipAuth: true,
+        skipAuthRefresh: true,
+        skipErrorToast: true,
+        skipErrorLog: true,
+        retries: 0,
+      });
     } finally {
-      this.clearAuthData();
+      if (this._cacheRevision === logoutRevision) {
+        this.clearAuthData();
+      }
     }
   }
 
   /**
-   * Refresh del access token
+   * Refresh del access token — el token viaja en cookie HttpOnly (OTIC-001),
+   * el backend lo lee directamente y emite una nueva cookie.
    */
   async refreshToken(): Promise<RefreshTokenResponse> {
-    const refreshToken = this.getRefreshToken();
-    
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
-
-    const response = await apiClient.post<RefreshTokenResponse>(
+    return apiClient.post<RefreshTokenResponse>(
       API_ENDPOINTS.AUTH.REFRESH,
-      { refreshToken },
+      {},
       { skipAuth: true }
     );
-
-    // Actualizar access token
-    this.saveAccessToken(response.accessToken);
-
-    return response;
   }
 
   /**
    * Verificar token actual
    */
   async verifyToken(): Promise<AuthUser> {
-    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY);
+    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY, undefined, {
+      retries: 0,
+      skipAuthRefresh: true,
+      skipErrorToast: true,
+    });
   }
 
   /**
@@ -151,18 +159,45 @@ class AuthService {
   // ==========================================================================
 
   /**
-   * Verifica si el usuario está autenticado
+   * Permite que App.tsx restaure el caché tras verifyToken() en recarga de página (OTIC-002)
+   * También escribe en window para que instancias de authService en MFEs remotos puedan leerlo.
    */
-  isAuthenticated(): boolean {
-    return !!this.getAccessToken();
+  setCurrentUserCache(user: AuthUser): void {
+    this._cacheRevision += 1;
+    this._cachedUser = user;
+    // Compartir con otros MFEs en la misma ventana (no es almacenamiento persistente — OTIC-002)
+    (window as any).__esap_auth_cache = user;
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user } }));
   }
 
   /**
-   * Obtiene el usuario actual del localStorage
+   * Verifica si el usuario está autenticado
+   */
+  isAuthenticated(): boolean {
+    return this.getCurrentUser() !== null;
+  }
+
+  /**
+   * Obtiene el usuario actual de la sesión.
+   * Si la caché global cambió por logout/login en la misma pestaña, actualiza
+   * también esta instancia para no conservar roles/permisos anteriores.
    */
   getCurrentUser(): AuthUser | null {
-    const userData = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
-    return userData ? JSON.parse(userData) : null;
+    if (typeof window === 'undefined') {
+      return this._cachedUser;
+    }
+
+    const sharedUser = (window as any).__esap_auth_cache ?? null;
+    if (!sharedUser) {
+      this._cachedUser = null;
+      return null;
+    }
+
+    if (this._cachedUser !== sharedUser) {
+      this._cachedUser = sharedUser;
+    }
+
+    return this._cachedUser;
   }
 
   /**
@@ -170,8 +205,30 @@ class AuthService {
    */
   hasPermission(permission: string): boolean {
     const user = this.getCurrentUser();
-    if (user?.roles.find(r => r.code === 'SUPER_ADMIN')) return true;
-    return user?.permissions?.includes(permission) || false;
+    const roles = user?.roles || [];
+    const isSuperAdmin = roles.some((role: any) =>
+      typeof role === 'string'
+        ? role === 'SUPER_ADMIN'
+        : role?.code === 'SUPER_ADMIN' || role?.name === 'SUPER_ADMIN',
+    );
+    if (isSuperAdmin) return true;
+
+    const directPermissions = Array.isArray(user?.permissions)
+      ? user.permissions
+      : [];
+    const rolePermissions = roles.flatMap((role: any) =>
+      Array.isArray(role?.permissions)
+        ? role.permissions
+            .map((rolePermission: any) =>
+              typeof rolePermission === 'string'
+                ? rolePermission
+                : rolePermission?.code,
+            )
+            .filter(Boolean)
+        : [],
+    );
+
+    return [...directPermissions, ...rolePermissions].includes(permission);
   }
 
   /**
@@ -179,8 +236,11 @@ class AuthService {
    */
   isSuperAdmin(): boolean {
     const user = this.getCurrentUser();
-    if (user?.roles.find(r => r.code === 'SUPER_ADMIN')) return true;
-    return false;
+    return (user?.roles || []).some((role: any) =>
+      typeof role === 'string'
+        ? role === 'SUPER_ADMIN'
+        : role?.code === 'SUPER_ADMIN' || role?.name === 'SUPER_ADMIN',
+    );
   }
 
   /**
@@ -215,37 +275,24 @@ class AuthService {
   // MÉTODOS PRIVADOS
   // ==========================================================================
 
-  private saveTokens(accessToken: string, refreshToken: string): void {
-    localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
-    // Compatibilidad con cliente legacy que usa otra clave.
-    localStorage.setItem('esap_access_token', accessToken);
-    localStorage.setItem(config.STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+  private saveTokens(accessToken?: string, refreshToken?: string): void {
+    setAuthTokens(accessToken, refreshToken);
   }
 
-  private saveAccessToken(accessToken: string): void {
-    localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
-    localStorage.setItem('esap_access_token', accessToken);
-  }
-
-  private saveUserData(user: AuthUser): void {
-    localStorage.setItem(config.STORAGE_KEYS.USER_DATA, JSON.stringify(user));
-  }
-
-  private getAccessToken(): string | null {
-    return (
-      localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
-      localStorage.getItem('esap_access_token')
-    );
-  }
-
-  private getRefreshToken(): string | null {
-    return localStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private saveUserData(user: any): void {
+    // Datos del usuario en memoria únicamente — nunca en sessionStorage/localStorage (OTIC-002)
+    this.setCurrentUserCache(user as AuthUser);
   }
 
   private clearAuthData(): void {
-    localStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    localStorage.removeItem('esap_access_token');
-    localStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+    this._cacheRevision += 1;
+    this._cachedUser = null;
+    delete (window as any).__esap_auth_cache;
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user: null } }));
+    clearAuthTokens();
+    // Limpiar residuos de versiones anteriores que pudieran quedar en storage
+    sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     localStorage.removeItem('esap-sesion-activa');
     localStorage.removeItem('esap_user_profile');
@@ -260,7 +307,38 @@ class AuthService {
    * Obtiene lista de profesionales/usuarios para asignación
    */
   async getProfesionales(): Promise<ProfesionalUser[]> {
-    return apiClient.get<ProfesionalUser[]>(`${API_ENDPOINTS.AUTH.BASE}/users`);
+    return apiClient.get<ProfesionalUser[]>('/auth/api/v1/users');
+  }
+
+  async getAbogadosRolResuelve(): Promise<AbogadoResuelve[]> {
+    const response = await apiClient.get<{ data: any[]; meta: any } | any[]>(
+      '/auth/api/v1/users',
+      { status: 'active', limit: 1000 }
+    );
+    const users = Array.isArray(response) ? response : (response?.data ?? []);
+    console.log('[DEBUG getAbogadosRolResuelve] primer usuario raw:', users[0]);
+    const filtered = users.filter((u: any) => {
+      const roles: any[] = u.user?.roles ?? u.roles ?? u.person?.roles ?? [];
+      const hasResuelve = roles.some((r: any) => {
+        const code = (r.code ?? '').toUpperCase();
+        const name = (r.name ?? '').toLowerCase();
+        return code === 'RESUELVE_GESTION_LEGAL' || name.includes('resuelve');
+      });
+      const hasExcludedRole = roles.some((r: any) => {
+        const code = (r.code ?? '').toUpperCase();
+        const name = (r.name ?? '').toLowerCase();
+        return code === 'SECRETARIADO_GESTION_LEGAL' || name.includes('secretariado') ||
+               code === 'MONITOREO_GESTION_LEGAL' || name.includes('monitoreo');
+      });
+      return hasResuelve && !hasExcludedRole;
+    });
+    console.log('[DEBUG getAbogadosRolResuelve] total:', users.length, '→ filtrados:', filtered.length);
+    return filtered.map((u: any) => ({
+      id: u.user?.id_user ?? u.id_user ?? u.id,
+      nombreCompleto: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+      nombre: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+      email: u.email ?? u.person?.email ?? '',
+    }));
   }
 }
 
@@ -280,6 +358,13 @@ export interface ProfesionalUser {
 
 // Alias para compatibilidad con código existente
 export type User = ProfesionalUser;
+
+export interface AbogadoResuelve {
+  id: string;
+  nombreCompleto: string;
+  nombre: string;
+  email: string;
+}
 
 export const authService = new AuthService();
 export default authService;

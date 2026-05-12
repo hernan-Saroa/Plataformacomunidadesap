@@ -6,7 +6,6 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Toaster } from 'sonner';
 import {
   LayoutDashboard,
   Scale,
@@ -21,7 +20,8 @@ import {
   AlertTriangle,
   ClipboardCheck,
   Settings,
-  FolderOpen
+  FolderOpen,
+  BarChart3
 } from 'lucide-react';
 import { ModuleLayout, MenuItem } from '../../shared/ModuleLayout';
 
@@ -54,6 +54,7 @@ import { useNotifications } from '../../../esap/NotificationsContext';
 import { legalService } from '../../services/api/legal.service';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
+import { Toaster } from 'sonner';
 
 type VistaDisponible =
   | 'defensa-judicial'
@@ -69,8 +70,52 @@ type VistaDisponible =
   | 'planes-mejoramiento'
   | 'configuraciones';
 
+/**
+ * Lee `?modulo=<vista>` del querystring para posicionar la vista inicial cuando
+ * el módulo se abre desde una notificación. Acepta los códigos que emite el
+ * backend (`legal-notifications.service.ts`: defensa-judicial, juzgamiento, asesoria,
+ * organos-control, procesos-coactivos) y cualquier otro valor de `VistaDisponible`.
+ */
+const VISTAS_VALIDAS: VistaDisponible[] = [
+  'defensa-judicial',
+  'juzgamiento',
+  'asesoria',
+  'centro-comunicaciones',
+  'terminos',
+  'organos-control',
+  'procesos-coactivos',
+  'expedientes',
+  'plan-accion',
+  'riesgos',
+  'planes-mejoramiento',
+  'configuraciones',
+];
+
+function getVistaInicialDesdeQuery(): VistaDisponible {
+  if (typeof window === 'undefined') return 'defensa-judicial';
+  const moduloParam = new URLSearchParams(window.location.search).get('modulo');
+  if (moduloParam && VISTAS_VALIDAS.includes(moduloParam as VistaDisponible)) {
+    return moduloParam as VistaDisponible;
+  }
+  return 'defensa-judicial';
+}
+
+function getAuthContextKey(): string {
+  const user = authService.getCurrentUser() as any;
+  const userId = user?.id_user ?? user?.user?.id_user ?? user?.userId ?? user?.id ?? user?.sub ?? 'anon';
+  const roles = Array.isArray(user?.roles)
+    ? user.roles
+        .map((role: any) => (typeof role === 'string' ? role : role?.code || role?.name || ''))
+        .filter(Boolean)
+        .sort()
+        .join('|')
+    : '';
+  return `${userId}:${roles}`;
+}
+
 export function GestionLegalFull() {
-  const [vistaActual, setVistaActual] = useState<VistaDisponible>('defensa-judicial');
+  const [vistaActual, setVistaActual] = useState<VistaDisponible>(getVistaInicialDesdeQuery);
+  const [authContextKey, setAuthContextKey] = useState(getAuthContextKey);
 
   // ✅ Estados del tour guiado multi-módulo
   const [isTourOpen, setIsTourOpen] = useState(false);
@@ -79,6 +124,16 @@ export function GestionLegalFull() {
   // Sistema de notificaciones para términos urgentes/críticos
   const { addNotification } = useNotifications();
   const notificacionesGeneradas = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const handleAuthChange = () => {
+      notificacionesGeneradas.current.clear();
+      setAuthContextKey(getAuthContextKey());
+    };
+
+    window.addEventListener('esap:auth-user-changed', handleAuthChange);
+    return () => window.removeEventListener('esap:auth-user-changed', handleAuthChange);
+  }, []);
 
   // Cargar y verificar términos al entrar a Gestión Legal
   useEffect(() => {
@@ -138,6 +193,61 @@ export function GestionLegalFull() {
 
     verificarTerminosUrgentes();
   }, [addNotification]);
+
+  // ✅ Listener: notificaciones del Jefe Gestión Legal abren expediente in-app sin reload.
+  //
+  // El backend (`legal-notifications.service.ts`) emite notificaciones con
+  // `url_accion='/gestion-legal?modulo=<vista>&radicado=<...>'`. Cuando el usuario hace
+  // clic en "Ver proceso", `NotificationsPanelV2` despacha el evento `legal:open-expediente`
+  // con `{modulo, radicado, procesoId}`. Aquí cambiamos la vista activa y reemitimos
+  // `legal:open-expediente-detail` para que el submódulo correspondiente abra el modal.
+  //
+  // Mapeo modulo (vista) → submódulo que escucha:
+  //   defensa-judicial      → ModuloDefensaJudicialV3
+  //   juzgamiento           → ModuloJuzgamientoDisciplinarioV3
+  //   asesoria              → ModuloAsesoriaJuridicaV3
+  //   organos-control       → OrganosControl
+  //   procesos-coactivos    → ProcesosCoactivosV3
+  useEffect(() => {
+    const moduloAVista: Record<string, VistaDisponible> = {
+      'defensa-judicial': 'defensa-judicial',
+      'juzgamiento': 'juzgamiento',
+      'asesoria': 'asesoria',
+      'organos-control': 'organos-control',
+      'procesos-coactivos': 'procesos-coactivos',
+    };
+
+    const handleOpen = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      const vista = moduloAVista[detail.modulo];
+      if (!vista) return;
+      setVistaActual(vista);
+      // Re-emitir con delay para dar tiempo a React a montar el submódulo.
+      // 500ms es suficiente incluso en renders lentos; el submódulo guarda el
+      // evento en sessionStorage como respaldo adicional por si llega antes de montar.
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent('legal:open-expediente-detail', { detail }),
+        );
+      }, 500);
+    };
+
+    window.addEventListener('legal:open-expediente', handleOpen);
+
+    // Procesar intención pendiente al montar (caso: shell recargó al MFE).
+    const pending = sessionStorage.getItem('legal:pendingOpenExpediente');
+    if (pending) {
+      sessionStorage.removeItem('legal:pendingOpenExpediente');
+      try {
+        const detail = JSON.parse(pending);
+        handleOpen(new CustomEvent('legal:open-expediente', { detail }));
+      } catch {
+        /* ignore */
+      }
+    }
+
+    return () => window.removeEventListener('legal:open-expediente', handleOpen);
+  }, []);
 
   // ✅ Handler para navegación automática cuando cambia el paso del tour
   const handleTourStepChange = (stepIndex: number) => {
@@ -291,10 +401,9 @@ export function GestionLegalFull() {
   };
 
   return (
-    <>
-    <Toaster position="top-right" richColors />
-    <ConfiguracionesSIGLProvider>
+    <ConfiguracionesSIGLProvider key={authContextKey}>
       <PermisosProvider>
+        <Toaster position="top-right" richColors closeButton duration={4000} />
         <ModuleLayout
           moduleName="GESTIÓN LEGAL"
           moduleDescription="Sistema Integrado de Gestión Legal (SIGL v5.0)"
@@ -309,6 +418,5 @@ export function GestionLegalFull() {
         </ModuleLayout>
       </PermisosProvider>
     </ConfiguracionesSIGLProvider>
-    </>
   );
 }

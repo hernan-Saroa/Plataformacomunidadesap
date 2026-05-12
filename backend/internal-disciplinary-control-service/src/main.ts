@@ -9,7 +9,11 @@ import { join } from 'path';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+<<<<<<< HEAD
   process.env.JWT_SECRET = process.env.JWT_SECRET && process.env.JWT_SECRET !== 'your-super-secret-jwt-key-here' ? process.env.JWT_SECRET : 'esap-super-secret-jwt-key-2024';
+=======
+  app.getHttpAdapter().getInstance().disable?.('x-powered-by');
+>>>>>>> origin/micro-frontend
   const requestTimeoutMs = Number(process.env.HTTP_REQUEST_TIMEOUT_MS || 6 * 60 * 60 * 1000);
 
   // Servir archivos estáticos desde la carpeta uploads

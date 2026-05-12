@@ -478,11 +478,7 @@ export function PerfilUsuarioEditable({ onVolver, userName, userEmail, activeRol
                     onDrop={handleDrop}
                   >
                     <Avatar className="w-32 h-32 border-4 border-white shadow-xl">
-                      {fotoPerfil ? (
-                        <AvatarImage src={fotoPerfil} />
-                      ) : (
-                        <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${userName}`} />
-                      )}
+                      {fotoPerfil && <AvatarImage src={fotoPerfil} />}
                       <AvatarFallback className="bg-[#1e5da8] text-white text-3xl">
                         {datosPersonales.nombres[0]}{datosPersonales.apellidos[0]}
                       </AvatarFallback>
@@ -1372,11 +1368,7 @@ export function PerfilUsuarioEditable({ onVolver, userName, userEmail, activeRol
             <div className="bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] rounded-lg p-6 text-white">
               <div className="flex items-start gap-4">
                 <Avatar className="w-20 h-20 border-4 border-white shadow-xl">
-                  {fotoPerfil ? (
-                    <AvatarImage src={fotoPerfil} />
-                  ) : (
-                    <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${userName}`} />
-                  )}
+                  {fotoPerfil && <AvatarImage src={fotoPerfil} />}
                   <AvatarFallback className="bg-white text-[#1e5da8] text-2xl font-bold">
                     {datosPersonales.nombres[0]}{datosPersonales.apellidos[0]}
                   </AvatarFallback>

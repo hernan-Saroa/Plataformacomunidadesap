@@ -31,10 +31,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CertificadoDetalleModal } from './CertificadoDetalleModal';
-import { GenerarCertificadoModal } from './GenerarCertificadoModal';
+import { GenerarReporteCertificadosModal } from './GenerarReporteCertificadosModal';
 import { CertificadoDetallePanel } from './CertificadoDetallePanel';
 import { ModalHistorialCertificados } from './ModalHistorialCertificados';
 import { PrimaTecnicaModal } from './PrimaTecnicaModal';
+import { VisorPDFCertificado } from './VisorPDFCertificado';
 import React from 'react';
 import { certificadosService } from '../../services/api/certificados.service';
 import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
@@ -42,6 +43,7 @@ import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoF
 // Tipo de certificado laboral - Solo autoservicio
 interface CertificadoLaboral {
   id: string;
+  rowKey?: string;
   consecutivo: string;
   certificateHash: string;
   qrCode: string;
@@ -52,6 +54,8 @@ interface CertificadoLaboral {
   cod_grade?: string;
   campus?: string;
   technical_bonus?: number;
+  technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+  technicalBonusCategory?: 'DIRECTIVOS' | 'COORDINADORES' | null;
   incluyeSalario?: boolean;
   incluyePrimaTecnica?: boolean;
   templateSnapshot?: any;
@@ -174,7 +178,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     return fallback;
   };
 
-  const transformarCertificado = (cert: any): CertificadoLaboral => {
+  const transformarCertificado = (cert: any, index = 0): CertificadoLaboral => {
     const templateTypeRaw =
       cert.template_type ||
       cert.templateType ||
@@ -202,7 +206,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       observations: cert.request?.observations || cert.observations,
       templateType: templateTypeNormalizado,
       includeCodeLabel: true,
-      codeLabel: 'Codigo',
+      codeLabel: 'Código',
     });
 
     const employmentStatusRaw = String(
@@ -265,9 +269,25 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
           false,
         )
       : false;
+    const certificadoId = String(
+      cert.id ||
+        cert.id_certificado ||
+        cert.idCertificado ||
+        cert.id_certificate ||
+        cert.idCertificate ||
+        cert.certificate_id ||
+        cert.certificateId ||
+        cert.certificate_number ||
+        cert.certificateNumber ||
+        cert.verification_code ||
+        cert.verificationCode ||
+        `${cert.id_number || cert.employee_document || 'cert'}-${cert.created_at || cert.issuance_timestamp || index}`
+    );
+    const rowKey = `${certificadoId}-${index}`;
 
     return {
-      id: cert.id,
+      id: certificadoId,
+      rowKey,
       consecutivo: cert.certificate_number,
       certificateHash: cert.verification_code,
       qrCode: cert.verification_code,
@@ -278,6 +298,12 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
       campus: cert.campus,
       technical_bonus: cert.technical_bonus ?? cert.request?.technical_bonus,
+      technical_bonus_category:
+        cert.technical_bonus_category ??
+        cert.technicalBonusCategory ??
+        cert.request?.technical_bonus_category ??
+        cert.request?.technicalBonusCategory ??
+        null,
       incluyeSalario,
       incluyePrimaTecnica,
       templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
@@ -335,10 +361,11 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
   // Estados para modales
   const [selectedCertificado, setSelectedCertificado] = useState<CertificadoLaboral | null>(null);
   const [isDetalleOpen, setIsDetalleOpen] = useState(false);
-  const [isGenerarOpen, setIsGenerarOpen] = useState(false);
+  const [isReporteOpen, setIsReporteOpen] = useState(false);
   const [isHistorialOpen, setIsHistorialOpen] = useState(false);
   const [isPrimaTecnicaOpen, setIsPrimaTecnicaOpen] = useState(false);
   const [expandedCertId, setExpandedCertId] = useState<string | null>(null);
+  const [downloadCert, setDownloadCert] = useState<CertificadoLaboral | null>(null);
 
   // Estado para certificados y loading
   const [certificados, setCertificados] = useState<CertificadoLaboral[]>([]);
@@ -416,7 +443,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
       console.log(`✅ Se cargaron ${items.length} certificados`);
 
       // Transformar datos del backend al formato del componente
-      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => transformarCertificado(cert));
+      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any, index: number) => transformarCertificado(cert, index));
 
       const certificadosOrdenados = [...certificadosTransformados].sort((a, b) => (
         new Date(b.fechaSolicitud).getTime() - new Date(a.fechaSolicitud).getTime()
@@ -506,7 +533,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         page += 1;
       }
 
-      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any) => transformarCertificado(cert));
+      const certificadosTransformados: CertificadoLaboral[] = items.map((cert: any, index: number) => transformarCertificado(cert, index));
       setCertificadosMetricas(certificadosTransformados);
     } catch (err) {
       console.error('❌ Error al cargar métricas de certificados:', err);
@@ -612,6 +639,8 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     setTipoVinculacionFilter('');
   };
 
+  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+
   const handleVerDetalle = (cert: CertificadoLaboral) => {
     // Toggle panel desplegable
     if (expandedCertId === cert.id) {
@@ -619,6 +648,34 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
     } else {
       setExpandedCertId(cert.id);
     }
+  };
+
+  const handleReenviarEmail = async (cert: CertificadoLaboral) => {
+    if (processingIds.has(cert.id)) return;
+    setProcessingIds(prev => new Set(prev).add(cert.id));
+    toast.loading('Reenviando certificado...', { id: `reenviar-${cert.id}` });
+    try {
+      const response = await certificadosService.laborales.reenviar(cert.id, {
+        publicBaseUrl: window.location.origin,
+      });
+      toast.success('Certificado reenviado', {
+        id: `reenviar-${cert.id}`,
+        description: `Enviado a ${response?.email || 'correo registrado'}`,
+      });
+    } catch (error: any) {
+      toast.error('No se pudo reenviar el certificado', {
+        id: `reenviar-${cert.id}`,
+        description: error?.message || 'Intenta nuevamente',
+      });
+    } finally {
+      setProcessingIds(prev => { const n = new Set(prev); n.delete(cert.id); return n; });
+    }
+  };
+
+  const handleDescargarPDF = (cert: CertificadoLaboral) => {
+    if (downloadCert) return;
+    toast.loading('Generando PDF...', { id: `descargar-${cert.id}` });
+    setDownloadCert(cert);
   };
 
   const getEstadoBadge = (estado: string) => {
@@ -747,7 +804,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
             </button>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 sm:ml-auto">
+          <div className="flex min-w-0 flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center sm:justify-end gap-2 sm:gap-3 sm:ml-auto">
             <button
               onClick={() => fetchCertificados(true)}
               disabled={isRefreshing}
@@ -785,7 +842,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
 
             <button
               onClick={() => setIsPrimaTecnicaOpen(true)}
-              className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
+              className="inline-flex max-w-full items-center justify-center gap-2 transition-all whitespace-normal text-center sm:w-auto sm:whitespace-nowrap sm:flex-shrink-0"
               style={{
                 background: '#FFFFFF',
                 color: '#4338CA',
@@ -811,11 +868,11 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
               <span className="w-5 h-5 rounded-full bg-indigo-100/80 border border-indigo-200 flex items-center justify-center flex-shrink-0">
                 <Percent className="w-3.5 h-3.5" strokeWidth={2.4} />
               </span>
-              <span>Prima Tecnica</span>
+              <span className="leading-tight">Prima técnica y/o coordinación</span>
             </button>
 
             <button
-              onClick={() => setIsGenerarOpen(true)}
+              onClick={() => setIsReporteOpen(true)}
               className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
               style={{
                 background: '#FFFFFF',
@@ -1205,8 +1262,8 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {paginatedCertificados.map((cert) => (
-                    <React.Fragment key={cert.id}>
+                  {paginatedCertificados.map((cert, index) => (
+                    <React.Fragment key={cert.rowKey || `${cert.id}-${index}`}>
                       <tr
                         className="hover:bg-gray-50 transition-colors cursor-pointer"
                         onClick={() => handleVerDetalle(cert)}
@@ -1303,34 +1360,28 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                                 <button
                                   onClick={(e) => e.stopPropagation()}
                                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                  disabled={processingIds.has(cert.id)}
                                 >
                                   <MoreVertical className="w-5 h-5 text-gray-600" />
                                 </button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="w-48">
-                                <DropdownMenuItem onClick={() => toast.info('Descargar PDF')}>
-                                  <Download className="w-4 h-4 mr-2" />
-                                  Descargar PDF
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => toast.info('Ver QR')}>
-                                  <QrCode className="w-4 h-4 mr-2" />
-                                  Ver código QR
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => toast.info('Reenviar email')}>
-                                  <Mail className="w-4 h-4 mr-2" />
-                                  Reenviar email
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
                                 <DropdownMenuItem
-                                  onClick={() => toast.warning('Revocar certificado')}
-                                  className="text-red-600"
+                                  onClick={(e) => { e.stopPropagation(); handleDescargarPDF(cert); }}
+                                  disabled={downloadCert !== null}
                                 >
-                                  <XCircle className="w-4 h-4 mr-2" />
-                                  Revocar
+                                  <Download className="w-4 h-4 mr-2" />
+                                  Descargar certificado
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={(e) => { e.stopPropagation(); handleReenviarEmail(cert); }}
+                                  disabled={processingIds.has(cert.id)}
+                                >
+                                  <Mail className="w-4 h-4 mr-2" />
+                                  Reenviar certificado
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
-
                           </div>
                         </td>
                       </tr>
@@ -1400,14 +1451,9 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         />
       )}
 
-      <GenerarCertificadoModal
-        isOpen={isGenerarOpen}
-        onClose={() => setIsGenerarOpen(false)}
-        onSuccess={(nuevoCert) => {
-          toast.success('Certificado generado exitosamente');
-          setIsGenerarOpen(false);
-        }}
-        certificados={certificados}
+      <GenerarReporteCertificadosModal
+        isOpen={isReporteOpen}
+        onClose={() => setIsReporteOpen(false)}
       />
 
       <ModalHistorialCertificados
@@ -1419,6 +1465,25 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         isOpen={isPrimaTecnicaOpen}
         onClose={() => setIsPrimaTecnicaOpen(false)}
       />
+
+      {downloadCert && (
+        <VisorPDFCertificado
+          isOpen={true}
+          hiddenMode={true}
+          autoAction="download"
+          onClose={() => setDownloadCert(null)}
+          onAutoActionComplete={(action, success) => {
+            const id = `descargar-${downloadCert.id}`;
+            setDownloadCert(null);
+            if (success) {
+              toast.success('PDF descargado', { id });
+            } else {
+              toast.error('No se pudo generar el PDF', { id, description: 'Intenta nuevamente' });
+            }
+          }}
+          certificado={downloadCert}
+        />
+      )}
 
     </div>
   );

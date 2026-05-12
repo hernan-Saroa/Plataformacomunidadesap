@@ -2661,10 +2661,9 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
   const [indicadores, setIndicadores] = useState<any>(null);
   const [loadingIndicadores, setLoadingIndicadores] = useState(false);
   
-  // Obtener datos del usuario actual
-  const userData = localStorage.getItem('esap_user_data');
-  const currentUser = userData ? JSON.parse(userData) : null;
-  
+  // Obtener datos del usuario actual desde el cache en memoria
+  const currentUser = (window as any).__esap_auth_cache || null;
+
   // Verificar si el usuario actual es Jefe OCI o Admin
   const puedeAprobar = currentUser?.roles?.some((role: any) => {
     const roleCode = role.code || '';
@@ -2879,9 +2878,7 @@ function DetallePlanAnual({ plan, onVolver, onEditar, onAprobar, onExportarPDF, 
                       // Descargar el archivo
                       const response = await fetch(urlDescarga, {
                         method: 'GET',
-                        headers: {
-                          'Authorization': `Bearer ${localStorage.getItem('esap_auth_token')}`,
-                        },
+                        credentials: 'include',
                       });
 
                       if (!response.ok) {

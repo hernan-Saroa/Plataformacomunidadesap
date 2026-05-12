@@ -588,7 +588,7 @@ const MOCK_EVENTOS_AUDITORIA: EventoAuditoria[] = [
     accion: 'Inicio de sesión (SSO)',
     modulo: 'Autenticación',
     detalles: 'Autenticación exitosa vía Active Directory',
-    ipAddress: '192.168.1.10',
+    ipAddress: 'IP interna protegida',
     exito: true
   },
   {
@@ -598,7 +598,7 @@ const MOCK_EVENTOS_AUDITORIA: EventoAuditoria[] = [
     accion: 'Modificación de permisos',
     modulo: 'Roles y Permisos',
     detalles: 'Agregado permiso "exportar" al rol Auditor',
-    ipAddress: '192.168.1.11',
+    ipAddress: 'IP interna protegida',
     exito: true
   },
   {
@@ -608,7 +608,7 @@ const MOCK_EVENTOS_AUDITORIA: EventoAuditoria[] = [
     accion: 'Intento de acceso denegado',
     modulo: 'Control Interno - Auditorías',
     detalles: 'Usuario sin permisos suficientes',
-    ipAddress: '192.168.1.25',
+    ipAddress: 'IP interna protegida',
     exito: false
   }
 ];

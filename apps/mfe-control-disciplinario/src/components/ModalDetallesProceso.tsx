@@ -2,11 +2,12 @@
  * MODAL DETALLES PROCESO — WORLD CLASS ESAP SIGL v5.1
  * Diseño canónico: pestañas General | Archivos | Actuaciones | Tareas | Notas
  * Usa createPortal para que el backdrop cubra toda la pantalla (bypass motion stacking context)
+ * PLANTILLA REAL- USADA
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Scale, FileText, FolderOpen, Zap, CheckSquare, FileEdit,
   Archive, Mail, FileCheck, History, Download, Upload, Search,
@@ -61,6 +62,7 @@ interface DenunciadoCompleto {
   identificacion: string;
   cargo: string;
   lugarHechos: string;
+  dependencia?: string;
   apoderado?: Apoderado;
 }
 
@@ -224,12 +226,6 @@ const MOCK_ACTUACIONES: ActuacionItem[] = [
   { id: 'a2', fecha: '2026-02-05', descripcion: 'Notificaci�n al disciplinado', tipo: 'notificacion', responsable: 'Dr. Andr�s Moreno', etapa: 'Valoraci�n', observaciones: 'Se envi� comunicaci�n formal al disciplinado por los canales establecidos.' },
   { id: 'a3', fecha: '2026-01-28', descripcion: 'Asignaci�n al profesional investigador', tipo: 'asignacion', responsable: 'Jefe OCID', etapa: 'Valoraci�n', observaciones: 'Asignaci�n realizada seg�n reparto interno.' },
   { id: 'a4', fecha: '2026-01-15', descripcion: 'Recepci�n de la noticia disciplinaria', tipo: 'recepcion', responsable: 'Secretar�a OCID', etapa: 'Recepci�n', observaciones: 'Ingreso inicial del asunto en el sistema disciplinario.' },
-];
-
-const HISTORIAL_ETAPAS = [
-  { id: 'h1', desde: '—',           hacia: 'Recepción',    fecha: '2026-01-10', responsable: 'Secretaría OCID',  motivo: 'Registro de noticia disciplinaria en el sistema'                      },
-  { id: 'h2', desde: 'Recepción',   hacia: 'Valoración',   fecha: '2026-01-20', responsable: 'Jefe OCID',        motivo: 'Competencia verificada, se ordena valoración de la noticia'           },
-  { id: 'h3', desde: 'Valoración',  hacia: 'Indagación',   fecha: '2026-02-05', responsable: 'Dr. Andrés Moreno', motivo: 'Mérito suficiente para abrir indagación preliminar (Auto ID-2026-042)' },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -621,16 +617,10 @@ function PreviewDocumento({ archivo, procesoId, onClose }: { archivo: Archivo; p
         }
 
         const requestUrl = resolveArchivoRequestUrl(archivo, procesoId, true);
-        const token = localStorage.getItem('esap_access_token');
-        const headers: HeadersInit = { Accept: '*/*' };
-
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
-        }
-
         const response = await fetch(requestUrl, {
           method: 'GET',
-          headers,
+          credentials: 'include',
+          headers: { Accept: '*/*' },
         });
 
         if (!response.ok) {
@@ -2144,18 +2134,46 @@ export function ModalDetallesProceso({
 
   // ═══ Cargar noticia asociada ═══
   useEffect(() => {
+    console.log('[ModalDetallesProceso] useEffect ejecutándose, proceso:', proceso?.id);
     if (!proceso?.id) {
+      console.log('[ModalDetallesProceso] No hay proceso.id, limpiando noticia');
       setNoticia(null);
       return;
     }
 
+    console.log('[ModalDetallesProceso] Cargando noticia para proceso:', proceso.id);
     disciplinaryService.getAssociatedNewsToProcess(proceso.id)
       .then((noticias) => {
+        console.log('[ModalDetallesProceso] ✅ API llamada exitosa, noticias recibidas:', noticias);
         // Asumimos que hay solo una noticia asociada
-        setNoticia(noticias[0] || null);
+        const noticiaRecibida = noticias[0] || null;
+        console.log('[ModalDetallesProceso] Noticia seleccionada:', noticiaRecibida);
+        if (noticiaRecibida) {
+          console.log('[ModalDetallesProceso] Campos de noticia:', {
+            id: noticiaRecibida.id,
+            radicado: noticiaRecibida.radicado,
+            origen: noticiaRecibida.origen,
+            hechos: noticiaRecibida.hechos,
+            disciplinable: noticiaRecibida.disciplinable,
+            denunciante: noticiaRecibida.denunciante,
+            territorial: noticiaRecibida.territorial,
+            dependenciaDenunciado: noticiaRecibida.dependenciaDenunciado,
+            fechaQueja: noticiaRecibida.fechaQueja,
+            fechaRecepcion: noticiaRecibida.fechaRecepcion,
+            fechaHechos: noticiaRecibida.fechaHechos
+          });
+        } else {
+          console.log('[ModalDetallesProceso] ⚠️ No hay noticia asociada para este proceso');
+        }
+        setNoticia(noticiaRecibida);
       })
       .catch((err) => {
-        console.error('[ModalDetallesProceso] Error cargando noticia:', err);
+        console.error('[ModalDetallesProceso] ❌ Error cargando noticia:', err);
+        console.error('[ModalDetallesProceso] Detalles del error:', {
+          message: err?.message,
+          status: err?.status,
+          response: err?.response
+        });
         setNoticia(null);
       });
   }, [proceso?.id]);
@@ -3068,6 +3086,27 @@ export function ModalDetallesProceso({
     return acc;
   }, {});
 
+  // ═══ Historial real de cambios de etapa (derivado de actuaciones) ═══
+  const historialEtapas = actuaciones
+    .filter(a => a.tipo === 'cambio_etapa')
+    .slice()
+    .sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+    .map((a, idx, arr) => {
+      // Extraer etapa anterior desde la descripción "Etapa anterior: X."
+      const matchDesde = a.descripcion.match(/[Ee]tapa anterior[:\s]+([^.]+)/);
+      const desde = matchDesde
+        ? normalizarEtapaActuacion(matchDesde[1].trim())
+        : (idx > 0 ? arr[idx - 1].etapa : '—');
+      return {
+        id: a.id,
+        desde,
+        hacia: a.etapa,
+        fecha: a.fecha,
+        responsable: a.responsable,
+        motivo: a.descripcion,
+      };
+    });
+
   // ═══ Tareas: etapas, filtrado y agrupación ═══
   const etapasTareas = Array.from(new Set(tareas.map(t => t.etapa).filter(Boolean)));
   const etapasTarOrdenadas = etapasTareas.sort((a, b) => {
@@ -3220,10 +3259,10 @@ export function ModalDetallesProceso({
     // ── Sección 5: Historial de Etapas
     lines.push('═══ HISTORIAL DE CAMBIOS DE ETAPA ═══');
     lines.push(['Fecha', 'Desde', 'Hacia', 'Responsable', 'Motivo'].join(sep));
-    HISTORIAL_ETAPAS.forEach(h => {
+    historialEtapas.forEach(h => {
       lines.push([h.fecha, h.desde, h.hacia, h.responsable, `"${h.motivo.replace(/"/g, '""')}"`].join(sep));
     });
-    lines.push(`Total Transiciones: ${HISTORIAL_ETAPAS.length}`);
+    lines.push(`Total Transiciones: ${historialEtapas.length}`);
     lines.push('');
 
     // ── Resumen por Etapa
@@ -3977,8 +4016,17 @@ export function ModalDetallesProceso({
                 {tabActiva === 'general' && (() => {
                   const origenVal = proceso.origenNoticia || (proceso as any).origen || '';
                   const fechaRecNoticia = proceso.fechaRecepcionNoticia || '';
-                  const cantDenunciados = proceso.denunciados?.length || (proceso.denunciado ? 1 : 0);
-                  const cantDenunciantes = proceso.denunciantes?.length || (proceso.denunciante ? 1 : 0);
+
+
+                  const cantDenunciados = proceso.denunciados?.length ||
+                    (Array.isArray(proceso.denunciado) ? proceso.denunciado.length : (proceso.denunciado ? 1 : 0));
+                  const cantDenunciantes = proceso.denunciantes?.length ||
+                    (Array.isArray(proceso.denunciante) ? proceso.denunciante.length : (proceso.denunciante ? 1 : 0));
+
+                  console.log('[ModalDetallesProceso] Cantidades calculadas:', {
+                    cantDenunciados,
+                    cantDenunciantes
+                  });
                   const cantHechos = proceso.hechosSeparados?.length || (proceso.hechos ? 1 : 0);
                   const cantAdjuntos = proceso.archivosAdjuntos?.length || 0;
                   const territorial = proceso.territorial || (proceso.denunciado && typeof proceso.denunciado !== 'string' ? (proceso.denunciado as any).dependencia : '');
@@ -3989,7 +4037,6 @@ export function ModalDetallesProceso({
                     f.setFullYear(f.getFullYear() + 5);
                     return f.toISOString().split('T')[0];
                   })() : null;
-
                   return (
                   <div className="space-y-3">
                     {/* Datos del Proceso */}
@@ -4073,18 +4120,22 @@ export function ModalDetallesProceso({
                     )}
 
                     {/* Conducta Disciplinaria */}
-                    {proceso.conductaSeleccionada && (
-                      <div className="rounded-xl border border-red-200 bg-red-50 p-3">
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <Gavel className="w-3.5 h-3.5 text-red-600" />
-                          <span className="text-[9px] font-bold text-red-600 uppercase tracking-widest">Presunta Conducta Disciplinaria</span>
-                        </div>
-                        <p className="text-xs font-bold text-gray-900">{proceso.conductaSeleccionada}</p>
-                        {proceso.conductaPersonalizada && (
-                          <p className="text-[11px] text-gray-600 mt-1 italic">{proceso.conductaPersonalizada}</p>
-                        )}
-                      </div>
-                    )}
+                     <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                       <div className="flex items-center gap-1.5 mb-1.5">
+                         <Gavel className="w-3.5 h-3.5 text-red-600" />
+                         <span className="text-[9px] font-bold text-red-600 uppercase tracking-widest">Presunta Conducta Disciplinaria</span>
+                       </div>
+                       {proceso.conductaSeleccionada ? (
+                         <>
+                           <p className="text-xs font-bold text-gray-900">{proceso.conductaSeleccionada}</p>
+                           {proceso.conductaPersonalizada && (
+                             <p className="text-[11px] text-gray-600 mt-1 italic">{proceso.conductaPersonalizada}</p>
+                           )}
+                         </>
+                       ) : (
+                         <p className="text-xs text-gray-500 italic">Sin conducta disciplinaria especificada</p>
+                       )}
+                     </div>
 
                     {/* Personas: Denunciante, Disciplinado, Profesional, Última Actuación */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -4099,41 +4150,92 @@ export function ModalDetallesProceso({
                             <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-orange-200 text-orange-700">{cantDenunciados}</span>
                           )}
                         </div>
-                        <p className="text-sm font-bold text-gray-900">{getNombre(proceso.denunciado)}</p>
-                        {getId(proceso.denunciado) && (
-                          <p className="text-xs text-gray-500 mt-0.5">{getId(proceso.denunciado)}</p>
-                        )}
-                        {cargo && <p className="text-xs text-gray-600 mt-1">{cargo}</p>}
-                        {proceso.denunciados?.[0]?.apoderado && (
-                          <div className="mt-2 pt-2 border-t border-orange-200">
-                            <div className="flex items-center gap-1 mb-1">
-                              <Scale className="w-3 h-3 text-orange-600" />
-                              <span className="text-[9px] font-bold text-orange-600 uppercase">Apoderado</span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-700">
-                              <p><span className="font-bold text-gray-500">Nombre:</span> {proceso.denunciados[0].apoderado?.nombre || 'Sin información'}</p>
-                              <p><span className="font-bold text-gray-500">Cédula:</span> {proceso.denunciados[0].apoderado?.cedula || 'Sin información'}</p>
-                              <p><span className="font-bold text-gray-500">Correo:</span> {getApoderadoCorreo(proceso.denunciados[0].apoderado) || 'Sin información'}</p>
-                              <p><span className="font-bold text-gray-500">Celular:</span> {getApoderadoCelular(proceso.denunciados[0].apoderado) || 'Sin información'}</p>
-                              <p className="col-span-2"><span className="font-bold text-gray-500">Dirección:</span> {proceso.denunciados[0].apoderado?.direccion || 'Sin información'}</p>
-                            </div>
-                          </div>
-                        )}
-                        {proceso.denunciados && proceso.denunciados.length > 1 && (
-                          <div className="mt-2 pt-2 border-t border-orange-200 space-y-1">
-                            {proceso.denunciados.slice(1).map((d, i) => (
-                              <div key={d.id || i} className="flex items-center gap-2">
-                                <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{ backgroundColor: '#EA580C' }}>{i + 2}</div>
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-800">{d.nombre}</p>
-                                  {d.cargo && <p className="text-[10px] text-gray-500">{d.cargo}</p>}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                        
+                        <div className="space-y-4">
+                            
+                            {(() => {
+                              // Use proceso.denunciados if available, otherwise try proceso.denunciado if it's an array,
+                              // otherwise try noticia.disciplinable, otherwise fallback to proceso.denunciado as single object
 
+                              let denunciados: any[] = [];
+
+                              if (proceso.denunciados && proceso.denunciados.length > 0) {
+                                denunciados = proceso.denunciados;
+                              } else if (Array.isArray(proceso.denunciado) && proceso.denunciado.length > 0) {
+                                denunciados = proceso.denunciado;
+                              } else if (noticia?.disciplinable) {
+                                denunciados = [{
+                                  id: 'noticia-disciplinable',
+                                  nombre: noticia.disciplinable.nombre,
+                                  identificacion: noticia.disciplinable.documento || noticia.disciplinable.cedula || '',
+                                  cargo: noticia.disciplinable.cargo || '',
+                                  lugarHechos: noticia.disciplinable.lugarHechos || '',
+                                  dependencia: noticia.disciplinable.dependencia || '',
+                                  apoderado: noticia.disciplinable.apoderado
+                                }];
+                              } else if (proceso.denunciado && !Array.isArray(proceso.denunciado)) {
+                                denunciados = [{
+                                  id: 'fallback-denunciado',
+                                  nombre: getNombre(proceso.denunciado),
+                                  identificacion: getId(proceso.denunciado),
+                                  cargo: cargo || '',
+                                  lugarHechos: '',
+                                  dependencia: proceso.dependencia || '',
+                                }];
+                              }
+
+
+
+
+
+                              return denunciados.length > 0 ? (
+                                denunciados.map((d, idx) => (
+                                  <div key={`${d.id || 'no-id'}-${idx}`} className={`${idx > 0 ? 'pt-4 border-t border-orange-100' : ''}`}>
+                                   <div className="flex items-center gap-2 mb-2">
+                                     {denunciados.length > 1 && (
+                                       <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-orange-500">{idx + 1}</div>
+                                     )}
+                                     <p className="text-sm font-bold text-gray-900">{d.nombre}</p>
+                                   </div>
+
+                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                                     <p><span className="font-bold text-gray-500">ID:</span> {d.identificacion || '—'}</p>
+                                     <p><span className="font-bold text-gray-500">Cargo:</span> {d.cargo || '—'}</p>
+                                     {d.dependencia && <p className="sm:col-span-2"><span className="font-bold text-gray-500">Dependencia:</span> {d.dependencia}</p>}
+                                     {d.lugarHechos && (
+                                       <p className="sm:col-span-2 flex items-start gap-1">
+                                         <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
+                                         <span>{d.lugarHechos}</span>
+                                       </p>
+                                     )}
+                                   </div>
+
+                                   {d.apoderado && (
+                                     <div className="mt-3 p-2.5 rounded-lg bg-white border border-orange-100">
+                                       <div className="flex items-center gap-1.5 mb-1.5">
+                                         <Scale className="w-3 h-3 text-orange-600" />
+                                         <span className="text-[9px] font-bold text-orange-600 uppercase tracking-widest">Apoderado</span>
+                                       </div>
+                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-gray-700">
+                                         <p><span className="font-bold text-gray-500">Nombre:</span> {d.apoderado.nombre || '—'}</p>
+                                         <p><span className="font-bold text-gray-500">Cédula:</span> {d.apoderado.cedula || '—'}</p>
+                                         <p><span className="font-bold text-gray-500">Correo:</span> {getApoderadoCorreo(d.apoderado) || '—'}</p>
+                                         <p><span className="font-bold text-gray-500">Celular:</span> {getApoderadoCelular(d.apoderado) || '—'}</p>
+                                         {d.apoderado.direccion && <p className="sm:col-span-2"><span className="font-bold text-gray-500">Dirección:</span> {d.apoderado.direccion}</p>}
+                                       </div>
+                                     </div>
+                                   )}
+                                 </div>
+                               ))
+                             ) : (
+                               <div>
+                                 <p className="text-sm font-bold text-gray-900 text-gray-400 italic">Sin información de denunciado</p>
+                               </div>
+                             );
+                           })()}
+                        </div>
+                      </div>
+                      
                       {/* Denunciante(s) */}
                       <div className="rounded-xl border border-gray-200 bg-white p-3">
                         <div className="flex items-center gap-1.5 mb-1.5">
@@ -4145,39 +4247,111 @@ export function ModalDetallesProceso({
                             <span className="px-1.5 py-0.5 text-[9px] font-bold rounded-full bg-gray-200 text-gray-700">{cantDenunciantes}</span>
                           )}
                         </div>
-                        <p className="text-sm font-bold text-gray-900">{getNombre(proceso.denunciante)}</p>
-                        {getId(proceso.denunciante) && (
-                          <p className="text-xs text-gray-500 mt-0.5">{getId(proceso.denunciante)}</p>
-                        )}
-                        {proceso.denunciantes?.[0]?.apoderado && (
-                          <div className="mt-2 pt-2 border-t border-gray-200">
-                            <div className="flex items-center gap-1 mb-1">
-                              <Scale className="w-3 h-3 text-blue-600" />
-                              <span className="text-[9px] font-bold text-blue-600 uppercase">Apoderado</span>
-                            </div>
-                            <div className="grid grid-cols-2 gap-1 text-[10px] text-gray-700">
-                              <p><span className="font-bold text-gray-500">Nombre:</span> {proceso.denunciantes[0].apoderado?.nombre || 'Sin información'}</p>
-                              <p><span className="font-bold text-gray-500">Cédula:</span> {proceso.denunciantes[0].apoderado?.cedula || 'Sin información'}</p>
-                              <p><span className="font-bold text-gray-500">Correo:</span> {getApoderadoCorreo(proceso.denunciantes[0].apoderado) || 'Sin información'}</p>
-                              <p><span className="font-bold text-gray-500">Celular:</span> {getApoderadoCelular(proceso.denunciantes[0].apoderado) || 'Sin información'}</p>
-                              <p className="col-span-2"><span className="font-bold text-gray-500">Dirección:</span> {proceso.denunciantes[0].apoderado?.direccion || 'Sin información'}</p>
-                            </div>
-                          </div>
-                        )}
-                        {proceso.denunciantes && proceso.denunciantes.length > 1 && (
-                          <div className="mt-2 pt-2 border-t border-gray-200 space-y-1">
-                            {proceso.denunciantes.slice(1).map((d, i) => (
-                              <div key={d.id || i} className="flex items-center gap-2">
-                                <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{ backgroundColor: '#003DA5' }}>{i + 2}</div>
-                                <div>
-                                  <p className="text-xs font-semibold text-gray-800">{d.nombre}</p>
-                                  {d.tipo && <span className="text-[9px] text-blue-600 font-medium">{d.tipo}</span>}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        
+                        <div className="space-y-4">
+                            
+                            {(() => {
+                              // Use proceso.denunciantes if available, otherwise try proceso.denunciante if it's an array,
+                              // otherwise try noticia.denunciante, otherwise fallback to proceso.denunciante as single object
+
+                              let denunciantes: any[] = [];
+
+                              if (proceso.denunciantes && proceso.denunciantes.length > 0) {
+                                denunciantes = proceso.denunciantes;
+                              } else if (Array.isArray(proceso.denunciante) && proceso.denunciante.length > 0) {
+                                denunciantes = proceso.denunciante;
+                              } else if (noticia?.denunciante) {
+                                denunciantes = [{
+                                  id: 'noticia-denunciante',
+                                  nombre: noticia.denunciante.nombre,
+                                  identificacion: noticia.denunciante.documento || noticia.denunciante.cedula || '',
+                                  direccion: noticia.denunciante.direccion || '',
+                                  telefono: noticia.denunciante.telefono || '',
+                                  correo: noticia.denunciante.email || '',
+                                  cargo: noticia.denunciante.cargo || '',
+                                  entidad: noticia.denunciante.entidad || '',
+                                  tipo: (noticia.denunciante.tipo as 'Denunciante' | 'Víctima') || 'Denunciante',
+                                  apoderado: noticia.denunciante.apoderado
+                                }];
+                              } else if (proceso.denunciante && !Array.isArray(proceso.denunciante)) {
+                                denunciantes = [{
+                                  id: 'fallback-denunciante',
+                                  nombre: getNombre(proceso.denunciante),
+                                  identificacion: getId(proceso.denunciante),
+                                  direccion: '',
+                                  telefono: '',
+                                  correo: '',
+                                  cargo: '',
+                                  entidad: '',
+                                  tipo: 'Denunciante' as const,
+                                }];
+                              }
+
+
+
+
+
+                              return denunciantes.length > 0 ? (
+                                denunciantes.map((d, idx) => (
+                                  <div key={`${d.id || 'no-id'}-${idx}`} className={`${idx > 0 ? 'pt-4 border-t border-gray-100' : ''}`}>
+                                   <div className="flex items-center gap-2 mb-2">
+                                     {denunciantes.length > 1 && (
+                                       <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-blue-600">{idx + 1}</div>
+                                     )}
+                                     <p className="text-sm font-bold text-gray-900">{d.nombre}</p>
+                                   </div>
+
+                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                                     <p><span className="font-bold text-gray-500">ID:</span> {d.identificacion || '—'}</p>
+                                     {d.tipo && <p><span className="font-bold text-gray-500 text-blue-600">{d.tipo}</span></p>}
+                                     {d.cargo && <p><span className="font-bold text-gray-500">Cargo:</span> {d.cargo}</p>}
+                                     {d.entidad && <p><span className="font-bold text-gray-500">Entidad:</span> {d.entidad}</p>}
+                                     {d.telefono && (
+                                       <p className="flex items-start gap-1">
+                                         <Phone className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
+                                         <span>{d.telefono}</span>
+                                       </p>
+                                     )}
+                                     {d.correo && (
+                                       <p className="flex items-start gap-1">
+                                         <Mail className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
+                                         <span className="truncate">{d.correo}</span>
+                                       </p>
+                                     )}
+                                     {d.direccion && (
+                                       <p className="sm:col-span-2 flex items-start gap-1">
+                                         <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
+                                         <span>{d.direccion}</span>
+                                       </p>
+                                     )}
+                                   </div>
+
+                                   {d.apoderado && (
+                                     <div className="mt-3 p-2.5 rounded-lg bg-blue-50 border border-blue-100">
+                                       <div className="flex items-center gap-1.5 mb-1.5">
+                                         <Scale className="w-3 h-3 text-blue-600" />
+                                         <span className="text-[9px] font-bold text-blue-600 uppercase tracking-widest">Apoderado</span>
+                                       </div>
+                                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-gray-700">
+                                         <p><span className="font-bold text-gray-500">Nombre:</span> {d.apoderado.nombre || '—'}</p>
+                                         <p><span className="font-bold text-gray-500">Cédula:</span> {d.apoderado.cedula || '—'}</p>
+                                         <p><span className="font-bold text-gray-500">Correo:</span> {getApoderadoCorreo(d.apoderado) || '—'}</p>
+                                         <p><span className="font-bold text-gray-500">Celular:</span> {getApoderadoCelular(d.apoderado) || '—'}</p>
+                                         {d.apoderado.direccion && <p className="sm:col-span-2"><span className="font-bold text-gray-500">Dirección:</span> {d.apoderado.direccion}</p>}
+                                       </div>
+                                     </div>
+                                   )}
+                                 </div>
+                               ))
+                             ) : (
+                               <div>
+                                 <p className="text-sm font-bold text-gray-900 text-gray-400 italic">Sin información de denunciante</p>
+                               </div>
+                             );
+                           })()}
+                        </div>
                       </div>
+
 
                       {/* Profesional Asignado */}
                       <div className="rounded-xl border border-gray-200 bg-white p-3">
@@ -4340,7 +4514,7 @@ export function ModalDetallesProceso({
                         </div>
                         <div className="space-y-2">
                           {proceso.hechosSeparados.map((h, idx) => (
-                            <div key={h.id || idx} className="flex items-start gap-2">
+                            <div key={`${h.id || 'no-id'}-${idx}`} className="flex items-start gap-2">
                               <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black text-white flex-shrink-0 mt-0.5" style={{ backgroundColor: '#003DA5' }}>{idx + 1}</div>
                               <div>
                                 <p className="text-xs text-gray-700 leading-relaxed">{h.descripcion}</p>
@@ -4431,7 +4605,7 @@ export function ModalDetallesProceso({
                         ) : (
                           <div className="space-y-2">
                             {noticiasAsociadas.map((noticia: any, idx: number) => (
-                              <div key={noticia.id || idx} className="flex items-start gap-3 p-3 rounded-lg border border-purple-100 bg-white hover:bg-purple-50/30 transition-colors">
+                              <div key={`${noticia.id || 'no-id'}-${idx}`} className="flex items-start gap-3 p-3 rounded-lg border border-purple-100 bg-white hover:bg-purple-50/30 transition-colors">
                                 <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F3E8FF' }}>
                                   <Share2 className="w-4 h-4" style={{ color: '#7C3AED' }} />
                                 </div>
@@ -4472,35 +4646,79 @@ export function ModalDetallesProceso({
                                       <p className="text-[9px] text-amber-700 mt-0.5">{noticia.observaciones}</p>
                                     </div>
                                   )}
-                                  {noticia.disciplinable && (
+                                  {/* Disciplinable(s) / Denunciado(s) */}
+                                  {(noticia.disciplinable || (noticia.denunciados && noticia.denunciados.length > 0)) && (
                                     <div className="mt-2 p-2 rounded-md bg-red-50 border border-red-100">
-                                      <p className="text-[9px] font-medium text-red-800">Disciplinable:</p>
-                                      <div className="mt-1 space-y-0.5">
-                                        <p className="text-[8px] text-red-700">Nombre: {noticia.disciplinable.nombre || 'Sin información'}</p>
-                                        {noticia.disciplinable.cargo && <p className="text-[8px] text-red-700">Cargo: {noticia.disciplinable.cargo}</p>}
-                                        {noticia.disciplinable.dependencia && <p className="text-[8px] text-red-700">Dependencia: {noticia.disciplinable.dependencia}</p>}
-                                        {noticia.disciplinable.numeroIdentificacion && noticia.disciplinable.tipoIdentificacion && (
-                                          <p className="text-[8px] text-red-700">
-                                            ID: {noticia.disciplinable.tipoIdentificacion} {noticia.disciplinable.numeroIdentificacion}
-                                          </p>
+                                      <p className="text-[9px] font-medium text-red-800">
+                                        Disciplinado{((noticia.denunciados?.length || 0) > 1) ? 's' : ''}:
+                                      </p>
+                                      <div className="mt-1 space-y-2">
+                                        {noticia.denunciados && noticia.denunciados.length > 0 ? (
+                                          noticia.denunciados.map((d: any, dIdx: number) => (
+                                            <div key={dIdx} className={dIdx > 0 ? 'pt-1.5 border-t border-red-100/50' : ''}>
+                                              <p className="text-[8px] font-bold text-red-700">{d.nombre || 'Sin información'}</p>
+                                              <div className="grid grid-cols-2 gap-x-2 text-[7px] text-red-600">
+                                                {d.identificacion && <p>ID: {d.identificacion}</p>}
+                                                {d.cargo && <p>Cargo: {d.cargo}</p>}
+                                                {d.dependencia && <p className="col-span-2">Dep: {d.dependencia}</p>}
+                                              </div>
+                                              {d.apoderado && (
+                                                <p className="text-[7px] text-red-800 font-medium mt-0.5">Apoderado: {d.apoderado.nombre}</p>
+                                              )}
+                                            </div>
+                                          ))
+                                        ) : (
+                                          <div>
+                                            <p className="text-[8px] text-red-700">Nombre: {noticia.disciplinable.nombre || 'Sin información'}</p>
+                                            {noticia.disciplinable.cargo && <p className="text-[8px] text-red-700">Cargo: {noticia.disciplinable.cargo}</p>}
+                                            {noticia.disciplinable.dependencia && <p className="text-[8px] text-red-700">Dependencia: {noticia.disciplinable.dependencia}</p>}
+                                            {noticia.disciplinable.numeroIdentificacion && (
+                                              <p className="text-[8px] text-red-700">
+                                                ID: {noticia.disciplinable.tipoIdentificacion || ''} {noticia.disciplinable.numeroIdentificacion}
+                                              </p>
+                                            )}
+                                          </div>
                                         )}
                                       </div>
                                     </div>
                                   )}
-                                  {noticia.denunciante && (
+                                  {/* Denunciante(s) */}
+                                  {(noticia.denunciante || (noticia.denunciantes && noticia.denunciantes.length > 0)) && (
                                     <div className="mt-2 p-2 rounded-md bg-blue-50 border border-blue-100">
-                                      <p className="text-[9px] font-medium text-blue-800">Denunciante:</p>
-                                      <div className="mt-1 space-y-0.5">
-                                        <p className="text-[8px] text-blue-700">Nombre: {noticia.denunciante.nombre || 'Sin información'}</p>
-                                        {noticia.denunciante.cargo && <p className="text-[8px] text-blue-700">Cargo: {noticia.denunciante.cargo}</p>}
-                                        {noticia.denunciante.entidad && <p className="text-[8px] text-blue-700">Entidad: {noticia.denunciante.entidad}</p>}
-                                        {noticia.denunciante.numeroIdentificacion && noticia.denunciante.tipoIdentificacion && (
-                                          <p className="text-[8px] text-blue-700">
-                                            ID: {noticia.denunciante.tipoIdentificacion} {noticia.denunciante.numeroIdentificacion}
-                                          </p>
+                                      <p className="text-[9px] font-medium text-blue-800">
+                                        Denunciante{((noticia.denunciantes?.length || 0) > 1) ? 's' : ''}:
+                                      </p>
+                                      <div className="mt-1 space-y-2">
+                                        {noticia.denunciantes && noticia.denunciantes.length > 0 ? (
+                                          noticia.denunciantes.map((d: any, dIdx: number) => (
+                                            <div key={dIdx} className={dIdx > 0 ? 'pt-1.5 border-t border-blue-100/50' : ''}>
+                                              <p className="text-[8px] font-bold text-blue-700">{d.nombre || 'Sin información'}</p>
+                                              <div className="grid grid-cols-2 gap-x-2 text-[7px] text-blue-600">
+                                                {d.identificacion && <p>ID: {d.identificacion}</p>}
+                                                {d.tipo && <p className="font-medium">{d.tipo}</p>}
+                                                {d.cargo && <p>Cargo: {d.cargo}</p>}
+                                                {d.entidad && <p>Entidad: {d.entidad}</p>}
+                                                {d.correo && <p className="col-span-2 truncate">Email: {d.correo}</p>}
+                                              </div>
+                                              {d.apoderado && (
+                                                <p className="text-[7px] text-blue-800 font-medium mt-0.5">Apoderado: {d.apoderado.nombre}</p>
+                                              )}
+                                            </div>
+                                          ))
+                                        ) : (
+                                          <div>
+                                            <p className="text-[8px] text-blue-700">Nombre: {noticia.denunciante.nombre || 'Sin información'}</p>
+                                            {noticia.denunciante.cargo && <p className="text-[8px] text-blue-700">Cargo: {noticia.denunciante.cargo}</p>}
+                                            {noticia.denunciante.entidad && <p className="text-[8px] text-blue-700">Entidad: {noticia.denunciante.entidad}</p>}
+                                            {noticia.denunciante.numeroIdentificacion && (
+                                              <p className="text-[8px] text-blue-700">
+                                                ID: {noticia.denunciante.tipoIdentificacion || ''} {noticia.denunciante.numeroIdentificacion}
+                                              </p>
+                                            )}
+                                            {noticia.denunciante.telefono && <p className="text-[8px] text-blue-700">Teléfono: {noticia.denunciante.telefono}</p>}
+                                            {noticia.denunciante.correo && <p className="text-[8px] text-blue-700">Correo: {noticia.denunciante.correo}</p>}
+                                          </div>
                                         )}
-                                        {noticia.denunciante.telefono && <p className="text-[8px] text-blue-700">Teléfono: {noticia.denunciante.telefono}</p>}
-                                        {noticia.denunciante.correo && <p className="text-[8px] text-blue-700">Correo: {noticia.denunciante.correo}</p>}
                                       </div>
                                     </div>
                                   )}
@@ -4662,7 +4880,7 @@ export function ModalDetallesProceso({
                           Historial de Cambios de Etapa
                         </span>
                         <span className="ml-auto text-[9px] font-bold px-2 py-0.5 rounded-full text-white bg-purple-500">
-                          {HISTORIAL_ETAPAS.length} transiciones
+                          {historialEtapas.length} transiciones
                         </span>
                       </div>
                       <div className="p-3 bg-white">
@@ -4670,10 +4888,10 @@ export function ModalDetallesProceso({
                           {/* Línea vertical de timeline */}
                           <div className="absolute left-[9px] top-2 bottom-2 w-px bg-gradient-to-b from-purple-300 via-blue-300 to-green-300" />
                           <div className="space-y-3">
-                            {HISTORIAL_ETAPAS.map((h, idx) => {
+                            {historialEtapas.map((h, idx) => {
                               const epcHacia = etapaColor(h.hacia);
                               const epcDesde = h.desde !== '—' ? etapaColor(h.desde) : null;
-                              const isLast = idx === HISTORIAL_ETAPAS.length - 1;
+                              const isLast = idx === historialEtapas.length - 1;
                               return (
                                 <div key={h.id} className="flex items-start gap-3 relative pl-6">
                                   {/* Nodo del timeline */}

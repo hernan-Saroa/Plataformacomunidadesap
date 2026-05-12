@@ -51,6 +51,13 @@ export class UsersService {
     });
   }
 
+  async findAuthUserById(userId: string): Promise<User | null> {
+    return this.userRepo.findOne({
+      where: { id_user: userId },
+      relations: ['person', 'roles', 'roles.permissions'],
+    });
+  }
+
   private get schemaName(): string {
     return process.env.DB_SCHEMA || 'auth';
   }
@@ -135,11 +142,20 @@ export class UsersService {
       ),
     );
 
+    const currentEmail = this.normalizeOptionalText(user.username).toLowerCase();
+
     if (qualifyingRoles.length === 0) {
+      // Si no hay roles qualifying, eliminar el registro si existe
+      if (currentEmail) {
+        await manager.query(
+          `DELETE FROM ${this.disciplinaryProfessionalTableRef} WHERE email = $1`,
+          [currentEmail],
+        );
+      }
       return;
     }
 
-    const currentEmail = this.normalizeOptionalText(user.username).toLowerCase();
+    
     const previousEmail = this.normalizeOptionalText(previousUsername).toLowerCase();
 
     if (!currentEmail) {
@@ -602,7 +618,7 @@ export class UsersService {
           normalizedDocument,
         );
 
-        const passwordHash = await bcrypt.hash(dto.password, 10);
+        const passwordHash = await bcrypt.hash(dto.password || '123456', 10);
         const person = await this.savePerson(manager, {
           firstName: dto.firstName,
           lastName: dto.lastName,
@@ -1207,5 +1223,19 @@ export class UsersService {
     await this.userRepo.save(userToUpdate);
 
     return userToUpdate;
+  }
+
+  async adminResetPassword(id: string, newPassword: string): Promise<void> {
+    if (!newPassword || newPassword.length < 6) {
+      throw new BadRequestException('La contraseña debe tener al menos 6 caracteres');
+    }
+
+    const user = await this.findUserByApiIdentifier(id, [], false);
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    user.password_hash = await bcrypt.hash(newPassword, 10);
+    await this.userRepo.save(user);
   }
 }

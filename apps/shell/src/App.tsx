@@ -24,6 +24,7 @@ import { config } from './config/environment';
 import { NotificacionesProvider } from './contexts/NotificacionesContext';
 import { EditorPlantillasPage } from './pages/EditorPlantillasPage';
 import { ExpedienteCompartidoPage } from './pages/ExpedienteCompartidoPage';
+import { getAppOnlineStatus } from './utils/connectivity';
 
 
 // Importar componentes de servicios públicos
@@ -82,7 +83,7 @@ import { VisualizadorPTAAjustes } from './components/gestion-profesoral/Visualiz
  * accesible desde Control Interno Gestión en el Backoffice.
  * 
  * Features:
- * - Persistencia de sesión en localStorage
+ * - Persistencia de sesión en sessionStorage
  * - Auto-logout por inactividad (15 minutos)
  * - Alerta previa antes de cerrar sesión
  */
@@ -172,7 +173,7 @@ interface UserPermission {
 }
 
 interface SesionGuardada {
-  usuario: Usuario;
+  usuario?: Usuario;
   vista: Vista;
   timestamp: number;
 }
@@ -190,17 +191,85 @@ interface UserData {
 }
 
 const extractPermissionCodes = (user: any): string[] => {
-  if (!user?.roles || !Array.isArray(user.roles)) return [];
-  const codes = user.roles.flatMap((role: any) =>
-    Array.isArray(role?.permissions)
-      ? role.permissions.map((perm: any) => perm?.code).filter(Boolean)
-      : []
-  );
-  return Array.from(new Set(codes));
+  const directCodes = Array.isArray(user?.permissions)
+    ? user.permissions
+        .map((permission: any) => (typeof permission === 'string' ? permission : permission?.code))
+        .filter(Boolean)
+    : [];
+
+  const roleCodes = Array.isArray(user?.roles)
+    ? user.roles.flatMap((role: any) =>
+        Array.isArray(role?.permissions)
+          ? role.permissions
+              .map((perm: any) => (typeof perm === 'string' ? perm : perm?.code))
+              .filter(Boolean)
+          : []
+      )
+    : [];
+
+  return Array.from(new Set([...directCodes, ...roleCodes]));
 };
 
 // Configuración de timeout (15 minutos en milisegundos)
 const TIMEOUT_INACTIVIDAD = 15 * 60 * 1000; // 15 minutos
+const AUTH_TOKEN_STORAGE_KEYS = [
+  config.STORAGE_KEYS.AUTH_TOKEN,
+  'esap_access_token',
+  config.STORAGE_KEYS.REFRESH_TOKEN,
+  'token',
+  'esap-auth-token',
+];
+const USER_DATA_STORAGE_KEY = config.STORAGE_KEYS.USER_DATA;
+const ACTIVE_SESSION_STORAGE_KEY = 'esap-sesion-activa';
+const SENSITIVE_SESSION_STORAGE_KEYS = [
+  USER_DATA_STORAGE_KEY,
+];
+const CLEAR_SESSION_STATE_STORAGE_KEYS = [
+  USER_DATA_STORAGE_KEY,
+  ACTIVE_SESSION_STORAGE_KEY,
+];
+
+function migrateAuthTokensToSessionStorage() {
+  // OTIC-001: los tokens ya no se almacenan en sessionStorage ni localStorage.
+  // Solo limpiamos residuos de versiones anteriores.
+  for (const key of AUTH_TOKEN_STORAGE_KEYS) {
+    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
+  }
+
+  const rememberedSession = localStorage.getItem('esap-remember-session');
+  if (!rememberedSession) return;
+
+  try {
+    const parsed = JSON.parse(rememberedSession);
+    if (parsed?.token || parsed?.accessToken || parsed?.refreshToken) {
+      delete parsed.token;
+      delete parsed.accessToken;
+      delete parsed.refreshToken;
+      localStorage.setItem('esap-remember-session', JSON.stringify(parsed));
+    }
+  } catch {
+    localStorage.removeItem('esap-remember-session');
+  }
+}
+
+function migrateSensitiveSessionDataToSessionStorage() {
+  // OTIC-002: datos sensibles del usuario ya no se almacenan en sessionStorage/localStorage.
+  // Solo limpiamos residuos de versiones anteriores.
+  for (const key of SENSITIVE_SESSION_STORAGE_KEYS) {
+    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
+  }
+}
+
+function clearSensitiveSessionState() {
+  for (const key of CLEAR_SESSION_STATE_STORAGE_KEYS) {
+    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
+  }
+}
+
+
 const TIEMPO_ALERTA = 1 * 60 * 1000; // 1 minuto antes de cerrar sesión
 
 function DemoNoDisponible({ title }: { title: string }) {
@@ -236,7 +305,7 @@ export default function App() {
     );
   }
 
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [isOnline, setIsOnline] = useState(getAppOnlineStatus);
   const [currentView, setCurrentView] = useState<AppView>('landing');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userData, setUserData] = useState<any>({ name: '', email: '', personId: '', modules: [], roles: [], permissions: [] });
@@ -256,6 +325,8 @@ export default function App() {
   );
   const [usuarioActual, setUsuarioActual] = useState<Usuario | null>(null);
   const [mostrarAlertaInactividad, setMostrarAlertaInactividad] = useState(false);
+  // OTIC-002: true mientras se verifica la cookie con el backend al recargar
+  const [isRestoringSession, setIsRestoringSession] = useState(true);
 
   const timerInactividadRef = useRef<NodeJS.Timeout | null>(null);
   const timerAlertaRef = useRef<NodeJS.Timeout | null>(null);
@@ -266,15 +337,19 @@ export default function App() {
 
   // Detector de conexión a internet
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const refreshOnlineStatus = () => setIsOnline(getAppOnlineStatus());
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    refreshOnlineStatus();
+    window.addEventListener('online', refreshOnlineStatus);
+    window.addEventListener('offline', refreshOnlineStatus);
+    window.addEventListener('focus', refreshOnlineStatus);
+    document.addEventListener('visibilitychange', refreshOnlineStatus);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', refreshOnlineStatus);
+      window.removeEventListener('offline', refreshOnlineStatus);
+      window.removeEventListener('focus', refreshOnlineStatus);
+      document.removeEventListener('visibilitychange', refreshOnlineStatus);
     };
   }, []);
 
@@ -282,10 +357,12 @@ export default function App() {
   useEffect(() => {
     // No restaurar sesión para rutas públicas de expediente compartido
     if (window.location.pathname.startsWith('/expediente-compartido/')) {
+      setIsRestoringSession(false);
       return;
     }
     // Priorizar procesamiento de callback OAuth de Microsoft antes de restaurar sesión local
     if (hasMicrosoftOAuthCallback) {
+      setIsRestoringSession(false);
       return;
     }
 
@@ -293,7 +370,7 @@ export default function App() {
       const userEmail = user?.person?.email || user?.email || '';
       const userName = user?.person?.first_name
         ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
-        : user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
+        : user?.fullName || user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
 
       const roles = Array.isArray(user?.roles)
         ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
@@ -324,22 +401,30 @@ export default function App() {
           ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
             'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
         );
+        const hasGestionLegal = roles.some((role: string) =>
+          ['GESTION_LEGAL', 'JEFE_GESTION_LEGAL', 'MONITOREO_GESTION_LEGAL',
+            'SECRETARIADO_GESTION_LEGAL', 'RESUELVE_GESTION_LEGAL'].includes(role)
+        );
 
         module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
-          : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+          : hasGestionLegal ? 'gestion-legal'
             : hasDisciplinaryAccess(roles) ? 'control-disciplinario'
               : hasControlInterno ? 'control-interno'
                 : 'users-persons';
         const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
-          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
-            : hasDisciplinaryAccess(roles) ? 'Control Disciplinario'
-              : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
-                : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
-                  : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
-                    : roles.includes('CONSULTA') ? 'Consulta Control Interno'
-                      : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
-                        : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
-                          : 'Control Interno';
+          : roles.includes('JEFE_GESTION_LEGAL') ? 'Jefe Gestión Legal'
+            : roles.includes('MONITOREO_GESTION_LEGAL') ? 'Monitoreo Gestión Legal'
+              : roles.includes('SECRETARIADO_GESTION_LEGAL') ? 'Secretariado Gestión Legal'
+                : roles.includes('RESUELVE_GESTION_LEGAL') ? 'Resuelve Gestión Legal'
+                  : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+                    : hasDisciplinaryAccess(roles) ? 'Control Disciplinario'
+                      : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
+                        : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
+                          : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
+                            : roles.includes('CONSULTA') ? 'Consulta Control Interno'
+                              : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
+                                : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
+                                  : 'Control Interno';
         portalRoles.push(rolStr);
       } else {
         if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
@@ -359,97 +444,92 @@ export default function App() {
       setUserData({
         name: userName,
         email: userEmail,
-        personId: user?.person?.id || user?.id,
+        personId: user?.person?.id || user?.id || user?.userId,
         modules: user?.modules || [],
         roles,
         permissions,
         module
       });
       setUsuarioActual({
-        id: user?.id || user?.person?.id || 'unknown',
+        id: user?.id || user?.person?.id || user?.userId || 'unknown',
         nombre: userName,
         email: userEmail,
         tipo: nextView === 'backoffice' ? 'interno' : 'externo'
       });
     };
 
-    const authToken =
-      localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
-      localStorage.getItem('esap_access_token');
-    if (authToken && !localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN)) {
-      localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, authToken);
-    }
-    const storedAuthUser = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
-    let sesionGuardada = localStorage.getItem('esap-sesion-activa');
-    if (authToken && storedAuthUser) {
-      try {
-        applySessionFromUser(JSON.parse(storedAuthUser));
-        return;
-      } catch (error) {
-        console.error('Error al restaurar sesión de auth:', error);
-      }
-    } else {
-      if (sesionGuardada && !authToken) {
-        toast.error('Sesión ha expirado', {
-          description: 'Por seguridad la sesión se ha cerrado',
-          duration: 5000,
-        });
-        const keysToRemove = [
-          'esap_auth_token',
-          'esap_access_token',
-          'esap_user_data',
-          'esap-sesion-activa',
-          'esap_user_profile'
-        ];
-        keysToRemove.forEach(key => localStorage.removeItem(key));
-        sesionGuardada = null;
-      }
+    migrateAuthTokensToSessionStorage();
+    migrateSensitiveSessionDataToSessionStorage();
+
+    // Limpiar cualquier token residual de versiones anteriores (OTIC-001)
+    AUTH_TOKEN_STORAGE_KEYS.forEach((key) => {
+      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
+    });
+
+    // OTIC-002: los datos de usuario ya no se guardan en sessionStorage.
+    // Usamos ACTIVE_SESSION_STORAGE_KEY solo como señal de que hubo sesión,
+    // y verificamos con el backend para restaurar los datos de usuario.
+    const sesionGuardada = sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY) || localStorage.getItem('esap-sesion-activa');
+
+    // Si esta pestana no tiene senal de sesion, no consultar /verify.
+    // Evita un 401 esperado antes del login sin exponer ni guardar tokens en JS.
+    if (!sesionGuardada) {
+      setIsRestoringSession(false);
+      return;
     }
 
-    if (sesionGuardada) {
+    (async () => {
       try {
-        const sesionParsed = JSON.parse(sesionGuardada);
-        if (sesionParsed?.usuario && sesionParsed?.vista && sesionParsed?.timestamp) {
-          const sesion: SesionGuardada = sesionParsed;
-
-          const tiempoTranscurrido = Date.now() - sesion.timestamp;
-
-          if (tiempoTranscurrido < TIMEOUT_INACTIVIDAD) {
-            setUsuarioActual(sesion.usuario);
-            setVistaActual(sesion.vista);
-            console.log('✅ Sesión restaurada:', sesion.usuario.nombre);
-
-            toast.success('Sesión restaurada', {
-              description: `Bienvenido de nuevo, ${sesion.usuario.nombre}`,
-            });
-          } else {
-            // Sesión expirada
-            localStorage.removeItem('esap-sesion-activa');
+        // Si hay señal de sesión y el timeout de inactividad ya pasó, cerrar sin llamar al backend
+        if (sesionGuardada) {
+          const sesionParsed = JSON.parse(sesionGuardada);
+          const tiempoTranscurrido = Date.now() - (sesionParsed.timestamp || 0);
+          if (tiempoTranscurrido >= TIMEOUT_INACTIVIDAD) {
+            clearSensitiveSessionState();
             console.log('⏰ Sesión expirada');
+            setIsRestoringSession(false);
+            return;
           }
-        } else if (sesionParsed?.email || sesionParsed?.person?.email) {
-          applySessionFromUser(sesionParsed);
         }
-      } catch (error) {
-        console.error('Error al restaurar sesión:', error);
-        localStorage.removeItem('esap-sesion-activa');
+        // Verificar con el backend solo si hubo sesion previa en esta pestana.
+        const user = await authService.verifyToken();
+        authService.setCurrentUserCache(user as any);
+        applySessionFromUser(user);
+        console.log('✅ Sesión restaurada desde backend');
+      } catch {
+        // Cookie inexistente, expirada o inválida
+        if (sesionGuardada) {
+          toast.error('Sesión ha expirado', {
+            description: 'Por seguridad la sesión se ha cerrado',
+            duration: 5000,
+          });
+        }
+        clearSensitiveSessionState();
+      } finally {
+        setIsRestoringSession(false);
       }
-    }
+    })();
   }, []);
 
   // Guardar sesión cuando cambie el usuario o vista
   useEffect(() => {
+    if (isRestoringSession) {
+      return;
+    }
+
     if (usuarioActual && (vistaActual === 'portal' || vistaActual === 'backoffice')) {
       const sesion: SesionGuardada = {
-        usuario: usuarioActual,
         vista: vistaActual,
         timestamp: Date.now(),
       };
-      localStorage.setItem('esap-sesion-activa', JSON.stringify(sesion));
+      sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(sesion));
+      localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     } else {
-      localStorage.removeItem('esap-sesion-activa');
+      sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+      localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     }
-  }, [usuarioActual, vistaActual]);
+  }, [usuarioActual, vistaActual, isRestoringSession]);
 
   // Deep links de certificados públicos (laborales y graduados)
   useEffect(() => {
@@ -566,28 +646,27 @@ export default function App() {
   const handleVolverALanding = () => {
     setVistaActual('landing');
     setUsuarioActual(null);
-    localStorage.removeItem('esap-sesion-activa');
+    sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
+    localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
   };
 
   // Handler para login con integración del backend
-  const handleLogin = (user: User, accessToken: string, rememberMe?: boolean) => {
+  const handleLogin = (user: User, _accessToken: string, rememberMe?: boolean) => {
     try {
+      authService.setCurrentUserCache(user as any);
+
       // console.log('🔐 Login handler called with user:', user);
       // console.log('🔐 Login handler called with roles:', user.roles);
       // console.log('🔐 Login handler called with accessToken:', accessToken);
       // console.log('🔐 Login handler called with rememberMe:', rememberMe);
-      user.accessToken = accessToken;
-      user.rememberMe = rememberMe || false;
-
-      // Guardar token JWT
-      localStorage.setItem('esap_auth_token', accessToken);
-      localStorage.setItem('esap_access_token', accessToken);
+      // Token JWT gestionado por cookie HttpOnly del backend (OTIC-001).
+      // El frontend NO almacena el token en ningún storage accesible por JS.
 
       // Extraer información del usuario
       const userEmail = user?.person?.email || user?.email || '';
       const userName = user?.person?.first_name
         ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
-        : user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
+        : user?.fullName || user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
 
       const roles = user?.roles?.map((role: any) => role.code) || [];
       const permissions = extractPermissionCodes(user);
@@ -603,9 +682,11 @@ export default function App() {
       console.log('👤 User info extracted:', { userEmail, userName });
 
       // Determinar tipo de usuario basado en roles del backend
+
       const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
       const hasConfigRole = !(roles.includes('ESTUDIANTE') || roles.includes('DOCENTE') || roles.includes('GRADUADO') || roles.includes('ASPIRANTE'))
       // const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO')  || roles.includes('GESTION_LEGAL');
+      let sessionVista: Vista = hasAdminRole ? 'backoffice' : 'portal';
 
       console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
 
@@ -617,13 +698,13 @@ export default function App() {
         setUserData({
           name: userName,
           email: userEmail,
-          personId: user?.person?.id || user?.id,
+          personId: user?.person?.id || user?.id || user?.userId,
           modules: user?.modules || [],
           roles,
           permissions
         });
         setUsuarioActual({
-          id: user?.id || user?.person?.id || 'unknown',
+          id: user?.id || user?.person?.id || user?.userId || 'unknown',
           nombre: userName,
           email: userEmail,
           tipo: 'interno'
@@ -653,37 +734,39 @@ export default function App() {
             ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
               'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
           );
+          const hasGestionLegal = roles.some((role: string) =>
+            ['GESTION_LEGAL', 'JEFE_GESTION_LEGAL', 'MONITOREO_GESTION_LEGAL',
+              'SECRETARIADO_GESTION_LEGAL', 'RESUELVE_GESTION_LEGAL'].includes(role)
+          );
           const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
-            : roles.includes('GESTION_LEGAL') ? 'gestion-legal'
+            : hasGestionLegal ? 'gestion-legal'
               : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
-                : user.modules.length > 0 ? user.modules[0]
+                : Array.isArray(user?.modules) && user.modules.length > 0 ? user.modules[0]
                   : 'control-interno';
         const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
-          : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
-            : hasDisciplinaryAccess(roles) ? 'Control Disciplinario'
-              : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
-                : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
-                  : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
-                    : roles.includes('CONSULTA') ? 'Consulta Control Interno'
-                      : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
-                        : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
-                          : 'Control Interno';
+          : roles.includes('JEFE_GESTION_LEGAL') ? 'Jefe Gestión Legal'
+            : roles.includes('MONITOREO_GESTION_LEGAL') ? 'Monitoreo Gestión Legal'
+              : roles.includes('SECRETARIADO_GESTION_LEGAL') ? 'Secretariado Gestión Legal'
+                : roles.includes('RESUELVE_GESTION_LEGAL') ? 'Resuelve Gestión Legal'
+                  : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
+                    : hasDisciplinaryAccess(roles) ? 'Control Disciplinario'
+                      : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
+                        : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
+                          : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
+                            : roles.includes('CONSULTA') ? 'Consulta Control Interno'
+                              : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
+                                : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
+                                  : 'Control Interno';
           const userDataToSave = {
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id,
+            personId: user?.person?.id || user?.id || user?.userId,
             modules: user?.modules || [],
             roles,
             permissions,
             module: module // Módulo específico de acceso
           };
           setUserData(userDataToSave);
-          // También guardar en esap_user_data para que otros componentes puedan acceder
-          localStorage.setItem('esap_user_data', JSON.stringify({
-            ...user,
-            roles: user?.roles || roles.map((code: string) => ({ code, name: code })),
-            permissions
-          }));
           portalRoles.push(rolStr);
         } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
           userType = 'docente';
@@ -693,7 +776,7 @@ export default function App() {
           const userDataWithDetails = {
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id,
+            personId: user?.person?.id || user?.id || user?.userId,
             modules: user?.modules || [],
             datos_por_rol: {
               Docente: {
@@ -717,7 +800,7 @@ export default function App() {
           setUserData({
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id,
+            personId: user?.person?.id || user?.id || user?.userId,
             modules: user?.modules || [],
             roles,
             permissions
@@ -728,7 +811,7 @@ export default function App() {
           setUserData({
             name: userName,
             email: userEmail,
-            personId: user?.person?.id || user?.id,
+            personId: user?.person?.id || user?.id || user?.userId,
             modules: user?.modules || [],
             roles,
             permissions
@@ -740,8 +823,9 @@ export default function App() {
         setUserRoles(portalRoles);
         setCurrentView(currentView);
         setVistaActual(vistaActualCurrent);
+        sessionVista = vistaActualCurrent;
         setUsuarioActual({
-          id: user?.id || user?.person?.id || 'unknown',
+          id: user?.id || user?.person?.id || user?.userId || 'unknown',
           nombre: userName,
           email: userEmail,
           tipo: currentView === 'backoffice' ? 'interno' : 'externo'
@@ -754,27 +838,15 @@ export default function App() {
       // Guardar sesión si rememberMe está activo
       if (rememberMe) {
         localStorage.setItem('esap-remember-session', JSON.stringify({
-          email: userEmail,
-          token: accessToken
+          email: userEmail
         }));
       }
 
-      localStorage.setItem('esap-sesion-activa', JSON.stringify({
-        usuario: {
-          id: user?.id || user?.person?.id || 'unknown',
-          nombre: userName,
-          email: userEmail,
-          tipo: (hasAdminRole || currentView === 'backoffice') ? 'interno' : 'externo'
-        },
-        vista: (hasAdminRole || currentView === 'backoffice') ? 'backoffice' : 'portal',
+      sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({
+        vista: sessionVista,
         timestamp: Date.now(),
-        user: {
-          id: user?.id,
-          email: userEmail,
-          person: user?.person,
-          roles: user?.roles
-        }
       }));
+      localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
 
       // Iniciar sistema de detección de inactividad
       resetearTimerInactividad();
@@ -789,6 +861,10 @@ export default function App() {
 
   // Handler para logout (desde cualquier ambiente)
   const handleLogout = (viewToast = true) => {
+    // Limpiar la cookie HttpOnly en el backend (OTIC-001)
+    authService.logout().catch(() => {/* el servidor puede estar caído; la cookie expira sola */});
+    delete (window as any).__esap_auth_cache;
+    
     // Preservar borradores (drafts) al hacer logout, solo eliminar keys de sesión
     const keysToRemove = [
       'esap_auth_token',
@@ -798,6 +874,9 @@ export default function App() {
       'esap_user_profile'
     ];
     keysToRemove.forEach(key => localStorage.removeItem(key));
+    
+    AUTH_TOKEN_STORAGE_KEYS.forEach((key) => sessionStorage.removeItem(key));
+    clearSensitiveSessionState();
     if (viewToast) {
       toast.success('Sesión cerrada exitosamente', {
         description: 'Has cerrado sesión de forma segura',
@@ -1051,6 +1130,11 @@ export default function App() {
 
         return (
           <BackofficeApp
+            key={[
+              userData?.personId || usuarioActual?.id || 'anon',
+              ...(userData?.roles || []),
+              ...(userData?.permissions || []),
+            ].join(':')}
             // usuario={usuarioActual!}
             onLogout={handleLogout}
             onBackToSystemSelector={handleBackToSystemSelector}
@@ -1178,7 +1262,14 @@ export default function App() {
             path="/expediente-compartido/:token"
             element={<ExpedienteCompartidoPage />}
           />
-          <Route path="*" element={renderVista()} />
+          <Route path="*" element={isRestoringSession ? (
+            <div className="min-h-screen flex items-center justify-center bg-white">
+              <div className="text-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent mx-auto mb-3" />
+                <p className="text-sm text-slate-500">Verificando sesión...</p>
+              </div>
+            </div>
+          ) : renderVista()} />
         </Routes>
 
         {/* Modal de Alerta de Inactividad */}

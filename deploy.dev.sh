@@ -63,6 +63,7 @@ FRONTEND_MFE_SERVICES=(
     frontend-mfe-control-interno
     frontend-mfe-control-disciplinario
     frontend-mfe-gestion-legal
+    frontend-mfe-pta
 )
 FRONTEND_MFE_APP_SERVICES=(
     frontend-shell
@@ -78,6 +79,7 @@ FRONTEND_MFE_APP_SERVICES=(
     frontend-mfe-control-interno
     frontend-mfe-control-disciplinario
     frontend-mfe-gestion-legal
+    frontend-mfe-pta
 )
 BACKEND_DEV_SERVICES=(
     api-gateway
@@ -357,6 +359,10 @@ cmd_rebuild_changed() {
                 service_name="frontend-mfe-gestion-legal"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
                 ;;
+            apps/mfe-pta/*)
+                service_name="frontend-mfe-pta"
+                if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
+                ;;
             apps/shell/*)
                 service_name="frontend-shell"
                 if ! append_unique "$service_name" "${frontend_services[@]}"; then frontend_services+=("$service_name"); fi
@@ -392,7 +398,13 @@ cmd_rebuild_changed() {
     if [ ${#frontend_services[@]} -gt 0 ]; then
         echo -e "${YELLOW}Reconstruyendo frontend afectado:${NC} ${frontend_services[*]}"
         compose_dev_mfe build "${frontend_services[@]}"
-        compose_dev_mfe up -d --no-deps "${frontend_services[@]}"
+        # Si se toca el gateway (frontend), Nginx valida/resolvea upstreams al inicio.
+        # Levantar sin --no-deps para asegurar que los MFEs (incl. pta) existan en DNS.
+        if [[ " ${frontend_services[*]} " == *" frontend "* ]]; then
+            compose_dev_mfe up -d "${frontend_services[@]}"
+        else
+            compose_dev_mfe up -d --no-deps "${frontend_services[@]}"
+        fi
         restart_frontend_nginx
     fi
 
@@ -447,6 +459,9 @@ resolve_mfe_service() {
             ;;
         gestion-legal|mfe-gestion-legal|frontend-mfe-gestion-legal)
             echo "frontend-mfe-gestion-legal"
+            ;;
+        pta|mfe-pta|frontend-mfe-pta)
+            echo "frontend-mfe-pta"
             ;;
         *)
             return 1
@@ -692,7 +707,7 @@ cmd_up_mfe() {
     fi
 
     echo -e "${GREEN}Iniciando frontend desacoplado (gateway + shell + MFEs)...${NC}"
-    compose_dev_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    compose_dev_mfe up -d frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE iniciado exitosamente${NC}"
     echo -e "${YELLOW}Nota: si hiciste git pull y esperas publicar cambios nuevos del frontend, usa ./deploy.dev.sh rebuild-mfe <app>${NC}"
@@ -708,14 +723,14 @@ cmd_up_mfe() {
 # Comando: down-mfe
 cmd_down_mfe() {
     echo -e "${YELLOW}Deteniendo frontend desacoplado...${NC}"
-    compose_dev_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    compose_dev_mfe stop frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
     echo -e "${GREEN}Frontend MFE detenido${NC}"
 }
 
 # Comando: restart-mfe
 cmd_restart_mfe() {
     echo -e "${YELLOW}Reiniciando frontend desacoplado...${NC}"
-    compose_dev_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    compose_dev_mfe restart frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
     restart_frontend_nginx
     echo -e "${GREEN}Frontend MFE reiniciado${NC}"
 }
@@ -723,7 +738,7 @@ cmd_restart_mfe() {
 # Comando: status-mfe
 cmd_status_mfe() {
     echo -e "${GREEN}Estado del frontend desacoplado:${NC}"
-    compose_dev_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    compose_dev_mfe ps frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
 }
 
 # Comando: logs-mfe
@@ -741,7 +756,7 @@ cmd_logs_mfe() {
         return
     fi
 
-    compose_dev_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal
+    compose_dev_mfe logs -f frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta
 }
 
 # Comando: rebuild-mfe
@@ -767,7 +782,11 @@ cmd_rebuild_mfe() {
     echo -e "${YELLOW}Reconstruyendo servicio frontend MFE: ${resolved_service}${NC}"
     ensure_docker_disk_space
     compose_dev_mfe build "$resolved_service"
-    compose_dev_mfe up -d --no-deps "$resolved_service"
+    if [ "$resolved_service" = "frontend" ]; then
+        compose_dev_mfe up -d "$resolved_service"
+    else
+        compose_dev_mfe up -d --no-deps "$resolved_service"
+    fi
     restart_frontend_nginx
     echo -e "${GREEN}Servicio ${resolved_service} reconstruido y reiniciado${NC}"
 }
@@ -789,6 +808,7 @@ cmd_rebuild_mfe_select() {
         "frontend-mfe-control-interno"
         "frontend-mfe-control-disciplinario"
         "frontend-mfe-gestion-legal"
+        "frontend-mfe-pta"
     )
 
     echo ""

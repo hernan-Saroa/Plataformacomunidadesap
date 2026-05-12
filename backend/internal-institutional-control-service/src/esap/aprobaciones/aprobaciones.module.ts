@@ -5,12 +5,14 @@ import { AprobacionesController } from './aprobaciones.controller';
 import { Aprobacion } from './entities/aprobacion.entity';
 import { PlanesMejoramientoModule } from '../planes-mejoramiento/planes-mejoramiento.module';
 import { AuthModule } from '../../auth/auth.module';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Aprobacion]),
     forwardRef(() => PlanesMejoramientoModule),
     AuthModule,
+    NotificacionesModule,
   ],
   controllers: [AprobacionesController],
   providers: [AprobacionesService],

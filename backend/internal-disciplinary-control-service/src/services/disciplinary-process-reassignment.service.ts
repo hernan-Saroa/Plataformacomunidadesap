@@ -15,6 +15,7 @@ import { DisciplinaryProfessional } from '../entities/disciplinary-professional.
 import { CreateReassignmentRequestDto } from '../dtos/create-reassignment-request.dto';
 import { ApproveReassignmentRequestDto } from '../dtos/approve-reassignment-request.dto';
 import { NotificationClientService } from './notification-client.service';
+import { DisciplinaryEmailService } from './disciplinary-email.service';
 
 @Injectable()
 export class DisciplinaryProcessReassignmentService {
@@ -26,12 +27,13 @@ export class DisciplinaryProcessReassignmentService {
     @InjectRepository(DisciplinaryProfessional)
     private professionalRepo: Repository<DisciplinaryProfessional>,
     private notificationClient: NotificationClientService,
+    private emailService: DisciplinaryEmailService,
   ) {}
 
   async createReassignmentRequest(
     dto: CreateReassignmentRequestDto,
   ): Promise<DisciplinaryProcessReassignmentRequest> {
-    // Verificar que el proceso existe y tiene un profesional asignado
+    // Verificar que el proceso existe
     const process = await this.processRepo.findOne({
       where: { id: dto.processId },
       relations: ['abogadoAsignado'],
@@ -40,12 +42,6 @@ export class DisciplinaryProcessReassignmentService {
     if (!process) {
       throw new NotFoundException(
         `Proceso con ID ${dto.processId} no encontrado`,
-      );
-    }
-
-    if (!process.abogadoAsignado) {
-      throw new BadRequestException(
-        'El proceso no tiene un profesional asignado actualmente',
       );
     }
 
@@ -74,10 +70,13 @@ export class DisciplinaryProcessReassignmentService {
       );
     }
 
+    const wasInitiallyUnassigned = !process.abogadoAsignado;
+
     const request = this.reassignmentRepo.create({
       processId: dto.processId,
-      currentProfessionalId: process.abogadoAsignado.id,
+      currentProfessionalId: process.abogadoAsignado?.id || null,
       newProfessionalId: dto.newProfessionalId,
+      wasInitiallyUnassigned,
       justification: dto.justification,
       priority: dto.priority || ReassignmentPriority.NORMAL,
       requestedBy: dto.requestedBy,
@@ -89,16 +88,16 @@ export class DisciplinaryProcessReassignmentService {
 
     this.notificationClient.notifyByRole('JEFE_DE_LA_OCID', {
       tipo_notificacion: 'SOLICITUD_REASIGNACION',
-      titulo: 'Solicitud de reasignación de proceso',
-      mensaje: `${dto.requestedBy} ha solicitado la reasignación del proceso. Justificación: ${dto.justification}`,
-      descripcion_corta: 'Nueva solicitud de reasignación pendiente de aprobación',
+      titulo: wasInitiallyUnassigned ? 'Solicitud de asignación inicial de proceso' : 'Solicitud de reasignación de proceso',
+      mensaje: `${dto.requestedBy} ha solicitado ${wasInitiallyUnassigned ? 'la asignación inicial' : 'la reasignación'} del proceso${wasInitiallyUnassigned ? ' (sin profesional asignado)' : ''}. Justificación: ${dto.justification}`,
+      descripcion_corta: `Nueva solicitud de ${wasInitiallyUnassigned ? 'asignación inicial' : 'reasignación'} pendiente de aprobación`,
       icono: 'UserCheck',
       color: '#D97706',
       prioridad: 'Alta',
       categoria: 'DISCIPLINARIO',
       tiene_accion: true,
       texto_boton_accion: 'Revisar solicitud',
-      datos_adicionales: { solicitudId: savedRequest.id, procesoId: dto.processId },
+      datos_adicionales: { solicitudId: savedRequest.id, procesoId: dto.processId, wasInitiallyUnassigned },
     }).catch(() => {});
 
     return savedRequest;
@@ -196,6 +195,19 @@ export class DisciplinaryProcessReassignmentService {
         texto_boton_accion: 'Ver proceso',
         datos_adicionales: { solicitudId: result.id, procesoId: result.processId },
       }).catch(() => {});
+
+      // Enviar correo electrónico al nuevo profesional
+      if (result.newProfessional?.email) {
+        this.emailService.sendReassignmentEmail(
+          result.newProfessional.email,
+          radicadoProceso,
+          result.newProfessional.nombreCompleto || 'Profesional',
+          result.justification,
+          dto.jefeObservations,
+        ).catch((err) => {
+          console.error(`Error al enviar correo de reasignación: ${err.message}`);
+        });
+      }
     }
 
     return result;

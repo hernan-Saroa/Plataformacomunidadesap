@@ -1,6 +1,6 @@
 /**
  * Paso 2 del Wizard - Configuración avanzada de roles y actividades
- * Permite seleccionar actividades, agregar personalizadas y asignar múltiples responsables
+ * Permite seleccionar actividades, agregar personalizadas y asignar un responsable principal por rol
  */
 
 import { useState } from 'react';
@@ -156,9 +156,7 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
   const agregarResponsable = (numeroRol: number, auditor: Auditor) => {
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero === numeroRol) {
-        if (!rol.responsables.some(r => r.id === auditor.id)) {
-          return { ...rol, responsables: [...rol.responsables, auditor] };
-        }
+        return { ...rol, responsables: [auditor] };
       }
       return rol;
     });
@@ -210,6 +208,12 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
           const isExpanded = rolExpandido === rol.numero;
           const actividadesBase = actividadesPorRol[rol.numero] || [];
           const totalRol = rol.actividadesSeleccionadas.length + rol.actividadesCustom.length;
+          const responsablesRol = Array.isArray(rol.responsables)
+            ? rol.responsables
+                .filter((resp): resp is Auditor => Boolean(resp))
+                .filter((resp, index, list) => list.findIndex((x) => x.id === resp.id) === index)
+                .slice(0, 1)
+            : [];
 
           return (
             <div key={rol.numero} className="bg-white rounded-xl border-2 border-gray-200 overflow-hidden">
@@ -225,7 +229,7 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
                   <div>
                     <h3 className="font-bold text-gray-900">Rol {rol.numero}: {rol.nombre}</h3>
                     <p className="text-sm text-gray-600">
-                      {totalRol} actividades • {rol.responsables.length} responsables
+                      {totalRol} actividades • {responsablesRol.length} responsables
                     </p>
                   </div>
                 </div>
@@ -281,10 +285,10 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
                           Responsables del rol
                         </h4>
                         <div className="flex flex-wrap gap-2 mb-3">
-                          {rol.responsables.length === 0 ? (
+                          {responsablesRol.length === 0 ? (
                             <p className="text-sm text-gray-500 italic">No hay responsables asignados</p>
                           ) : (
-                            rol.responsables.map(auditor => (
+                            responsablesRol.map(auditor => (
                               <div key={auditor.id} className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-100 text-blue-900 rounded-lg text-sm">
                                 <span>👤 {auditor.nombre}</span>
                                 <button
@@ -313,7 +317,7 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
                           defaultValue=""
                         >
                           <option value="">➕ Agregar responsable...</option>
-                          {AUDITORES.filter(a => !rol.responsables.some(r => r.id === a.id)).map(auditor => (
+                          {AUDITORES.filter(a => !responsablesRol.some(r => r.id === a.id)).map(auditor => (
                             <option key={auditor.id} value={auditor.id}>
                               {auditor.nombre} - {auditor.cargo}
                             </option>

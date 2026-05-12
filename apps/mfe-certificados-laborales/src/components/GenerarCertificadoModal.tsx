@@ -43,6 +43,8 @@ interface CertificadoLaboralListado {
   cod_grade?: string;
   campus?: string;
   technical_bonus?: number;
+  technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+  technicalBonusCategory?: 'DIRECTIVOS' | 'COORDINADORES' | null;
   incluyeSalario?: boolean;
   incluyePrimaTecnica?: boolean;
   templateSnapshot?: any;
@@ -334,7 +336,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           observations: cert.request?.observations || cert.observations,
           templateType: templateTypeNormalizado,
           includeCodeLabel: true,
-          codeLabel: 'Codigo',
+          codeLabel: 'Código',
         });
         const employmentStatusRaw = String(
           cert.employment_status ||
@@ -397,6 +399,12 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
           campus: cert.campus,
           technical_bonus: cert.technical_bonus ?? cert.request?.technical_bonus,
+          technical_bonus_category:
+            cert.technical_bonus_category ??
+            cert.technicalBonusCategory ??
+            cert.request?.technical_bonus_category ??
+            cert.request?.technicalBonusCategory ??
+            null,
           incluyeSalario,
           incluyePrimaTecnica,
           templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,
@@ -518,7 +526,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
       }));
 
       if (!disponible) {
-        toast.info('Este empleado no tiene Prima Tecnica registrada.');
+        toast.info('Este empleado no tiene prima técnica y/o coordinación registrada.');
       }
     } catch (error) {
       if (requestId !== primaTecnicaRequestRef.current) return;
@@ -527,7 +535,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
         ...prev,
         incluyePrimaTecnica: false,
       }));
-      toast.warning('No pudimos validar la Prima Tecnica en este momento.');
+      toast.warning('No pudimos validar la prima técnica y/o coordinación en este momento.');
     } finally {
       if (requestId === primaTecnicaRequestRef.current) {
         setValidandoPrimaTecnica(false);
@@ -540,7 +548,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
 
     setIsGenerating(true);
     toast.loading('Generando certificado...', {
-      description: 'Por favor espera mientras procesamos la informacion',
+      description: 'Por favor espera mientras procesamos la información',
       id: 'generar-cert'
     });
 
@@ -771,7 +779,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                         <User className="w-8 h-8 text-gray-400" />
                       </div>
                       <p className="text-gray-600">No se encontraron empleados</p>
-                      <p className="text-gray-500 text-sm mt-1">Intenta con otro termino de busqueda</p>
+                      <p className="text-gray-500 text-sm mt-1">Intenta con otro término de búsqueda</p>
                     </div>
                   )}
                 </div>
@@ -804,7 +812,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                       <p className="text-gray-900 font-medium">{certificadoSeleccionado.empleado.nombre}</p>
                     </div>
                     <div>
-                      <label className="text-sm text-gray-600">Numero de Identificacion</label>
+                      <label className="text-sm text-gray-600">Número de identificación</label>
                       <p className="text-gray-900 font-medium">{certificadoSeleccionado.empleado.documento}</p>
                     </div>
                     <div>
@@ -812,11 +820,11 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                       <p className="text-gray-900">{certificadoSeleccionado.empleado.cargo}</p>
                     </div>
                     <div>
-                      <label className="text-sm text-gray-600">Tipo de Vinculacion</label>
+                      <label className="text-sm text-gray-600">Tipo de vinculación</label>
                       <p className="text-gray-900">{certificadoSeleccionado.empleado.tipoVinculacion}</p>
                     </div>
                     <div>
-                      <label className="text-sm text-gray-600">Fecha de Vinculacion</label>
+                      <label className="text-sm text-gray-600">Fecha de vinculación</label>
                       <p className="text-gray-900">
                         {formatearFecha(certificadoSeleccionado.empleado.fechaVinculacion)}
                       </p>
@@ -826,7 +834,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                       <p className="text-gray-900">{certificadoSeleccionado.empleado.ubicacion || ''}</p>
                     </div>
                     <div>
-                      <label className="text-sm text-gray-600">Correo Electronico</label>
+                      <label className="text-sm text-gray-600">Correo electrónico</label>
                       <p className="text-gray-900">{certificadoSeleccionado.empleado.email}</p>
                     </div>
                     <div>
@@ -856,18 +864,18 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                       <div>
                         <h4 className="text-gray-900">Datos Incompletos</h4>
                         <p className="text-gray-700 text-sm mt-1">
-                          Este empleado tiene datos incompletos en el sistema. El certificado se generara con la informacion disponible.
+                          Este empleado tiene datos incompletos en el sistema. El certificado se generará con la información disponible.
                         </p>
                       </div>
                     </div>
                   </Card>
                 )}
 
-                {/* Configuracion del Certificado */}
+                {/* Configuración del Certificado */}
                 <Card className="p-6">
                   <h3 className="text-gray-900 mb-4 flex items-center gap-2">
                     <DollarSign className="w-5 h-5 text-[#003DA5]" />
-                    Configuracion del Certificado
+                    Configuración del Certificado
                   </h3>
 
                     <div className="space-y-4">
@@ -889,7 +897,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                             htmlFor="salario"
                             className="text-sm text-gray-700 cursor-pointer"
                           >
-                            Incluir informacion salarial
+                            Incluir información salarial
                           </label>
                         </div>
                         <div className="flex items-start space-x-2">
@@ -919,21 +927,21 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                                 configuracion.incluyeSalario ? 'text-gray-700' : 'text-gray-500'
                               }`}
                             >
-                              Incluir prima tecnica
+                              Incluir prima técnica y/o coordinación
                             </label>
                             {!configuracion.incluyeSalario && (
                               <p className="text-xs text-amber-700 mt-1">
-                                Activa primero la informacion salarial.
+                                Activa primero la información salarial.
                               </p>
                             )}
                             {configuracion.incluyeSalario && validandoPrimaTecnica && (
                               <p className="text-xs text-blue-700 mt-1">
-                                Validando disponibilidad de Prima Tecnica...
+                                Validando disponibilidad de prima técnica y/o coordinación...
                               </p>
                             )}
                             {configuracion.incluyeSalario && !validandoPrimaTecnica && !primaTecnicaDisponible && (
                               <p className="text-xs text-amber-700 mt-1">
-                                Este empleado no tiene Prima Tecnica registrada en Directivos o Coordinadores.
+                                Este empleado no tiene prima técnica y/o coordinación registrada en Directivos o Coordinadores.
                               </p>
                             )}
                           </div>
@@ -952,7 +960,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                 </div>
                 <h3 className="text-gray-900 text-xl mb-2">Generando Certificado</h3>
                 <p className="text-gray-600">
-                  Estamos procesando la informacion y generando el PDF...
+                  Estamos procesando la información y generando el PDF...
                 </p>
                 <div className="mt-6 space-y-2 max-w-md mx-auto">
                   <div className="flex items-center text-sm text-gray-600">
@@ -965,7 +973,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                   </div>
                   <div className="flex items-center text-sm text-gray-400">
                     <div className="w-4 h-4 rounded-full border-2 border-gray-300 mr-2" />
-                    Aplicando firma electronica
+                    Aplicando firma electrónica
                   </div>
                 </div>
               </div>

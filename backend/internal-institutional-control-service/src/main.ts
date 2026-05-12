@@ -18,6 +18,7 @@ async function bootstrap() {
       app = await NestFactory.create<NestExpressApplication>(AppModule, {
         logger: ['error', 'warn', 'log'],
       });
+      app.getHttpAdapter().getInstance().disable?.('x-powered-by');
       console.log('✅ Aplicación NestJS creada exitosamente');
     } catch (dbError: any) {
       console.error('\n❌ Error al conectar con la base de datos:');

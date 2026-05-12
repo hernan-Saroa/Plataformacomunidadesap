@@ -57,7 +57,7 @@ interface Denunciado {
 
 interface CreateNoticiaModalProps {
   onClose: () => void;
-  onSave: (data: any) => void;
+  onSave: (data: any) => Promise<void>;
   noticiaToEdit?: any; // ✅ NUEVO: Noticia a editar (opcional)
   isEditMode?: boolean; // ✅ NUEVO: Modo edición
 }
@@ -126,6 +126,20 @@ const ORIGEN_DB_A_LABEL: Record<string, string> = {
 };
 
 export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode }: CreateNoticiaModalProps) {
+  // ✅ LOG: Datos de noticiaToEdit cuando se recibe de BD
+  try {
+    console.log('🔍 CreateNoticiaModal - noticiaToEdit recibido:', noticiaToEdit);
+    console.log('🔍 CreateNoticiaModal - isEditMode:', isEditMode);
+  } catch (error) {
+    console.error('❌ Error en console.log inicial:', error);
+  }
+
+  // Función para validar email
+  const validarEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const [currentStep, setCurrentStep] = useState(1);
   const [conductasIndisciplinarias, setConductasIndisciplinarias] = useState<DisciplinaryBehavior[]>([]);
   const [loadingConductas, setLoadingConductas] = useState(true);
@@ -158,17 +172,17 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
   const [formData, setFormData] = useState({
     origen: origenInicial,
-    fechaQueja: (noticiaToEdit as any)?.fechaQueja || noticiaToEdit?.fechaRecepcion || new Date().toISOString().split('T')[0],
+    fechaQueja: noticiaToEdit?.fechaRecepcion,
     fechaHechos: noticiaToEdit?.fechaHechos || '',
     territorial: noticiaToEdit?.territorial || '',
     denunciado: {
-      nombre: noticiaToEdit?.denunciado?.nombre || '',
-      identificacion: noticiaToEdit?.denunciado?.numeroIdentificacion || '',
-      cargo: noticiaToEdit?.cargo || '',
-      dependencia: noticiaToEdit?.dependencia || ''
+      nombre: noticiaToEdit?.denunciado?.nombre || noticiaToEdit?.disciplinable?.nombre || '',
+      identificacion: noticiaToEdit?.denunciado?.numeroIdentificacion || noticiaToEdit?.disciplinable?.cedula || noticiaToEdit?.disciplinable?.documento || '',
+      cargo: noticiaToEdit?.cargo || noticiaToEdit?.disciplinable?.cargo || '',
+      dependencia: noticiaToEdit?.dependencia || noticiaToEdit?.disciplinable?.dependencia || ''
     },
     descripcionHechos: noticiaToEdit?.hechos || '',
-    conductasSeleccionadas: noticiaToEdit?.conductasSeleccionadas || [] as string[],
+    conductasSeleccionadas: noticiaToEdit?.conductasSeleccionadas || noticiaToEdit?.conductas || [] as string[],
     procesosRelacionados: noticiaToEdit?.procesosRelacionados || [] as string[]
   });
 
@@ -187,11 +201,19 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     return [];
   });
   const [hechoActual, setHechoActual] = useState('');
+  const getConductaValue = (conducta: any): string => {
+    if (!conducta) return '';
+    if (typeof conducta === 'string') return conducta;
+    return conducta.nombre || conducta.name || conducta.descripcion || '';
+  };
+  const getInitialConducta = () =>
+    getConductaValue(noticiaToEdit?.conducta) ||
+    getConductaValue(noticiaToEdit?.conductaSeleccionada) ||
+    getConductaValue(noticiaToEdit?.conductas?.[0]) ||
+    '';
 
   // ✅ NUEVO: Estado para conducta seleccionada y campo personalizado
-  const [conductaSeleccionada, setConductaSeleccionada] = useState<string>(
-    noticiaToEdit?.conductaSeleccionada || ''
-  );
+  const [conductaSeleccionada, setConductaSeleccionada] = useState<string>(getInitialConducta);
   const [conductaPersonalizada, setConductaPersonalizada] = useState<string>(
     noticiaToEdit?.conductaPersonalizada || ''
   );
@@ -222,22 +244,67 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     return hoy > fechaCaducidad;
   };
 
-  // ✅ NUEVO: Estado para múltiples denunciados
-  const [denunciados, setDenunciados] = useState<Denunciado[]>(() => {
+  const normalizeApoderado = (apoderado: any): Apoderado | undefined => {
+    if (!apoderado || typeof apoderado !== 'object') return undefined;
+
+    const normalized = {
+      nombre: apoderado.nombre || '',
+      cedula: apoderado.cedula || apoderado.identificacion || apoderado.numeroIdentificacion || '',
+      correo: apoderado.correo || apoderado.email || '',
+      celular: apoderado.celular || apoderado.telefono || '',
+      direccion: apoderado.direccion || ''
+    };
+
+    return Object.values(normalized).some(Boolean) ? normalized : undefined;
+  };
+
+  const getEditArray = (primary: any, fallback?: any): any[] => {
+    if (Array.isArray(primary)) return primary;
+    if (primary && typeof primary === 'object') return [primary];
+    if (Array.isArray(fallback)) return fallback;
+    if (fallback && typeof fallback === 'object') return [fallback];
+    return [];
+  };
+
+  const getInitialDenunciados = (): Denunciado[] => {
     if (!isEditMode || !noticiaToEdit) return [];
-    const denunciadoObj = noticiaToEdit.denunciado && typeof noticiaToEdit.denunciado !== 'string'
-      ? noticiaToEdit.denunciado
-      : null;
-    const nombre = denunciadoObj?.nombre || '';
-    if (!nombre || nombre === 'Sin denunciado') return [];
-    return [{
-      id: 'edit-0',
-      nombre,
-      identificacion: denunciadoObj?.numeroIdentificacion || '',
-      cargo: noticiaToEdit.cargo || '',
-      lugarHechos: noticiaToEdit.dependencia || ''
-    }];
-  });
+
+    const rawDenunciados = getEditArray(
+      noticiaToEdit.denunciados,
+      noticiaToEdit.denunciado || noticiaToEdit.disciplinable
+    );
+
+    return rawDenunciados.map((d, index) => ({
+      id: d.id?.toString() || `edit-denunciado-${index}`,
+      nombre: d.nombre || '',
+      identificacion: d.numeroIdentificacion || d.cedula || d.documento || d.identificacion || '',
+      cargo: d.cargo || noticiaToEdit.cargo || '',
+      lugarHechos: d.lugarHechos || d.dependencia || noticiaToEdit.dependencia || '',
+      apoderado: normalizeApoderado(d.apoderado)
+    }));
+  };
+
+  const getInitialDenunciantes = (): Denunciante[] => {
+    if (!isEditMode || !noticiaToEdit) return [];
+
+    const rawDenunciantes = getEditArray(noticiaToEdit.denunciantes, noticiaToEdit.denunciante);
+
+    return rawDenunciantes.map((d, index) => ({
+      id: d.id?.toString() || `edit-denunciante-${index}`,
+      nombre: d.nombre || '',
+      identificacion: d.numeroIdentificacion || d.cedula || d.documento || d.identificacion || '',
+      direccion: d.direccion || '',
+      telefono: d.telefono || d.celular || '',
+      correo: d.email || d.correo || '',
+      cargo: d.cargo || '',
+      entidad: d.entidad || d.dependencia || '',
+      tipo: d.tipo === 'Víctima' ? 'Víctima' : 'Denunciante',
+      apoderado: normalizeApoderado(d.apoderado)
+    }));
+  };
+
+  // ✅ NUEVO: Estado para múltiples denunciados
+  const [denunciados, setDenunciados] = useState<Denunciado[]>(getInitialDenunciados);
   const [currentDenunciado, setCurrentDenunciado] = useState<Denunciado>({
     id: '',
     nombre: '',
@@ -247,25 +314,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   });
   const [editingDenunciadoId, setEditingDenunciadoId] = useState<string | null>(null);
 
-  const [denunciantes, setDenunciantes] = useState<Denunciante[]>(() => {
-    if (!isEditMode || !noticiaToEdit) return [];
-    const denuncianteObj = noticiaToEdit.denunciante && typeof noticiaToEdit.denunciante !== 'string'
-      ? noticiaToEdit.denunciante
-      : null;
-    const nombre = denuncianteObj?.nombre || '';
-    if (!nombre || nombre === 'Sin denunciante' || nombre === 'Anonimo') return [];
-    return [{
-      id: 'edit-0',
-      nombre,
-      identificacion: denuncianteObj?.numeroIdentificacion || '',
-      direccion: '',
-      telefono: '',
-      correo: '',
-      cargo: '',
-      entidad: '',
-      tipo: 'Denunciante' as const
-    }];
-  });
+  const [denunciantes, setDenunciantes] = useState<Denunciante[]>(getInitialDenunciantes);
   const [currentDenunciante, setCurrentDenunciante] = useState<Denunciante>({
     id: '',
     nombre: '',
@@ -278,6 +327,19 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     tipo: 'Denunciante' // ✅ NUEVO: Tipo de denunciante
   });
   const [editingDenuncianteId, setEditingDenuncianteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isEditMode || !noticiaToEdit) return;
+
+    setDenunciados(getInitialDenunciados());
+    setDenunciantes(getInitialDenunciantes());
+    setConductaSeleccionada(getInitialConducta());
+    setConductaPersonalizada(noticiaToEdit.conductaPersonalizada || '');
+    setEditingDenunciadoId(null);
+    setEditingDenuncianteId(null);
+    resetDenunciadoForm();
+    resetDenuncianteForm();
+  }, [isEditMode, noticiaToEdit]);
 
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -418,6 +480,26 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       return;
     }
 
+    // Validar email del denunciante
+    if (currentDenunciante.correo && !porDeterminar.denuncianteCorreo) {
+      if (currentDenunciante.correo !== 'Por determinar' && !validarEmail(currentDenunciante.correo)) {
+        setErrors(prev => ({ ...prev, denuncianteEmail: 'El email del denunciante debe ser válido' }));
+        return;
+      }
+    } else {
+      setErrors(prev => ({ ...prev, denuncianteEmail: '' }));
+    }
+
+    // Validar email del apoderado del denunciante
+    if (mostrarApoderadoDenunciante && apoderadoDenunciante.correo) {
+      if (apoderadoDenunciante.correo !== 'Por determinar' && !validarEmail(apoderadoDenunciante.correo)) {
+        setErrors(prev => ({ ...prev, apoderadoDenuncianteEmail: 'El email del apoderado debe ser válido' }));
+        return;
+      }
+    } else {
+      setErrors(prev => ({ ...prev, apoderadoDenuncianteEmail: '' }));
+    }
+
     const denuncianteData: Denunciante = {
       ...currentDenunciante,
       id: editingDenuncianteId || Date.now().toString(),
@@ -433,23 +515,59 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       toast.success('Denunciante agregado');
     }
 
-    setCurrentDenunciante({ id: '', nombre: '', identificacion: '', direccion: '', telefono: '', correo: '', cargo: '', entidad: '', tipo: 'Denunciante' });
-    setMostrarApoderadoDenunciante(false);
-    setApoderadoDenunciante({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
+    // Reset form
+    resetDenuncianteForm();
   };
 
   const handleEditarDenunciante = (denunciante: Denunciante) => {
     setCurrentDenunciante({ ...denunciante });
     setEditingDenuncianteId(denunciante.id);
+
+    // ✅ Ajustar checkboxes "Por determinar" según los valores del denunciante
+    setPorDeterminar(prev => ({
+      ...prev,
+      denuncianteNombre: denunciante.nombre === 'Por determinar',
+      denuncianteIdentificacion: denunciante.identificacion === 'Por determinar',
+      denuncianteDireccion: denunciante.direccion === 'Por determinar',
+      denuncianteTelefono: denunciante.telefono === 'Por determinar',
+      denuncianteCorreo: denunciante.correo === 'Por determinar',
+      denuncianteCargo: denunciante.cargo === 'Por determinar',
+      denuncianteEntidad: denunciante.entidad === 'Por determinar'
+    }));
+
     if (denunciante.apoderado) {
       setMostrarApoderadoDenunciante(true);
       setApoderadoDenunciante(denunciante.apoderado);
+    } else {
+      setMostrarApoderadoDenunciante(false);
+      setApoderadoDenunciante({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
     }
   };
 
   const handleEliminarDenunciante = (id: string) => {
     setDenunciantes(denunciantes.filter(d => d.id !== id));
-    if (editingDenuncianteId === id) setEditingDenuncianteId(null);
+    if (editingDenuncianteId === id) {
+      setEditingDenuncianteId(null);
+      // Reset form
+      resetDenuncianteForm();
+    }
+  };
+
+  // ✅ Función para resetear formulario de denunciante
+  const resetDenuncianteForm = () => {
+    setCurrentDenunciante({ id: '', nombre: '', identificacion: '', direccion: '', telefono: '', correo: '', cargo: '', entidad: '', tipo: 'Denunciante' });
+    setMostrarApoderadoDenunciante(false);
+    setApoderadoDenunciante({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
+    setPorDeterminar(prev => ({
+      ...prev,
+      denuncianteNombre: false,
+      denuncianteIdentificacion: false,
+      denuncianteDireccion: false,
+      denuncianteTelefono: false,
+      denuncianteCorreo: false,
+      denuncianteCargo: false,
+      denuncianteEntidad: false
+    }));
   };
 
   // ✅ NUEVO: Funciones para manejar denunciados
@@ -459,6 +577,16 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
         description: 'Nombre, identificación y lugar de los hechos son obligatorios'
       });
       return;
+    }
+
+    // Validar email del apoderado del denunciado
+    if (mostrarApoderadoDenunciado && apoderadoDenunciado.correo) {
+      if (apoderadoDenunciado.correo !== 'Por determinar' && !validarEmail(apoderadoDenunciado.correo)) {
+        setErrors(prev => ({ ...prev, apoderadoDenunciadoEmail: 'El email del apoderado debe ser válido' }));
+        return;
+      }
+    } else {
+      setErrors(prev => ({ ...prev, apoderadoDenunciadoEmail: '' }));
     }
 
     const denunciadoData: Denunciado = {
@@ -476,23 +604,53 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       toast.success('Denunciado agregado');
     }
 
-    setCurrentDenunciado({ id: '', nombre: '', identificacion: '', cargo: '', lugarHechos: '' });
-    setMostrarApoderadoDenunciado(false);
-    setApoderadoDenunciado({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
+    // Reset form
+    resetDenunciadoForm();
   };
 
   const handleEditarDenunciado = (denunciado: Denunciado) => {
     setCurrentDenunciado({ ...denunciado });
     setEditingDenunciadoId(denunciado.id);
+
+    // ✅ Ajustar checkboxes "Por determinar" según los valores del denunciado
+    setPorDeterminar(prev => ({
+      ...prev,
+      denunciadoNombre: denunciado.nombre === 'Por determinar',
+      denunciadoIdentificacion: denunciado.identificacion === 'Por determinar',
+      denunciadoCargo: denunciado.cargo === 'Por determinar',
+      denunciadoLugarHechos: denunciado.lugarHechos === 'Por determinar'
+    }));
+
     if (denunciado.apoderado) {
       setMostrarApoderadoDenunciado(true);
       setApoderadoDenunciado(denunciado.apoderado);
+    } else {
+      setMostrarApoderadoDenunciado(false);
+      setApoderadoDenunciado({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
     }
   };
 
   const handleEliminarDenunciado = (id: string) => {
     setDenunciados(denunciados.filter(d => d.id !== id));
-    if (editingDenunciadoId === id) setEditingDenunciadoId(null);
+    if (editingDenunciadoId === id) {
+      setEditingDenunciadoId(null);
+      // Reset form
+      resetDenunciadoForm();
+    }
+  };
+
+  // ✅ Función para resetear formulario de denunciado
+  const resetDenunciadoForm = () => {
+    setCurrentDenunciado({ id: '', nombre: '', identificacion: '', cargo: '', lugarHechos: '' });
+    setMostrarApoderadoDenunciado(false);
+    setApoderadoDenunciado({ nombre: '', cedula: '', correo: '', celular: '', direccion: '' });
+    setPorDeterminar(prev => ({
+      ...prev,
+      denunciadoNombre: false,
+      denunciadoIdentificacion: false,
+      denunciadoCargo: false,
+      denunciadoLugarHechos: false
+    }));
   };
 
   // ✅ NUEVO: Funciones para manejar hechos separados
@@ -548,6 +706,13 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     // En modo edición, los datos del denunciado se mantienen del original si no se agrega uno nuevo
     if (!isEditMode && denunciados.length === 0) {
       newErrors.denunciados = 'Debe agregar al menos un denunciado';
+    }
+
+    // Validar email del apoderado del denunciado si existe
+    if (mostrarApoderadoDenunciado && apoderadoDenunciado.correo) {
+      if (apoderadoDenunciado.correo !== 'Por determinar' && !validarEmail(apoderadoDenunciado.correo)) {
+        newErrors.apoderadoDenunciadoEmail = 'El email del apoderado debe ser válido o estar vacío';
+      }
     }
 
     setErrors(newErrors);
@@ -607,7 +772,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const valid = validateStep4();
     if (!valid) return;
 
@@ -622,12 +787,41 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       radicadorId: currentUser?.id, // ✅ ID del usuario que radica
       porDeterminar, // ✅ Incluir flags de campos "Por determinar"
       // ✅ NUEVO: Incluir conducta seleccionada
+      conducta: conductaSeleccionada === 'Otro' ? conductaPersonalizada : conductaSeleccionada,
       conductaSeleccionada: conductaSeleccionada === 'Otro' ? conductaPersonalizada : conductaSeleccionada,
       conductaPersonalizada: conductaSeleccionada === 'Otro' ? conductaPersonalizada : null
     };
 
-    onSave(dataToSave);
+    try {
+      await onSave(dataToSave);
+      onClose();
+    } catch (error) {
+      // Error is handled by the parent, but ensure modal stays open
+      console.error('Error saving noticia:', error);
+    }
   };
+
+  
+  console.log("DATOS DE LA NOTICIA" , formData)
+  console.log("NOTICIA" , noticiaToEdit)
+
+  // ✅ LOG: Modal se está renderizando
+  console.log('🔍 CreateNoticiaModal - RENDERING - isEditMode:', isEditMode, 'noticiaToEdit:', !!noticiaToEdit);
+
+  const resumenDenunciantesCount = Array.isArray(noticiaToEdit?.denunciantes)
+    ? noticiaToEdit.denunciantes.length
+    : 0;
+  const resumenDenunciadosCount = Array.isArray(noticiaToEdit?.denunciados)
+    ? noticiaToEdit.denunciados.length
+    : 0;
+  const resumenConducta = getConductaValue(noticiaToEdit?.conducta);
+  const formatRegistros = (count: number) => `${count} ${count === 1 ? 'registro' : 'registros'}`;
+  const conductaExisteEnCatalogo = conductasIndisciplinarias.some(
+    conducta => conducta.nombre === conductaSeleccionada
+  );
+  const mostrarConductaActualComoOpcion =
+    Boolean(conductaSeleccionada) && conductaSeleccionada !== 'Otro' && !conductaExisteEnCatalogo;
+  const catalogoTieneOtro = conductasIndisciplinarias.some(conducta => conducta.nombre === 'Otro');
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[111] p-4">
@@ -686,6 +880,82 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
             ))}
           </div>
         </div>
+
+        {/* ✅ NUEVO: Resumen de datos actuales en modo edición */}
+        {isEditMode && noticiaToEdit && (
+          <div className="px-6 py-4 border-b border-gray-200 bg-amber-50">
+            <div className="max-w-4xl mx-auto">
+              <h3 className="text-lg font-semibold text-amber-900 mb-4 flex items-center gap-2">
+                <FileText className="w-5 h-5" />
+                Resumen de Datos Actuales de la Noticia
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white p-4 rounded-lg border border-amber-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <User className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-900">Denunciante</span>
+                  </div>
+                  <p className={`text-lg font-bold ${resumenDenunciantesCount > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {resumenDenunciantesCount}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {formatRegistros(resumenDenunciantesCount)}
+                  </p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border border-amber-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <UserCheck className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-900">Disciplinado</span>
+                  </div>
+                  <p className={`text-lg font-bold ${resumenDenunciadosCount > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {resumenDenunciadosCount}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {formatRegistros(resumenDenunciadosCount)}
+                  </p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border border-amber-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-900">Conducta</span>
+                  </div>
+                  <p className={`text-lg font-bold ${resumenConducta ? 'text-green-600' : 'text-red-600'}`}>
+                    {resumenConducta ? '1' : 'n'}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {resumenConducta || 'Ninguna registrada'}
+                  </p>
+                </div>
+                <div className="bg-white p-4 rounded-lg border border-amber-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Building2 className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-900">Origen</span>
+                  </div>
+                  <p className="text-lg font-bold text-blue-600">
+                    {noticiaToEdit.origen || 'No definido'}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Territorial: {noticiaToEdit.territorial || 'No definida'}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 bg-white p-4 rounded-lg border border-amber-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <Calendar className="w-4 h-4 text-amber-600" />
+                  <span className="text-sm font-medium text-amber-900">Fechas</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="font-medium">Fecha queja:</span> {noticiaToEdit.fechaQueja || noticiaToEdit.fechaRecepcion || 'No definida'}
+                  </div>
+                  <div>
+                    <span className="font-medium">Fecha hechos:</span> {noticiaToEdit.fechaHechos || 'No definida'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Content */}
         <div className="flex-1 overflow-auto p-6">
@@ -934,9 +1204,58 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                 </div>
               </div>
 
-              {/* Formulario para agregar denunciado */}
+              {/* ✅ NUEVO: Lista de denunciados existentes en modo edición */}
+              {isEditMode && denunciados.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-amber-900 mb-3 flex items-center gap-2">
+                    <UserCheck className="w-4 h-4" />
+                    Denunciados de la Noticia ({denunciados.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {denunciados.map((denunciado, index) => (
+                      <div
+                        key={denunciado.id}
+                        className="bg-white border border-amber-300 rounded-lg p-3 flex items-center justify-between"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-gray-900">{denunciado.nombre}</span>
+                            {denunciado.identificacion && (
+                              <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
+                                {denunciado.identificacion}
+                              </span>
+                            )}
+                          </div>
+                          {denunciado.cargo && (
+                            <p className="text-xs text-gray-600">Cargo: {denunciado.cargo}</p>
+                          )}
+                          {denunciado.lugarHechos && (
+                            <p className="text-xs text-gray-600">Lugar: {denunciado.lugarHechos}</p>
+                          )}
+                        </div>
+                        <Button
+                          onClick={() => handleEditarDenunciado(denunciado)}
+                          variant="outline"
+                          size="sm"
+                          className="border-amber-600 text-amber-700 hover:bg-amber-50"
+                        >
+                          <Pencil className="w-3 h-3 mr-1" />
+                          Editar
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 p-2 bg-amber-100 rounded text-sm text-amber-800">
+                    <strong>Nota:</strong> Los denunciados existentes se pueden editar. Los cambios se guardarán al actualizar la noticia.
+                  </div>
+                </div>
+              )}
+
+              {/* Formulario para agregar/editar denunciado */}
               <div className="border-2 border-dashed border-blue-300 rounded-lg p-4 bg-blue-50/30">
-                <h3 className="font-semibold text-gray-900 mb-4">Agregar Denunciado</h3>
+                <h3 className="font-semibold text-gray-900 mb-4">
+                  {editingDenunciadoId ? 'Editar Denunciado' : 'Agregar Denunciado'}
+                </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
                     <div className="flex items-center justify-between mb-1">
@@ -958,7 +1277,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     <input
                       type="text"
                       value={currentDenunciado.nombre}
-                      onChange={(e) => setCurrentDenunciado({ ...currentDenunciado, nombre: e.target.value })}
+                      onChange={(e) => setCurrentDenunciado({ ...currentDenunciado, nombre: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                       placeholder="Nombres y apellidos completos"
                       disabled={porDeterminar.denunciadoNombre}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denunciadoNombre ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
@@ -1020,7 +1339,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     <input
                       type="text"
                       value={currentDenunciado.cargo}
-                      onChange={(e) => setCurrentDenunciado({ ...currentDenunciado, cargo: e.target.value })}
+                      onChange={(e) => setCurrentDenunciado({ ...currentDenunciado, cargo: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                       placeholder="Cargo del denunciado"
                       disabled={porDeterminar.denunciadoCargo}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denunciadoCargo ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
@@ -1087,7 +1406,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         <input
                           type="text"
                           value={apoderadoDenunciado.nombre}
-                          onChange={(e) => setApoderadoDenunciado({ ...apoderadoDenunciado, nombre: e.target.value })}
+                          onChange={(e) => setApoderadoDenunciado({ ...apoderadoDenunciado, nombre: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                           placeholder="Nombres y apellidos del apoderado"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
@@ -1143,10 +1462,16 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         <input
                           type="email"
                           value={apoderadoDenunciado.correo}
-                          onChange={(e) => setApoderadoDenunciado({ ...apoderadoDenunciado, correo: e.target.value })}
+                          onChange={(e) => {
+                            setApoderadoDenunciado({ ...apoderadoDenunciado, correo: e.target.value });
+                            setErrors(prev => ({ ...prev, apoderadoDenunciadoEmail: '' }));
+                          }}
                           placeholder="apoderado@ejemplo.com"
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.apoderadoDenunciadoEmail ? 'border-red-500' : 'border-gray-300'}`}
                         />
+                        {errors.apoderadoDenunciadoEmail && (
+                          <p className="text-xs text-red-600 mt-1">{errors.apoderadoDenunciadoEmail}</p>
+                        )}
                       </div>
                       {/* ✅ NUEVO: Campo de Dirección del Apoderado */}
                       <div className="col-span-2">
@@ -1166,7 +1491,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                   )}
                 </div>
 
-                <div className="mt-4">
+                <div className="mt-4 space-y-2">
                   <Button
                     onClick={handleAgregarDenunciado}
                     variant="outline"
@@ -1175,6 +1500,18 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     {editingDenunciadoId ? <Pencil className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                     {editingDenunciadoId ? 'Actualizar Denunciado' : 'Agregar Denunciado'}
                   </Button>
+                  {editingDenunciadoId && (
+                    <Button
+                      onClick={() => {
+                        setEditingDenunciadoId(null);
+                        resetDenunciadoForm();
+                      }}
+                      variant="ghost"
+                      className="w-full text-gray-600 hover:text-gray-800"
+                    >
+                      Cancelar Edición
+                    </Button>
+                  )}
                 </div>
               </div>
 
@@ -1189,10 +1526,10 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
               )}
 
               {/* Lista de denunciados agregados */}
-              {denunciados.length > 0 && (
+              {!isEditMode && denunciados.length > 0 && (
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-3">
-                    Denunciados Registrados ({denunciados.length})
+                    {isEditMode ? 'Denunciados de la Noticia' : 'Denunciados Registrados'} ({denunciados.length})
                   </h3>
                   <div className="space-y-2">
                     {denunciados.map((denunciado, index) => (
@@ -1273,7 +1610,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                   </div>
                   <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <p className="text-xs text-blue-800">
-                      <strong>✓ Trazabilidad:</strong> Se han registrado {denunciados.length} denunciado(s) en esta noticia disciplinaria.
+                      <strong>✓ Trazabilidad:</strong> {isEditMode ? 'La noticia tiene' : 'Se han registrado'} {denunciados.length} denunciado(s).
                     </p>
                   </div>
                 </div>
@@ -1296,9 +1633,66 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                 </div>
               </div>
 
-              {/* Formulario para agregar denunciante */}
+              {/* ✅ NUEVO: Lista de denunciantes existentes en modo edición */}
+              {isEditMode && denunciantes.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <h3 className="font-semibold text-amber-900 mb-3 flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    Denunciantes de la Noticia ({denunciantes.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {denunciantes.map((denunciante, index) => (
+                      <div
+                        key={denunciante.id}
+                        className="bg-white border border-amber-300 rounded-lg p-3 flex items-center justify-between"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`px-2 py-1 rounded-full text-xs font-bold text-white ${
+                              denunciante.tipo === 'Víctima' ? 'bg-red-600' : 'bg-blue-600'
+                            }`}>
+                              {denunciante.tipo === 'Víctima' ? '👤 Víctima' : '👤 Denunciante'}
+                            </span>
+                            <span className="font-medium text-gray-900">{denunciante.nombre}</span>
+                            {denunciante.identificacion && (
+                              <span className="text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded">
+                                {denunciante.identificacion}
+                              </span>
+                            )}
+                          </div>
+                          {denunciante.cargo && (
+                            <p className="text-xs text-gray-600">Cargo: {denunciante.cargo}</p>
+                          )}
+                          {denunciante.entidad && (
+                            <p className="text-xs text-gray-600">Entidad: {denunciante.entidad}</p>
+                          )}
+                          {denunciante.correo && (
+                            <p className="text-xs text-gray-600">Correo: {denunciante.correo}</p>
+                          )}
+                        </div>
+                        <Button
+                          onClick={() => handleEditarDenunciante(denunciante)}
+                          variant="outline"
+                          size="sm"
+                          className="border-amber-600 text-amber-700 hover:bg-amber-50"
+                        >
+                          <Pencil className="w-3 h-3 mr-1" />
+                          Editar
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 p-2 bg-amber-100 rounded text-sm text-amber-800">
+                    <strong>Nota:</strong> Los denunciantes existentes se pueden editar. Los cambios se guardarán al actualizar la noticia.
+                  </div>
+                </div>
+              )}
+
+              {/* Formulario para agregar/editar denunciante */}
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-                <h3 className="font-semibold text-gray-900 mb-4">Agregar Denunciante</h3>
+                <h3 className="font-semibold text-gray-900 mb-4">
+                  {editingDenuncianteId ? 'Editar Denunciante' : 'Agregar Denunciante'}
+                </h3>
                 <div className="grid grid-cols-2 gap-4">
                   {/* ✅ NUEVO: Campo Tipo de Denunciante */}
                   <div className="col-span-2">
@@ -1380,7 +1774,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     <input
                       type="text"
                       value={currentDenunciante.nombre}
-                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, nombre: e.target.value })}
+                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, nombre: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                       disabled={porDeterminar.denuncianteNombre}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denuncianteNombre ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     />
@@ -1500,10 +1894,16 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     <input
                       type="email"
                       value={currentDenunciante.correo}
-                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, correo: e.target.value })}
+                      onChange={(e) => {
+                        setCurrentDenunciante({ ...currentDenunciante, correo: e.target.value });
+                        setErrors(prev => ({ ...prev, denuncianteEmail: '' }));
+                      }}
                       disabled={porDeterminar.denuncianteCorreo}
-                      className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denuncianteCorreo ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+                      className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.denuncianteEmail ? 'border-red-500' : 'border-gray-300'} ${porDeterminar.denuncianteCorreo ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     />
+                    {errors.denuncianteEmail && (
+                      <p className="text-xs text-red-600 mt-1">{errors.denuncianteEmail}</p>
+                    )}
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-1">
@@ -1525,7 +1925,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     <input
                       type="text"
                       value={currentDenunciante.cargo}
-                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, cargo: e.target.value })}
+                      onChange={(e) => setCurrentDenunciante({ ...currentDenunciante, cargo: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                       disabled={porDeterminar.denuncianteCargo}
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denuncianteCargo ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     />
@@ -1586,7 +1986,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         <input
                           type="text"
                           value={apoderadoDenunciante.nombre}
-                          onChange={(e) => setApoderadoDenunciante({ ...apoderadoDenunciante, nombre: e.target.value })}
+                          onChange={(e) => setApoderadoDenunciante({ ...apoderadoDenunciante, nombre: e.target.value.replace(/[^a-zA-ZÀ-ÿñÑ\s]/g, '') })}
                           placeholder="Nombres y apellidos del apoderado"
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
@@ -1642,16 +2042,22 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                         <input
                           type="email"
                           value={apoderadoDenunciante.correo}
-                          onChange={(e) => setApoderadoDenunciante({ ...apoderadoDenunciante, correo: e.target.value })}
+                          onChange={(e) => {
+                            setApoderadoDenunciante({ ...apoderadoDenunciante, correo: e.target.value });
+                            setErrors(prev => ({ ...prev, apoderadoDenuncianteEmail: '' }));
+                          }}
                           placeholder="apoderado@ejemplo.com"
-                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.apoderadoDenuncianteEmail ? 'border-red-500' : 'border-gray-300'}`}
                         />
+                        {errors.apoderadoDenuncianteEmail && (
+                          <p className="text-xs text-red-600 mt-1">{errors.apoderadoDenuncianteEmail}</p>
+                        )}
                       </div>
                     </div>
                   )}
                 </div>
 
-                <div className="mt-4">
+                <div className="mt-4 space-y-2">
                   <Button
                     onClick={handleAgregarDenunciante}
                     variant="outline"
@@ -1660,14 +2066,26 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     {editingDenuncianteId ? <Pencil className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                     {editingDenuncianteId ? 'Actualizar Denunciante' : 'Agregar Denunciante'}
                   </Button>
+                  {editingDenuncianteId && (
+                    <Button
+                      onClick={() => {
+                        setEditingDenuncianteId(null);
+                        resetDenuncianteForm();
+                      }}
+                      variant="ghost"
+                      className="w-full text-gray-600 hover:text-gray-800"
+                    >
+                      Cancelar Edición
+                    </Button>
+                  )}
                 </div>
               </div>
 
               {/* Lista de denunciantes agregados */}
-              {denunciantes.length > 0 && (
+              {!isEditMode && denunciantes.length > 0 && (
                 <div>
                   <h3 className="font-semibold text-gray-900 mb-3">
-                    Denunciantes Registrados ({denunciantes.length})
+                    {isEditMode ? 'Denunciantes de la Noticia' : 'Denunciantes Registrados'} ({denunciantes.length})
                   </h3>
                   <div className="space-y-2">
                     {denunciantes.map(denunciante => (
@@ -1736,7 +2154,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                   </div>
                   <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
                     <p className="text-xs text-blue-800">
-                      <strong>✓ Trazabilidad:</strong> Se han registrado {denunciantes.length} denunciante(s) en esta noticia disciplinaria.
+                      <strong>✓ Trazabilidad:</strong> {isEditMode ? 'La noticia tiene' : 'Se han registrado'} {denunciantes.length} denunciante(s).
                     </p>
                   </div>
                 </div>
@@ -1861,11 +2279,19 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                   <option value="">
                     {loadingConductas ? 'Cargando conductas...' : 'Seleccione la conducta presuntamente indisciplinaria...'}
                   </option>
+                  {mostrarConductaActualComoOpcion && (
+                    <option value={conductaSeleccionada}>
+                      {conductaSeleccionada}
+                    </option>
+                  )}
                   {conductasIndisciplinarias.map(conducta => (
                     <option key={conducta.id} value={conducta.nombre}>
                       {conducta.nombre}
                     </option>
                   ))}
+                  {!catalogoTieneOtro && (
+                    <option value="Otro">Otro</option>
+                  )}
                 </select>
                 {errors.conductas && (
                   <p className="text-xs text-red-600 mt-1 flex items-center gap-1">

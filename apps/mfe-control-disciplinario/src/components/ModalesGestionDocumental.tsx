@@ -116,16 +116,9 @@ const buildDownloadUrl = (procId: string, documentId: string, view: boolean) => 
 
 const descargarArchivo = async (url: string, nombre: string) => {
   try {
-    const token = localStorage.getItem('esap_access_token');
-    const headers: HeadersInit = {};
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(url, {
       method: 'GET',
-      headers,
-      credentials: 'include'
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -327,7 +320,9 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   const cargarPlantillas = async () => {
     setCargandoPlantillas(true);
     try {
-      const response = await fetch(buildApiUrl('legal', '/api/v1/autos/plantillas'));
+      const response = await fetch(buildApiUrl('legal', '/api/v1/autos/plantillas'), {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setPlantillas(data);
@@ -369,9 +364,9 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
     try {
       const response = await fetch(buildApiUrl('legal', `/api/v1/autos/${proceso.numeroProceso}/desde-plantilla`), {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('esap_access_token')}`
         },
         body: JSON.stringify({
           plantillaId: plantillaSeleccionada.id,
@@ -387,9 +382,9 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
         if (contenidoHtml !== plantillaSeleccionada.contenidoHtml) {
           await fetch(buildApiUrl('legal', `/api/v1/autos/${nuevoAuto.id}/contenido-html`), {
             method: 'PATCH',
+            credentials: 'include',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('esap_access_token')}`
             },
             body: JSON.stringify({ contenidoHtml })
           });
@@ -420,7 +415,9 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
   const editarAutoEnEditor = async (auto: any) => {
     setAutoEditando(auto);
     try {
-      const response = await fetch(buildApiUrl('legal', `/api/v1/autos/${auto.id}/contenido-html`));
+      const response = await fetch(buildApiUrl('legal', `/api/v1/autos/${auto.id}/contenido-html`), {
+        credentials: 'include',
+      });
       if (response.ok) {
         const data = await response.json();
         setContenidoHtml(data.contenidoHtml || '');
@@ -2142,14 +2139,11 @@ export function ModalGestionEvidencias({ proceso, onClose, onSubirEvidencia }: M
                           return;
                         }
 
-                        // Para todos los demás formatos: fetch con token y abrir blob en nueva pestaña
+                        // Para todos los demás formatos: fetch y abrir blob en nueva pestaña
                         const viewUrl = buildEvidenciaFileUrl(evidencia.archivoUrl, true, evidencia.archivoNombre);
-                        const token = localStorage.getItem('esap_access_token');
-                        const headers: HeadersInit = {};
-                        if (token) headers['Authorization'] = `Bearer ${token}`;
                         // Abrir ventana sincrónicamente para evitar bloqueo de popups
                         const win = window.open('about:blank', '_blank');
-                        fetch(viewUrl, { method: 'GET', headers, credentials: 'include' })
+                        fetch(viewUrl, { method: 'GET', credentials: 'include' })
                           .then(res => {
                             if (!res.ok) throw new Error('No autorizado');
                             return res.blob();

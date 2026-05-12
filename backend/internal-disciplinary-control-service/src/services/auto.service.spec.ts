@@ -206,6 +206,44 @@ describe('AutoService', () => {
       expect(versionRepository.save).toHaveBeenCalled();
     });
 
+    it('should not move process stage when approving an apertura auto', async () => {
+      const mockAuto = {
+        id: 'auto-apertura-123',
+        estado: AutoStatus.REVISION_JEFE,
+        processId: 'process-123',
+        process: { id: 'process-123', etapaActual: 'VALORACION' },
+        currentVersion: 1,
+        contenido: '<p>Contenido</p>',
+        tipo: 'AUTO_APERTURA_INVESTIGACION',
+        etapaDestino: 'INVESTIGACION',
+        documentUrl: null,
+        documentName: null,
+        documentType: null,
+        documentSize: null,
+      };
+
+      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
+      mockConfigRepository.findOne.mockResolvedValue({
+        securitySettings: { auditEnabled: false },
+      });
+      mockAutoRepository.save.mockResolvedValue({
+        ...mockAuto,
+        estado: AutoStatus.APROBADO,
+        numero: 'AUTO-00042',
+      });
+
+      await service.approve(
+        'auto-apertura-123',
+        { action: 'APPROVE' } as any,
+        'user-123',
+      );
+
+      expect(mockProcessService.changeStageByAutoApertura).not.toHaveBeenCalled();
+      expect(mockActuacionesRepository.save).not.toHaveBeenCalledWith(
+        expect.objectContaining({ tipo: 'CAMBIO_ETAPA' }),
+      );
+    });
+
     it('should convert docx to pdf when approving', async () => {
       const mockAuto = {
         id: 'auto-456',
@@ -250,12 +288,62 @@ describe('AutoService', () => {
 
       expect(
         mockDocumentConversionService.convertWordToPdf,
-      ).toHaveBeenCalledWith('/files/original.docx', 'AUTO-00042.pdf');
+      ).toHaveBeenCalledWith('/files/original.docx', 'AUTO-00042.pdf', [
+        { marker: '[Consecutivo_Auto]', value: 'AUTO-00042' },
+        { marker: '[CONSECUTIVO_AUTO]', value: 'AUTO-00042' },
+        { marker: '[consecutivo_auto]', value: 'AUTO-00042' },
+      ]);
       expect(mockPdfModifierService.addConsecutive).toHaveBeenCalledWith(
         '/files/AUTO-00042.pdf',
         'AUTO-00042',
       );
       expect(result.documentType).toBe('application/pdf');
+    });
+
+    it('should not stamp consecutive on pdf when docx placeholder was replaced', async () => {
+      const mockAuto = {
+        id: 'auto-789',
+        estado: AutoStatus.REVISION_JEFE,
+        processId: 'process-123',
+        process: { id: 'process-123', etapaActual: 'VALORACION' },
+        currentVersion: 1,
+        contenido: '<p>Contenido</p>',
+        tipo: 'AUTO_ARCHIVO',
+        documentUrl: '/files/original.docx',
+        documentName: 'original.docx',
+        documentType:
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        documentSize: 128,
+      };
+
+      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
+      mockConfigRepository.findOne.mockResolvedValue({
+        securitySettings: { auditEnabled: false },
+      });
+      mockDocumentConversionService.convertWordToPdf.mockResolvedValue({
+        documentUrl: '/files/AUTO-00042.pdf',
+        documentName: 'AUTO-00042.pdf',
+        documentType: 'application/pdf',
+        documentSize: 2048,
+        placeholdersReplaced: ['[Consecutivo_Auto]'],
+      });
+      mockAutoRepository.save.mockResolvedValue({
+        ...mockAuto,
+        estado: AutoStatus.APROBADO,
+        numero: 'AUTO-00042',
+        documentUrl: '/files/AUTO-00042.pdf',
+        documentName: 'AUTO-00042.pdf',
+        documentType: 'application/pdf',
+        documentSize: 2048,
+      });
+
+      await service.approve(
+        'auto-789',
+        { action: 'APPROVE' } as any,
+        'user-123',
+      );
+
+      expect(mockPdfModifierService.addConsecutive).not.toHaveBeenCalled();
     });
   });
 

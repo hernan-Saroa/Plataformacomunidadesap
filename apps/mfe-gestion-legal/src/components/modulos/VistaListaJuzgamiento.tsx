@@ -28,9 +28,10 @@ interface VistaListaProps {
   procesos: ProcesoDisciplinario[];
   isMobile: boolean;
   isTablet: boolean;
+  readOnly?: boolean;
 }
 
-export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaListaProps) {
+export function VistaListaJuzgamiento({ procesos, isMobile, isTablet, readOnly = false }: VistaListaProps) {
   const [ordenarPor, setOrdenarPor] = useState<'fecha' | 'dias' | 'etapa' | 'investigado'>('dias');
   const [direccionOrden, setDireccionOrden] = useState<'asc' | 'desc'>('asc');
   const [paginaActual, setPaginaActual] = useState(1);
@@ -347,11 +348,13 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
           isOpen={modalProcesoOpen}
           onClose={() => setModalProcesoOpen(false)}
           proceso={proceso}
+          readOnly={readOnly}
         />
         <ModalComunicaciones
           isOpen={modalComunicacionesOpen}
           onClose={() => setModalComunicacionesOpen(false)}
           expediente={expedienteParaModales as any}
+          readOnly={readOnly}
         />
         <ModalAutos
           isOpen={modalAutosOpen}
@@ -587,11 +590,13 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet }: VistaLis
           isOpen={modalProcesoOpen}
           onClose={() => setModalProcesoOpen(false)}
           proceso={proceso}
+          readOnly={readOnly}
         />
         <ModalComunicaciones
           isOpen={modalComunicacionesOpen}
           onClose={() => setModalComunicacionesOpen(false)}
           expediente={expedienteParaModales as any}
+          readOnly={readOnly}
         />
         <ModalAutos
           isOpen={modalAutosOpen}

@@ -128,6 +128,24 @@ export class CertificatesController {
     return await this.certificatesService.deleteTechnicalBonusAssignment(id);
   }
 
+  @Get('technical-bonus/template/:category')
+  async getTechnicalBonusTemplate(@Param('category') category: string) {
+    return await this.certificatesService.getTechnicalBonusTemplate(category);
+  }
+
+  @Put('technical-bonus/template/:category')
+  async updateTechnicalBonusTemplate(
+    @Param('category') category: string,
+    @Body() body: { template_text: string; updatedBy?: string },
+    @Req() req: any,
+  ) {
+    return await this.certificatesService.updateTechnicalBonusTemplate(
+      category,
+      body.template_text,
+      body.updatedBy || this.resolveRequestUsername(req),
+    );
+  }
+
   // ============================================
   // CERTIFICADOS
   // ============================================

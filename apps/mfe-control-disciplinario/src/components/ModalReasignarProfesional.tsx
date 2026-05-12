@@ -1,12 +1,13 @@
 /**
  * ╔══════════════════════════════════════════════════════════════╗
- * ║  MODAL REASIGNACIÓN DE PROFESIONAL - WORLD CLASS DESIGN     ║
+ * ║  MODAL REASIGNACIÓN/ASIGNACIÓN DE PROFESIONAL - WORLD CLASS ║
  * ║  Control Interno Disciplinario - ESAP                        ║
  * ╚══════════════════════════════════════════════════════════════╝
  *
  * Modal para reasignar profesional especializado cuando un proceso
- * ya tiene un profesional asignado y se requiere cambiarlo.
- * Crea una solicitud de reasignación que requiere aprobación del Jefe OCID.
+ * ya tiene un profesional asignado, o para asignar uno cuando no lo tiene.
+ * Crea una solicitud que requiere aprobación del Jefe OCID.
+ * Incluye trazabilidad cuando el proceso no tenía profesional asignado.
  */
 
 import { useState, useEffect } from 'react';
@@ -127,7 +128,7 @@ export function ModalReasignarProfesional({
 
 
 
-  // Filtrar solo profesionales activos y excluir el actual asignado
+  // Filtrar solo profesionales activos y excluir el actual asignado (solo si existe)
   const profesionalesDisponibles = profesionales
     .filter(p => p.estado === 'activo')
     .filter(p => {
@@ -221,7 +222,7 @@ export function ModalReasignarProfesional({
 
                   <div>
                     <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                      Solicitar Reasignación de Profesional
+                      {getNombreProfesionalActual() ? 'Solicitar Reasignación' : 'Solicitar Asignación'} de Profesional
                     </h2>
                     <div className="flex items-center gap-3 mt-1">
                       <p className="text-sm text-orange-100 font-medium">
@@ -256,7 +257,7 @@ export function ModalReasignarProfesional({
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <FileText className="w-4 h-4" />
-                <span>Se creará una solicitud para revisión</span>
+                <span>Se creará una solicitud para revisión{getNombreProfesionalActual() ? '' : ' (trazabilidad: sin profesional asignado)'}</span>
               </div>
             </div>
           </div>

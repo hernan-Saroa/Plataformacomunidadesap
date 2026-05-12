@@ -27,7 +27,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   CheckSquare, ChevronDown, ChevronRight, CheckCircle2, Circle,
   Paperclip, Download, ExternalLink, FileText, Upload, X,
-  AlertCircle, Calendar, User, Loader2, CheckCircle
+  AlertCircle, Calendar, User, Loader2, CheckCircle, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { controlInternoService } from '../../../services/api/controlInternoService';
@@ -47,6 +47,17 @@ const formatFileSize = (bytes: number) => {
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 };
+
+/** UUID del documento diligenciado subido a la auditoría (para descarga/eliminación). */
+const UUID_DOC_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function extraerIdDocumentoSubido(archivoSubidoUrl?: string): string | null {
+  if (!archivoSubidoUrl?.trim()) return null;
+  const t = archivoSubidoUrl.trim();
+  if (UUID_DOC_RE.test(t)) return t;
+  const m = t.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+  return m ? m[1] : null;
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -234,6 +245,7 @@ export function SeccionListasChequeoExpediente({
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [modalUpload, setModalUpload] = useState<{ listaId: string; doc: DocumentoAdjunto } | null>(null);
+  const [eliminandoDocId, setEliminandoDocId] = useState<string | null>(null);
 
   // ✅ CARGAR LISTAS DE CHEQUEO VINCULADAS A LA AUDITORÍA
   const cargarListasAuditoria = useCallback(async () => {
@@ -312,8 +324,39 @@ export function SeccionListasChequeoExpediente({
     }
   };
 
+  const handleEliminarDiligenciado = useCallback(
+    async (doc: DocumentoAdjunto) => {
+      if (readOnly) return;
+      const id = extraerIdDocumentoSubido(doc.archivoSubidoUrl);
+      if (!id) {
+        toast.error('No se pudo identificar el documento subido para eliminarlo.');
+        return;
+      }
+      if (!window.confirm('¿Eliminar el documento diligenciado? Podrás subir otro archivo después.')) return;
+      setEliminandoDocId(id);
+      try {
+        await controlInternoService.deleteDocumento(id);
+        toast.success('Documento eliminado. Puedes subir uno nuevo.');
+        await cargarListasAuditoria();
+      } catch (e) {
+        console.error(e);
+        toast.error('No se pudo eliminar el documento');
+      } finally {
+        setEliminandoDocId(null);
+      }
+    },
+    [readOnly, cargarListasAuditoria]
+  );
+
   // Filtrar listas por la etapa actual. Si no hay coincidencias el componente retorna null.
   const listasEtapaActual = listas.filter(lista => lista.etapaKanban === etapaActual);
+
+  /** Si el ítem exige plantilla, solo puede completarse cuando ya está subida/diligenciada en esta auditoría. */
+  const plantillaEstaDiligenciada = (lista: ListaChequeo, bibliotecaId?: string): boolean => {
+    if (!bibliotecaId) return true;
+    const doc = lista.documentosAdjuntos.find(d => d.documentoBibliotecaId === bibliotecaId);
+    return Boolean(doc?.diligenciado);
+  };
 
   const toggleItem = async (listaId: string, itemId: string) => {
     // ✅ VALIDACIÓN: No permitir edición en modo solo lectura
@@ -341,6 +384,18 @@ export function SeccionListasChequeoExpediente({
     if (!item) return;
 
     const nuevoEstado = !item.completado;
+
+    if (
+      nuevoEstado
+      && item.documentoBibliotecaId
+      && !plantillaEstaDiligenciada(lista, item.documentoBibliotecaId)
+    ) {
+      toast.error('Plantilla pendiente', {
+        description: 'Sube el documento diligenciado en «Plantillas requeridas» antes de marcar este ítem como completado.',
+        duration: 5000
+      });
+      return;
+    }
     const fechaCompletado = nuevoEstado ? new Date().toISOString().split('T')[0] : undefined;
 
     // Actualizar UI optimistamente
@@ -577,7 +632,12 @@ export function SeccionListasChequeoExpediente({
                     <div className="p-5 space-y-4">
                       {/* Items de chequeo */}
                       <div className="space-y-2">
-                        {lista.items.map((item) => (
+                        {lista.items.map((item) => {
+                          const bloqueadoSinPlantilla =
+                            Boolean(item.documentoBibliotecaId)
+                            && !plantillaEstaDiligenciada(lista, item.documentoBibliotecaId)
+                            && !item.completado;
+                          return (
                           <div
                             key={item.id}
                             className={`flex items-start gap-3 p-3 rounded-lg border-2 transition-all ${
@@ -587,9 +647,19 @@ export function SeccionListasChequeoExpediente({
                             }`}
                           >
                             <button
+                              type="button"
                               onClick={() => toggleItem(lista.id, item.id)}
-                              className={`flex-shrink-0 mt-0.5 ${readOnly ? 'cursor-default opacity-60' : 'cursor-pointer'}`}
-                              disabled={readOnly}
+                              className={`flex-shrink-0 mt-0.5 ${
+                                readOnly || bloqueadoSinPlantilla
+                                  ? 'cursor-not-allowed opacity-60'
+                                  : 'cursor-pointer'
+                              }`}
+                              disabled={readOnly || bloqueadoSinPlantilla}
+                              title={
+                                bloqueadoSinPlantilla
+                                  ? 'Sube primero la plantilla diligenciada en «Plantillas requeridas»'
+                                  : undefined
+                              }
                             >
                               {item.completado ? (
                                 <CheckCircle2 className="w-5 h-5 text-green-600" />
@@ -629,11 +699,17 @@ export function SeccionListasChequeoExpediente({
                                   )}
                                 </div>
                               )}
+                              {bloqueadoSinPlantilla && (
+                                <p className="text-xs text-amber-700 mt-2">
+                                  Sube la plantilla diligenciada abajo («Plantillas requeridas») para poder completar este ítem.
+                                </p>
+                              )}
                             </div>
 
                             {item.documentoBibliotecaId && (
                               <div className="flex items-center gap-1.5 flex-shrink-0">
                                 <button
+                                  type="button"
                                   onClick={() => handleDescargarDoc(item.documentoBibliotecaId!)}
                                   className="px-2.5 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
                                   title="Descargar plantilla del ítem"
@@ -641,28 +717,11 @@ export function SeccionListasChequeoExpediente({
                                   <Download className="w-3.5 h-3.5" />
                                   Plantilla
                                 </button>
-                                {!readOnly && (
-                                  <button
-                                    onClick={() => setModalUpload({
-                                      listaId: lista.id,
-                                      doc: {
-                                        documentoBibliotecaId: item.documentoBibliotecaId!,
-                                        nombreDocumento: item.documentoNombre || item.texto || 'Documento',
-                                        diligenciado: false
-                                      }
-                                    })}
-                                    className="px-2.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
-                                    style={{ backgroundColor: '#003DA5', color: '#FFFFFF' }}
-                                    title="Subir documento diligenciado"
-                                  >
-                                    <Upload className="w-3.5 h-3.5" />
-                                    Subir
-                                  </button>
-                                )}
                               </div>
                             )}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       {/* ── Plantillas requeridas de la lista ── */}
@@ -676,9 +735,11 @@ export function SeccionListasChequeoExpediente({
                             </span>
                           </div>
                           <div className="space-y-2">
-                            {lista.documentosAdjuntos.map((doc, idx) => (
+                            {lista.documentosAdjuntos.map((doc, idx) => {
+                              const idDocSubido = extraerIdDocumentoSubido(doc.archivoSubidoUrl);
+                              return (
                               <div
-                                key={idx}
+                                key={`${doc.documentoBibliotecaId || doc.nombreDocumento}-${idx}`}
                                 className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
                                   doc.diligenciado
                                     ? 'bg-emerald-50 border-emerald-200'
@@ -697,6 +758,17 @@ export function SeccionListasChequeoExpediente({
                                 {/* Info */}
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-semibold text-gray-900 truncate">{doc.nombreDocumento}</p>
+                                  {(() => {
+                                    const itemsAsociados = lista.items
+                                      .filter(i => i.documentoBibliotecaId === doc.documentoBibliotecaId)
+                                      .map(i => i.texto);
+                                    if (itemsAsociados.length === 0) return null;
+                                    return (
+                                      <p className="text-xs text-indigo-700 mt-0.5 truncate">
+                                        Item(s): {itemsAsociados.join(' • ')}
+                                      </p>
+                                    );
+                                  })()}
                                   {doc.diligenciado && doc.fechaSubida ? (
                                     <p className="text-xs text-emerald-700 mt-0.5">
                                       ✓ Subida el {new Date(doc.fechaSubida).toLocaleDateString('es-CO')}
@@ -725,7 +797,24 @@ export function SeccionListasChequeoExpediente({
                                       <Download className="w-3.5 h-3.5" />
                                       Diligenciado
                                     </button>
-                                  ) : !readOnly ? (
+                                  ) : null}
+                                  {!readOnly && doc.diligenciado && idDocSubido ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleEliminarDiligenciado(doc)}
+                                      disabled={eliminandoDocId === idDocSubido}
+                                      className="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                                      title="Quitar archivo subido para poder cargar otro"
+                                    >
+                                      {eliminandoDocId === idDocSubido ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      )}
+                                      Eliminar
+                                    </button>
+                                  ) : null}
+                                  {!doc.diligenciado && !readOnly ? (
                                     <button
                                       onClick={() => setModalUpload({ listaId: lista.id, doc })}
                                       className="px-2.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors"
@@ -738,7 +827,7 @@ export function SeccionListasChequeoExpediente({
                                   ) : null}
                                 </div>
                               </div>
-                            ))}
+                            );})}
                           </div>
                         </div>
                       ) : (

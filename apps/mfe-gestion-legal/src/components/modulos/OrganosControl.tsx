@@ -117,7 +117,10 @@ export function OrganosControl() {
   const fetchRequerimientos = async () => {
     try {
       setLoading(true);
-      const data = await ocService.getRequerimientosOC();
+      const [data, abogadosData] = await Promise.all([
+        ocService.getRequerimientosOC(),
+        authService.getAbogadosRolResuelve().catch(() => [] as any[]),
+      ]);
 
       // Cargar configuración local de organismos como fallback
       let organismosConfig: any[] = [];
@@ -165,7 +168,62 @@ export function OrganosControl() {
         };
       });
 
-      setRequerimientos(mappedData);
+      // Si el usuario tiene rol RESUELVE_GESTION_LEGAL, solo mostrar sus requerimientos asignados
+      const currentUser = authService.getCurrentUser() as any;
+      const isResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
+      let requerimientosFiltrados = mappedData;
+      if (isResuelve && currentUser) {
+        const cuEmail: string = (
+          currentUser.email ?? currentUser.person?.email ?? currentUser.mail ?? ''
+        ).toLowerCase();
+        const cuName: string = (
+          currentUser.fullName ??
+          currentUser.full_name ??
+          currentUser.name ??
+          (currentUser.firstName || currentUser.first_name
+            ? `${currentUser.firstName ?? currentUser.first_name ?? ''} ${currentUser.lastName ?? currentUser.last_name ?? ''}`.trim()
+            : null) ??
+          (currentUser.person?.first_name
+            ? `${currentUser.person.first_name ?? ''} ${currentUser.person.last_name ?? ''}`.trim()
+            : null) ??
+          ''
+        ).toLowerCase();
+        const cuIds = new Set<string>(
+          [
+            currentUser.id,
+            currentUser.id_user,
+            currentUser.user?.id,
+            currentUser.user?.id_user,
+            currentUser.person?.id,
+          ].filter(Boolean)
+        );
+
+        const myAbogado = Array.isArray(abogadosData)
+          ? abogadosData.find((a: any) => {
+              if (a.id && cuIds.has(a.id)) return true;
+              if (a.rawId && cuIds.has(a.rawId)) return true;
+              if (a.authId && cuIds.has(a.authId)) return true;
+              if (cuEmail && a.email && (a.email as string).toLowerCase() === cuEmail) return true;
+              const aNombre = (a.nombre ?? a.nombreCompleto ?? '').toLowerCase();
+              if (cuName && aNombre && aNombre === cuName) return true;
+              return false;
+            })
+          : null;
+
+        if (myAbogado) {
+          requerimientosFiltrados = mappedData.filter(r => {
+            if (myAbogado.id && r.responsable === myAbogado.id) return true;
+            if (myAbogado.rawId && r.responsable === myAbogado.rawId) return true;
+            if (myAbogado.nombre && r.responsable === myAbogado.nombre) return true;
+            if (myAbogado.nombreCompleto && r.responsable === myAbogado.nombreCompleto) return true;
+            return false;
+          });
+        } else {
+          requerimientosFiltrados = mappedData.filter(r => cuIds.has(r.responsable));
+        }
+      }
+
+      setRequerimientos(requerimientosFiltrados);
 
       // Cargar archivados
       const archivadosData = await ocService.getArchivados();
@@ -447,7 +505,7 @@ export function OrganosControl() {
           paginaActual={paginaActual}
           setPaginaActual={setPaginaActual}
           itemsPorPagina={itemsPorPagina}
-          onCambiarEtapa={handleMoverRequerimiento}
+          onCambiarEtapa={authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_ELABORAR) ? handleMoverRequerimiento : undefined}
           onVerRequerimiento={handleVerRequerimiento}
           onDocumentos={handleDocumentos}
           onRespuesta={handleRespuesta}
@@ -460,8 +518,8 @@ export function OrganosControl() {
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Órganos de Control"
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DELETE) ? handleRestaurar : undefined}
+          onEliminarPermanente={authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_DELETE) ? handleEliminarPermanente : undefined}
         />
       )}
 
@@ -803,7 +861,7 @@ function VistaLista({
   paginaActual: number;
   setPaginaActual: (pagina: number) => void;
   itemsPorPagina: number;
-  onCambiarEtapa: (reqId: string, nuevaEtapa: 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO') => void;
+  onCambiarEtapa?: (reqId: string, nuevaEtapa: 'RECIBIDO' | 'EN_ANALISIS' | 'EN_RESPUESTA' | 'ENVIADO') => void;
   onVerRequerimiento: (req: Requerimiento) => void;
   onDocumentos: (req: Requerimiento) => void;
   onRespuesta: (req: Requerimiento) => void;
@@ -937,10 +995,19 @@ function VistaLista({
                     </Badge>
                   </td>
                   <td className="px-4 py-3">
-                    <SelectorEtapa
-                      etapaActual={req.etapa}
-                      onChange={(nuevaEtapa) => onCambiarEtapa(req.id, nuevaEtapa)}
-                    />
+                    {onCambiarEtapa ? (
+                      <SelectorEtapa
+                        etapaActual={req.etapa}
+                        onChange={(nuevaEtapa) => onCambiarEtapa(req.id, nuevaEtapa)}
+                      />
+                    ) : (() => {
+                      const cfg = ETAPAS_CONFIG.find(e => e.valor === req.etapa) || ETAPAS_CONFIG[0];
+                      return (
+                        <span className="text-xs font-semibold rounded-lg pl-3 pr-3 py-1.5 border" style={{ color: cfg.color, backgroundColor: cfg.bg, borderColor: `${cfg.color}40` }}>
+                          {cfg.nombre}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-0.5">

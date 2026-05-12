@@ -23,6 +23,7 @@ export interface DisciplinaryNews {
     origen: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION';
     fechaQueja?: string;
     fechaRecepcion?: string;
+    fechaHechos?: string;
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
@@ -38,6 +39,7 @@ export interface DisciplinaryNews {
         documento?: string;
         dependencia?: string;
         entidad?: string;
+        tipo?: 'Denunciante' | 'Víctima';
         apoderado?: {
             nombre: string;
             cedula: string;
@@ -53,6 +55,7 @@ export interface DisciplinaryNews {
         email?: string;
         telefono?: string;
         dependencia?: string;
+        lugarHechos?: string;
         apoderado?: {
             nombre: string;
             cedula: string;
@@ -723,19 +726,14 @@ class DisciplinaryService {
             : `/api/v1${restPath}`;
         const url = buildApiUrl('control-disciplinario', endpoint);
 
-        // Obtener token de autenticacion
-        const token = localStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/octet-stream',
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(url, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -774,7 +772,13 @@ class DisciplinaryService {
         } else if (url.startsWith('/control-disciplinario/')) {
             // La URL ya contiene el prefijo del servicio, extraer la ruta relativa
             // /control-disciplinario/api/v1/... -> /api/v1/...
-            const path = url.replace(/^\/control-disciplinario/, '/');
+            let path = url.replace(/^\/control-disciplinario/, '');
+            if (path.startsWith('/api/v1/files/') || path.startsWith('/api/v1/uploads/')) {
+                path = path.replace(/^\/api\/v1/, '');
+            }
+            fullUrl = buildApiUrl('control-disciplinario', path) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        } else if (url.startsWith('/api/v1/files/') || url.startsWith('/api/v1/uploads/')) {
+            const path = url.replace(/^\/api\/v1/, '');
             fullUrl = buildApiUrl('control-disciplinario', path) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
         } else if (url.startsWith('/files/')) {
             // La URL es para archivos estáticos, construir correctamente
@@ -785,18 +789,14 @@ class DisciplinaryService {
             fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
         }
 
-        const token = localStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': '*/*', // Aceptar cualquier cosa (binarios)
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(fullUrl, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -1037,19 +1037,14 @@ class DisciplinaryService {
         const endpoint = `/api/v1/configuration/export/zip`;
         const url = buildApiUrl('control-disciplinario', endpoint);
 
-        // Obtener token
-        const token = localStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/zip',
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(url, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -1552,11 +1547,6 @@ class DisciplinaryService {
         emailDestinatario: string;
         createdAt: string;
     }> {
-        // Debug: verificar que hay token disponible
-        const token = localStorage.getItem('esap_auth_token');
-        console.log('[DEBUG] Token available:', !!token);
-        console.log('[DEBUG] Token prefix:', token?.substring(0, 20));
-
         // Obtener la URL base del frontend para generar enlaces correctos
         // Esto asegura que la URL funcione en todos los ambientes (local, dev, qa, pre, prod)
         const frontendBaseUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
@@ -1700,9 +1690,9 @@ class DisciplinaryService {
     /**
      * Enviar un correo electrónico
      */
-    async sendEmail(data: { to: string; subject: string; body: string }): Promise<any> {
-        return apiClient.post(`${SERVICE_PREFIX}/email/send`, data);
-    }
+    sendEmail = async (data: { to: string; subject: string; body: string }): Promise<any> => {
+        return apiClient.post(`${SERVICE_PREFIX}/disciplinary-processes/send-email`, data);
+    };
 
 }
 

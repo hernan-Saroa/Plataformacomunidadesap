@@ -74,15 +74,17 @@ export function SistemaComentarios({
 
   const getAutorActual = (): Persona => {
     try {
-      const rawSesion = localStorage.getItem('esap-sesion-activa');
-      if (rawSesion) {
-        const sesion = JSON.parse(rawSesion);
-        const usuario = sesion?.usuario || {};
-        if (usuario?.nombre || usuario?.email || usuario?.id) {
+      // Leer del caché en-memoria compartido por el shell (OTIC-002)
+      const user = (window as any).__esap_auth_cache;
+      if (user) {
+        const person = user?.person || {};
+        const nombre = person?.full_name || `${person?.first_name || ''} ${person?.last_name || ''}`.trim() || user?.fullName || user?.name || user?.nombre || user?.email;
+        const identificacion = person?.identification_number || user?.identification_number || user?.id || user?.email;
+        if (nombre || identificacion) {
           return {
-            nombre: usuario.nombre || usuario.email || 'Usuario',
-            tipoIdentificacion: 'CC',
-            numeroIdentificacion: usuario.id || usuario.email || 'N/A'
+            nombre: nombre || 'Usuario',
+            tipoIdentificacion: person?.identification_type || 'CC',
+            numeroIdentificacion: identificacion || 'N/A'
           };
         }
       }

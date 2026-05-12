@@ -8,7 +8,8 @@ import {
   FolderOpen,
   Settings,
   FileText,
-  Layers
+  Layers,
+  Bell
 } from "lucide-react";
 import { ModuleLayout, MenuItem } from "../shared/ModuleLayout";
 import { ControlInternoProvider } from "./ControlInternoContext";
@@ -18,6 +19,8 @@ import { HallazgosProvider } from "./HallazgosContext";
 import { TareasProvider } from "./TareasContext";
 import { toast } from "sonner";
 import { KanbanConfigProvider } from "./context/KanbanConfigContext";
+import { NotificacionesControlInternoDropdown } from "./NotificacionesControlInternoDropdown";
+import { useNotificacionesControlInterno } from "./hooks/useNotificacionesControlInterno";
 
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 
@@ -109,6 +112,22 @@ function ControlInternoContent({
   
   // ✅ HOOK DE BACKEND - Total de planes para badge
   const { planes: planesBackend, loading: loadingPlanes } = usePlanesMejoramiento();
+
+  // ✅ HOOK DE NOTIFICACIONES - Bell icon con conteo
+  const {
+    conteoNoLeidas,
+    cargarNotificaciones,
+  } = useNotificacionesControlInterno();
+  const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
+
+  // Polling: recargar conteo cada 60 segundos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      cargarNotificaciones();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [cargarNotificaciones]);
+
 
   // Mapeo de IDs de sección a módulos de permisos
   const MAPEO_SECCION_MODULO: Record<string, string> = {
@@ -270,6 +289,7 @@ function ControlInternoContent({
         setNavegacionManual(Date.now());
         if (section !== 'listas-chequeo') setListasChequeoTabActiva('BIBLIOTECA');
       }}
+
     >
       {/* Navegación automática */}
       <MenuDinamicoWrapper

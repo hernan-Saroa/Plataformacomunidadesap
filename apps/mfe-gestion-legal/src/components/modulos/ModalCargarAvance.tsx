@@ -3,8 +3,8 @@
  * Modal para actualizar el avance de un indicador del Plan de Acción
  */
 
-import { useState, useEffect } from 'react';
-import { TrendingUp, Upload, FileText, Calendar, AlertCircle, CheckCircle } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { TrendingUp, Upload, FileText, Calendar, AlertCircle, CheckCircle, Paperclip, X as XIcon } from 'lucide-react';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Input } from '@esap-mfe/shared-ui/input';
 import { Label } from '@esap-mfe/shared-ui/label';
@@ -35,7 +35,9 @@ interface ModalCargarAvanceProps {
 export function ModalCargarAvance({ isOpen, onClose, indicador, onGuardar }: ModalCargarAvanceProps) {
   const [nuevoValor, setNuevoValor] = useState('');
   const [observaciones, setObservaciones] = useState('');
-  const [evidencias, setEvidencias] = useState('');
+  // Bug 6a: evidencia es un archivo (no URL). Igual que el resto del módulo.
+  const [evidenciaFile, setEvidenciaFile] = useState<File | null>(null);
+  const evidenciaInputRef = useRef<HTMLInputElement>(null);
   const [avanceCalculado, setAvanceCalculado] = useState(0);
   const [estadoCalculado, setEstadoCalculado] = useState<'EN_TIEMPO' | 'EN_RIESGO' | 'VENCIDO' | 'COMPLETADO'>('EN_TIEMPO');
 
@@ -85,7 +87,8 @@ export function ModalCargarAvance({ isOpen, onClose, indicador, onGuardar }: Mod
       estado: estadoCalculado,
       ultimaActualizacion: new Date(),
       observacionesAvance: observaciones,
-      evidenciasAvance: evidencias
+      // Bug 6a: la evidencia ahora es un File real
+      evidenciaFile: evidenciaFile,
     };
 
     if (onGuardar) {
@@ -323,20 +326,61 @@ export function ModalCargarAvance({ isOpen, onClose, indicador, onGuardar }: Mod
                 />
               </div>
 
+              {/* Bug 6a: Evidencia como archivo (no URL) — patrón estándar del módulo */}
               <div className="space-y-2">
-                <Label htmlFor="evidencias" className="text-sm font-semibold text-gray-700">
-                  Evidencias o Documentos de Soporte <span className="text-gray-500">(Opcional)</span>
+                <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                  <Paperclip className="w-4 h-4 text-gray-500" />
+                  Evidencia o Documento de Soporte <span className="text-gray-500">(Opcional)</span>
                 </Label>
-                <Input
-                  id="evidencias"
-                  placeholder="URL de documentos, informes, actas, etc."
-                  value={evidencias}
-                  onChange={(e) => setEvidencias(e.target.value)}
-                  className="border-2 border-gray-300 focus:border-blue-500"
+                {!evidenciaFile ? (
+                  <div
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-blue-400 cursor-pointer transition-colors bg-gray-50"
+                    onClick={() => evidenciaInputRef.current?.click()}
+                  >
+                    <Upload className="w-7 h-7 mx-auto mb-1 text-gray-400" />
+                    <p className="text-sm text-gray-600 font-medium">Adjuntar evidencia</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      PDF, Word, Excel, imágenes · Máx. 200 MB
+                    </p>
+                  </div>
+                ) : (
+                  <div className="border-2 border-blue-200 bg-blue-50 rounded-lg p-3 flex items-center gap-3">
+                    <FileText className="w-7 h-7 text-blue-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-gray-800 truncate">{evidenciaFile.name}</p>
+                      <p className="text-xs text-gray-500">
+                        {(evidenciaFile.size / (1024 * 1024)).toFixed(2)} MB
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEvidenciaFile(null);
+                        if (evidenciaInputRef.current) evidenciaInputRef.current.value = '';
+                      }}
+                      className="p-1 hover:bg-white rounded"
+                      aria-label="Quitar evidencia"
+                    >
+                      <XIcon className="w-4 h-4 text-gray-500" />
+                    </button>
+                  </div>
+                )}
+                <input
+                  ref={evidenciaInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    if (f.size / (1024 * 1024) > 200) {
+                      toast.error('El archivo supera el límite de 200 MB');
+                      e.target.value = '';
+                      return;
+                    }
+                    setEvidenciaFile(f);
+                  }}
                 />
-                <p className="text-xs text-gray-500">
-                  Puede incluir enlaces a Google Drive, SharePoint, o sistema documental
-                </p>
               </div>
             </div>
 

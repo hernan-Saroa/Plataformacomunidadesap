@@ -6,6 +6,7 @@ import { ProcesoCoactivoAdjunto } from '../entities/proceso-coactivo-adjunto.ent
 import { PagoCoactivo } from '../entities/pago-coactivo.entity';
 import { CoactivoHistorial } from '../entities/coactivo-historial.entity';
 import { TasaReferencia } from '../entities/tasa-referencia.entity';
+import { LegalNotificationsService } from './legal-notifications.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -14,6 +15,8 @@ export interface CreateProcesoCoactivoDto {
     obligacion: ObligacionInfo;
     responsable?: string;
     observaciones?: string;
+    creadoPor?: string;
+    usuario?: string;
 }
 
 export interface UpdateProcesoCoactivoDto {
@@ -57,6 +60,7 @@ export class ProcesoCoactivoService {
         private readonly historialRepository: Repository<CoactivoHistorial>,
         @InjectRepository(TasaReferencia)
         private readonly tasaRepository: Repository<TasaReferencia>,
+        private readonly legalNotifications: LegalNotificationsService,
     ) { }
 
     async findAll(): Promise<ProcesoCoactivo[]> {
@@ -129,8 +133,16 @@ export class ProcesoCoactivoService {
 
         const savedProceso = await this.procesoCoactivoRepository.save(proceso);
 
+        const creadoPor = dto.creadoPor || dto.usuario || 'Sistema';
         // Registrar historial de creación
-        await this.registrarHistorial(savedProceso.id, 'CREACION', null, null, null, 'Sistema', 'Proceso creado automáticamente o manualmente');
+        await this.registrarHistorial(savedProceso.id, 'CREACION', null, null, null, creadoPor, 'Proceso creado automáticamente o manualmente');
+
+        await this.legalNotifications.notifyProcesoCreado({
+            modulo: 'PROCESOS_COACTIVOS',
+            radicado: savedProceso.radicado,
+            procesoId: savedProceso.id,
+            creadoPor,
+        });
 
         return savedProceso;
     }
@@ -473,8 +485,31 @@ export class ProcesoCoactivoService {
         proceso.saldoPendiente = nuevoSaldo;
         proceso.ultimaActuacion = new Date();
 
+        // Eliminar el adjunto/soporte asociado al pago (si existe)
+        if (pago.soporteUrl) {
+            const adjunto = await this.adjuntoRepository.findOne({
+                where: { proceso: { id: proceso.id }, nombreArchivo: pago.soporteUrl }
+            });
+            if (adjunto) {
+                // Eliminar archivo físico del soporte
+                const filePath = path.join(process.cwd(), 'uploads', adjunto.nombreArchivo);
+                if (fs.existsSync(filePath)) {
+                    try {
+                        fs.unlinkSync(filePath);
+                    } catch (err) {
+                        console.error(`Error eliminando archivo soporte ${filePath}:`, err);
+                    }
+                }
+                await this.adjuntoRepository.remove(adjunto);
+            }
+        }
+
         // Eliminar el pago
         await this.pagoRepository.delete(pagoId);
+
+        // Recalcular contador de documentos adjuntos
+        const count = await this.adjuntoRepository.count({ where: { proceso: { id: proceso.id } } });
+        proceso.documentosAdjuntos = count;
 
         // Guardar proceso actualizado
         await this.procesoCoactivoRepository.save(proceso);
@@ -520,7 +555,7 @@ export class ProcesoCoactivoService {
         await this.historialRepository.save(historial);
     }
 
-    async addAdjunto(procesoId: string, file: Express.Multer.File, tipo: string = 'DOCUMENTO'): Promise<ProcesoCoactivoAdjunto> {
+    async addAdjunto(procesoId: string, file: Express.Multer.File, tipo: string = 'DOCUMENTO', subidoPor: string = 'Sistema'): Promise<ProcesoCoactivoAdjunto> {
         const proceso = await this.findOne(procesoId);
 
         const adjunto = this.adjuntoRepository.create({
@@ -540,6 +575,14 @@ export class ProcesoCoactivoService {
         const count = await this.adjuntoRepository.count({ where: { proceso: { id: procesoId } } });
         proceso.documentosAdjuntos = count;
         await this.procesoCoactivoRepository.save(proceso);
+
+        await this.legalNotifications.notifyDocumentoSubido({
+            modulo: 'PROCESOS_COACTIVOS',
+            radicado: proceso.radicado,
+            procesoId: proceso.id,
+            nombreDocumento: file.originalname,
+            subidoPor,
+        });
 
         return savedAdjunto;
     }

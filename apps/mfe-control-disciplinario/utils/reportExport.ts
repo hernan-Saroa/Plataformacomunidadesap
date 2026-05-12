@@ -127,7 +127,7 @@ function generateFieldValue(fieldId: string, fieldType: string): any {
     case 'modulo':
       return modulos[Math.floor(Math.random() * modulos.length)];
     case 'ip':
-      return `192.168.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+      return 'IP interna protegida';
     
     // Campos de actividad del sistema
     case 'sesiones':

@@ -17,7 +17,7 @@ import {
   User, AlertCircle, History, X, Check,
   RotateCcw, Mail, Calendar, Info,
   Shield, Key, Users, Trash2, ChevronDown,
-  Filter, Paperclip, ListFilter, List
+  Filter, Paperclip, ListFilter, List, Loader2
 } from 'lucide-react';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { toast } from 'sonner';
@@ -63,7 +63,7 @@ export interface AccionRevision {
 interface ModalRevisionAutoProps {
   borrador: BorradorPendiente;
   onClose: () => void;
-  onAprobar: (comentarios: string) => void;
+  onAprobar: (comentarios: string) => void | Promise<void>;
   onDevolver?: (motivo: string, comentarios: string, archivos: File[]) => void;
   mostrarBotonDevolver?: boolean;
   tituloModal?: string;
@@ -150,11 +150,13 @@ function DocxViewer({ file }: { file: File }) {
 function ModalAprobacion({
   onConfirm,
   onCancel,
-  borrador
+  borrador,
+  isProcessing = false
 }: {
   onConfirm: (comentarios: string, tipoFirma: 'electronica' | 'digital' | 'local') => void;
   onCancel: () => void;
   borrador?: { titulo?: string; plantilla?: string };
+  isProcessing?: boolean;
 }) {
   const [comentarios, setComentarios] = useState('');
   const [tipoFirma, setTipoFirma] = useState<'electronica' | 'digital' | 'local'>('local');
@@ -166,7 +168,7 @@ function ModalAprobacion({
       exit={{ opacity: 0 }}
       className="fixed inset-0 flex items-center justify-center"
       style={{ zIndex: 10001, backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
+      onClick={(e) => e.target === e.currentTarget && !isProcessing && onCancel()}
     >
       <motion.div
         initial={{ opacity: 0, scale: 0.97, y: 12 }}
@@ -206,6 +208,22 @@ function ModalAprobacion({
           </div>
         )}
 
+        {isProcessing && (
+          <div className="mb-4 p-4 rounded-xl border-2" style={{ background: '#EFF6FF', borderColor: '#93C5FD' }}>
+            <div className="flex items-start gap-3">
+              <Loader2 className="w-5 h-5 animate-spin mt-0.5" style={{ color: '#003DA5' }} />
+              <div>
+                <p className="text-sm font-bold" style={{ color: '#1E40AF' }}>
+                  Aprobando y convirtiendo el auto...
+                </p>
+                <p className="text-xs mt-1" style={{ color: '#1D4ED8' }}>
+                  Generando consecutivo y PDF final. No cierres esta ventana ni repitas la acción.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tipo de Firma */}
         <div className="mb-4">
           <label className="block text-sm font-semibold mb-2" style={{ color: '#374151' }}>
@@ -214,9 +232,10 @@ function ModalAprobacion({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               onClick={() => setTipoFirma('local')}
+              disabled={isProcessing}
               className={`p-3 rounded-xl border-2 transition-all ${
                 tipoFirma === 'local' ? 'border-[#003DA5] bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-              }`}
+              } ${isProcessing ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               <Key className={`w-5 h-5 mx-auto mb-1 ${tipoFirma === 'local' ? 'text-[#003DA5]' : 'text-gray-500'}`} />
               <p className={`text-xs font-semibold ${tipoFirma === 'local' ? 'text-[#003DA5]' : 'text-gray-600'}`}>
@@ -225,9 +244,10 @@ function ModalAprobacion({
             </button>
             <button
               onClick={() => setTipoFirma('electronica')}
+              disabled={isProcessing}
               className={`p-3 rounded-xl border-2 transition-all ${
                 tipoFirma === 'electronica' ? 'border-[#003DA5] bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-              }`}
+              } ${isProcessing ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               <FileSignature className={`w-5 h-5 mx-auto mb-1 ${tipoFirma === 'electronica' ? 'text-[#003DA5]' : 'text-gray-500'}`} />
               <p className={`text-xs font-semibold ${tipoFirma === 'electronica' ? 'text-[#003DA5]' : 'text-gray-600'}`}>
@@ -236,9 +256,10 @@ function ModalAprobacion({
             </button>
             <button
               onClick={() => setTipoFirma('digital')}
+              disabled={isProcessing}
               className={`p-3 rounded-xl border-2 transition-all ${
                 tipoFirma === 'digital' ? 'border-[#003DA5] bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-              }`}
+              } ${isProcessing ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               <Shield className={`w-5 h-5 mx-auto mb-1 ${tipoFirma === 'digital' ? 'text-[#003DA5]' : 'text-gray-500'}`} />
               <p className={`text-xs font-semibold ${tipoFirma === 'digital' ? 'text-[#003DA5]' : 'text-gray-600'}`}>
@@ -256,8 +277,9 @@ function ModalAprobacion({
           <textarea
             value={comentarios}
             onChange={(e) => setComentarios(e.target.value)}
+            disabled={isProcessing}
             placeholder="Observaciones adicionales sobre la aprobación..."
-            className="w-full h-32 p-3 border-2 rounded-xl focus:outline-none focus:border-[#003DA5] resize-none"
+            className={`w-full h-32 p-3 border-2 rounded-xl focus:outline-none focus:border-[#003DA5] resize-none ${isProcessing ? 'bg-gray-50 cursor-not-allowed' : ''}`}
             style={{ borderColor: '#E5E7EB' }}
           />
         </div>
@@ -266,15 +288,17 @@ function ModalAprobacion({
         <div className="flex gap-3">
           <button
             onClick={() => onConfirm(comentarios, tipoFirma)}
-            className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+            disabled={isProcessing}
+            className={`flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2 ${isProcessing ? 'opacity-80 cursor-wait' : ''}`}
             style={{ background: '#059669' }}
           >
-            <Check className="w-4 h-4" />
+            {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
             Confirmar Aprobación
           </button>
           <button
             onClick={onCancel}
-            className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors"
+            disabled={isProcessing}
+            className={`px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors ${isProcessing ? 'opacity-60 cursor-not-allowed' : ''}`}
             style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
           >
             Cancelar
@@ -472,6 +496,7 @@ export function ModalRevisionAuto({
   const [cargandoDoc, setCargandoDoc] = useState(false);
   const [comentarioSubida, setComentarioSubida] = useState('');
   const [subiendoDoc, setSubiendoDoc] = useState(false);
+  const [aprobandoAuto, setAprobandoAuto] = useState(false);
 
   useEffect(() => {
     if (!borrador.autoId) return;
@@ -483,10 +508,9 @@ export function ModalRevisionAuto({
         if (auto.documentUrl) {
           const restPath = auto.documentUrl;
           const fileUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
-          const token = localStorage.getItem('esap_access_token');
           const response = await fetch(fileUrl, {
             method: 'GET',
-            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            credentials: 'include',
           });
           if (response.ok) {
             const blob = await response.blob();
@@ -572,10 +596,37 @@ export function ModalRevisionAuto({
     }
   };
 
-  const handleConfirmarAprobacion = (comentarios: string, tipoFirma: 'electronica' | 'digital' | 'local') => {
-    onAprobar(comentarios);
-    setShowModalAprobar(false);
-    onClose();
+  const handleConfirmarAprobacion = async (comentarios: string, tipoFirma: 'electronica' | 'digital' | 'local') => {
+    if (aprobandoAuto) return;
+
+    const toastId = `aprobar-auto-${borrador.autoId || borrador.id}`;
+
+    try {
+      setAprobandoAuto(true);
+      toast.loading('Aprobando auto y generando PDF final...', {
+        id: toastId,
+        description: 'Este proceso puede tardar mientras se convierte el documento.',
+        duration: Infinity,
+      });
+
+      await onAprobar(comentarios);
+
+      toast.success('Auto aprobado correctamente', {
+        id: toastId,
+        description: 'El documento final ya quedó generado.',
+        duration: 4000,
+      });
+      setShowModalAprobar(false);
+      onClose();
+    } catch (error) {
+      console.error('Error confirmando aprobacion del auto:', error);
+      toast.error('No se pudo aprobar el auto', {
+        id: toastId,
+        description: error instanceof Error ? error.message : 'Intente nuevamente.',
+      });
+    } finally {
+      setAprobandoAuto(false);
+    }
   };
 
   const handleConfirmarDevolucion = (motivo: string, comentarios: string, archivos: File[]) => {
@@ -596,7 +647,7 @@ export function ModalRevisionAuto({
         exit={{ opacity: 0 }}
         className="fixed inset-0 flex items-center justify-center"
         style={{ zIndex: 10000, backgroundColor: 'rgba(0,0,0,0.60)', padding: '4vh 4vw' }}
-        onClick={(e) => e.target === e.currentTarget && onClose()}
+        onClick={(e) => e.target === e.currentTarget && !aprobandoAuto && onClose()}
       >
         <motion.div
           initial={{ opacity: 0, scale: 0.97, y: 12 }}
@@ -622,8 +673,9 @@ export function ModalRevisionAuto({
                 </div>
               </div>
               <button
-                onClick={onClose}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                onClick={() => !aprobandoAuto && onClose()}
+                disabled={aprobandoAuto}
+                className={`p-2 hover:bg-gray-100 rounded-lg transition-colors ${aprobandoAuto ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <X className="w-5 h-5" style={{ color: '#6B7280' }} />
               </button>
@@ -1037,7 +1089,8 @@ export function ModalRevisionAuto({
             {mostrarBotonDevolver && onDevolver && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_DEVOLVER) && (
               <button
                 onClick={() => setShowModalDevolver(true)}
-                className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors flex items-center gap-2"
+                disabled={aprobandoAuto}
+                className={`px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors flex items-center gap-2 ${aprobandoAuto ? 'opacity-60 cursor-not-allowed' : ''}`}
                 style={{ borderColor: '#E5E7EB', color: '#DC2626' }}
               >
                 <RotateCcw className="w-4 h-4" />
@@ -1047,16 +1100,18 @@ export function ModalRevisionAuto({
             {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR) && (
               <button
                 onClick={() => setShowModalAprobar(true)}
-                className="flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+                disabled={aprobandoAuto}
+                className={`flex-1 px-6 py-3 rounded-xl font-semibold text-white hover:opacity-90 transition-opacity flex items-center justify-center gap-2 ${aprobandoAuto ? 'opacity-80 cursor-wait' : ''}`}
                 style={{ background: '#059669' }}
               >
-                <CheckCircle className="w-4 h-4" />
-                Aprobar Auto
+                {aprobandoAuto ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                {aprobandoAuto ? 'Aprobando...' : 'Aprobar Auto'}
               </button>
             )}
             <button
               onClick={onClose}
-              className="px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors"
+              disabled={aprobandoAuto}
+              className={`px-6 py-3 rounded-xl font-semibold border-2 hover:bg-gray-100 transition-colors ${aprobandoAuto ? 'opacity-60 cursor-not-allowed' : ''}`}
               style={{ borderColor: '#E5E7EB', color: '#6B7280' }}
             >
               Cerrar
@@ -1070,8 +1125,11 @@ export function ModalRevisionAuto({
         {showModalAprobar && (
           <ModalAprobacion
             onConfirm={handleConfirmarAprobacion}
-            onCancel={() => setShowModalAprobar(false)}
+            onCancel={() => {
+              if (!aprobandoAuto) setShowModalAprobar(false);
+            }}
             borrador={borrador}
+            isProcessing={aprobandoAuto}
           />
         )}
         {showModalDevolver && (

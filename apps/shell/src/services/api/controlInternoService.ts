@@ -348,15 +348,9 @@ class ControlInternoAPIClient {
       'Content-Type': 'application/json; charset=utf-8',
       'Accept': 'application/json; charset=utf-8',
     };
-
-    // Agregar token si existe
-    const token = localStorage.getItem('esap_auth_token');
-    if (token) {
-      defaultHeaders['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: {
         ...defaultHeaders,
         ...options.headers,
@@ -429,17 +423,12 @@ class ControlInternoAPIClient {
     onProgress?: (progress: number) => void
   ): Promise<T> {
     const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
-    
-    // Agregar token si existe
     const headers: HeadersInit = {};
-    const token = localStorage.getItem('esap_auth_token');
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
     // NO establecer Content-Type para FormData - el navegador lo hará automáticamente con el boundary
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+      xhr.withCredentials = true;
 
       // Manejar progreso
       if (onProgress) {
@@ -1101,6 +1090,27 @@ class ControlInternoService {
   }
 
   /**
+   * Borrador del asistente «Nuevo plan» persistido en servidor (por usuario).
+   * Permite recuperar el progreso tras cerrar sesión o cambiar de dispositivo.
+   */
+  async getWizardBorradorPlanAnual(): Promise<{
+    payload: Record<string, unknown> | null;
+    updatedAt: string | null;
+  }> {
+    return client.get(`/plan-anual-5-roles/wizard-borrador/me`);
+  }
+
+  async saveWizardBorradorPlanAnual(
+    payload: Record<string, unknown>,
+  ): Promise<{ ok: boolean; savedAt: string }> {
+    return client.put(`/plan-anual-5-roles/wizard-borrador/me`, { payload });
+  }
+
+  async deleteWizardBorradorPlanAnual(): Promise<void> {
+    await client.delete(`/plan-anual-5-roles/wizard-borrador/me`);
+  }
+
+  /**
    * Crea un nuevo plan anual
    */
   async createPlanAnual(data: { año: number; responsable?: string; estado?: string }): Promise<any> {
@@ -1456,10 +1466,8 @@ class ControlInternoService {
    */
   async descargarDocumentoAccion(planId: string, documentoId: string): Promise<Blob> {
     const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/planes-mejoramiento/${planId}/documentos/${documentoId}/descargar`;
-    const token = localStorage.getItem('esap_auth_token');
-    
     const response = await fetch(url, {
-      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      credentials: 'include',
     });
     
     if (!response.ok) {
@@ -1816,12 +1824,8 @@ class ControlInternoService {
    */
   async downloadEvidencia(id: string): Promise<Blob> {
     const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/evidencias/${id}/download`;
-    const token = localStorage.getItem('esap_auth_token');
-    
     const response = await fetch(url, {
-      headers: {
-        'Authorization': token ? `Bearer ${token}` : '',
-      },
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -1927,6 +1931,124 @@ class ControlInternoService {
 
   async completarComunicacion(auditoriaId: string): Promise<any> {
     return client.post<any>(`/etapas-auditoria/auditoria/${auditoriaId}/comunicacion/completar`);
+  }
+
+  // ==========================================================================
+  // PORTAL AUDITADO (responsable del área auditada)
+  // Endpoints específicos protegidos por ownership (no requieren permisos de OCI)
+  // ==========================================================================
+
+  /**
+   * Lista las auditorías en las que el usuario autenticado figura como
+   * responsable del área auditada. Solo expone las que ya fueron notificadas.
+   *
+   * Backend: GET /auditorias/auditado/mis-auditorias
+   */
+  async getMisAuditoriasAuditado(): Promise<any[]> {
+    return client.get<any[]>('/auditorias/auditado/mis-auditorias');
+  }
+
+  /**
+   * Detalle de una de mis auditorías (auditado).
+   * Backend: GET /auditorias/auditado/:id
+   */
+  async getMiAuditoria(auditoriaId: string): Promise<any> {
+    return client.get<any>(`/auditorias/auditado/${auditoriaId}`);
+  }
+
+  /**
+   * Hallazgos de una de mis auditorías (auditado).
+   * Backend: GET /auditorias/auditado/:id/hallazgos
+   */
+  async getMisHallazgosAuditoria(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/auditorias/auditado/${auditoriaId}/hallazgos`);
+  }
+
+  /**
+   * Documentos de una de mis auditorías (auditado).
+   * Backend: GET /auditorias/auditado/:id/documentos
+   */
+  async getMisDocumentosAuditoria(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/auditorias/auditado/${auditoriaId}/documentos`);
+  }
+
+  /**
+   * Estado del flujo de comunicación visible para el auditado.
+   * Backend: GET /auditorias/auditado/:id/comunicacion/estado
+   */
+  async getEstadoComunicacionAuditado(auditoriaId: string): Promise<{
+    informePreliminarGenerado: boolean;
+    informeFinalGenerado?: boolean;
+    informeEjecutivoGenerado?: boolean;
+    hayControversiasPendientes: boolean;
+    conteo: { pendiente: number; aceptado: number; enControversia: number };
+  }> {
+    return client.get<any>(
+      `/auditorias/auditado/${auditoriaId}/comunicacion/estado`,
+    );
+  }
+
+  /**
+   * Subir un documento (típicamente evidencia para una controversia).
+   * Backend: POST /auditorias/auditado/:id/documentos
+   */
+  async uploadDocumentoAuditado(
+    auditoriaId: string,
+    file: File,
+    metadata: {
+      nombre: string;
+      descripcion?: string;
+      tipoDocumento: string;
+      etapa?: string;
+      hallazgoId?: string;
+      planMejoramientoId?: string;
+    },
+    onProgress?: (progress: number) => void,
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('nombre', metadata.nombre);
+    if (metadata.descripcion) formData.append('descripcion', metadata.descripcion);
+    formData.append('tipoDocumento', metadata.tipoDocumento);
+    if (metadata.etapa) formData.append('etapa', metadata.etapa);
+    if (metadata.hallazgoId) formData.append('hallazgoId', metadata.hallazgoId);
+    if (metadata.planMejoramientoId)
+      formData.append('planMejoramientoId', metadata.planMejoramientoId);
+
+    return client.upload<any>(
+      `/auditorias/auditado/${auditoriaId}/documentos`,
+      formData,
+      onProgress,
+    );
+  }
+
+  /**
+   * El auditado acepta un hallazgo notificado.
+   * Backend: POST /auditorias/auditado/:id/hallazgos/:hallazgoId/aceptar
+   */
+  async aceptarMiHallazgo(
+    auditoriaId: string,
+    hallazgoId: string,
+  ): Promise<any> {
+    return client.post<any>(
+      `/auditorias/auditado/${auditoriaId}/hallazgos/${hallazgoId}/aceptar`,
+      {},
+    );
+  }
+
+  /**
+   * El auditado presenta controversia (con documento ya subido previamente).
+   * Backend: POST /auditorias/auditado/:id/hallazgos/:hallazgoId/controversia
+   */
+  async presentarMiControversia(
+    auditoriaId: string,
+    hallazgoId: string,
+    data: { argumentos: string; documentoId: string; documentoNombre: string },
+  ): Promise<any> {
+    return client.post<any>(
+      `/auditorias/auditado/${auditoriaId}/hallazgos/${hallazgoId}/controversia`,
+      data,
+    );
   }
 
   // ==========================================================================

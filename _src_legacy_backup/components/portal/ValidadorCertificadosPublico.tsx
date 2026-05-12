@@ -260,7 +260,7 @@ export function ValidadorCertificadosPublico({ onBack }: ValidadorCertificadosPu
                       color: '#1F2937'
                     }}
                   >
-                    Certificado de Grado
+                    Verificación de Validación de Títulos
                   </h3>
 
                   <p 

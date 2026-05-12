@@ -229,7 +229,7 @@ CREATE TABLE academic_registration.graduation_certificate_requests (
     graduate_email character varying(255),
     graduate_phone character varying(50),
     CONSTRAINT chk_certificate_type CHECK (((certificate_type)::text = ANY ((ARRAY['STANDARD'::character varying, 'OFFICIAL'::character varying, 'INTERNATIONAL'::character varying])::text[]))),
-    CONSTRAINT chk_request_status CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'VALIDATED'::character varying, 'PROCESSING'::character varying, 'COMPLETED'::character varying, 'REJECTED'::character varying])::text[]))),
+    CONSTRAINT chk_request_status CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'VALIDATED'::character varying, 'PROCESSING'::character varying, 'COMPLETED'::character varying, 'REJECTED'::character varying, 'EXPIRED'::character varying])::text[]))),
     CONSTRAINT chk_requester_type CHECK (((requester_type)::text = ANY ((ARRAY['GRADUATE'::character varying, 'COMPANY'::character varying])::text[])))
 );
 

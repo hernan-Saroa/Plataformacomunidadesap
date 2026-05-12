@@ -25,7 +25,25 @@ export class DocumentosConsultaController {
                 const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
                 cb(null, `${randomName}${extname(file.originalname)}`);
             }
-        })
+        }),
+        fileFilter: (req, file, cb) => {
+            const esFirmado = req.body?.firmado === 'true' || req.body?.firmado === '1';
+            const WORD_MIME_TYPES = [
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'application/msword',
+            ];
+            const ALLOWED_MIME_TYPES = ['application/pdf', ...WORD_MIME_TYPES];
+            if (esFirmado) {
+                if (file.mimetype !== 'application/pdf') {
+                    return cb(new BadRequestException('Los documentos firmados deben ser en formato PDF'), false);
+                }
+            } else {
+                if (!ALLOWED_MIME_TYPES.includes(file.mimetype) && !file.originalname.match(/\.(pdf|docx?|doc)$/i)) {
+                    return cb(new BadRequestException('Solo se permiten archivos PDF o Word (.doc, .docx)'), false);
+                }
+            }
+            cb(null, true);
+        }
     }))
     async createDocumento(
         @Param('consultaId') consultaId: string,
@@ -65,7 +83,13 @@ export class DocumentosConsultaController {
                 const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
                 cb(null, `${randomName}${extname(file.originalname)}`);
             }
-        })
+        }),
+        fileFilter: (req, file, cb) => {
+            if (file.mimetype !== 'application/pdf') {
+                return cb(new BadRequestException('El documento firmado debe ser en formato PDF'), false);
+            }
+            cb(null, true);
+        }
     }))
     async replaceDocumento(
         @Param('documentoId') documentoId: string,
@@ -93,8 +117,9 @@ export class DocumentosConsultaController {
             }
         }
 
-        // Actualizar con el nuevo archivo firmado
+        // Actualizar con el nuevo archivo firmado (incluyendo nombre visible)
         return this.documentosService.update(documentoId, {
+            nombre: file.originalname,
             archivoUrl: `files/${file.filename}`,
             archivoNombreOriginal: file.originalname,
             tamanoBytes: file.size,

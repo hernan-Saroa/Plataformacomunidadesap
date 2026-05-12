@@ -85,7 +85,43 @@ export interface SolicitudCertificadoGraduado {
   reviewerName?: string;
   reviewNotes?: string;
   reviewResolution?: string;
+  approvalStatus?:
+    | "PENDING_APPROVAL"
+    | "PENDING_HEAD_APPROVAL"
+    | "APPROVED_FINAL"
+    | "REJECTED_FINAL"
+    | "OBSERVATION"
+    | "HEAD_OBSERVATION"
+    | string
+    | null;
+  reviewRecommendation?: "APPROVED" | "REJECTED" | "OBSERVATION" | string | null;
+  reviewRecommendationReason?: string | null;
+  reviewPayload?: Record<string, unknown> | null;
+  reviewSubmittedAt?: string | null;
+  reviewSubmittedBy?: string | null;
+  reviewSubmittedByName?: string | null;
+  approverDecision?: "APPROVED" | "REJECTED" | "OBSERVATION" | string | null;
+  approverNotes?: string | null;
+  approvedAt?: string | null;
+  approvedBy?: string | null;
+  approverName?: string | null;
+  headDecision?: "APPROVED" | "REJECTED" | "OBSERVATION" | string | null;
+  headNotes?: string | null;
+  headReviewedAt?: string | null;
+  headReviewedBy?: string | null;
+  headReviewerName?: string | null;
+  reviewTimeline?: Array<{
+    type: string;
+    label: string;
+    notes?: string;
+    actorId?: string;
+    actorName?: string;
+    actorEmail?: string;
+    createdAt: string;
+  }>;
+  reviewFiles?: GraduationReviewFile[];
   requestDate: string;
+  updatedAt?: string;
   validationDate?: string;
   completionDate?: string;
 }
@@ -133,6 +169,7 @@ export interface AprobarSolicitudPayload {
   reviewNotes: string;
   reviewerName?: string;
   reviewerId?: string;
+  publicNotificationNotes?: string;
   fullName?: string;
   idNumber?: string;
   email?: string;
@@ -145,6 +182,36 @@ export interface AprobarSolicitudPayload {
   numRegistro?: string;
   numFolio?: string;
   numLibro?: string;
+}
+
+export type RevisionDecision = "APPROVED" | "REJECTED" | "OBSERVATION";
+export type ReviewerRevisionDecision = Exclude<RevisionDecision, "OBSERVATION">;
+
+export interface EnviarDecisionRevisionPayload extends AprobarSolicitudPayload {
+  decision: ReviewerRevisionDecision;
+  reason?: string;
+  reviewerEmail?: string;
+}
+
+export interface ResolverAprobacionRevisionPayload {
+  decision: RevisionDecision;
+  reason?: string;
+  approverName?: string;
+  approverId?: string;
+  approverEmail?: string;
+  finalDecision?: boolean;
+}
+
+export interface GraduationReviewFile {
+  id: string;
+  requestId: string;
+  originalName: string;
+  storedName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedBy?: string;
+  uploadedAt: string;
+  url?: string;
 }
 
 /**
@@ -539,6 +606,26 @@ const graduadosService = {
     },
 
     /**
+     * Listar solicitudes con concepto de revisor pendientes de aprobacion final
+     */
+    listarAprobacion: async (): Promise<SolicitudCertificadoGraduado[]> => {
+      const response = await apiClient.get(
+        `${SERVICE_PREFIX}/certificates/solicitudes/aprobacion`,
+      );
+      return response;
+    },
+
+    contarAprobacionPendiente: async (
+      stage?: "approver" | "head",
+    ): Promise<{ count: number }> => {
+      const query = stage ? `?stage=${encodeURIComponent(stage)}` : "";
+      const response = await apiClient.get(
+        `${SERVICE_PREFIX}/certificates/solicitudes/aprobacion/pendientes-count${query}`,
+      );
+      return response;
+    },
+
+    /**
      * Obtener una solicitud por ID
      */
     obtenerPorId: async (id: string): Promise<SolicitudCertificadoGraduado> => {
@@ -555,10 +642,99 @@ const graduadosService = {
       id: string,
       reviewerName?: string,
       reviewerId?: string,
+      reviewerEmail?: string,
     ): Promise<SolicitudCertificadoGraduado> => {
       const response = await apiClient.post(
         `${SERVICE_PREFIX}/certificates/solicitudes/${id}/en-revision`,
-        { reviewerName, reviewerId },
+        { reviewerName, reviewerId, reviewerEmail },
+      );
+      return response;
+    },
+
+    listarArchivosRevision: async (
+      id: string,
+    ): Promise<GraduationReviewFile[]> => {
+      const response = await apiClient.get(
+        `${SERVICE_PREFIX}/certificates/solicitudes/${id}/revision-files`,
+      );
+      return response;
+    },
+
+    subirArchivosRevision: async (
+      id: string,
+      files: File[],
+      uploadedBy?: string,
+      uploadedByEmailOrProgress?: string | ((progress: number) => void),
+      onProgress?: (progress: number) => void,
+    ): Promise<GraduationReviewFile[]> => {
+      const formData = new FormData();
+      files.forEach((file) => formData.append("files", file));
+      if (uploadedBy) {
+        formData.append("uploadedBy", uploadedBy);
+      }
+      const uploadedByEmail =
+        typeof uploadedByEmailOrProgress === "string"
+          ? uploadedByEmailOrProgress
+          : undefined;
+      const progressHandler =
+        typeof uploadedByEmailOrProgress === "function"
+          ? uploadedByEmailOrProgress
+          : onProgress;
+      if (uploadedByEmail) {
+        formData.append("uploadedByEmail", uploadedByEmail);
+      }
+
+      const response = await apiClient.upload(
+        `${SERVICE_PREFIX}/certificates/solicitudes/${id}/revision-files`,
+        formData,
+        progressHandler,
+      );
+      return response;
+    },
+
+    descargarArchivoRevision: async (
+      requestId: string,
+      fileId: string,
+    ): Promise<Blob> => {
+      return apiClient.getBlob(
+        `${SERVICE_PREFIX}/certificates/solicitudes/${requestId}/revision-files/${fileId}/download`,
+      );
+    },
+
+    eliminarArchivoRevision: async (
+      requestId: string,
+      fileId: string,
+    ): Promise<{ mensaje: string }> => {
+      const response = await apiClient.delete(
+        `${SERVICE_PREFIX}/certificates/solicitudes/${requestId}/revision-files/${fileId}`,
+      );
+      return response;
+    },
+
+    enviarDecisionRevision: async (
+      id: string,
+      payload: EnviarDecisionRevisionPayload,
+    ): Promise<SolicitudCertificadoGraduado> => {
+      const response = await apiClient.post(
+        `${SERVICE_PREFIX}/certificates/solicitudes/${id}/decision-revision`,
+        payload,
+      );
+      return response;
+    },
+
+    resolverAprobacion: async (
+      id: string,
+      payload: ResolverAprobacionRevisionPayload,
+    ): Promise<
+      | SolicitudCertificadoGraduado
+      | {
+          request: SolicitudCertificadoGraduado;
+          certificate: CertificadoGraduado;
+        }
+    > => {
+      const response = await apiClient.post(
+        `${SERVICE_PREFIX}/certificates/solicitudes/${id}/resolver-aprobacion`,
+        payload,
       );
       return response;
     },

@@ -86,6 +86,7 @@ function apiToLocalRiesgo(api: RiesgoAPI): Riesgo {
       estado: p.estado as 'PENDIENTE' | 'EN_CURSO' | 'COMPLETADA'
     })),
     responsable: api.responsable,
+    responsableId: api.responsableId,
     documentos: [],
     timeline: [],
     fechaCreacion: new Date(api.createdAt),
@@ -515,8 +516,8 @@ export function Riesgos() {
         <VistaArchivados
           moduloNombre="Gestión de Riesgos"
           items={itemsArchivados}
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={authService.hasPermission(Permissions.GESTION_LEGAL_RIESGOS_DELETE) ? handleRestaurar : undefined}
+          onEliminarPermanente={authService.hasPermission(Permissions.GESTION_LEGAL_RIESGOS_DELETE) ? handleEliminarPermanente : undefined}
         />
       )}
 

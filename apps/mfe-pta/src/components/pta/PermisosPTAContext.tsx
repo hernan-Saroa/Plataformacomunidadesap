@@ -137,11 +137,11 @@ function deriveFromGranular(
   // Derivar nivel de aprobacion
   let nivelAprobacion = 0;
   if (has('pta.backoffice.aprobar')) {
-    // Derivar nivel del rol PTA
     if (perfil.rol === 'admin') nivelAprobacion = 3;
     else if (perfil.rol === 'decanatura') nivelAprobacion = 2;
     else if (perfil.rol === 'jefatura') nivelAprobacion = 1;
-    else nivelAprobacion = 1; // default si tiene permiso de aprobar
+    else if (has('pta.backoffice.aprobacion_masiva') && has('pta.backoffice.seguimiento')) nivelAprobacion = 3;
+    else nivelAprobacion = 1;
   }
 
   return {
@@ -302,15 +302,15 @@ function deriveRolPTA(
   const d = (dependencia || '').toLowerCase().trim();
 
   if (r.includes('super') || r.includes('administrador') || r === 'admin') return 'admin';
-  if (r.includes('gestion profesoral') || r.includes('gestión profesoral')) return 'admin';
+  if (r === 'gestion_profesoral' || r === 'gestion profesoral' || r.includes('gestión profesoral') || r.includes('gestion profesoral')) return 'admin';
   if (c.includes('gestion profesoral') || c.includes('gestión profesoral')) return 'admin';
   if (d.includes('gestion profesoral') || d.includes('gestión profesoral')) return 'admin';
   if (r.includes('director') || r.includes('subdirector')) return 'director';
   if (c.includes('director acad') || c.includes('subdirector acad')) return 'director';
-  if (r.includes('decano') || r.includes('decanatura')) return 'decanatura';
+  if (r === 'decano' || r === 'decanatura' || r.includes('decano') || r.includes('decanatura')) return 'decanatura';
   if (c.includes('decano') || c.includes('decanatura')) return 'decanatura';
   if (d.includes('decanatura')) return 'decanatura';
-  if (r.includes('jefe') || r.includes('jefatura')) return 'jefatura';
+  if (r === 'jefatura_territorial' || r.includes('jefe') || r.includes('jefatura')) return 'jefatura';
   if (c.includes('jefe de zona') || c.includes('jefatura')) return 'jefatura';
   if (r.includes('docente') || r.includes('profesor') || r.includes('catedra')) return 'docente';
   if (c.includes('docente') || c.includes('profesor')) return 'docente';

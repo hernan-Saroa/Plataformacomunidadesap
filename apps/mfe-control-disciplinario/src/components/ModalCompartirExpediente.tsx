@@ -9,14 +9,14 @@
  */
 
 import { useState } from 'react';
-import { 
-  X, 
-  Link2, 
-  QrCode, 
-  Mail, 
-  Copy, 
-  Check, 
-  Lock, 
+import {
+  X,
+  Link2,
+  QrCode,
+  Mail,
+  Copy,
+  Check,
+  Lock,
   Unlock,
   Eye,
   EyeOff,
@@ -34,6 +34,12 @@ import { ResponsiveModalWrapper } from './ResponsiveModalWrapper';
 import { ResponsiveFormGrid, FormFieldGroup, FormActions } from './ResponsiveFormGrid';
 import { useResponsive } from './hooks/useResponsive';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
+
+// Función para validar email
+const validarEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
 
 interface ModalCompartirExpedienteProps {
   expediente: {
@@ -579,7 +585,12 @@ export function ModalCompartirExpediente({ expediente, onClose }: ModalCompartir
               <input
                 type="email"
                 value={emailDestino}
-                onChange={(e) => setEmailDestino(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === '' || validarEmail(value)) {
+                    setEmailDestino(value);
+                  }
+                }}
                 placeholder="ejemplo@correo.com"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
               />

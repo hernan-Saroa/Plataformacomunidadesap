@@ -5,6 +5,7 @@ import { join } from 'path';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.getHttpAdapter().getInstance().disable?.('x-powered-by');
 
   app.set('trust proxy', true);
 

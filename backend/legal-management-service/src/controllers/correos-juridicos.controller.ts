@@ -247,15 +247,26 @@ export class CorreosJuridicosController {
     }
 
     /**
-     * Forward an email — maintains thread via Graph API natively
+     * Forward an email — maintains thread via Graph API natively.
+     * Original attachments are included automatically by Graph.
+     * Additional attachments uploaded by the user are appended via sendMail.
      */
     @Post(':id/forward')
     @HttpCode(HttpStatus.OK)
     async forwardEmail(
         @Param('id') id: string,
-        @Body() body: { to: string; comment: string }
+        @Body() body: {
+            to: string;
+            comment: string;
+            attachments?: { name: string; contentBytes: string; contentType: string }[];
+        }
     ): Promise<{ success: boolean; correo?: CorreoJuridico }> {
-        const result = await this.correosService.forwardEmail(id, body.to || '', body.comment || '');
+        const result = await this.correosService.forwardEmail(
+            id,
+            body.to || '',
+            body.comment || '',
+            body.attachments,
+        );
         return { success: result.success, correo: result.correo };
     }
 

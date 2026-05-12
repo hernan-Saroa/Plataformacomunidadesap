@@ -117,9 +117,7 @@ class UsersService {
     const response = await fetch(
       `${apiClient['baseURL']}${API_ENDPOINTS.USERS.EXPORT}?${new URLSearchParams(params as any)}`,
       {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('esap_auth_token')}`,
-        },
+        credentials: 'include',
       }
     );
 

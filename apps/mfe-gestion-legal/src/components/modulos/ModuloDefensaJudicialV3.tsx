@@ -88,10 +88,15 @@ export function ModuloDefensaJudicialV3() {
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
+  const [filtroAbogado, setFiltroAbogado] = useState<string>('TODOS');
+  const [abogadosList, setAbogadosList] = useState<{ id: string; nombre: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Estado local para manejar drag and drop
   const [expedientes, setExpedientes] = useState<ExpedienteJudicial[]>([]);
+
+  // ✅ Estado para expediente abierto desde notificación (evento legal:open-expediente-detail)
+  const [expedienteDesdeNotificacion, setExpedienteDesdeNotificacion] = useState<ExpedienteJudicial | null>(null);
 
   // ✅ Estado para items archivados/eliminados (cargados desde backend)
   const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
@@ -164,6 +169,66 @@ export function ModuloDefensaJudicialV3() {
     }
   }, [tipoVista]);
 
+  // ✅ Listener: Abrir expediente desde notificación (evento legal:open-expediente-detail)
+  // GestionLegalFull cambia la vista activa y luego dispara este evento con {radicado, procesoId}.
+  // Buscamos por radicado en la lista local; si no está, cargamos todos y filtramos.
+  useEffect(() => {
+    const abrirPorRadicado = async (radicado: string) => {
+      // 1. Buscar en expedientes ya en memoria (por radicado, uuid o id)
+      let exp = expedientes.find(
+        e => (e as any).radicado === radicado || e.id === radicado || (e as any).uuid === radicado
+      );
+
+      if (!exp) {
+        // 2. Cargar lista completa y buscar por radicado
+        try {
+          toast.loading(`Buscando expediente ${radicado}...`, { id: 'load-notif-exp' });
+          const todos = await legalService.getExpedientes();
+          const encontrado = todos.find(
+            (e: any) => e.radicado === radicado || e.id === radicado || e.uuid === radicado
+          );
+          toast.dismiss('load-notif-exp');
+          if (encontrado) {
+            exp = encontrado as any;
+          } else {
+            toast.error(`No se encontró el expediente ${radicado}`);
+            return;
+          }
+        } catch {
+          toast.dismiss('load-notif-exp');
+          toast.error(`Error cargando expediente ${radicado}`);
+          return;
+        }
+      }
+
+      setExpedienteDesdeNotificacion(exp);
+    };
+
+    const handleOpenFromNotification = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      if (detail.modulo && detail.modulo !== 'defensa-judicial') return; // Solo para este módulo
+      const radicado = detail.radicado;
+      if (!radicado) return;
+      abrirPorRadicado(radicado);
+    };
+
+    window.addEventListener('legal:open-expediente-detail', handleOpenFromNotification);
+
+    // Respaldo: procesar intención pendiente al montar (llega antes que el listener)
+    const pending = sessionStorage.getItem('legal:pendingOpenExpediente');
+    if (pending) {
+      try {
+        const detail = JSON.parse(pending);
+        if (detail.modulo === 'defensa-judicial' && detail.radicado) {
+          sessionStorage.removeItem('legal:pendingOpenExpediente');
+          abrirPorRadicado(detail.radicado);
+        }
+      } catch { /* ignore */ }
+    }
+
+    return () => window.removeEventListener('legal:open-expediente-detail', handleOpenFromNotification);
+  }, [expedientes]);
+
   // Cargar expedientes desde el backend
   const loadExpedientes = async () => {
     try {
@@ -175,13 +240,18 @@ export function ModuloDefensaJudicialV3() {
         legalService.getAbogadosDashboard()
       ]);
 
-      // Crear mapa de abogados para búsqueda rápida
+      // Crear mapa de abogados para búsqueda rápida y poblar lista para filtro
       const abogadosMap = new Map();
       if (Array.isArray(abogadosData)) {
+        const lista: { id: string; nombre: string }[] = [];
         abogadosData.forEach((a: any) => {
           const nombre = a.nombreCompleto || `${a.nombre || ''} ${a.apellido || ''}`.trim();
-          if (a.id) abogadosMap.set(a.id, nombre);
+          if (a.id) {
+            abogadosMap.set(a.id, nombre);
+            lista.push({ id: a.id, nombre });
+          }
         });
+        setAbogadosList(lista);
       }
 
       // Mapear datos del backend al tipo ExpedienteJudicial del frontend
@@ -308,6 +378,7 @@ export function ModuloDefensaJudicialV3() {
 
             return 'Sin asignar';
           })(),
+          abogadoSustanciador: exp.abogadoSustanciador, // UUID del abogado para comparación de identidad
           hechos: '',
           pretensiones: exp.pretensionDemandante || '',
           pretensionDemandante: exp.pretensionDemandante,
@@ -332,8 +403,85 @@ export function ModuloDefensaJudicialV3() {
           demandadoEmail: exp.demandadoEmail,
         }
       });
-      setExpedientes(mapped);
-      console.log('🗂️ [DEBUG] Mapped expedientes:', mapped.map(e => ({ id: e.id, etapa: e.etapa, radicado: e.radicado })));
+      // Si el usuario tiene rol RESUELVE_GESTION_LEGAL, solo mostrar sus demandas asignadas
+      const currentUser = authService.getCurrentUser() as any;
+      const isResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
+      let expedientesFiltrados = mapped;
+      if (isResuelve && currentUser) {
+        // El objeto guardado en localStorage puede ser ProfesionalUser (person.email, person.first_name)
+        // o AuthUser (email, fullName). Intentamos ambos formatos.
+        const cuEmail: string = (
+          currentUser.email ??
+          currentUser.person?.email ??
+          currentUser.mail ??
+          ''
+        ).toLowerCase();
+        const cuName: string = (
+          currentUser.fullName ??
+          currentUser.full_name ??
+          currentUser.name ??
+          (currentUser.firstName || currentUser.first_name
+            ? `${currentUser.firstName ?? currentUser.first_name ?? ''} ${currentUser.lastName ?? currentUser.last_name ?? ''}`.trim()
+            : null) ??
+          (currentUser.person?.first_name
+            ? `${currentUser.person.first_name ?? ''} ${currentUser.person.last_name ?? ''}`.trim()
+            : null) ??
+          ''
+        ).toLowerCase();
+        // Todos los posibles IDs del usuario actual
+        const cuIds = new Set<string>(
+          [
+            currentUser.id,
+            currentUser.id_user,
+            currentUser.user?.id,
+            currentUser.user?.id_user,
+            currentUser.person?.id,
+          ].filter(Boolean)
+        );
+
+        console.log('[DEBUG RESUELVE] currentUser raw:', JSON.stringify(currentUser));
+        console.log('[DEBUG RESUELVE] email detectado:', cuEmail, '| nombre detectado:', cuName, '| ids:', [...cuIds]);
+        console.log('[DEBUG RESUELVE] abogadosData:', JSON.stringify(abogadosData));
+        console.log('[DEBUG RESUELVE] abogadoSustanciador en expedientes:', mapped.map(e => e.abogadoSustanciador));
+
+        const myAbogado = Array.isArray(abogadosData)
+          ? abogadosData.find((a: any) => {
+              // Por ID (cualquier variante)
+              if (a.id && cuIds.has(a.id)) return true;
+              if ((a as any).rawId && cuIds.has((a as any).rawId)) return true;
+              if ((a as any).authId && cuIds.has((a as any).authId)) return true;
+              // Por email
+              if (cuEmail && a.email && (a.email as string).toLowerCase() === cuEmail) return true;
+              // Por nombre
+              const aNombre = (a.nombre ?? a.nombreCompleto ?? '').toLowerCase();
+              if (cuName && aNombre && aNombre === cuName) return true;
+              return false;
+            })
+          : null;
+
+        console.log('[DEBUG RESUELVE] myAbogado encontrado:', myAbogado ? JSON.stringify(myAbogado) : 'NINGUNO');
+
+        if (myAbogado) {
+          expedientesFiltrados = mapped.filter(exp => {
+            if (myAbogado.id && exp.abogadoSustanciador === myAbogado.id) return true;
+            if ((myAbogado as any).rawId && exp.abogadoSustanciador === (myAbogado as any).rawId) return true;
+            if ((myAbogado as any).authId && exp.abogadoSustanciador === (myAbogado as any).authId) return true;
+            if (myAbogado.nombre && exp.abogadoAsignado === myAbogado.nombre) return true;
+            if (myAbogado.nombreCompleto && exp.abogadoAsignado === myAbogado.nombreCompleto) return true;
+            return false;
+          });
+        } else {
+          // myAbogado no encontrado: el usuario podría no estar en la lista de abogados.
+          // Intentar filtrar directamente por sus IDs contra abogadoSustanciador
+          expedientesFiltrados = mapped.filter(exp =>
+            cuIds.has(exp.abogadoSustanciador as string)
+          );
+        }
+        console.log('[DEBUG RESUELVE] expedientes filtrados:', expedientesFiltrados.length, 'de', mapped.length);
+      }
+
+      setExpedientes(expedientesFiltrados);
+      console.log('🗂️ [DEBUG] Mapped expedientes:', expedientesFiltrados.map(e => ({ id: e.id, etapa: e.etapa, radicado: e.radicado })));
       console.log('📊 [DEBUG] estadosActivos:', estadosActivos.map((e: any) => e.id));
     } catch (error) {
       console.error('Error cargando expedientes:', error);
@@ -430,7 +578,7 @@ export function ModuloDefensaJudicialV3() {
       exp.juzgado?.toLowerCase().includes(busqueda.toLowerCase());
 
     // Filtro por Tipo de Proceso (Flexible: revisa tipo, medioControl y tipoAccion)
-    // Esto asegura que sirva tanto para "Nulidad y Restablecimiento" (Medio Control) 
+    // Esto asegura que sirva tanto para "Nulidad y Restablecimiento" (Medio Control)
     // como para "Tutela" (Tipo Acción)
     const matchTipo = filtroTipo === 'TODOS' ||
       exp.tipo === filtroTipo ||
@@ -438,7 +586,12 @@ export function ModuloDefensaJudicialV3() {
       exp.medioControl === filtroTipo ||
       (exp.medioControl && exp.medioControl.includes(filtroTipo)); // Parcial match por si acaso
 
-    return matchBusqueda && matchTipo;
+    // Filtro por Abogado (solo visible para Jefe/Secretariado)
+    const matchAbogado = filtroAbogado === 'TODOS' ||
+      exp.abogadoAsignado === filtroAbogado ||
+      exp.abogadoResponsable === filtroAbogado;
+
+    return matchBusqueda && matchTipo && matchAbogado;
   });
 
   // Función para normalizar strings (quitar acentos, mojibake y convertir a minúsculas)
@@ -744,7 +897,20 @@ export function ModuloDefensaJudicialV3() {
               { value: 'TODOS', label: 'Todos los tipos' },
               ...tiposProcesosActivos.map((t: any) => ({ value: t.id, label: t.nombre }))
             ]
-          }
+          },
+          ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ABOGADO_REASIGNAR)
+            ? [{
+                type: 'select' as const,
+                label: 'Abogado',
+                value: filtroAbogado,
+                onChange: setFiltroAbogado,
+                options: [
+                  { value: 'TODOS', label: 'Todos los abogados' },
+                  { value: 'Sin asignar', label: 'Sin abogado asignado' },
+                  ...abogadosList.map(a => ({ value: a.nombre, label: a.nombre }))
+                ]
+              }]
+            : [])
         ]}
         totalItems={totalExpedientes}
         filteredItems={expedientesVisibles.length}
@@ -752,6 +918,7 @@ export function ModuloDefensaJudicialV3() {
           setBusqueda('');
           setFiltroEtapa('TODAS');
           setFiltroTipo('TODOS');
+          setFiltroAbogado('TODOS');
         }}
       />
 
@@ -803,7 +970,7 @@ export function ModuloDefensaJudicialV3() {
           expedientes={etapas.flatMap((e: any) => e.expedientes)}
           isMobile={isMobile}
           isTablet={isTablet}
-          onMoverExpediente={handleMoverExpediente}
+          onMoverExpediente={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) ? handleMoverExpediente : undefined}
         />
       )}
 
@@ -812,8 +979,8 @@ export function ModuloDefensaJudicialV3() {
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Defensa Judicial"
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ARCHIVAR) ? handleRestaurar : undefined}
+          onEliminarPermanente={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ARCHIVAR) ? handleEliminarPermanente : undefined}
         />
       )}
 
@@ -823,6 +990,16 @@ export function ModuloDefensaJudicialV3() {
         onClose={() => setModalNuevaDemandaOpen(false)}
         onSave={handleSaveNuevaDemanda}
       />
+
+      {/* ✅ Modal Expediente abierto desde notificación (nivel padre) */}
+      {expedienteDesdeNotificacion && (
+        <ModalExpediente
+          isOpen={true}
+          onClose={() => setExpedienteDesdeNotificacion(null)}
+          expediente={expedienteDesdeNotificacion}
+          onUpdate={loadExpedientes}
+        />
+      )}
     </div>
   );
 }
@@ -989,9 +1166,12 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
   const procesoVencido = expediente.diasRestantes < 0;
   const ultimaActuacion = expediente.ultimaActuacion?.descripcion || `Expediente en etapa de ${expediente.etapa}`;
 
+  const canDrag = authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT);
+
   const [{ isDragging }, drag] = useDrag({
     type: ItemTypes.EXPEDIENTE,
     item: { id: expediente.id, etapa: etapaActual },
+    canDrag: () => canDrag,
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging(),
     }),
@@ -1000,7 +1180,7 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
   const opacity = isDragging ? 0.5 : 1;
 
   return (
-    <div ref={drag} style={{ opacity, cursor: 'move' }} className="h-[380px]">
+    <div ref={drag} style={{ opacity, cursor: canDrag ? 'move' : 'default' }} className="h-[380px]">
       <KanbanCard
         accentColor={ESAP_TOKENS.colors.primary}
         isDragging={isDragging}
@@ -1026,14 +1206,16 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
                   {expediente.diasRestantes < 0 ? `${Math.abs(expediente.diasRestantes)}d` : `${expediente.diasRestantes}d`}
                 </span>
               </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); setMotivoEliminar(''); setShowEliminarModal(true); }}
-                disabled={eliminando}
-                title="Eliminar demanda"
-                className="p-1 rounded-md transition-all bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 disabled:opacity-50"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setMotivoEliminar(''); setShowEliminarModal(true); }}
+                  disabled={eliminando}
+                  title="Eliminar demanda"
+                  className="p-1 rounded-md transition-all bg-red-50 text-red-500 border border-red-200 hover:bg-red-100 hover:text-red-700 disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           }
         />

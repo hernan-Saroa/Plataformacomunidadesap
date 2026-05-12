@@ -147,6 +147,10 @@ export function GraduatesManagementModule() {
   const [exportEndDate, setExportEndDate] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [selectedUser, setSelectedUser] = useState<GraduateRow | null>(null);
+  const canEditGraduates = authService.hasPermission(Permissions.GRADUATES_EDIT);
+  const canExportGraduates = authService.hasPermission(Permissions.GRADUATES_EXPORT);
+  const canVerifyGraduateCertificates = authService.hasPermission(Permissions.GRADUATES_VERIFY_CERTIFICATE);
+  const canShowGraduateRowActions = canEditGraduates || canVerifyGraduateCertificates;
   const MAX_FILES_PER_GRADUATE = 5;
   const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024;
   const MAX_UPLOAD_SIZE_LABEL = '10 MB';
@@ -649,17 +653,7 @@ export function GraduatesManagementModule() {
     try {
       const response = await fetch(fileUrl, {
         method: 'GET',
-        headers: (
-          localStorage.getItem('esap_auth_token') ||
-          localStorage.getItem('esap_access_token')
-        )
-          ? {
-              Authorization: `Bearer ${
-                localStorage.getItem('esap_auth_token') ||
-                localStorage.getItem('esap_access_token')
-              }`,
-            }
-          : undefined,
+        credentials: 'include',
       });
       if (!response.ok) {
         throw new Error('No se pudo descargar el archivo');
@@ -1041,6 +1035,13 @@ export function GraduatesManagementModule() {
 
 
   const handleEdit = (user: GraduateRow) => {
+    if (!canEditGraduates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Editar Graduado para modificar este registro.',
+      });
+      return;
+    }
+
     const sanitizedPhone = (user.phone || '').replace(/\D+/g, '').slice(0, 10);
     setSelectedUser(user);
     setEditForm({
@@ -1092,6 +1093,13 @@ export function GraduatesManagementModule() {
   };
 
   const handleVerifyTitle = (user?: GraduateRow) => {
+    if (!canVerifyGraduateCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Verificar Certificado para abrir esta validacion.',
+      });
+      return;
+    }
+
     // setSelectedUser(user);
     // window.location.href = '/verificar-certificado-graduado';
     // ✅ NUEVO: Abrir vista completa de validación de certificados de grado
@@ -1115,6 +1123,13 @@ export function GraduatesManagementModule() {
   // Handlers para confirmar acciones en modales
   const confirmEdit = async () => {
     if (!selectedUser) return;
+    if (!canEditGraduates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Editar Graduado para guardar cambios.',
+      });
+      return;
+    }
+
     const trimmedFirstName = normalizeSpaces(editForm.firstName);
     const trimmedLastName = normalizeSpaces(editForm.lastName);
     const trimmedDocument = editForm.document.trim();
@@ -1282,6 +1297,13 @@ export function GraduatesManagementModule() {
   };
 
   const handleOpenExportModal = () => {
+    if (!canExportGraduates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Exportar Graduados para descargar esta informacion.',
+      });
+      return;
+    }
+
     if (filteredUsers.length > 0) {
       setIsExportModalOpen(true);
       return;
@@ -1296,6 +1318,12 @@ export function GraduatesManagementModule() {
 
   const handleExportGraduates = () => {
     if (isExporting) return;
+    if (!canExportGraduates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Exportar Graduados para descargar esta informacion.',
+      });
+      return;
+    }
 
     const startDate = parseDateOnly(exportStartDate);
     const endDate = parseDateOnly(exportEndDate);
@@ -1417,20 +1445,20 @@ export function GraduatesManagementModule() {
         title="Gestión de Graduados"
         description="Administra graduados y genera certificados de verificación de títulos"
         icon={GraduationCap}
-        primaryAction={{
+        primaryAction={canVerifyGraduateCertificates ? {
           label: "Verificar Certificado",
           icon: BadgeCheck,
           onClick: () => handleVerifyTitle(),
           variant: "primary"
-        }}
-        secondaryActions={[
+        } : undefined}
+        secondaryActions={canExportGraduates ? [
           {
             label: "Exportar",
             icon: Download,
             onClick: handleOpenExportModal,
             variant: "secondary"
           }
-        ]}
+        ] : []}
       />
 
       {/* Búsqueda y Filtros */}
@@ -1786,6 +1814,7 @@ export function GraduatesManagementModule() {
                         <Eye className="w-4 h-4" />
                       </button>
 
+                      {canShowGraduateRowActions && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
@@ -1805,13 +1834,13 @@ export function GraduatesManagementModule() {
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {authService.hasPermission(Permissions.GRADUATES_EDIT) && (
+                          {canEditGraduates && (
                           <DropdownMenuItem onClick={() => handleEdit(user)}>
                             <Edit className="w-4 h-4 mr-2" />
                             Editar
                           </DropdownMenuItem>
                           )}
-                          {authService.hasPermission(Permissions.GRADUATES_VERIFY_CERTIFICATE) && (
+                          {canVerifyGraduateCertificates && (
                           <DropdownMenuItem onClick={() => handleVerifyTitle(user)}>
                             <BadgeCheck className="w-4 h-4 mr-2" />
                             Verificar Certificado
@@ -1819,6 +1848,7 @@ export function GraduatesManagementModule() {
                           )}
                         </DropdownMenuContent>
                       </DropdownMenu>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3174,6 +3204,3 @@ export function GraduatesManagementModule() {
     </Container4K>
   );
 }
-
-
-

@@ -8,7 +8,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react'
 import { createPortal } from 'react-dom';
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, FileText, FolderOpen, AlertTriangle, Clock, Calendar,
   User, MoreVertical, Eye, Edit, Send, X, Check, Ban, Forward,
@@ -49,7 +49,19 @@ import { ModalRevisionAuto, type BorradorPendiente } from './ModalRevisionAuto';
 import { ModalAsociarProcesoAProceso } from './ModalAsociarProcesoAProceso'; // ✅ NUEVO: Modal para asociar proceso disciplinario a otro proceso
 import { convertirProcesoABorrador } from './utils-aprobacion'; // ✅ NUEVO: Utilidades de conversión
 import { obtenerAccionesPorEtapa, obtenerDescripcionEtapa, type EtapaProceso } from './accionesPorEtapa'; // ✅ NUEVO: Acciones por etapa
-import { useResponsive } from './hooks/useResponsive'; // ✅ Hook responsive simplificado
+import { useResponsive } from './hooks/useResponsive';
+
+// ==================== HELPERS GLOBALES ====================
+const getNombre = (p: any): string => {
+  if (!p) return 'Sin información';
+  return typeof p === 'string' ? p : (p.nombre || 'Sin información');
+};
+
+const getId = (p: any): string => {
+  if (!p || typeof p === 'string') return '';
+  return p.numeroIdentificacion ? `${p.tipoIdentificacion}: ${p.numeroIdentificacion}` : '';
+};
+
 import { ModalDetallesProceso } from './ModalDetallesProceso'; // ✅ Modal World Class con pestañas
 import { ModalDetallesAsociacion } from './ModalDetallesAsociacion'; // ✅ Modal para ver detalles de asociación de procesos
 import { WizardConvertirProcesoWorldClass } from './WizardConvertirProcesoWorldClass'; // ✅ Wizard conversión con disponibilidad de profesionales
@@ -85,6 +97,8 @@ function normalizeText(text: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 }
+
+
 
 /** Busca si `query` (ya normalizado) aparece en algún campo textual del item */
 function itemMatchesSearch(item: Item, normalizedQuery: string): boolean {
@@ -141,10 +155,9 @@ interface Persona {
 interface Noticia {
   id: string;
   numero: string;
-  fechaRecepcion: string;
+  fechaRecepcion: string; 
+  fechaHechos?: string;
   origen: string;
-  denunciante: Persona | string;
-  denunciado: Persona | string;
   hechos: string;
   estado: 'pendiente' | 'en-valoracion' | 'asignada' | 'archivada' | 'remitida' | 'asociada' | 'devuelta';
   prioridad: 'alta' | 'media' | 'baja';
@@ -166,12 +179,12 @@ interface Noticia {
   justificacionRemision?: string;
   // ═══ Campos extendidos de creación ═══
   territorial?: string;
-  fechaHechos?: string;
   cargo?: string;
   dependencia?: string;
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
-  denunciados?: {
+  conducta?: string;
+  denunciado?: {
     id: string;
     nombre: string;
     identificacion: string;
@@ -179,7 +192,7 @@ interface Noticia {
     lugarHechos: string;
     apoderado?: { nombre: string; cedula: string; correo: string; celular: string };
   }[];
-  denunciantes?: {
+  denunciante?: {
     id: string;
     nombre: string;
     identificacion: string;
@@ -203,8 +216,6 @@ interface Proceso {
   id: string;
   numeroProceso: string;
   noticiaOrigen: string;
-  denunciante: Persona | string;
-  denunciado: Persona | string;
   cedula: string;
   etapaActual: 'Recepción' | 'Valoración' | 'Indagación' | 'Investigación' | 'Juzgamiento' | 'Fallo';
   estadoActual: string;
@@ -230,7 +241,8 @@ interface Proceso {
   fechaHechos?: string;
   conductaSeleccionada?: string;
   conductaPersonalizada?: string;
-  denunciados?: {
+  conducta?: string;
+  denunciado?: {
     id: string;
     nombre: string;
     identificacion: string;
@@ -238,7 +250,7 @@ interface Proceso {
     lugarHechos: string;
     apoderado?: { nombre: string; cedula: string; correo: string; celular: string };
   }[];
-  denunciantes?: {
+  denunciante?: {
     id: string;
     nombre: string;
     identificacion: string;
@@ -269,6 +281,8 @@ interface Proceso {
     disciplinable: any;
   };
 }
+
+
 
 type Item = Noticia | Proceso;
 type ModalType =
@@ -334,8 +348,6 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
   const canAssociate = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ASOCIAR);
 
   const [hoverReenviar, setHoverReenviar] = useState(false);
-
-  console.log(noticia);
   
 
   const [{ isDragging }, drag] = useDrag({
@@ -396,48 +408,90 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
 
           {/* Partes: Denunciante y Denunciado — KanbanCardInfoSection */}
           <KanbanCardInfoSection>
-            <div className="flex items-start gap-2.5">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DTE</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
-                  {String(noticia.denunciante ? (typeof noticia.denunciante === 'string' ? noticia.denunciante : noticia.denunciante.nombre) : 'Sin información')}
-                </p>
-                {noticia.denunciante && typeof noticia.denunciante !== 'string' && (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {noticia.denunciante.numeroIdentificacion}
-                  </p>
-                )}
-                {(() => {
-                  
-                const apoderado = (typeof noticia.denunciante !== 'string' && noticia.denunciante?.apoderado) || noticia.denunciantes?.[0]?.apoderado;
-                return apoderado?.nombre ? (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200 pt-1">
-                    Apoderado: {apoderado.nombre}
-                  </p>
-                ) : null;
-                })()}
-              </div>
+            {/* Denunciantes */}
+            <div className="space-y-2">
+              {noticia.denunciante && noticia.denunciante.length > 0 ? (
+                noticia.denunciante.map((d, idx) => (
+                  <div key={idx} className="flex items-start gap-2.5">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
+                      {idx === 0 ? 'DTE' : `DTE ${idx + 1}`}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                        {d.nombre}
+                      </p>
+                      {d.identificacion && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                          {d.identificacion}
+                        </p>
+                      )}
+                      {d.apoderado?.nombre && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-100 pt-1">
+                          Ap: {d.apoderado.nombre}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-start gap-2.5">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DTE</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                      {getNombre(noticia.denunciante)}
+                    </p>
+                    {getId(noticia.denunciante) && (
+                      <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                        {getId(noticia.denunciante)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex items-start gap-2.5">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DDO</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
-                  {String(noticia.denunciado ? (typeof noticia.denunciado === 'string' ? noticia.denunciado : noticia.denunciado.nombre) : 'Sin información')}
-                </p>
-                {noticia.denunciado && typeof noticia.denunciado !== 'string' && (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {noticia.denunciado.numeroIdentificacion}
-                  </p>
-                )}
-                {(() => {
-                const apoderado = (typeof noticia.denunciado !== 'string' && noticia.denunciado?.apoderado) || noticia.denunciados?.[0]?.apoderado;
-                return apoderado?.nombre ? (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-200 pt-1">
-                    Apoderado: {apoderado.nombre}
-                  </p>
-                ) : null;
-                })()}
-              </div>
+            {/* Denunciados */}
+            <div className="space-y-2 pt-1 border-t border-gray-50">
+              {noticia.denunciado && noticia.denunciado.length > 0 ? (
+                noticia.denunciado.map((d, idx) => (
+                  <div key={idx} className="flex items-start gap-2.5">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
+                      {idx === 0 ? 'DDO' : `DDO ${idx + 1}`}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                        {d.nombre}
+                      </p>
+                      {d.identificacion && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                          {d.identificacion}
+                        </p>
+                      )}
+                      {d.cargo && (
+                        <p className="text-[10px] text-gray-400 truncate">{d.cargo}</p>
+                      )}
+                      {d.apoderado?.nombre && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-100 pt-1">
+                          Ap: {d.apoderado.nombre}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-start gap-2.5">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DDO</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                      {getNombre(noticia.denunciado)}
+                    </p>
+                    {getId(noticia.denunciado) && (
+                      <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                        {getId(noticia.denunciado)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
             {/* Radicador */}
             {(noticia.radicador || noticia.radicadorId) && (
@@ -731,33 +785,103 @@ function TarjetaProceso({
 
           {/* Partes: Denunciante y Denunciado — KanbanCardInfoSection */}
           <KanbanCardInfoSection>
-            <div className="flex items-start gap-2.5">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DTE</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
-                  {String(proceso.denunciante ? (typeof proceso.denunciante === 'string' ? proceso.denunciante : proceso.denunciante.nombre) : 'Sin información')}
-                </p>
-                {proceso.denunciante && typeof proceso.denunciante !== 'string' && (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {proceso.denunciante.numeroIdentificacion}
-                  </p>
-                )}
-
-              </div>
+            {/* Denunciantes */}
+            <div className="space-y-2">
+              {proceso.denunciante && proceso.denunciante.length > 0 ? (
+                proceso.denunciante.map((d, idx) => (
+                  <div key={idx} className="flex items-start gap-2.5">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
+                      {idx === 0 ? 'DTE' : `DTE ${idx + 1}`}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                        {d.nombre}
+                      </p>
+                      {d.identificacion && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                          {d.identificacion}
+                        </p>
+                      )}
+                      <div className="text-[10px] text-gray-500 mt-0.5 space-y-0.5">
+                        {d.tipo && <p className="text-blue-600 font-medium text-[11px]">{d.tipo}</p>}
+                        {d.correo && <p className="truncate flex items-start gap-1 text-[11px]"><Mail className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />{d.correo}</p>}
+                        {d.cargo && <p className="truncate text-[11px]">{d.cargo}</p>}
+                        {d.entidad && <p className="truncate text-[11px]">{d.entidad}</p>}
+                      </div>
+                      {d.apoderado?.nombre && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-100 pt-1">
+                          Ap: {d.apoderado.nombre}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-start gap-2.5">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DTE</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                      {getNombre(proceso.denunciante)}
+                    </p>
+                    {getId(proceso.denunciante) && (
+                      <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                        {getId(proceso.denunciante)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex items-start gap-2.5">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DDO</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
-                  {String(proceso.denunciado ? (typeof proceso.denunciado === 'string' ? proceso.denunciado : proceso.denunciado.nombre) : 'Sin información')}
-                </p>
-                {proceso.denunciado && typeof proceso.denunciado !== 'string' && (
-                  <p className="text-[11px] text-gray-500 truncate mt-0.5">
-                    {proceso.denunciado.numeroIdentificacion}
-                  </p>
-                )}
 
-              </div>
+            {/* Denunciados */}
+            <div className="space-y-2 pt-1 border-t border-gray-50">
+              {proceso.denunciado && proceso.denunciado.length > 0 ? (
+                proceso.denunciado.map((d, idx) => (
+                  <div key={idx} className="flex items-start gap-2.5">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">
+                      {idx === 0 ? 'DDO' : `DDO ${idx + 1}`}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                        {d.nombre}
+                      </p>
+                      {d.identificacion && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                          {d.identificacion}
+                        </p>
+                      )}
+                      {d.cargo && (
+                        <p className="text-[10px] text-gray-400 truncate">{d.cargo}</p>
+                      )}
+                      {d.lugarHechos && (
+                        <p className="text-[10px] text-gray-500 truncate flex items-start gap-1">
+                          <MapPin className="w-2.5 h-2.5 mt-0.5 flex-shrink-0" />
+                          {d.lugarHechos}
+                        </p>
+                      )}
+                      {d.apoderado?.nombre && (
+                        <p className="text-[11px] text-gray-500 truncate mt-0.5 border-t border-gray-100 pt-1">
+                          Ap: {d.apoderado.nombre}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-start gap-2.5">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex-shrink-0 pt-0.5 min-w-[30px]">DDO</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-gray-800 truncate leading-tight">
+                      {getNombre(proceso.denunciado)}
+                    </p>
+                    {getId(proceso.denunciado) && (
+                      <p className="text-[11px] text-gray-500 truncate mt-0.5">
+                        {getId(proceso.denunciado)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </KanbanCardInfoSection>
 
@@ -1161,19 +1285,136 @@ function VistaLista({
                     </div>
                   </div>
 
-                  {/* Denunciado */}
+                  {/* Denunciantes */}
                   <div className="pb-2 border-b border-gray-200">
-                    <p className="text-xs text-gray-500 mb-1">Denunciado:</p>
-                    <p className="font-bold text-sm text-gray-900">
-                      {isNoticia
-                        ? (!noticia!.denunciado ? 'N/A' : typeof noticia!.denunciado === 'string' ? noticia!.denunciado : noticia!.denunciado.nombre)
-                        : (!proceso!.denunciado ? 'N/A' : typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado.nombre)}
-                    </p>
-                    <p className="text-xs text-gray-600 mt-0.5">
-                      {isNoticia
-                        ? (noticia!.denunciado && typeof noticia!.denunciado !== 'string' && `${noticia!.denunciado.tipoIdentificacion} ${noticia!.denunciado.numeroIdentificacion}`)
-                        : (proceso!.denunciado && typeof proceso!.denunciado !== 'string' ? `${proceso!.denunciado.tipoIdentificacion} ${proceso!.denunciado.numeroIdentificacion}` : proceso!.cedula ? `CC: ${proceso!.cedula}` : '')}
-                    </p>
+                    <p className="text-xs text-gray-500 mb-2">Denunciante{isNoticia && noticia!.denunciante && noticia!.denunciante.length > 1 ? `s (${noticia!.denunciante.length})` : (!isNoticia && proceso!.denunciante && proceso!.denunciante.length > 1 ? `s (${proceso!.denunciante.length})` : '')}:</p>
+                    <div className="space-y-1">
+                      {isNoticia ? (
+                        noticia!.denunciante && noticia!.denunciante.length > 0 ? (
+                          noticia!.denunciante.map((d, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              {noticia!.denunciante!.length > 1 && (
+                                <span className="text-[10px] font-bold text-gray-400 min-w-[20px]">DTE {idx + 1}:</span>
+                              )}
+                              <div className="flex-1">
+                                <p className="font-bold text-sm text-gray-900">{d.nombre || 'Sin información'}</p>
+                                {d.identificacion && (
+                                  <p className="text-xs text-gray-600">{d.identificacion}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <p className="font-bold text-sm text-gray-900">
+                                {typeof noticia!.denunciante === 'string' ? noticia!.denunciante : noticia!.denunciante?.nombre || 'Sin información'}
+                              </p>
+                              {noticia!.denunciante && typeof noticia!.denunciante !== 'string' && noticia!.denunciante.numeroIdentificacion && (
+                                <p className="text-xs text-gray-600">{`${noticia!.denunciante.tipoIdentificacion || 'CC'}: ${noticia!.denunciante.numeroIdentificacion}`}</p>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      ) : (
+                        proceso!.denunciante && proceso!.denunciante.length > 0 ? (
+                          proceso!.denunciante.map((d, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              {proceso!.denunciante!.length > 1 && (
+                                <span className="text-[10px] font-bold text-gray-400 min-w-[20px]">DTE {idx + 1}:</span>
+                              )}
+                              <div className="flex-1">
+                                <p className="font-bold text-sm text-gray-900">{d.nombre || 'Sin información'}</p>
+                                {d.identificacion && (
+                                  <p className="text-xs text-gray-600">{d.identificacion}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <p className="font-bold text-sm text-gray-900">
+                                {typeof proceso!.denunciante === 'string' ? proceso!.denunciante : proceso!.denunciante?.nombre || 'Sin información'}
+                              </p>
+                              {proceso!.denunciante && typeof proceso!.denunciante !== 'string' && proceso!.denunciante.numeroIdentificacion && (
+                                <p className="text-xs text-gray-600">{`${proceso!.denunciante.tipoIdentificacion || 'CC'}: ${proceso!.denunciante.numeroIdentificacion}`}</p>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Denunciados */}
+                  <div className="pb-2 border-b border-gray-200">
+                    <p className="text-xs text-gray-500 mb-2">Denunciado{isNoticia && noticia!.denunciado && noticia!.denunciado.length > 1 ? `s (${noticia!.denunciado.length})` : (!isNoticia && proceso!.denunciado && proceso!.denunciado.length > 1 ? `s (${proceso!.denunciado.length})` : '')}:</p>
+                    <div className="space-y-1">
+                      {isNoticia ? (
+                        noticia!.denunciado && noticia!.denunciado.length > 0 ? (
+                          noticia!.denunciado.map((d, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              {noticia!.denunciado!.length > 1 && (
+                                <span className="text-[10px] font-bold text-gray-400 min-w-[20px]">DDO {idx + 1}:</span>
+                              )}
+                              <div className="flex-1">
+                                <p className="font-bold text-sm text-gray-900">{d.nombre || 'Sin información'}</p>
+                                {d.identificacion && (
+                                  <p className="text-xs text-gray-600">{d.identificacion}</p>
+                                )}
+                                {d.cargo && (
+                                  <p className="text-xs text-gray-500">{d.cargo}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <p className="font-bold text-sm text-gray-900">
+                                {typeof noticia!.denunciado === 'string' ? noticia!.denunciado : noticia!.denunciado?.nombre || 'Sin información'}
+                              </p>
+                              {noticia!.denunciado && typeof noticia!.denunciado !== 'string' && noticia!.denunciado.numeroIdentificacion && (
+                                <p className="text-xs text-gray-600">{`${noticia!.denunciado.tipoIdentificacion || 'CC'}: ${noticia!.denunciado.numeroIdentificacion}`}</p>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      ) : (
+                        proceso!.denunciado && proceso!.denunciado.length > 0 ? (
+                          proceso!.denunciado.map((d, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              {proceso!.denunciado!.length > 1 && (
+                                <span className="text-[10px] font-bold text-gray-400 min-w-[20px]">DDO {idx + 1}:</span>
+                              )}
+                              <div className="flex-1">
+                                <p className="font-bold text-sm text-gray-900">{d.nombre || 'Sin información'}</p>
+                                {d.identificacion && (
+                                  <p className="text-xs text-gray-600">{d.identificacion}</p>
+                                )}
+                                {d.cargo && (
+                                  <p className="text-xs text-gray-500">{d.cargo}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <p className="font-bold text-sm text-gray-900">
+                                {typeof proceso!.denunciado === 'string' ? proceso!.denunciado : proceso!.denunciado?.nombre || 'Sin información'}
+                              </p>
+                              {proceso!.denunciado && typeof proceso!.denunciado !== 'string' && proceso!.denunciado.numeroIdentificacion ? (
+                                <p className="text-xs text-gray-600">{`${proceso!.denunciado.tipoIdentificacion || 'CC'}: ${proceso!.denunciado.numeroIdentificacion}`}</p>
+                              ) : proceso!.cedula ? (
+                                <p className="text-xs text-gray-600">CC: {proceso!.cedula}</p>
+                              ) : null}
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
                   </div>
 
                   {/* Info Row */}
@@ -1334,9 +1575,9 @@ function VistaLista({
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
                     Número / Tipo
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
+                  {/* <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
                     Denunciado
-                  </th>
+                  </th> */}
                   <th className="px-4 py-3 text-left text-xs font-bold uppercase" style={{ color: '#6B7280' }}>
                     Etapa / Estado
                   </th>
@@ -1391,7 +1632,7 @@ function VistaLista({
                       </td>
 
                       {/* Denunciado */}
-                      <td className="px-4 py-4">
+                      {/* <td className="px-4 py-4">
                         <div>
                           <p className="font-semibold text-sm" style={{ color: '#1F2937' }}>
                             {isNoticia
@@ -1409,7 +1650,7 @@ function VistaLista({
                             </p>
                           )}
                         </div>
-                      </td>
+                      </td> */}
 
                       {/* Etapa / Estado */}
                       <td className="px-4 py-4">
@@ -2075,11 +2316,12 @@ function ColumnaKanban({
 interface VistaArchivadosProps {
   items: Array<any>;
   onDesarchivar: (item: any) => void;
+  onApelar: (item: any) => void;
   onVerDetalles: (item: any) => void;
   isMobile: boolean;
 }
 
-function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: VistaArchivadosProps) {
+function VistaArchivados({ items, onDesarchivar, onApelar, onVerDetalles, isMobile }: VistaArchivadosProps) {
   const [searchArchivo, setSearchArchivo] = useState('');
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'noticia' | 'proceso'>('todos');
   const [ordenarPor, setOrdenarPor] = useState<'reciente' | 'antiguo'>('reciente');
@@ -2213,7 +2455,7 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
           <div className="divide-y divide-gray-100">
             {/* Cabecera de tabla */}
             {!isMobile && (
-              <div className="grid grid-cols-[auto_1fr_140px_140px_120px_120px_100px] gap-3 px-4 py-2.5 bg-gray-50 text-[10px] font-bold text-gray-500 uppercase tracking-wider sticky top-0 z-10 border-b border-gray-200">
+              <div className="grid grid-cols-[auto_1fr_140px_140px_120px_120px_170px] gap-3 px-4 py-2.5 bg-gray-50 text-[10px] font-bold text-gray-500 uppercase tracking-wider sticky top-0 z-10 border-b border-gray-200">
                 <div className="w-8">Tipo</div>
                 <div>Identificación / Detalle</div>
                 <div>Denunciado</div>
@@ -2283,6 +2525,9 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
                         {canRestoreItem(item) && (
                           <KanbanButtonSemantic variant="success" onClick={() => onDesarchivar(item)} icon={<RefreshCw className="w-3.5 h-3.5" />} title="Restaurar al flujo activo" className="!w-auto !px-2 !py-1.5" />
                         )}
+                        {!isNoticia && canRestoreItem(item) && (
+                          <KanbanButtonTertiary compact onClick={() => onApelar(item)} icon={<Forward className="w-3.5 h-3.5" />} title="Apelar a segunda instancia" className="!flex-none !w-8" />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2292,7 +2537,7 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
               return (
                 <div
                   key={item.id}
-                  className="grid grid-cols-[auto_1fr_140px_140px_120px_120px_100px] gap-3 px-4 py-3 items-center hover:bg-gray-50/80 transition-colors group"
+                  className="grid grid-cols-[auto_1fr_140px_140px_120px_120px_170px] gap-3 px-4 py-3 items-center hover:bg-gray-50/80 transition-colors group"
                 >
                   {/* Tipo */}
                   <div className="w-8">
@@ -2363,6 +2608,11 @@ function VistaArchivados({ items, onDesarchivar, onVerDetalles, isMobile }: Vist
                       <KanbanButtonSemantic variant="success" onClick={() => onDesarchivar(item)} icon={<RefreshCw className="w-3 h-3" />} title="Restaurar al flujo activo" className="!text-[10px] !px-2 !py-1">
                         Restaurar
                       </KanbanButtonSemantic>
+                    )}
+                    {!isNoticia && canRestoreItem(item) && (
+                      <KanbanButtonSecondary onClick={() => onApelar(item)} icon={<Forward className="w-3 h-3" />} title="Apelar a segunda instancia" className="!text-[10px] !px-2 !py-1">
+                        Apelar
+                      </KanbanButtonSecondary>
                     )}
                   </div>
                 </div>
@@ -2554,245 +2804,246 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
 }
 
 // ==================== COMPONENTE PRINCIPAL ====================
-// --- FUNCIONES UTILITARIAS DE MAPEOPROCESO_MIGRADO ---
-export const toNoticiaFromApi = (noticia: ApiNoticia): Noticia => {
-  const fechaRecepcion = (noticia as any)?.fechaRecepcion;
-  const fecha = fechaRecepcion ? new Date(fechaRecepcion) : new Date();
-  const hoy = new Date();
-  const dias = Math.max(1, Math.ceil((hoy.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24)));
-  const denuncianteFuente: any = (noticia as any).denunciante;
-  const disciplinableFuente: any = (noticia as any).disciplinable || (noticia as any).denunciado;
-  const denuncianteList = Array.isArray(denuncianteFuente) ? denuncianteFuente : (denuncianteFuente ? [denuncianteFuente] : []);
-  const disciplinableList = Array.isArray(disciplinableFuente) ? disciplinableFuente : (disciplinableFuente ? [disciplinableFuente] : []);
-  const denuncianteRaw: any = denuncianteList[0] || {};
-  const denunciadoRaw: any = disciplinableList[0] || {};
-  const fechaQuejaRaw = (noticia as any).fechaQueja;
-  const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
-
-  const mapDetalle = (rawItem: any): NoticiaPersonaDetalle => ({
-    nombre: rawItem.nombre || 'Sin nombre',
-    cedula: rawItem.cedula || rawItem.numeroIdentificacion || rawItem.identificacion,
-    cargo: rawItem.cargo,
-    dependencia: rawItem.dependencia,
-    email: rawItem.email,
-    telefono: rawItem.telefono,
-    direccion: rawItem.direccion,
-    entidad: rawItem.entidad,
-    apoderado: {
-      nombre: rawItem.nombre,
-      cedula: rawItem.cedula,
-      correo: rawItem.correo,
-      celular: rawItem.celular,
-    }
-  });
-
-  const mapEstadoNoticia = (estado?: ApiNoticia['estado']) => {
+  const mapEstadoNoticia = (estado?: string) => {
     switch (estado) {
-      case 'ASIGNADA': return 'asignada';
-      case 'EN_VALORACION': return 'en-valoracion';
-      case 'DEVUELTA': return 'devuelta' as any;
-      case 'ARCHIVADA': return 'archivada';
-      default: return 'pendiente';
+      case 'ASIGNADA':
+        return 'asignada';
+      case 'EN_VALORACION':
+        return 'en-valoracion';
+      case 'DEVUELTA':
+        return 'devuelta';
+      case 'ARCHIVADA':
+        return 'archivada';
+      case 'REMITIDA':
+        return 'remitida';
+      default:
+        return 'pendiente';
     }
   };
 
-  return {
-    id: (noticia as any).id || `n${Date.now()}`,
-    numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
-    fechaRecepcion: fecha.toISOString().split('T')[0],
-    fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
-    origen: (noticia as any).origen || 'Noticia',
-    territorial: (noticia as any).territorial,
-    dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
-    denunciante: {
-      nombre: denuncianteRaw.nombre || 'Sin denunciante',
-      tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
-      numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.identificacion || denuncianteRaw.telefono || 'N/A',
-      apoderado: {
-        nombre: denuncianteRaw.nombre,
-        cedula: denuncianteRaw.cedula,
-        correo: denuncianteRaw.correo,
-        celular: denuncianteRaw.celular,
-      }
-    },
-    denunciado: {
-      nombre: denunciadoRaw.nombre || 'Sin disciplinable',
-      tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
-      numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || denuncianteRaw.identificacion || 'N/A',
-      apoderado: {
-        nombre: denunciadoRaw.nombre,
-        cedula: denunciadoRaw.cedula,
-        correo: denunciadoRaw.correo,
-        celular: denunciadoRaw.celular,
-      }
-    },
-    denunciantes: denuncianteList.map(mapDetalle),
-    disciplinables: disciplinableList.map(mapDetalle),
-    hechos: (noticia as any).hechos || '',
-    conductas: (noticia as any).conductas || [],
-    adjuntos: (noticia as any).adjuntos || [],
-    estado: mapEstadoNoticia((noticia as any).estado) as any,
-    prioridad: (noticia as any).prioridad || 'media',
-    diasPendientes: (noticia as any).diasPendientes ?? dias,
-    tipo: 'noticia',
-    kanbanStage: (noticia as any).kanbanStage,
-    etapaActual: (noticia as any).kanbanStage || (noticia as any).etapaActual || 'Recepcion',
-    radicador: (noticia as any).radicadorNombre || (noticia as any).radicador,
-    radicadorId: (noticia as any).radicadorId,
-    radicadorEmail: (noticia as any).radicadorEmail,
-    procesoAsociado: (noticia as any).procesoAsociadoId ? {
-      id: (noticia as any).procesoAsociadoId,
-      numeroProceso: (noticia as any).procesoAsociadoNumero || '',
-      fechaAsociacion: (noticia as any).procesoAsociadoFecha ? new Date((noticia as any).procesoAsociadoFecha).toISOString() : undefined,
-      justificacion: (noticia as any).procesoAsociadoJustificacion || ''
-    } : undefined
-  };
-};
+  // Transformar noticia desde API al formato interno
+  export const toNoticiaFromApi = (noticia: ApiNoticia, currentStages: any[] = []): Noticia => {
+    const fechaRecepcion = (noticia as any)?.fechaRecepcion;
+    const fecha = fechaRecepcion ? new Date(fechaRecepcion) : new Date();
+    const hoy = new Date();
+    const dias = Math.max(1, Math.ceil((hoy.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24)));
 
-export const normalizeNoticia = (raw: any): Noticia => {
-  const denuncianteFuente = raw.denunciantes || raw.denunciante;
-  const disciplinableFuente = raw.disciplinables || raw.disciplinable || raw.denunciado;
-  const denuncianteList = Array.isArray(denuncianteFuente) ? denuncianteFuente : (denuncianteFuente ? [denuncianteFuente] : []);
-  const disciplinableList = Array.isArray(disciplinableFuente) ? disciplinableFuente : (disciplinableFuente ? [disciplinableFuente] : []);
-  const denuncianteRaw = denuncianteList[0] || {};
-  const denunciadoRaw = disciplinableList[0] || {};
+    const denuncianteFuente: any = (noticia as any).denunciantes || (noticia as any).denunciante;
+    const disciplinableFuente: any = (noticia as any).disciplinables || (noticia as any).disciplinable || (noticia as any).denunciado;
+    
+    const denuncianteList = Array.isArray(denuncianteFuente) ? denuncianteFuente : (denuncianteFuente ? [denuncianteFuente] : []);
+    const disciplinableList = Array.isArray(disciplinableFuente) ? disciplinableFuente : (disciplinableFuente ? [disciplinableFuente] : []);
+    
+    const denuncianteRaw: any = denuncianteList[0] || {};
+    const denunciadoRaw: any = disciplinableList[0] || {};
+    const fechaQuejaRaw = (noticia as any).fechaQueja;
+    const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
+    const fechaHechosRaw = (noticia as any).fechaHechos;
+    const fechaHechos = fechaHechosRaw ? new Date(fechaHechosRaw) : undefined;
 
-  const mapDetalle = (item: any): NoticiaPersonaDetalle => ({
-    nombre: item.nombre || 'Sin nombre',
-    cedula: item.cedula || item.numeroIdentificacion || item.identificacion,
-    cargo: item.cargo,
-    dependencia: item.dependencia,
-    email: item.email,
-    telefono: item.telefono,
-    direccion: item.direccion,
-    entidad: item.entidad,
-    apoderado: {
-      nombre: item.nombre,
-      cedula: item.cedula,
-      correo: item.correo,
-      celular: item.celular,
+    // ✅ OBTENER ETAPA: usar kanbanStage del backend, o buscar en stages, o usar primera etapa config
+    let etapaRaw = (noticia as any).kanbanStage || (noticia as any).etapaActual;
+    let etapaNormalizada: string;
+
+    if (etapaRaw) {
+      // Buscar coincidencia en etapas del backend por id o por nombre
+      const match = currentStages.find(s => s.id === etapaRaw || s.etapa === etapaRaw || s.nombre === etapaRaw || s.etapa?.toUpperCase() === etapaRaw.toUpperCase() || s.nombre?.toUpperCase() === etapaRaw.toUpperCase());
+      if (match) {
+        etapaNormalizada = match.etapa || match.nombre || etapaRaw;
+      } else {
+        // Fallback a mapeo legacy
+        etapaNormalizada = stageLabelMap[etapaRaw] || etapaRaw;
+        // Fallback final: Title Case (solo si es uppercase)
+        if (etapaNormalizada === etapaNormalizada.toUpperCase() && etapaNormalizada.length > 3) {
+          etapaNormalizada = etapaNormalizada.charAt(0).toUpperCase() + etapaNormalizada.slice(1).toLowerCase();
+        }
+      }
+    } else {
+      // ✅ NUEVO: Si no hay etapa, usar la primera etapa de la configuración (menor orden)
+      if (currentStages.length > 0) {
+        const etapasOrdenadas = [...currentStages].sort((a, b) => (a.orden || 0) - (b.orden || 0));
+        const primeraEtapa = etapasOrdenadas[0];
+        etapaNormalizada = primeraEtapa?.etapa || primeraEtapa?.nombre || 'Recepcion';
+      } else {
+        etapaNormalizada = 'Recepcion';
+      }
     }
-  });
 
-  return {
-    ...raw,
-    tipo: raw.tipo || 'noticia',
-    fechaQueja: raw.fechaQueja || raw.fechaRecepcion,
-    territorial: raw.territorial,
-    dependenciaDenunciado: raw.dependenciaDenunciado,
-    denunciantes: denuncianteList.map(mapDetalle),
-    disciplinables: disciplinableList.map(mapDetalle),
-    denunciante: {
-      nombre: denuncianteRaw.nombre || 'Sin nombre',
-      tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
-      numeroIdentificacion: denuncianteRaw.numeroIdentificacion || denuncianteRaw.cedula || denuncianteRaw.identificacion || 'Sin identificacion',
-      apoderado: {
-        nombre: denuncianteRaw.nombre,
-        cedula: denuncianteRaw.cedula,
-        correo: denuncianteRaw.correo,
-        celular: denuncianteRaw.celular,
-      }
-    },
-    denunciado: {
-      nombre: denunciadoRaw.nombre || raw.disciplinable?.nombre || 'Sin nombre',
-      tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
-      numeroIdentificacion: denunciadoRaw.numeroIdentificacion || denunciadoRaw.cedula || denunciadoRaw.identificacion || raw.disciplinable?.cedula || 'Sin identificacion',
-      cargo: denunciadoRaw.cargo || raw.disciplinable?.cargo || 'Sin cargo',
-      apoderado: {
-        nombre: denunciadoRaw.nombre,
-        cedula: denunciadoRaw.cedula,
-        correo: denunciadoRaw.correo,
-        celular: denunciadoRaw.celular,
-      }
-    },
-    hechos: raw.hechos || raw.descripcionHechos || '',
-    conductas: raw.conductas || raw.conductasSeleccionadas || [],
-    prioridad: raw.prioridad || 'media',
-    diasPendientes: raw.diasPendientes || 0,
-    etapaActual: raw.kanbanStage || raw.etapaActual || 'Recepcion',
-    estado: raw.estado || 'pendiente',
-    adjuntos: raw.adjuntos || [],
-    radicador: raw.radicadorNombre || raw.radicador,
-    radicadorId: raw.radicadorId,
-    radicadorEmail: raw.radicadorEmail
+    return {
+      id: (noticia as any).id || `n${Date.now()}`,
+      numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
+      fechaRecepcion: fecha.toISOString().split('T')[0],
+      fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
+      fechaHechos: fechaHechos ? fechaHechos.toISOString().split('T')[0] : undefined,
+      origen: (noticia as any).origen || 'Noticia',
+      territorial: (noticia as any).territorial,
+      dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
+      
+      denunciante: denuncianteList.map((d: any) => ({
+        id: d.id || d.cedula || d.identificacion || Math.random().toString(),
+        nombre: d.nombre || '',
+        identificacion: d.cedula || d.identificacion || d.numeroIdentificacion || '',
+        direccion: d.direccion || '',
+        telefono: d.telefono || '',
+        correo: d.email || d.correo || '',
+        cargo: d.cargo || '',
+        entidad: d.entidad || '',
+        tipo: d.tipo || 'Denunciante',
+        apoderado: d.apoderado
+      })),
+      denunciado: disciplinableList.map((d: any) => ({
+        id: d.id || d.cedula || d.identificacion || Math.random().toString(),
+        nombre: d.nombre || '',
+        identificacion: d.cedula || d.identificacion || d.numeroIdentificacion || '',
+        cargo: d.cargo || '',
+        lugarHechos: d.lugarHechos || d.dependencia || '',
+        apoderado: d.apoderado
+      })),
+      hechos: (noticia as any).hechos || '',
+      estado: mapEstadoNoticia((noticia as any).estado) as any,
+      prioridad: (noticia as any).prioridad || 'media',
+      diasPendientes: (noticia as any).diasPendientes ?? dias,
+      tipo: 'noticia' as const,
+      etapaActual: etapaNormalizada,
+      radicador: (noticia as any).radicadorNombre || (noticia as any).radicador,
+      radicadorId: (noticia as any).radicadorId,
+      radicadorEmail: (noticia as any).radicadorEmail,
+      numeroRC: (noticia as any).numeroRC || (noticia as any).radicadoRemision || undefined,
+      entidadRemision: (noticia as any).entidadRemision,
+      correoEntidadRemision: (noticia as any).correoEntidadRemision,
+      fechaRemision: (noticia as any).fechaRemision,
+      tipoRemision: (noticia as any).tipoRemision,
+      justificacionRemision: (noticia as any).justificacionRemision,
+      descripcionRemision: (noticia as any).descripcionRemision,
+      procesoAsociado: (noticia as any).procesoAsociadoId ? {
+        id: (noticia as any).procesoAsociadoId,
+        numeroProceso: (noticia as any).procesoAsociadoNumero || '',
+        fechaAsociacion: (noticia as any).procesoAsociadoFecha ? new Date((noticia as any).procesoAsociadoFecha).toISOString() : undefined,
+        justificacion: (noticia as any).procesoAsociadoJustificacion || ''
+      } : undefined
+    };
   };
-};
 
-export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
-  const stageLabelMap: Record<string, string> = { RECEPCION: 'Recepción', VALORACION: 'Valoración', INDAGACION_PREVIA: 'Indagación', INVESTIGACION: 'Investigación', EVALUACION: 'Evaluación', JUZGAMIENTO: 'Juzgamiento', INDAGACION: 'Indagación', FALLO: 'Fallo', SEGUNDA_INSTANCIA: 'Segunda Instancia' };
-  let etapa = proceso.kanbanStage || proceso.etapaActual;
+  // Transformar proceso desde API al formato interno
+  export const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
+    let etapa = proceso.kanbanStage || proceso.etapaActual;
 
-  const normComp = (s: string) => s?.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase() || '';
-  const match = currentStages.find(s => s.etapa === etapa || normComp(s.etapa) === normComp(etapa));
-  if (match) {
-    etapa = match.etapa;
-  } else {
-    etapa = stageLabelMap[etapa] || etapa;
-    if (etapa === etapa.toUpperCase() && etapa.length > 3) {
-      etapa = etapa.charAt(0).toUpperCase() + etapa.slice(1).toLowerCase();
+    if (!etapa) {
+      etapa = 'Recepción';
+    } else {
+      const match = currentStages.find(s => s.id === etapa || s.etapa === etapa || s.nombre === etapa || s.etapa?.toUpperCase() === etapa.toUpperCase() || s.nombre?.toUpperCase() === etapa.toUpperCase());
+      if (match) {
+        etapa = match.etapa || match.nombre || etapa;
+      } else {
+        etapa = stageLabelMap[etapa] || etapa;
+        if (etapa === etapa.toUpperCase() && etapa.length > 3) {
+          etapa = etapa.charAt(0).toUpperCase() + etapa.slice(1).toLowerCase();
+        }
+      }
     }
-  }
 
-  const fechaVenc = proceso.fechaVencimientoEtapa ? new Date(proceso.fechaVencimientoEtapa) : null;
-  const fechaCreacion = proceso.createdAt ? new Date(proceso.createdAt) : new Date();
-  const hoy = new Date();
-  const diasRestantes = fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    const fechaVenc = proceso.fechaVencimientoEtapa ? new Date(proceso.fechaVencimientoEtapa) : null;
+    const fechaCreacion = proceso.createdAt ? new Date(proceso.createdAt) : new Date();
+    const hoy = new Date();
+    const diasRestantes = fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0;
 
-  const porcentajeTiempo = proceso.timePercentage !== undefined
-    ? Math.round(proceso.timePercentage)
-    : (() => {
-      const totalDias = fechaVenc ? Math.max(1, Math.round((fechaVenc.getTime() - fechaCreacion.getTime()) / (1000 * 60 * 60 * 24))) : 1;
-      const transcurridos = totalDias - diasRestantes;
-      return Math.min(100, Math.max(0, Math.round((transcurridos / totalDias) * 100)));
-    })();
+    const porcentajeTiempo = proceso.timePercentage !== undefined
+      ? Math.round(proceso.timePercentage)
+      : (() => {
+        const totalDias = fechaVenc ? Math.max(1, Math.round((fechaVenc.getTime() - fechaCreacion.getTime()) / (1000 * 60 * 60 * 24))) : 1;
+        const transcurridos = totalDias - diasRestantes;
+        return Math.min(100, Math.max(0, Math.round((transcurridos / totalDias) * 100)));
+      })();
 
-  const semaforo: 'verde' | 'amarillo' | 'rojo' = diasRestantes <= 0 ? 'rojo' : (diasRestantes <= 7 || porcentajeTiempo >= 80 ? 'amarillo' : 'verde');
-  const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
-  const denuncianteData = Array.isArray(proceso.news?.denunciante) ? proceso.news?.denunciante?.[0] : proceso.news?.denunciante;
-  const disciplinableData = Array.isArray(proceso.news?.disciplinable) ? proceso.news?.disciplinable?.[0] : proceso.news?.disciplinable;
+    const semaforo: 'verde' | 'amarillo' | 'rojo' = diasRestantes <= 0 ? 'rojo' : (diasRestantes <= 7 || porcentajeTiempo >= 80 ? 'amarillo' : 'verde');
+    const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
 
-  return {
-    id: proceso.id,
-    numeroProceso: proceso.radicadoProceso,
-    noticiaOrigen: proceso.news?.radicado || 'N/A',
-    denunciante: {
-      nombre: (denuncianteData as any)?.nombre || 'Sin denunciante',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: (denuncianteData as any)?.cedula || 'N/A'
-    },
-    denunciado: {
-      nombre: (disciplinableData as any)?.nombre || 'Sin disciplinable',
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: (disciplinableData as any)?.cedula || 'N/A'
-    },
-    cedula: (disciplinableData as any)?.cedula || 'N/A',
-    etapaActual: etapa as any,
-    estadoActual: proceso.estado || 'ACTIVO',
-    profesionalAsignado: {
-      nombre: abogado,
-      tipoIdentificacion: 'CC',
-      numeroIdentificacion: (proceso as any).abogadoAsignado?.id || '',
-    },
-    semaforo,
-    diasRestantes,
-    porcentajeTiempo,
-    borradores: proceso.draftsCount !== undefined ? Array(proceso.draftsCount).fill({}) : [],
-    documentos: proceso.documentsCount !== undefined ? Array(proceso.documentsCount).fill({}) : [],
-    pendienteAprobacion: false,
-    ultimaActuacion: proceso.ultimaActuacion || 'Sin actuaciones registradas',
-    fechaCreacion: fechaCreacion.toISOString().split('T')[0],
-    tipo: 'proceso',
-    kanbanStage: proceso.kanbanStage,
-    hechos: proceso.news?.hechos,
-    kanbanNotice: proceso.kanbanNotice || null,
-    procesoAsociadoId: proceso.procesoAsociadoId,
-    procesoAsociadoNumero: proceso.procesoAsociadoNumero,
-    procesoAsociadoTipo: proceso.procesoAsociadoTipo,
-    procesoAsociadoFecha: proceso.procesoAsociadoFecha,
-    procesoAsociadoJustificacion: proceso.procesoAsociadoJustificacion,
-    profesionalAsignadoId: proceso.abogadoAsignadoId,
+    return {
+      id: proceso.id,
+      numeroProceso: proceso.radicadoProceso,
+      noticiaOrigen: proceso.news?.radicado || 'N/A',
+      
+      cedula: (proceso.news?.disciplinable as any)?.cedula || 'N/A',
+      etapaActual: etapa as any,
+      estadoActual: proceso.estado || 'ACTIVO',
+      profesionalAsignado: {
+        nombre: abogado,
+        tipoIdentificacion: 'CC',
+        numeroIdentificacion: (proceso as any).abogadoAsignado?.id || '',
+      },
+      semaforo,
+      diasRestantes,
+      porcentajeTiempo,
+      borradores: proceso.draftsCount !== undefined ? Array(proceso.draftsCount).fill({}) : [],
+      documentos: proceso.documentsCount !== undefined ? Array(proceso.documentsCount).fill({}) : [],
+      pendienteAprobacion: false,
+      ultimaActuacion: proceso.ultimaActuacion || 'Sin actuaciones registradas',
+      fechaCreacion: fechaCreacion.toISOString().split('T')[0],
+      tipo: 'proceso' as const,
+      hechos: proceso.news?.hechos,
+      cargo: proceso.news?.disciplinable?.cargo || '',
+      dependencia: proceso.news?.disciplinable?.dependencia || '',
+      territorial: proceso.news?.territorial || '',
+      fechaHechos: proceso.news?.fechaHechos || '',
+      conductaSeleccionada: proceso.news?.conductas?.[0] || '',
+      conductaPersonalizada: '',
+      conducta: proceso.news?.conducta || '',
+      denunciado: (() => {
+        const source = (proceso.news as any)?.disciplinable || (proceso.news as any)?.denunciado || (proceso.news as any)?.disciplinable;
+        const list = Array.isArray(source) ? source : (source ? [source] : []);
+        return list.map((d: any, idx: number) => ({
+          id: d.id || d.cedula || d.identificacion || `${proceso.id}-d-${idx}`,
+          nombre: d.nombre || '',
+          identificacion: d.cedula || d.documento || d.identificacion || '',
+          cargo: d.cargo || '',
+          lugarHechos: d.lugarHechos || d.dependencia || '',
+          dependencia: d.dependencia || d.lugarHechos || '',
+          apoderado: d.apoderado ? {
+            nombre: d.apoderado.nombre,
+            cedula: d.apoderado.cedula,
+            correo: d.apoderado.correo || d.apoderado.email,
+            celular: d.apoderado.celular || d.apoderado.telefono,
+          } : undefined,
+        }));
+      })(),
+      denunciante: (() => {
+        const source = (proceso.news as any)?.denunciantes || (proceso.news as any)?.denunciante;
+        const list = Array.isArray(source) ? source : (source ? [source] : []);
+        return list.map((d: any, idx: number) => ({
+          id: d.id || d.cedula || d.identificacion || `${proceso.id}-dte-${idx}`,
+          nombre: d.nombre || '',
+          identificacion: d.cedula || d.documento || d.identificacion || '',
+          direccion: d.direccion || '',
+          telefono: d.telefono || '',
+          correo: d.email || d.correo || '',
+          cargo: d.cargo || '',
+          entidad: d.entidad || '',
+          tipo: d.tipo || 'Denunciante',
+          apoderado: d.apoderado ? {
+            nombre: d.apoderado.nombre,
+            cedula: d.apoderado.cedula,
+            correo: d.apoderado.correo || d.apoderado.email,
+            celular: d.apoderado.celular || d.apoderado.telefono,
+          } : undefined,
+        }));
+      })(),
+      hechosSeparados: [],
+      archivosAdjuntos: [],
+      origenNoticia: proceso.news?.origen || '',
+      fechaRecepcionNoticia: proceso.news?.fechaRecepcion || proceso.news?.createdAt || '',
+      prioridadNoticia: proceso.news?.prioridad || 'media',
+      procesoAsociadoId: proceso.procesoAsociadoId,
+      procesoAsociadoNumero: proceso.procesoAsociadoNumero,
+      procesoAsociadoTipo: proceso.procesoAsociadoTipo,
+      procesoAsociadoFecha: proceso.procesoAsociadoFecha,
+      procesoConsolidadoPrincipal: proceso.procesoConsolidadoPrincipal,
+      procesosConsolidados: proceso.procesosConsolidados,
+      informacionConsolidada: proceso.informacionConsolidada,
+      profesionalAsignadoId: proceso.abogadoAsignadoId,
+    };
   };
-};
+
+  
 
 // ==================== COMPONENTE PRINCIPAL ====================
 export function DashboardKanbanOperativo({
@@ -3084,8 +3335,7 @@ export function DashboardKanbanOperativo({
       const noticiasData = getDataArray<ApiNoticia>(noticiasRaw);
       const procesosData = getDataArray<ApiProceso>(procesosRaw);
 
-      console.log('[DashboardKanban] Noticias recibidas:', noticiasData.length);
-      console.log('[DashboardKanban] Procesos recibidos:', procesosData.length);
+      
 
       // Filtrar solo items activos
       const noticiasFiltradas = noticiasData.filter(n => (n as any).activo !== false);
@@ -3094,10 +3344,12 @@ export function DashboardKanbanOperativo({
       // Separar noticias archivadas de las activas. Excluir ASIGNADA porque ya tienen proceso asociado
       const noticiasActivas = noticiasFiltradas.filter(n => {
         const estado = (n as any).estado;
-        // No se muestran noticias devueltas a menos que el usuario sea jefe o sean suyas propias
+        console.log(estado);
+        // No se muestran noticias devueltas a menos que el usuario tenga permiso para ver devueltas
         if (estado === 'DEVUELTA') {
-          const isOwner = (n as any).radicador === currentUserId;
-          if (!esJefe && !isOwner) {
+          const canViewDevueltas = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DEVUELTAS) || authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_MIS_DEVUELTAS);
+          
+          if (!canViewDevueltas) {
             return false;
           }
         }
@@ -3203,19 +3455,34 @@ export function DashboardKanbanOperativo({
   // Transformar noticia desde API al formato interno
   // ✅ MEJORADA: Usa la primera etapa de etapasConfig cuando no viene del backend
   const toNoticiaFromApi = (noticia: ApiNoticia, currentStages: any[] = []): Noticia => {
+    console.log('[DashboardKanban] toNoticiaFromApi - RAW:', noticia);
     const fechaRecepcion = (noticia as any)?.fechaRecepcion;
     const fecha = fechaRecepcion ? new Date(fechaRecepcion) : new Date();
     const hoy = new Date();
     const dias = Math.max(1, Math.ceil((hoy.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24)));
 
-    const denuncianteFuente: any = (noticia as any).denunciante;
-    const disciplinableFuente: any = (noticia as any).disciplinable || (noticia as any).denunciado;
+    const denuncianteFuente: any = (noticia as any).denunciantes || (noticia as any).denunciante;
+    const disciplinableFuente: any = (noticia as any).disciplinables || (noticia as any).disciplinable || (noticia as any).denunciado;
+    
+    console.log('[DashboardKanban] Fuentes detectadas:', { 
+      denunciante: denuncianteFuente, 
+      disciplinable: disciplinableFuente 
+    });
+
     const denuncianteList = Array.isArray(denuncianteFuente) ? denuncianteFuente : (denuncianteFuente ? [denuncianteFuente] : []);
     const disciplinableList = Array.isArray(disciplinableFuente) ? disciplinableFuente : (disciplinableFuente ? [disciplinableFuente] : []);
+    
+    console.log('[DashboardKanban] Listas normalizadas:', { 
+      denuncianteList, 
+      disciplinableList 
+    });
+
     const denuncianteRaw: any = denuncianteList[0] || {};
     const denunciadoRaw: any = disciplinableList[0] || {};
     const fechaQuejaRaw = (noticia as any).fechaQueja;
     const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
+    const fechaHechosRaw = (noticia as any).fechaHechos;
+    const fechaHechos = fechaHechosRaw ? new Date(fechaHechosRaw) : undefined;
 
     // ✅ OBTENER ETAPA: usar kanbanStage del backend, o buscar en stages, o usar primera etapa config
     let etapaRaw = (noticia as any).kanbanStage || (noticia as any).etapaActual;
@@ -3250,26 +3517,31 @@ export function DashboardKanbanOperativo({
       numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
       fechaRecepcion: fecha.toISOString().split('T')[0],
       fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
+      fechaHechos: fechaHechos ? fechaHechos.toISOString().split('T')[0] : undefined,
       origen: (noticia as any).origen || 'Noticia',
       territorial: (noticia as any).territorial,
       dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
-      denunciante: {
-        nombre: denuncianteRaw.nombre || 'Sin denunciante',
-        tipoIdentificacion: denuncianteRaw.tipoIdentificacion || 'CC',
-        numeroIdentificacion: denuncianteRaw.cedula || denuncianteRaw.numeroIdentificacion || denuncianteRaw.identificacion || 'N/A',
-        apoderado: {
-          nombre: denuncianteRaw.nombre,
-          cedula: denuncianteRaw.cedula,
-          correo: denuncianteRaw.correo,
-          celular: denuncianteRaw.celular,
-        }
-      },
-      denunciado: {
-        nombre: denunciadoRaw.nombre || 'Sin disciplinable',
-        tipoIdentificacion: denunciadoRaw.tipoIdentificacion || 'CC',
-        numeroIdentificacion: denunciadoRaw.cedula || denunciadoRaw.numeroIdentificacion || 'N/A',
-        apoderado: denunciadoRaw.apoderado
-      },
+      
+      denunciante: denuncianteList.map((d: any) => ({
+        id: d.id || d.cedula || d.identificacion || Math.random().toString(),
+        nombre: d.nombre || '',
+        identificacion: d.cedula || d.identificacion || d.numeroIdentificacion || '',
+        direccion: d.direccion || '',
+        telefono: d.telefono || '',
+        correo: d.email || d.correo || '',
+        cargo: d.cargo || '',
+        entidad: d.entidad || '',
+        tipo: d.tipo || 'Denunciante',
+        apoderado: d.apoderado
+      })),
+      denunciado: disciplinableList.map((d: any) => ({
+        id: d.id || d.cedula || d.identificacion || Math.random().toString(),
+        nombre: d.nombre || '',
+        identificacion: d.cedula || d.identificacion || d.numeroIdentificacion || '',
+        cargo: d.cargo || '',
+        lugarHechos: d.lugarHechos || d.dependencia || '',
+        apoderado: d.apoderado
+      })),
       hechos: (noticia as any).hechos || '',
       estado: mapEstadoNoticia((noticia as any).estado) as any,
       prioridad: (noticia as any).prioridad || 'media',
@@ -3287,6 +3559,7 @@ export function DashboardKanbanOperativo({
       fundamentoLegalRemision: (noticia as any).fundamentoLegalRemision || (noticia as any).fundamentoLegal || undefined,
       justificacionRemision: (noticia as any).justificacionRemision || (noticia as any).observacionesRemision || undefined,
       conductaSeleccionada: (noticia as any).conductas?.[0] || (noticia as any).conductaSeleccionada || '',
+      conducta: (noticia as any).conducta || '',
       archivosAdjuntos: ((noticia as any).adjuntos || []).map((path: string) => ({
         nombre: path.split('/').pop() || path,
         tipo: path.toLowerCase().includes('pdf') ? 'application/pdf' : path.toLowerCase().includes('jpg') || path.toLowerCase().includes('png') ? 'image' : path.toLowerCase().includes('mp4') || path.toLowerCase().includes('avi') ? 'video' : 'application/octet-stream',
@@ -3300,10 +3573,15 @@ export function DashboardKanbanOperativo({
 
   // Normalizar noticia desde cualquier fuente
   const normalizeNoticia = (raw: any): Noticia => {
+    console.log('[DashboardKanban] normalizeNoticia - RAW:', raw);
     const denuncianteFuente = raw.denunciantes || raw.denunciante;
     const disciplinableFuente = raw.disciplinables || raw.disciplinable || raw.denunciado;
+    
     const denuncianteList = Array.isArray(denuncianteFuente) ? denuncianteFuente : (denuncianteFuente ? [denuncianteFuente] : []);
     const disciplinableList = Array.isArray(disciplinableFuente) ? disciplinableFuente : (disciplinableFuente ? [disciplinableFuente] : []);
+    
+    console.log('[DashboardKanban] normalizeNoticia - Listas:', { denuncianteList, disciplinableList });
+
     const denuncianteRaw = denuncianteList[0] || {};
     const denunciadoRaw = disciplinableList[0] || {};
 
@@ -3311,6 +3589,7 @@ export function DashboardKanbanOperativo({
       ...raw,
       tipo: raw.tipo || 'noticia',
       fechaQueja: raw.fechaQueja || raw.fechaRecepcion,
+      fechaRecepcion: raw.fechaRecepcion,
       territorial: raw.territorial,
       dependenciaDenunciado: raw.dependenciaDenunciado,
       denunciante: {
@@ -3336,31 +3615,32 @@ export function DashboardKanbanOperativo({
           celular: denunciadoRaw.celular,
         }
       },
-      hechos: raw.hechos || raw.descripcionHechos || '',
-      conductas: raw.conductas || raw.conductasSeleccionadas || [],
-      prioridad: raw.prioridad || 'media',
-      diasPendientes: raw.diasPendientes || 0,
-      etapaActual: raw.kanbanStage || raw.etapaActual || 'Recepción',
-      estado: raw.estado || 'pendiente'
+      entidadRemision: (noticia as any).entidadRemision,
+      correoEntidadRemision: (noticia as any).correoEntidadRemision,
+      fechaRemision: (noticia as any).fechaRemision,
+      tipoRemision: (noticia as any).tipoRemision,
+      justificacionRemision: (noticia as any).justificacionRemision,
+      descripcionRemision: (noticia as any).descripcionRemision,
+      procesoAsociado: (noticia as any).procesoAsociadoId ? {
+        id: (noticia as any).procesoAsociadoId,
+        numeroProceso: (noticia as any).procesoAsociadoNumero || '',
+        fechaAsociacion: (noticia as any).procesoAsociadoFecha ? new Date((noticia as any).procesoAsociadoFecha).toISOString() : undefined,
+        justificacion: (noticia as any).procesoAsociadoJustificacion || ''
+      } : undefined
     };
   };
 
-  // Transformar proceso desde API al formato interno
   const toProcesoFromApi = (proceso: ApiProceso, currentStages: any[] = []): Proceso => {
     let etapa = proceso.kanbanStage || proceso.etapaActual;
 
-    // Si no hay etapa definida, usar 'Recepción' por defecto
     if (!etapa) {
       etapa = 'Recepción';
     } else {
-      // Normalizar etapa: buscar coincidencia por id o por nombre en las etapas del backend
       const match = currentStages.find(s => s.id === etapa || s.etapa === etapa || s.nombre === etapa || s.etapa?.toUpperCase() === etapa.toUpperCase() || s.nombre?.toUpperCase() === etapa.toUpperCase());
       if (match) {
         etapa = match.etapa || match.nombre || etapa;
       } else {
-        // Fallback a mapeo legacy
         etapa = stageLabelMap[etapa] || etapa;
-        // Fallback final: Title Case (solo si es uppercase)
         if (etapa === etapa.toUpperCase() && etapa.length > 3) {
           etapa = etapa.charAt(0).toUpperCase() + etapa.slice(1).toLowerCase();
         }
@@ -3386,38 +3666,11 @@ export function DashboardKanbanOperativo({
 
     const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
 
-    // ✅ NUEVO: Mapear campos de asociación a proceso desde el backend
-    const procesoAsociadoId = (proceso as any).procesoAsociadoId || undefined;
-    const procesoAsociadoNumero = (proceso as any).procesoAsociadoNumero || undefined;
-    const procesoAsociadoTipo = (proceso as any).procesoAsociadoTipo || undefined;
-    const procesoAsociadoFecha = (proceso as any).procesoAsociadoFecha || undefined;
-
-    // ✅ NUEVO: Mapear campos de consolidación
-    const procesoConsolidadoPrincipal = (proceso as any).procesoConsolidadoPrincipal || undefined;
-    const procesosConsolidados = (proceso as any).procesosConsolidados || undefined;
-    const informacionConsolidada = (proceso as any).informacionConsolidada || undefined;
-
     return {
       id: proceso.id,
       numeroProceso: proceso.radicadoProceso,
       noticiaOrigen: proceso.news?.radicado || 'N/A',
-      denunciante: {
-        nombre: (proceso.news?.denunciante as any)?.nombre || 'Sin denunciante',
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso.news?.denunciante as any)?.cedula || 'N/A',
-        apoderado: {
-          nombre: (proceso.news?.denunciante as any)?.nombre,
-          cedula: (proceso.news?.denunciante as any)?.cedula,
-          correo: (proceso.news?.denunciante as any)?.correo,
-          celular: (proceso.news?.denunciante as any)?.celular,
-        }
-      },
-      denunciado: {
-        nombre: (proceso.news?.disciplinable as any)?.nombre || 'Sin disciplinable',
-        tipoIdentificacion: 'CC',
-        numeroIdentificacion: (proceso.news?.disciplinable as any)?.cedula || 'N/A',
-        apoderado: (proceso.news?.disciplinable as any)?.apoderado
-      },
+      
       cedula: (proceso.news?.disciplinable as any)?.cedula || 'N/A',
       etapaActual: etapa as any,
       estadoActual: proceso.estado || 'ACTIVO',
@@ -3436,22 +3689,69 @@ export function DashboardKanbanOperativo({
       fechaCreacion: fechaCreacion.toISOString().split('T')[0],
       tipo: 'proceso' as const,
       hechos: proceso.news?.hechos,
-      // ✅ NUEVO: Incluir campos de asociación
-      procesoAsociadoId,
-      procesoAsociadoNumero,
-      procesoAsociadoTipo,
-      procesoAsociadoFecha,
-      // ✅ NUEVO: Incluir campos de consolidación
-      procesoConsolidadoPrincipal,
-      procesosConsolidados,
-      informacionConsolidada,
+      cargo: proceso.news?.disciplinable?.cargo || '',
+      dependencia: proceso.news?.disciplinable?.dependencia || '',
+      territorial: proceso.news?.territorial || '',
+      fechaHechos: proceso.news?.fechaHechos || '',
+      conductaSeleccionada: proceso.news?.conductas?.[0] || '',
+      conductaPersonalizada: '',
+      conducta: proceso.news?.conducta || '',
+      denunciado: (() => {
+        const source = (proceso.news as any)?.disciplinable || (proceso.news as any)?.denunciado || (proceso.news as any)?.disciplinable;
+        const list = Array.isArray(source) ? source : (source ? [source] : []);
+        return list.map((d: any, idx: number) => ({
+          id: d.id || d.cedula || d.identificacion || `${proceso.id}-d-${idx}`,
+          nombre: d.nombre || '',
+          identificacion: d.cedula || d.documento || d.identificacion || '',
+          cargo: d.cargo || '',
+          lugarHechos: d.lugarHechos || d.dependencia || '',
+          dependencia: d.dependencia || d.lugarHechos || '',
+          apoderado: d.apoderado ? {
+            nombre: d.apoderado.nombre,
+            cedula: d.apoderado.cedula,
+            correo: d.apoderado.correo || d.apoderado.email,
+            celular: d.apoderado.celular || d.apoderado.telefono,
+          } : undefined,
+        }));
+      })(),
+      denunciante: (() => {
+        const source = (proceso.news as any)?.denunciantes || (proceso.news as any)?.denunciante;
+        const list = Array.isArray(source) ? source : (source ? [source] : []);
+        return list.map((d: any, idx: number) => ({
+          id: d.id || d.cedula || d.identificacion || `${proceso.id}-dte-${idx}`,
+          nombre: d.nombre || '',
+          identificacion: d.cedula || d.documento || d.identificacion || '',
+          direccion: d.direccion || '',
+          telefono: d.telefono || '',
+          correo: d.email || d.correo || '',
+          cargo: d.cargo || '',
+          entidad: d.entidad || '',
+          tipo: d.tipo || 'Denunciante',
+          apoderado: d.apoderado ? {
+            nombre: d.apoderado.nombre,
+            cedula: d.apoderado.cedula,
+            correo: d.apoderado.correo || d.apoderado.email,
+            celular: d.apoderado.celular || d.apoderado.telefono,
+          } : undefined,
+        }));
+      })(),
+      hechosSeparados: [],
+      archivosAdjuntos: [],
+      origenNoticia: proceso.news?.origen || '',
+      fechaRecepcionNoticia: proceso.news?.fechaRecepcion || proceso.news?.createdAt || '',
+      prioridadNoticia: proceso.news?.prioridad || 'media',
+      procesoAsociadoId: proceso.procesoAsociadoId,
+      procesoAsociadoNumero: proceso.procesoAsociadoNumero,
+      procesoAsociadoTipo: proceso.procesoAsociadoTipo,
+      procesoAsociadoFecha: proceso.procesoAsociadoFecha,
+      procesoConsolidadoPrincipal: proceso.procesoConsolidadoPrincipal,
+      procesosConsolidados: proceso.procesosConsolidados,
+      informacionConsolidada: proceso.informacionConsolidada,
       profesionalAsignadoId: proceso.abogadoAsignadoId,
     };
   };
 
-
-
-  // ✅ Auto-activar vista compacta en mobile y tablet
+   // ✅ Auto-activar vista compacta en mobile y tablet
   useEffect(() => {
     if (width < 1024) {
       setVistaCompacta(true);
@@ -3484,6 +3784,7 @@ export function DashboardKanbanOperativo({
       { nombre: 'Investigación', color: '#003DA5', icono: <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />, diasEstimados: 60 },
       { nombre: 'Juzgamiento', color: '#6B7280', icono: <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 50 },
       { nombre: 'Fallo', color: '#6B7280', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
+      { nombre: 'Segunda Instancia', color: '#6B7280', icono: <Forward className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />, diasEstimados: 10 },
       { nombre: 'Archivo', color: '#059669', icono: <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-green-600`} />, diasEstimados: 0 }
     ];
 
@@ -3496,6 +3797,7 @@ export function DashboardKanbanOperativo({
     if (nombre.includes('investig')) return <Scale className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'}`} style={{ color: '#003DA5' }} />;
     if (nombre.includes('juzg')) return <AlertTriangle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
     if (nombre.includes('fallo')) return <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
+    if (nombre.includes('segunda') && nombre.includes('instancia')) return <Forward className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
     if (nombre.includes('archiv')) return <CheckCircle className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-green-600`} />;
     return <FolderOpen className={`${isMobile ? 'w-3 h-3' : 'w-4 h-4'} text-gray-600`} />;
   }
@@ -3688,10 +3990,8 @@ export function DashboardKanbanOperativo({
     }
   };
 
-  // ✅ NUEVO: Handler para crear noticia - guarda en backend y usa primera etapa de configuración
   const handleCrearNoticia = async (data: any) => {
-    // Determinar la primera etapa desde la configuración del backend (menor orden)
-    let etapaInicial = 'Recepcion'; // Valor por defecto (sin tilde para el backend)
+    let etapaInicial = 'Recepcion';
     if (etapasConfig.length > 0) {
       const etapasOrdenadas = [...etapasConfig].sort((a, b) => (a.orden || 0) - (b.orden || 0));
       if (etapasOrdenadas.length > 0) {
@@ -3699,42 +3999,13 @@ export function DashboardKanbanOperativo({
       }
     }
 
-    // Obtener el usuario actual para el radicador
     const currentUser = authService.getCurrentUser();
-    console.log('[DEBUG] handleCrearNoticia - currentUser:', currentUser);
-
-    // Verificar que el usuario esté autenticado
     if (!currentUser?.id) {
-      console.log('[DEBUG] handleCrearNoticia - user not authenticated');
       toast.error('Usuario no autenticado', 'Debe iniciar sesión para crear una noticia disciplinaria.');
       return;
     }
 
-    console.log('[DEBUG] handleCrearNoticia - currentUser.id:', currentUser.id);
-
-    // Extraer primer denunciado y denunciante para campos principales
-    const primerDenunciado = data.denunciados?.[0] || data.denunciado;
-    const primerDenunciante = data.denunciantes?.[0];
-    const apoderadoDenunciante = primerDenunciante?.apoderado || data.denunciante?.apoderado;
-    const apoderadoDenunciado = primerDenunciado?.apoderado || data.denunciado?.apoderado;
-    console.log('[DashboardKanban] Fuente denunciante:', {
-      denunciantes: data.denunciantes,
-      denunciante: data.denunciante,
-      primerDenunciante,
-      apoderadoDenunciante,
-    });
-    console.log('[DashboardKanban] Fuente disciplinable:', {
-      denunciados: data.denunciados,
-      denunciado: data.denunciado,
-      primerDenunciado,
-      apoderadoDenunciado,
-    });
-    const denunciadoPersona = primerDenunciado?.nombre
-      ? { nombre: primerDenunciado.nombre, tipoIdentificacion: 'CC' as const, numeroIdentificacion: primerDenunciado.identificacion || '' }
-      : (data.denunciado?.nombre || '');
-    const denunciantePersona = primerDenunciante?.nombre
-      ? { nombre: primerDenunciante.nombre, tipoIdentificacion: 'CC' as const, numeroIdentificacion: primerDenunciante.identificacion || '' }
-      : 'Sin información';
+    const toastId = toast.loading('Creando noticia en el sistema...');
 
     // Convertir archivos File a metadata serializable
     const archivosMetadata = (data.archivosAdjuntos || []).map((f: File | any) => ({
@@ -3760,160 +4031,68 @@ export function DashboardKanbanOperativo({
 
     const origenNormalizado = origenMap[data.origen] || 'POR_DETERMINAR';
 
-    // ✅ NUEVO: Intentar guardar en el backend
-    const toastId = toast.loading('Creando noticia en el sistema...');
+    console.log('Origen normalizado:', origenNormalizado);
 
     try {
-      // Preparar datos para el backend
-      const newsData: any = {
-        origen: origenNormalizado,
-        radicador: data.radicador || 'Usuario Actual',
-        territorial: data.territorial || undefined,
-        dependenciaDenunciado: primerDenunciado?.dependencia || primerDenunciado?.lugarHechos || data.denunciado?.dependencia || '',
-        fechaQueja: data.fechaQueja || new Date().toISOString().split('T')[0],
-        fechaHechos: data.fechaHechos || undefined,
+      // ✅ PREPARAR PAYLOAD UNIFICADO
+      // Transformar denunciantes y denunciados para el payload
+      const denunciantesTransformed = data.denunciantes && Array.isArray(data.denunciantes) ? data.denunciantes.map((d: any) => ({
+        nombre: d.nombre,
+        cedula: d.identificacion || d.cedula,
+        telefono: d.telefono,
+        email: d.correo || d.email,
+        direccion: d.direccion,
+        cargo: d.cargo,
+        entidad: d.entidad,
+        tipo: d.tipo, // ✅ Campo tipo (Denunciante/Víctima)
+        apoderado: d.apoderado
+      })) : null;
+
+      const denunciadosTransformed = data.denunciados && Array.isArray(data.denunciados) ? data.denunciados.map((d: any) => ({
+        nombre: d.nombre,
+        cedula: d.identificacion || d.cedula,
+        cargo: d.cargo,
+        dependencia: d.lugarHechos || d.dependencia,
+        apoderado: d.apoderado
+      })) : null;
+
+      
+
+      const newsData: CreateNewsDto = {
+        origen: origenNormalizado || 'POR_DETERMINAR',
+        territorial: data.territorial,
+        dependenciaDenunciado: data.dependencia || data.dependenciaDenunciado || '',
+        // ✅ UNIFICAR TODO EN CAMPOS SINGULARES - Arrays cuando múltiples, objeto cuando uno solo
+        denunciante: denunciantesTransformed,
+        disciplinable: denunciadosTransformed,
         hechos: data.hechosSeparados?.length > 0
           ? data.hechosSeparados.map((h: any, idx: number) => `Hecho ${idx + 1}: ${h.descripcion}`).join('\n\n')
-          : (data.descripcionHechos || ''),
-        conductas: data.conductaSeleccionada ? [data.conductaSeleccionada] : [],
-        prioridad: (data.prioridad || 'media').toUpperCase(),
-        radicadorId: currentUser?.id,
-        // Denunciante
-        denunciante: primerDenunciante ? {
-          nombre: primerDenunciante.nombre,
-          cedula: primerDenunciante.identificacion || '',
-          telefono: primerDenunciante.telefono || '',
-          email: primerDenunciante.correo || '',
-          direccion: primerDenunciante.direccion || '',
-          entidad: primerDenunciante.entidad || '',
-          cargo: primerDenunciante.cargo || '',
-          ...(primerDenunciante.apoderado?.nombre ? {
-            apoderado: {
-              nombre: primerDenunciante.apoderado.nombre || '',
-              cedula: primerDenunciante.apoderado.cedula || '',
-              email: primerDenunciante.apoderado.correo || '',
-              telefono: primerDenunciante.apoderado.celular || '',
-              direccion: primerDenunciante.apoderado.direccion || ''
-            }
-          } : {})
-        } : {
-          nombre: 'Anónimo'
-        },
-        // Denunciado/Disciplinable
-        disciplinable: primerDenunciado ? {
-          nombre: primerDenunciado.nombre,
-          cedula: primerDenunciado.identificacion || '',
-          cargo: primerDenunciado.cargo || '',
-          dependencia: primerDenunciado.dependencia || primerDenunciado.lugarHechos || '',
-          ...(primerDenunciado.apoderado?.nombre ? {
-            apoderado: {
-              nombre: primerDenunciado.apoderado.nombre || '',
-              cedula: primerDenunciado.apoderado.cedula || '',
-              email: primerDenunciado.apoderado.correo || '',
-              telefono: primerDenunciado.apoderado.celular || '',
-              direccion: primerDenunciado.apoderado.direccion || ''
-            }
-          } : {})
-        } : undefined
+          : (data.hechos || data.descripcionHechos || ''),
+        fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : undefined,
+        fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined,
+        conducta: data.conducta || data.conductaSeleccionada || '',
+        conductas: data.conductas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : []),
+        radicadorId: currentUser.id
       };
 
-      if (!primerDenunciante) {
-        newsData.denunciante = undefined;
-      }
-
-      if (apoderadoDenunciante?.nombre && newsData.denunciante) {
-        newsData.denunciante.apoderado = {
-          nombre: apoderadoDenunciante.nombre || '',
-          cedula: apoderadoDenunciante.cedula || '',
-          email: apoderadoDenunciante.correo || apoderadoDenunciante.email || '',
-          telefono: apoderadoDenunciante.celular || apoderadoDenunciante.telefono || '',
-          direccion: apoderadoDenunciante.direccion || ''
-        };
-      }
-
-      if (apoderadoDenunciado?.nombre && newsData.disciplinable) {
-        newsData.disciplinable.apoderado = {
-          nombre: apoderadoDenunciado.nombre || '',
-          cedula: apoderadoDenunciado.cedula || '',
-          email: apoderadoDenunciado.correo || apoderadoDenunciado.email || '',
-          telefono: apoderadoDenunciado.celular || apoderadoDenunciado.telefono || '',
-          direccion: apoderadoDenunciado.direccion || ''
-        };
-      }
-
-      console.log('[DashboardKanban] Payload disciplinable listo:', {
-        dependenciaDenunciado: newsData.dependenciaDenunciado,
-        disciplinable: newsData.disciplinable,
-        denunciante: newsData.denunciante,
-      });
-
-      console.log('[DashboardKanban] Enviando datos al backend:', JSON.stringify(newsData, null, 2));
-      console.log('[DEBUG] handleCrearNoticia - newsData.radicadorId:', newsData.radicadorId);
+      console.log('[DashboardKanban] PAYLOAD FINAL A ENVIAR:', JSON.stringify(newsData, null, 2));
 
       // Llamar al backend para crear la noticia
       const noticiaCreada = await disciplinaryService.radicarNoticia(newsData, data.archivosAdjuntos || []);
-
-      console.log('[DashboardKanban] Noticia creada en backend:', noticiaCreada);
+      console.log('[DashboardKanban] RESPUESTA BACKEND EXITOSA:', noticiaCreada);
 
       // Transformar la respuesta del backend al formato interno
-      const nuevaNoticia = toNoticiaFromApi(noticiaCreada);
-
-      // Asegurar que use la etapa inicial correcta
-      nuevaNoticia.etapaActual = etapaInicial;
-
-      // Agregar al estado
-      setItems(prev => [...prev, nuevaNoticia]);
-
-      toast.success('Noticia Creada', {
-        id: toastId,
-        description: `${nuevaNoticia.numero} en ${etapaInicial}`
-      });
+      const nuevaNoticia = toNoticiaFromApi(noticiaCreada, etapasConfig);
+      
+      setItems(prev => [nuevaNoticia, ...prev]);
       setModalActivo(null);
+      toast.success('Noticia disciplinaria creada exitosamente', { id: toastId });
     } catch (error: any) {
-      console.error('[DashboardKanban] Error al crear noticia en backend:', error);
-
-      // ✅ Fallback: crear localmente si el backend falla
-      console.log('[DashboardKanban] Creando noticia localmente como fallback...');
-
-      const nuevaNoticiaLocal: Noticia = {
-        id: `n${Date.now()}`,
-        numero: `NOT-2026-${Math.floor(Math.random() * 9999).toString().padStart(4, '0')}`,
-        fechaRecepcion: data.fechaQueja || new Date().toISOString().split('T')[0],
-        fechaRegistro: new Date().toISOString(),
-        radicador: data.radicador || 'Usuario Actual',
-        origen: data.origen || 'Denuncia Ciudadana',
-        territorial: data.territorial || undefined,
-        fechaHechos: data.fechaHechos || undefined,
-        cargo: primerDenunciado?.cargo || data.denunciado?.cargo || undefined,
-        dependencia: primerDenunciado?.lugarHechos || data.denunciado?.dependencia || undefined,
-        conductaSeleccionada: data.conductaSeleccionada || undefined,
-        conductaPersonalizada: data.conductaPersonalizada || undefined,
-        denunciante: denunciantePersona,
-        denunciado: denunciadoPersona,
-        denunciados: data.denunciados || [],
-        denunciantes: data.denunciantes || [],
-        hechos: data.descripcionHechos || '',
-        hechosSeparados: data.hechosSeparados || [],
-        archivosAdjuntos: archivosMetadata,
-        estado: 'pendiente',
-        prioridad: 'media',
-        diasPendientes: 0,
-        tipo: 'noticia',
-        etapaActual: etapaInicial // ✅ Usar etapa desde configuración
-      };
-
-      setItems(prev => [...prev, nuevaNoticiaLocal]);
-
-      // Persistir en Supabase como fallback secundario
-      noticiasService.create(nuevaNoticiaLocal).catch(err => {
-        console.error('[DashboardKanban] Error al guardar noticia en Supabase:', err);
-      });
-
-      toast.warning('Noticia creada localmente', {
+      console.error('Error al crear noticia:', error);
+      toast.error('Error al crear noticia', {
         id: toastId,
-        description: 'No se pudo guardar en el servidor. La noticia se guardó localmente.'
+        description: error?.message || 'No se pudo conectar con el servicio'
       });
-      setModalActivo(null);
     }
   };
 
@@ -3930,21 +4109,111 @@ export function DashboardKanbanOperativo({
 
   // ✅ NUEVO: Función para editar noticia
   const handleEditarNoticia = (noticia: Noticia) => {
+    console.log('🔍 Dashboard - handleEditarNoticia llamado con noticia:', noticia);
+    
+
     if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT)) {
       toast.error('No tiene permisos para editar noticias');
       return;
     }
     setNoticiaAEditar(noticia);
     setMostrarModalEditar(true);
+    console.log('🔍 Dashboard - Modal editar configurado para mostrar');
   };
 
   // ✅ NUEVO: Función para guardar edición de noticia
-  const handleGuardarEdicion = (data: any) => {
+  const handleGuardarEdicion = async (data: any) => {
     if (!noticiaAEditar) return;
 
     // Determinar si es noticia o proceso
     const itemOriginal = items.find(item => item.id === noticiaAEditar.id);
     const esProceso = itemOriginal?.tipo === 'proceso';
+    const denunciadosEdit = Array.isArray(data.denunciados)
+      ? data.denunciados
+      : Array.isArray(data.denunciado)
+        ? data.denunciado
+        : data.denunciado
+          ? [data.denunciado]
+          : [];
+    const denunciantesEdit = Array.isArray(data.denunciantes)
+      ? data.denunciantes
+      : Array.isArray(data.denunciante)
+        ? data.denunciante
+        : data.denunciante
+          ? [data.denunciante]
+          : [];
+    const primerDenunciadoEdit = denunciadosEdit[0];
+    const hechosEdit = data.hechosSeparados?.length > 0
+      ? data.hechosSeparados.map((h: any, idx: number) => `Hecho ${idx + 1}: ${h.descripcion}`).join('\n\n')
+      : (data.descripcionHechos || (itemOriginal as any)?.hechos || '');
+    const conductaEdit = data.conducta || data.conductaSeleccionada || '';
+    const denunciantesPayload = denunciantesEdit.map((d: any) => ({
+      nombre: d.nombre,
+      cedula: d.identificacion || d.cedula,
+      telefono: d.telefono,
+      email: d.correo || d.email,
+      direccion: d.direccion,
+      cargo: d.cargo,
+      entidad: d.entidad,
+      tipo: d.tipo,
+      apoderado: d.apoderado
+    }));
+    const denunciadosPayload = denunciadosEdit.map((d: any) => ({
+      nombre: d.nombre,
+      cedula: d.identificacion || d.cedula,
+      cargo: d.cargo,
+      dependencia: d.lugarHechos || d.dependencia,
+      apoderado: d.apoderado
+    }));
+
+    const toastId = toast.loading(esProceso ? 'Actualizando proceso...' : 'Actualizando noticia...');
+
+    try {
+      if (esProceso) {
+        await disciplinaryService.updateProcess(noticiaAEditar.id, {
+          territorial: data.territorial,
+          fechaHechos: data.fechaHechos || null,
+          hechos: hechosEdit,
+          conducta: conductaEdit,
+          conductas: conductaEdit ? [conductaEdit] : [],
+          denunciante: denunciantesPayload,
+          disciplinable: denunciadosPayload
+        } as any);
+      } else {
+        const origenMap: Record<string, string> = {
+          'AnÃ³nimo': 'ANONIMO',
+          'Anonimo': 'ANONIMO',
+          'Quejoso': 'QUEJOSO',
+          'De oficio': 'OFICIO',
+          'Oficio': 'OFICIO',
+          'RemisiÃ³n por competencia': 'REMISION',
+          'RemisiÃ³n': 'REMISION',
+          'Remision': 'REMISION',
+          'Por determinar': 'POR_DETERMINAR',
+          'Por Determinar': 'POR_DETERMINAR'
+        };
+
+        await disciplinaryService.updateNoticia(noticiaAEditar.id, {
+          origen: origenMap[data.origen] || data.origen || 'POR_DETERMINAR',
+          territorial: data.territorial,
+          dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
+          hechos: hechosEdit,
+          conducta: conductaEdit,
+          conductas: conductaEdit ? [conductaEdit] : [],
+          denunciante: denunciantesPayload,
+          disciplinable: denunciadosPayload,
+          fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : null,
+          fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined
+        });
+      }
+    } catch (error: any) {
+      console.error('Error al guardar ediciÃ³n:', error);
+      toast.error(esProceso ? 'Error al actualizar proceso' : 'Error al actualizar noticia', {
+        id: toastId,
+        description: error?.message || 'No se pudo guardar en la base de datos'
+      });
+      throw error;
+    }
 
     // Actualizar la noticia o proceso en el estado
     setItems(prevItems => prevItems.map(item => {
@@ -3952,41 +4221,35 @@ export function DashboardKanbanOperativo({
         // Actualizar proceso - MISMOS CAMPOS EN TODOS LOS ESTADOS
         return {
           ...item,
-          denunciado: data.denunciado ? {
-            nombre: data.denunciado.nombre || 'Sin nombre',
-            tipoIdentificacion: 'CC' as const,
-            numeroIdentificacion: data.denunciado.identificacion || 'Sin identificación'
-          } : 'Sin información',
-          hechos: data.hechosSeparados?.map((h: any, idx: number) =>
-            `Hecho ${idx + 1}: ${h.descripcion}`
-          ).join('\\n\\n') || data.descripcionHechos,
+          denunciado: denunciadosEdit,
+          denunciados: denunciadosEdit,
+          denunciante: denunciantesEdit,
+          denunciantes: denunciantesEdit,
+          hechos: hechosEdit,
           hechosSeparados: data.hechosSeparados,
-          conductasSeleccionadas: data.conductasSeleccionadas,
-          cargo: data.denunciado?.cargo,
-          dependencia: data.denunciado?.dependencia,
-          territorial: data.territorial
+          conductasSeleccionadas: conductaEdit ? [conductaEdit] : [],
+          conducta: conductaEdit,
+          cargo: primerDenunciadoEdit?.cargo,
+          dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos,
+          territorial: data.territorial,
+          fechaHechos: data.fechaHechos
         };
       }
       if (item.tipo === 'noticia' && item.id === noticiaAEditar.id) {
-        const primerDenunciadoEdit = data.denunciados?.[0] || data.denunciado;
         return {
           ...item,
           origen: data.origen,
-          fechaRecepcion: data.fechaQueja,
+          fechaRecepcion: data.fechaQueja || data.fechaRecepcion,
           fechaHechos: data.fechaHechos,
           territorial: data.territorial,
-          denunciado: primerDenunciadoEdit ? {
-            nombre: primerDenunciadoEdit.nombre || 'Sin nombre',
-            tipoIdentificacion: 'CC' as const,
-            numeroIdentificacion: primerDenunciadoEdit.identificacion || primerDenunciadoEdit.numeroIdentificacion || 'Sin identificación'
-          } : 'Sin información',
-          denunciados: data.denunciados || item.denunciados || [],
-          denunciantes: data.denunciantes || item.denunciantes || [],
-          hechos: data.hechosSeparados?.length > 0
-            ? data.hechosSeparados.map((h: any, idx: number) => `Hecho ${idx + 1}: ${h.descripcion}`).join('\n\n')
-            : (data.descripcionHechos || (item as any).hechos || ''),
+          denunciado: denunciadosEdit,
+          denunciados: denunciadosEdit,
+          denunciante: denunciantesEdit,
+          denunciantes: denunciantesEdit,
+          hechos: hechosEdit,
           hechosSeparados: data.hechosSeparados,
-          conductaSeleccionada: data.conductaSeleccionada,
+          conductaSeleccionada: conductaEdit,
+          conducta: conductaEdit,
           cargo: primerDenunciadoEdit?.cargo,
           dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos
         };
@@ -3998,6 +4261,7 @@ export function DashboardKanbanOperativo({
     setNoticiaAEditar(null);
 
     toast.success(esProceso ? 'Proceso actualizado' : 'Noticia actualizada', {
+      id: toastId,
       description: 'La información ha sido actualizada exitosamente'
     });
   };
@@ -4013,6 +4277,7 @@ export function DashboardKanbanOperativo({
       denunciante: proceso.denunciante,
       denunciado: proceso.denunciado,
       hechos: proceso.hechos || '',
+      fechaHechos: proceso.fechaHechos,
       estado: 'en-valoracion',
       prioridad: 'media',
       diasPendientes: proceso.diasRestantes,
@@ -4352,6 +4617,80 @@ export function DashboardKanbanOperativo({
     setMostrarModalRestaurar(true);
   };
 
+  const restaurarProcesoArchivadoEnBackend = async (procesoId: string) => {
+    try {
+      await disciplinaryService.restoreProcess(procesoId);
+    } catch (serviceError) {
+      console.error('Gateway restore failed, trying direct disciplinary service:', serviceError);
+
+      const response = await fetch(`http://localhost:3005/disciplinary-processes/${procesoId}/restore`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sessionStorage.getItem('esap_auth_token') || sessionStorage.getItem('esap_access_token') || ''}`,
+        },
+        body: JSON.stringify({}),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+      }
+    }
+  };
+
+  const getEtapaSegundaInstancia = () => {
+    const etapaConfigurada = etapasConfig.find(etapa => {
+      const raw = etapa.etapa || etapa.nombre || etapa.label || '';
+      const normalized = normalizeStageKey(raw);
+      return normalized.includes('segunda') && normalized.includes('instancia');
+    });
+
+    return etapaConfigurada?.etapa || etapaConfigurada?.nombre || 'Segunda Instancia';
+  };
+
+  const handleApelarArchivado = async (item: any) => {
+    if (!item || item.tipo !== 'proceso') return;
+
+    const etapaApelacion = getEtapaSegundaInstancia();
+    const backendStage = backendStageForLabel(etapaApelacion);
+    const stageOrder = getStageOrderForLabel(etapaApelacion);
+    const { fechaArchivo, motivoArchivo, ...itemRestaurado } = item;
+    const toastId = toast.loading('Apelando proceso a segunda instancia...');
+
+    try {
+      // First restore the process from archived state
+      await disciplinaryService.restoreProcess(item.id);
+
+      // Then change the stage to second instance
+      const updatedProcess = await disciplinaryService.cambiarEtapa(item.id, backendStage);
+
+      setItems(prev => [
+        ...prev,
+        {
+          ...itemRestaurado,
+          etapaActual: etapaApelacion,
+          kanbanStage: etapaApelacion,
+          estadoActual: 'ACTIVO',
+          restaurado: true,
+          ultimaActuacion: 'Proceso apelado a segunda instancia',
+        } as Proceso,
+      ]);
+      setItemsArchivados(prev => prev.filter(i => i.id !== item.id));
+
+      toast.success('Proceso apelado', {
+        id: toastId,
+        description: `${item.numeroProceso} fue restaurado en ${etapaApelacion}.`,
+      });
+    } catch (err: any) {
+      console.error('[DashboardKanban] Error al apelar proceso:', err);
+      toast.error('Error al apelar proceso', {
+        id: toastId,
+        description: err?.message || 'No se pudo restaurar el proceso en segunda instancia',
+      });
+    }
+  };
+
   // ✅ Función para determinar el estado apropiado al restaurar un proceso
   const determinarEstadoRestauracion = (proceso: any): string => {
     
@@ -4370,53 +4709,10 @@ export function DashboardKanbanOperativo({
     try {
       if (item.tipo === 'noticia') {
         itemRestaurado.estado = 'pendiente';
-        // Persistir restauración en el backend para noticias
         await disciplinaryService.restoreNews(item.id);
       } else {
-        // Para procesos, llamar directamente al servicio disciplinario (bypass API gateway)
-        console.log('Restoring process:', item.id, 'Calling disciplinary service directly');
-
-        try {
-          // Call disciplinary service directly on port 3005
-          const response = await fetch(`http://localhost:3005/disciplinary-processes/${item.id}/restore`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('esap_auth_token') || localStorage.getItem('esap_access_token') || ''}`,
-            },
-            body: JSON.stringify({}),
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Direct service call failed:', response.status, errorText);
-            throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-          }
-
-          const result = await response.json();
-          console.log('Restore successful:', result);
-        } catch (directError) {
-          console.error('Direct service call failed, trying gateway fallback:', directError);
-
-          // Fallback to gateway if direct call fails
-          try {
-            const gatewayResponse = await fetch(`/control-disciplinario/api/v1/disciplinary-processes/${item.id}/restore`, {
-              method: 'PATCH',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({}),
-            });
-            if (!gatewayResponse.ok) {
-              throw new Error(`Gateway error! status: ${gatewayResponse.status}`);
-            }
-          } catch (gatewayError) {
-            console.error('Both direct and gateway calls failed');
-            throw gatewayError;
-          }
-        }
-
-        itemRestaurado.restaurado = true; // El backend ya lo actualizó, pero marcamos localmente
+        await disciplinaryService.restoreProcess(item.id);
+        itemRestaurado.restaurado = true;
       }
 
       setItems(prev => [...prev, itemRestaurado]);
@@ -5769,6 +6065,7 @@ export function DashboardKanbanOperativo({
           <VistaArchivados
             items={itemsArchivadosFiltrados}
             onDesarchivar={handleDesarchivar}
+            onApelar={handleApelarArchivado}
             onVerDetalles={(item) => {
               setItemSeleccionado(item);
               if (item.tipo === 'noticia') {

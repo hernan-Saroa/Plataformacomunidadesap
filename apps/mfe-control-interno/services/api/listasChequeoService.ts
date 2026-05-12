@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Servicio para Listas de Chequeo
  * Conecta con el backend: /listas-chequeo
  */
@@ -15,7 +15,8 @@ const MICROSERVICIO_PORT = 3007; // Puerto del internal-institutional-control-se
  */
 function esLocalhost(): boolean {
   const hostname = window.location.hostname;
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+  const hostnameParts = hostname.split('.');
+  return hostname === 'localhost' || hostname === '127.0.0.1' || (hostnameParts[0] === '192' && hostnameParts[1] === '168');
 }
 
 export interface ItemListaChequeo {
@@ -107,13 +108,9 @@ class ListasChequeoAPIClient {
       'Accept': 'application/json; charset=utf-8',
     };
 
-    const token = localStorage.getItem('esap_auth_token');
-    if (token) {
-      defaultHeaders['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: {
         ...defaultHeaders,
         ...options.headers,

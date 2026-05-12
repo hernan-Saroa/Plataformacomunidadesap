@@ -9,6 +9,7 @@
 
 import { getBaseURL, STORAGE_KEYS, API_CONFIG, APIResponse, APIError } from './config';
 import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
+import { clearAuthTokens, getAccessToken, getRefreshToken, setAuthTokens } from './authTokenStore';
 
 /**
  * Custom error para errores de API
@@ -32,6 +33,7 @@ interface RequestOptions extends RequestInit {
   params?: Record<string, any>;
   requiresAuth?: boolean;
   skipErrorHandling?: boolean;
+  _authRetry?: boolean;
 }
 
 /**
@@ -39,6 +41,7 @@ interface RequestOptions extends RequestInit {
  */
 class APIClient {
   private baseURL: string;
+  private currentUser: any | null = null;
   private isRefreshing = false;
   private refreshSubscribers: ((token: string) => void)[] = [];
 
@@ -50,31 +53,32 @@ class APIClient {
    * Obtener token de acceso del localStorage
    */
   private getAccessToken(): string | null {
-    return localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
+    return getAccessToken();
   }
 
   /**
    * Obtener refresh token del localStorage
    */
   private getRefreshToken(): string | null {
-    return localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+    return getRefreshToken();
   }
 
   /**
    * Guardar tokens en localStorage
    */
-  private setTokens(accessToken: string, refreshToken: string): void {
-    localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
-    localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+  private setTokens(accessToken?: string, refreshToken?: string): void {
+    setAuthTokens(accessToken, refreshToken);
   }
 
   /**
    * Limpiar tokens del localStorage
    */
   private clearTokens(): void {
-    localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
-    localStorage.removeItem(STORAGE_KEYS.USER_DATA);
+    this.currentUser = null;
+    clearAuthTokens();
+    sessionStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN);
+    sessionStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+    sessionStorage.removeItem(STORAGE_KEYS.USER_DATA);
     localStorage.removeItem(STORAGE_KEYS.SISTEMA_ACTUAL);
   }
 
@@ -152,59 +156,38 @@ class APIClient {
    */
   private addAuthHeader(headers: HeadersInit = {}): HeadersInit {
     const token = this.getAccessToken();
-    if (token) {
-      return {
-        ...headers,
-        'Authorization': `Bearer ${token}`,
-      };
-    }
-    return headers;
+    if (!token) return headers;
+
+    return {
+      ...headers,
+      Authorization: `Bearer ${token}`,
+    };
   }
 
   /**
-   * Manejar refresh token
+   * Refrescar sesion con cookie HttpOnly.
+   * El backend lee la cookie y emite una nueva sin que el frontend almacene JWTs.
    */
   private async refreshAccessToken(): Promise<string> {
-    const refreshToken = this.getRefreshToken();
+    const response = await fetch(this.buildURL('/auth/api/v1/refresh'), {
+      method: 'POST',
+      headers: API_CONFIG.headers,
+      credentials: 'include',
+    });
 
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
+    if (!response.ok) {
+      throw new Error(`Token refresh failed with status ${response.status}`);
     }
 
-    try {
-      const response = await fetch(`${this.baseURL}/auth/refresh`, {
-        method: 'POST',
-        headers: {
-          ...API_CONFIG.headers,
-          'X-Refresh-Token': refreshToken,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Token refresh failed');
-      }
-
-      const data: any = await response.json();
-
-      // Verificar formato del backend
-      if (data.success && data.data) {
-        this.setTokens(data.data.accessToken, data.data.refreshToken);
-        return data.data.accessToken;
-      } else if (data.exito && data.datos) {
-        // Formato alternativo
-        this.setTokens(data.datos.accessToken, data.datos.refreshToken);
-        return data.datos.accessToken;
-      }
-
-      throw new Error('Invalid refresh response');
-    } catch (error) {
-      this.clearTokens();
-      // Redirigir al login
-      window.location.href = '/login';
-      throw error;
+    const data = await response.json().catch(() => null);
+    const accessToken = data?.data?.accessToken || data?.accessToken;
+    const refreshToken = data?.data?.refreshToken || data?.refreshToken;
+    if (accessToken) {
+      this.setTokens(accessToken, refreshToken || accessToken);
     }
+
+    return accessToken || 'cookie-refreshed';
   }
-
   /**
    * Agregar suscriptor para esperar refresh token
    */
@@ -232,6 +215,7 @@ class APIClient {
       requiresAuth = true,
       skipErrorHandling = false,
       headers = {},
+      _authRetry = false,
       ...fetchOptions
     } = options;
 
@@ -252,36 +236,40 @@ class APIClient {
       const response = await fetch(url, {
         ...fetchOptions,
         headers: requestHeaders,
+        credentials: fetchOptions.credentials ?? 'include',
       });
 
-      // Si es 401 y requiere auth, intentar refresh token
-      if (response.status === 401 && requiresAuth) {
+      // Si es 401 y requiere auth, intentar refresh de cookie y reintentar una sola vez.
+      if (response.status === 401 && requiresAuth && !_authRetry) {
         if (!this.isRefreshing) {
           this.isRefreshing = true;
 
           try {
-            const newToken = await this.refreshAccessToken();
-            this.isRefreshing = false;
-            this.onTokenRefreshed(newToken);
+            const refreshed = await this.refreshAccessToken();
+            this.onTokenRefreshed(refreshed);
 
-            // Reintentar request original con nuevo token
-            return this.request<T>(endpoint, options);
+            // Reintentar request original con la cookie renovada.
+            return this.request<T>(endpoint, { ...options, _authRetry: true });
           } catch (error) {
+            this.onTokenRefreshed('');
+          } finally {
             this.isRefreshing = false;
-            throw error;
           }
         } else {
-          // Esperar a que el refresh termine
+          // Esperar a que el refresh termine.
           return new Promise<T>((resolve, reject) => {
             this.subscribeTokenRefresh((token) => {
-              this.request<T>(endpoint, options)
+              if (!token) {
+                reject(new APIClientError(401, 'UNAUTHORIZED', 'No autorizado'));
+                return;
+              }
+              this.request<T>(endpoint, { ...options, _authRetry: true })
                 .then(resolve)
                 .catch(reject);
             });
           });
         }
       }
-
       // Parsear respuesta - manejar respuestas vacías
       const text = await response.text();
       let data: any = {};
@@ -296,8 +284,15 @@ class APIClient {
           data = { message: text };
         }
       } else {
-        // Respuesta vacía (ej: 204 No Content)
-        // Para DELETE, muchas veces esperamos éxito sin contenido body
+        // Respuesta vacia (ej: 204 No Content)
+        if (!response.ok) {
+          throw new APIClientError(
+            response.status,
+            response.status === 401 ? 'UNAUTHORIZED' : 'API_ERROR',
+            response.status === 401 ? 'No autorizado' : 'Error en la peticion'
+          );
+        }
+        // Para DELETE, muchas veces esperamos exito sin contenido body
         return {} as T;
       }
 
@@ -444,6 +439,7 @@ class APIClient {
       ...fetchOptions,
       method: 'GET',
       headers: requestHeaders,
+      credentials: fetchOptions.credentials ?? 'include',
     });
 
     if (!response.ok) {
@@ -459,7 +455,7 @@ class APIClient {
    * que rompe las subidas multipart/form-data
    */
   async upload<T = any>(endpoint: string, formData: FormData, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<T> {
-    const { params, requiresAuth = true } = options;
+    const { params } = options;
     const url = this.buildURL(endpoint, params);
 
     // Headers para upload: NO incluir Content-Type (el browser lo setea automáticamente)
@@ -467,19 +463,13 @@ class APIClient {
       'Accept': 'application/json',
     };
 
-    // Agregar auth si es necesario
-    if (requiresAuth) {
-      const token = this.getAccessToken();
-      if (token) {
-        uploadHeaders['Authorization'] = `Bearer ${token}`;
-      }
-    }
 
     try {
       const response = await fetch(url, {
         method: 'POST',
         headers: uploadHeaders,
         body: formData,
+        credentials: 'include',
       });
 
       const data: any = await response.json();
@@ -532,7 +522,7 @@ class APIClient {
 
   login(accessToken: string, refreshToken: string, userData: any): void {
     this.setTokens(accessToken, refreshToken);
-    localStorage.setItem(STORAGE_KEYS.USER_DATA, JSON.stringify(userData));
+    this.currentUser = userData;
   }
 
   logout(): void {
@@ -540,12 +530,11 @@ class APIClient {
   }
 
   isAuthenticated(): boolean {
-    return !!this.getAccessToken();
+    return this.currentUser !== null;
   }
 
   getUserData(): any | null {
-    const data = localStorage.getItem(STORAGE_KEYS.USER_DATA);
-    return data ? JSON.parse(data) : null;
+    return this.currentUser;
   }
 }
 

@@ -26,7 +26,7 @@ import { VerificationCertificateDisplay } from "./VerificationCertificateDisplay
 import { VerificationCertificate } from "../../types/index";
 import { PublicNavbar } from "./PublicNavbar";
 // import esapLogoWhite from 'figma:asset/2eabfe85218557ad27ece74d963c4a3b61b716be.png';
-import { ESAPLogoSVG } from "../assets/ESAPLogoSVG";
+import { ESAPLogo } from "../assets/ESAPLogo";
 import graduadosService, {
   type CertificadoGraduado,
   type GraduateMatchSuggestion,
@@ -819,7 +819,7 @@ export function PublicTitleVerification({
                   <Button
                     onClick={handleReset}
                     variant="outline"
-                    className="flex-1 h-12 text-base border-2 hover:border-[#1e5da8] hover:text-[#1e5da8]"
+                    className="flex-1 h-12 text-base border-2 border-gray-300 text-gray-700 bg-white hover:bg-[#1e5da8]/10 hover:border-[#1e5da8] hover:text-[#1e5da8] transition-all"
                   >
                     <FileText className="w-5 h-5 mr-2" />
                     Nueva Solicitud
@@ -845,8 +845,7 @@ export function PublicTitleVerification({
             <div className="flex flex-col md:flex-row justify-between items-start mb-10 pb-8 border-b border-white/20">
               {/* Logo y Descripción */}
               <div className="mb-6 md:mb-0 flex items-start gap-4">
-                {/* <img src={esapLogoWhite} alt="ESAP" className="h-14" /> */}
-                <ESAPLogoSVG variant="white" />
+                <ESAPLogo variant="white" className="h-14" />
                 <div>
                   <h3 className="text-xl font-bold mb-1">
                     Escuela Superior de Administración Pública
@@ -1944,8 +1943,7 @@ export function PublicTitleVerification({
           <div className="flex flex-col md:flex-row justify-between items-start mb-10 pb-8 border-b border-white/20">
             {/* Logo y Descripción */}
             <div className="mb-6 md:mb-0 flex items-start gap-4">
-              {/* <img src={esapLogoWhite} alt="ESAP" className="h-14" /> */}
-              <ESAPLogoSVG variant="white" />
+              <ESAPLogo variant="white" className="h-14" />
               <div>
                 <h3 className="text-xl font-bold mb-1">
                   Escuela Superior de Administración Pública

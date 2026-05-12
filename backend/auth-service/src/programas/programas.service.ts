@@ -1,16 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Like, Repository } from 'typeorm';
 import { ProgramaAcademico } from './programa.entity';
-import { RegistroCalificado } from './registro-calificado.entity';
-import { AcreditacionPrograma } from './acreditacion.entity';
+import { Asignatura } from './asignatura.entity';
+import { CreateProgramaDto, UpdateProgramaDto } from './programa.dto';
 
 export interface ProgramasFiltroDto {
   search?: string;
   nivelFormacion?: string;
   modalidad?: string;
   estado?: string;
-  sedeId?: number;
+  sede?: string;
   page?: number;
   limit?: number;
 }
@@ -20,6 +20,8 @@ export class ProgramasService {
   constructor(
     @InjectRepository(ProgramaAcademico)
     private readonly programaRepo: Repository<ProgramaAcademico>,
+    @InjectRepository(Asignatura)
+    private readonly asignaturaRepo: Repository<Asignatura>,
   ) {}
 
   async listarProgramas(filtros: ProgramasFiltroDto) {
@@ -28,7 +30,7 @@ export class ProgramasService {
       nivelFormacion,
       modalidad,
       estado,
-      sedeId,
+      sede,
       page = 1,
       limit = 20,
     } = filtros;
@@ -38,44 +40,90 @@ export class ProgramasService {
     if (nivelFormacion) where.nivelFormacion = nivelFormacion;
     if (modalidad) where.modalidad = modalidad;
     if (estado) where.estado = estado;
-    if (sedeId) where.sede = { idSede: sedeId };
+    if (sede) where.sede = sede;
 
     if (search) {
       where.nombre = Like(`%${search}%`);
     }
-    
+
     const [data, total] = await this.programaRepo.findAndCount({
       where,
       order: { nombre: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
-      relations: ['registroCalificado', 'acreditaciones', 'sede'],
     });
 
-    const today = new Date();
+    // Enrich data with calculated plan de estudios stats
+    const enrichedData = await Promise.all(
+      data.map(async (programa) => {
+        const asignaturasStats = await this.asignaturaRepo
+          .createQueryBuilder('asignatura')
+          .select([
+            'COUNT(asignatura.id) as total_asignaturas',
+            'COALESCE(SUM(asignatura.creditos), 0) as creditos_plan'
+          ])
+          .where('asignatura.programaId = :programaId', { programaId: programa.id })
+          .getRawOne();
 
-    const dataFiltered = data.map((p) => {
-      const registroCalificadoVigente =
-        p.registroCalificado &&
-        new Date(p.registroCalificado.vigencia) > today
-          ? p.registroCalificado
-          : undefined;
-
-      const acreditacionesVigentes =
-        p.acreditaciones?.filter((a) => new Date(a.vigencia) > today) || [];
-
-      return {
-        ...p,
-        registroCalificado: registroCalificadoVigente as RegistroCalificado | undefined,
-        acreditaciones: acreditacionesVigentes as AcreditacionPrograma[],
-      };
-    });
+        return {
+          ...programa,
+          totalAsignaturas: parseInt(asignaturasStats?.total_asignaturas || '0'),
+          creditosPlan: parseInt(asignaturasStats?.creditos_plan || '0'),
+        };
+      })
+    );
 
     return {
       total,
       pagina: page,
       porPagina: limit,
-      data: dataFiltered,
+      data: enrichedData,
     };
+  }
+
+  async obtenerPrograma(id: string): Promise<ProgramaAcademico> {
+    const programa = await this.programaRepo.findOne({ where: { id } });
+    if (!programa) {
+      throw new NotFoundException(`Programa con ID ${id} no encontrado`);
+    }
+
+    // Add calculated plan de estudios stats
+    const asignaturasStats = await this.asignaturaRepo
+      .createQueryBuilder('asignatura')
+      .select([
+        'COUNT(asignatura.id) as total_asignaturas',
+        'COALESCE(SUM(asignatura.creditos), 0) as creditos_plan'
+      ])
+      .where('asignatura.programaId = :programaId', { programaId: id })
+      .getRawOne();
+
+    return {
+      ...programa,
+      totalAsignaturas: parseInt(asignaturasStats?.total_asignaturas || '0'),
+      creditosPlan: parseInt(asignaturasStats?.creditos_plan || '0'),
+    };
+  }
+
+  async crearPrograma(dto: CreateProgramaDto): Promise<ProgramaAcademico> {
+    const programa = this.programaRepo.create(dto);
+    return await this.programaRepo.save(programa);
+  }
+
+  async actualizarPrograma(id: string, dto: UpdateProgramaDto): Promise<ProgramaAcademico> {
+    const programa = await this.obtenerPrograma(id);
+    Object.assign(programa, dto);
+    return await this.programaRepo.save(programa);
+  }
+
+  async eliminarPrograma(id: string): Promise<void> {
+    const programa = await this.obtenerPrograma(id);
+    await this.programaRepo.remove(programa);
+  }
+
+  async obtenerAsignaturasPrograma(programaId: string) {
+    return await this.asignaturaRepo.find({
+      where: { programaId },
+      order: { semestre: 'ASC', nombre: 'ASC' }
+    });
   }
 }

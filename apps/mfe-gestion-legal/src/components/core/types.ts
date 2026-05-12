@@ -286,6 +286,8 @@ export interface ConsultaJuridica {
   // Respuesta
   respuesta?: string;
   fechaRespuesta?: Date;
+  destinatariosAdicionales?: string;
+  comentarioDevolucionJefe?: string;
 
   // Documentos
   documentosAdjuntos: Documento[];
@@ -875,6 +877,7 @@ export interface Riesgo {
     avance: number;
   }[];
   responsable: string;
+  responsableId?: string;
   documentos: Documento[];
   timeline: EventoTimeline[];
   fechaCreacion: Date;

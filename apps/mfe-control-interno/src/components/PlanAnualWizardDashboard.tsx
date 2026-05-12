@@ -7,7 +7,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
+  ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2,
   TrendingUp, FileCheck, AlertCircle, AlertTriangle, BookOpen, Download, FileText,
   Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, FileSpreadsheet, RefreshCw, Settings,
   ChevronDown, ChevronUp, Calendar, Clock, Search, Edit3, GripVertical, Lock, Save
@@ -16,14 +16,14 @@ import { toast } from 'sonner';
 import { ModalGestionAdjuntos } from './ModalGestionAdjuntosActividades';
 import { SemaforoSeguimientoPAI } from '../plan-anual-auditoria/components/SemaforoSeguimientoPAI';
 import { ConfiguracionEvidencias, CONFIGURACIONES_PREDEFINIDAS } from './SistemaEvidenciasActividades';
-import { 
-  ModalConfiguracionPuntosControl, 
-  type PuntoControl, 
-  type FrecuenciaPuntoControl 
+import {
+  ModalConfiguracionPuntosControl,
+  type PuntoControl,
+  type FrecuenciaPuntoControl
 } from './ModalConfiguracionPuntosControl';
 import { ModalFirmaOTP, type FirmaElectronicaMetadata } from './ModalFirmaOTP';
 
-// ⚠️ IMPORTACIÓN OBLIGATORIA DE REGLAS DE NEGOCIO Y CUMPLIMIENTO NORMATIVO
+// a️ IMPORTACIN OBLIGATORIA DE REGLAS DE NEGOCIO Y CUMPLIMIENTO NORMATIVO
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
 import { createPortal } from 'react-dom';
 // Hook para sincronizar evidencias con backend y API de auditores
@@ -31,15 +31,16 @@ import { useSaveEvidencias, actividadesApi, planAnualApi, type CreateActividadDt
 import { configuracionesProfesionalesOCIApi } from './services/api';
 // Servicio para vinculación de auditorías con Rol 4
 import { controlInternoService } from '../../../services/api/controlInternoService';
+import { apiClient } from '../../../services/api/apiClient';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { cargarConfiguracionPDF } from './utils/configuracionHelper';
-import { 
-  dibujarEncabezadoInstitucional, 
-  dibujarPieInstitucional, 
+import {
+  dibujarEncabezadoInstitucional,
+  dibujarPieInstitucional,
   DOCUMENTOS_PREDEFINIDOS,
   LOGO_ESAP_URL
 } from './services/pdfESAPHeader';
-// ✅ NUEVO: Exportación Excel con logo
+// S& NUEVO: Exportación Excel con logo
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 
@@ -62,17 +63,19 @@ interface TareaSeguimiento {
   fechaCompletado?: string;
   responsables?: string[];
   observaciones?: string;
-  // ✅ Requisitos por tarea (antes estaban al nivel de actividad)
+  // S& Requisitos por tarea (antes estaban al nivel de actividad)
   requiereObservaciones?: boolean;
   requiereAdjuntos?: boolean;
   adjuntosTarea?: { nombre: string; url: string; fecha: string }[];
-  // ✅ Fecha de entrega opcional
+  // S& Fecha de entrega opcional
   fechaEntrega?: string;
-  // ✅ Evaluación por el responsable
+  // S& Evaluación por el responsable
   evaluada?: boolean;
   aceptada?: boolean;
   observacionesEvaluacion?: string;
   fechaEvaluacion?: string;
+  // S& Vinculación a punto de control (corte) específico
+  puntoControlId?: string;
 }
 
 interface Actividad {
@@ -91,29 +94,29 @@ interface Actividad {
   tareasSeguimiento?: TareaSeguimiento[];
   adjuntos?: ArchivoAdjunto[]; // Archivos adjuntos para evidencia de cumplimiento
   observacionesCumplimiento?: ObservacionCumplimiento[] | string; // FLEXIBILIDAD: array para múltiples o string simple
-  
-  // ═══════════════════════════════════════════════════════════════════════
-  // CONFIGURACIÓN DE EVIDENCIAS - Define si adjuntos/observaciones son requeridos
-  // ═══════════════════════════════════════════════════════════════════════
+
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+  // CONFIGURACIN DE EVIDENCIAS - Define si adjuntos/observaciones son requeridos
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   configuracionEvidencias?: ConfiguracionEvidencias;
-  
+
   // Sistema de autorización del Jefe OCI - Configurado en creación del plan
   requiereAutorizacionJefeOCI?: boolean; // Indica si requiere autorización del Jefe OCI para completar
   autorizadaPorJefeOCI?: boolean; // Indica si fue autorizada por el Jefe OCI
   fechaAutorizacion?: string; // Fecha de autorización del Jefe OCI
   observacionesJefeOCI?: string; // Observaciones del Jefe OCI al autorizar
-  
+
   // Sistema de verificación del Director (legacy)
   requiereVerificacionDirector: boolean; // Indica si requiere verificación del Director OCI
   verificadaPorDirector?: boolean; // Indica si fue verificada por el Director
   fechaVerificacion?: string; // Fecha de verificación del Director
   observacionesDirector?: string; // Observaciones del Director al verificar
-  
-  // ✅ NUEVO: Sistema de puntos de control
+
+  // S& NUEVO: Sistema de puntos de control
   puntosControl?: PuntoControl[]; // Puntos de control configurados
   frecuenciaPuntosControl?: FrecuenciaPuntoControl; // Frecuencia configurada
 
-  // ✅ NUEVO: Entradas de seguimiento vinculadas a puntos de control
+  // S& NUEVO: Entradas de seguimiento vinculadas a puntos de control
   entradasSeguimiento?: EntradaSeguimiento[];
 
   // Soft delete
@@ -123,7 +126,7 @@ interface Actividad {
 interface EntradaSeguimiento {
   id: string;
   puntoControlId: string;   // ID del punto de control (pc-auto-1, etc.)
-  fechaRegistro: string;    // ISO date — se compara con fechaProgramada del corte
+  fechaRegistro: string;    // ISO date  se compara con fechaProgramada del corte
   registradoPor: string;
   usuarioId?: string;
   texto?: string;           // observación escrita (opcional)
@@ -153,9 +156,9 @@ interface ObservacionCumplimiento {
   registradoPor: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
+// """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 // FUNCIONES HELPER - Manejar diferentes formatos de datos
-// ═══════════════════════════════════════════════════════════════════════════
+// """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 /**
  * Obtiene el conteo correcto de observaciones
@@ -188,7 +191,7 @@ function tieneObservaciones(obs: ObservacionCumplimiento[] | string | undefined)
 /**
  * Calcula el % de avance basado en cortes de seguimiento.
  * Solo cuenta los cortes cuya fechaProgramada <= hoy.
- * Un corte se considera cumplido si tiene ≥1 EntradaSeguimiento con fechaRegistro <= fechaProgramada del corte.
+ * Un corte se considera cumplido si tiene 01 EntradaSeguimiento con fechaRegistro <= fechaProgramada del corte.
  */
 function calcularPorcentajeCortes(actividad: Actividad): number {
   const cortes = actividad.puntosControl;
@@ -260,13 +263,13 @@ const ROLES_DECRETO_648: Omit<Rol, 'actividades'>[] = [
   { numero: 1, nombre: 'Liderazgo estratégico', color: '#2962FF', icono: '🎯', descripcion: 'Asesorar y acompañar a la alta dirección' },
   { numero: 2, nombre: 'Enfoque hacia la prevención', color: '#00C853', icono: '🛡️', descripcion: 'Promover actividades preventivas' },
   { numero: 3, nombre: 'Evaluación de la gestión del riesgo', color: '#FF6D00', icono: '⚠️', descripcion: 'Evaluar sistema de gestión de riesgos' },
-  { numero: 4, nombre: 'Evaluación y seguimiento', color: '#AA00FF', icono: '✓', descripcion: 'Evaluar diseño y efectividad del sistema de control interno' },
+  { numero: 4, nombre: 'Evaluación y seguimiento', color: '#AA00FF', icono: '✔', descripcion: 'Evaluar diseño y efectividad del sistema de control interno' },
   { numero: 5, nombre: 'Relación con entes externos de control', color: '#C62828', icono: '⚖️', descripcion: 'Coordinar con entes externos' }
 ];
 
 // Tipo para configuración de roles en el wizard
 interface ActividadBase {
-  id?: string; // ⚡ ID único para identificar cada actividad
+  id?: string; // a ID único para identificar cada actividad
   nombre: string;
   descripcion: string;
   fechaInicio: string;
@@ -277,11 +280,119 @@ interface ActividadBase {
   tareasSeguimiento?: TareaSeguimiento[];
   requiereAutorizacionJefeOCI?: boolean; // Checkbox      por actividad
   tipoEvidencia?: 'SOLO_CHECK' | 'OBSERVACIONES' | 'ADJUNTOS' | 'COMPLETO'; // Tipo de evidencia requerida
-  responsables?: Auditor[]; // ✅ Responsables por actividad (múltiples)
+  responsables?: Auditor[]; // S& Responsables por actividad (múltiples)
   fechaCorte?: string; // Fecha límite de corte para la actividad
-  // ✅ NUEVO: Configuración de puntos de control
+  // S& NUEVO: Configuración de puntos de control
   puntosControl?: PuntoControl[];
   frecuenciaPuntosControl?: FrecuenciaPuntoControl;
+  /** Si es `false`, la actividad no entra en el plan guardado pero se conserva lo configurado hasta volver a marcarla. */
+  incluidaEnPlan?: boolean;
+}
+
+/** Actividades desmarcadas en el checklist conservan datos; solo `incluidaEnPlan === false` las excluye del envío al backend. */
+function actividadIncluidaEnPlan(a: ActividadBase): boolean {
+  return a.incluidaEnPlan !== false;
+}
+
+/**
+ * Interruptores del Paso 2 usan `tipoEvidencia`. Al abrir un plan cargado desde el dashboard,
+ * la config viene como `adjuntosRequeridos` / `observacionRequerida` (sin `documentos`/`observaciones`),
+ * por lo que la inferencia antigua devolvía siempre SOLO_CHECK y el switch grande quedaba apagado.
+ * Coincide con el mapeo que envía `handleCrearPlan` (OBLIGATORIO = caso wizard).
+ */
+function inferirTipoEvidenciaParaWizard(act: ActividadBase & { configuracionEvidencias?: any }): NonNullable<ActividadBase['tipoEvidencia']> {
+  if (act.tipoEvidencia) return act.tipoEvidencia;
+  const c = act.configuracionEvidencias;
+  let desdeConfig: NonNullable<ActividadBase['tipoEvidencia']> | null = null;
+  if (c) {
+    if (typeof c.documentos === 'boolean' || typeof c.observaciones === 'boolean') {
+      const doc = !!c.documentos;
+      const obs = !!c.observaciones;
+      if (doc && obs) desdeConfig = 'COMPLETO';
+      else if (doc) desdeConfig = 'ADJUNTOS';
+      else if (obs) desdeConfig = 'OBSERVACIONES';
+      else desdeConfig = 'SOLO_CHECK';
+    } else if (c.adjuntosRequeridos !== undefined || c.observacionRequerida !== undefined) {
+      const adj = c.adjuntosRequeridos ?? 'NO_REQUERIDO';
+      const obs = c.observacionRequerida ?? 'NO_REQUERIDO';
+      const adjOb = adj === 'OBLIGATORIO';
+      const obsOb = obs === 'OBLIGATORIO';
+      if (adjOb && obsOb) desdeConfig = 'COMPLETO';
+      else if (adjOb && !obsOb) desdeConfig = 'ADJUNTOS';
+      else if (obsOb && !adjOb) desdeConfig = 'OBSERVACIONES';
+      else desdeConfig = 'SOLO_CHECK';
+    }
+  }
+  if (desdeConfig && desdeConfig !== 'SOLO_CHECK') return desdeConfig;
+
+  const tareas = act.tareasSeguimiento;
+  if (Array.isArray(tareas) && tareas.length > 0) {
+    const anyObs = tareas.some((t) => t.requiereObservaciones);
+    const anyAdj = tareas.some((t) => t.requiereAdjuntos);
+    const allObs = tareas.every((t) => t.requiereObservaciones);
+    const allAdj = tareas.every((t) => t.requiereAdjuntos);
+    if (allObs && allAdj && (anyObs || anyAdj)) return 'COMPLETO';
+    if (allAdj && !anyObs) return 'ADJUNTOS';
+    if (allObs && !anyAdj) return 'OBSERVACIONES';
+  }
+
+  return desdeConfig ?? 'SOLO_CHECK';
+}
+
+/** Ajusta solo el año de una fecha ISO YYYY-MM-DD (preserva mes/día). */
+function reemplazarAnioEnFechaIso(iso: string | undefined | null, año: number): string {
+  if (!iso || iso.length < 10) return iso || '';
+  if (!/^\d{4}-\d{2}-\d{2}/.test(iso)) return iso;
+  return `${año}${iso.slice(4)}`;
+}
+
+function sumarAniosIso(iso: string, años: number): string {
+  const parts = iso.split('-').map(Number);
+  if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return iso;
+  const [y, m, d] = parts;
+  const nd = new Date(y + años, m - 1, d);
+  if (Number.isNaN(nd.getTime())) return iso;
+  const yyyy = nd.getFullYear();
+  const mm = String(nd.getMonth() + 1).padStart(2, '0');
+  const dd = String(nd.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Desplaza todas las fechas de entrega para que la más temprana caiga en `vigencia`
+ * (conserva separación entre tareas, p. ej. julio vs enero siguiente).
+ */
+function alinearTareasFechasEntregaAVigencia(
+  tareas: TareaSeguimiento[] | undefined,
+  vigencia: number
+): TareaSeguimiento[] | undefined {
+  if (!tareas?.length) return tareas;
+  const años = tareas
+    .map((t) => t.fechaEntrega?.slice(0, 4))
+    .filter((y): y is string => !!y && /^\d{4}$/.test(y))
+    .map((y) => parseInt(y, 10));
+  if (años.length === 0) return tareas;
+  const minAño = Math.min(...años);
+  const delta = vigencia - minAño;
+  if (delta === 0) return tareas;
+  return tareas.map((t) => ({
+    ...t,
+    fechaEntrega: t.fechaEntrega ? sumarAniosIso(t.fechaEntrega, delta) : t.fechaEntrega,
+  }));
+}
+
+/** Fecha de corte mostrada: último cierre del último punto de control si existe. */
+function fechaCorteDisplayDesdeActividad(act: ActividadBase): string | undefined {
+  const pcs = act.puntosControl;
+  if (pcs && pcs.length > 0) {
+    const ult = pcs[pcs.length - 1];
+    return ult.fechaSeguimiento || ult.fechaProgramada;
+  }
+  return act.fechaCorte;
+}
+
+function contarActividadesIncluidas(rol: RolConfig): number {
+  return rol.actividadesSeleccionadas.filter(actividadIncluidaEnPlan).length;
 }
 
 interface RolConfig extends Omit<Rol, 'actividades'> {
@@ -292,324 +403,230 @@ interface RolConfig extends Omit<Rol, 'actividades'> {
 
 // Función para obtener actividades por rol desde el archivo principal
 function getActividadesPorRol(numeroRol: number): ActividadBase[] {
-  // ════════════════════════════════════════════════════════════════════════════
+  // """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   // ACTIVIDADES OFICIALES DECRETO 648/2017 - SINCRONIZADO CON EXCEL ESAP
-  // ════════════════════════════════════════════════════════════════════════════
+  // """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   const actividadesPorRol: Record<number, ActividadBase[]> = {
-    // ═══════════════════ ROL 1: LIDERAZGO ESTRATÉGICO (46) ═══════════════════
+    // """"""""""""""""""" ROL 1: LIDERAZGO ESTRATÉGICO (46) """""""""""""""""""
     1: [
-      { 
-        nombre: 'Establecer canales de comunicación directa con el Director Nacional de la ESAP', 
-        descripcion: 'Mantener comunicación permanente con la dirección sobre temas estratégicos de control interno', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '50% avance', 
-        seguimiento: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del Director. Enviar comunicaciones internas hechas a los procesos de la ESAP al Señor Director.',
+      {
+        nombre: 'Establecer canales de comunicación directa con el Director Nacional de la ESAP',
+        descripcion: 'Mantener comunicación permanente con la dirección sobre temas estratégicos de control interno',
+        fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance',
+        seguimiento: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del Director.',
         tareasSeguimiento: [
-          { id: 'r1-a1-t1', descripcion: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del Director', completada: false },
-          { id: 'r1-a1-t2', descripcion: 'Enviar comunicaciones internas hechas a los procesos de la ESAP al Señor Director', completada: false },
+          { id: 'r1-a1-t1', descripcion: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del Director.', completada: false, fechaEntrega: '2026-07-31' },
+          { id: 'r1-a1-t2', descripcion: 'Enviar comunicaciones internas hechas a los procesos de la ESAP al Señor Director.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
-      { 
-        nombre: 'Verificar a través del Plan anual de auditorías, el cumplimiento de metas, indicadores, procesos estratégicos de la entidad y riesgos asociados a estos', 
-        descripcion: 'Revisar cumplimiento de objetivos institucionales y riesgos asociados', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento cuatrimestral.', 
-        evaluacion: '50% avance', 
-        seguimiento: 'Socializar resultados en el Comité Institucional de Gestión y Desempeño',
+      {
+        nombre: 'Verificar a través del Plan anual de auditorías, el cumplimiento de metas, indicadores, procesos estratégicos de la entidad y riesgos asociados a estos',
+        descripcion: 'Revisar cumplimiento de objetivos institucionales y riesgos asociados',
+        fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento cuatrimestral.', evaluacion: '0% avance',
+        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno',
         tareasSeguimiento: [
-          { id: 'r1-a2-t1', descripcion: 'Socializar resultados en el Comité Institucional de Gestión y Desempeño', completada: false },
+          { id: 'r1-a2-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false, fechaEntrega: '2026-05-31' },
+          { id: 'r1-a2-t2', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false, fechaEntrega: '2026-09-30' },
+          { id: 'r1-a2-t3', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
-      { 
-        nombre: 'Establecer en el Comité de Gestión y Desempeño la periodicidad y alcance de rendición de informes estratégicos', 
-        descripcion: 'Definir en el comité de gestión y desempeño la periodicidad de rendición de informes', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento anual.', 
-        evaluacion: '10% avance', 
-        seguimiento: 'Socializar Plan Anual de Auditoría en el Comité Institucional de Gestión y Desempeño',
+      {
+        nombre: 'Establecer en el Comité de Gestión y Desempeño la periodicidad y alcance de rendición de informes estratégicos',
+        descripcion: 'Definir en el comité de gestión y desempeño la periodicidad de rendición de informes',
+        fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento anual.', evaluacion: '100% avance',
+        seguimiento: 'Socializar Plan Anual de Auditoría en el Comité Institucional de Gestión y Desempeño.',
         tareasSeguimiento: [
-          { id: 'r1-a3-t1', descripcion: 'Socializar Plan Anual de Auditoría en el Comité Institucional de Gestión y Desempeño', completada: false },
+          { id: 'r1-a3-t1', descripcion: 'Socializar Plan Anual de Auditoría en el Comité Institucional de Gestión y Desempeño.', completada: true, fechaEntrega: '2026-02-28' },
         ]
       },
-      { 
-        nombre: 'Presentar ante el Comité Institucional de Coordinación de Control Interno los resultados de la evaluación de la operación de la primera y segunda línea de defensa. Analizar las variaciones del ambiente organizacional y del entorno, identificando procesos críticos, controles y servicios que tengan un impacto significativo en el cumplimiento de los objetivos institucionales', 
-        descripcion: 'Evaluar operación de primera y segunda línea de defensa ante el CICC', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno, a través de sus cinco (5) componentes y publicar en la página web',
+      {
+        nombre: 'Presentar ante el Comité Institucional de Coordinación de Control Interno los resultados de la evaluación de la operación de la primera y segunda línea de defensa. Analizar las variaciones del ambiente organizacional y del entorno, identificando procesos críticos, controles y servicios que tengan un impacto significativo en el cumplimiento de los objetivos institucionales',
+        descripcion: 'Evaluar operación de primera y segunda línea de defensa ante el CICC',
+        fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance',
+        seguimiento: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno',
         tareasSeguimiento: [
-          { id: 'r1-a4-t1', descripcion: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno, a través de sus cinco (5) componentes y publicar en la página web', completada: false },
+          { id: 'r1-a4-t1', descripcion: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno, a través de sus cinco (5) componentes y publicar en la página web.', completada: false, fechaEntrega: '2026-07-31' },
+          { id: 'r1-a4-t2', descripcion: 'Hacer informe de los resultados de la evaluación independiente del Estado del Sistema de Control Interno, a través de sus cinco (5) componentes y publicar en la página web.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
-      { 
-        nombre: 'Informar al jefe de la entidad sobre las alertas de riesgo fiscal identificadas y en general los resultados de los ejercicios de auditoría y se planteen recomendaciones estratégicas para el fortalecimiento y la prevención', 
-        descripcion: 'Comunicar al jefe de la entidad sobre alertas identificadas en auditorías', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace informe cuatrimestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION',
+      {
+        nombre: 'Informar al Director Nacional de la ESAP sobre las alertas de riesgo fiscal identificadas y en general los resultados de los ejercicios de auditoría y se planteen recomendaciones estratégicas para el fortalecimiento y la prevención',
+        descripcion: 'Comunicar al Director sobre alertas de riesgo fiscal identificadas en auditorías',
+        fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace informe cuatrimestral.', evaluacion: '0% avance',
+        seguimiento: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION.',
         tareasSeguimiento: [
-          { id: 'r1-a5-t1', descripcion: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION', completada: false },
+          { id: 'r1-a5-t1', descripcion: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION.', completada: false, fechaEntrega: '2026-05-31' },
+          { id: 'r1-a5-t2', descripcion: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION.', completada: false, fechaEntrega: '2026-09-30' },
+          { id: 'r1-a5-t3', descripcion: 'Hacer informe, publicar en la página web, diligenciar el seguimiento como tercera línea en ISOLUCION.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
-      { 
-        nombre: 'Participación frente a los procesos de empalme cuando se dan cambios de administración', 
-        descripcion: 'Acompañar procesos de transición cuando hay cambios de administración', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: '', 
-        evaluacion: '0% avance', 
-        seguimiento: 'Se hace seguimiento el último año',
+      {
+        nombre: 'Participación frente a los procesos de empalme cuando se dan cambios de administración',
+        descripcion: 'Acompañar procesos de transición cuando hay cambios de administración',
+        fechaInicio: '2026-08-08', fechaFin: '2026-10-31',
+        control: 'Cuando se aplique', evaluacion: '0% avance',
+        seguimiento: 'Se hace seguimiento el último año.',
         tareasSeguimiento: [
-          { id: 'r1-a6-t1', descripcion: 'Se hace seguimiento el último año', completada: false },
+          { id: 'r1-a6-t1', descripcion: 'Se hace seguimiento el último año.', completada: false, fechaEntrega: '2026-10-31' },
         ]
       }
     ],
-    // ═══════════════════ ROL 2: ENFOQUE HACIA LA PREVENCIÓN (60) ═══════════════════
+    // """"""""""""""""""" ROL 2: ENFOQUE HACIA LA PREVENCIN (60) """""""""""""""""""
     2: [
-      { 
-        nombre: 'Programar en los comités institucionales más estratégicos (gestión y desempeño institucional, de coordinación de control interno, de gerencia u otro), sesiones que sensibilicen sobre la articulación del sistema de control interno y el control externo', 
-        descripcion: 'Programar sesiones en comités estratégicos sobre la articulación del sistema de control interno y el control externo', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Socializar articulación del sistema de control interno y el control externo (Guía de auditoría)',
+      {
+        nombre: 'Programar en los comités institucionales más estratégicos sesiones que sensibilicen sobre la articulación del sistema de control interno y el control externo',
+        descripcion: 'Programar sesiones en comités estratégicos sobre articulación del SCI', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance', seguimiento: 'Socializar articulación del sistema de control interno y el control externo (Guía de auditoría).',
         tareasSeguimiento: [
-          { id: 'r2-a1-t1', descripcion: 'Socializar articulación del sistema de control interno y el control externo (Guía de auditoría)', completada: false },
+          { id: 'r2-a1-t1', descripcion: 'Socializar articulación del sistema de control interno y el control externo (Guía de auditoría).', completada: false, fechaEntrega: '2026-08-31' },
+          { id: 'r2-a1-t2', descripcion: 'Socializar articulación del sistema de control interno y el control externo (Guía de auditoría).', completada: false, fechaEntrega: '2027-02-28' },
         ]
       },
-      { 
-        nombre: 'Acompañar a los procesos en la formulación de planes de mejoramiento', 
-        descripcion: 'Asesorar a los procesos en la formulación de planes de mejoramiento', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento trimestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Asesorar y suministrar herramientas como el diagrama causa efecto',
+      {
+        nombre: 'Acompañar a los procesos en la formulación de planes de mejoramiento',
+        descripcion: 'Asesorar a los procesos en la formulación de planes de mejoramiento', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento trimestral.', evaluacion: '0% avance', seguimiento: 'Revisión metodológica',
         tareasSeguimiento: [
-          { id: 'r2-a2-t1', descripcion: 'Asesorar y suministrar herramientas como el diagrama causa efecto', completada: false },
+          { id: 'r2-a2-t1', descripcion: 'Revisión metodológica', completada: false, fechaEntrega: '2026-04-30' },
+          { id: 'r2-a2-t2', descripcion: 'Revisión metodológica', completada: false, fechaEntrega: '2026-07-31' },
+          { id: 'r2-a2-t3', descripcion: 'Revisión metodológica', completada: false, fechaEntrega: '2026-10-31' },
+          { id: 'r2-a2-t4', descripcion: 'Revisión metodológica', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
-      { 
-        nombre: 'Adoptar formalmente un procedimiento para el seguimiento al Plan de Mejoramiento, con esquema de semaforización que genere informe de alertas a los responsables internos. Hacer mesas de trabajo con los responsables de las acciones que se encuentren en alguna de las alertas', 
-        descripcion: 'Formalizar procedimiento con semaforización y alertas a responsables', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento anual.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Documentar procedimiento y formato para hacer seguimiento al cumplimiento y efectividad de las acciones de mejora',
+      {
+        nombre: 'Adoptar formalmente un procedimiento para el seguimiento al Plan de Mejoramiento, con esquema de semaforización que genere informe de alertas a los responsables internos. Hacer mesas de trabajo con los responsables de las acciones que se encuentren en alguna de las alertas',
+        descripcion: 'Formalizar procedimiento con semaforización y alertas a responsables', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento anual.', evaluacion: '0% avance', seguimiento: 'Incluir en el módulo de control interno las alertas para los planes de mejoramiento',
         tareasSeguimiento: [
-          { id: 'r2-a3-t1', descripcion: 'Documentar procedimiento y formato para hacer seguimiento al cumplimiento y efectividad de las acciones de mejora', completada: false },
+          { id: 'r2-a3-t1', descripcion: 'Incluir en el módulo de control interno las alertas para los planes de mejoramiento', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
-      { 
-        nombre: 'Elaborar y presentar, en el marco del Comité Institucional de Coordinación de Control Interno un informe en relación con el avance del plan de mejoramiento', 
-        descripcion: 'Informar sobre el estado de avance del plan de mejoramiento institucional', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento trimestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno',
+      {
+        nombre: 'Elaborar y presentar, en el marco del Comité Institucional de Coordinación de Control Interno un informe en relación con el avance del plan de mejoramiento',
+        descripcion: 'Informar sobre el estado de avance del plan de mejoramiento institucional', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento trimestral.', evaluacion: '0% avance', seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.',
         tareasSeguimiento: [
-          { id: 'r2-a4-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false },
+          { id: 'r2-a4-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-05-29' },
+          { id: 'r2-a4-t2', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-08-28' },
+          { id: 'r2-a4-t3', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-11-20' },
+          { id: 'r2-a4-t4', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2027-03-31' },
         ]
       },
-      { 
-        nombre: 'Hacer seguimiento a decisiones en firme de órganos de control e investigación sobre procesos penales, fiscales y disciplinarios derivados de hallazgos o denuncias relacionadas con la entidad', 
-        descripcion: 'Monitorear procesos penales, fiscales y disciplinarios relacionados con la entidad', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno',
+      {
+        nombre: 'Desarrollar diagnósticos para la mejora en la gestión del riesgo en todos sus ámbitos',
+        descripcion: 'Realizar diagnósticos en todos los ámbitos de gestión del riesgo', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance', seguimiento: 'Establecer a través de la auditoría interna la efectividad de los controles.',
         tareasSeguimiento: [
-          { id: 'r2-a5-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false },
+          { id: 'r2-a5-t1', descripcion: 'Establecer a través de la auditoría interna la efectividad de los controles para evitar la materialización de riesgos y socializar en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-08-31' },
+          { id: 'r2-a5-t2', descripcion: 'Establecer a través de la auditoría interna la efectividad de los controles para evitar la materialización de riesgos y socializar en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2027-02-28' },
         ]
       },
-      { 
-        nombre: 'Desarrollar diagnósticos para la mejora en la gestión del riesgo en todos sus ámbitos', 
-        descripcion: 'Realizar diagnósticos en todos los ámbitos de gestión del riesgo', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Establecer a través de la auditoría interna la efectividad de los controles para evitar la materialización de riesgos y socializar en el Comité Institucional de Coordinación de Control Interno',
+      {
+        nombre: 'Asesorar a la alta dirección para la articulación del esquema de líneas de defensa',
+        descripcion: 'Acompañar a la alta dirección en la implementación de las tres líneas de defensa', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance', seguimiento: 'Realizar capacitaciones del esquema de tres líneas de defensa del Sistema de Control Interno.',
         tareasSeguimiento: [
-          { id: 'r2-a6-t1', descripcion: 'Establecer a través de la auditoría interna la efectividad de los controles para evitar la materialización de riesgos y socializar en el Comité Institucional de Coordinación de Control Interno', completada: false },
+          { id: 'r2-a6-t1', descripcion: 'Realizar capacitaciones del esquema de tres líneas de defensa del Sistema de Control Interno.', completada: false, fechaEntrega: '2026-08-31' },
+          { id: 'r2-a6-t2', descripcion: 'Realizar capacitaciones del esquema de tres líneas de defensa del Sistema de Control Interno.', completada: false, fechaEntrega: '2027-02-28' },
         ]
       },
-      { 
-        nombre: 'Asesorar a la alta dirección para la articulación del esquema de líneas de defensa', 
-        descripcion: 'Acompañar a la alta dirección en la implementación de las tres líneas de defensa', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Realizar capacitaciones del esquema de tres líneas de defensa del Sistema de Control Interno',
+      {
+        nombre: 'Alertas tempranas',
+        descripcion: 'Emitir alertas tempranas cuando se requieran', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Cuando se aplique', evaluacion: '0% avance', seguimiento: 'Emitir alertas cuando se requieran',
         tareasSeguimiento: [
-          { id: 'r2-a7-t1', descripcion: 'Realizar capacitaciones del esquema de tres líneas de defensa del Sistema de Control Interno', completada: false },
-        ]
-      },
-      { 
-        nombre: 'Establecer una estrategia de acompañamiento de la batería de indicadores y diseño de tableros de control', 
-        descripcion: 'Establecer estrategia para el diseño y seguimiento de indicadores', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Realizar capacitaciones',
-        tareasSeguimiento: [
-          { id: 'r2-a8-t1', descripcion: 'Realizar capacitaciones', completada: false },
+          { id: 'r2-a7-t1', descripcion: 'Emitir alertas cuando se requieran', completada: false },
         ]
       }
     ],
-    // ═══════════════════ ROL 3: EVALUACIÓN DE LA GESTIÓN DEL RIESGO (48) ═══════════════════
+    // """"""""""""""""""" ROL 3: EVALUACIN DE LA GESTIN DEL RIESGO (48) """""""""""""""""""
     3: [
-      { 
-        nombre: 'Revisar la adecuación y/o actualización de la política de administración del riesgo y si se evalúa periódicamente su implementación', 
-        descripcion: 'Evaluar actualización y cumplimiento de la política de gestión del riesgo', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '48% avance', 
-        seguimiento: 'Revisar que está formalizada a través de acto administrativo o actuación administrativa y que contenga (objetivo, alcance, niveles de aceptación del riesgo, niveles para calificar el impacto, tratamiento del riesgo) de conformidad con la Guía para la Administración del Riesgo y el diseño de controles en entidades públicas',
+      {
+        nombre: 'Revisar la adecuación y/o actualización de la política de administración del riesgo y si se evalúa periódicamente su implementación',
+        descripcion: 'Evaluar actualización y cumplimiento de la política de gestión del riesgo', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento cuatrimestral.', evaluacion: '0% avance', seguimiento: 'Revisar que está formalizada a través de acto administrativo.',
         tareasSeguimiento: [
-          { id: 'r3-a1-t1', descripcion: 'Revisar que está formalizada a través de acto administrativo o actuación administrativa', completada: false },
-          { id: 'r3-a1-t2', descripcion: 'Verificar que contenga: objetivo, alcance, niveles de aceptación del riesgo, niveles para calificar el impacto, tratamiento del riesgo', completada: false },
-          { id: 'r3-a1-t3', descripcion: 'Validar conformidad con la Guía para la Administración del Riesgo y el diseño de controles en entidades públicas', completada: false },
+          { id: 'r3-a1-t1', descripcion: 'Revisar que está formalizada a través de acto administrativo o actuación administrativa y que contenga (objetivo, alcance, niveles de aceptación del riesgo, niveles para calificar el impacto, tratamiento del riesgo) de conformidad con la Guía para la Administración del Riesgo y el diseño de controles en entidades públicas.', completada: false, fechaEntrega: '2026-05-31' },
+          { id: 'r3-a1-t2', descripcion: 'Revisar que está formalizada a través de acto administrativo o actuación administrativa y que contenga (objetivo, alcance, niveles de aceptación del riesgo, niveles para calificar el impacto, tratamiento del riesgo) de conformidad con la Guía para la Administración del Riesgo y el diseño de controles en entidades públicas.', completada: false, fechaEntrega: '2026-09-30' },
+          { id: 'r3-a1-t3', descripcion: 'Revisar que está formalizada a través de acto administrativo o actuación administrativa y que contenga (objetivo, alcance, niveles de aceptación del riesgo, niveles para calificar el impacto, tratamiento del riesgo) de conformidad con la Guía para la Administración del Riesgo y el diseño de controles en entidades públicas.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
-      { 
-        nombre: 'Promover escenarios para que la dirección comprenda el valor de la gestión de riesgos como paso previo para promover el proceso en toda la organización. Proporcionar la información de riesgos para que la alta dirección la utilice en la toma de decisiones', 
-        descripcion: 'Generar escenarios para que la dirección comprenda la importancia de la gestión de riesgos', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '48% avance', 
-        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno',
+      {
+        nombre: 'Promover escenarios para que la dirección comprenda el valor de la gestión de riesgos como paso previo para promover el proceso en toda la organización. Proporcionar la información de riesgos para que la alta dirección la utilice en la toma de decisiones',
+        descripcion: 'Generar escenarios para que la dirección comprenda la importancia de la gestión de riesgos', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento cuatrimestral.', evaluacion: '0% avance', seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.',
         tareasSeguimiento: [
-          { id: 'r3-a2-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false },
+          { id: 'r3-a2-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-05-31' },
+          { id: 'r3-a2-t2', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-09-30' },
+          { id: 'r3-a2-t3', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
-      { 
-        nombre: 'Evaluar prácticas actuales de gestión del riesgo para migrar a esquemas más efectivos. Articular ejercicios de seguimiento y monitoreo en el marco del Esquema de las líneas de defensa', 
-        descripcion: 'Migrar a esquemas más efectivos y articular ejercicios de seguimiento y monitoreo en el marco del Esquema de las líneas de defensa', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento cuatrimestral.', 
-        evaluacion: '48% avance', 
-        seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno',
+      {
+        nombre: 'Evaluar prácticas actuales de gestión del riesgo para migrar a esquemas más efectivos. Articular ejercicios de seguimiento y monitoreo en el marco del Esquema de las líneas de defensa',
+        descripcion: 'Migrar a esquemas más efectivos de gestión del riesgo', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento cuatrimestral.', evaluacion: '0% avance', seguimiento: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.',
         tareasSeguimiento: [
-          { id: 'r3-a3-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno', completada: false },
+          { id: 'r3-a3-t1', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-05-31' },
+          { id: 'r3-a3-t2', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2026-09-30' },
+          { id: 'r3-a3-t3', descripcion: 'Socializar resultados en el Comité Institucional de Coordinación de Control Interno.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       }
     ],
-    // ═══════════════════ ROL 4: EVALUACIÓN Y SEGUIMIENTO (60) ═══════════════════
+    // """"""""""""""""""" ROL 4: EVALUACIN Y SEGUIMIENTO (60) """""""""""""""""""
     4: [
-      { 
-        nombre: 'Efectuar auditorías internas con enfoque preventivo y las especiales acorde al programa de auditoria', 
-        descripcion: 'Realizar auditorías internas y especiales conforme al programa anual', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento mensual.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría',
+      {
+        nombre: 'Efectuar auditorías internas con enfoque preventivo y las especiales acorde al programa de auditoria',
+        descripcion: 'Realizar auditorías internas y especiales conforme al programa anual', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento mensual.', evaluacion: '0% avance', seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría.',
         tareasSeguimiento: [
-          { id: 'r4-a1-t1', descripcion: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría', completada: false },
+          { id: 'r4-a1-t1', descripcion: 'Realizar seguimiento al cumplimiento de ejecución de las auditorías establecidas en el Programa de Auditoría.', completada: false },
         ]
       },
-      { 
-        nombre: 'Seguimiento a planes de mejoramiento internos y externos', 
-        descripcion: 'Monitorear cumplimiento de planes de mejoramiento derivados de auditorías', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento trimestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Asesorar y suministrar herramientas como el diagrama causa efecto',
+      {
+        nombre: 'Seguimiento a planes de mejoramiento internos y externos',
+        descripcion: 'Monitorear cumplimiento de planes de mejoramiento derivados de auditorías', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento trimestral.', evaluacion: '0% avance', seguimiento: 'Evaluar el cumplimiento de los planes de mejoramiento',
         tareasSeguimiento: [
-          { id: 'r4-a2-t1', descripcion: 'Asesorar y suministrar herramientas como el diagrama causa efecto', completada: false },
-        ]
-      },
-      { 
-        nombre: 'Establecer una estrategia de acompañamiento de la batería de indicadores y diseño de tableros de control', 
-        descripcion: 'Fortalecer la medición del desempeño institucional a través del seguimiento de indicadores', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento semestral.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Realizar capacitaciones y acompañamiento en el diseño de tableros de control',
-        tareasSeguimiento: [
-          { id: 'r4-a3-t1', descripcion: 'Realizar capacitaciones y acompañamiento en el diseño de tableros de control', completada: false },
-        ]
-      },
-      { 
-        nombre: 'Adelantar de una manera armónica procesos de auditoría que lleve a cabo el organismo de control', 
-        descripcion: 'Coordinación efectiva con entes de control externo durante sus visitas', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: '', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes',
-        tareasSeguimiento: [
-          { id: 'r4-a4-t1', descripcion: 'Dar asesoría y acompañamiento puntuales a los procesos y sus líderes', completada: false },
-        ]
-      },
-      { 
-        nombre: 'Presentar informes y seguimientos de ley', 
-        descripcion: 'Cumplimiento de todos los informes obligatorios establecidos en el cronograma anual', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento mensual.', 
-        evaluacion: '60% avance', 
-        seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes',
-        tareasSeguimiento: [
-          { id: 'r4-a5-t1', descripcion: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes', completada: false },
+          { id: 'r4-a2-t1', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2026-05-29' },
+          { id: 'r4-a2-t2', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2026-08-28' },
+          { id: 'r4-a2-t3', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2026-11-20' },
+          { id: 'r4-a2-t4', descripcion: 'Evaluar el cumplimiento de los planes de mejoramiento', completada: false, fechaEntrega: '2027-03-31' },
         ]
       }
     ],
-    // ═══════════════════ ROL 5: RELACIÓN CON ENTES EXTERNOS DE CONTROL ═══════════════════
+    // """"""""""""""""""" ROL 5: RELACIN CON ENTES EXTERNOS DE CONTROL """""""""""""""""""
     5: [
-      { 
-        nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control', 
-        descripcion: 'Alertar a responsables sobre información requerida por organismos de control', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento mensual.', 
-        evaluacion: '59% avance', 
-        seguimiento: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del proceso respectivo',
+      {
+        nombre: 'Brindar asesoría y generar alertas oportunas a los líderes de los procesos o responsables del suministro de información, para evitar la entrega no acorde o inconsistente con las solicitudes del organismo de control. Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)',
+        descripcion: 'Alertar a responsables sobre información requerida por organismos de control', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance', seguimiento: 'Comunicación interna a la Dirección Nacional y responsables de los procesos.',
         tareasSeguimiento: [
-          { id: 'r5-a1-t1', descripcion: 'Publicar todos los informes de gestión en la página web institucional y allegar al correo del proceso respectivo', completada: false },
+          { id: 'r5-a1-t1', descripcion: 'Comunicación interna a la Dirección Nacional y responsables de los proceso del cargue del plan de mejoramiento en el aplicativo SIRECI - CGR', completada: false, fechaEntrega: '2026-12-31' },
         ]
       },
-      { 
-        nombre: 'Alertar a la primera línea de defensa, y en general, a los responsables del aporte de información requerida por órganos de control sobre estos efectos (Conductas generadoras de sanciones)', 
-        descripcion: 'Alertar sobre conductas generadoras de sanciones ante órganos de control', 
-        fechaInicio: '2026-01-01', 
-        fechaFin: '2026-12-31', 
-        control: 'Se hace seguimiento mensual.', 
-        evaluacion: '59% avance', 
-        seguimiento: 'Comunicar oportunamente a los líderes de procesos sobre posibles sanciones',
+      {
+        nombre: 'Presentar informes y seguimientos de ley',
+        descripcion: 'Cumplimiento de todos los informes obligatorios establecidos en el cronograma anual', fechaInicio: '2026-01-01', fechaFin: '2026-12-31',
+        control: 'Se hace seguimiento semestral.', evaluacion: '0% avance', seguimiento: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes.',
         tareasSeguimiento: [
-          { id: 'r5-a2-t1', descripcion: 'Comunicar oportunamente a los líderes de procesos sobre posibles sanciones', completada: false },
+          { id: 'r5-a2-t1', descripcion: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes.', completada: false, fechaEntrega: '2026-07-31' },
+          { id: 'r5-a2-t2', descripcion: 'Realizar seguimiento al cumplimiento de ejecución de los informes establecidos en el cronograma de informes.', completada: false, fechaEntrega: '2027-01-31' },
         ]
       },
     ]
   };
-  
+
   return actividadesPorRol[numeroRol] || [];
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// COMPONENTE: SELECTOR DE PROFESIONAL DISEÑADO (Combobox)
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+// COMPONENTE: SELECTOR DE PROFESIONAL DISEADO (Combobox)
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 function SelectorProfesional({
   auditores,
@@ -662,7 +679,7 @@ function SelectorProfesional({
       // Allow clicks within the portal dropdown (prevent closing)
       const popup = document.getElementById('selector-profesional-popup');
       if (popup && popup.contains(e.target as Node)) return;
-      
+
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
       }
@@ -673,8 +690,8 @@ function SelectorProfesional({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  const filtrados = auditores.filter(a => 
-    a.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
+  const filtrados = auditores.filter(a =>
+    a.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
     (a.email || '').toLowerCase().includes(busqueda.toLowerCase())
   );
 
@@ -705,7 +722,7 @@ function SelectorProfesional({
 
       {isOpen && createPortal(
         <AnimatePresence>
-          <motion.div 
+          <motion.div
             id="selector-profesional-popup"
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
@@ -732,10 +749,10 @@ function SelectorProfesional({
                 onClick={e => e.stopPropagation()}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && filtrados.length > 0) {
-                     e.preventDefault();
-                     onSelect(filtrados[0].id);
-                     setIsOpen(false);
-                     setBusqueda('');
+                    e.preventDefault();
+                    onSelect(filtrados[0].id);
+                    setIsOpen(false);
+                    setBusqueda('');
                   }
                 }}
               />
@@ -782,31 +799,104 @@ function SelectorProfesional({
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// WIZARD DE CREACIÓN
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+// WIZARD DE CREACIN
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 interface WizardCreacionProps {
   planAEditar?: PlanAnual;
+  /** Mismo asistente que edición, sin persistir cambios (solo consulta). */
+  soloLectura?: boolean;
+  /** Permiso approve/activate/super — muestra acceso rápido a la pestaña Aprobación del dashboard. */
+  puedeIrAAprobacion?: boolean;
+  /** Cierra el wizard y debe abrir el dashboard en la pestaña Aprobación. */
+  onIrAAprobacion?: () => void;
   onCancelar: () => void;
-  onCrear: (vigencia: number, jefeOCI: Auditor, rolesConfig: RolConfig[], fechaInicio: string, fechaFin: string, comiteAprobacion?: Auditor[], ordenAprobacion?: string, esAutoGuardado?: boolean) => Promise<boolean | any>;
+  onCrear: (vigencia: number, jefeOCI: Auditor, rolesConfig: RolConfig[], fechaInicio: string, fechaFin: string) => Promise<boolean>;
   onTerminado?: () => void;
   planesExistentes?: PlanAnual[];
 }
 
-export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, planesExistentes = [] }: WizardCreacionProps) {
-  // 💾 Cargar borrador de localStorage
+export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprobacion = false, onIrAAprobacion, onCancelar, onCrear, onTerminado, planesExistentes = [] }: WizardCreacionProps) {
+  // x Cargar borrador de localStorage
   const draftKey = planAEditar ? `esap:wizard_plan_anual_edit_${planAEditar.id}` : 'esap:wizard_plan_anual_draft';
   const draftStr = typeof window !== 'undefined' ? localStorage.getItem(draftKey) : null;
   let draft = null;
   try {
     draft = draftStr ? JSON.parse(draftStr) : null;
-  } catch(e) {}
+  } catch (e) { }
+  // En modo edición usamos SIEMPRE la fuente del backend para evitar
+  // que un borrador local viejo deje actividades desmarcadas o sin responsables.
+  if (planAEditar) {
+    draft = null;
+  }
+
+  const normalizarResponsables = (roles: RolConfig[]): RolConfig[] =>
+    (roles || []).map((rol) => ({
+      ...rol,
+      // Regla de negocio: un solo responsable principal por rol.
+      responsables: Array.isArray(rol.responsables) ? rol.responsables.slice(0, 1) : [],
+      // Regla de negocio: una sola persona responsable principal por actividad.
+      actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map((act) => ({
+        ...act,
+        responsables: Array.isArray(act.responsables) ? act.responsables.slice(0, 1) : []
+      })),
+      actividadesCustom: (rol.actividadesCustom || []).map((act) => ({
+        ...act,
+        responsables: Array.isArray(act.responsables) ? act.responsables.slice(0, 1) : []
+      }))
+    }));
 
   const [paso, setPaso] = useState(draft?.paso || 1);
   const [lastSaved, setLastSaved] = useState<Date | null>(draft ? new Date() : null);
-  const [vigencia, setVigencia] = useState(planAEditar?.vigencia || draft?.vigencia || new Date().getFullYear());
-  
+  /** Indica si el último guardado llegó al backend (solo «Nuevo plan») */
+  const [serverDraftSynced, setServerDraftSynced] = useState(false);
+  const serverBorradorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Evita fusionar dos veces si cambian props tras el primer montaje */
+  const mergeWizardDesdeServidorHecho = useRef(false);
+  const wizardHydrationCompletedRef = useRef(false);
+  /** Evita sobreescribir cambios manuales con hidratación tardía de borrador remoto. */
+  const wizardTouchedByUserRef = useRef(false);
+  const controlInternoServiceApi = controlInternoService as any;
+  const wizardBorradorApi = {
+    get: async (): Promise<{ payload: Record<string, unknown> | null; updatedAt: string | null }> => {
+      if (typeof controlInternoServiceApi.getWizardBorradorPlanAnual === 'function') {
+        return controlInternoServiceApi.getWizardBorradorPlanAnual();
+      }
+      return apiClient.get('/control-institucional/api/v1/plan-anual-5-roles/wizard-borrador/me');
+    },
+    save: async (payload: Record<string, unknown>): Promise<{ ok: boolean; savedAt: string }> => {
+      if (typeof controlInternoServiceApi.saveWizardBorradorPlanAnual === 'function') {
+        return controlInternoServiceApi.saveWizardBorradorPlanAnual(payload);
+      }
+      return apiClient.put('/control-institucional/api/v1/plan-anual-5-roles/wizard-borrador/me', { payload });
+    },
+    delete: async (): Promise<void> => {
+      if (typeof controlInternoServiceApi.deleteWizardBorradorPlanAnual === 'function') {
+        await controlInternoServiceApi.deleteWizardBorradorPlanAnual();
+        return;
+      }
+      await apiClient.delete('/control-institucional/api/v1/plan-anual-5-roles/wizard-borrador/me');
+    },
+  };
+  // Calcular años disponibles (no usados por planes existentes, excluyendo el plan en edición)
+  const vigenciasOcupadas = (planesExistentes || [])
+    .filter((p: any) => !planAEditar || p.id !== planAEditar.id)
+    .map((p: any) => p.vigencia);
+  const anioActual = new Date().getFullYear();
+  // Mismo rango que la validación de vigencia en el wizard (20202100)
+  const vigenciasDisponibles = Array.from({ length: 2100 - 2020 + 1 }, (_, i) => 2020 + i)
+    .filter(y => !vigenciasOcupadas.includes(y));
+
+  const [vigencia, setVigencia] = useState(() => {
+    if (planAEditar?.vigencia) return planAEditar.vigencia;
+    // Si hay draft, usarlo SOLO si la vigencia sigue disponible
+    if (draft?.vigencia && !vigenciasOcupadas.includes(draft.vigencia)) return draft.vigencia;
+
+    // Auto-seleccionar el primer año disponible
+    return vigenciasDisponibles[0] || anioActual;
+  });
+
   // Extraer fechas del plan a editar si existen, asegurando formato YYYY-MM-DD
   const getInitialFecha = (fechaStr: string | undefined, defaultDate: string) => {
     if (!fechaStr) return defaultDate;
@@ -816,17 +906,17 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       // Si viene como Date string parseable, formateamos
       const d = new Date(fechaStr);
       if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-    } catch (e) {}
+    } catch (e) { }
     return defaultDate;
   };
-  
+
   // Buscar fecha inicio mínima y fin máxima en las actividades, o usar defaults
   const [fechaInicio, setFechaInicio] = useState(() => {
-    return draft?.fechaInicio || planAEditar?.fecha_inicio || planAEditar?.fechaInicio || `${planAEditar?.vigencia || new Date().getFullYear()}-01-01`;
+    return draft?.fechaInicio || planAEditar?.fecha_inicio || planAEditar?.fechaInicio || `${planAEditar?.vigencia || vigencia}-01-01`;
   });
-  
+
   const [fechaFin, setFechaFin] = useState(() => {
-    return draft?.fechaFin || planAEditar?.fecha_fin || planAEditar?.fechaFin || `${planAEditar?.vigencia || new Date().getFullYear()}-12-31`;
+    return draft?.fechaFin || planAEditar?.fecha_fin || planAEditar?.fechaFin || `${planAEditar?.vigencia || vigencia}-12-31`;
   });
 
   const [comiteAprobacion, setComiteAprobacion] = useState<Auditor[]>(() => {
@@ -836,7 +926,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     return draft?.comiteAprobacion || [];
   });
   const [ordenAprobacion, setOrdenAprobacion] = useState<'secuencial' | 'paralelo'>(planAEditar?.ordenAprobacion || draft?.ordenAprobacion || 'secuencial');
-  
+
   // Estado para auditores cargados desde backend (profesionales OCI configurados)
   const [auditores, setAuditores] = useState<Auditor[]>(AUDITORES_DEFAULT);
   const [jefesOCI, setJefesOCI] = useState<Auditor[]>([]);
@@ -844,9 +934,19 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
   const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor | null>(draft?.jefeSeleccionado || null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  
+  /** Modal de solo lectura: resumen del plan en el asistente (no confundir con «Ver» del listado inicial). */
+  const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
+
+  const { puedeRealizar: puedeRealizarWizard, esSuperUsuario: esSuperUsuarioWizard } = useControlInternoPermissions();
+  const puedeVerPlanAnual = puedeRealizarWizard('plan-anual', 'view');
+  const puedeMostrarVistaPrevia = puedeVerPlanAnual || esSuperUsuarioWizard;
+
+  useEffect(() => {
+    if (!puedeMostrarVistaPrevia) setMostrarVistaPrevia(false);
+  }, [puedeMostrarVistaPrevia]);
+
   const [draggedAprobadorIndex, setDraggedAprobadorIndex] = useState<number | null>(null);
-  
+
   const handleDragStartAprobador = (e: React.DragEvent, index: number) => {
     setDraggedAprobadorIndex(index);
     e.dataTransfer.effectAllowed = 'move';
@@ -860,11 +960,11 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
   const handleDropAprobador = (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
     if (draggedAprobadorIndex === null || draggedAprobadorIndex === dropIndex) return;
-    
+
     const newComite = [...comiteAprobacion];
     const [draggedItem] = newComite.splice(draggedAprobadorIndex, 1);
     newComite.splice(dropIndex, 0, draggedItem);
-    
+
     setComiteAprobacion(newComite);
     setDraggedAprobadorIndex(null);
   };
@@ -876,7 +976,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       // Usar profesionales OCI configurados en lugar de personas disponibles
       const response = await configuracionesProfesionalesOCIApi.getAll();
       console.log('[PlanAnual] Profesionales OCI response:', response);
-      
+
       if (response.success && response.data && response.data.length > 0) {
         // Transformar a formato Auditor
         const profesionales: Auditor[] = response.data
@@ -887,17 +987,17 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
             cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor',
             email: config.email || ''
           }));
-        
+
         setAuditores(profesionales);
-        
+
         // Filtrar solo los que son Jefe OCI
-        const jefes = profesionales.filter((a: Auditor) => 
+        const jefes = profesionales.filter((a: Auditor) =>
           a.cargo === 'Jefe OCI' || a.cargo.toLowerCase().includes('jefe')
         );
         setJefesOCI(jefes.length > 0 ? jefes : profesionales);
-        
+
         // NO auto-seleccionar: el usuario debe elegir explícitamente el responsable
-        
+
         console.log('[PlanAnual] Profesionales OCI cargados:', profesionales.length);
         return profesionales;
       } else {
@@ -917,7 +1017,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       setCargandoAuditores(false);
     }
   };
-  
+
   // Cargar profesionales OCI configurados al montar el componente
   useEffect(() => {
     cargarAuditores().then((profesionales) => {
@@ -932,44 +1032,10 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     });
   }, [planAEditar]); // draft no está como dependencia para que evalúe el closure inicial
 
-  // Actualizar fechas de puntos de control Y actividades cuando cambie la vigencia
-  useEffect(() => {
-    // Solo actualizar si el año es válido (evita fechas rotas al escribir valores intermedios)
-    if (!vigencia || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100) return;
-    
-    // Propagar fechaInicio y fechaFin del plan a la vigencia actual
-    setFechaInicio(`${vigencia}-01-01`);
-    setFechaFin(`${vigencia}-12-31`);
-    
-    setRolesConfig(prev => prev.map(rol => ({
-      ...rol,
-      actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
-        const año = vigencia;
-        return {
-          ...act,
-          // ═══ FECHAS DINÁMICAS: siempre reflejan la vigencia del plan ═══
-          fechaInicio: `${año}-01-01`,
-          fechaFin: `${año}-12-31`,
-          fechaCorte: `${año}-09-30`,
-          puntosControl: [
-            { ...act.puntosControl[0], fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31` },
-            { ...act.puntosControl[1], fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30` },
-            { ...act.puntosControl[2], fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30` },
-          ]
-        };
-      }),
-      actividadesCustom: (rol.actividadesCustom || []).map(act => ({
-        ...act,
-        fechaInicio: `${vigencia}-01-01`,
-        fechaFin: `${vigencia}-12-31`,
-        fechaCorte: `${vigencia}-09-30`,
-      }))
-    })));
-  }, [vigencia]);
   const [rolesConfig, setRolesConfig] = useState<RolConfig[]>(() => {
     // 1. Si existe un borrador, recuperar configuracion de roles (PRIORIDAD: progreso más reciente)
     if (draft && draft.rolesConfig) {
-      return draft.rolesConfig;
+      return normalizarResponsables(draft.rolesConfig as RolConfig[]);
     }
 
     // 2. Si no hay borrador pero hay un plan para editar, mapearlo desde el backend
@@ -995,18 +1061,30 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
         }
 
         // Mapear actividades del plan existente
-        const actividadesConfiguradas = rolEdit.actividades.map((act) => ({
-          ...act,
-          // Mantener compatibilidad con el wizard
-          tipoEvidencia: act.configuracionEvidencias?.documentos && act.configuracionEvidencias?.observaciones ? 'COMPLETO' :
-                         act.configuracionEvidencias?.documentos ? 'ADJUNTOS' :
-                         act.configuracionEvidencias?.observaciones ? 'OBSERVACIONES' : 'SOLO_CHECK',
-        }));
+        const actividadesConfiguradas = rolEdit.actividades.map((act) => {
+          const puntosControlActividad = ((act as any).puntosControl || (act as any).puntos_control || []) as any[];
+          const tareasOriginales = ((act as any).tareasSeguimiento || (act as any).tareas_seguimiento || []) as any[];
+          const tareasConCorte = tareasOriginales.map((t, tIdx) => ({
+            ...t,
+            // Compatibilidad con datos antiguos en BD: si una tarea no trae puntoControlId,
+            // se asigna por índice para que aparezca en su corte en paso 2.
+            puntoControlId:
+              (t as any).puntoControlId
+              || (t as any).punto_control_id
+              || puntosControlActividad[tIdx % Math.max(puntosControlActividad.length, 1)]?.id
+              || null,
+          }));
+          return {
+            ...act,
+            tareasSeguimiento: tareasConCorte,
+            tipoEvidencia: inferirTipoEvidenciaParaWizard(act as ActividadBase & { configuracionEvidencias?: any }),
+          };
+        });
 
         // Separar entre seleccionadas (del template) y custom (creadas manualmente)
         const actividadesTemplate = getActividadesPorRol(rolDef.numero);
         const nombresTemplate = actividadesTemplate.map(a => a.nombre);
-        
+
         const actividadesSeleccionadas = actividadesConfiguradas.filter(a => nombresTemplate.includes(a.nombre));
         const actividadesCustom = actividadesConfiguradas.filter(a => !nombresTemplate.includes(a.nombre));
 
@@ -1020,11 +1098,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
             responsablesMap.set(act.responsable.id, act.responsable);
           }
         });
-        
-        // Si el rol ya tiene responsables explícitos guardados, usarlos; si no, derivar de las actividades
-        const responsablesRol = rolEdit.responsables && rolEdit.responsables.length > 0
-          ? rolEdit.responsables
-          : Array.from(responsablesMap.values());
+        const responsablesRol = Array.from(responsablesMap.values());
 
         return {
           ...rolDef,
@@ -1038,26 +1112,77 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     // Comportamiento por defecto (nuevo plan sin borrador)
     return ROLES_DECRETO_648.map(rol => {
       const actividades = getActividadesPorRol(rol.numero);
-      
-      // ⚡ Auto-generar 3 puntos de control trimestrales por actividad (Mar, Jun, Sep)
+
+      // a Auto-generar puntos de control según la periodicidad de cada actividad
       const actividadesConPuntos = actividades.map((act, idx) => {
-        const uniqueId = `rol-${rol.numero}-act-${idx}`; // ⚡ ID único por rol e índice
-        const añoInicial = new Date().getFullYear();
-        const puntosDefault: PuntoControl[] = [
-          { id: `pc-${uniqueId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${añoInicial}-03-31`, fechaSeguimiento: `${añoInicial}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-          { id: `pc-${uniqueId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${añoInicial}-06-30`, fechaSeguimiento: `${añoInicial}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-          { id: `pc-${uniqueId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${añoInicial}-09-30`, fechaSeguimiento: `${añoInicial}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-        ];
+        const uniqueId = `rol-${rol.numero}-act-${idx}`;
+        const año = Number(vigencia || new Date().getFullYear());
+        const mkPC = (pcId: string, orden: number, fi: string, ff: string): PuntoControl => ({
+          id: pcId, orden, nombre: `Corte ${orden}`, descripcion: '',
+          fechaProgramada: fi, fechaSeguimiento: ff,
+          fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: []
+        });
+        const ctrl = (act.control || '').toLowerCase();
+        let puntosDefault: PuntoControl[];
+        let frecuencia: FrecuenciaPuntoControl = 'trimestral';
+        if (ctrl.includes('semestral')) {
+          frecuencia = 'semestral';
+          puntosDefault = [
+            mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-06-30`),
+            mkPC(`pc-${uniqueId}-2`, 2, `${año}-07-01`, `${año}-12-31`),
+          ];
+        } else if (ctrl.includes('cuatrimestral')) {
+          frecuencia = 'cuatrimestral';
+          puntosDefault = [
+            mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-04-30`),
+            mkPC(`pc-${uniqueId}-2`, 2, `${año}-05-01`, `${año}-08-31`),
+            mkPC(`pc-${uniqueId}-3`, 3, `${año}-09-01`, `${año}-12-31`),
+          ];
+        } else if (ctrl.includes('trimestral')) {
+          frecuencia = 'trimestral';
+          puntosDefault = [
+            mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-03-31`),
+            mkPC(`pc-${uniqueId}-2`, 2, `${año}-04-01`, `${año}-06-30`),
+            mkPC(`pc-${uniqueId}-3`, 3, `${año}-07-01`, `${año}-09-30`),
+            mkPC(`pc-${uniqueId}-4`, 4, `${año}-10-01`, `${año}-12-31`),
+          ];
+        } else if (ctrl.includes('anual')) {
+          frecuencia = 'anual';
+          puntosDefault = [
+            mkPC(`pc-${uniqueId}-1`, 1, `${año}-01-01`, `${año}-12-31`),
+          ];
+        } else if (ctrl.includes('mensual')) {
+          frecuencia = 'mensual';
+          puntosDefault = Array.from({ length: 12 }, (_, i) => {
+            const m = (i + 1).toString().padStart(2, '0');
+            const lastDay = new Date(año, i + 1, 0).getDate().toString().padStart(2, '0');
+            return mkPC(`pc-${uniqueId}-${i + 1}`, i + 1, `${año}-${m}-01`, `${año}-${m}-${lastDay}`);
+          });
+        } else {
+          // Default: anual para actividades sin periodicidad definida
+          frecuencia = 'anual';
+          puntosDefault = [
+            mkPC(`pc-${uniqueId}-1`, 1, act.fechaInicio || `${año}-01-01`, act.fechaFin || `${año}-12-31`),
+          ];
+        }
+        // Auto-asignar tareas al corte correspondiente (tarea N   corte N)
+        const tareasConCorte = (act.tareasSeguimiento || []).map((t, tIdx) => ({
+          ...t,
+          puntoControlId: puntosDefault[tIdx % puntosDefault.length]?.id,
+        }));
         return {
           ...act,
           id: uniqueId,
           tipoEvidencia: 'SOLO_CHECK' as const,
-          fechaCorte: `${añoInicial}-09-30`,
+          fechaInicio: act.fechaInicio || `${año}-01-01`,
+          fechaFin: act.fechaFin || `${año}-12-31`,
+          fechaCorte: puntosDefault[puntosDefault.length - 1]?.fechaSeguimiento || `${año}-12-31`,
           puntosControl: puntosDefault,
-          frecuenciaPuntosControl: 'trimestral' as const,
+          frecuenciaPuntosControl: frecuencia,
+          tareasSeguimiento: tareasConCorte,
         };
       });
-      
+
       return {
         ...rol,
         actividadesSeleccionadas: actividadesConPuntos,
@@ -1067,23 +1192,262 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     })
   });
 
-  // Autoguardado de borradores en localStorage.
+  // Sincronizar vigencia con cortes (puntos de control), fecha de corte y fechas de entrega de tareas.
   useEffect(() => {
-    // Autoguardado silencioso de borradores (tanto para crear como para editar)
-    if (!isSubmitting && !showSuccessModal) {
-      const borrador = {
-        paso,
-        vigencia,
-        fechaInicio,
-        fechaFin,
-        ordenAprobacion,
-        jefeSeleccionado,
-        rolesConfig
-      };
-      localStorage.setItem(draftKey, JSON.stringify(borrador));
-      setLastSaved(new Date());
+    if (!vigencia || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100) return;
+
+    setFechaInicio(`${vigencia}-01-01`);
+    setFechaFin(`${vigencia}-12-31`);
+
+    setRolesConfig((prev) =>
+      prev.map((rol) => ({
+        ...rol,
+        actividadesSeleccionadas: rol.actividadesSeleccionadas.map((act) => {
+          const año = vigencia;
+          const puntos = act.puntosControl || [];
+          const nuevosPuntos = puntos.map((pc) => ({
+            ...pc,
+            fechaProgramada: reemplazarAnioEnFechaIso(pc.fechaProgramada, año),
+            fechaSeguimiento: pc.fechaSeguimiento
+              ? reemplazarAnioEnFechaIso(pc.fechaSeguimiento, año)
+              : pc.fechaSeguimiento,
+          }));
+          const ultimoSeg =
+            nuevosPuntos.length > 0
+              ? nuevosPuntos[nuevosPuntos.length - 1].fechaSeguimiento
+              : undefined;
+          return {
+            ...act,
+            fechaInicio: `${año}-01-01`,
+            fechaFin: `${año}-12-31`,
+            fechaCorte: ultimoSeg || `${año}-12-31`,
+            puntosControl: nuevosPuntos.length > 0 ? nuevosPuntos : act.puntosControl,
+            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(act.tareasSeguimiento, vigencia),
+          };
+        }),
+        actividadesCustom: (rol.actividadesCustom || []).map((act) => {
+          const puntos = act.puntosControl || [];
+          const nuevosPuntos = puntos.map((pc) => ({
+            ...pc,
+            fechaProgramada: reemplazarAnioEnFechaIso(pc.fechaProgramada, vigencia),
+            fechaSeguimiento: pc.fechaSeguimiento
+              ? reemplazarAnioEnFechaIso(pc.fechaSeguimiento, vigencia)
+              : pc.fechaSeguimiento,
+          }));
+          const ultimoSeg =
+            nuevosPuntos.length > 0
+              ? nuevosPuntos[nuevosPuntos.length - 1].fechaSeguimiento
+              : undefined;
+          return {
+            ...act,
+            fechaInicio: `${vigencia}-01-01`,
+            fechaFin: `${vigencia}-12-31`,
+            fechaCorte: ultimoSeg || `${vigencia}-12-31`,
+            puntosControl: nuevosPuntos.length > 0 ? nuevosPuntos : act.puntosControl,
+            tareasSeguimiento: alinearTareasFechasEntregaAVigencia(act.tareasSeguimiento, vigencia),
+          };
+        }),
+      }))
+    );
+  }, [vigencia]);
+
+  // Refuerzo de integridad para datos heredados: nunca permitir más de 1 responsable por rol/actividad.
+  useEffect(() => {
+    const hayMultiples = rolesConfig.some((rol) =>
+      (rol.responsables?.length || 0) > 1 ||
+      (rol.actividadesSeleccionadas || []).some((act) => (act.responsables?.length || 0) > 1) ||
+      (rol.actividadesCustom || []).some((act) => (act.responsables?.length || 0) > 1)
+    );
+    if (!hayMultiples) return;
+    setRolesConfig((prev) => normalizarResponsables(prev));
+  }, [rolesConfig]);
+
+  const handleRolesChange = (config: RolConfig[]) => {
+    wizardTouchedByUserRef.current = true;
+    setRolesConfig(normalizarResponsables(config));
+  };
+
+  const handleVigenciaChange = (nuevaVigencia: number) => {
+    // Si el usuario re-selecciona la misma vigencia, no tocar borradores ni estado.
+    if (nuevaVigencia === vigencia) return;
+
+    // Mientras el borrador remoto aún no termina de hidratar, no marcar interacción
+    // ni borrar el draft del servidor para evitar perder la data recién recuperada.
+    if (!wizardHydrationCompletedRef.current) {
+      setVigencia(nuevaVigencia);
+      return;
     }
-  }, [paso, vigencia, fechaInicio, fechaFin, ordenAprobacion, jefeSeleccionado, rolesConfig, planAEditar, isSubmitting, showSuccessModal, draftKey]);
+
+    wizardTouchedByUserRef.current = true;
+    setVigencia(nuevaVigencia);
+
+    // En "Nuevo plan", al cambiar vigencia se descarta el borrador anterior para no arrastrar datos.
+    if (!planAEditar) {
+      localStorage.removeItem(draftKey);
+      setServerDraftSynced(false);
+      wizardBorradorApi.delete().catch(() => { });
+    }
+  };
+
+  // Al abrir «Nuevo plan»: fusionar borrador del servidor con localStorage (gana el más reciente por timestamp).
+  useEffect(() => {
+    if (planAEditar) return;
+    if (mergeWizardDesdeServidorHecho.current) return;
+    mergeWizardDesdeServidorHecho.current = true;
+    console.log('[WizardDraft][Hydration] inicio hidratacion Nuevo Plan');
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const remote = await wizardBorradorApi.get();
+        console.log('[WizardDraft][Hydration] respuesta backend:', remote);
+        if (cancelled) return;
+
+        const serverPayload = remote?.payload as Record<string, unknown> | null | undefined;
+        let localDraft: any = null;
+        try {
+          const localStr = localStorage.getItem('esap:wizard_plan_anual_draft');
+          localDraft = localStr ? JSON.parse(localStr) : null;
+        } catch {
+          localDraft = null;
+        }
+
+        const tsServer = Number(serverPayload?.timestamp ?? 0);
+        const tsLocal = Number(localDraft?.timestamp ?? 0);
+
+        const tieneServidor =
+          !!serverPayload &&
+          typeof serverPayload === 'object' &&
+          Object.keys(serverPayload).length > 0 &&
+          (serverPayload.paso !== undefined || serverPayload.rolesConfig !== undefined);
+
+        let winner: any = localDraft;
+        if (tieneServidor && (!localDraft || tsServer >= tsLocal)) {
+          winner = serverPayload;
+        }
+
+        if (wizardTouchedByUserRef.current) {
+          console.log('[WizardDraft][Hydration] cancelada por interacción de usuario');
+          return;
+        }
+        if (!winner) {
+          console.log('[WizardDraft][Hydration] sin winner (local/server vacíos)');
+          return;
+        }
+
+        console.log('[WizardDraft][Hydration] aplicando winner', {
+          tsServer,
+          tsLocal,
+          tieneServidor,
+          winnerVigencia: (winner as any)?.vigencia,
+          winnerPaso: (winner as any)?.paso,
+        });
+
+        const ocupadas = (planesExistentes || []).map((p: any) => p.vigencia);
+
+        if (typeof winner.paso === 'number') setPaso(winner.paso);
+        if (typeof winner.vigencia === 'number' && !ocupadas.includes(winner.vigencia)) {
+          setVigencia(winner.vigencia);
+        }
+        if (typeof winner.fechaInicio === 'string') setFechaInicio(winner.fechaInicio);
+        if (typeof winner.fechaFin === 'string') setFechaFin(winner.fechaFin);
+        if (winner.ordenAprobacion === 'secuencial' || winner.ordenAprobacion === 'paralelo') {
+          setOrdenAprobacion(winner.ordenAprobacion);
+        }
+        if (Array.isArray(winner.comiteAprobacion)) setComiteAprobacion(winner.comiteAprobacion);
+        if (winner.jefeSeleccionado) setJefeSeleccionado(winner.jefeSeleccionado as Auditor);
+        if (winner.rolesConfig) {
+          setRolesConfig(normalizarResponsables(winner.rolesConfig as RolConfig[]));
+        }
+
+        const savedAtStr =
+          (typeof serverPayload?.savedAt === 'string' && serverPayload.savedAt) ||
+          (typeof (winner as any).savedAt === 'string' && (winner as any).savedAt);
+        setLastSaved(savedAtStr ? new Date(savedAtStr) : new Date());
+        setServerDraftSynced(!!tieneServidor);
+
+        if (localDraft && tsLocal > tsServer && tieneServidor) {
+          await wizardBorradorApi.save({
+            ...localDraft,
+            timestamp: localDraft.timestamp ?? Date.now(),
+          })
+            .then(() => setServerDraftSynced(true))
+            .catch(() => { });
+        }
+      } catch (e) {
+        console.warn('[Wizard Plan Anual] Borrador servidor no disponible:', e);
+      } finally {
+        wizardHydrationCompletedRef.current = true;
+        console.log('[WizardDraft][Hydration] finalizada', {
+          hydrationReady: wizardHydrationCompletedRef.current,
+        });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [planAEditar]);
+
+  // Autoguardado: localStorage siempre; servidor además en «Nuevo plan» (debounce).
+  useEffect(() => {
+    if (soloLectura) return;
+    if (isSubmitting || showSuccessModal) return;
+    // Evita que el primer render (estado vacío por defecto) pise el borrador
+    // que llega del backend antes de completar la hidratación inicial.
+    if (!planAEditar && !wizardHydrationCompletedRef.current) {
+      console.log('[WizardDraft][Autosave] omitido hasta terminar hidratación');
+      return;
+    }
+
+    const borrador: Record<string, unknown> = {
+      paso,
+      vigencia,
+      fechaInicio,
+      fechaFin,
+      ordenAprobacion,
+      jefeSeleccionado,
+      rolesConfig,
+      comiteAprobacion,
+      timestamp: Date.now(),
+    };
+
+    localStorage.setItem(draftKey, JSON.stringify(borrador));
+    setLastSaved(new Date());
+
+    if (planAEditar) return;
+
+    if (serverBorradorTimerRef.current) clearTimeout(serverBorradorTimerRef.current);
+    serverBorradorTimerRef.current = setTimeout(() => {
+      wizardBorradorApi.save(borrador)
+        .then(() => {
+          setServerDraftSynced(true);
+          setLastSaved(new Date());
+        })
+        .catch((err: unknown) => {
+          console.warn('[Wizard Plan Anual] Autoguardado en servidor falló:', err);
+          setServerDraftSynced(false);
+        });
+    }, 2800);
+
+    return () => {
+      if (serverBorradorTimerRef.current) clearTimeout(serverBorradorTimerRef.current);
+    };
+  }, [
+    paso,
+    vigencia,
+    fechaInicio,
+    fechaFin,
+    ordenAprobacion,
+    jefeSeleccionado,
+    rolesConfig,
+    comiteAprobacion,
+    planAEditar,
+    isSubmitting,
+    showSuccessModal,
+    draftKey,
+    soloLectura,
+  ]);
 
   // Validación del Paso 1: Fechas y vigencia
   const validarPaso1 = () => {
@@ -1091,18 +1455,18 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     const vigenciasExistentes = (planesExistentes || [])
       .filter((p: any) => !planAEditar || p.id !== planAEditar.id)
       .map((p: any) => p.vigencia);
-      
+
     if (vigenciasExistentes.includes(vigencia)) {
       toast.error(`Ya existe un plan para la vigencia ${vigencia}`, {
         description: 'Seleccione otra vigencia o elimine el plan existente desde la pantalla de inicio.'
       });
       return false;
     }
-    
+
     // Extraer año directamente del string YYYY-MM-DD para evitar problemas de zona horaria
     const anioFechaInicio = fechaInicio ? parseInt(fechaInicio.split('-')[0], 10) : 0;
     const anioFechaFin = fechaFin ? parseInt(fechaFin.split('-')[0], 10) : 0;
-    
+
     // Validar que la fecha fin no sea anterior a fecha inicio (comparación string funciona para YYYY-MM-DD)
     if (fechaFin < fechaInicio) {
       toast.error('Error de fechas', {
@@ -1110,7 +1474,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       });
       return false;
     }
-    
+
     // Validar que las fechas coincidan con la vigencia
     if (anioFechaInicio !== vigencia || anioFechaFin !== vigencia) {
       toast.error('Error de vigencia', {
@@ -1118,7 +1482,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       });
       return false;
     }
-    
+
     // Validar que haya un responsable seleccionado
     if (!jefeSeleccionado) {
       toast.error('Responsable requerido', {
@@ -1126,26 +1490,26 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       });
       return false;
     }
-    
+
     return true;
   };
 
   const validarPaso2 = () => {
-    // Validar que hay actividades seleccionadas
-    const tieneActividades = rolesConfig.some(rol => 
-      rol.actividadesSeleccionadas.length > 0 || rol.actividadesCustom.length > 0
+    // Validar que hay actividades seleccionadas (incluidas en el plan, no solo guardadas por soft-uncheck)
+    const tieneActividades = rolesConfig.some(rol =>
+      contarActividadesIncluidas(rol) > 0 || rol.actividadesCustom.length > 0
     );
     if (!tieneActividades) {
       toast.error('Debe seleccionar al menos una actividad en algún rol');
       return false;
     }
-    
-    // ⚠️ VALIDACIÓN OBLIGATORIA: Todos los roles con actividades DEBEN tener responsables
-    const rolesConActividades = rolesConfig.filter(rol => 
-      (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0) > 0
+
+    // a️ VALIDACIN OBLIGATORIA: Todos los roles con actividades DEBEN tener responsables
+    const rolesConActividades = rolesConfig.filter(rol =>
+      contarActividadesIncluidas(rol) + (rol.actividadesCustom?.length || 0) > 0
     );
     const rolesSinResponsables = rolesConActividades.filter(rol => (rol.responsables?.length || 0) === 0);
-    
+
     if (rolesSinResponsables.length > 0) {
       const nombresRoles = rolesSinResponsables.map(r => `Rol ${r.numero}`).join(', ');
       toast.error('Responsables requeridos', {
@@ -1158,7 +1522,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     // Validar que cada actividad tenga al menos un responsable
     const actividadesSinResponsable: string[] = [];
     for (const rol of rolesConActividades) {
-      for (const act of (rol.actividadesSeleccionadas || [])) {
+      for (const act of (rol.actividadesSeleccionadas || []).filter(actividadIncluidaEnPlan)) {
         if (!act.responsables || act.responsables.length === 0) {
           actividadesSinResponsable.push(`"${act.nombre.slice(0, 40)}" (Rol ${rol.numero})`);
         }
@@ -1180,7 +1544,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     // Validar que cada actividad tenga fecha de corte
     const actividadesSinFechaCorte: string[] = [];
     for (const rol of rolesConActividades) {
-      for (const act of (rol.actividadesSeleccionadas || [])) {
+      for (const act of (rol.actividadesSeleccionadas || []).filter(actividadIncluidaEnPlan)) {
         if (!act.fechaCorte) {
           actividadesSinFechaCorte.push(`"${act.nombre.slice(0, 40)}" (Rol ${rol.numero})`);
         }
@@ -1198,49 +1562,39 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       });
       return false;
     }
-    
+
     // Contar total de actividades y responsables
-    const totalActividades = rolesConActividades.reduce((sum, rol) => 
-      sum + (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0), 0
+    const totalActividades = rolesConActividades.reduce((sum, rol) =>
+      sum + contarActividadesIncluidas(rol) + (rol.actividadesCustom?.length || 0), 0
     );
-    const totalResponsables = rolesConActividades.reduce((sum, rol) => 
+    const totalResponsables = rolesConActividades.reduce((sum, rol) =>
       sum + (rol.responsables?.length || 0), 0
     );
-    
-    console.log(`✅ [validarPaso2] Validación exitosa:`);
+
+    console.log(`S& [validarPaso2] Validación exitosa:`);
     console.log(`   - ${rolesConActividades.length} roles con actividades`);
     console.log(`   - ${totalActividades} actividades totales`);
     console.log(`   - ${totalResponsables} responsables asignados`);
-    
+
     return true;
   };
 
-  const avanzarPaso = async () => {
+  const avanzarPaso = () => {
     if (paso === 1 && !validarPaso1()) return;
     if (paso === 2 && !validarPaso2()) return;
-    
-    // Auto-guardado en backend al cambiar de paso
-    if (jefeSeleccionado && fechaInicio && fechaFin) {
-      try {
-        await onCrear(vigencia, jefeSeleccionado, rolesConfig, fechaInicio, fechaFin, comiteAprobacion, ordenAprobacion, true);
-        setLastSaved(new Date());
-      } catch (error) {
-        console.error('Error auto-guardando al avanzar de paso', error);
-      }
-    }
-    
     setPaso(paso + 1);
   };
 
-    const handleFinalizar = async () => {
+  const handleFinalizar = async () => {
+    if (soloLectura) return;
     // Validación final de seguridad antes de crear el plan
-    const rolesConActividades = rolesConfig.filter(rol => 
-      (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0) > 0
+    const rolesConActividades = rolesConfig.filter(rol =>
+      contarActividadesIncluidas(rol) + (rol.actividadesCustom?.length || 0) > 0
     );
-    const totalResponsables = rolesConActividades.reduce((sum, rol) => 
+    const totalResponsables = rolesConActividades.reduce((sum, rol) =>
       sum + (rol.responsables?.length || 0), 0
     );
-    
+
     if (totalResponsables === 0) {
       toast.error('No se puede crear el Plan Anual', {
         description: 'Debe asignar al menos un responsable a las actividades antes de crear el plan.',
@@ -1248,21 +1602,36 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       });
       return;
     }
-    
+
     // Validación de seguridad para TypeScript (ya se validó en validarPaso1)
     if (!jefeSeleccionado) {
       toast.error('Debe seleccionar un responsable del Plan');
       return;
     }
-    
+
+    if (comiteAprobacion.length !== 5) {
+      toast.error('Flujo de aprobación incompleto', {
+        description: 'Debe seleccionar los 5 miembros del comité de aprobación antes de continuar.',
+        duration: 5000
+      });
+      return;
+    }
+
     try {
       setIsSubmitting(true);
       const exito = await onCrear(vigencia, jefeSeleccionado, rolesConfig, fechaInicio, fechaFin, comiteAprobacion, ordenAprobacion);
       setIsSubmitting(false);
-      
+
       if (exito) {
-        // Limpiar el borrador local al guardar con éxito
+        // Limpiar el borrador local y el del servidor al crear plan nuevo con éxito
         localStorage.removeItem(draftKey);
+        if (!planAEditar) {
+          try {
+            await wizardBorradorApi.delete();
+          } catch (delErr) {
+            console.warn('[Wizard Plan Anual] No se pudo borrar borrador en servidor:', delErr);
+          }
+        }
         setShowSuccessModal(true);
       }
     } catch (e: any) {
@@ -1294,7 +1663,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
               <Check className="w-10 h-10 text-green-600" />
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {planAEditar ? '¡Plan Actualizado con Éxito!' : '¡Plan Creado con Éxito!'}
+              {planAEditar ? '¡Plan actualizado con éxito!' : '¡Plan creado con éxito!'}
             </h2>
             <p className="text-gray-600 mb-8 border-b pb-8">
               El Plan Anual de Auditoría {vigencia} ha sido guardado correctamente. Ahora puedes revisarlo desde el Dashboard.
@@ -1309,75 +1678,198 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
         </div>,
         document.body
       )}
+      {mostrarVistaPrevia && puedeMostrarVistaPrevia && createPortal(
+        <div className="fixed inset-0 z-[99998] flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            aria-label="Cerrar vista previa"
+            onClick={() => setMostrarVistaPrevia(false)}
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="relative bg-white rounded-2xl shadow-2xl border-2 border-gray-200 w-full max-w-2xl max-h-[88vh] flex flex-col z-10 overflow-hidden"
+          >
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3 bg-slate-50">
+              <div className="flex items-center gap-2 min-w-0">
+                <BookOpen className="w-5 h-5 text-blue-600 shrink-0" />
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 truncate">Vista previa del plan</h2>
+                  <p className="text-xs text-gray-500">Solo lectura · Paso {paso} de 3</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMostrarVistaPrevia(false)}
+                className="p-2 rounded-lg hover:bg-gray-200 text-gray-600 transition-colors"
+                aria-label="Cerrar"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="px-6 py-4 overflow-y-auto text-sm space-y-5">
+              {planAEditar?.id && (
+                <p className="text-xs text-gray-500 font-mono break-all">ID plan: {planAEditar.id}</p>
+              )}
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Vigencia</p>
+                  <p className="font-bold text-gray-900">{vigencia}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-gray-50 border border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Periodo</p>
+                  <p className="font-bold text-gray-900">{fechaInicio || '—'} → {fechaFin || '—'}</p>
+                </div>
+              </div>
+              <div className="p-3 rounded-xl bg-blue-50/80 border border-blue-100">
+                <p className="text-xs font-semibold text-blue-800 uppercase tracking-wide mb-1">Responsable del plan</p>
+                <p className="font-semibold text-gray-900">{jefeSeleccionado?.nombre || 'Sin asignar'}</p>
+                {jefeSeleccionado?.cargo && (
+                  <p className="text-xs text-gray-600 mt-0.5">{jefeSeleccionado.cargo}</p>
+                )}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Roles y actividades incluidas</p>
+                <ul className="space-y-2">
+                  {[...rolesConfig].sort((a, b) => a.numero - b.numero).map((rol) => {
+                    const nSel = contarActividadesIncluidas(rol);
+                    const nCustom = (rol.actividadesCustom || []).filter(actividadIncluidaEnPlan).length;
+                    const total = nSel + nCustom;
+                    return (
+                      <li key={rol.numero} className="flex justify-between gap-2 py-2 border-b border-gray-100 last:border-0">
+                        <span className="text-gray-800"><span className="font-bold text-blue-700">Rol {rol.numero}</span> · {rol.nombre}</span>
+                        <span className="text-gray-600 whitespace-nowrap">{total} actividad{total !== 1 ? 'es' : ''}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+              <div className="p-3 rounded-xl bg-amber-50/90 border border-amber-100">
+                <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide mb-1">Comité de aprobación (paso 3)</p>
+                <p className="text-gray-800">
+                  {comiteAprobacion.length} de 5 miembros · orden <strong>{ordenAprobacion === 'paralelo' ? 'paralelo' : 'secuencial'}</strong>
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setMostrarVistaPrevia(false)}
+                className="px-5 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-lg font-semibold text-sm"
+              >
+                Cerrar
+              </button>
+            </div>
+          </motion.div>
+        </div>,
+        document.body
+      )}
       {/* Header */}
       <div className="border-b-2 border-gray-200 px-8 py-6">
-        <div className="flex items-center justify-between mb-6">
+        {soloLectura && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <strong className="font-semibold">Solo consulta.</strong>{' '}
+            No tiene permiso para modificar la definición del plan; puede revisar los tres pasos del asistente y volver al panel.
+            {planAEditar && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={onCancelar}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-slate-300 bg-white text-slate-800 text-sm font-semibold hover:bg-slate-50 transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  Volver al panel
+                </button>
+                {puedeIrAAprobacion && typeof onIrAAprobacion === 'function' && (
+                  <button
+                    type="button"
+                    onClick={onIrAAprobacion}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition-colors"
+                  >
+                    <FileCheck className="w-4 h-4 shrink-0" />
+                    Ir a aprobación
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div className="flex items-center gap-3">
             <button onClick={onCancelar} className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors">
               <ArrowLeft className="w-5 h-5 text-gray-700" />
             </button>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                {planAEditar ? 'Editar Plan Anual' : 'Crear Plan Anual'}
+                {soloLectura && planAEditar
+                  ? 'Consultar definición del Plan Anual'
+                  : planAEditar
+                    ? 'Editar Plan Anual'
+                    : 'Crear Plan Anual'}
               </h1>
               <p className="text-sm text-gray-600">Paso {paso} de 3</p>
             </div>
           </div>
-          
-          {/* Zona de guardado (Borrador) */}
-          <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg p-1.5">
-            <AnimatePresence>
-              {lastSaved && (
-                <motion.div 
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: 'auto' }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 rounded-md border border-green-200"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                  Guardado ({lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
-                </motion.div>
-              )}
-            </AnimatePresence>
-            <button 
-              onClick={async () => {
-                const borradorActual = {
-                  idPlan: planAEditar?.id,
-                  vigencia,
-                  jefeSeleccionado,
-                  fechaInicio,
-                  fechaFin,
-                  rolesConfig,
-                  paso,
-                  comiteAprobacion,
-                  ordenAprobacion,
-                  timestamp: new Date().getTime()
-                };
-                
-                const draftKey = planAEditar ? `esap:wizard_plan_anual_edit_${planAEditar.id}` : 'esap:wizard_plan_anual_draft';
-                localStorage.setItem(draftKey, JSON.stringify(borradorActual));
-                setLastSaved(new Date());
-                
-                // Auto-guardado en backend si tiene lo básico
-                if (jefeSeleccionado && fechaInicio && fechaFin) {
-                  try {
-                    await onCrear(vigencia, jefeSeleccionado, rolesConfig, fechaInicio, fechaFin, comiteAprobacion, ordenAprobacion, true);
-                    toast.success('Borrador guardado en la base de datos', {
+
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+            {puedeMostrarVistaPrevia && !soloLectura && (
+              <button
+                type="button"
+                onClick={() => setMostrarVistaPrevia(true)}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
+                title="Ver resumen del plan sin salir del asistente (solo lectura). Requiere permiso de consulta del plan anual."
+              >
+                <BookOpen className="w-4 h-4 shrink-0" />
+                Vista previa
+              </button>
+            )}
+
+            {/* Zona de guardado (Borrador) */}
+            {!soloLectura && (
+              <div className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg p-1.5">
+                <AnimatePresence>
+                  {lastSaved && (
+                    <motion.div
+                      initial={{ opacity: 0, width: 0 }}
+                      animate={{ opacity: 1, width: 'auto' }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 rounded-md border border-green-200"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      {!planAEditar && serverDraftSynced
+                        ? `Guardado local y en servidor (${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+                        : `Guardado (${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <button
+                  onClick={async () => {
+                    const borradorActual = {
+                      idPlan: planAEditar?.id,
+                      vigencia,
+                      jefeSeleccionado,
+                      fechaInicio,
+                      fechaFin,
+                      rolesConfig,
+                      paso,
+                      comiteAprobacion,
+                      ordenAprobacion,
+                      timestamp: Date.now(),
+                    };
+                    localStorage.setItem(draftKey, JSON.stringify(borradorActual));
+                    setLastSaved(new Date());
+
+                    toast.success('Borrador guardado manualmente', {
                       description: 'Tu progreso está seguro.'
                     });
-                  } catch (error) {
-                    console.error('Error en auto-guardado', error);
-                  }
-                } else {
-                  toast.success('Borrador guardado localmente', {
-                    description: 'Tu progreso está seguro en el navegador.'
-                  });
-                }
-              }}
-              title="Guardar borrador"
-              className="p-2 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-            >
-              <Save className="w-5 h-5" />
-            </button>
+                  }}
+                  title="Guardar borrador"
+                  className="p-2 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                >
+                  <Save className="w-5 h-5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1391,14 +1883,14 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto bg-gray-50 p-8">
-        <div className="max-w-7xl mx-auto">
+        <div className={`max-w-7xl mx-auto ${soloLectura ? 'pointer-events-none select-none opacity-[0.97]' : ''}`}>
           <AnimatePresence mode="wait">
             {paso === 1 && (
-              <Paso1 
-                key="paso1" 
-                vigencia={vigencia} 
-                onVigenciaChange={setVigencia} 
-                jefeOCI={jefeSeleccionado} 
+              <Paso1
+                key="paso1"
+                vigencia={vigencia}
+                onVigenciaChange={handleVigenciaChange}
+                jefeOCI={jefeSeleccionado}
                 onJefeChange={setJefeSeleccionado}
                 fechaInicio={fechaInicio}
                 onFechaInicioChange={setFechaInicio}
@@ -1408,15 +1900,17 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
                 cargandoAuditores={cargandoAuditores}
                 onRecargarAuditores={cargarAuditores}
                 vigenciasExistentes={planesExistentes.filter(p => !planAEditar || p.id !== planAEditar.id).map(p => p.vigencia)}
+                vigenciasDisponibles={vigenciasDisponibles}
+                soloLectura={soloLectura}
               />
             )}
-            {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={setRolesConfig} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} jefeOCI={jefeSeleccionado} />}
+            {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={handleRolesChange} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} jefeOCI={jefeSeleccionado} />}
             {paso === 3 && (
-              <Paso3 
-                key="paso3" 
-                vigencia={vigencia} 
-                jefeOCI={jefeSeleccionado} 
-                rolesConfig={rolesConfig} 
+              <Paso3
+                key="paso3"
+                vigencia={vigencia}
+                jefeOCI={jefeSeleccionado}
+                rolesConfig={rolesConfig}
                 auditores={auditores}
                 comiteAprobacion={comiteAprobacion}
                 setComiteAprobacion={setComiteAprobacion}
@@ -1436,50 +1930,73 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
       {/* Footer */}
       <div className="border-t-2 border-gray-200 px-8 py-4 flex justify-between items-center bg-white">
         <div className="flex items-center gap-4">
-          <button onClick={onCancelar} className="px-6 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium">
-            Cancelar
+          <button type="button" onClick={onCancelar} className="px-6 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium">
+            {soloLectura ? 'Volver' : 'Cancelar'}
           </button>
         </div>
-        
+
         <div className="flex gap-3">
-          {paso > 1 && (
-            <button onClick={() => setPaso(paso - 1)} className="px-6 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
-              Anterior
-            </button>
-          )}
-          {paso < 3 ? (
-            <button 
-              onClick={avanzarPaso} 
-              disabled={
-                (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
-                (paso === 2 && rolesConfig.some(r => ((r.actividadesSeleccionadas?.length || 0) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
-              }
-              className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${
-                (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
-                (paso === 2 && rolesConfig.some(r => ((r.actividadesSeleccionadas?.length || 0) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                  : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
-              }`}
-            >
-              Siguiente <ArrowRight className="w-4 h-4" />
-            </button>
-          ) : (
-            <button 
-              onClick={handleFinalizar} 
-              disabled={isSubmitting}
-              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center gap-2 disabled:opacity-50"
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                  {planAEditar ? 'Guardando...' : 'Creando...'}
-                </>
-              ) : (
-                <>
-                  <Check className="w-4 h-4" /> {planAEditar ? 'Guardar Cambios' : 'Crear'}
-                </>
+          {soloLectura ? (
+            <>
+              {paso > 1 && (
+                <button type="button" onClick={() => setPaso(paso - 1)} className="px-6 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
+                  Anterior
+                </button>
               )}
-            </button>
+              {paso < 3 ? (
+                <button type="button" onClick={avanzarPaso} className="px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors bg-blue-600 hover:bg-blue-700 text-white cursor-pointer">
+                  Siguiente <ArrowRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <button type="button" onClick={onCancelar} className="px-6 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg font-medium">
+                  Volver al panel
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              {paso > 1 && (
+                <button type="button" onClick={() => setPaso(paso - 1)} className="px-6 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
+                  Anterior
+                </button>
+              )}
+              {paso < 3 ? (
+                <button
+                  type="button"
+                  onClick={avanzarPaso}
+                  disabled={
+                    (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
+                    (paso === 2 && rolesConfig.some(r => (contarActividadesIncluidas(r) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
+                  }
+                  className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${(paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
+                      (paso === 2 && rolesConfig.some(r => (contarActividadesIncluidas(r) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
+                    }`}
+                >
+                  Siguiente <ArrowRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleFinalizar}
+                  disabled={isSubmitting || comiteAprobacion.length !== 5}
+                  title={comiteAprobacion.length !== 5 ? 'Seleccione los 5 miembros del comité de aprobación' : undefined}
+                  className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                      {planAEditar ? 'Guardando...' : 'Creando...'}
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" /> {planAEditar ? 'Guardar Cambios' : 'Crear'}
+                    </>
+                  )}
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -1488,48 +2005,59 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
 }
 
 // Paso 1: Configuración básica
-function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores, vigenciasExistentes = [] }: any) {
-  // Validaciones de fechas - Extraer año directamente del string YYYY-MM-DD para evitar problemas de zona horaria
+function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores, vigenciasExistentes = [], vigenciasDisponibles = [], soloLectura = false }: any) {
   const anioFechaInicio = fechaInicio ? parseInt(fechaInicio.split('-')[0], 10) : vigencia;
   const anioFechaFin = fechaFin ? parseInt(fechaFin.split('-')[0], 10) : vigencia;
-  
-  // Comparar fechas como strings (formato YYYY-MM-DD se compara correctamente alfabéticamente)
   const errorFechaFinAnterior = fechaFin && fechaInicio && fechaFin < fechaInicio;
   const errorVigenciaNoCoincide = (anioFechaInicio !== vigencia || anioFechaFin !== vigencia);
-  
-  // Handler para fecha inicio que ajusta automáticamente la fecha fin si es necesario
+
   const handleFechaInicioChange = (nuevaFechaInicio: string) => {
     onFechaInicioChange(nuevaFechaInicio);
-    // Si la fecha fin es anterior a la nueva fecha inicio, ajustar automáticamente
-    if (fechaFin && fechaFin < nuevaFechaInicio) {
-      onFechaFinChange(nuevaFechaInicio);
-    }
+    if (fechaFin && fechaFin < nuevaFechaInicio) onFechaFinChange(nuevaFechaInicio);
   };
 
-  // Handler para vigencia que ajusta las fechas automáticamente
-  const handleVigenciaChange = (nuevaVigencia: number) => {
+  const handleVigenciaSelect = (nuevaVigencia: number) => {
     if (isNaN(nuevaVigencia)) return;
-    // Permitir valores intermedios mientras se escribe (sin clamping)
     onVigenciaChange(nuevaVigencia);
-    // Solo ajustar fechas si el año ya es válido
     if (nuevaVigencia >= 2020 && nuevaVigencia <= 2100) {
       onFechaInicioChange(`${nuevaVigencia}-01-01`);
       onFechaFinChange(`${nuevaVigencia}-12-31`);
     }
   };
 
-  // Al salir del campo, clampear al rango válido
-  const handleVigenciaBlur = () => {
-    const v = vigencia || new Date().getFullYear();
-    if (isNaN(v) || v < 2020 || v > 2100) {
-      const clamped = Math.min(Math.max(isNaN(v) ? 2020 : v, 2020), 2100);
-      onVigenciaChange(clamped);
-      onFechaInicioChange(`${clamped}-01-01`);
-      onFechaFinChange(`${clamped}-12-31`);
-    }
+  // Combobox state
+  const [inputText, setInputText] = useState(String(vigencia));
+  const [showDropdown, setShowDropdown] = useState(false);
+  const comboRef = useRef<HTMLDivElement>(null);
+
+  const filteredOptions = vigenciasDisponibles.filter((y: number) => String(y).includes(inputText));
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (comboRef.current && !comboRef.current.contains(e.target as Node)) setShowDropdown(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => { setInputText(String(vigencia)); }, [vigencia]);
+
+  const handleInputChange = (val: string) => {
+    setInputText(val);
+    setShowDropdown(true);
+    const num = parseInt(val);
+    if (!isNaN(num)) handleVigenciaSelect(num);
+  };
+
+  const handleOptionClick = (y: number) => {
+    handleVigenciaSelect(y);
+    setInputText(String(y));
+    setShowDropdown(false);
   };
 
   const vigenciaInvalida = !vigencia || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100;
+  const vigenciaOcupada = !vigenciaInvalida && vigenciasExistentes.includes(vigencia);
+  const vigenciaDisponible = !vigenciaInvalida && !vigenciaOcupada;
 
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
@@ -1541,58 +2069,82 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
       <div className="bg-white rounded-xl border-2 border-gray-200 p-8 space-y-6">
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-2">Vigencia <span className="text-red-500">*</span></label>
-          <div className="relative">
-            <input 
-              type="number" 
-              value={vigencia} 
-              onChange={(e) => handleVigenciaChange(parseInt(e.target.value))} 
-              onBlur={handleVigenciaBlur}
-              min={2020}
-              max={2100}
-              className={`w-full px-4 py-3 border-2 rounded-lg text-lg font-bold focus:outline-none pr-28 ${
-                vigenciaInvalida || vigenciasExistentes.includes(vigencia)
-                  ? 'border-red-500 bg-red-50 focus:border-red-500'
-                  : 'border-gray-300 focus:border-blue-500'
-              }`}
-            />
-            {vigenciasExistentes.includes(vigencia) && !vigenciaInvalida && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded-full border border-red-300">
-                ⚠️ Ya existe
-              </span>
-            )}
-            {vigenciaInvalida && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded-full border border-red-300">
-                ⚠️ Año inválido
-              </span>
-            )}
-          </div>
-          {vigenciaInvalida ? (
-            <p className="text-xs text-red-600 mt-1 font-medium">Ingresa un año válido entre 2020 y 2100.</p>
-          ) : vigenciasExistentes.includes(vigencia) ? (
-            <p className="text-xs text-red-600 mt-1 font-medium">Ya existe un plan para la vigencia {vigencia}. Selecciona otro año.</p>
+          {soloLectura ? (
+            <div className="rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Vigencia del plan (solo consulta)</p>
+              <p className="text-3xl font-black text-slate-900 tabular-nums">{vigencia}</p>
+              <p className="text-xs text-slate-600 mt-2">No puede modificarse en modo consulta. Use <strong>Siguiente</strong> para ver roles y actividades.</p>
+            </div>
           ) : (
-            <p className="text-xs text-gray-500 mt-1">Al cambiar la vigencia, las fechas se ajustarán automáticamente</p>
+            <>
+              <div className="relative" ref={comboRef}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={inputText}
+                  onChange={(e) => handleInputChange(e.target.value)}
+                  onFocus={() => setShowDropdown(true)}
+                  placeholder="Escribe o selecciona un año..."
+                  className={`w-full px-4 py-3 border-2 rounded-lg text-lg font-bold focus:outline-none pr-32 ${vigenciaOcupada ? 'border-red-500 bg-red-50 focus:border-red-500'
+                      : vigenciaDisponible ? 'border-green-500 bg-green-50 focus:border-green-500'
+                        : 'border-gray-300 focus:border-blue-500'
+                    }`}
+                />
+                <button type="button" onClick={() => setShowDropdown(!showDropdown)} className="absolute right-24 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600">
+                  <svg className={`w-5 h-5 transition-transform ${showDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </button>
+                {vigenciaDisponible && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded-full border border-green-300">S& Disponible</span>
+                )}
+                {vigenciaOcupada && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded-full border border-red-300">⚠️ Ya existe</span>
+                )}
+                {showDropdown && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                    {filteredOptions.length > 0 ? filteredOptions.map((y: number) => (
+                      <button key={y} type="button" onClick={() => handleOptionClick(y)}
+                        className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${y === vigencia ? 'bg-blue-50 text-blue-700 font-bold' : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                      >
+                        <span className="text-lg font-bold">{y}</span>
+                        {y === vigencia && <span className="ml-2 text-blue-500 text-xs">  seleccionado</span>}
+                      </button>
+                    )) : (
+                      <div className="px-4 py-3 text-sm text-gray-500 italic">No hay años disponibles que coincidan</div>
+                    )}
+                  </div>
+                )}
+              </div>
+              {vigenciaOcupada ? (
+                <p className="text-xs text-red-600 mt-1 font-medium">Ya existe un plan para {vigencia}. Selecciona otro año del listado.</p>
+              ) : vigenciaDisponible ? (
+                <p className="text-xs text-green-600 mt-1 font-medium">✅ Año {vigencia} disponible. Las fechas se ajustan automáticamente.</p>
+              ) : (
+                <p className="text-xs text-gray-500 mt-1">Escribe un año o despliega la lista para ver los disponibles.</p>
+              )}
+            </>
           )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-semibold text-gray-900 mb-2">Fecha de inicio <span className="text-red-500">*</span></label>
-            <input 
-              type="date" 
-              value={fechaInicio} 
+            <input
+              type="date"
+              value={fechaInicio}
+              readOnly={soloLectura}
+              disabled={soloLectura}
               onChange={(e) => handleFechaInicioChange(e.target.value)}
               min={`${vigencia}-01-01`}
               max={`${vigencia}-12-31`}
-              className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none ${
-                errorVigenciaNoCoincide && anioFechaInicio !== vigencia
-                  ? 'border-red-500 bg-red-50 focus:border-red-500' 
+              className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none ${errorVigenciaNoCoincide && anioFechaInicio !== vigencia
+                  ? 'border-red-500 bg-red-50 focus:border-red-500'
                   : 'border-gray-300 focus:border-blue-500'
-              }`}
+                }`}
             />
             {errorVigenciaNoCoincide && anioFechaInicio !== vigencia && (
               <p className="text-xs text-red-600 mt-1 font-medium">
-                ⚠️ El año de la fecha ({anioFechaInicio}) debe coincidir con la vigencia ({vigencia})
+                a️ El año de la fecha ({anioFechaInicio}) debe coincidir con la vigencia ({vigencia})
               </p>
             )}
             {!errorVigenciaNoCoincide && (
@@ -1601,26 +2153,27 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
           </div>
           <div>
             <label className="block text-sm font-semibold text-gray-900 mb-2">Fecha de finalización <span className="text-red-500">*</span></label>
-            <input 
-              type="date" 
-              value={fechaFin} 
+            <input
+              type="date"
+              value={fechaFin}
+              readOnly={soloLectura}
+              disabled={soloLectura}
               onChange={(e) => onFechaFinChange(e.target.value)}
               min={fechaInicio || `${vigencia}-01-01`}
               max={`${vigencia}-12-31`}
-              className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none ${
-                errorFechaFinAnterior || (errorVigenciaNoCoincide && anioFechaFin !== vigencia)
-                  ? 'border-red-500 bg-red-50 focus:border-red-500' 
+              className={`w-full px-4 py-3 border-2 rounded-lg focus:outline-none ${errorFechaFinAnterior || (errorVigenciaNoCoincide && anioFechaFin !== vigencia)
+                  ? 'border-red-500 bg-red-50 focus:border-red-500'
                   : 'border-gray-300 focus:border-blue-500'
-              }`}
+                }`}
             />
             {errorFechaFinAnterior && (
               <p className="text-xs text-red-600 mt-1 font-medium">
-                ⚠️ La fecha de finalización no puede ser anterior a la fecha de inicio
+                a️ La fecha de finalización no puede ser anterior a la fecha de inicio
               </p>
             )}
             {!errorFechaFinAnterior && errorVigenciaNoCoincide && anioFechaFin !== vigencia && (
               <p className="text-xs text-red-600 mt-1 font-medium">
-                ⚠️ El año de la fecha ({anioFechaFin}) debe coincidir con la vigencia ({vigencia})
+                a️ El año de la fecha ({anioFechaFin}) debe coincidir con la vigencia ({vigencia})
               </p>
             )}
             {!errorFechaFinAnterior && !errorVigenciaNoCoincide && (
@@ -1656,25 +2209,26 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             </div>
           ) : (() => {
             // Solo mostrar profesionales con base en las reglas de negocio y perfil normativo
-            const responsablesAutorizados = auditores.filter((a: any) => 
+            const responsablesAutorizados = auditores.filter((a: any) =>
               REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esAutorizadoParaResponsablePlan(a.cargo)
             );
-            
+
             // Garantizar que el jefe actual siempre esté en la lista, incluso si su cargo no coincide exactamente
             if (jefeOCI && !responsablesAutorizados.some(a => a.id === jefeOCI.id)) {
               responsablesAutorizados.push(jefeOCI);
             }
-            
+
             return responsablesAutorizados.length === 0 ? (
               <div className="flex items-center gap-2 px-4 py-3 border-2 border-orange-300 rounded-lg bg-orange-50">
                 <AlertCircle className="w-5 h-5 text-orange-600" />
                 <span className="text-orange-700">No hay profesionales con rol Jefe OCIG o Auditor Líder configurados. Configure uno en Profesionales OCI.</span>
               </div>
             ) : (
-              <select 
-                value={jefeOCI?.id || ''} 
-                onChange={(e) => onJefeChange(responsablesAutorizados.find((a: any) => a.id === e.target.value))} 
-                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+              <select
+                value={jefeOCI?.id || ''}
+                disabled={soloLectura}
+                onChange={(e) => onJefeChange(responsablesAutorizados.find((a: any) => a.id === e.target.value))}
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               >
                 <option value="">Seleccionar responsable...</option>
                 {responsablesAutorizados.map((a: any) => (
@@ -1691,15 +2245,15 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
 }
 
 // Paso 2: Configuración de roles, actividades y responsables
-function Paso2({ 
-  rolesConfig, 
+function Paso2({
+  rolesConfig,
   onRolesChange,
   fechaInicio,
   fechaFin,
   auditores,
   jefeOCI
-}: { 
-  rolesConfig: RolConfig[]; 
+}: {
+  rolesConfig: RolConfig[];
   onRolesChange: (config: RolConfig[]) => void;
   fechaInicio: string;
   fechaFin: string;
@@ -1711,14 +2265,14 @@ function Paso2({
   const [nuevaActividad, setNuevaActividad] = useState<ActividadBase>({
     nombre: '',
     descripcion: '',
-    fechaInicio: new Date().toISOString().split('T')[0],
-    fechaFin: new Date().toISOString().split('T')[0],
+    fechaInicio: fechaInicio,
+    fechaFin: fechaFin,
     control: 'Seguimiento trimestral',
     evaluacion: '0% avance',
     seguimiento: 'Por definir'
   });
 
-  // ✅ NUEVO: Estado para configuración de puntos de control
+  // S& NUEVO: Estado para configuración de puntos de control
   const [modalPuntosControlAbierto, setModalPuntosControlAbierto] = useState(false);
   const [actividadConfigurando, setActividadConfigurando] = useState<{
     numeroRol: number;
@@ -1731,53 +2285,94 @@ function Paso2({
   const { puedeRealizar } = useControlInternoPermissions();
   const puedeEditarActividadesBase = puedeRealizar('configuraciones', 'edit');
 
-  const [editandoActividadBase, setEditandoActividadBase] = useState<{rolNumero: number, actId: string} | null>(null);
+  const [editandoActividadBase, setEditandoActividadBase] = useState<{ rolNumero: number, actId: string } | null>(null);
 
   const toggleActividad = (numeroRol: number, actId: string, nombreActividad: string) => {
     const nuevaConfig = rolesConfig.map(rol => {
-      if (rol.numero === numeroRol) {
-        const yaSeleccionada = rol.actividadesSeleccionadas.some(a => a.id === actId || a.nombre === nombreActividad);
-        if (yaSeleccionada) {
-          // Deseleccionar
+      if (rol.numero !== numeroRol) return rol;
+
+      const idx = rol.actividadesSeleccionadas.findIndex(a => a.id === actId || a.nombre === nombreActividad);
+      const existente = idx >= 0 ? rol.actividadesSeleccionadas[idx] : undefined;
+
+      if (existente) {
+        if (actividadIncluidaEnPlan(existente)) {
+          // Desmarcar sin borrar: se conserva evidencias, puntos de control, etc.
           return {
             ...rol,
-            actividadesSeleccionadas: rol.actividadesSeleccionadas.filter(a => a.id !== actId && a.nombre !== nombreActividad)
+            actividadesSeleccionadas: rol.actividadesSeleccionadas.map((a, i) =>
+              i === idx ? { ...a, incluidaEnPlan: false } : a
+            ),
           };
-        } else {
-          // Seleccionar
-          const actividadBase = getActividadesPorRol(numeroRol)?.find(a => a.nombre === nombreActividad);
-          if (actividadBase) {
-            // Auto-asignar primer responsable del rol si existe
-            const primerResponsable = rol.responsables?.[0];
-            // Auto-generar 3 puntos de control trimestrales (31 Mar, 30 Jun, 30 Sep)
-            const año = fechaInicio ? fechaInicio.split('-')[0] : new Date().getFullYear().toString();
-            const puntosDefault: PuntoControl[] = [
-              { id: `pc-${actId}-1`, orden: 1, nombre: 'Corte 1', descripcion: '', fechaProgramada: `${año}-03-31`, fechaSeguimiento: `${año}-05-31`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-              { id: `pc-${actId}-2`, orden: 2, nombre: 'Corte 2', descripcion: '', fechaProgramada: `${año}-06-30`, fechaSeguimiento: `${año}-08-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-              { id: `pc-${actId}-3`, orden: 3, nombre: 'Corte 3', descripcion: '', fechaProgramada: `${año}-09-30`, fechaSeguimiento: `${año}-11-30`, fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: [] },
-            ];
-            return {
-              ...rol,
-              actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
-                ...actividadBase,
-                id: actId,
-                tipoEvidencia: 'SOLO_CHECK' as const,
-                fechaCorte: `${año}-09-30`,
-                responsables: primerResponsable ? [primerResponsable] : [],
-                puntosControl: puntosDefault,
-                frecuenciaPuntosControl: 'trimestral' as const,
-              }]
-            };
-          }
         }
+        // Reactivar entrada existente
+        return {
+          ...rol,
+          actividadesSeleccionadas: rol.actividadesSeleccionadas.map((a, i) =>
+            i === idx ? { ...a, incluidaEnPlan: true } : a
+          ),
+        };
       }
-      return rol;
+
+      // Primera vez en el plan: alta nueva con valores por defecto
+      const actividadBase = getActividadesPorRol(numeroRol)?.find(a => a.nombre === nombreActividad);
+      if (!actividadBase) return rol;
+
+      const primerResponsable = rol.responsables?.[0];
+      const año = Number(fechaInicio ? fechaInicio.split('-')[0] : new Date().getFullYear());
+      const mkPC = (pcId: string, orden: number, fi: string, ff: string): PuntoControl => ({
+        id: pcId, orden, nombre: `Corte ${orden}`, descripcion: '',
+        fechaProgramada: fi, fechaSeguimiento: ff,
+        fechaReal: null, responsable: '', estado: 'pendiente' as const, observaciones: '', evidencias: []
+      });
+      const ctrl = (actividadBase.control || '').toLowerCase();
+      let puntosDefault: PuntoControl[];
+      let frecuencia: FrecuenciaPuntoControl = 'trimestral';
+      if (ctrl.includes('semestral')) {
+        frecuencia = 'semestral';
+        puntosDefault = [mkPC(`pc-${actId}-1`, 1, `${año}-01-01`, `${año}-06-30`), mkPC(`pc-${actId}-2`, 2, `${año}-07-01`, `${año}-12-31`)];
+      } else if (ctrl.includes('cuatrimestral')) {
+        frecuencia = 'cuatrimestral';
+        puntosDefault = [mkPC(`pc-${actId}-1`, 1, `${año}-01-01`, `${año}-04-30`), mkPC(`pc-${actId}-2`, 2, `${año}-05-01`, `${año}-08-31`), mkPC(`pc-${actId}-3`, 3, `${año}-09-01`, `${año}-12-31`)];
+      } else if (ctrl.includes('trimestral')) {
+        frecuencia = 'trimestral';
+        puntosDefault = [mkPC(`pc-${actId}-1`, 1, `${año}-01-01`, `${año}-03-31`), mkPC(`pc-${actId}-2`, 2, `${año}-04-01`, `${año}-06-30`), mkPC(`pc-${actId}-3`, 3, `${año}-07-01`, `${año}-09-30`), mkPC(`pc-${actId}-4`, 4, `${año}-10-01`, `${año}-12-31`)];
+      } else if (ctrl.includes('anual')) {
+        frecuencia = 'anual';
+        puntosDefault = [mkPC(`pc-${actId}-1`, 1, `${año}-01-01`, `${año}-12-31`)];
+      } else if (ctrl.includes('mensual')) {
+        frecuencia = 'mensual';
+        puntosDefault = Array.from({ length: 12 }, (_, i) => { const m = (i + 1).toString().padStart(2, '0'); const ld = new Date(año, i + 1, 0).getDate().toString().padStart(2, '0'); return mkPC(`pc-${actId}-${i + 1}`, i + 1, `${año}-${m}-01`, `${año}-${m}-${ld}`); });
+      } else {
+        frecuencia = 'anual';
+        puntosDefault = [mkPC(`pc-${actId}-1`, 1, actividadBase.fechaInicio || `${año}-01-01`, actividadBase.fechaFin || `${año}-12-31`)];
+      }
+      const tareasConCorte = (actividadBase.tareasSeguimiento || []).map((t, tIdx) => ({ ...t, puntoControlId: puntosDefault[tIdx % puntosDefault.length]?.id }));
+      return {
+        ...rol,
+        actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
+          ...actividadBase,
+          id: actId,
+          incluidaEnPlan: true,
+          tipoEvidencia: 'SOLO_CHECK' as const,
+          fechaCorte: puntosDefault[puntosDefault.length - 1]?.fechaSeguimiento || `${año}-12-31`,
+          responsables: primerResponsable ? [primerResponsable] : [],
+          puntosControl: puntosDefault,
+          frecuenciaPuntosControl: frecuencia,
+          tareasSeguimiento: tareasConCorte,
+        }]
+      };
     });
     onRolesChange(nuevaConfig);
   };
 
   const estaSeleccionada = (actId: string, nombreActividad?: string) => {
-    return rolesConfig.some(rol => rol.actividadesSeleccionadas.some(a => a.id === actId || (nombreActividad && a.nombre === nombreActividad)));
+    return rolesConfig.some(rol =>
+      rol.actividadesSeleccionadas.some(
+        a =>
+          (a.id === actId || (!!nombreActividad && a.nombre === nombreActividad)) &&
+          actividadIncluidaEnPlan(a)
+      )
+    );
   };
 
   const toggleAutorizacionJefeOCI = (actId: string) => {
@@ -1826,9 +2421,9 @@ function Paso2({
       if (rol.numero === numeroRol) {
         return {
           ...rol,
-          actividadesCustom: [...rol.actividadesCustom, { 
+          actividadesCustom: [...rol.actividadesCustom, {
             ...nuevaActividad,
-            // ⚡ Valor por defecto: SOLO_CHECK (sin requisitos de documentos/observaciones)
+            // a Valor por defecto: SOLO_CHECK (sin requisitos de documentos/observaciones)
             tipoEvidencia: 'SOLO_CHECK' as const
           }]
         };
@@ -1841,8 +2436,8 @@ function Paso2({
     setNuevaActividad({
       nombre: '',
       descripcion: '',
-      fechaInicio: new Date().toISOString().split('T')[0],
-      fechaFin: new Date().toISOString().split('T')[0],
+      fechaInicio: fechaInicio,
+      fechaFin: fechaFin,
       control: 'Seguimiento trimestral',
       evaluacion: '0% avance',
       seguimiento: 'Por definir'
@@ -1906,7 +2501,7 @@ function Paso2({
     onRolesChange(nuevaConfig);
   };
 
-  // ✅ Funciones para asignar responsables por actividad
+  // S& Funciones para asignar responsables por actividad
   const agregarResponsableActividad = (actId: string, auditor: Auditor) => {
     const nuevaConfig = rolesConfig.map(rol => ({
       ...rol,
@@ -1914,7 +2509,7 @@ function Paso2({
         if (act.id === actId) {
           const yaAsignado = (act.responsables || []).some(r => r.id === auditor.id);
           if (yaAsignado) return act;
-          
+
           // Asignar en cascada a tareas sin responsable
           const nuevasTareas = (act.tareasSeguimiento || []).map(t => {
             if (!t.responsables || t.responsables.length === 0) {
@@ -1954,7 +2549,7 @@ function Paso2({
           if (i !== index) return act;
           const yaAsignado = (act.responsables || []).some(r => r.id === auditor.id);
           if (yaAsignado) return act;
-          
+
           // Asignar en cascada a tareas sin responsable
           const nuevasTareas = (act.tareasSeguimiento || []).map(t => {
             if (!t.responsables || t.responsables.length === 0) {
@@ -2008,7 +2603,7 @@ function Paso2({
     onRolesChange(nuevaConfig);
   };
 
-  // ✅ NUEVO: Funciones para configurar puntos de control
+  // S& NUEVO: Funciones para configurar puntos de control
   const abrirConfiguracionPuntosControl = (numeroRol: number, nombreActividad: string, esCustom: boolean, indexCustom?: number) => {
     setActividadConfigurando({ numeroRol, nombreActividad, esCustom, indexCustom });
     setModalPuntosControlAbierto(true);
@@ -2063,8 +2658,8 @@ function Paso2({
     setActividadConfigurando(null);
   };
 
-  const totalActividades = rolesConfig.reduce((sum, rol) => 
-    sum + rol.actividadesSeleccionadas.length + rol.actividadesCustom.length, 0
+  const totalActividades = rolesConfig.reduce((sum, rol) =>
+    sum + contarActividadesIncluidas(rol) + rol.actividadesCustom.length, 0
   );
 
   return (
@@ -2090,8 +2685,12 @@ function Paso2({
         {[...rolesConfig].sort((a, b) => a.numero - b.numero).map((rol) => {
           const isExpanded = rolExpandido === rol.numero;
           const actividadesBase = getActividadesPorRol(rol.numero);
-          const totalRol = rol.actividadesSeleccionadas.length + rol.actividadesCustom.length;
-          const faltaResponsable = totalRol > 0 && rol.responsables.length === 0;
+          const totalRol = contarActividadesIncluidas(rol) + rol.actividadesCustom.length;
+          const responsablesRol = Array.isArray(rol.responsables)
+            ? rol.responsables.filter((resp): resp is Auditor => Boolean(resp))
+            : [];
+          const responsablePrincipal = responsablesRol[0] || null;
+          const faltaResponsable = totalRol > 0 && !responsablePrincipal;
 
           return (
             <div key={rol.numero} className="bg-white rounded-xl border-2 border-gray-200 overflow-hidden">
@@ -2108,32 +2707,25 @@ function Paso2({
                     <h3 className="font-bold text-gray-900">Rol {rol.numero}: {rol.nombre}</h3>
                     <p className="text-sm text-gray-600">
                       {totalRol} actividades • {(() => {
-                        const totalTareas = [...rol.actividadesSeleccionadas, ...rol.actividadesCustom]
+                        const totalTareas = [...rol.actividadesSeleccionadas.filter(actividadIncluidaEnPlan), ...rol.actividadesCustom]
                           .reduce((sum, a) => sum + (a.tareasSeguimiento?.length || 0), 0);
                         return totalTareas > 0 ? `${totalTareas} tareas • ` : '';
-                      })()}{rol.responsables.length} responsables
+                      })()}{responsablePrincipal ? 1 : 0} responsables
                     </p>
                     {/* Avatar chips for assigned responsibles */}
-                    {rol.responsables.length > 0 && (
+                    {responsablePrincipal && (
                       <div className="flex items-center gap-1.5 mt-1.5">
                         <div className="flex -space-x-1">
-                          {rol.responsables.slice(0, 4).map((r: Auditor) => (
-                            <div
-                              key={r.id}
-                              title={r.nombre}
-                              className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-white text-[9px] font-bold"
-                              style={{ backgroundColor: rol.color }}
-                            >
-                              {r.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                            </div>
-                          ))}
-                          {rol.responsables.length > 4 && (
-                            <div className="w-5 h-5 rounded-full bg-gray-400 border-2 border-white flex items-center justify-center text-white text-[9px] font-bold">
-                              +{rol.responsables.length - 4}
-                            </div>
-                          )}
+                          <div
+                            key={responsablePrincipal.id}
+                            title={responsablePrincipal.nombre}
+                            className="w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-white text-[9px] font-bold"
+                            style={{ backgroundColor: rol.color }}
+                          >
+                            {responsablePrincipal.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                          </div>
                         </div>
-                        <span className="text-xs text-gray-500">{rol.responsables.slice(0, 2).map((r: Auditor) => r.nombre.split(' ')[0]).join(', ')}{rol.responsables.length > 2 ? ` +${rol.responsables.length - 2}` : ''}</span>
+                        <span className="text-xs text-gray-500">{responsablePrincipal.nombre.split(' ')[0]}</span>
                       </div>
                     )}
                   </div>
@@ -2144,11 +2736,11 @@ function Paso2({
                     <div className="flex flex-col items-end">
                       <span className="text-xs text-gray-500 font-medium">Avance asignación</span>
                       <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden mt-1">
-                        <div 
+                        <div
                           className="h-full rounded-full transition-all duration-500"
-                          style={{ 
+                          style={{
                             width: `${actividadesBase.length > 0 ? Math.min(100, Math.round((totalRol / actividadesBase.length) * 100)) : 0}%`,
-                            backgroundColor: rol.color 
+                            backgroundColor: rol.color
                           }}
                         />
                       </div>
@@ -2158,9 +2750,9 @@ function Paso2({
                     </span>
                   </div>
 
-                  <span className="px-3 py-1 rounded-lg text-sm font-semibold" style={{ 
-                    backgroundColor: rol.color + '20', 
-                    color: rol.color 
+                  <span className="px-3 py-1 rounded-lg text-sm font-semibold" style={{
+                    backgroundColor: rol.color + '20',
+                    color: rol.color
                   }}>
                     {totalRol}/{actividadesBase.length}
                   </span>
@@ -2191,7 +2783,7 @@ function Paso2({
                         </p>
                         <div className="flex flex-col gap-1.5">
                           {/* Chips de responsables asignados */}
-                          {rol.responsables.map((auditor: Auditor) => (
+                          {(responsablePrincipal ? [responsablePrincipal] : []).map((auditor: Auditor) => (
                             <div key={auditor.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
                               <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ backgroundColor: rol.color }}>
                                 {auditor.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
@@ -2215,14 +2807,14 @@ function Paso2({
                                 }}
                                 className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-xs transition-colors flex-shrink-0"
                               >
-                                ✕
+                                ×
                               </button>
                             </div>
                           ))}
-                          {/* Dropdown para agregar — solo si no hay responsables */}
-                          {rol.responsables.length === 0 && (
+                          {/* Dropdown para agregar  solo si no hay responsables */}
+                          {!responsablePrincipal && (
                             <SelectorProfesional
-                              auditores={auditores.filter(a => !rol.responsables.some((r: any) => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
+                              auditores={auditores.filter(a => !responsablesRol.some((r: any) => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
                               onSelect={(id) => {
                                 if (!id) return;
                                 const auditor = auditores.find(a => a.id === id);
@@ -2230,23 +2822,6 @@ function Paso2({
                                   const nuevaConfig = rolesConfig.map(r => {
                                     if (r.numero === rol.numero) {
                                       const nuevosResponsables = [...(r.responsables || []), auditor];
-                                      
-                                      const asignarAActividadYTareas = (act: any) => {
-                                        const tieneResponsableAct = act.responsables && act.responsables.length > 0;
-                                        const nuevasTareas = (act.tareasSeguimiento || []).map((t: any) => {
-                                          if (!t.responsables || t.responsables.length === 0) {
-                                            return { ...t, responsables: [auditor] };
-                                          }
-                                          return t;
-                                        });
-
-                                        return {
-                                          ...act,
-                                          responsables: tieneResponsableAct ? act.responsables : [auditor],
-                                          tareasSeguimiento: nuevasTareas
-                                        };
-                                      };
-
                                       return {
                                         ...r,
                                         responsables: nuevosResponsables,
@@ -2273,21 +2848,21 @@ function Paso2({
                         </h4>
                         <div className="space-y-2">
                           {actividadesBase.map((actividad, index) => {
-                            // ⚡ Generar ID único para esta actividad
+                            // a Generar ID único para esta actividad
                             const actId = `rol-${rol.numero}-act-${index}`;
                             const seleccionada = estaSeleccionada(actId, actividad.nombre);
                             const actividadData = rol.actividadesSeleccionadas.find(a => a.id === actId || a.nombre === actividad.nombre);
-                            /** UUID del backend vs id sintético del template — las mutaciones deben usar el id real en estado */
+                            /** UUID del backend vs id sintético del template  las mutaciones deben usar el id real en estado */
                             const idActividadEnEstado = actividadData?.id ?? actId;
+                            const fechaCorteMostrar = actividadData ? fechaCorteDisplayDesdeActividad(actividadData) : undefined;
                             return (
                               <div
                                 key={actId}
                                 style={{ contentVisibility: 'auto', containIntrinsicSize: '150px' }}
-                                className={`border-2 rounded-lg transition-colors ${
-                                  seleccionada
+                                className={`border-2 rounded-lg transition-colors ${seleccionada
                                     ? 'border-blue-400 bg-blue-50'
                                     : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                                }`}
+                                  }`}
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <label className="flex items-start gap-3 p-3 cursor-pointer">
@@ -2300,8 +2875,8 @@ function Paso2({
                                   <div className="flex-1 min-w-0">
                                     {editandoActividadBase?.rolNumero === rol.numero && editandoActividadBase?.actId === idActividadEnEstado ? (
                                       <div className="space-y-2 mb-2 bg-white p-3 rounded-lg border border-blue-200 shadow-sm" onClick={e => e.stopPropagation()}>
-                                        <input 
-                                          type="text" 
+                                        <input
+                                          type="text"
                                           className="w-full font-semibold text-gray-900 text-sm border-b-2 border-transparent hover:border-gray-300 focus:border-blue-500 focus:outline-none bg-gray-50 focus:bg-white px-2 py-1 rounded-t transition-colors"
                                           defaultValue={actividadData?.nombre || actividad.nombre}
                                           placeholder="Nombre de la actividad"
@@ -2310,7 +2885,7 @@ function Paso2({
                                             if (nuevoNombre && actividadData) {
                                               const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
                                                 ...r,
-                                                actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => 
+                                                actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
                                                   a.id === idActividadEnEstado ? { ...a, nombre: nuevoNombre } : a
                                                 )
                                               } : r);
@@ -2318,7 +2893,7 @@ function Paso2({
                                             }
                                           }}
                                         />
-                                        <textarea 
+                                        <textarea
                                           className="w-full text-xs text-gray-600 border border-gray-300 rounded p-2 focus:border-blue-500 focus:outline-none bg-gray-50 focus:bg-white transition-colors"
                                           defaultValue={actividadData?.descripcion || actividad.descripcion}
                                           placeholder="Descripción de la actividad"
@@ -2328,7 +2903,7 @@ function Paso2({
                                             if (actividadData) {
                                               const nuevaConfig = rolesConfig.map(r => r.numero === rol.numero ? {
                                                 ...r,
-                                                actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => 
+                                                actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
                                                   a.id === idActividadEnEstado ? { ...a, descripcion: nuevaDesc } : a
                                                 )
                                               } : r);
@@ -2337,8 +2912,8 @@ function Paso2({
                                           }}
                                         />
                                         <div className="flex justify-end mt-2">
-                                          <button 
-                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md font-medium transition-colors" 
+                                          <button
+                                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md font-medium transition-colors"
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               setEditandoActividadBase(null);
@@ -2352,14 +2927,14 @@ function Paso2({
                                       <div className="group relative pr-8">
                                         <p className="font-semibold text-gray-900 text-sm">{actividadData?.nombre || actividad.nombre}</p>
                                         <p className="text-xs text-gray-600 mt-1">{actividadData?.descripcion || actividad.descripcion}</p>
-                                        
+
                                         {puedeEditarActividadesBase && seleccionada && (
-                                          <button 
+                                          <button
                                             className="absolute top-0 right-0 p-1.5 text-gray-400 hover:text-blue-600 bg-gray-50 hover:bg-blue-50 rounded-md opacity-0 group-hover:opacity-100 transition-all shadow-sm border border-transparent hover:border-blue-200"
                                             title="Editar texto de actividad"
-                                            onClick={(e) => { 
-                                              e.stopPropagation(); 
-                                              setEditandoActividadBase({rolNumero: rol.numero, actId: idActividadEnEstado}); 
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setEditandoActividadBase({ rolNumero: rol.numero, actId: idActividadEnEstado });
                                             }}
                                           >
                                             <Edit3 className="w-4 h-4" />
@@ -2372,7 +2947,7 @@ function Paso2({
                                         {/* Responsable inline */}
                                         {(actividadData.responsables && actividadData.responsables.length > 0) ? (
                                           <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-medium">
-                                            👤 {actividadData.responsables[0].nombre}
+                                            x {actividadData.responsables[0].nombre}
                                             {actividadData.responsables.length > 1 && ` +${actividadData.responsables.length - 1}`}
                                           </span>
                                         ) : (
@@ -2400,16 +2975,62 @@ function Paso2({
                                             Requiere autorización
                                           </span>
                                         )}
-                                        {actividadData.fechaCorte && (
+                                        {fechaCorteMostrar && (
                                           <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] font-medium">
-                                            📅 Corte: {actividadData.fechaCorte}
+                                            📅 Corte: {fechaCorteMostrar}
                                           </span>
                                         )}
+                                        <div className="w-full mt-1.5 p-2 bg-indigo-50/60 border border-indigo-100 rounded-lg" onClick={(e) => e.stopPropagation()}>
+                                          <p className="text-[10px] font-semibold text-indigo-800 mb-1">Responsable de esta actividad</p>
+                                          <div className="flex items-center gap-2">
+                                            <SelectorProfesional
+                                              auditores={auditores}
+                                              placeholder={(actividadData.responsables && actividadData.responsables.length > 0) ? 'Cambiar responsable…' : '+ Asignar responsable…'}
+                                              onSelect={(id) => {
+                                                if (!id) return;
+                                                const auditor = auditores.find(a => a.id === id);
+                                                if (!auditor) return;
+                                                const nuevaConfig = rolesConfig.map(r => {
+                                                  if (r.numero !== rol.numero) return r;
+                                                  return {
+                                                    ...r,
+                                                    actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                      a.id === idActividadEnEstado ? { ...a, responsables: [auditor] } : a
+                                                    )
+                                                  };
+                                                });
+                                                onRolesChange(nuevaConfig);
+                                              }}
+                                            />
+                                            {(actividadData.responsables && actividadData.responsables.length > 0) && (
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                  const nuevaConfig = rolesConfig.map(r => {
+                                                    if (r.numero !== rol.numero) return r;
+                                                    return {
+                                                      ...r,
+                                                      actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                        a.id === idActividadEnEstado ? { ...a, responsables: [] } : a
+                                                      )
+                                                    };
+                                                  });
+                                                  onRolesChange(nuevaConfig);
+                                                }}
+                                                className="px-2 py-1 text-[10px] font-semibold rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 transition-colors"
+                                              >
+                                                Quitar
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
                                       </div>
                                     )}
                                   </div>
                                 </label>
-                                
+
                                 {/* Configuración de evidencias - Solo visible si actividad está seleccionada */}
                                 {seleccionada && (
                                   <div className="px-3 pb-3 pt-2 border-t border-blue-200 mt-2 space-y-3">
@@ -2439,65 +3060,100 @@ function Paso2({
                                       </div>
                                     </label>
 
-                                    {/* Selector de tipo de evidencia - VERSIÓN COMPACTA */}
-                                    <div className="p-2 bg-blue-50/50 rounded-lg">
-                                      <label className="block text-xs font-semibold text-gray-900 mb-2">
-                                        📋 Requisitos para completar
-                                      </label>
-                                      <div className="flex flex-col gap-1.5">
-                                        <label className="flex items-center gap-2 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors">
-                                          <input
-                                            type="checkbox"
-                                            checked={actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO'}
-                                            onChange={(e) => {
-                                              e.stopPropagation();
-                                              const requiereAdjuntos = actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO';
-                                              const requiereObservaciones = e.target.checked;
-                                              
-                                              if (requiereObservaciones && requiereAdjuntos) {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'COMPLETO');
-                                              } else if (requiereObservaciones) {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'OBSERVACIONES');
-                                              } else if (requiereAdjuntos) {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'ADJUNTOS');
-                                              } else {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'SOLO_CHECK');
-                                              }
-                                            }}
-                                            className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
-                                          />
+                                    {/* Selector de tipo de evidencia - Switches que propagan a todas las tareas */}
+                                    <div className="p-2 bg-blue-50/50 rounded-lg" onClick={e => e.stopPropagation()}>
+                                      <div className="block text-xs font-semibold text-gray-900 mb-1">
+                                        Requisitos para todas las tareas de seguimiento
+                                      </div>
+                                      <p className="text-[10px] text-gray-500 mb-2">Al activar, se habilita en todas las tareas de esta actividad.</p>
+                                      <div className="flex flex-col gap-2">
+                                        {/* Switch: Observaciones */}
+                                        <div
+                                          className="flex items-center gap-2.5 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors"
+                                          onClick={() => {
+                                            const obsActivo = actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO';
+                                            const adjActivo = actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO';
+                                            const nuevoObs = !obsActivo;
+                                            const nuevoTipo = (nuevoObs && adjActivo) ? 'COMPLETO'
+                                              : nuevoObs ? 'OBSERVACIONES'
+                                                : adjActivo ? 'ADJUNTOS'
+                                                  : 'SOLO_CHECK';
+                                            onRolesChange(rolesConfig.map(r => ({
+                                              ...r,
+                                              actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                a.id === idActividadEnEstado ? {
+                                                  ...a,
+                                                  tipoEvidencia: nuevoTipo,
+                                                  tareasSeguimiento: (a.tareasSeguimiento || []).map(t => ({ ...t, requiereObservaciones: nuevoObs }))
+                                                } : a
+                                              )
+                                            })));
+                                          }}
+                                        >
+                                          <div style={{
+                                            width: 32, height: 18, borderRadius: 9999, position: 'relative', flexShrink: 0, cursor: 'pointer',
+                                            backgroundColor: (actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO') ? '#3b82f6' : '#d1d5db',
+                                            transition: 'background-color 0.2s'
+                                          }}>
+                                            <div style={{
+                                              width: 14, height: 14, borderRadius: 9999, backgroundColor: '#fff', position: 'absolute', top: 2,
+                                              left: (actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO') ? 15 : 2,
+                                              transition: 'left 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                                            }} />
+                                          </div>
                                           <FileText className="w-3.5 h-3.5 text-blue-600" />
-                                          <span className="text-xs text-gray-900">Requiere observaciones</span>
-                                        </label>
+                                          <span style={{
+                                            fontSize: 12,
+                                            color: (actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO') ? '#1d4ed8' : '#6b7280',
+                                            fontWeight: (actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO') ? 600 : 400
+                                          }}>Requiere observaciones en cada tarea</span>
+                                        </div>
 
-                                        <label className="flex items-center gap-2 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors">
-                                          <input
-                                            type="checkbox"
-                                            checked={actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO'}
-                                            onChange={(e) => {
-                                              e.stopPropagation();
-                                              const requiereObservaciones = actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO';
-                                              const requiereAdjuntos = e.target.checked;
-                                              
-                                              if (requiereObservaciones && requiereAdjuntos) {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'COMPLETO');
-                                              } else if (requiereAdjuntos) {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'ADJUNTOS');
-                                              } else if (requiereObservaciones) {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'OBSERVACIONES');
-                                              } else {
-                                                cambiarTipoEvidencia(idActividadEnEstado, 'SOLO_CHECK');
-                                              }
-                                            }}
-                                            className="w-3.5 h-3.5 text-purple-600 rounded border-gray-300 focus:ring-2 focus:ring-purple-500"
-                                          />
+                                        {/* Switch: Adjuntos */}
+                                        <div
+                                          className="flex items-center gap-2.5 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors"
+                                          onClick={() => {
+                                            const obsActivo = actividadData?.tipoEvidencia === 'OBSERVACIONES' || actividadData?.tipoEvidencia === 'COMPLETO';
+                                            const adjActivo = actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO';
+                                            const nuevoAdj = !adjActivo;
+                                            const nuevoTipo = (obsActivo && nuevoAdj) ? 'COMPLETO'
+                                              : nuevoAdj ? 'ADJUNTOS'
+                                                : obsActivo ? 'OBSERVACIONES'
+                                                  : 'SOLO_CHECK';
+                                            onRolesChange(rolesConfig.map(r => ({
+                                              ...r,
+                                              actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                a.id === idActividadEnEstado ? {
+                                                  ...a,
+                                                  tipoEvidencia: nuevoTipo,
+                                                  tareasSeguimiento: (a.tareasSeguimiento || []).map(t => ({ ...t, requiereAdjuntos: nuevoAdj }))
+                                                } : a
+                                              )
+                                            })));
+                                          }}
+                                        >
+                                          <div style={{
+                                            width: 32, height: 18, borderRadius: 9999, position: 'relative', flexShrink: 0, cursor: 'pointer',
+                                            backgroundColor: (actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO') ? '#a855f7' : '#d1d5db',
+                                            transition: 'background-color 0.2s'
+                                          }}>
+                                            <div style={{
+                                              width: 14, height: 14, borderRadius: 9999, backgroundColor: '#fff', position: 'absolute', top: 2,
+                                              left: (actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO') ? 15 : 2,
+                                              transition: 'left 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                                            }} />
+                                          </div>
                                           <Paperclip className="w-3.5 h-3.5 text-purple-600" />
-                                          <span className="text-xs text-gray-900">Requiere archivos adjuntos</span>
-                                        </label>
+                                          <span style={{
+                                            fontSize: 12,
+                                            color: (actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO') ? '#7e22ce' : '#6b7280',
+                                            fontWeight: (actividadData?.tipoEvidencia === 'ADJUNTOS' || actividadData?.tipoEvidencia === 'COMPLETO') ? 600 : 400
+                                          }}>Requiere archivos adjuntos en cada tarea</span>
+                                        </div>
                                       </div>
                                     </div>
 
-                                    {/* ✅ Sección de puntos de control — vista profesional */}
+                                    {/* S& Sección de puntos de control  vista profesional */}
                                     <div className="border-2 border-blue-200 rounded-xl overflow-hidden" onClick={e => e.stopPropagation()}>
                                       {/* Header con resumen y botón configurar */}
                                       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2.5 flex items-center justify-between">
@@ -2531,849 +3187,1016 @@ function Paso2({
                                         <div className="divide-y divide-gray-100">
                                           {actividadData.puntosControl.map((pc: PuntoControl, pcIdx: number) => {
                                             const hoyDate = new Date();
-                                            hoyDate.setHours(0,0,0,0);
+                                            hoyDate.setHours(0, 0, 0, 0);
                                             const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
                                             const fechaSeg = pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00') : null;
                                             const esCompletado = pc.estado === 'completado';
                                             const enSeguimiento = !esCompletado && fechaCorte < hoyDate && fechaSeg !== null && hoyDate <= fechaSeg;
                                             const esVencido = !esCompletado && !enSeguimiento && fechaCorte < hoyDate && (fechaSeg === null || hoyDate > fechaSeg);
-                                            const esActivo = !esCompletado && !esVencido && !enSeguimiento && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividadData.puntosControl![pcIdx-1].fechaProgramada + 'T00:00:00') < hoyDate);
+                                            const esActivo = !esCompletado && !esVencido && !enSeguimiento && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividadData.puntosControl![pcIdx - 1].fechaProgramada + 'T00:00:00') < hoyDate);
                                             return (
-                                              <div key={pc.id} className={`px-3 py-2.5 flex items-start gap-3 ${esActivo ? 'bg-blue-50/50' : enSeguimiento ? 'bg-purple-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
-                                                {/* Indicador lateral */}
-                                                <div className="flex flex-col items-center pt-0.5">
-                                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${
-                                                    esCompletado ? 'bg-green-500 border-green-500 text-white' :
-                                                    enSeguimiento ? 'bg-purple-500 border-purple-500 text-white' :
-                                                    esVencido ? 'bg-red-100 border-red-400 text-red-700' :
-                                                    esActivo ? 'bg-blue-500 border-blue-500 text-white' :
-                                                    'bg-gray-100 border-gray-300 text-gray-500'
-                                                  }`}>
-                                                    {esCompletado ? '✓' : pcIdx + 1}
+                                              <div key={pc.id} className={`px-3 py-2.5 ${esActivo ? 'bg-blue-50/50' : enSeguimiento ? 'bg-purple-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
+                                                <div className="flex items-start gap-3">
+                                                  {/* Indicador lateral */}
+                                                  <div className="flex flex-col items-center pt-0.5">
+                                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${esCompletado ? 'bg-green-500 border-green-500 text-white' :
+                                                        enSeguimiento ? 'bg-purple-500 border-purple-500 text-white' :
+                                                          esVencido ? 'bg-red-100 border-red-400 text-red-700' :
+                                                            esActivo ? 'bg-blue-500 border-blue-500 text-white' :
+                                                              'bg-gray-100 border-gray-300 text-gray-500'
+                                                      }`}>
+                                                      {esCompletado ? 'S' : pcIdx + 1}
+                                                    </div>
+                                                    {pcIdx < actividadData.puntosControl!.length - 1 && (
+                                                      <div className={`w-0.5 flex-1 mt-1 min-h-[20px] ${esCompletado ? 'bg-green-300' : 'bg-gray-200'
+                                                        }`} />
+                                                    )}
                                                   </div>
-                                                  {pcIdx < actividadData.puntosControl!.length - 1 && (
-                                                    <div className={`w-0.5 flex-1 mt-1 min-h-[20px] ${
-                                                      esCompletado ? 'bg-green-300' : 'bg-gray-200'
-                                                    }`} />
-                                                  )}
+
+                                                  {/* Contenido del corte */}
+                                                  <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                      <span className="text-xs font-bold text-gray-900">{pc.nombre}</span>
+                                                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${esCompletado ? 'bg-green-100 text-green-700' :
+                                                          enSeguimiento ? 'bg-purple-100 text-purple-700' :
+                                                            esVencido ? 'bg-red-100 text-red-700' :
+                                                              esActivo ? 'bg-blue-100 text-blue-700' :
+                                                                'bg-gray-100 text-gray-500'
+                                                        }`}>
+                                                        {esCompletado ? 'Completado' : enSeguimiento ? 'En seguimiento' : esVencido ? 'Vencido' : esActivo ? 'Activo' : 'Futuro'}
+                                                      </span>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                      <div className="flex items-center gap-1.5">
+                                                        <Calendar className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                                                        <span className="text-[11px] text-gray-700">
+                                                          <span className="text-[9px] text-gray-400 uppercase">Inicio: </span>
+                                                          <span className="font-semibold">{new Date(pc.fechaProgramada + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                                        </span>
+                                                      </div>
+                                                      <div className="flex items-center gap-1.5">
+                                                        <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                                                        <span className="text-[11px] text-gray-700">
+                                                          <span className="text-[9px] text-gray-400 uppercase">Fin: </span>
+                                                          <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</span>
+                                                        </span>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                                );
+                                          })}
+                                              </div>
+                                            )
+                                          }
+
+                                      {/* Estado vacío */ }
+                                      {(!actividadData?.puntosControl || actividadData.puntosControl.length === 0) && (
+                                              <div className="px-3 py-4 text-center">
+                                                <p className="text-xs text-gray-400">Haz clic en "Configurar" para definir los cortes de seguimiento</p>
+                                              </div>
+                                            )}
+                                        </div>
+
+                                    {/* Selector de responsables por actividad */}
+                                      <div className="mt-2" onClick={e => e.stopPropagation()}>
+                                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
+                                          <Users className="w-3 h-3" />
+                                          Responsables de esta actividad
+                                        </p>
+                                        <div className="flex flex-col gap-1">
+                                          {/* Chips de responsables asignados */}
+                                          {(actividadData?.responsables || []).map(r => (
+                                            <div key={r.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
+                                              <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">
+                                                {r.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                              </div>
+                                              <span className="text-xs font-medium text-gray-900 flex-1">{r.nombre}</span>
+                                              <button
+                                                type="button"
+                                                onClick={e => { e.stopPropagation(); quitarResponsableActividad(idActividadEnEstado, r.id); }}
+                                                className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[10px] transition-colors flex-shrink-0"
+                                              >✕</button>
+                                            </div>
+                                          ))}
+                                          {/* Dropdown punteado */}
+                                          {(actividadData?.responsables || []).length === 0 && (
+                                            <SelectorProfesional
+                                              auditores={auditores.filter(a => !(actividadData?.responsables || []).some(r => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
+                                              onSelect={(id) => {
+                                                if (!id) return;
+                                                const auditor = auditores.find(a => a.id === id);
+                                                if (auditor) agregarResponsableActividad(idActividadEnEstado, auditor);
+                                              }}
+                                            />
+                                          )}
+                                          {(actividadData?.responsables || []).length === 0 && (
+                                            <p className="text-[10px] text-red-500 flex items-center gap-1">⚠ Requerido</p>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* ✅ Tareas de seguimiento — World-class design */}
+                                      <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm" onClick={e => e.stopPropagation()}>
+                                        <div className="flex items-center justify-between mb-3">
+                                          <p className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                                            <span className="w-5 h-5 rounded-md bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+                                              <Check className="w-3 h-3 text-white" />
+                                            </span>
+                                            Tareas de seguimiento
+                                            {(actividadData?.tareasSeguimiento || []).length > 0 && (
+                                              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">
+                                                {(actividadData?.tareasSeguimiento || []).length}
+                                              </span>
+                                            )}
+                                          </p>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                          {(actividadData?.tareasSeguimiento || []).map((tarea) => {
+                                            const updateTarea = (updates: Partial<TareaSeguimiento>) => {
+                                              const nuevaConfig = rolesConfig.map(r => ({
+                                                ...r,
+                                                actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                  a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, ...updates } : t) } : a
+                                                )
+                                              }));
+                                              onRolesChange(nuevaConfig);
+                                            };
+                                            return (
+                                              <div key={tarea.id} className="group bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all">
+                                                {/* Header de la tarea */}
+                                                <div className="px-3 py-2.5 flex items-start gap-2.5">
+                                                  <div className="w-5 h-5 mt-0.5 rounded bg-green-100 flex items-center justify-center flex-shrink-0">
+                                                    <Check className="w-3 h-3 text-green-600" />
+                                                  </div>
+                                                  <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
+                                                    {/* Responsables como chips */}
+                                                    {(tarea.responsables || []).length > 0 && (
+                                                      <div className="flex flex-wrap gap-1 mt-1.5">
+                                                        {(tarea.responsables || []).map((resp, ri) => (
+                                                          <span key={ri} className="inline-flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[10px]">
+                                                            <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[7px] font-bold">
+                                                              {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                                            </span>
+                                                            <span className="text-blue-800 font-medium">{resp.split(' ').slice(0, 2).join(' ')}</span>
+                                                            <button
+                                                              type="button"
+                                                              onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                updateTarea({ responsables: (tarea.responsables || []).filter((_, idx) => idx !== ri) });
+                                                              }}
+                                                              className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[8px] flex items-center justify-center transition-colors"
+                                                            >×</button>
+                                                          </span>
+                                                        ))}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                  {/* Acciones */}
+                                                  <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                    {(tarea.responsables || []).length === 0 && (
+                                                      <select
+                                                        className="text-[10px] border border-gray-300 rounded-md px-1 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
+                                                        value=""
+                                                        onChange={(e) => {
+                                                          if (!e.target.value) return;
+                                                          const aud = auditores.find(a => a.id === e.target.value);
+                                                          if (!aud) return;
+                                                          // Solo permitir un responsable por tarea
+                                                          updateTarea({ responsables: [aud.nombre] });
+                                                        }}
+                                                      >
+                                                        <option value="">+ Asignar</option>
+                                                        {auditores
+                                                          .filter(a => !(tarea.responsables || []).includes(a.nombre))
+                                                          .map(a => (
+                                                            <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
+                                                          ))}
+                                                      </select>
+                                                    )}
+                                                    <button
+                                                      onClick={() => {
+                                                        const nuevaConfig = rolesConfig.map(r => ({
+                                                          ...r,
+                                                          actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                            a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a
+                                                          )
+                                                        }));
+                                                        onRolesChange(nuevaConfig);
+                                                      }}
+                                                      className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                                      title="Eliminar tarea"
+                                                    >
+                                                      <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                  </div>
                                                 </div>
 
-                                                {/* Contenido del corte */}
-                                                <div className="flex-1 min-w-0">
-                                                  <div className="flex items-center justify-between mb-1">
-                                                    <span className="text-xs font-bold text-gray-900">{pc.nombre}</span>
-                                                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                                                      esCompletado ? 'bg-green-100 text-green-700' :
-                                                      enSeguimiento ? 'bg-purple-100 text-purple-700' :
-                                                      esVencido ? 'bg-red-100 text-red-700' :
-                                                      esActivo ? 'bg-blue-100 text-blue-700' :
-                                                      'bg-gray-100 text-gray-500'
-                                                    }`}>
-                                                      {esCompletado ? '✅ Completado' : enSeguimiento ? '📋 En seguimiento' : esVencido ? '⚠️ Vencido' : esActivo ? '🔵 Activo' : '⏳ Futuro'}
-                                                    </span>
-                                                  </div>
-                                                  <div className="grid grid-cols-2 gap-2">
-                                                    <div className="flex items-center gap-1.5">
-                                                      <Calendar className="w-3 h-3 text-orange-500 flex-shrink-0" />
-                                                      <span className="text-[11px] text-gray-700">
-                                                        <span className="text-[9px] text-gray-400 uppercase">Corte: </span>
-                                                        <span className="font-semibold">{new Date(pc.fechaProgramada + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                                                      </span>
+                                                {/* Footer: opciones compactas */}
+                                                <div className="px-3 pb-2 flex items-center gap-4 border-t border-gray-100 pt-1.5">
+                                                  <label className="flex items-center gap-1.5 cursor-pointer group/opt" title="Requiere observaciones al completar">
+                                                    <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTarea({ requiereObservaciones: !tarea.requiereObservaciones })}>
+                                                      <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} />
                                                     </div>
-                                                    <div className="flex items-center gap-1.5">
-                                                      <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
-                                                      <span className="text-[11px] text-gray-700">
-                                                        <span className="text-[9px] text-gray-400 uppercase">Seguimiento: </span>
-                                                        <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
-                                                      </span>
+                                                    <span className={`text-[11px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝 Observaciones</span>
+                                                  </label>
+                                                  <label className="flex items-center gap-1.5 cursor-pointer group/opt" title="Requiere archivos adjuntos">
+                                                    <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTarea({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
+                                                      <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} />
                                                     </div>
+                                                    <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
+                                                  </label>
+                                                  <div className="flex items-center gap-1.5 ml-auto">
+                                                    <span className="text-[11px] text-gray-500">📅</span>
+                                                    <input
+                                                      type="date"
+                                                      value={tarea.fechaEntrega || (tarea as any).fechaLimite || ''}
+                                                      onChange={(e) => updateTarea({ fechaEntrega: e.target.value })}
+                                                      className="text-[11px] border border-gray-200 rounded-md px-1.5 py-0.5 bg-white hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none w-[120px]"
+                                                      title="Fecha de entrega (opcional)"
+                                                    />
                                                   </div>
                                                 </div>
                                               </div>
                                             );
                                           })}
-                                        </div>
-                                      )}
 
-                                      {/* Estado vacío */}
-                                      {(!actividadData?.puntosControl || actividadData.puntosControl.length === 0) && (
-                                        <div className="px-3 py-4 text-center">
-                                          <p className="text-xs text-gray-400">Haz clic en "Configurar" para definir los cortes de seguimiento</p>
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    {/* Selector de responsables por actividad */}
-                                    <div className="mt-2" onClick={e => e.stopPropagation()}>
-                                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
-                                        <Users className="w-3 h-3" />
-                                        Responsables de esta actividad
-                                      </p>
-                                      <div className="flex flex-col gap-1">
-                                        {/* Chips de responsables asignados */}
-                                        {(actividadData?.responsables || []).map(r => (
-                                          <div key={r.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
-                                            <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">
-                                              {r.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                                            </div>
-                                            <span className="text-xs font-medium text-gray-900 flex-1">{r.nombre}</span>
+                                          {/* Agregar nueva tarea — diseño premium */}
+                                          <div className="flex gap-2 mt-1">
+                                            <input
+                                              type="text"
+                                              data-tarea-wizard={idActividadEnEstado}
+                                              placeholder="✍ Escribir nueva tarea…"
+                                              className="flex-1 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-green-500 focus:bg-green-50/30 text-sm text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
+                                              onClick={e => e.stopPropagation()}
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
+                                                  const desc = (e.target as HTMLInputElement).value.trim();
+                                                  const nuevaConfig = rolesConfig.map(r => ({
+                                                    ...r,
+                                                    actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                      a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [] }] } : a
+                                                    )
+                                                  }));
+                                                  onRolesChange(nuevaConfig);
+                                                  (e.target as HTMLInputElement).value = '';
+                                                }
+                                              }}
+                                            />
                                             <button
-                                              type="button"
-                                              onClick={e => { e.stopPropagation(); quitarResponsableActividad(idActividadEnEstado, r.id); }}
-                                              className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[10px] transition-colors flex-shrink-0"
-                                            >✕</button>
+                                              onClick={() => {
+                                                const input = document.querySelector<HTMLInputElement>(`[data-tarea-wizard="${idActividadEnEstado}"]`);
+                                                if (input && input.value.trim()) {
+                                                  const nuevaConfig = rolesConfig.map(r => ({
+                                                    ...r,
+                                                    actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
+                                                      a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [] }] } : a
+                                                    )
+                                                  }));
+                                                  onRolesChange(nuevaConfig);
+                                                  input.value = '';
+                                                }
+                                              }}
+                                              className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm hover:shadow transition-all flex-shrink-0"
+                                            >
+                                              <Plus className="w-3.5 h-3.5" /> Agregar
+                                            </button>
                                           </div>
-                                        ))}
-                                        {/* Dropdown punteado */}
-                                        {(actividadData?.responsables || []).length === 0 && (
-                                          <SelectorProfesional
-                                            auditores={auditores.filter(a => !(actividadData?.responsables || []).some(r => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
-                                            onSelect={(id) => {
-                                              if (!id) return;
-                                              const auditor = auditores.find(a => a.id === id);
-                                              if (auditor) agregarResponsableActividad(idActividadEnEstado, auditor);
-                                            }}
-                                          />
-                                        )}
-                                        {(actividadData?.responsables || []).length === 0 && (
-                                          <p className="text-[10px] text-red-500 flex items-center gap-1">⚠ Requerido</p>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {/* ✅ Tareas de seguimiento — World-class design */}
-                                    <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm" onClick={e => e.stopPropagation()}>
-                                      <div className="flex items-center justify-between mb-3">
-                                        <p className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                                          <span className="w-5 h-5 rounded-md bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
-                                            <Check className="w-3 h-3 text-white" />
-                                          </span>
-                                          Tareas de seguimiento
-                                          {(actividadData?.tareasSeguimiento || []).length > 0 && (
-                                            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">
-                                              {(actividadData?.tareasSeguimiento || []).length}
-                                            </span>
-                                          )}
-                                        </p>
-                                      </div>
-
-                                      <div className="space-y-2">
-                                        {(actividadData?.tareasSeguimiento || []).map((tarea) => {
-                                          const updateTarea = (updates: Partial<TareaSeguimiento>) => {
-                                            const nuevaConfig = rolesConfig.map(r => ({
-                                              ...r,
-                                              actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, ...updates } : t) } : a
-                                              )
-                                            }));
-                                            onRolesChange(nuevaConfig);
-                                          };
-                                          return (
-                                          <div key={tarea.id} className="group bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all">
-                                            {/* Header de la tarea */}
-                                            <div className="px-3 py-2.5 flex items-start gap-2.5">
-                                              <div className="w-5 h-5 mt-0.5 rounded bg-green-100 flex items-center justify-center flex-shrink-0">
-                                                <Check className="w-3 h-3 text-green-600" />
-                                              </div>
-                                              <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
-                                                {/* Responsables como chips */}
-                                                {(tarea.responsables || []).length > 0 && (
-                                                  <div className="flex flex-wrap gap-1 mt-1.5">
-                                                    {(tarea.responsables || []).map((resp, ri) => (
-                                                      <span key={ri} className="inline-flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[10px]">
-                                                        <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[7px] font-bold">
-                                                          {(typeof resp === 'string' ? resp : (resp?.nombre || '')).split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                                                        </span>
-                                                        <span className="text-blue-800 font-medium">{(typeof resp === 'string' ? resp : (resp?.nombre || '')).split(' ').slice(0, 2).join(' ')}</span>
-                                                        <button
-                                                          type="button"
-                                                          onClick={(e) => {
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                            updateTarea({ responsables: (tarea.responsables || []).filter((_, idx) => idx !== ri) });
-                                                          }}
-                                                          className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[8px] flex items-center justify-center transition-colors"
-                                                        >×</button>
-                                                      </span>
-                                                    ))}
-                                                  </div>
-                                                )}
-                                              </div>
-                                              {/* Acciones */}
-                                              <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                                                {(tarea.responsables || []).length === 0 && (
-                                                  <select
-                                                    className="text-[10px] border border-gray-300 rounded-md px-1 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
-                                                    value=""
-                                                    onChange={(e) => {
-                                                      if (!e.target.value) return;
-                                                      const aud = auditores.find(a => a.id === e.target.value);
-                                                      if (!aud) return;
-                                                      // Solo permitir un responsable por tarea
-                                                      updateTarea({ responsables: [aud.nombre] });
-                                                    }}
-                                                  >
-                                                    <option value="">+ Asignar</option>
-                                                    {auditores
-                                                      .filter(a => !(tarea.responsables || []).includes(a.nombre))
-                                                      .map(a => (
-                                                        <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
-                                                      ))}
-                                                  </select>
-                                                )}
-                                                <button
-                                                  onClick={() => {
-                                                    const nuevaConfig = rolesConfig.map(r => ({
-                                                      ...r,
-                                                      actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                        a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a
-                                                      )
-                                                    }));
-                                                    onRolesChange(nuevaConfig);
-                                                  }}
-                                                  className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                                                  title="Eliminar tarea"
-                                                >
-                                                  <Trash2 className="w-3.5 h-3.5" />
-                                                </button>
-                                              </div>
-                                            </div>
-
-                                            {/* Footer: opciones compactas */}
-                                            <div className="px-3 pb-2 flex items-center gap-4 border-t border-gray-100 pt-1.5">
-                                              <label className="flex items-center gap-1.5 cursor-pointer group/opt" title="Requiere observaciones al completar">
-                                                <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTarea({ requiereObservaciones: !tarea.requiereObservaciones })}>
-                                                  <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} />
-                                                </div>
-                                                <span className={`text-[11px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝 Observaciones</span>
-                                              </label>
-                                              <label className="flex items-center gap-1.5 cursor-pointer group/opt" title="Requiere archivos adjuntos">
-                                                <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTarea({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
-                                                  <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} />
-                                                </div>
-                                                <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
-                                              </label>
-                                              <div className="flex items-center gap-1.5 ml-auto">
-                                                <span className="text-[11px] text-gray-500">📅</span>
-                                                <input
-                                                  type="date"
-                                                  value={tarea.fechaEntrega || (tarea as any).fechaLimite || ''}
-                                                  onChange={(e) => updateTarea({ fechaEntrega: e.target.value })}
-                                                  className="text-[11px] border border-gray-200 rounded-md px-1.5 py-0.5 bg-white hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none w-[120px]"
-                                                  title="Fecha de entrega (opcional)"
-                                                />
-                                              </div>
-                                            </div>
-                                          </div>
-                                          );
-                                        })}
-
-                                        {/* Agregar nueva tarea — diseño premium */}
-                                        <div className="flex gap-2 mt-1">
-                                          <input
-                                            type="text"
-                                            data-tarea-wizard={idActividadEnEstado}
-                                            placeholder="✍ Escribir nueva tarea…"
-                                            className="flex-1 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-green-500 focus:bg-green-50/30 text-sm text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
-                                            onClick={e => e.stopPropagation()}
-                                            onKeyDown={(e) => {
-                                              if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
-                                                const desc = (e.target as HTMLInputElement).value.trim();
-                                                const nuevaConfig = rolesConfig.map(r => ({
-                                                  ...r,
-                                                  actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                    a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [] }] } : a
-                                                  )
-                                                }));
-                                                onRolesChange(nuevaConfig);
-                                                (e.target as HTMLInputElement).value = '';
-                                              }
-                                            }}
-                                          />
-                                          <button
-                                            onClick={() => {
-                                              const input = document.querySelector<HTMLInputElement>(`[data-tarea-wizard="${idActividadEnEstado}"]`);
-                                              if (input && input.value.trim()) {
-                                                const nuevaConfig = rolesConfig.map(r => ({
-                                                  ...r,
-                                                  actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                    a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [] }] } : a
-                                                  )
-                                                }));
-                                                onRolesChange(nuevaConfig);
-                                                input.value = '';
-                                              }
-                                            }}
-                                            className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm hover:shadow transition-all flex-shrink-0"
-                                          >
-                                            <Plus className="w-3.5 h-3.5" /> Agregar
-                                          </button>
                                         </div>
                                       </div>
-                                    </div>
 
-                                  </div>
+                                    </div>
                                 )}
-                              </div>
-                            );
+                                  </div>
+                                );
                           })}
-                        </div>
+                              </div>
                       </div>
 
-                      {/* Actividades personalizadas */}
-                      {rol.actividadesCustom.length > 0 && (
-                        <div>
-                          <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                            ⭐ Actividades personalizadas
-                          </h4>
-                          <div className="space-y-2">
-                            {rol.actividadesCustom.map((actividad, index) => (
-                              <div
-                                key={`rol-${rol.numero}-custom-${index}-${actividad.nombre.slice(0, 20)}`}
-                                className="border-2 border-green-200 bg-green-50 rounded-lg"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <div className="flex items-start gap-3 p-3">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-gray-900 text-sm">{actividad.nombre}</p>
-                                    <p className="text-xs text-gray-600 mt-1">{actividad.descripcion}</p>
-                                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                                      {/* Responsable inline */}
-                                      {(actividad.responsables && actividad.responsables.length > 0) ? (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-medium">
-                                          👤 {actividad.responsables[0].nombre}
-                                          {actividad.responsables.length > 1 && ` +${actividad.responsables.length - 1}`}
-                                        </span>
-                                      ) : (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-medium">
-                                          ⚠ Sin responsable
-                                        </span>
-                                      )}
-                                      {(actividad.tipoEvidencia === 'OBSERVACIONES' || actividad.tipoEvidencia === 'COMPLETO') && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-[10px] font-medium">
-                                          <FileText className="w-2.5 h-2.5" />
-                                          Observaciones
-                                        </span>
-                                      )}
-                                      {(actividad.tipoEvidencia === 'ADJUNTOS' || actividad.tipoEvidencia === 'COMPLETO') && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-800 rounded text-[10px] font-medium">
-                                          <Paperclip className="w-2.5 h-2.5" />
-                                          Adjuntos
-                                        </span>
-                                      )}
-                                      {actividad.requiereAutorizacionJefeOCI && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-800 rounded text-[10px] font-medium">
-                                          <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                                          </svg>
-                                          Requiere autorización
-                                        </span>
-                                      )}
-                                      {actividad.fechaCorte && (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] font-medium">
-                                          📅 Corte: {actividad.fechaCorte}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (confirm('¿Eliminar esta actividad personalizada?')) {
-                                        eliminarActividadCustom(rol.numero, index);
-                                      }
-                                    }}
-                                    className="text-red-600 hover:text-red-800 p-1"
+                        {/* Actividades personalizadas */}
+                        {rol.actividadesCustom.length > 0 && (
+                          <div>
+                            <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                              ⭐ Actividades personalizadas
+                            </h4>
+                            <div className="space-y-2">
+                              {rol.actividadesCustom.map((actividad, index) => {
+                                const fechaCorteCustom = fechaCorteDisplayDesdeActividad(actividad);
+                                return (
+                                  <div
+                                    key={`rol-${rol.numero}-custom-${index}-${actividad.nombre.slice(0, 20)}`}
+                                    className="border-2 border-green-200 bg-green-50 rounded-lg"
+                                    onClick={(e) => e.stopPropagation()}
                                   >
-                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
-                                  </button>
-                                </div>
-                                
-                                {/* Configuración de evidencias */}
-                                <div className="px-3 pb-3 pt-2 border-t border-green-300 mt-2 space-y-3">
-                                  {/* Checkbox de autorización Jefe OCI */}
-                                  <label className="flex items-start gap-2 cursor-pointer p-2 hover:bg-green-100/50 rounded-lg transition-colors">
-                                    <input
-                                      type="checkbox"
-                                      checked={actividad.requiereAutorizacionJefeOCI || false}
-                                      onChange={(e) => {
-                                        e.stopPropagation();
-                                        toggleAutorizacionCustom(rol.numero, index);
-                                      }}
-                                      className="w-4 h-4 text-orange-600 rounded border-gray-300 focus:ring-2 focus:ring-orange-500 mt-0.5"
-                                    />
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-2">
-                                        <svg className="w-4 h-4 text-orange-600" fill="currentColor" viewBox="0 0 20 20">
-                                          <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                                        </svg>
-                                        <span className="text-xs font-semibold text-orange-900">
-                                          Requiere autorización del Jefe OCI
-                                        </span>
-                                      </div>
-                                      <p className="text-xs text-orange-700 mt-1">
-                                        Esta actividad no podrá completarse al 100% sin la autorización del Jefe de la OCI
-                                      </p>
-                                    </div>
-                                  </label>
-
-                                  {/* Selector de tipo de evidencia */}
-                                  <div className="p-2 bg-green-50/50 rounded-lg">
-                                    <label className="block text-xs font-semibold text-gray-900 mb-2">
-                                      📋 Requisitos para completar
-                                    </label>
-                                    <div className="flex flex-col gap-1.5">
-                                      <label className="flex items-center gap-2 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors">
-                                        <input
-                                          type="checkbox"
-                                          checked={actividad.tipoEvidencia === 'OBSERVACIONES' || actividad.tipoEvidencia === 'COMPLETO'}
-                                          onChange={(e) => {
-                                            e.stopPropagation();
-                                            const requiereAdjuntos = actividad.tipoEvidencia === 'ADJUNTOS' || actividad.tipoEvidencia === 'COMPLETO';
-                                            const requiereObservaciones = e.target.checked;
-                                            
-                                            if (requiereObservaciones && requiereAdjuntos) {
-                                              cambiarTipoEvidenciaCustom(rol.numero, index, 'COMPLETO');
-                                            } else if (requiereObservaciones) {
-                                              cambiarTipoEvidenciaCustom(rol.numero, index, 'OBSERVACIONES');
-                                            } else if (requiereAdjuntos) {
-                                              cambiarTipoEvidenciaCustom(rol.numero, index, 'ADJUNTOS');
-                                            } else {
-                                              cambiarTipoEvidenciaCustom(rol.numero, index, 'SOLO_CHECK');
-                                            }
-                                          }}
-                                          className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
-                                        />
-                                        <FileText className="w-3.5 h-3.5 text-blue-600" />
-                                        <span className="text-xs text-gray-900">Requiere observaciones</span>
-                                      </label>
-
-                                      <label className="flex items-center gap-2 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors">
-                                        <input
-                                          type="checkbox"
-                                          checked={actividad.tipoEvidencia === 'ADJUNTOS' || actividad.tipoEvidencia === 'COMPLETO'}
-                                          onChange={(e) => {
-                                            e.stopPropagation();
-                                            const requiereObservaciones = actividad.tipoEvidencia === 'OBSERVACIONES' || actividad.tipoEvidencia === 'COMPLETO';
-                                            const requiereAdjuntos = e.target.checked;
-                                            
-                                            if (requiereObservaciones && requiereAdjuntos) {
-                                              cambiarTipoEvidenciaCustom(rol.numero, index, 'COMPLETO');
-                                            } else if (requiereAdjuntos) {
-                                              cambiarTipoEvidenciaCustom(rol.numero, index, 'ADJUNTOS');
-                                            } else if (requiereObservaciones) {
-                                              cambiarTipoEvidenciaCustom(rol.numero, index, 'OBSERVACIONES');
-                                            } else {
-                                              cambiarTipoEvidenciaCustom(rol.numero, index, 'SOLO_CHECK');
-                                            }
-                                          }}
-                                          className="w-3.5 h-3.5 text-purple-600 rounded border-gray-300 focus:ring-2 focus:ring-purple-500"
-                                        />
-                                        <Paperclip className="w-3.5 h-3.5 text-purple-600" />
-                                        <span className="text-xs text-gray-900">Requiere archivos adjuntos</span>
-                                      </label>
-                                    </div>
-                                  </div>
-
-                                  {/* ✅ Sección de puntos de control — vista profesional (custom) */}
-                                  <div className="border-2 border-blue-200 rounded-xl overflow-hidden" onClick={e => e.stopPropagation()}>
-                                    {/* Header con resumen y botón configurar */}
-                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2.5 flex items-center justify-between">
-                                      <div className="flex items-center gap-2">
-                                        <CalendarClock className="w-4 h-4 text-blue-600" />
-                                        <span className="text-xs font-bold text-blue-900">
-                                          {actividad.puntosControl && actividad.puntosControl.length > 0
-                                            ? `${actividad.puntosControl.length} Cortes de Seguimiento`
-                                            : 'Sin cortes configurados'}
-                                        </span>
-                                        {actividad.frecuenciaPuntosControl && (
-                                          <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold capitalize">
-                                            {actividad.frecuenciaPuntosControl}
-                                          </span>
-                                        )}
+                                    <div className="flex items-start gap-3 p-3">
+                                      <div className="flex-1 min-w-0">
+                                        <p className="font-semibold text-gray-900 text-sm">{actividad.nombre}</p>
+                                        <p className="text-xs text-gray-600 mt-1">{actividad.descripcion}</p>
+                                        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                          {/* Responsable inline */}
+                                          {(actividad.responsables && actividad.responsables.length > 0) ? (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-medium">
+                                              x {actividad.responsables[0].nombre}
+                                              {actividad.responsables.length > 1 && ` +${actividad.responsables.length - 1}`}
+                                            </span>
+                                          ) : (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-medium">
+                                              ⚠ Sin responsable
+                                            </span>
+                                          )}
+                                          {(actividad.tipoEvidencia === 'OBSERVACIONES' || actividad.tipoEvidencia === 'COMPLETO') && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-[10px] font-medium">
+                                              <FileText className="w-2.5 h-2.5" />
+                                              Observaciones
+                                            </span>
+                                          )}
+                                          {(actividad.tipoEvidencia === 'ADJUNTOS' || actividad.tipoEvidencia === 'COMPLETO') && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-800 rounded text-[10px] font-medium">
+                                              <Paperclip className="w-2.5 h-2.5" />
+                                              Adjuntos
+                                            </span>
+                                          )}
+                                          {actividad.requiereAutorizacionJefeOCI && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-800 rounded text-[10px] font-medium">
+                                              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                                              </svg>
+                                              Requiere autorización
+                                            </span>
+                                          )}
+                                          {fechaCorteCustom && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] font-medium">
+                                              📅 Corte: {fechaCorteCustom}
+                                            </span>
+                                          )}
+                                          <div className="w-full mt-1.5 p-2 bg-indigo-50/60 border border-indigo-100 rounded-lg" onClick={(e) => e.stopPropagation()}>
+                                            <p className="text-[10px] font-semibold text-indigo-800 mb-1">Responsable de esta actividad</p>
+                                            <div className="flex items-center gap-2">
+                                              <SelectorProfesional
+                                                auditores={auditores}
+                                                placeholder={(actividad.responsables && actividad.responsables.length > 0) ? 'Cambiar responsable…' : '+ Asignar responsable…'}
+                                                onSelect={(id) => {
+                                                  if (!id) return;
+                                                  const auditor = auditores.find(a => a.id === id);
+                                                  if (!auditor) return;
+                                                  const nuevaConfig = rolesConfig.map(r => {
+                                                    if (r.numero !== rol.numero) return r;
+                                                    return {
+                                                      ...r,
+                                                      actividadesCustom: r.actividadesCustom.map((act, i) =>
+                                                        i === index ? { ...act, responsables: [auditor] } : act
+                                                      )
+                                                    };
+                                                  });
+                                                  onRolesChange(nuevaConfig);
+                                                }}
+                                              />
+                                              {(actividad.responsables && actividad.responsables.length > 0) && (
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    const nuevaConfig = rolesConfig.map(r => {
+                                                      if (r.numero !== rol.numero) return r;
+                                                      return {
+                                                        ...r,
+                                                        actividadesCustom: r.actividadesCustom.map((act, i) =>
+                                                          i === index ? { ...act, responsables: [] } : act
+                                                        )
+                                                      };
+                                                    });
+                                                    onRolesChange(nuevaConfig);
+                                                  }}
+                                                  className="px-2 py-1 text-[10px] font-semibold rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 transition-colors"
+                                                >
+                                                  Quitar
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
                                       </div>
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, true, index);
+                                          if (confirm('¿Eliminar esta actividad personalizada?')) {
+                                            eliminarActividadCustom(rol.numero, index);
+                                          }
                                         }}
-                                        className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-semibold transition-colors"
+                                        className="text-red-600 hover:text-red-800 p-1"
                                       >
-                                        <Settings className="w-3 h-3" />
-                                        Configurar
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
                                       </button>
                                     </div>
 
-                                    {/* Timeline de cortes */}
-                                    {actividad.puntosControl && actividad.puntosControl.length > 0 && (
-                                      <div className="divide-y divide-gray-100">
-                                        {actividad.puntosControl.map((pc: PuntoControl, pcIdx: number) => {
-                                          const hoyDate = new Date();
-                                          hoyDate.setHours(0,0,0,0);
-                                          const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
-                                          const fechaSeg = pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00') : null;
-                                          const esCompletado = pc.estado === 'completado';
-                                          const enSeguimiento = !esCompletado && fechaCorte < hoyDate && fechaSeg !== null && hoyDate <= fechaSeg;
-                                          const esVencido = !esCompletado && !enSeguimiento && fechaCorte < hoyDate && (fechaSeg === null || hoyDate > fechaSeg);
-                                          const esActivo = !esCompletado && !esVencido && !enSeguimiento && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividad.puntosControl![pcIdx-1].fechaProgramada + 'T00:00:00') < hoyDate);
-                                          return (
-                                            <div key={pc.id} className={`px-3 py-2.5 flex items-start gap-3 ${esActivo ? 'bg-blue-50/50' : enSeguimiento ? 'bg-purple-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
-                                              {/* Indicador lateral */}
-                                              <div className="flex flex-col items-center pt-0.5">
-                                                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${
-                                                  esCompletado ? 'bg-green-500 border-green-500 text-white' :
-                                                  enSeguimiento ? 'bg-purple-500 border-purple-500 text-white' :
-                                                  esVencido ? 'bg-red-100 border-red-400 text-red-700' :
-                                                  esActivo ? 'bg-blue-500 border-blue-500 text-white' :
-                                                  'bg-gray-100 border-gray-300 text-gray-500'
-                                                }`}>
-                                                  {esCompletado ? '✓' : pcIdx + 1}
-                                                </div>
-                                                {pcIdx < actividad.puntosControl!.length - 1 && (
-                                                  <div className={`w-0.5 flex-1 mt-1 min-h-[20px] ${
-                                                    esCompletado ? 'bg-green-300' : 'bg-gray-200'
-                                                  }`} />
-                                                )}
-                                              </div>
-
-                                              {/* Contenido del corte */}
-                                              <div className="flex-1 min-w-0">
-                                                <div className="flex items-center justify-between mb-1">
-                                                  <span className="text-xs font-bold text-gray-900">{pc.nombre}</span>
-                                                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                                                    esCompletado ? 'bg-green-100 text-green-700' :
-                                                    enSeguimiento ? 'bg-purple-100 text-purple-700' :
-                                                    esVencido ? 'bg-red-100 text-red-700' :
-                                                    esActivo ? 'bg-blue-100 text-blue-700' :
-                                                    'bg-gray-100 text-gray-500'
-                                                  }`}>
-                                                    {esCompletado ? '✅ Completado' : enSeguimiento ? '📋 En seguimiento' : esVencido ? '⚠️ Vencido' : esActivo ? '🔵 Activo' : '⏳ Futuro'}
-                                                  </span>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                  <div className="flex items-center gap-1.5">
-                                                    <Calendar className="w-3 h-3 text-orange-500 flex-shrink-0" />
-                                                    <span className="text-[11px] text-gray-700">
-                                                      <span className="text-[9px] text-gray-400 uppercase">Corte: </span>
-                                                      <span className="font-semibold">{new Date(pc.fechaProgramada + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-                                                    </span>
-                                                  </div>
-                                                  <div className="flex items-center gap-1.5">
-                                                    <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
-                                                    <span className="text-[11px] text-gray-700">
-                                                      <span className="text-[9px] text-gray-400 uppercase">Seguimiento: </span>
-                                                      <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
-                                                    </span>
-                                                  </div>
-                                                </div>
-                                              </div>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-
-                                    {/* Estado vacío */}
-                                    {(!actividad.puntosControl || actividad.puntosControl.length === 0) && (
-                                      <div className="px-3 py-4 text-center">
-                                        <p className="text-xs text-gray-400">Haz clic en "Configurar" para definir los cortes de seguimiento</p>
-                                      </div>
-                                    )}
-                                  </div>
-
-                                  {/* Selector de responsables por actividad personalizada */}
-                                  <div className="mt-2" onClick={e => e.stopPropagation()}>
-                                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1">
-                                      <Users className="w-3 h-3" />
-                                      Responsables de esta actividad
-                                    </p>
-                                    <div className="flex flex-col gap-1">
-                                      {(actividad.responsables || []).map(r => (
-                                        <div key={r.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
-                                          <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0">
-                                            {r.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                                          </div>
-                                          <span className="text-xs font-medium text-gray-900 flex-1">{r.nombre}</span>
-                                          <button
-                                            type="button"
-                                            onClick={e => { e.stopPropagation(); quitarResponsableCustom(rol.numero, index, r.id); }}
-                                            className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[10px] transition-colors flex-shrink-0"
-                                          >✕</button>
-                                        </div>
-                                      ))}
-                                      {(actividad.responsables || []).length === 0 && (
-                                        <SelectorProfesional
-                                          auditores={auditores.filter(a => !(actividad.responsables || []).some(r => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
-                                          onSelect={(id) => {
-                                            if (!id) return;
-                                            const auditor = auditores.find(a => a.id === id);
-                                            if (auditor) agregarResponsableCustom(rol.numero, index, auditor);
+                                    {/* Configuración de evidencias */}
+                                    <div className="px-3 pb-3 pt-2 border-t border-green-300 mt-2 space-y-3">
+                                      {/* Checkbox de autorización Jefe OCI */}
+                                      <label className="flex items-start gap-2 cursor-pointer p-2 hover:bg-green-100/50 rounded-lg transition-colors">
+                                        <input
+                                          type="checkbox"
+                                          checked={actividad.requiereAutorizacionJefeOCI || false}
+                                          onChange={(e) => {
+                                            e.stopPropagation();
+                                            toggleAutorizacionCustom(rol.numero, index);
                                           }}
+                                          className="w-4 h-4 text-orange-600 rounded border-gray-300 focus:ring-2 focus:ring-orange-500 mt-0.5"
                                         />
-                                      )}
-                                      {(actividad.responsables || []).length === 0 && (
-                                        <p className="text-[10px] text-red-500 flex items-center gap-1">⚠ Requerido</p>
-                                      )}
-                                    </div>
-                                  </div>
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-2">
+                                            <svg className="w-4 h-4 text-orange-600" fill="currentColor" viewBox="0 0 20 20">
+                                              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                                            </svg>
+                                            <span className="text-xs font-semibold text-orange-900">
+                                              Requiere autorización del Jefe OCI
+                                            </span>
+                                          </div>
+                                          <p className="text-xs text-orange-700 mt-1">
+                                            Esta actividad no podrá completarse al 100% sin la autorización del Jefe de la OCI
+                                          </p>
+                                        </div>
+                                      </label>
 
-                                  {/* ✅ Tareas de seguimiento — World-class design (custom) */}
-                                  <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm" onClick={e => e.stopPropagation()}>
-                                    <div className="flex items-center justify-between mb-3">
-                                      <p className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
-                                        <span className="w-5 h-5 rounded-md bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
-                                          <Check className="w-3 h-3 text-white" />
-                                        </span>
-                                        Tareas de seguimiento
-                                        {(actividad.tareasSeguimiento || []).length > 0 && (
-                                          <span className="ml-1 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">
-                                            {(actividad.tareasSeguimiento || []).length}
-                                          </span>
-                                        )}
-                                      </p>
-                                    </div>
+                                      {/* Selector de tipo de evidencia */}
+                                      <div className="p-2 bg-green-50/50 rounded-lg">
+                                        <label className="block text-xs font-semibold text-gray-900 mb-2">
+                                          Requisitos para completar
+                                        </label>
+                                        <div className="flex flex-col gap-1.5">
+                                          <label className="flex items-center gap-2 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors">
+                                            <input
+                                              type="checkbox"
+                                              checked={actividad.tipoEvidencia === 'OBSERVACIONES' || actividad.tipoEvidencia === 'COMPLETO'}
+                                              onChange={(e) => {
+                                                e.stopPropagation();
+                                                const requiereAdjuntos = actividad.tipoEvidencia === 'ADJUNTOS' || actividad.tipoEvidencia === 'COMPLETO';
+                                                const requiereObservaciones = e.target.checked;
 
-                                    <div className="space-y-2">
-                                      {(actividad.tareasSeguimiento || []).map((tarea) => {
-                                        const updateTareaCustom = (updates: Partial<TareaSeguimiento>) => {
-                                          const nuevaConfig = rolesConfig.map(r => {
-                                            if (r.numero !== rol.numero) return r;
-                                            return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
-                                              i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, ...updates } : t) } : a
-                                            )};
-                                          });
-                                          onRolesChange(nuevaConfig);
-                                        };
-                                        return (
-                                        <div key={tarea.id} className="group bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all">
-                                          {/* Header de la tarea */}
-                                          <div className="px-3 py-2.5 flex items-start gap-2.5">
-                                            <div className="w-5 h-5 mt-0.5 rounded bg-green-100 flex items-center justify-center flex-shrink-0">
-                                              <Check className="w-3 h-3 text-green-600" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                              <p className="text-sm font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
-                                              {(tarea.responsables || []).length > 0 && (
-                                                <div className="flex flex-wrap gap-1 mt-1.5">
-                                                  {(tarea.responsables || []).map((resp, ri) => (
-                                                    <span key={ri} className="inline-flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[10px]">
-                                                      <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[7px] font-bold">
-                                                        {(typeof resp === 'string' ? resp : (resp?.nombre || '')).split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                                                      </span>
-                                                      <span className="text-blue-800 font-medium">{(typeof resp === 'string' ? resp : (resp?.nombre || '')).split(' ').slice(0, 2).join(' ')}</span>
-                                                      <button
-                                                        onClick={() => {
-                                                          const nuevaConfig = rolesConfig.map(r => {
-                                                            if (r.numero !== rol.numero) return r;
-                                                            return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
-                                                              i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, responsables: (t.responsables || []).filter((_, idx) => idx !== ri) } : t) } : a
-                                                            )};
-                                                          });
-                                                          onRolesChange(nuevaConfig);
-                                                        }}
-                                                        className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[8px] flex items-center justify-center transition-colors"
-                                                      >×</button>
-                                                    </span>
-                                                  ))}
+                                                if (requiereObservaciones && requiereAdjuntos) {
+                                                  cambiarTipoEvidenciaCustom(rol.numero, index, 'COMPLETO');
+                                                } else if (requiereObservaciones) {
+                                                  cambiarTipoEvidenciaCustom(rol.numero, index, 'OBSERVACIONES');
+                                                } else if (requiereAdjuntos) {
+                                                  cambiarTipoEvidenciaCustom(rol.numero, index, 'ADJUNTOS');
+                                                } else {
+                                                  cambiarTipoEvidenciaCustom(rol.numero, index, 'SOLO_CHECK');
+                                                }
+                                              }}
+                                              className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
+                                            />
+                                            <FileText className="w-3.5 h-3.5 text-blue-600" />
+                                            <span className="text-xs text-gray-900">Requiere observaciones</span>
+                                          </label>
+
+                                          <label className="flex items-center gap-2 cursor-pointer hover:bg-white/50 p-1.5 rounded transition-colors">
+                                            <input
+                                              type="checkbox"
+                                              checked={actividad.tipoEvidencia === 'ADJUNTOS' || actividad.tipoEvidencia === 'COMPLETO'}
+                                              onChange={(e) => {
+                                                e.stopPropagation();
+                                                const requiereObservaciones = actividad.tipoEvidencia === 'OBSERVACIONES' || actividad.tipoEvidencia === 'COMPLETO';
+                                                const requiereAdjuntos = e.target.checked;
+
+                                                if (requiereObservaciones && requiereAdjuntos) {
+                                                  cambiarTipoEvidenciaCustom(rol.numero, index, 'COMPLETO');
+                                                } else if (requiereAdjuntos) {
+                                                  cambiarTipoEvidenciaCustom(rol.numero, index, 'ADJUNTOS');
+                                                } else if (requiereObservaciones) {
+                                                  cambiarTipoEvidenciaCustom(rol.numero, index, 'OBSERVACIONES');
+                                                } else {
+                                                  cambiarTipoEvidenciaCustom(rol.numero, index, 'SOLO_CHECK');
+                                                }
+                                              }}
+                                              className="w-3.5 h-3.5 text-purple-600 rounded border-gray-300 focus:ring-2 focus:ring-purple-500"
+                                            />
+                                            <Paperclip className="w-3.5 h-3.5 text-purple-600" />
+                                            <span className="text-xs text-gray-900">Requiere archivos adjuntos</span>
+                                          </label>
+                                        </div>
+                                      </div>
+
+                                      {/* S& Sección de puntos de control  vista profesional (custom) */}
+                                      <div className="border-2 border-blue-200 rounded-xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                                        {/* Header con resumen y botón configurar */}
+                                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2.5 flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <CalendarClock className="w-4 h-4 text-blue-600" />
+                                            <span className="text-xs font-bold text-blue-900">
+                                              {actividad.puntosControl && actividad.puntosControl.length > 0
+                                                ? `${actividad.puntosControl.length} Cortes de Seguimiento`
+                                                : 'Sin cortes configurados'}
+                                            </span>
+                                            {actividad.frecuenciaPuntosControl && (
+                                              <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold capitalize">
+                                                {actividad.frecuenciaPuntosControl}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, true, index);
+                                            }}
+                                            className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-semibold transition-colors"
+                                          >
+                                            <Settings className="w-3 h-3" />
+                                            Configurar
+                                          </button>
+                                        </div>
+
+                                        {/* Timeline de cortes */}
+                                        {actividad.puntosControl && actividad.puntosControl.length > 0 && (
+                                          <div className="divide-y divide-gray-100">
+                                            {actividad.puntosControl.map((pc: PuntoControl, pcIdx: number) => {
+                                              const hoyDate = new Date();
+                                              hoyDate.setHours(0, 0, 0, 0);
+                                              const fechaCorte = new Date(pc.fechaProgramada + 'T00:00:00');
+                                              const fechaSeg = pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00') : null;
+                                              const esCompletado = pc.estado === 'completado';
+                                              const enSeguimiento = !esCompletado && fechaCorte < hoyDate && fechaSeg !== null && hoyDate <= fechaSeg;
+                                              const esVencido = !esCompletado && !enSeguimiento && fechaCorte < hoyDate && (fechaSeg === null || hoyDate > fechaSeg);
+                                              const esActivo = !esCompletado && !esVencido && !enSeguimiento && fechaCorte >= hoyDate && (pcIdx === 0 || new Date(actividad.puntosControl![pcIdx - 1].fechaProgramada + 'T00:00:00') < hoyDate);
+                                              return (
+                                                <div key={pc.id} className={`px-3 py-2.5 ${esActivo ? 'bg-blue-50/50' : enSeguimiento ? 'bg-purple-50/50' : esVencido ? 'bg-red-50/30' : 'bg-white'}`}>
+                                                  <div className="flex items-start gap-3">
+                                                    {/* Indicador lateral */}
+                                                    <div className="flex flex-col items-center pt-0.5">
+                                                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${esCompletado ? 'bg-green-500 border-green-500 text-white' :
+                                                          enSeguimiento ? 'bg-purple-500 border-purple-500 text-white' :
+                                                            esVencido ? 'bg-red-100 border-red-400 text-red-700' :
+                                                              esActivo ? 'bg-blue-500 border-blue-500 text-white' :
+                                                                'bg-gray-100 border-gray-300 text-gray-500'
+                                                        }`}>
+                                                        {esCompletado ? 'S' : pcIdx + 1}
+                                                      </div>
+                                                      {pcIdx < actividad.puntosControl!.length - 1 && (
+                                                        <div className={`w-0.5 flex-1 mt-1 min-h-[20px] ${esCompletado ? 'bg-green-300' : 'bg-gray-200'
+                                                          }`} />
+                                                      )}
+                                                    </div>
+
+                                                    {/* Contenido del corte */}
+                                                    <div className="flex-1 min-w-0">
+                                                      <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-xs font-bold text-gray-900">{pc.nombre}</span>
+                                                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${esCompletado ? 'bg-green-100 text-green-700' :
+                                                            enSeguimiento ? 'bg-purple-100 text-purple-700' :
+                                                              esVencido ? 'bg-red-100 text-red-700' :
+                                                                esActivo ? 'bg-blue-100 text-blue-700' :
+                                                                  'bg-gray-100 text-gray-500'
+                                                          }`}>
+                                                          {esCompletado ? 'Completado' : enSeguimiento ? 'En seguimiento' : esVencido ? 'Vencido' : esActivo ? 'Activo' : 'Futuro'}
+                                                        </span>
+                                                      </div>
+                                                      <div className="grid grid-cols-2 gap-2">
+                                                        <div className="flex items-center gap-1.5">
+                                                          <Calendar className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                                                          <span className="text-[11px] text-gray-700">
+                                                            <span className="text-[9px] text-gray-400 uppercase">Inicio: </span>
+                                                            <span className="font-semibold">{new Date(pc.fechaProgramada + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                                          </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5">
+                                                          <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                                                          <span className="text-[11px] text-gray-700">
+                                                            <span className="text-[9px] text-gray-400 uppercase">Fin: </span>
+                                                            <span className="font-semibold">{pc.fechaSeguimiento ? new Date(pc.fechaSeguimiento + 'T00:00:00').toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }) : ''}</span>
+                                                          </span>
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+
+                                                  {/* S& Tareas de seguimiento DENTRO del corte (custom)  ANCHO COMPLETO */}
+                                                  {(() => {
+                                                    const tareasDelCorte = (actividad.tareasSeguimiento || []).filter(t => t.puntoControlId === pc.id);
+                                                    return (
+                                                      <div className="mt-2 bg-white border border-gray-200 rounded-lg p-2 shadow-sm">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                          <p className="text-[10px] font-bold text-gray-700 flex items-center gap-1">
+                                                            <span className="w-4 h-4 rounded bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+                                                              <Check className="w-2.5 h-2.5 text-white" />
+                                                            </span>
+                                                            Tareas de este corte
+                                                            {tareasDelCorte.length > 0 && (
+                                                              <span className="ml-1 px-1 py-0.5 rounded-full bg-green-100 text-green-700 text-[9px] font-bold">
+                                                                {tareasDelCorte.length}
+                                                              </span>
+                                                            )}
+                                                          </p>
+                                                        </div>
+                                                        <div className="space-y-1.5">
+                                                          {tareasDelCorte.map((tarea) => {
+                                                            const updateTareaCorteCustom = (updates: Partial<TareaSeguimiento>) => {
+                                                              const nuevaConfig = rolesConfig.map(r => {
+                                                                if (r.numero !== rol.numero) return r;
+                                                                return {
+                                                                  ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
+                                                                    i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, ...updates } : t) } : a
+                                                                  )
+                                                                };
+                                                              });
+                                                              onRolesChange(nuevaConfig);
+                                                            };
+                                                            return (
+                                                              <div key={tarea.id} className="group bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-md hover:border-blue-300 transition-all">
+                                                                <div className="px-2 py-1.5 flex items-start gap-2">
+                                                                  <div className="w-4 h-4 mt-0.5 rounded bg-green-100 flex items-center justify-center flex-shrink-0">
+                                                                    <Check className="w-2.5 h-2.5 text-green-600" />
+                                                                  </div>
+                                                                  <div className="flex-1 min-w-0">
+                                                                    <p className="text-[11px] font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
+                                                                    {(tarea.responsables || []).length > 0 && (
+                                                                      <div className="flex flex-wrap gap-1 mt-1">
+                                                                        {(tarea.responsables || []).map((resp, ri) => (
+                                                                          <span key={ri} className="inline-flex items-center gap-0.5 pl-0.5 pr-1 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[9px]">
+                                                                            <span className="w-3 h-3 rounded-full bg-blue-600 text-white flex items-center justify-center text-[6px] font-bold">
+                                                                              {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                                                            </span>
+                                                                            <span className="text-blue-800 font-medium">{resp.split(' ').slice(0, 2).join(' ')}</span>
+                                                                            <button
+                                                                              type="button"
+                                                                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateTareaCorteCustom({ responsables: (tarea.responsables || []).filter((_, idx) => idx !== ri) }); }}
+                                                                              className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[7px] flex items-center justify-center transition-colors"
+                                                                            ></button>
+                                                                          </span>
+                                                                        ))}
+                                                                      </div>
+                                                                    )}
+                                                                  </div>
+                                                                  <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                                    {(tarea.responsables || []).length === 0 && (
+                                                                      <select
+                                                                        className="text-[9px] border border-gray-300 rounded px-0.5 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
+                                                                        value=""
+                                                                        onChange={(e) => { if (!e.target.value) return; const aud = auditores.find(a => a.id === e.target.value); if (!aud) return; updateTareaCorteCustom({ responsables: [aud.nombre] }); }}
+                                                                      >
+                                                                        <option value="">+ Asignar</option>
+                                                                        {auditores.filter(a => !(tarea.responsables || []).includes(a.nombre)).map(a => (<option key={a.id} value={a.id}>{a.nombre}</option>))}
+                                                                      </select>
+                                                                    )}
+                                                                    <button
+                                                                      onClick={() => {
+                                                                        const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a) }; });
+                                                                        onRolesChange(nuevaConfig);
+                                                                      }}
+                                                                      className="w-5 h-5 flex items-center justify-center rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                                                      title="Eliminar tarea"
+                                                                    >
+                                                                      <Trash2 className="w-3 h-3" />
+                                                                    </button>
+                                                                  </div>
+                                                                </div>
+                                                                <div className="px-2 pb-1.5 flex items-center gap-3 border-t border-gray-100 pt-1">
+                                                                  <label className="flex items-center gap-1 cursor-pointer" title="Requiere observaciones">
+                                                                    <div className={`w-6 h-3.5 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTareaCorteCustom({ requiereObservaciones: !tarea.requiereObservaciones })}>
+                                                                      <div className={`w-2.5 h-2.5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3' : 'left-0.5'}`} />
+                                                                    </div>
+                                                                    <span className={`text-[10px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝</span>
+                                                                  </label>
+                                                                  <label className="flex items-center gap-1 cursor-pointer" title="Requiere adjuntos">
+                                                                    <div className={`w-6 h-3.5 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTareaCorteCustom({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
+                                                                      <div className={`w-2.5 h-2.5 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3' : 'left-0.5'}`} />
+                                                                    </div>
+                                                                    <span className={`text-[10px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎</span>
+                                                                  </label>
+                                                                  <div className="flex items-center gap-1 ml-auto">
+                                                                    <input
+                                                                      type="date"
+                                                                      value={tarea.fechaEntrega || ''}
+                                                                      min={pc.fechaProgramada}
+                                                                      max={pc.fechaSeguimiento || undefined}
+                                                                      onChange={(e) => updateTareaCorteCustom({ fechaEntrega: e.target.value })}
+                                                                      className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white w-[100px]"
+                                                                      title="Fecha de entrega (dentro del período del corte)"
+                                                                    />
+                                                                  </div>
+                                                                </div>
+                                                              </div>
+                                                            );
+                                                          })}
+                                                          {/* Agregar tarea al corte (custom) */}
+                                                          <div className="flex gap-1.5 mt-1">
+                                                            <input
+                                                              type="text"
+                                                              data-tarea-corte-custom={`${rol.numero}-${index}-${pc.id}`}
+                                                              placeholder="✏️ Nueva tarea…"
+                                                              className="flex-1 px-2 py-1.5 border border-dashed border-gray-300 rounded-md focus:outline-none focus:border-green-500 text-[11px] text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
+                                                              onClick={e => e.stopPropagation()}
+                                                              onKeyDown={(e) => {
+                                                                if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
+                                                                  const desc = (e.target as HTMLInputElement).value.trim();
+                                                                  const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [], puntoControlId: pc.id }] } : a) }; });
+                                                                  onRolesChange(nuevaConfig);
+                                                                  (e.target as HTMLInputElement).value = '';
+                                                                }
+                                                              }}
+                                                            />
+                                                            <button
+                                                              onClick={() => {
+                                                                const input = document.querySelector<HTMLInputElement>(`[data-tarea-corte-custom="${rol.numero}-${index}-${pc.id}"]`);
+                                                                if (input && input.value.trim()) {
+                                                                  const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [], puntoControlId: pc.id }] } : a) }; });
+                                                                  onRolesChange(nuevaConfig);
+                                                                  input.value = '';
+                                                                }
+                                                              }}
+                                                              className="px-2.5 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-md text-[10px] font-semibold flex items-center gap-1 shadow-sm transition-all flex-shrink-0"
+                                                            >
+                                                              <Plus className="w-3 h-3" /> Agregar
+                                                            </button>
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                    );
+                                                  })()}
                                                 </div>
-                                              )}
-                                            </div>
-                                            {/* Acciones */}
-                                            <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                                              {(tarea.responsables || []).length === 0 && (
-                                                <select
-                                                  className="text-[10px] border border-gray-300 rounded-md px-1 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
-                                                  value=""
-                                                  onChange={(e) => {
-                                                    if (!e.target.value) return;
-                                                    const aud = auditores.find(a => a.id === e.target.value);
-                                                    if (!aud) return;
-                                                    // Solo permitir un responsable por tarea personalizada
-                                                    updateTareaCustom({ responsables: [aud.nombre] });
-                                                  }}
-                                                >
-                                                  <option value="">+ Asignar</option>
-                                                  {auditores
-                                                    .filter(a => !(tarea.responsables || []).includes(a.nombre))
-                                                    .map(a => (
-                                                      <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
-                                                    ))}
-                                                </select>
-                                              )}
-                                              <button
-                                                onClick={() => {
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+
+                                        {/* Estado vacío */}
+                                        {(!actividad.puntosControl || actividad.puntosControl.length === 0) && (
+                                          <div className="px-3 py-4 text-center">
+                                            <p className="text-xs text-gray-400">Haz clic en "Configurar" para definir los cortes de seguimiento</p>
+                                          </div>
+                                        )}
+                                      </div>
+
+
+
+                                      {/* S& Tareas de seguimiento  World-class design (custom) */}
+                                      <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm" onClick={e => e.stopPropagation()}>
+                                        <div className="flex items-center justify-between mb-3">
+                                          <p className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                                            <span className="w-5 h-5 rounded-md bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+                                              <Check className="w-3 h-3 text-white" />
+                                            </span>
+                                            Tareas de seguimiento
+                                            {(actividad.tareasSeguimiento || []).length > 0 && (
+                                              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-bold">
+                                                {(actividad.tareasSeguimiento || []).length}
+                                              </span>
+                                            )}
+                                          </p>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                          {(actividad.tareasSeguimiento || []).map((tarea) => {
+                                            const updateTareaCustom = (updates: Partial<TareaSeguimiento>) => {
+                                              const nuevaConfig = rolesConfig.map(r => {
+                                                if (r.numero !== rol.numero) return r;
+                                                return {
+                                                  ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
+                                                    i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, ...updates } : t) } : a
+                                                  )
+                                                };
+                                              });
+                                              onRolesChange(nuevaConfig);
+                                            };
+                                            return (
+                                              <div key={tarea.id} className="group bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all">
+                                                {/* Header de la tarea */}
+                                                <div className="px-3 py-2.5 flex items-start gap-2.5">
+                                                  <div className="w-5 h-5 mt-0.5 rounded bg-green-100 flex items-center justify-center flex-shrink-0">
+                                                    <Check className="w-3 h-3 text-green-600" />
+                                                  </div>
+                                                  <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
+                                                    {(tarea.responsables || []).length > 0 && (
+                                                      <div className="flex flex-wrap gap-1 mt-1.5">
+                                                        {(tarea.responsables || []).map((resp, ri) => (
+                                                          <span key={ri} className="inline-flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[10px]">
+                                                            <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[7px] font-bold">
+                                                              {(typeof resp === 'string' ? resp : (resp?.nombre || '')).split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
+                                                            </span>
+                                                            <span className="text-blue-800 font-medium">{(typeof resp === 'string' ? resp : (resp?.nombre || '')).split(' ').slice(0, 2).join(' ')}</span>
+                                                            <button
+                                                              onClick={() => {
+                                                                const nuevaConfig = rolesConfig.map(r => {
+                                                                  if (r.numero !== rol.numero) return r;
+                                                                  return {
+                                                                    ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
+                                                                      i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, responsables: (t.responsables || []).filter((_, idx) => idx !== ri) } : t) } : a
+                                                                    )
+                                                                  };
+                                                                });
+                                                                onRolesChange(nuevaConfig);
+                                                              }}
+                                                              className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[8px] flex items-center justify-center transition-colors"
+                                                            ></button>
+                                                          </span>
+                                                        ))}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                  {/* Acciones */}
+                                                  <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                    {(tarea.responsables || []).length === 0 && (
+                                                      <select
+                                                        className="text-[10px] border border-gray-300 rounded-md px-1 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
+                                                        value=""
+                                                        onChange={(e) => {
+                                                          if (!e.target.value) return;
+                                                          const aud = auditores.find(a => a.id === e.target.value);
+                                                          if (!aud) return;
+                                                          // Solo permitir un responsable por tarea personalizada
+                                                          updateTareaCustom({ responsables: [aud.nombre] });
+                                                        }}
+                                                      >
+                                                        <option value="">+ Asignar</option>
+                                                        {auditores
+                                                          .filter(a => !(tarea.responsables || []).includes(a.nombre))
+                                                          .map(a => (
+                                                            <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
+                                                          ))}
+                                                      </select>
+                                                    )}
+                                                    <button
+                                                      onClick={() => {
+                                                        const nuevaConfig = rolesConfig.map(r => {
+                                                          if (r.numero !== rol.numero) return r;
+                                                          return {
+                                                            ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
+                                                              i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a
+                                                            )
+                                                          };
+                                                        });
+                                                        onRolesChange(nuevaConfig);
+                                                      }}
+                                                      className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                                                      title="Eliminar tarea"
+                                                    >
+                                                      <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                  </div>
+                                                </div>
+
+                                                {/* Footer: opciones compactas */}
+                                                <div className="px-3 pb-2 flex items-center gap-4 border-t border-gray-100 pt-1.5">
+                                                  <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere observaciones al completar">
+                                                    <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTareaCustom({ requiereObservaciones: !tarea.requiereObservaciones })}>
+                                                      <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} />
+                                                    </div>
+                                                    <span className={`text-[11px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝 Observaciones</span>
+                                                  </label>
+                                                  <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere archivos adjuntos">
+                                                    <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTareaCustom({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
+                                                      <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} />
+                                                    </div>
+                                                    <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
+                                                  </label>
+                                                  <div className="flex items-center gap-1.5 ml-auto">
+                                                    <span className="text-[11px] text-gray-500">📅</span>
+                                                    <input
+                                                      type="date"
+                                                      value={tarea.fechaEntrega || (tarea as any).fechaLimite || ''}
+                                                      onChange={(e) => updateTareaCustom({ fechaEntrega: e.target.value })}
+                                                      className="text-[11px] border border-gray-200 rounded-md px-1.5 py-0.5 bg-white hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none w-[120px]"
+                                                      title="Fecha de entrega (opcional)"
+                                                    />
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+
+                                          {/* Agregar nueva tarea  diseño premium */}
+                                          <div className="flex gap-2 mt-1">
+                                            <input
+                                              type="text"
+                                              data-tarea-wizard-custom={`${rol.numero}-${index}`}
+                                              placeholder="✍ Escribir nueva tarea…"
+                                              className="flex-1 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-green-500 focus:bg-green-50/30 text-sm text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
+                                              onClick={e => e.stopPropagation()}
+                                              onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
+                                                  const desc = (e.target as HTMLInputElement).value.trim();
                                                   const nuevaConfig = rolesConfig.map(r => {
                                                     if (r.numero !== rol.numero) return r;
-                                                    return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
-                                                      i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a
-                                                    )};
+                                                    return {
+                                                      ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
+                                                        i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [] }] } : a
+                                                      )
+                                                    };
                                                   });
                                                   onRolesChange(nuevaConfig);
-                                                }}
-                                                className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                                                title="Eliminar tarea"
-                                              >
-                                                <Trash2 className="w-3.5 h-3.5" />
-                                              </button>
-                                            </div>
-                                          </div>
-
-                                          {/* Footer: opciones compactas */}
-                                          <div className="px-3 pb-2 flex items-center gap-4 border-t border-gray-100 pt-1.5">
-                                            <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere observaciones al completar">
-                                              <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereObservaciones ? 'bg-blue-500' : 'bg-gray-300'}`} onClick={() => updateTareaCustom({ requiereObservaciones: !tarea.requiereObservaciones })}>
-                                                <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereObservaciones ? 'left-3.5' : 'left-0.5'}`} />
-                                              </div>
-                                              <span className={`text-[11px] ${tarea.requiereObservaciones ? 'text-blue-700 font-semibold' : 'text-gray-500'}`}>📝 Observaciones</span>
-                                            </label>
-                                            <label className="flex items-center gap-1.5 cursor-pointer" title="Requiere archivos adjuntos">
-                                              <div className={`w-7 h-4 rounded-full transition-colors relative ${tarea.requiereAdjuntos ? 'bg-purple-500' : 'bg-gray-300'}`} onClick={() => updateTareaCustom({ requiereAdjuntos: !tarea.requiereAdjuntos })}>
-                                                <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-all shadow-sm ${tarea.requiereAdjuntos ? 'left-3.5' : 'left-0.5'}`} />
-                                              </div>
-                                              <span className={`text-[11px] ${tarea.requiereAdjuntos ? 'text-purple-700 font-semibold' : 'text-gray-500'}`}>📎 Adjuntos</span>
-                                            </label>
-                                            <div className="flex items-center gap-1.5 ml-auto">
-                                              <span className="text-[11px] text-gray-500">📅</span>
-                                              <input
-                                                type="date"
-                                                value={tarea.fechaEntrega || (tarea as any).fechaLimite || ''}
-                                                onChange={(e) => updateTareaCustom({ fechaEntrega: e.target.value })}
-                                                className="text-[11px] border border-gray-200 rounded-md px-1.5 py-0.5 bg-white hover:border-blue-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none w-[120px]"
-                                                title="Fecha de entrega (opcional)"
-                                              />
-                                            </div>
+                                                  (e.target as HTMLInputElement).value = '';
+                                                }
+                                              }}
+                                            />
+                                            <button
+                                              onClick={() => {
+                                                const input = document.querySelector<HTMLInputElement>(`[data-tarea-wizard-custom="${rol.numero}-${index}"]`);
+                                                if (input && input.value.trim()) {
+                                                  const nuevaConfig = rolesConfig.map(r => {
+                                                    if (r.numero !== rol.numero) return r;
+                                                    return {
+                                                      ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
+                                                        i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [] }] } : a
+                                                      )
+                                                    };
+                                                  });
+                                                  onRolesChange(nuevaConfig);
+                                                  input.value = '';
+                                                }
+                                              }}
+                                              className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm hover:shadow transition-all flex-shrink-0"
+                                            >
+                                              <Plus className="w-3.5 h-3.5" /> Agregar
+                                            </button>
                                           </div>
                                         </div>
-                                        );
-                                      })}
-
-                                      {/* Agregar nueva tarea — diseño premium */}
-                                      <div className="flex gap-2 mt-1">
-                                        <input
-                                          type="text"
-                                          data-tarea-wizard-custom={`${rol.numero}-${index}`}
-                                          placeholder="✍ Escribir nueva tarea…"
-                                          className="flex-1 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-green-500 focus:bg-green-50/30 text-sm text-gray-600 bg-gray-50/50 placeholder:text-gray-400 transition-all"
-                                          onClick={e => e.stopPropagation()}
-                                          onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
-                                              const desc = (e.target as HTMLInputElement).value.trim();
-                                              const nuevaConfig = rolesConfig.map(r => {
-                                                if (r.numero !== rol.numero) return r;
-                                                return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
-                                                  i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: desc, completada: false, responsables: [] }] } : a
-                                                )};
-                                              });
-                                              onRolesChange(nuevaConfig);
-                                              (e.target as HTMLInputElement).value = '';
-                                            }
-                                          }}
-                                        />
-                                        <button
-                                          onClick={() => {
-                                            const input = document.querySelector<HTMLInputElement>(`[data-tarea-wizard-custom="${rol.numero}-${index}"]`);
-                                            if (input && input.value.trim()) {
-                                              const nuevaConfig = rolesConfig.map(r => {
-                                                if (r.numero !== rol.numero) return r;
-                                                return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
-                                                  i === index ? { ...a, tareasSeguimiento: [...(a.tareasSeguimiento || []), { id: `tarea-${Date.now()}`, descripcion: input.value.trim(), completada: false, responsables: [] }] } : a
-                                                )};
-                                              });
-                                              onRolesChange(nuevaConfig);
-                                              input.value = '';
-                                            }
-                                          }}
-                                          className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm hover:shadow transition-all flex-shrink-0"
-                                        >
-                                          <Plus className="w-3.5 h-3.5" /> Agregar
-                                        </button>
                                       </div>
+
                                     </div>
                                   </div>
+                                );
+                              })}
 
-                                </div>
-                              </div>
-                            ))}
-
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Formulario nueva actividad */}
-                      {mostrarFormActividad === rol.numero ? (
-                        <motion.div
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="p-4 border-2 border-blue-300 bg-blue-50 rounded-lg space-y-3"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <h4 className="font-semibold text-blue-900">Nueva actividad personalizada</h4>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMostrarFormActividad(null);
-                              }}
-                              className="text-blue-600 hover:text-blue-800"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                          <input
-                            type="text"
-                            value={nuevaActividad.nombre}
-                            onChange={(e) => setNuevaActividad({ ...nuevaActividad, nombre: e.target.value })}
-                            placeholder="Nombre de la actividad"
-                            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                        {/* Formulario nueva actividad */}
+                        {mostrarFormActividad === rol.numero ? (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="p-4 border-2 border-blue-300 bg-blue-50 rounded-lg space-y-3"
                             onClick={(e) => e.stopPropagation()}
-                          />
-                          <textarea
-                            value={nuevaActividad.descripcion}
-                            onChange={(e) => setNuevaActividad({ ...nuevaActividad, descripcion: e.target.value })}
-                            placeholder="Descripción"
-                            className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-                            rows={2}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                agregarActividadCustom(rol.numero);
-                              }}
-                              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
-                            >
-                              ✓ Agregar
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMostrarFormActividad(null);
-                              }}
-                              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        </motion.div>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMostrarFormActividad(rol.numero);
-                          }}
-                          className="w-full px-4 py-3 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 rounded-lg text-gray-600 hover:text-blue-600 font-medium flex items-center justify-center gap-2 transition-colors"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          Agregar actividad personalizada
-                        </button>
-                      )}
-                    </div>
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="font-semibold text-blue-900">Nueva actividad personalizada</h4>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMostrarFormActividad(null);
+                                }}
+                                className="text-blue-600 hover:text-blue-800"
+                              >
+                                ×
+                              </button>
+                            </div>
+                            <input
+                              type="text"
+                              value={nuevaActividad.nombre}
+                              onChange={(e) => setNuevaActividad({ ...nuevaActividad, nombre: e.target.value })}
+                              placeholder="Nombre de la actividad"
+                              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <textarea
+                              value={nuevaActividad.descripcion}
+                              onChange={(e) => setNuevaActividad({ ...nuevaActividad, descripcion: e.target.value })}
+                              placeholder="Descripción"
+                              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                              rows={2}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  agregarActividadCustom(rol.numero);
+                                }}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+                              >
+                                ➕ Agregar
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMostrarFormActividad(null);
+                                }}
+                                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </motion.div>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMostrarFormActividad(rol.numero);
+                            }}
+                            className="w-full px-4 py-3 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 rounded-lg text-gray-600 hover:text-blue-600 font-medium flex items-center justify-center gap-2 transition-colors"
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            Agregar actividad personalizada
+                          </button>
+                        )}
+                      </div>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -3382,7 +4205,7 @@ function Paso2({
         })}
       </div>
 
-      {/* ✅ NUEVO: Modal de configuración de puntos de control */}
+      {/* S& NUEVO: Modal de configuración de puntos de control */}
       {modalPuntosControlAbierto && actividadConfigurando && (
         <ModalConfiguracionPuntosControl
           isOpen={modalPuntosControlAbierto}
@@ -3397,7 +4220,7 @@ function Paso2({
             (() => {
               const rol = rolesConfig.find(r => r.numero === actividadConfigurando.numeroRol);
               if (!rol) {
-                console.log('[Wizard] ❌ Rol no encontrado');
+                console.log('[Wizard] R Rol no encontrado');
                 return undefined;
               }
               let fechaCorteActividad;
@@ -3414,7 +4237,7 @@ function Paso2({
             (() => {
               const rol = rolesConfig.find(r => r.numero === actividadConfigurando.numeroRol);
               if (!rol) return [];
-              
+
               if (actividadConfigurando.esCustom && actividadConfigurando.indexCustom !== undefined) {
                 const actividad = rol.actividadesCustom[actividadConfigurando.indexCustom];
                 return actividad?.puntosControl || [];
@@ -3430,7 +4253,7 @@ function Paso2({
             (() => {
               const rol = rolesConfig.find(r => r.numero === actividadConfigurando.numeroRol);
               if (!rol) return undefined;
-              
+
               if (actividadConfigurando.esCustom && actividadConfigurando.indexCustom !== undefined) {
                 const actividad = rol.actividadesCustom[actividadConfigurando.indexCustom];
                 return actividad?.frecuenciaPuntosControl;
@@ -3450,9 +4273,9 @@ function Paso2({
 }
 
 // Paso 3: Confirmación
-function Paso3({ 
-  vigencia, 
-  jefeOCI, 
+function Paso3({
+  vigencia,
+  jefeOCI,
   rolesConfig,
   auditores = [],
   comiteAprobacion = [],
@@ -3466,7 +4289,8 @@ function Paso3({
   setDraggedAprobadorIndex
 }: any) {
   const totalActividades = rolesConfig.reduce((total: number, rol: any) => {
-    return total + (rol.actividadesSeleccionadas?.length || 0) + (rol.actividadesCustom?.length || 0);
+    const sel = (rol.actividadesSeleccionadas || []).filter((a: ActividadBase) => actividadIncluidaEnPlan(a)).length;
+    return total + sel + (rol.actividadesCustom?.length || 0);
   }, 0);
 
   const totalResponsables = rolesConfig.reduce((total: number, rol: any) => {
@@ -3504,7 +4328,8 @@ function Paso3({
           </div>
           {(() => {
             const totalTareas = rolesConfig.reduce((sum: number, rol: any) => {
-              return sum + [...(rol.actividadesSeleccionadas || []), ...(rol.actividadesCustom || [])]
+              const incl = (rol.actividadesSeleccionadas || []).filter((a: ActividadBase) => actividadIncluidaEnPlan(a));
+              return sum + [...incl, ...(rol.actividadesCustom || [])]
                 .reduce((s: number, a: any) => s + (a.tareasSeguimiento?.length || 0), 0);
             }, 0);
             return totalTareas > 0 ? (
@@ -3520,7 +4345,7 @@ function Paso3({
           </div>
         </div>
 
-        {/* COMITÉ DE APROBACIÓN */}
+        {/* COMIT0 DE APROBACIN */}
         <div className="mt-6 pt-6 border-t border-gray-200">
           <div className="flex items-center justify-between mb-4">
             <div>
@@ -3532,14 +4357,14 @@ function Paso3({
                 <Shield className="w-3 h-3 text-blue-400" /> Numeral 648 de 2017: Selecciona hasta 5 miembros aprobadores.
               </p>
             </div>
-            
+
             <div className="flex bg-gray-100 p-1 rounded-lg">
               <button
                 type="button"
                 onClick={() => setOrdenAprobacion?.('secuencial')}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${ordenAprobacion === 'secuencial' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                📝 Secuencial
+                🔄 Secuencial
               </button>
               <button
                 type="button"
@@ -3553,7 +4378,7 @@ function Paso3({
 
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-inner">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              
+
               {/* Buscador */}
               <div className="space-y-3">
                 <label className="text-xs font-bold text-blue-900 uppercase tracking-wider">Agregar Miembro</label>
@@ -3590,7 +4415,7 @@ function Paso3({
                     {comiteAprobacion.length} / 5
                   </span>
                 </div>
-                
+
                 {comiteAprobacion.length === 0 ? (
                   <div className="text-sm text-gray-400 italic text-center p-6 border-2 border-dashed border-blue-200 rounded-xl bg-white shadow-sm flex flex-col items-center justify-center">
                     <Users className="w-8 h-8 text-blue-200 mb-2" />
@@ -3602,7 +4427,7 @@ function Paso3({
                     {ordenAprobacion === 'secuencial' && comiteAprobacion.length > 1 && (
                       <div className="absolute left-3 top-4 bottom-4 w-0.5 bg-blue-200" />
                     )}
-                    
+
                     {comiteAprobacion.map((miembro: any, index: number) => {
                       const getInitials = (name: string) => name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
                       const getRoleBadgeColor = (role: string) => {
@@ -3616,8 +4441,8 @@ function Paso3({
                       };
 
                       return (
-                        <div 
-                          key={miembro.id} 
+                        <div
+                          key={miembro.id}
                           draggable
                           onDragStart={(e) => handleDragStartAprobador(e, index)}
                           onDragOver={handleDragOverAprobador}
@@ -3628,7 +4453,7 @@ function Paso3({
                           <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${ordenAprobacion === 'secuencial' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-100 text-blue-700'}`}>
                             {ordenAprobacion === 'secuencial' ? index + 1 : '•'}
                           </div>
-                          
+
                           <div className="w-9 h-9 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-[11px] font-black shrink-0">
                             {getInitials(miembro.nombre)}
                           </div>
@@ -3649,7 +4474,7 @@ function Paso3({
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                           </button>
-                          
+
                           <div className="text-gray-300 cursor-grab active:cursor-grabbing hover:text-blue-500">
                             <GripVertical className="w-5 h-5" />
                           </div>
@@ -3667,9 +4492,9 @@ function Paso3({
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 // DASHBOARD DEL PLAN - VERSION SIMPLIFICADA
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 interface DashboardPlanProps {
   plan: PlanAnual;
@@ -3681,54 +4506,17 @@ interface DashboardPlanProps {
   planesAnteriores?: PlanAnual[]; // Historial de planes anteriores
   planesDisponibles?: PlanAnual[]; // Lista de todos los planes para selector
   onCambiarPlan?: (planId: string) => void; // Callback para cambiar de plan activo
-  onEditarPlan?: (plan: PlanAnual) => void; // Callback para editar el plan actual
+  onEditarPlan?: (plan: PlanAnual) => void | Promise<void>; // Callback para editar el plan actual
+  /** Mismo asistente que edición, sin poder guardar (solo consulta). */
+  onVerDefinicionPlan?: (plan: PlanAnual) => void | Promise<void>;
+  /** Tras volver del asistente en solo lectura: abrir esta pestaña una vez. */
+  seccionForzada?: 'gestion' | 'aprobar' | null;
+  onSeccionForzadaAplicada?: () => void;
 }
 
 const PLAN_ANUAL_STORAGE_KEY = 'esap:plan_anual_activo';
 
-export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan, onEditarPlan }: DashboardPlanProps) {
-  // Corregir problemas de codificación de la base de datos dinámicamente y heredar responsables
-  const plan = {
-    ...planRaw,
-    roles: planRaw.roles ? planRaw.roles.map(r => {
-      let nombre = r.nombre;
-      if (r.numero === 1) nombre = 'Liderazgo estratégico';
-      if (r.numero === 2) nombre = 'Enfoque hacia la prevención';
-      if (r.numero === 3) nombre = 'Evaluación de la gestión del riesgo';
-      if (r.numero === 4) nombre = 'Evaluación y seguimiento';
-      if (r.numero === 5) nombre = 'Relación con entes externos de control';
-      
-      // Identificar el responsable principal del rol (puede venir en el rol o heredar del plan)
-      const responsablePrincipal = (r.responsables && r.responsables.length > 0) 
-        ? r.responsables 
-        : (planRaw.jefeOCI ? [planRaw.jefeOCI] : []);
-
-      const actividades = r.actividades ? r.actividades.map(act => {
-        // Heredar responsable a la actividad si está huérfana
-        const actResponsables = (act.responsables && act.responsables.length > 0)
-          ? act.responsables
-          : (act.responsable && typeof act.responsable === 'object' ? [act.responsable] : responsablePrincipal);
-
-        const tareasSeguimiento = act.tareasSeguimiento ? act.tareasSeguimiento.map(t => {
-          // Heredar responsable a la tarea si está huérfana (hereda de actividad o rol)
-          if (!t.responsables || t.responsables.length === 0) {
-            return { ...t, responsables: [...actResponsables] };
-          }
-          return t;
-        }) : [];
-        
-        return { 
-          ...act, 
-          responsable: act.responsable || actResponsables[0] || null,
-          responsables: actResponsables,
-          tareasSeguimiento 
-        };
-      }) : [];
-
-      return { ...r, nombre, responsables: responsablePrincipal, actividades };
-    }) : []
-  };
-
+export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan, onEditarPlan }: DashboardPlanProps) {
   const [seccion, setSeccion] = useState<'gestion' | 'asignar' | 'aprobar'>('gestion');
   const [mostrarModalExportacion, setMostrarModalExportacion] = useState(false);
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
@@ -3737,7 +4525,7 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
   );
   const [mostrarModalEliminar, setMostrarModalEliminar] = useState(false);
   const [eliminandoPlan, setEliminandoPlan] = useState(false);
-  
+
   // Estado para auditores cargados desde backend
   const [auditores, setAuditores] = useState<Auditor[]>([]);
   const [cargandoAuditores, setCargandoAuditores] = useState(true);
@@ -3746,56 +4534,28 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
   const [currentUser, setCurrentUser] = useState<any>(null);
   useEffect(() => {
     try {
-      // Intentar múltiples fuentes de datos del usuario
-      const userDataStr = localStorage.getItem('esap_user_data');
-      const sesionStr = localStorage.getItem('esap-sesion-activa');
-      
-      let userData: any = null;
-      
-      if (userDataStr) {
-        userData = JSON.parse(userDataStr);
-      }
-      
-      // Si no hay esap_user_data, intentar con sesion activa
-      if (!userData && sesionStr) {
-        const sesion = JSON.parse(sesionStr);
-        userData = sesion?.user || sesion?.usuario || sesion;
-      }
-      
+      const userData = (window as any).__esap_auth_cache;
       if (userData) {
-        // Normalizar campos para que el matching funcione
         const normalized: any = { ...userData };
-        
-        // Extraer nombre completo de person si existe
         if (userData.person?.first_name) {
           normalized.nombre = `${userData.person.first_name} ${userData.person.last_name || ''}`.trim();
         }
         if (!normalized.nombre && !normalized.nombres) {
           normalized.nombre = userData.fullName || userData.name || userData.username || '';
         }
-        // Extraer email
         if (!normalized.email && userData.person?.email) {
           normalized.email = userData.person.email;
         }
-        // Extraer IDs de person
         if (userData.person?.id && !normalized.idPerson) {
           normalized.idPerson = userData.person.id;
         }
-        
-        console.log('👤 [PlanAnual] Usuario actual cargado:', {
-          nombre: normalized.nombre || normalized.nombres,
-          email: normalized.email,
-          id: normalized.id,
-          idPerson: normalized.idPerson || normalized.idPersona,
-        });
-        
         setCurrentUser(normalized);
       }
     } catch (e) {
       console.error('Error cargando usuario:', e);
     }
   }, []);
-  
+
   // Permisos del Plan Anual (sistema flexible basado en permisos, no roles)
   const { puedeRealizar, esSuperUsuario } = useControlInternoPermissions();
   const puedeAprobarPlan = puedeRealizar('plan-anual', 'approve');
@@ -3812,6 +4572,16 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
   const puedeVerGestion = puedeVerPlan || puedeSeguimiento || puedeEditarPlan || puedeAsignarActividades || esSuperUsuario;
   // Tab Aprobación: solo aprobadores
   const puedeVerAprobacion = puedeAprobarPlan || puedeActivarPlan || esSuperUsuario;
+
+  useEffect(() => {
+    if (!seccionForzada) return;
+    if (seccionForzada === 'aprobar' && !puedeVerAprobacion) {
+      onSeccionForzadaAplicada?.();
+      return;
+    }
+    setSeccion(seccionForzada);
+    onSeccionForzadaAplicada?.();
+  }, [seccionForzada, puedeVerAprobacion, onSeccionForzadaAplicada]);
 
   // Cargar auditores desde backend al montar el componente (profesionales OCI configurados)
   useEffect(() => {
@@ -3838,7 +4608,7 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
         setCargandoAuditores(false);
       }
     };
-    
+
     cargarAuditores();
   }, []);
 
@@ -3860,12 +4630,12 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
     const total = plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0);
     const asignadas = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.responsable !== null).length, 0);
     const completadas = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.estado === 'COMPLETADA' || a.estado === 'completada' || a.estado === 'Completada' || a.porcentajeAvance === 100).length, 0);
-    const enEjecucion = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => 
+    const enEjecucion = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a =>
       a.estado === 'EN_EJECUCION' || a.estado === 'en-progreso' || a.estado === 'En Ejecución' || ((a.porcentajeAvance || 0) > 0 && (a.porcentajeAvance || 0) < 100)
     ).length, 0);
-    
-    const avance = total > 0 
-      ? Math.round(plan.roles.reduce((sum, rol) => sum + rol.actividades.reduce((s, a) => s + (a.porcentajeAvance || 0), 0), 0) / total) 
+
+    const avance = total > 0
+      ? Math.round(plan.roles.reduce((sum, rol) => sum + rol.actividades.reduce((s, a) => s + (a.porcentajeAvance || 0), 0), 0) / total)
       : 0;
 
     return { totalActividades: total, actividadesAsignadas: asignadas, actividadesCompletadas: completadas, actividadesEnEjecucion: enEjecucion, avancePromedio: avance };
@@ -3883,11 +4653,11 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
       const { planAnualApi } = await import('./services/plan-anual/api');
       const res = await planAnualApi.delete(plan.id);
       if (res.success) {
-        toast.success('Plan eliminado exitosamente', { description: 'Los registros han sido borrados de la base de datos.'});
+        toast.success('Plan eliminado exitosamente', { description: 'Los registros han sido borrados de la base de datos.' });
         setMostrarModalEliminar(false);
         if (onActualizar) {
           onActualizar(null as any); // Devuelve a la vista inicial
-          window.location.reload(); 
+          window.location.reload();
         }
       } else {
         toast.error('Error al eliminar', { description: res.error || 'No se pudo eliminar el plan' });
@@ -3902,12 +4672,12 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
   const handleExportarExcel = async () => {
     setExportando('excel');
     setMostrarModalExportacion(false);
-    
-    // ✅ NUEVO: Usar exportación local con ExcelJS + Logo (no depende del backend)
+
+    // S& NUEVO: Usar exportación local con ExcelJS + Logo (no depende del backend)
     try {
-      // 🔍 DEBUG: Mostrar datos EXACTOS que se envían al Excel
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('📊 [handleExportarExcel] DATOS DEL PLAN para Excel:');
+      // x DEBUG: Mostrar datos EXACTOS que se envían al Excel
+      console.log('');
+      console.log('[handleExportarExcel] DATOS DEL PLAN para Excel:');
       console.log('   plan.id:', plan.id);
       console.log('   plan.vigencia:', plan.vigencia);
       console.log('   plan.fecha_inicio:', (plan as any).fecha_inicio);
@@ -3917,7 +4687,7 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
         console.log(`   ROL ${ri + 1} (${rol.nombre}): ${rol.actividades?.length || 0} actividades`);
         if (rol.actividades?.length > 0) {
           const act = rol.actividades[0] as any;
-          console.log(`     → Primera actividad: "${act.nombre}"`);
+          console.log(`       Primera actividad: "${act.nombre}"`);
           console.log(`       responsable:`, act.responsable);
           console.log(`       responsables:`, act.responsables);
           console.log(`       fechaInicio:`, act.fechaInicio);
@@ -3926,7 +4696,7 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
           console.log(`       fecha_fin:`, act.fecha_fin);
         }
       });
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('');
       const resultado = await exportarPlanAnualExcel(plan, { columnasSeleccionadas: columnasExcel });
       if (resultado.exito) {
         toast.success('Exportado', { description: 'Excel descargado correctamente con logo ESAP' });
@@ -3947,7 +4717,7 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
       const jsPDF = (await import('jspdf')).default;
       const autoTable = (await import('jspdf-autotable')).default;
       const vigencia = plan.vigencia ?? (plan as { año?: number }).año ?? new Date().getFullYear();
-      
+
       // Crear documento PDF con jsPDF - Paisaje para más columnas
       const doc = new jsPDF({
         orientation: 'landscape',
@@ -3959,16 +4729,16 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 10;
 
-      // Header institucional estandarizado — datos dinámicos del plan (NO hardcodeados)
+      // Header institucional estandarizado  datos dinámicos del plan (NO hardcodeados)
       const alturaEncabezado = dibujarEncabezadoInstitucional(doc, {
         ...DOCUMENTOS_PREDEFINIDOS.PLAN_ANUAL,
         version: (plan as any).version ?? 1,
-        fecha: plan.fechaCreacion 
+        fecha: plan.fechaCreacion
           ? new Date(plan.fechaCreacion).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
           : new Date().toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' }),
         logoImg: LOGO_ESAP_URL
       });
-      
+
       let currentY = alturaEncabezado + 5;
 
       // Vigencia y Título
@@ -3982,32 +4752,34 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
         if (!valor || typeof valor !== 'string') return '-';
         const limpio = valor.trim();
         if (!limpio || limpio === '-') return '-';
-        const fecha = new Date(limpio);
+        const soloFecha = /^\d{4}-\d{2}-\d{2}$/.test(limpio);
+        const isoConHora = /^\d{4}-\d{2}-\d{2}T/.test(limpio);
+        const fechaBase = soloFecha
+          ? limpio
+          : (isoConHora ? limpio.slice(0, 10) : limpio);
+        const fecha = new Date(/^\d{4}-\d{2}-\d{2}$/.test(fechaBase) ? `${fechaBase}T12:00:00` : fechaBase);
         if (Number.isNaN(fecha.getTime())) return limpio;
         return fecha.toLocaleDateString('es-CO');
       };
 
       const obtenerFechaTareaExport = (tarea: any, actividad: any): string => {
-        // En BD (tareas_seguimiento) el campo oficial de fecha es fechaLimite.
-        const fechaLimite = tarea?.fechaLimite || tarea?.fecha_limite;
+        // Prioridad: fecha real de seguimiento/evaluación de la tarea.
+        const fechaSeguimiento =
+          tarea?.fechaSeguimiento
+          || tarea?.fecha_seguimiento
+          || tarea?.fechaEvaluacion
+          || tarea?.fecha_evaluacion
+          || tarea?.fechaCompletado
+          || tarea?.fechaCompletada
+          || tarea?.fecha_completada;
+        if (fechaSeguimiento) return formatearFechaExportacion(fechaSeguimiento);
+
+        // Fallback: fecha objetivo/límite.
+        const fechaLimite = tarea?.fechaLimite || tarea?.fecha_limite || tarea?.fechaEntrega;
         if (fechaLimite) return formatearFechaExportacion(fechaLimite);
         const tieneDatosTarea = !!tarea && typeof tarea === 'object' && Object.keys(tarea).length > 0;
         if (tieneDatosTarea) return '-';
 
-        const planDates = plan as any;
-        const pdfFechaInicio = planDates.fecha_inicio || planDates.fechaInicio || '';
-        const pdfFechaFin = planDates.fecha_fin || planDates.fechaFin || '';
-        const pdfFechaCreacion = planDates.fecha_creacion || planDates.fechaCreacion || '';
-
-        const infoData = [
-          ['Vigencia', vigencia.toString()],
-          ['Estado', estadoLabel],
-          ['Jefe OCI', plan.jefeOCI?.nombre || ''],
-          ['Cargo', plan.jefeOCI?.cargo || ''],
-          ['Fecha Inicio', pdfFechaInicio ? new Date(pdfFechaInicio).toLocaleDateString('es-CO') : ''],
-          ['Fecha Fin', pdfFechaFin ? new Date(pdfFechaFin).toLocaleDateString('es-CO') : ''],
-          ['Fecha Creación', pdfFechaCreacion ? new Date(pdfFechaCreacion).toLocaleDateString('es-CO') : '']
-        ];
         const puntosControl = actividad?.puntosControl || actividad?.puntos_control || [];
         if (Array.isArray(puntosControl) && puntosControl.length > 0) {
           const fechas = puntosControl
@@ -4033,6 +4805,24 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
         return '-';
       };
 
+      const obtenerResponsableActividadExport = (actividad: any): string => {
+        const candidatos: string[] = [];
+        if (Array.isArray(actividad?.responsables)) {
+          candidatos.push(
+            ...actividad.responsables
+              .map((r: any) => (typeof r === 'string' ? r : r?.nombre || r?.name || ''))
+              .filter(Boolean)
+          );
+        }
+        if (actividad?.responsable) {
+          const principal = typeof actividad.responsable === 'string'
+            ? actividad.responsable
+            : actividad.responsable?.nombre || actividad.responsable?.name || '';
+          if (principal) candidatos.push(principal);
+        }
+        return candidatos.length ? Array.from(new Set(candidatos)).join(', ') : 'No asignado';
+      };
+
       // Definición de columnas solicitadas
       const tableHead = [[
         'Rol / Macroproceso',
@@ -4044,7 +4834,7 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
         'Est.',
         'Resp. Tarea',
         'Seguimiento y evaluación tareas',
-        'Fecha',
+        'Fecha de seguimiento',
         'Eval.'
       ]];
 
@@ -4057,15 +4847,16 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
       [...plan.roles].sort((a, b) => a.numero - b.numero).forEach((rol) => {
         rol.actividades.forEach((act, actIdx) => {
           totalActividadesCount++;
-          const pctActividad = (act.estado === 'Completada' || act.estado === 'COMPLETADA') ? 100 
-                             : (act.entradasSeguimiento && act.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(act) : 0);
+          const pctActividad = (act.estado === 'Completada' || act.estado === 'COMPLETADA') ? 100
+            : (act.entradasSeguimiento && act.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(act) : 0);
           totalAvanceSuma += pctActividad;
 
-          const fInicio = act.fechaInicio ? new Date(act.fechaInicio).toLocaleDateString('es-CO') : '';
-          const fFin = act.fechaFin ? new Date(act.fechaFin).toLocaleDateString('es-CO') : '';
-          
+          const fInicio = act.fechaInicio ? formatearFechaExportacion(act.fechaInicio) : '';
+          const fFin = act.fechaFin ? formatearFechaExportacion(act.fechaFin) : '';
+          const responsableActividad = obtenerResponsableActividadExport(act);
+
           const tareas = act.tareasSeguimiento || [];
-          
+
           if (tareas.length === 0) {
             // Fila única si no hay tareas
             const fechaDesdePuntos = obtenerFechaTareaExport({}, act);
@@ -4074,7 +4865,7 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
               act.nombre,
               fInicio,
               fFin,
-              act.responsable?.nombre || 'Solicitado',
+              responsableActividad,
               act.control || 'Seguimiento periódico',
               `${pctActividad}%`,
               '-',
@@ -4083,22 +4874,22 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
               '0%'
             ]);
           } else {
-            // Una fila por cada tarea de seguimiento
+            // Una fila por tarea (celdas separadas)
             tareas.forEach((tarea) => {
               const fEntrega = obtenerFechaTareaExport(tarea, act);
               const respTarea = obtenerResponsableTareaExport(tarea);
               const pctTarea = tarea.completada ? '100%' : '0%';
-              
+
               tableBody.push([
                 `${rol.numero}. ${rol.nombre}`,
                 act.nombre,
                 fInicio,
                 fFin,
-                act.responsable?.nombre || 'Solicitado',
+                responsableActividad,
                 act.control || 'Seguimiento',
                 `${pctActividad}%`,
                 respTarea,
-                tarea.descripcion,
+                tarea.descripcion || '-',
                 fEntrega,
                 pctTarea
               ]);
@@ -4120,8 +4911,8 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
           fontSize: 7,
           halign: 'center'
         },
-        styles: { 
-          fontSize: 6, 
+        styles: {
+          fontSize: 6,
           cellPadding: 1.5,
           overflow: 'linebreak',
           cellWidth: 'wrap'
@@ -4149,7 +4940,7 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
       });
 
       currentY = (doc as any).lastAutoTable.finalY + 10;
-      
+
       [...plan.roles].sort((a, b) => a.numero - b.numero).forEach((rol, rolIdx) => {
         doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
@@ -4159,8 +4950,8 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
 
         // Calcular avance promedio del rol
         const sumaAvanceRol = rol.actividades.reduce((s, a) => {
-          const pct = (a.estado === 'Completada' || a.estado === 'COMPLETADA') ? 100 
-                    : (a.entradasSeguimiento && a.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(a) : 0);
+          const pct = (a.estado === 'Completada' || a.estado === 'COMPLETADA') ? 100
+            : (a.entradasSeguimiento && a.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(a) : 0);
           return s + pct;
         }, 0);
         const promedioRol = rol.actividades.length > 0 ? Math.round(sumaAvanceRol / rol.actividades.length) : 0;
@@ -4169,9 +4960,9 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
         totalActividadesCount += rol.actividades.length;
 
         const actividadesData = rol.actividades.map((act, idx) => {
-          const pctFinal = (act.estado === 'Completada' || act.estado === 'COMPLETADA') ? 100 
-                    : (act.entradasSeguimiento && act.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(act) : 0);
-          // Responsable: prioridad responsables[] → responsable → 'No asignado'
+          const pctFinal = (act.estado === 'Completada' || act.estado === 'COMPLETADA') ? 100
+            : (act.entradasSeguimiento && act.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(act) : 0);
+          // Responsable: prioridad responsables[]   responsable   'No asignado'
           const actX = act as any;
           let responsablePdf = '';
           if (Array.isArray(actX.responsables) && actX.responsables.length > 0) {
@@ -4180,17 +4971,17 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
             responsablePdf = typeof actX.responsable === 'string' ? actX.responsable : actX.responsable?.nombre || '';
           }
           if (!responsablePdf) responsablePdf = 'No asignado';
-          
+
           return [
             (idx + 1).toString(),
             act.nombre,
             responsablePdf,
-            act.estado === 'COMPLETADA' ? 'Completada' : 
-            act.estado === 'EN_EJECUCION' ? 'En ejecución' : 'Pendiente',
+            act.estado === 'COMPLETADA' ? 'Completada' :
+              act.estado === 'EN_EJECUCION' ? 'En ejecución' : 'Pendiente',
             `${pctFinal}%`
           ];
         });
-        
+
         // Agregar fila de subtotal del rol
         actividadesData.push([
           '',
@@ -4220,7 +5011,7 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
             4: { cellWidth: 20, halign: 'center' }
           },
           margin: { left: margin, right: margin },
-          didParseCell: function(data) {
+          didParseCell: function (data) {
             // Destacar la fila de subtotal
             if (data.row.index === actividadesData.length - 1) {
               data.cell.styles.fillColor = [41, 98, 255];
@@ -4237,11 +5028,11 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
           currentY = margin;
         }
       });
-      
+
       // Total general del plan
       // Resumen final
       const promedioGral = totalActividadesCount > 0 ? Math.round(totalAvanceSuma / totalActividadesCount) : 0;
-      
+
       if (currentY > pageHeight - 30) {
         doc.addPage();
         currentY = margin + 20;
@@ -4267,377 +5058,379 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="bg-white border-b-2 border-gray-200 px-8 py-6">
         <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          {/* Izquierda: icono + título + badge de estado */}
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0 shadow-lg">
-              <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl sm:text-2xl font-black text-gray-900 truncate tracking-tight">Plan Anual de Auditoría {plan.vigencia}</h1>
-                <span className={`px-2.5 py-0.5 rounded-full font-bold border text-xs whitespace-nowrap ${plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-green-300' : plan.estado === 'APROBADO' ? 'bg-blue-100 text-blue-700 border-blue-300' : plan.estado === 'EN_REVISION' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-600 border-gray-300'}`}>
-                  {plan.estado === 'BORRADOR' ? 'Borrador' : plan.estado === 'EN_REVISION' ? 'En revisión' : plan.estado === 'APROBADO' ? 'Aprobado' : plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado'}
-                </span>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            {/* Izquierda: icono + título + badge de estado */}
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center flex-shrink-0 shadow-lg">
+                <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
-              <p className="text-xs sm:text-sm text-gray-500 truncate mt-0.5">Versión {plan.version} • {plan.jefeOCI.nombre}</p>
-            </div>
-          </div>
-
-          {/* Derecha: selector de plan + botones de acción */}
-          <div className="flex flex-row flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
-            {planesDisponibles.length > 1 && onCambiarPlan && (
-              <select
-                value={plan.id}
-                onChange={(e) => {
-                  const planSeleccionado = planesDisponibles.find(p => p.id === e.target.value);
-                  if (planSeleccionado) {
-                    localStorage.setItem(PLAN_ANUAL_STORAGE_KEY, JSON.stringify({
-                      id: planSeleccionado.id,
-                      vigencia: planSeleccionado.vigencia,
-                      estado: planSeleccionado.estado,
-                      version: planSeleccionado.version,
-                      jefeOCINombre: planSeleccionado.jefeOCI?.nombre ?? '',
-                      fechaCorte: `${planSeleccionado.vigencia}-12-31`
-                    }));
-                  }
-                  onCambiarPlan(e.target.value);
-                }}
-                className="px-3 py-1.5 sm:py-2 border-2 border-blue-300 rounded-lg text-sm font-medium bg-blue-50 text-blue-900 focus:outline-none focus:border-blue-500"
-              >
-                {planesDisponibles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.vigencia} - {p.estado} (v{p.version})
-                  </option>
-                ))}
-              </select>
-            )}
-
-
-
-            {onCrearNuevo && (
-              <button 
-                onClick={onCrearNuevo}
-                className="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg text-xs sm:text-sm whitespace-nowrap"
-              >
-                <Plus className="w-4 h-4" />
-                Nuevo Plan
-              </button>
-            )}
-
-            {(puedeExportarPlan || puedeSeguimiento || esSuperUsuario) && (
-            <button
-              type="button"
-              onClick={() => setMostrarModalExportacion(true)}
-              className="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-emerald-600 to-green-700 hover:from-emerald-700 hover:to-green-800 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg text-xs sm:text-sm whitespace-nowrap"
-            >
-              <Download className="w-4 h-4" />
-              Exportar
-            </button>
-            )}
-
-            {plan.estado === 'BORRADOR' && (
-              <button
-                type="button"
-                onClick={handleEliminarPlan}
-                className="flex items-center justify-center p-2.5 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 rounded-lg transition-colors border border-red-200 shadow-sm"
-                title="Eliminar permanentemente este plan en borrador"
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {mostrarModalExportacion && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4"
-            onClick={() => setMostrarModalExportacion(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden"
-            >
-              <div className="bg-gradient-to-r from-[#2962FF] to-[#003DA5] px-6 py-5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                      <Download className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-black text-white">Exportar Plan Anual</h2>
-                      <p className="text-sm text-blue-100">Vigencia {plan.vigencia} • {plan.id}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setMostrarModalExportacion(false)}
-                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                    disabled={!!exportando}
-                  >
-                    <X className="w-5 h-5 text-white" />
-                  </button>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl sm:text-2xl font-black text-gray-900 truncate tracking-tight">Plan Anual de Auditoría {plan.vigencia}</h1>
+                  <span className={`px-2.5 py-0.5 rounded-full font-bold border text-xs whitespace-nowrap ${plan.estado === 'VIGENTE' ? 'bg-green-100 text-green-700 border-green-300' : plan.estado === 'APROBADO' ? 'bg-blue-100 text-blue-700 border-blue-300' : plan.estado === 'EN_REVISION' ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-600 border-gray-300'}`}>
+                    {plan.estado === 'BORRADOR' ? 'Borrador' : plan.estado === 'EN_REVISION' ? 'En revisión' : plan.estado === 'APROBADO' ? 'Aprobado' : plan.estado === 'VIGENTE' ? 'Vigente' : 'Cerrado'}
+                  </span>
                 </div>
+                <p className="text-xs sm:text-sm text-gray-500 truncate mt-0.5">Versión {plan.version} • {plan.jefeOCI.nombre}</p>
               </div>
+            </div>
 
-              <div className="p-6">
-                <p className="text-sm text-gray-600 mb-6">
-                  Selecciona el formato de exportación. El documento incluirá toda la información del Plan Anual según normativa (Decreto 648/2017).
-                </p>
+            {/* Derecha: selector de plan + botones de acción */}
+            <div className="flex flex-row flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
+              {planesDisponibles.length > 1 && onCambiarPlan && (
+                <select
+                  value={plan.id}
+                  onChange={(e) => {
+                    const planSeleccionado = planesDisponibles.find(p => p.id === e.target.value);
+                    if (planSeleccionado) {
+                      localStorage.setItem(PLAN_ANUAL_STORAGE_KEY, JSON.stringify({
+                        id: planSeleccionado.id,
+                        vigencia: planSeleccionado.vigencia,
+                        estado: planSeleccionado.estado,
+                        version: planSeleccionado.version,
+                        jefeOCINombre: planSeleccionado.jefeOCI?.nombre ?? '',
+                        fechaCorte: `${planSeleccionado.vigencia}-12-31`
+                      }));
+                    }
+                    onCambiarPlan(e.target.value);
+                  }}
+                  className="px-3 py-1.5 sm:py-2 border-2 border-blue-300 rounded-lg text-sm font-medium bg-blue-50 text-blue-900 focus:outline-none focus:border-blue-500"
+                >
+                  {planesDisponibles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.vigencia} - {p.estado} (v{p.version})
+                    </option>
+                  ))}
+                </select>
+              )}
 
-                <div className="space-y-3">
-                  <button
-                    onClick={handleExportarPDF}
-                    disabled={!!exportando}
-                    className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-[#2962FF] hover:bg-blue-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 bg-red-100 group-hover:bg-red-200 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors">
-                        <FileText className="w-6 h-6 text-red-600" />
+
+
+              {onCrearNuevo && (
+                <button
+                  onClick={onCrearNuevo}
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg text-xs sm:text-sm whitespace-nowrap"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nuevo Plan
+                </button>
+              )}
+
+
+
+              {(puedeExportarPlan || puedeSeguimiento || esSuperUsuario) && (
+                <button
+                  type="button"
+                  onClick={() => setMostrarModalExportacion(true)}
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-emerald-600 to-green-700 hover:from-emerald-700 hover:to-green-800 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg text-xs sm:text-sm whitespace-nowrap"
+                >
+                  <Download className="w-4 h-4" />
+                  Exportar
+                </button>
+              )}
+
+              {plan.estado === 'BORRADOR' && (
+                <button
+                  type="button"
+                  onClick={handleEliminarPlan}
+                  className="flex items-center justify-center p-2.5 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 rounded-lg transition-colors border border-red-200 shadow-sm"
+                  title="Eliminar permanentemente este plan en borrador"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {mostrarModalExportacion && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4"
+              onClick={() => setMostrarModalExportacion(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden"
+              >
+                <div className="bg-gradient-to-r from-[#2962FF] to-[#003DA5] px-6 py-5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                        <Download className="w-5 h-5 text-white" />
                       </div>
-                      <div className="flex-1 text-left">
-                        <h3 className="text-base font-bold text-gray-900 mb-1">📄 Exportar a PDF</h3>
-                        <p className="text-sm text-gray-600 mb-2">
-                          Documento oficial con diseño corporativo ESAP. Incluye portada, roles, actividades y firmas.
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">✓ Diseño corporativo</span>
-                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">✓ Normativa 648/2017</span>
-                          <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">✓ Listo para firmar</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center">
-                        {exportando === 'pdf' ? (
-                          <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
-                        ) : (
-                          <Download className="w-5 h-5 text-gray-400 group-hover:text-[#2962FF]" />
-                        )}
+                      <div>
+                        <h2 className="text-xl font-black text-white">Exportar Plan Anual</h2>
+                        <p className="text-sm text-blue-100">Vigencia {plan.vigencia} • {plan.id}</p>
                       </div>
                     </div>
-                  </button>
-
-                  <div className="border-2 border-gray-200 rounded-xl hover:border-green-600 transition-all">
                     <button
-                      onClick={handleExportarExcel}
-                      disabled={!!exportando || columnasExcel.length === 0}
-                      className="w-full p-4 hover:bg-green-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed rounded-t-xl"
+                      onClick={() => setMostrarModalExportacion(false)}
+                      className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                      disabled={!!exportando}
+                    >
+                      <X className="w-5 h-5 text-white" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-6">
+                  <p className="text-sm text-gray-600 mb-6">
+                    Selecciona el formato de exportación. El documento incluirá toda la información del Plan Anual según normativa (Decreto 648/2017).
+                  </p>
+
+                  <div className="space-y-3">
+                    <button
+                      onClick={handleExportarPDF}
+                      disabled={!!exportando}
+                      className="w-full p-4 border-2 border-gray-200 rounded-xl hover:border-[#2962FF] hover:bg-blue-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 bg-green-100 group-hover:bg-green-200 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors">
-                          <FileSpreadsheet className="w-6 h-6 text-green-600" />
+                        <div className="w-12 h-12 bg-red-100 group-hover:bg-red-200 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors">
+                          <FileText className="w-6 h-6 text-red-600" />
                         </div>
                         <div className="flex-1 text-left">
-                          <h3 className="text-base font-bold text-gray-900 mb-1">📊 Exportar a Excel</h3>
+                          <h3 className="text-base font-bold text-gray-900 mb-1">📄 Exportar a PDF</h3>
                           <p className="text-sm text-gray-600 mb-2">
-                            Tabla estructurada con datos reales del plan. Selecciona las columnas a incluir.
+                            Documento oficial con diseño corporativo ESAP. Incluye portada, roles, actividades y firmas.
                           </p>
                           <div className="flex flex-wrap gap-2">
-                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">✓ Datos reales</span>
-                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">✓ {columnasExcel.length} columnas</span>
-                            <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">✓ Editable</span>
+                            <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">✅ Diseño corporativo</span>
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">✅ Normativa 648/2017</span>
+                            <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">✅ Listo para firmar</span>
                           </div>
                         </div>
                         <div className="flex items-center">
-                          {exportando === 'excel' ? (
-                            <Loader2 className="w-5 h-5 text-green-600 animate-spin" />
+                          {exportando === 'pdf' ? (
+                            <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
                           ) : (
-                            <Download className="w-5 h-5 text-gray-400 group-hover:text-green-600" />
+                            <Download className="w-5 h-5 text-gray-400 group-hover:text-[#2962FF]" />
                           )}
                         </div>
                       </div>
                     </button>
-                    {/* Selector de columnas */}
-                    <div className="border-t border-gray-200 p-3 bg-gray-50 rounded-b-xl" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Columnas del informe</span>
-                        <div className="flex gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setColumnasExcel(COLUMNAS_DISPONIBLES.map(c => c.key))}
-                            className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold hover:bg-blue-200 transition-colors"
-                          >Todos</button>
-                          <button
-                            type="button"
-                            onClick={() => setColumnasExcel([])}
-                            className="text-[10px] px-2 py-0.5 bg-gray-200 text-gray-600 rounded font-semibold hover:bg-gray-300 transition-colors"
-                          >Ninguno</button>
+
+                    <div className="border-2 border-gray-200 rounded-xl hover:border-green-600 transition-all">
+                      <button
+                        onClick={handleExportarExcel}
+                        disabled={!!exportando || columnasExcel.length === 0}
+                        className="w-full p-4 hover:bg-green-50 transition-all group disabled:opacity-50 disabled:cursor-not-allowed rounded-t-xl"
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className="w-12 h-12 bg-green-100 group-hover:bg-green-200 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors">
+                            <FileSpreadsheet className="w-6 h-6 text-green-600" />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <h3 className="text-base font-bold text-gray-900 mb-1">Exportar a Excel</h3>
+                            <p className="text-sm text-gray-600 mb-2">
+                              Tabla estructurada con datos reales del plan. Selecciona las columnas a incluir.
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">✅ Datos reales</span>
+                              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">{columnasExcel.length} columnas</span>
+                              <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-semibold">✏️ Editable</span>
+                            </div>
+                          </div>
+                          <div className="flex items-center">
+                            {exportando === 'excel' ? (
+                              <Loader2 className="w-5 h-5 text-green-600 animate-spin" />
+                            ) : (
+                              <Download className="w-5 h-5 text-gray-400 group-hover:text-green-600" />
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                      {/* Selector de columnas */}
+                      <div className="border-t border-gray-200 p-3 bg-gray-50 rounded-b-xl" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Columnas del informe</span>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setColumnasExcel(COLUMNAS_DISPONIBLES.map(c => c.key))}
+                              className="text-[10px] px-2 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold hover:bg-blue-200 transition-colors"
+                            >Todos</button>
+                            <button
+                              type="button"
+                              onClick={() => setColumnasExcel([])}
+                              className="text-[10px] px-2 py-0.5 bg-gray-200 text-gray-600 rounded font-semibold hover:bg-gray-300 transition-colors"
+                            >Ninguno</button>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-1">
+                          {COLUMNAS_DISPONIBLES.map(col => (
+                            <label key={col.key} className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-white cursor-pointer transition-colors">
+                              <input
+                                type="checkbox"
+                                checked={columnasExcel.includes(col.key)}
+                                onChange={() => {
+                                  setColumnasExcel(prev =>
+                                    prev.includes(col.key)
+                                      ? prev.filter(k => k !== col.key)
+                                      : [...prev, col.key]
+                                  );
+                                }}
+                                className="w-3.5 h-3.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                              />
+                              <span className="text-xs text-gray-700">{col.label}</span>
+                            </label>
+                          ))}
                         </div>
                       </div>
-                      <div className="grid grid-cols-3 gap-1">
-                        {COLUMNAS_DISPONIBLES.map(col => (
-                          <label key={col.key} className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-white cursor-pointer transition-colors">
-                            <input
-                              type="checkbox"
-                              checked={columnasExcel.includes(col.key)}
-                              onChange={() => {
-                                setColumnasExcel(prev =>
-                                  prev.includes(col.key)
-                                    ? prev.filter(k => k !== col.key)
-                                    : [...prev, col.key]
-                                );
-                              }}
-                              className="w-3.5 h-3.5 rounded border-gray-300 text-green-600 focus:ring-green-500"
-                            />
-                            <span className="text-xs text-gray-700">{col.label}</span>
-                          </label>
-                        ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <Check className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-blue-900 mb-1">Información incluida en ambos formatos:</p>
+                        <ul className="text-sm text-blue-800 space-y-1">
+                          <li>• 5 Roles del Decreto 648/2017</li>
+                          <li>• {plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0)} actividades programadas</li>
+                          <li>• Responsables asignados y fechas</li>
+                          <li>• Estado de cumplimiento y avances</li>
+                          <li>• Información del Jefe OCI: {plan.jefeOCI.nombre}</li>
+                        </ul>
                       </div>
                     </div>
                   </div>
                 </div>
+              </motion.div>
+            </motion.div>
+          )}
 
-                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <Check className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-blue-900 mb-1">Información incluida en ambos formatos:</p>
-                      <ul className="text-sm text-blue-800 space-y-1">
-                        <li>• 5 Roles del Decreto 648/2017</li>
-                        <li>• {plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0)} actividades programadas</li>
-                        <li>• Responsables asignados y fechas</li>
-                        <li>• Estado de cumplimiento y avances</li>
-                        <li>• Información del Jefe OCI: {plan.jefeOCI.nombre}</li>
-                      </ul>
-                    </div>
+          {/* Modal de Confirmación de Eliminación */}
+          {mostrarModalEliminar && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4 backdrop-blur-sm"
+              onClick={() => !eliminandoPlan && setMostrarModalEliminar(false)}
+            >
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 10 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative"
+              >
+                <div className="p-6 text-center pt-8">
+                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <AlertTriangle className="w-8 h-8 text-red-600" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">
+                    ¿Eliminar este Plan Anual?
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-6">
+                    Estás a punto de eliminar permanentemente el Plan Anual de Auditoría <strong>{plan.vigencia}</strong>.
+                    Esta acción no tiene marcha atrás y eliminará todas sus actividades configuradas.
+                  </p>
+
+                  <div className="flex gap-3 mt-8">
+                    <button
+                      onClick={() => setMostrarModalEliminar(false)}
+                      disabled={eliminandoPlan}
+                      className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors disabled:opacity-50"
+                    >
+                      Mantener plan
+                    </button>
+                    <button
+                      onClick={ejecutarEliminacionPlan}
+                      disabled={eliminandoPlan}
+                      className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {eliminandoPlan ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Eliminando...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="w-4 h-4" />
+                          Sí, eliminar
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
+          )}
 
-        {/* Modal de Confirmación de Eliminación */}
-        {mostrarModalEliminar && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4 backdrop-blur-sm"
-            onClick={() => !eliminandoPlan && setMostrarModalEliminar(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 10 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden relative"
-            >
-              <div className="p-6 text-center pt-8">
-                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <AlertTriangle className="w-8 h-8 text-red-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">
-                  ¿Eliminar este Plan Anual?
-                </h3>
-                <p className="text-sm text-gray-600 mb-6">
-                  Estás a punto de eliminar permanentemente el Plan Anual de Auditoría <strong>{plan.vigencia}</strong>. 
-                  Esta acción no tiene marcha atrás y eliminará todas sus actividades configuradas.
-                </p>
-                
-                <div className="flex gap-3 mt-8">
-                  <button
-                    onClick={() => setMostrarModalEliminar(false)}
-                    disabled={eliminandoPlan}
-                    className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors disabled:opacity-50"
-                  >
-                    Mantener plan
-                  </button>
-                  <button
-                    onClick={ejecutarEliminacionPlan}
-                    disabled={eliminandoPlan}
-                    className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {eliminandoPlan ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Eliminando...
-                      </>
-                    ) : (
-                      <>
-                        <Trash2 className="w-4 h-4" />
-                        Sí, eliminar
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-
-        {/* KPIs */}
-        <div className="grid grid-cols-5 gap-4 mb-6">
-          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
-            <p className="text-xs font-semibold text-blue-600 uppercase mb-1">Total</p>
-            <p className="text-2xl font-bold text-blue-900">{totalActividades}</p>
-            <p className="text-xs text-blue-600">Actividades</p>
-          </div>
-          <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4">
-            <p className="text-xs font-semibold text-purple-600 uppercase mb-1">Asignadas</p>
-            <p className="text-2xl font-bold text-purple-900">{actividadesAsignadas}</p>
-            <p className="text-xs text-purple-600">de {totalActividades}</p>
-          </div>
-          <div className="bg-orange-50 border-2 border-orange-200 rounded-lg p-4">
-            <p className="text-xs font-semibold text-orange-600 uppercase mb-1">En ejecución</p>
-            <p className="text-2xl font-bold text-orange-900">{actividadesEnEjecucion}</p>
-            <p className="text-xs text-orange-600">Actividades</p>
-          </div>
-          <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4">
-            <p className="text-xs font-semibold text-green-600 uppercase mb-1">Completadas</p>
-            <p className="text-2xl font-bold text-green-900">{actividadesCompletadas}</p>
-            <p className="text-xs text-green-600">Actividades</p>
-          </div>
-          <div className="bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-gray-300 rounded-lg p-4 flex items-center justify-center">
-            <SemaforoSeguimientoPAI 
-              porcentaje={avancePromedio}
-              variant="circular"
-              size="lg"
-              showIcon={false}
-            />
-          </div>
-        </div>
-
-        {/* Banner informativo - Sistema en uso */}
-        {plan.estado === 'VIGENTE' && (
-          <div className="mt-4 bg-green-50 border-2 border-green-200 rounded-lg p-3 flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm text-green-900">
-                <strong>Plan Vigente:</strong> Este es el plan actual en ejecución. 
-                {onCrearNuevo && <span className="ml-1">Puedes crear un nuevo plan para la próxima vigencia usando el botón "Crear Nuevo Plan" arriba.</span>}
-              </p>
+          {/* KPIs */}
+          <div className="grid grid-cols-5 gap-4 mb-6">
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+              <p className="text-xs font-semibold text-blue-600 uppercase mb-1">Total</p>
+              <p className="text-2xl font-bold text-blue-900">{totalActividades}</p>
+              <p className="text-xs text-blue-600">Actividades</p>
+            </div>
+            <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4">
+              <p className="text-xs font-semibold text-purple-600 uppercase mb-1">Asignadas</p>
+              <p className="text-2xl font-bold text-purple-900">{actividadesAsignadas}</p>
+              <p className="text-xs text-purple-600">de {totalActividades}</p>
+            </div>
+            <div className="bg-orange-50 border-2 border-orange-200 rounded-lg p-4">
+              <p className="text-xs font-semibold text-orange-600 uppercase mb-1">En ejecución</p>
+              <p className="text-2xl font-bold text-orange-900">{actividadesEnEjecucion}</p>
+              <p className="text-xs text-orange-600">Actividades</p>
+            </div>
+            <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4">
+              <p className="text-xs font-semibold text-green-600 uppercase mb-1">Completadas</p>
+              <p className="text-2xl font-bold text-green-900">{actividadesCompletadas}</p>
+              <p className="text-xs text-green-600">Actividades</p>
+            </div>
+            <div className="bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-gray-300 rounded-lg p-4 flex items-center justify-center">
+              <SemaforoSeguimientoPAI
+                porcentaje={avancePromedio}
+                variant="circular"
+                size="lg"
+                showIcon={false}
+              />
             </div>
           </div>
-        )}
 
-        {/* Tabs - Filtradas según permisos */}
-        <div className="flex gap-2 border-b border-gray-200">
-          {[
-            { id: 'gestion', label: 'Gestión y Seguimiento', icon: <TrendingUp className="w-4 h-4" />, visible: puedeVerGestion },
-            { id: 'aprobar', label: 'Aprobación', icon: <FileCheck className="w-4 h-4" />, visible: puedeVerAprobacion }
-          ].filter(tab => tab.visible).map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setSeccion(tab.id as any)}
-              className={`px-5 py-3 font-medium text-sm flex items-center gap-2 border-b-2 transition-all ${seccion === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-        </div>
+          {/* Banner informativo - Sistema en uso */}
+          {plan.estado === 'VIGENTE' && (
+            <div className="mt-4 bg-green-50 border-2 border-green-200 rounded-lg p-3 flex items-center gap-3">
+              <CheckCircle2 className="w-5 h-5 text-green-600 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm text-green-900">
+                  <strong>Plan Vigente:</strong> Este es el plan actual en ejecución.
+                  {onCrearNuevo && <span className="ml-1">Puedes crear un nuevo plan para la próxima vigencia usando el botón "Crear Nuevo Plan" arriba.</span>}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Tabs - Filtradas según permisos */}
+          <div className="flex gap-2 border-b border-gray-200">
+            {[
+              { id: 'gestion', label: 'Gestión y Seguimiento', icon: <TrendingUp className="w-4 h-4" />, visible: puedeVerGestion },
+              { id: 'aprobar', label: 'Aprobación', icon: <FileCheck className="w-4 h-4" />, visible: puedeVerAprobacion }
+            ].filter(tab => tab.visible).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setSeccion(tab.id as any)}
+                className={`px-5 py-3 font-medium text-sm flex items-center gap-2 border-b-2 transition-all ${seccion === tab.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-600 hover:text-gray-900'}`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>{/* cierre max-w-7xl */}
       </div>
 
       <div className="flex-1 overflow-y-auto bg-gray-50 px-8 py-6">
         <div className="max-w-7xl mx-auto">
           <AnimatePresence mode="wait">
-            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} cargandoAuditores={cargandoAuditores} onCambiarPlan={onCambiarPlan} onEditarPlan={onEditarPlan} />}
+            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} cargandoAuditores={cargandoAuditores} onEditarPlan={onEditarPlan} onVerDefinicionPlan={onVerDefinicionPlan} />}
             {seccion === 'aprobar' && <SeccionAprobacion key="aprobar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} puedeAprobarPlan={puedeAprobarPlan} puedeActivarPlan={puedeActivarPlan} puedeEditarPlan={puedeEditarPlan} auditores={auditores} />}
           </AnimatePresence>
         </div>
@@ -4646,32 +5439,32 @@ export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVo
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// SECCIÓN 1: GESTIÓN Y SEGUIMIENTO (UNIFICADA)
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+// SECCIN 1: GESTIN Y SEGUIMIENTO (UNIFICADA)
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 // Esta sección combina el resumen ejecutivo con el seguimiento detallado
 // permitiendo al usuario ver el estado general y hacer seguimiento sin cambiar de pestaña
 
-function SeccionGestionYSeguimiento({ 
-  plan, 
-  planesAnteriores = [], 
-  onActualizar, 
+function SeccionGestionYSeguimiento({
+  plan,
+  planesAnteriores = [],
+  onActualizar,
   onRefetchPlan,
   onAbrirRol4,
   auditores,
   cargandoAuditores = false,
-  onCambiarPlan,
-  onEditarPlan
-}: { 
-  plan: PlanAnual; 
-  planesAnteriores?: PlanAnual[]; 
-  onActualizar: (plan: PlanAnual) => void; 
+  onEditarPlan,
+  onVerDefinicionPlan
+}: {
+  plan: PlanAnual;
+  planesAnteriores?: PlanAnual[];
+  onActualizar: (plan: PlanAnual) => void;
   onRefetchPlan?: () => Promise<void>;
   onAbrirRol4?: () => void;
   auditores: Auditor[];
   cargandoAuditores?: boolean;
-  onCambiarPlan?: (planId: string) => void;
-  onEditarPlan?: (plan: PlanAnual) => void;
+  onEditarPlan?: (plan: PlanAnual) => void | Promise<void>;
+  onVerDefinicionPlan?: (plan: PlanAnual) => void | Promise<void>;
 }) {
 
   // Estados para el seguimiento
@@ -4697,9 +5490,9 @@ function SeccionGestionYSeguimiento({
   // Asignar responsables integrados
   const [asignandoId, setAsignandoId] = useState<string | number | null>(null);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TAREAS DE SEGUIMIENTO — Monitoreo (no modifica el plan)
-  // ═══════════════════════════════════════════════════════════════════════════
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+  // TAREAS DE SEGUIMIENTO  Monitoreo (no modifica el plan)
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   const [formTareaActividadId, setFormTareaActividadId] = useState<string | number | null>(null);
   const [nuevaTarea, setNuevaTarea] = useState({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false });
   const [guardandoTarea, setGuardandoTarea] = useState(false);
@@ -4762,9 +5555,11 @@ function SeccionGestionYSeguimiento({
         ...plan,
         roles: plan.roles.map(rol => {
           if (rol.numero === rolNumero) {
-            return { ...rol, actividades: rol.actividades.map(act => 
-              act.id === actividadId ? { ...act, tareasSeguimiento: tareasActualizadas } : act
-            )};
+            return {
+              ...rol, actividades: rol.actividades.map(act =>
+                act.id === actividadId ? { ...act, tareasSeguimiento: tareasActualizadas } : act
+              )
+            };
           }
           return rol;
         })
@@ -4803,10 +5598,10 @@ function SeccionGestionYSeguimiento({
         return;
       }
     }
-    const tareasActualizadas = tareasActuales.map(t => 
+    const tareasActualizadas = tareasActuales.map(t =>
       t.id === tareaId ? { ...t, completada: !t.completada, fechaCompletado: !t.completada ? new Date().toISOString() : undefined } : t
     );
-    
+
     // Auto-calcular porcentaje de avance de la actividad basado en sus tareas
     const totalTareas = tareasActualizadas.length;
     const tareasCompletadas = tareasActualizadas.filter(t => t.completada).length;
@@ -4817,14 +5612,16 @@ function SeccionGestionYSeguimiento({
       ...plan,
       roles: plan.roles.map(rol => {
         if (rol.numero === rolNumero) {
-          return { ...rol, actividades: rol.actividades.map(act => 
-            act.id === actividadId ? { 
-              ...act, 
-              tareasSeguimiento: tareasActualizadas,
-              porcentajeAvance: nuevoPorcentaje,
-              estado: nuevoEstado as any
-            } : act
-          )};
+          return {
+            ...rol, actividades: rol.actividades.map(act =>
+              act.id === actividadId ? {
+                ...act,
+                tareasSeguimiento: tareasActualizadas,
+                porcentajeAvance: nuevoPorcentaje,
+                estado: nuevoEstado as any
+              } : act
+            )
+          };
         }
         return rol;
       })
@@ -4834,7 +5631,7 @@ function SeccionGestionYSeguimiento({
     if (typeof actividadId === 'string' && actividadId.length >= 32) {
       const backendTareas = mapTareasParaBackend(tareasActualizadas);
       const estadoBackend = nuevoEstado === 'COMPLETADA' ? 'completada' : nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' : 'pendiente';
-      actividadesApi.update(String(actividadId), { 
+      actividadesApi.update(String(actividadId), {
         tareas_seguimiento: backendTareas,
         porcentaje_avance: nuevoPorcentaje,
         estado: estadoBackend as any
@@ -4850,16 +5647,18 @@ function SeccionGestionYSeguimiento({
     const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
     if (!actividadActual) return;
     const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
-    const tareasActualizadas = tareasActuales.map(t => 
+    const tareasActualizadas = tareasActuales.map(t =>
       t.id === tareaId ? { ...t, observaciones: comentario.trim(), evaluada: true, fechaEvaluacion: new Date().toISOString() } : t
     );
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
         if (rol.numero === rolNumero) {
-          return { ...rol, actividades: rol.actividades.map(act => 
-            act.id === actividadId ? { ...act, tareasSeguimiento: tareasActualizadas } : act
-          )};
+          return {
+            ...rol, actividades: rol.actividades.map(act =>
+              act.id === actividadId ? { ...act, tareasSeguimiento: tareasActualizadas } : act
+            )
+          };
         }
         return rol;
       })
@@ -4918,19 +5717,20 @@ function SeccionGestionYSeguimiento({
     toast.success(`${nuevosAdjuntos.length} adjunto(s) agregado(s) a la tarea`);
   };
 
-  
+
   const asignarResponsableInline = async (rolNumero: number, actividadId: number | string, auditor: Auditor) => {
     setAsignandoId(actividadId);
     const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
     const responsablesActuales = actividadActual?.responsables?.length ? actividadActual.responsables : (actividadActual?.responsable ? [actividadActual.responsable] : []);
-    
+
     if (responsablesActuales.some((r: Auditor) => r.id === auditor.id)) {
       toast.info('Ya asignado', { description: `${auditor.nombre} ya es responsable de esta actividad` });
       setAsignandoId(null);
       return;
     }
-    
-    const nuevosResponsables = [...responsablesActuales, auditor];
+
+    // Regla de negocio: solo un responsable principal por actividad
+    const nuevosResponsables = [auditor];
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -4941,10 +5741,10 @@ function SeccionGestionYSeguimiento({
       })
     };
     onActualizar(planActualizado as any);
-    
+
     try {
       const res = await actividadesApi.update(String(actividadId), { responsable: nuevosResponsables[0].nombre, responsables: nuevosResponsables });
-      if (res.success) { toast.success('Responsable agregado'); onRefetchPlan?.(); } else { toast.error('Error', { description: res.error }); }
+      if (res.success) { toast.success('Responsable actualizado'); onRefetchPlan?.(); } else { toast.error('Error', { description: res.error }); }
     } catch (e) { toast.error('Error al guardar en el servidor'); }
     finally { setAsignandoId(null); }
   };
@@ -4954,7 +5754,7 @@ function SeccionGestionYSeguimiento({
     const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
     const responsablesActuales = actividadActual?.responsables?.length ? actividadActual.responsables : (actividadActual?.responsable ? [actividadActual.responsable] : []);
     const nuevosResponsables = responsablesActuales.filter((r: Auditor) => r.id !== auditorId);
-    
+
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
@@ -4965,7 +5765,7 @@ function SeccionGestionYSeguimiento({
       })
     };
     onActualizar(planActualizado as any);
-    
+
     try {
       const res = await actividadesApi.update(String(actividadId), { responsable: nuevosResponsables[0]?.nombre || '', responsables: nuevosResponsables });
       if (res.success) { toast.success('Asignación removida'); onRefetchPlan?.(); } else { toast.error('Error', { description: res.error }); }
@@ -4973,7 +5773,7 @@ function SeccionGestionYSeguimiento({
     finally { setAsignandoId(null); }
   };
 
-  // ── AGREGAR ACTIVIDAD INLINE ─────────────────────────────────────────────
+  //  AGREGAR ACTIVIDAD INLINE 
   const agregarActividadInline = async (rolNumero: number) => {
     if (!nuevaActividad.nombre.trim()) {
       toast.error('El nombre de la actividad es obligatorio');
@@ -5015,7 +5815,7 @@ function SeccionGestionYSeguimiento({
     }
   };
 
-  // ── ENTRADAS DE SEGUIMIENTO POR CORTE ────────────────────────────────────
+  //  ENTRADAS DE SEGUIMIENTO POR CORTE 
   const [corteConFormAbierto, setCorteConFormAbierto] = useState<string | null>(null);
   const [formEntrada, setFormEntrada] = useState<{ texto: string; tipo: 'seguimiento' | 'hallazgo' | 'cierre' }>({ texto: '', tipo: 'seguimiento' });
   const [guardandoEntrada, setGuardandoEntrada] = useState(false);
@@ -5030,8 +5830,8 @@ function SeccionGestionYSeguimiento({
     actividadId: number | string;
     actividadNombre: string;
   } | null>(null);
-  
-  // ✅ NUEVO: Modal de edición de actividad (Decreto 648/2017)
+
+  // S& NUEVO: Modal de edición de actividad (Decreto 648/2017)
   const [modalEdicion, setModalEdicion] = useState<{
     visible: boolean;
     rolNumero: number;
@@ -5052,8 +5852,8 @@ function SeccionGestionYSeguimiento({
   });
   const [guardandoEdicion, setGuardandoEdicion] = useState(false);
   const [modalCortesConfig, setModalCortesConfig] = useState(false);
-  
-  // ✅ Modificado: roles colapsados por defecto (true)
+
+  // S& Modificado: roles colapsados por defecto (true)
   const [rolesColapsados, setRolesColapsados] = useState<Record<number, boolean>>(() => {
     const estado: Record<number, boolean> = {};
     if (plan?.roles) plan.roles.forEach(r => estado[r.numero] = true);
@@ -5067,37 +5867,38 @@ function SeccionGestionYSeguimiento({
     seguimiento: '',
     porcentaje: 0
   });
-  
+
   // Hook para sincronizar evidencias con backend
   const { guardar: guardarEvidencias } = useSaveEvidencias();
-  
+
   // Estado para indicar que se está guardando
   const [guardando, setGuardando] = useState(false);
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   // PERMISOS: Sistema flexible basado en permisos para Control Interno
-  // ═══════════════════════════════════════════════════════════════════════════
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   const { puedeRealizar, esSuperUsuario } = useControlInternoPermissions();
   const puedeEditarPlan = puedeRealizar('plan-anual', 'edit');
   const puedeSeguimiento = puedeRealizar('plan-anual', 'follow-up');
   const puedeEliminarPlan = puedeRealizar('plan-anual', 'delete');
   const puedeAprobarPlan = puedeRealizar('plan-anual', 'approve');
   const puedeAsignarActividades = puedeRealizar('plan-anual', 'assign');
+  const puedeVerPlan = puedeRealizar('plan-anual', 'view') || esSuperUsuario;
   // Permiso compuesto: editar O seguimiento para gestionar evidencias
   const puedeGestionarEvidencias = puedeEditarPlan || puedeSeguimiento;
 
-  // ✅ Usuario para visualización condicional
+  // S& Usuario para visualización condicional
   const [currentUser, setCurrentUser] = useState<any>(null);
   useEffect(() => {
     try {
-      const userDataStr = localStorage.getItem('esap_user_data');
-      if (userDataStr) setCurrentUser(JSON.parse(userDataStr));
-    } catch (e) {}
+      const userData = (window as any).__esap_auth_cache;
+      if (userData) setCurrentUser(userData);
+    } catch (e) { }
   }, []);
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   // NUEVO: Estado para cumplimiento de auditorías (Rol 4)
-  // ═══════════════════════════════════════════════════════════════════════════
+  // """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
   const [cumplimientoAuditorias, setCumplimientoAuditorias] = useState<{
     totalProgramadas: number;
     totalFinalizadas: number;
@@ -5148,7 +5949,7 @@ function SeccionGestionYSeguimiento({
     onRefetchPlan?.();
   };
 
-  // ✅ NUEVO: Función para toggle del colapso de un rol específico
+  // S& NUEVO: Función para toggle del colapso de un rol específico
   const toggleRolColapsado = (numeroRol: number) => {
     setRolesColapsados(prev => ({
       ...prev,
@@ -5156,7 +5957,7 @@ function SeccionGestionYSeguimiento({
     }));
   };
 
-  // ✅ NUEVO: Función para expandir/colapsar todos los roles
+  // S& NUEVO: Función para expandir/colapsar todos los roles
   const toggleTodosRoles = (colapsar: boolean) => {
     const nuevoEstado: Record<number, boolean> = {};
     plan.roles.forEach(rol => {
@@ -5190,12 +5991,12 @@ function SeccionGestionYSeguimiento({
       observaciones: contarObservaciones(actividad.observacionesCumplimiento),
       actividadCompleta: actividad
     });
-    
+
     const porcentajeCalculado = calcularPorcentajeAutomatico(actividad);
-    const controlAutomatico = actividad.frecuenciaPuntosControl 
+    const controlAutomatico = actividad.frecuenciaPuntosControl
       ? obtenerTextoPeriodicidad(actividad.frecuenciaPuntosControl)
       : actividad.control;
-    
+
     setFormulario({
       control: controlAutomatico,
       evaluacion: actividad.evaluacion,
@@ -5209,11 +6010,11 @@ function SeccionGestionYSeguimiento({
 
   // Función para desactivar una actividad (soft delete)
   const desactivarActividad = async (rolNumero: number, actividadId: number | string) => {
-    console.log('🚫 [desactivarActividad] Desactivando actividad:', { rolNumero, actividadId });
-    
+    console.log('xa [desactivarActividad] Desactivando actividad:', { rolNumero, actividadId });
+
     try {
       const res = await actividadesApi.delete(String(actividadId));
-      console.log('🚫 [desactivarActividad] Respuesta del backend:', res);
+      console.log('xa [desactivarActividad] Respuesta del backend:', res);
 
       if (res.success) {
         // Actualizar estado local - marcar como inactiva
@@ -5223,7 +6024,7 @@ function SeccionGestionYSeguimiento({
             if (rol.numero === rolNumero) {
               return {
                 ...rol,
-                actividades: rol.actividades.map(act => 
+                actividades: rol.actividades.map(act =>
                   act.id === actividadId ? { ...act, activo: false } : act
                 )
               };
@@ -5233,7 +6034,7 @@ function SeccionGestionYSeguimiento({
         };
         onActualizar(planActualizado);
         toast.success('Actividad desactivada', { description: 'La actividad ha sido marcada como inactiva' });
-        
+
         // Refrescar plan completo desde el backend
         onRefetchPlan?.();
       } else {
@@ -5247,12 +6048,12 @@ function SeccionGestionYSeguimiento({
 
   // Función para REACTIVAR una actividad
   const reactivarActividad = async (rolNumero: number, actividadId: number | string) => {
-    console.log('✅ [reactivarActividad] Reactivando actividad:', { rolNumero, actividadId });
-    
+    console.log('S& [reactivarActividad] Reactivando actividad:', { rolNumero, actividadId });
+
     try {
       // Llamar al endpoint de actualización para cambiar activo a true
       const res = await actividadesApi.update(String(actividadId), { activo: true } as any);
-      console.log('✅ [reactivarActividad] Respuesta del backend:', res);
+      console.log('S& [reactivarActividad] Respuesta del backend:', res);
 
       if (res.success) {
         // Actualizar estado local - marcar como activa
@@ -5262,7 +6063,7 @@ function SeccionGestionYSeguimiento({
             if (rol.numero === rolNumero) {
               return {
                 ...rol,
-                actividades: rol.actividades.map(act => 
+                actividades: rol.actividades.map(act =>
                   act.id === actividadId ? { ...act, activo: true } : act
                 )
               };
@@ -5272,7 +6073,7 @@ function SeccionGestionYSeguimiento({
         };
         onActualizar(planActualizado);
         toast.success('Actividad reactivada', { description: 'La actividad está activa nuevamente' });
-        
+
         // Refrescar plan completo desde el backend
         onRefetchPlan?.();
       } else {
@@ -5284,7 +6085,7 @@ function SeccionGestionYSeguimiento({
     }
   };
 
-  // ✅ NUEVO: Abrir edición de actividad inline
+  // S& NUEVO: Abrir edición de actividad inline
   const abrirModalEdicion = (actividad: Actividad, rolNumero: number) => {
     setFormularioEdicion({
       nombre: actividad.nombre || '',
@@ -5304,10 +6105,10 @@ function SeccionGestionYSeguimiento({
     setModoCardExpandida('edicion');
   };
 
-  // ✅ NUEVO: Guardar edición de actividad
+  // S& NUEVO: Guardar edición de actividad
   const guardarEdicionActividad = async () => {
     if (!modalEdicion) return;
-    
+
     setGuardandoEdicion(true);
     try {
       const payload = {
@@ -5322,10 +6123,10 @@ function SeccionGestionYSeguimiento({
         puntos_control: formularioEdicion.puntosControl,
         frecuencia_puntos_control: formularioEdicion.frecuenciaPuntosControl
       };
-      
-      console.log('✏️ [guardarEdicionActividad] Guardando:', payload);
+
+      console.log('S️ [guardarEdicionActividad] Guardando:', payload);
       const res = await actividadesApi.update(String(modalEdicion.actividad.id), payload as any);
-      
+
       if (res.success) {
         // Actualizar estado local
         const planActualizado = {
@@ -5334,21 +6135,21 @@ function SeccionGestionYSeguimiento({
             if (rol.numero === modalEdicion.rolNumero) {
               return {
                 ...rol,
-                actividades: rol.actividades.map(act => 
-                  act.id === modalEdicion.actividad.id 
-                    ? { 
-                        ...act, 
-                        nombre: formularioEdicion.nombre,
-                        descripcion: formularioEdicion.descripcion,
-                        control: formularioEdicion.control,
-                        evaluacion: formularioEdicion.evaluacion,
-                        seguimiento: formularioEdicion.seguimiento,
-                        fechaInicio: formularioEdicion.fechaInicio,
-                        fechaFin: formularioEdicion.fechaFin,
-                        tareasSeguimiento: formularioEdicion.tareas,
-                        puntosControl: formularioEdicion.puntosControl,
-                        frecuenciaPuntosControl: formularioEdicion.frecuenciaPuntosControl
-                      } 
+                actividades: rol.actividades.map(act =>
+                  act.id === modalEdicion.actividad.id
+                    ? {
+                      ...act,
+                      nombre: formularioEdicion.nombre,
+                      descripcion: formularioEdicion.descripcion,
+                      control: formularioEdicion.control,
+                      evaluacion: formularioEdicion.evaluacion,
+                      seguimiento: formularioEdicion.seguimiento,
+                      fechaInicio: formularioEdicion.fechaInicio,
+                      fechaFin: formularioEdicion.fechaFin,
+                      tareasSeguimiento: formularioEdicion.tareas,
+                      puntosControl: formularioEdicion.puntosControl,
+                      frecuenciaPuntosControl: formularioEdicion.frecuenciaPuntosControl
+                    }
                     : act
                 )
               };
@@ -5374,9 +6175,9 @@ function SeccionGestionYSeguimiento({
 
   // Handler para confirmar acción desde modal
   const confirmarAccionActividad = () => {
-    console.log('✅ confirmarAccionActividad llamado, modalConfirmacion:', modalConfirmacion);
+    console.log('S& confirmarAccionActividad llamado, modalConfirmacion:', modalConfirmacion);
     if (!modalConfirmacion) return;
-    
+
     if (modalConfirmacion.tipo === 'desactivar') {
       desactivarActividad(modalConfirmacion.rolNumero, modalConfirmacion.actividadId);
     } else {
@@ -5406,10 +6207,10 @@ function SeccionGestionYSeguimiento({
             ...rol,
             actividades: rol.actividades.map(act => {
               if (act.id === actividadId) {
-                const obsActuales = Array.isArray(act.observacionesCumplimiento) 
-                  ? act.observacionesCumplimiento 
+                const obsActuales = Array.isArray(act.observacionesCumplimiento)
+                  ? act.observacionesCumplimiento
                   : [];
-                return { 
+                return {
                   ...act,
                   observacionesCumplimiento: [
                     ...obsActuales,
@@ -5439,10 +6240,10 @@ function SeccionGestionYSeguimiento({
             ...rol,
             actividades: rol.actividades.map(act => {
               if (act.id === actividadId) {
-                const obsActuales = Array.isArray(act.observacionesCumplimiento) 
-                  ? act.observacionesCumplimiento 
+                const obsActuales = Array.isArray(act.observacionesCumplimiento)
+                  ? act.observacionesCumplimiento
                   : [];
-                return { 
+                return {
                   ...act,
                   observacionesCumplimiento: obsActuales.filter((obs: ObservacionCumplimiento) => obs.id !== observacionId)
                 };
@@ -5470,15 +6271,15 @@ function SeccionGestionYSeguimiento({
               if (act.id === actividadId) {
                 const apoyoExiste = (act.responsablesApoyo || []).some(r => r.id === auditor.id);
                 const esPrincipal = act.responsable?.id === auditor.id;
-                
+
                 if (apoyoExiste || esPrincipal) {
-                  toast.error('Responsable ya asignado', { 
+                  toast.error('Responsable ya asignado', {
                     description: esPrincipal ? 'Ya es el responsable principal' : 'Ya está en el equipo de apoyo'
                   });
                   return act;
                 }
-                
-                return { 
+
+                return {
                   ...act,
                   responsablesApoyo: [
                     ...(act.responsablesApoyo || []),
@@ -5508,7 +6309,7 @@ function SeccionGestionYSeguimiento({
             ...rol,
             actividades: rol.actividades.map(act => {
               if (act.id === actividadId) {
-                return { 
+                return {
                   ...act,
                   responsablesApoyo: (act.responsablesApoyo || []).filter(r => r.id !== auditorId)
                 };
@@ -5554,12 +6355,12 @@ function SeccionGestionYSeguimiento({
 
       const nuevoEstado: EstadoActividad =
         nuevoPct === 100 ? 'COMPLETADA' :
-        nuevoPct > 0 ? 'EN_EJECUCION' :
-        'PENDIENTE';
+          nuevoPct > 0 ? 'EN_EJECUCION' :
+            'PENDIENTE';
       const estadoBackend =
         nuevoEstado === 'COMPLETADA' ? 'completada' :
-        nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' :
-        'pendiente';
+          nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' :
+            'pendiente';
 
       const response = await actividadesApi.update(String(actividadId), {
         entradas_seguimiento: entradasActualizadas,
@@ -5606,12 +6407,12 @@ function SeccionGestionYSeguimiento({
       ?.actividades.find(a => a.id === actividadId);
 
     if (
-      formulario.porcentaje === 100 && 
-      actividadActual?.requiereAutorizacionJefeOCI && 
+      formulario.porcentaje === 100 &&
+      actividadActual?.requiereAutorizacionJefeOCI &&
       !actividadActual?.autorizadaPorJefeOCI
     ) {
-      toast.error('Autorización requerida', { 
-        description: 'Esta actividad requiere autorización del Jefe OCI antes de completarse al 100%' 
+      toast.error('Autorización requerida', {
+        description: 'Esta actividad requiere autorización del Jefe OCI antes de completarse al 100%'
       });
       return;
     }
@@ -5621,19 +6422,19 @@ function SeccionGestionYSeguimiento({
       ? calcularPorcentajeCortes(actividadActual)
       : actividadActual?.porcentajeAvance ?? 0;
 
-    const nuevoEstado: EstadoActividad = 
+    const nuevoEstado: EstadoActividad =
       pctFinal === 100 ? 'COMPLETADA' :
-      pctFinal > 0 ? 'EN_EJECUCION' :
-      'PENDIENTE';
+        pctFinal > 0 ? 'EN_EJECUCION' :
+          'PENDIENTE';
 
     // Mapear estado del frontend al formato del backend
-    const estadoBackend = 
+    const estadoBackend =
       nuevoEstado === 'COMPLETADA' ? 'completada' :
-      nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' :
-      'pendiente';
+        nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' :
+          'pendiente';
 
     setGuardando(true);
-    
+
     try {
       // Preparar payload - Backend espera estos campos exactos
       const payload = {
@@ -5644,18 +6445,18 @@ function SeccionGestionYSeguimiento({
         seguimiento: formulario.seguimiento,
         ...(actividadActual?.entradasSeguimiento ? { entradas_seguimiento: actividadActual.entradasSeguimiento } : {})
       };
-      
+
       console.log('[GUARDAR] Payload:', payload);
-      
+
       const response = await actividadesApi.update(String(actividadId), payload);
-      
+
       console.log('[GUARDAR] Respuesta backend:', response);
-      
+
       if (!response.success) {
         const errorMsg = response.error || 'No se pudo actualizar la actividad';
-        toast.error('No se puede completar', { 
+        toast.error('No se puede completar', {
           description: errorMsg,
-          duration: 6000 
+          duration: 6000
         });
         setGuardando(false);
         return;
@@ -5663,9 +6464,9 @@ function SeccionGestionYSeguimiento({
     } catch (error: any) {
       console.error('[GUARDAR] Error al guardar en backend:', error);
       const errorMsg = error?.response?.data?.message || error?.message || 'Error al guardar el seguimiento';
-      toast.error('Error al guardar', { 
+      toast.error('Error al guardar', {
         description: errorMsg,
-        duration: 6000 
+        duration: 6000
       });
       setGuardando(false);
       return;
@@ -5679,7 +6480,7 @@ function SeccionGestionYSeguimiento({
             ...rol,
             actividades: rol.actividades.map(act => {
               if (act.id === actividadId) {
-                return { 
+                return {
                   ...act,
                   control: formulario.control,
                   evaluacion: formulario.evaluacion,
@@ -5695,7 +6496,7 @@ function SeccionGestionYSeguimiento({
         return rol;
       })
     };
-    
+
     onActualizar(planActualizado);
     setGuardando(false);
     toast.success('Seguimiento registrado', { description: 'Información actualizada correctamente' });
@@ -5739,10 +6540,10 @@ function SeccionGestionYSeguimiento({
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      {/* ══════════════════════════════════════════════════════════════════════
+      {/* """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
           PARTE 1: CONTEXTO DEL PLAN
-          ══════════════════════════════════════════════════════════════════════ */}
-      
+          """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""" */}
+
 
       {/* Información general - RESPONSIVE GRID */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-6 shadow-sm">
@@ -5779,10 +6580,10 @@ function SeccionGestionYSeguimiento({
           <div>
             <p className="text-sm text-gray-600 mb-1">Fecha de creación</p>
             <p className="font-semibold text-gray-900">
-              {new Date(plan.fechaCreacion).toLocaleDateString('es-CO', { 
-                day: '2-digit', 
-                month: 'long', 
-                year: 'numeric' 
+              {new Date(plan.fechaCreacion).toLocaleDateString('es-CO', {
+                day: '2-digit',
+                month: 'long',
+                year: 'numeric'
               })}
             </p>
           </div>
@@ -5799,11 +6600,11 @@ function SeccionGestionYSeguimiento({
             </h3>
           </div>
           <div className="flex items-center gap-3">
-             <span className="text-[10px] font-mono text-blue-400 opacity-70">ID: {plan.id}</span>
-             <svg className="w-4 h-4 text-blue-600 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+            <span className="text-[10px] font-mono text-blue-400 opacity-70">ID: {plan.id}</span>
+            <svg className="w-4 h-4 text-blue-600 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
           </div>
         </summary>
-        
+
         <div className="px-4 pb-4 pt-2 border-t border-blue-100 bg-white/40">
           <p className="text-xs text-blue-800 mb-3 leading-relaxed">
             {plan.estado === 'BORRADOR'
@@ -5812,15 +6613,15 @@ function SeccionGestionYSeguimiento({
           </p>
           <div className="flex flex-wrap gap-3">
             <div className="bg-white border border-blue-200 shadow-sm rounded-md p-2 inline-flex items-start gap-1.5 flex-1 min-w-[250px]">
-              <span className="text-sm leading-none">📌</span>
+              <span className="text-sm leading-none">✓</span>
               <p className="text-[10px] text-blue-800 leading-tight">
                 <strong>Cumplimiento Normativo:</strong> Estructura obligatoria del Decreto 648 de 2017 empleando 5 roles estratégicos fijos.
               </p>
             </div>
             <div className="bg-white border border-blue-200 shadow-sm rounded-md p-2 inline-flex items-start gap-1.5 flex-1 min-w-[250px]">
-              <span className="text-sm leading-none">⚙️</span>
+              <span className="text-sm leading-none">ℹ️</span>
               <p className="text-[10px] text-blue-800 leading-tight">
-                 <strong>Sistema Automático:</strong> El porcentaje de avance se calcula automáticamente conforme a las evidencias y cortes.
+                <strong>Sistema Automático:</strong> El porcentaje de avance se calcula automáticamente conforme a las evidencias y cortes.
               </p>
             </div>
           </div>
@@ -5855,55 +6656,62 @@ function SeccionGestionYSeguimiento({
               </button>
             </div>
           </div>
-          
-          {!historialColapsado && (
-          <div className="space-y-3">
-            {planesAnteriores.map((planAnterior) => (
-              <div 
-                key={planAnterior.id}
-                className="flex items-center justify-between p-4 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-gray-500 to-gray-600 flex items-center justify-center">
-                    <Shield className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-gray-900">
-                      {(planAnterior as any).nombrePlan || `Plan Anual de Auditoría ${planAnterior.vigencia}`}
-                    </h4>
-                    <p className="text-sm text-gray-600">
-                      {planAnterior.id} • Jefe OCI: {planAnterior.jefeOCI.nombre}
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-3">
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                    planAnterior.estado === 'BORRADOR' || planAnterior.estado === 'EN_REVISION'
-                      ? 'bg-amber-100 text-amber-700'
-                      : 'bg-green-100 text-green-700'
-                  }`}>
-                    {planAnterior.estado}
-                  </span>
-                  <div className="text-right text-xs text-gray-500">
-                    <p>Aprobado: {planAnterior.fechaAprobacion || 'N/A'}</p>
-                    <p>{obtenerTotalActividadesPlanAnterior(planAnterior)} actividades</p>
-                  </div>
-                  
 
+          {!historialColapsado && (
+            <div className="space-y-3">
+              {planesAnteriores.map((planAnterior) => (
+                <div
+                  key={planAnterior.id}
+                  className="flex items-center justify-between p-4 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-gray-500 to-gray-600 flex items-center justify-center">
+                      <Shield className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-900">
+                        {(planAnterior as any).nombrePlan || `Plan Anual de Auditoría ${planAnterior.vigencia}`}
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        {planAnterior.id} • Jefe OCI: {planAnterior.jefeOCI.nombre}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${planAnterior.estado === 'BORRADOR' || planAnterior.estado === 'EN_REVISION'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-green-100 text-green-700'
+                      }`}>
+                      {planAnterior.estado}
+                    </span>
+                    <div className="text-right text-xs text-gray-500">
+                      <p>Aprobado: {planAnterior.fechaAprobacion || 'N/A'}</p>
+                      <p>{obtenerTotalActividadesPlanAnterior(planAnterior)} actividades</p>
+                    </div>
+
+                    {planAnterior.estado === 'BORRADOR' && onEditarPlan && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onEditarPlan(planAnterior); }}
+                        className="ml-2 p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors flex items-center justify-center group"
+                        title="Editar plan en formato de creación"
+                      >
+                        <Edit3 className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
           )}
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════════
-          GESTIÓN Y SEGUIMIENTO POR ROL
+      {/* """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+          GESTIN Y SEGUIMIENTO POR ROL
           Vista unificada: estadísticas + seguimiento detallado
-          ══════════════════════════════════════════════════════════════════════ */}
-      
+          """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""" */}
+
       {plan.estado === 'BORRADOR' || plan.estado === 'EN_REVISION' ? (
         <div className="bg-amber-50 border-2 border-amber-200 border-dashed rounded-xl p-8 text-center mt-6">
           <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -5913,13 +6721,13 @@ function SeccionGestionYSeguimiento({
           </div>
           <h3 className="text-xl font-bold text-amber-900 mb-2">Módulo de Seguimiento Inactivo</h3>
           <p className="text-amber-800 max-w-2xl mx-auto">
-            Esta sección es exclusiva para realizar el seguimiento de las actividades de auditoría. 
+            Esta sección es exclusiva para realizar el seguimiento de las actividades de auditoría.
             Actualmente el plan se encuentra en estado <strong>{plan.estado}</strong>. Para configurar los roles y actividades, utiliza el botón de edición (el lápiz azul) en el historial de arriba.
           </p>
         </div>
       ) : (
         <>
-          {/* ✅ NUEVO: Botones de control global reubicados en 1 solo botón para ahorrar espacio */}
+          {/* S& NUEVO: Botones de control global reubicados en 1 solo botón para ahorrar espacio */}
           {planesAnteriores.length === 0 && (
             <div className="flex justify-end mb-2">
               {renderBotonToggleRoles()}
@@ -5928,825 +6736,836 @@ function SeccionGestionYSeguimiento({
 
           {/* Lista de roles y actividades con seguimiento */}
           {[...plan.roles].sort((a, b) => a.numero - b.numero).map((rol) => {
-        // Solo contar actividades activas (activo !== false) para estadísticas
-        const actividadesActivas = rol.actividades.filter(a => a.activo !== false);
+            // Solo contar actividades activas (activo !== false) para estadísticas
+            const actividadesActivas = rol.actividades.filter(a => a.activo !== false);
 
-        // ✅ DEFINIR SI EL USUARIO PUEDE VER TODO EL PLAN
-        const liderazgoVerTodos = puedeAprobarPlan || esSuperUsuario || puedeEditarPlan || puedeAsignarActividades;
+            // S& DEFINIR SI EL USUARIO PUEDE VER TODO EL PLAN
+            const liderazgoVerTodos = puedeAprobarPlan || esSuperUsuario || puedeEditarPlan || puedeAsignarActividades;
 
-        // ✅ FILTRAR ACTIVIDADES PARA QUE EL AUDITOR SOLO VEA LAS PROPIAS
-        const actividadesVisibles = actividadesActivas.filter(actividad => {
-          if (liderazgoVerTodos) return true; // Líderes o planificadores ven todo
-          
-          // Leer datos del usuario - usar fallback si currentUser no tiene campos de identidad
-          const hasIdentity = currentUser?.nombre || currentUser?.email || currentUser?.nombres;
-          const user = hasIdentity ? currentUser : (() => {
-            try {
-              const raw = localStorage.getItem('esap_user_data') || localStorage.getItem('esap-sesion-activa');
-              if (!raw) return currentUser; // al menos devolver lo que tenemos
-              const d = JSON.parse(raw);
-              const u = d?.user || d?.usuario || d;
-              const result = {
-                ...(currentUser || {}),
-                ...u,
-                nombre: u?.person?.first_name ? `${u.person.first_name} ${u.person.last_name || ''}`.trim() : u?.fullName || u?.name || u?.username || u?.nombre || '',
-                email: u?.person?.email || u?.email || '',
-                idPerson: u?.person?.id || u?.idPerson || currentUser?.idPerson,
+            // S& FILTRAR ACTIVIDADES PARA QUE EL AUDITOR SOLO VEA LAS PROPIAS
+            const actividadesVisibles = actividadesActivas.filter(actividad => {
+              if (liderazgoVerTodos) return true; // Líderes o planificadores ven todo
+
+              // Leer datos del usuario - usar fallback si currentUser no tiene campos de identidad
+              const hasIdentity = currentUser?.nombre || currentUser?.email || currentUser?.nombres;
+              const user = hasIdentity ? currentUser : (() => {
+                try {
+                  const u = (window as any).__esap_auth_cache;
+                  if (!u) return currentUser;
+                  return {
+                    ...(currentUser || {}),
+                    ...u,
+                    nombre: u?.person?.first_name ? `${u.person.first_name} ${u.person.last_name || ''}`.trim() : u?.fullName || u?.name || u?.username || u?.nombre || '',
+                    email: u?.person?.email || u?.email || '',
+                    idPerson: u?.person?.id || u?.idPerson || currentUser?.idPerson,
+                  };
+                } catch (_e) { return currentUser; }
+              })();
+              if (!user) return false;
+
+              const currentName = user.nombre || user.nombres || user.name || '';
+              const currentEmail = user.email || user.correo || '';
+              // Recopilar todos los posibles IDs del usuario actual
+              const possibleIds = [
+                user.id, user.idPerson, user.idPersona,
+                user.documento, user.sub, user.userId
+              ].filter(Boolean).map(String);
+
+              // Función helper para comparar identidad (acepta objeto O string)
+              const matchesUser = (r: any) => {
+                if (!r) return false;
+                // Si r es un string directo (nombre), comparar por palabras
+                if (typeof r === 'string') {
+                  if (!currentName) return false;
+                  const rWords = r.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+                  const cWords = currentName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+                  const shorterWords = cWords.length <= rWords.length ? cWords : rWords;
+                  const longerName = cWords.length <= rWords.length ? r.toLowerCase() : currentName.toLowerCase();
+                  return shorterWords.length > 0 && shorterWords.every((w: string) => longerName.includes(w));
+                }
+                // Comparar por ID
+                if (r.id && possibleIds.includes(String(r.id))) return true;
+                // Comparar por email
+                if (r.email && currentEmail && r.email.toLowerCase() === currentEmail.toLowerCase()) return true;
+                // Comparar por nombre (basado en palabras)
+                const rName = r.nombre || r.name || r.fullName || '';
+                if (rName && currentName) {
+                  const rWords = rName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+                  const cWords = currentName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
+                  const shorterWords = cWords.length <= rWords.length ? cWords : rWords;
+                  const longerName = cWords.length <= rWords.length ? rName.toLowerCase() : currentName.toLowerCase();
+                  if (shorterWords.length > 0 && shorterWords.every((w: string) => longerName.includes(w))) return true;
+                }
+                return false;
               };
-              return result;
-            } catch { return currentUser; }
-          })();
-          if (!user) return false;
-          
-          const currentName = user.nombre || user.nombres || user.name || '';
-          const currentEmail = user.email || user.correo || '';
-          // Recopilar todos los posibles IDs del usuario actual
-          const possibleIds = [
-            user.id, user.idPerson, user.idPersona, 
-            user.documento, user.sub, user.userId
-          ].filter(Boolean).map(String);
 
-          // Función helper para comparar identidad (acepta objeto O string)
-          const matchesUser = (r: any) => {
-            if (!r) return false;
-            // Si r es un string directo (nombre), comparar por palabras
-            if (typeof r === 'string') {
-              if (!currentName) return false;
-              const rWords = r.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              const cWords = currentName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              const shorterWords = cWords.length <= rWords.length ? cWords : rWords;
-              const longerName = cWords.length <= rWords.length ? r.toLowerCase() : currentName.toLowerCase();
-              return shorterWords.length > 0 && shorterWords.every((w: string) => longerName.includes(w));
+              const isMainResp = matchesUser(actividad.responsable);
+              const isRespAdicional = actividad.responsables?.some(matchesUser);
+              const isApoyo = actividad.responsablesApoyo?.some(matchesUser);
+              // También verificar si el usuario es responsable del ROL (hereda visibilidad)
+              const isRolResp = (rol as any).responsables?.some(matchesUser);
+
+              return isMainResp || isRespAdicional || isApoyo || isRolResp;
+            });
+
+            // Diagnóstico de matching (solo primer rol, primera actividad)
+            if (rol.numero === 1 && !liderazgoVerTodos && actividadesActivas.length > 0) {
+              const a0 = actividadesActivas[0];
+              const r = a0.responsable;
+              console.log('x [MATCH-DEBUG] responsable.id=' + (r?.id || 'null') +
+                ' | responsable.nombre=' + (r?.nombre || r?.name || (typeof r === 'string' ? r : 'null')) +
+                ' | responsable.email=' + (r?.email || 'null') +
+                ' | responsables[0]=' + JSON.stringify(a0.responsables?.[0] || null) +
+                ' | rolResp=' + JSON.stringify((rol as any).responsables?.[0] || null) +
+                ' | currentUser.nombre=' + (currentUser?.nombre || 'null') +
+                ' | currentUser.email=' + (currentUser?.email || 'null') +
+                ' | currentUser.ids=' + JSON.stringify([currentUser?.id, currentUser?.idPerson, currentUser?.sub].filter(Boolean)) +
+                ' | visibles=' + actividadesVisibles.length + '/' + actividadesActivas.length);
             }
-            // Comparar por ID
-            if (r.id && possibleIds.includes(String(r.id))) return true;
-            // Comparar por email
-            if (r.email && currentEmail && r.email.toLowerCase() === currentEmail.toLowerCase()) return true;
-            // Comparar por nombre (basado en palabras)
-            const rName = r.nombre || r.name || r.fullName || '';
-            if (rName && currentName) {
-              const rWords = rName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              const cWords = currentName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              const shorterWords = cWords.length <= rWords.length ? cWords : rWords;
-              const longerName = cWords.length <= rWords.length ? rName.toLowerCase() : currentName.toLowerCase();
-              if (shorterWords.length > 0 && shorterWords.every((w: string) => longerName.includes(w))) return true;
+
+            // Si el usuario no tiene capacidad de gestión/análisis y no tiene actividades en este rol, lo ocultamos
+            if (!liderazgoVerTodos && actividadesVisibles.length === 0) {
+              return null;
             }
-            return false;
-          };
 
-          const isMainResp = matchesUser(actividad.responsable);
-          const isRespAdicional = actividad.responsables?.some(matchesUser);
-          const isApoyo = actividad.responsablesApoyo?.some(matchesUser);
-          // También verificar si el usuario es responsable del ROL (hereda visibilidad)
-          const isRolResp = (rol as any).responsables?.some(matchesUser);
+            const totalActividades = actividadesVisibles.length;
+            const asignadas = actividadesVisibles.filter(a => a.responsable !== null).length;
+            const completadas = actividadesVisibles.filter(a => a.estado === 'COMPLETADA').length;
+            const enProgreso = actividadesVisibles.filter(a => a.estado === 'EN_EJECUCION').length;
+            const avance = totalActividades > 0
+              ? Math.round(actividadesVisibles.reduce((s, a) => s + (a.porcentajeAvance || 0), 0) / totalActividades)
+              : 0;
+            const estaColapsado = rolesColapsados[rol.numero] || false;
+            const isExpanded = rolExpandido === rol.numero;
 
-          return isMainResp || isRespAdicional || isApoyo || isRolResp;
-        });
+            return (
+              <div key={rol.numero} className="bg-white rounded-xl border-2 border-gray-200 p-6">
+                {/* Header del rol - Clickeable para expandir/colapsar */}
+                <div
+                  className="flex items-center justify-between p-6 cursor-pointer hover:bg-gray-50 transition-colors"
+                  onClick={() => setRolExpandido(isExpanded ? null : rol.numero)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ backgroundColor: rol.color + '20' }}>
+                      {rol.icono}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900">Rol {rol.numero}: {rol.nombre}</h3>
+                      <p className="text-sm text-gray-600">
+                        {rol.actividades.length} actividades{(() => {
+                          const totalTareas = rol.actividades.reduce((sum: number, a: any) => sum + (a.tareasSeguimiento?.length || 0), 0);
+                          return totalTareas > 0 ? ` • ${totalTareas} tareas` : '';
+                        })()} • {asignadas} asignadas • {rol.actividades.length - asignadas} pendientes
+                      </p>
+                    </div>
+                  </div>
 
-        // Diagnóstico de matching (solo primer rol, primera actividad)
-        if (rol.numero === 1 && !liderazgoVerTodos && actividadesActivas.length > 0) {
-          const a0 = actividadesActivas[0];
-          const r = a0.responsable;
-          console.log('🔍 [MATCH-DEBUG] responsable.id=' + (r?.id || 'null') + 
-            ' | responsable.nombre=' + (r?.nombre || r?.name || (typeof r === 'string' ? r : 'null')) +
-            ' | responsable.email=' + (r?.email || 'null') +
-            ' | responsables[0]=' + JSON.stringify(a0.responsables?.[0] || null) +
-            ' | rolResp=' + JSON.stringify((rol as any).responsables?.[0] || null) +
-            ' | currentUser.nombre=' + (currentUser?.nombre || 'null') +
-            ' | currentUser.email=' + (currentUser?.email || 'null') +
-            ' | currentUser.ids=' + JSON.stringify([currentUser?.id, currentUser?.idPerson, currentUser?.sub].filter(Boolean)) +
-            ' | visibles=' + actividadesVisibles.length + '/' + actividadesActivas.length);
-        }
-
-        // Si el usuario no tiene capacidad de gestión/análisis y no tiene actividades en este rol, lo ocultamos
-        if (!liderazgoVerTodos && actividadesVisibles.length === 0) {
-           return null;
-        }
-
-        const totalActividades = actividadesVisibles.length;
-        const asignadas = actividadesVisibles.filter(a => a.responsable !== null).length;
-        const completadas = actividadesVisibles.filter(a => a.estado === 'COMPLETADA').length;
-        const enProgreso = actividadesVisibles.filter(a => a.estado === 'EN_EJECUCION').length;
-        const avance = totalActividades > 0 
-          ? Math.round(actividadesVisibles.reduce((s, a) => s + (a.porcentajeAvance || 0), 0) / totalActividades) 
-          : 0;
-        const estaColapsado = rolesColapsados[rol.numero] || false;
-        const isExpanded = rolExpandido === rol.numero;
-        
-        return (
-          <div key={rol.numero} className="bg-white rounded-xl border-2 border-gray-200 p-6">
-            {/* Header del rol - Clickeable para expandir/colapsar */}
-            <div 
-              className="flex items-center justify-between p-6 cursor-pointer hover:bg-gray-50 transition-colors"
-              onClick={() => setRolExpandido(isExpanded ? null : rol.numero)}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style={{ backgroundColor: rol.color + '20' }}>
-                  {rol.icono}
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900">Rol {rol.numero}: {rol.nombre}</h3>
-                  <p className="text-sm text-gray-600">
-                    {rol.actividades.length} actividades{(() => {
-                      const totalTareas = rol.actividades.reduce((sum: number, a: any) => sum + (a.tareasSeguimiento?.length || 0), 0);
-                      return totalTareas > 0 ? ` • ${totalTareas} tareas` : '';
-                    })()} • {asignadas} asignadas • {rol.actividades.length - asignadas} pendientes
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                {/* 👤 Responsable(s) del rol */}
-                {(() => {
-                  const responsablesRol = (rol as any).responsables?.length > 0
-                    ? (rol as any).responsables
-                    : null;
-                  if (responsablesRol) {
-                    return (
-                      <div className="hidden sm:flex items-center gap-1.5">
-                        {responsablesRol.slice(0, 2).map((r: any, i: number) => (
-                          <span key={r.id || i} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium border border-blue-200">
+                  <div className="flex items-center gap-3">
+                    {/* x Responsable(s) del rol */}
+                    {(() => {
+                      const responsablesRol = (rol as any).responsables?.length > 0
+                        ? (rol as any).responsables
+                        : null;
+                      if (responsablesRol) {
+                        return (
+                          <div className="hidden sm:flex items-center gap-1.5">
+                            {responsablesRol.slice(0, 2).map((r: any, i: number) => (
+                              <span key={r.id || i} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium border border-blue-200">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                                {r.nombre || r}
+                              </span>
+                            ))}
+                            {responsablesRol.length > 2 && (
+                              <span className="text-xs text-blue-500 font-medium">+{responsablesRol.length - 2}</span>
+                            )}
+                          </div>
+                        );
+                      }
+                      // Fallback: mostrar Jefe OCI del plan
+                      if (plan.jefeOCI?.nombre) {
+                        return (
+                          <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium border border-gray-200">
                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                            {r.nombre || r}
+                            {plan.jefeOCI.nombre}
+                            <span className="text-[9px] text-gray-400 ml-0.5">OCI</span>
                           </span>
-                        ))}
-                        {responsablesRol.length > 2 && (
-                          <span className="text-xs text-blue-500 font-medium">+{responsablesRol.length - 2}</span>
-                        )}
-                      </div>
-                    );
-                  }
-                  // Fallback: mostrar Jefe OCI del plan
-                  if (plan.jefeOCI?.nombre) {
-                    return (
-                      <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-xs font-medium border border-gray-200">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                        {plan.jefeOCI.nombre}
-                        <span className="text-[9px] text-gray-400 ml-0.5">OCI</span>
-                      </span>
-                    );
-                  }
-                  return null;
-                })()}
-                <span className="px-3 py-1 rounded-lg text-sm font-semibold" style={{ 
-                  backgroundColor: rol.color + '20', 
-                  color: rol.color 
-                }}>
-                  {plan.estado === 'BORRADOR' || plan.estado === 'EN_REVISION'
-                    ? `${Math.round((asignadas / (rol.actividades.length || 1)) * 100)}% asignado`
-                    : `${avance}% completado`}
-                </span>
-                <motion.div
-                  animate={{ rotate: isExpanded ? 180 : 0 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </motion.div>
-              </div>
-            </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                    <span className="px-3 py-1 rounded-lg text-sm font-semibold" style={{
+                      backgroundColor: rol.color + '20',
+                      color: rol.color
+                    }}>
+                      {plan.estado === 'BORRADOR' || plan.estado === 'EN_REVISION'
+                        ? `${Math.round((asignadas / (rol.actividades.length || 1)) * 100)}% asignado`
+                        : `${avance}% completado`}
+                    </span>
+                    <motion.div
+                      animate={{ rotate: isExpanded ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </motion.div>
+                  </div>
+                </div>
 
-            {/* Lista de actividades - Expandible */}
-            <AnimatePresence>
-              {isExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-6 pb-6 pt-2 space-y-3 border-t-2 border-gray-200">
-                    {rol.actividades.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">
-                        No hay actividades en este rol.{plan.estado === 'BORRADOR' ? ' Haz clic en "Agregar actividad" para crear una.' : ''}
-                      </div>
-                    ) : (
-                      rol.actividades.map((actividad, index) => (
-                        <div 
-                          key={`${rol.numero}-${index}-${actividad.id}`} 
-                          style={{ contentVisibility: 'auto', containIntrinsicSize: '150px' }}
-                          className={`p-4 border-2 rounded-lg transition-colors ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200 hover:border-gray-300'}`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600">
-                              {index + 1}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className={`font-semibold ${actividad.activo === false ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{actividad.nombre}</p>
-                                {actividad.activo === false && (
-                                  <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
-                                    Inactiva
-                                  </span>
-                                )}
-                                {/* Badge de estado */}
-                                {actividad.estado && actividad.estado !== 'PENDIENTE' && (
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                                    actividad.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
-                                    actividad.estado === 'EN_EJECUCION' ? 'bg-blue-100 text-blue-700' :
-                                    'bg-gray-100 text-gray-600'
-                                  }`}>
-                                    {actividad.estado === 'COMPLETADA' ? 'Completada' : actividad.estado === 'EN_EJECUCION' ? 'En ejecución' : actividad.estado}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm text-gray-600 mb-2">{actividad.descripcion}</p>
-                              <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap">
-                                <span>📅 Inicio: {new Date(actividad.fechaInicio).toLocaleDateString('es-CO')}</span>
-                                {actividad.fechaFin && (
-                                  <span>📅 Fin: {new Date(actividad.fechaFin).toLocaleDateString('es-CO')}</span>
-                                )}
-                                {actividad.fecha_corte && (
-                                  <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full font-medium">📅 Corte: {new Date(actividad.fecha_corte + 'T00:00:00').toLocaleDateString('es-CO')}</span>
-                                )}
-                                {typeof actividad.porcentajeAvance === 'number' && actividad.porcentajeAvance > 0 && (
-                                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">{actividad.porcentajeAvance}% avance</span>
-                                )}
-                              </div>
-                              {/* Indicadores de adjuntos y observaciones — SIEMPRE visibles */}
-                              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                                {/* 📎 Adjuntos */}
-                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                                  actividad.adjuntos && actividad.adjuntos.length > 0 
-                                    ? 'bg-purple-50 text-purple-700 border border-purple-200' 
-                                    : 'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
-                                }`}>
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                                  {actividad.adjuntos && actividad.adjuntos.length > 0 
-                                    ? `${actividad.adjuntos.length} adjunto${actividad.adjuntos.length !== 1 ? 's' : ''}` 
-                                    : 'Sin adjuntos'}
-                                </span>
-                                {/* 💬 Observaciones */}
-                                {(() => {
-                                  const obs = actividad.observacionesCumplimiento;
-                                  const count = Array.isArray(obs) ? obs.length : (typeof obs === 'string' && obs.trim() ? 1 : 0);
-                                  return (
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                                      count > 0 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
-                                    }`}>
-                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
-                                      {count > 0 ? `${count} observación${count !== 1 ? 'es' : ''}` : 'Sin observaciones'}
+                {/* Lista de actividades - Expandible */}
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="px-6 pb-6 pt-2 space-y-3 border-t-2 border-gray-200">
+                        {rol.actividades.length === 0 ? (
+                          <div className="text-center py-8 text-gray-500">
+                            No hay actividades en este rol.{plan.estado === 'BORRADOR' ? ' Haz clic en "Agregar actividad" para crear una.' : ''}
+                          </div>
+                        ) : (
+                          rol.actividades.map((actividad, index) => (
+                            <div
+                              key={`${rol.numero}-${index}-${actividad.id}`}
+                              style={{ contentVisibility: 'auto', containIntrinsicSize: '150px' }}
+                              className={`p-4 border-2 rounded-lg transition-colors ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200 hover:border-gray-300'}`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center text-sm font-bold text-gray-600">
+                                  {index + 1}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p className={`font-semibold ${actividad.activo === false ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{actividad.nombre}</p>
+                                    {actividad.activo === false && (
+                                      <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700 border border-red-300">
+                                        Inactiva
+                                      </span>
+                                    )}
+                                    {/* Badge de estado */}
+                                    {actividad.estado && actividad.estado !== 'PENDIENTE' && (
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${actividad.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
+                                          actividad.estado === 'EN_EJECUCION' ? 'bg-blue-100 text-blue-700' :
+                                            'bg-gray-100 text-gray-600'
+                                        }`}>
+                                        {actividad.estado === 'COMPLETADA' ? 'Completada' : actividad.estado === 'EN_EJECUCION' ? 'En ejecución' : actividad.estado}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-gray-600 mb-2">{actividad.descripcion}</p>
+                                  <div className="flex items-center gap-4 text-xs text-gray-500 flex-wrap">
+                                    <span>📅 Inicio: {new Date(actividad.fechaInicio).toLocaleDateString('es-CO')}</span>
+                                    {actividad.fechaFin && (
+                                      <span>📅 Fin: {new Date(actividad.fechaFin).toLocaleDateString('es-CO')}</span>
+                                    )}
+                                    {actividad.fecha_corte && (
+                                      <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full font-medium">📅 Corte: {new Date(actividad.fecha_corte + 'T00:00:00').toLocaleDateString('es-CO')}</span>
+                                    )}
+                                    {typeof actividad.porcentajeAvance === 'number' && actividad.porcentajeAvance > 0 && (
+                                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-semibold">{actividad.porcentajeAvance}% avance</span>
+                                    )}
+                                  </div>
+                                  {/* Indicadores de adjuntos y observaciones  SIEMPRE visibles */}
+                                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                    {/* 📎 Adjuntos */}
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${actividad.adjuntos && actividad.adjuntos.length > 0
+                                        ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                        : 'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
+                                      }`}>
+                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                      {actividad.adjuntos && actividad.adjuntos.length > 0
+                                        ? `${actividad.adjuntos.length} adjunto${actividad.adjuntos.length !== 1 ? 's' : ''}`
+                                        : 'Sin adjuntos'}
                                     </span>
-                                  );
-                                })()}
-                                {/* ✅ Tareas */}
-                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                                  actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 
-                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' 
-                                    : 'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
-                                }`}>
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-                                  {actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 
-                                    ? `${actividad.tareasSeguimiento.filter(t => t.completada).length}/${actividad.tareasSeguimiento.length} tareas`
-                                    : 'Sin tareas'}
-                                </span>
-                              </div>
-                            </div>
-                            {/* Responsables: editable SOLO en BORRADOR */}
-                            {puedeAsignarActividades && plan.estado === 'BORRADOR' ? (
-                              <div className="flex flex-col gap-1.5 min-w-[220px]" onClick={(e) => e.stopPropagation()}>
-                                {((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).map((resp) => (
-                                  <div key={resp.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
-                                    <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                                      {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
-                                    </div>
-                                    <span className="text-sm font-medium text-gray-900 whitespace-nowrap flex-1">{resp.nombre}</span>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => { e.stopPropagation(); quitarResponsableInline(rol.numero, actividad.id, resp.id); }}
-                                      className="text-blue-400 hover:text-red-600 leading-none ml-0.5 flex-shrink-0"
-                                      disabled={asignandoId === actividad.id}
-                                    >✕</button>
+                                    {/* 📝 Observaciones */}
+                                    {(() => {
+                                      const obs = actividad.observacionesCumplimiento;
+                                      const count = Array.isArray(obs) ? obs.length : (typeof obs === 'string' && obs.trim() ? 1 : 0);
+                                      return (
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${count > 0 ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
+                                          }`}>
+                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                                          {count > 0 ? `${count} observación${count !== 1 ? 'es' : ''}` : 'Sin observaciones'}
+                                        </span>
+                                      );
+                                    })()}
+                                    {/* S& Tareas */}
+                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0
+                                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                        : 'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
+                                      }`}>
+                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                                      {actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0
+                                        ? `${actividad.tareasSeguimiento.filter(t => t.completada).length}/${actividad.tareasSeguimiento.length} tareas`
+                                        : 'Sin tareas'}
+                                    </span>
                                   </div>
-                                ))}
-                                <SelectorProfesional
-                                  disabled={cargandoAuditores || asignandoId === actividad.id}
-                                  auditores={auditores.filter(a => !((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).some(r => r.id === a.id))}
-                                  onSelect={(id) => {
-                                    if (!id) return;
-                                    const auditor = auditores.find(a => a.id === id);
-                                    if (auditor) asignarResponsableInline(rol.numero, actividad.id, auditor);
-                                  }}
-                                />
-                              </div>
-                            ) : (
-                              <div className="flex flex-col gap-1.5 min-w-[180px]">
-                                {((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).map((resp) => (
-                                  <div key={resp.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
-                                    <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                                      {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
-                                    </div>
-                                    <span className="text-sm font-medium text-gray-900 whitespace-nowrap">{resp.nombre}</span>
-                                  </div>
-                                ))}
-                                {((actividad.responsables?.length ? actividad.responsables : actividad.responsable ? [actividad.responsable] : []) as Auditor[]).length === 0 && (
-                                  /* Fallback: mostrar responsable(s) del rol */
-                                  (rol as any).responsables && (rol as any).responsables.length > 0 ? (
-                                    <>
-                                      {(rol as any).responsables.map((resp: Auditor) => (
-                                        <div key={resp.id} className="flex items-center gap-1.5 bg-teal-50 border border-teal-200 rounded-full px-3 py-1">
-                                          <div className="w-5 h-5 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                </div>
+                                {/* Responsables: editable SOLO en BORRADOR */}
+                                {(() => {
+                                  // Normalizar responsables de actividad para soportar:
+                                  // - actividad.responsables: Auditor[]
+                                  // - actividad.responsable: Auditor | string (nombre legacy)
+                                  const responsablesActividadRaw = actividad.responsables?.length
+                                    ? actividad.responsables
+                                    : (actividad.responsable ? [actividad.responsable as any] : []);
+                                  const responsablesActividadNormalizados = (responsablesActividadRaw || [])
+                                    .map((resp: any, idx: number) => {
+                                      if (!resp) return null;
+                                      if (typeof resp === 'string') {
+                                        const nombre = resp.trim();
+                                        if (!nombre) return null;
+                                        return { id: `legacy-resp-${actividad.id}-${idx}`, nombre } as Auditor;
+                                      }
+                                      const nombre = (resp.nombre || resp.name || '').toString().trim();
+                                      if (!nombre) return null;
+                                      return {
+                                        ...resp,
+                                        id: resp.id || `legacy-resp-${actividad.id}-${idx}`,
+                                        nombre
+                                      } as Auditor;
+                                    })
+                                    .filter(Boolean)
+                                    .slice(0, 1) as Auditor[];
+
+                                  if (puedeAsignarActividades && plan.estado === 'BORRADOR') {
+                                    return (
+                                      <div className="flex flex-col gap-1.5 min-w-[220px]" onClick={(e) => e.stopPropagation()}>
+                                        {responsablesActividadNormalizados.map((resp) => (
+                                          <div key={resp.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
+                                            <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                              {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                                            </div>
+                                            <span className="text-sm font-medium text-gray-900 whitespace-nowrap flex-1">{resp.nombre}</span>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => { e.stopPropagation(); quitarResponsableInline(rol.numero, actividad.id, resp.id); }}
+                                              className="text-blue-400 hover:text-red-600 leading-none ml-0.5 flex-shrink-0"
+                                              disabled={asignandoId === actividad.id}
+                                            >×</button>
+                                          </div>
+                                        ))}
+                                        <SelectorProfesional
+                                          disabled={cargandoAuditores || asignandoId === actividad.id}
+                                          auditores={auditores.filter(a => !responsablesActividadNormalizados.some(r => r.id === a.id))}
+                                          onSelect={(id) => {
+                                            if (!id) return;
+                                            const auditor = auditores.find(a => a.id === id);
+                                            if (auditor) asignarResponsableInline(rol.numero, actividad.id, auditor);
+                                          }}
+                                        />
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div className="flex flex-col gap-1.5 min-w-[180px]">
+                                      {responsablesActividadNormalizados.map((resp) => (
+                                        <div key={resp.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
+                                          <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                                             {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
                                           </div>
                                           <span className="text-sm font-medium text-gray-900 whitespace-nowrap">{resp.nombre}</span>
-                                          <span className="text-[9px] bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded font-bold uppercase">Resp. del Rol</span>
                                         </div>
                                       ))}
-                                    </>
-                                  ) : (
-                                    <span className="text-sm text-gray-400 italic">Sin asignar</span>
-                                  )
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* ══ DETALLES DE LA PROGRAMACIÓN Y OBSERVACIONES ══ */}
-                          <div className="mt-3 ml-11 space-y-3">
-                            {/* ── Detalles de la Programación del Plan Anual ── */}
-                            {(actividad.control || actividad.evaluacion || actividad.seguimiento) && (
-                              <div className="border border-blue-200 rounded-lg overflow-hidden">
-                                <div className="bg-blue-50 px-3 py-2 border-b border-blue-200">
-                                  <p className="text-xs font-bold text-blue-800 uppercase tracking-wider flex items-center gap-1.5">
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                    Detalles de la Programación
-                                  </p>
-                                </div>
-                                <div className="p-3 bg-white space-y-2">
-                                  {actividad.control && (
-                                    <div>
-                                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Control</span>
-                                      <p className="text-xs text-gray-800 leading-relaxed mt-0.5">{actividad.control}</p>
-                                    </div>
-                                  )}
-                                  {actividad.evaluacion && (
-                                    <div>
-                                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Evaluación</span>
-                                      <p className="text-xs text-gray-800 leading-relaxed mt-0.5">{actividad.evaluacion}</p>
-                                    </div>
-                                  )}
-                                  {actividad.seguimiento && (
-                                    <div>
-                                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Seguimiento</span>
-                                      <p className="text-xs text-gray-800 leading-relaxed mt-0.5">{actividad.seguimiento}</p>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* ── Observaciones de Cumplimiento (texto completo) ── */}
-                            {(() => {
-                              const obs = actividad.observacionesCumplimiento;
-                              const obsArray: ObservacionCumplimiento[] = Array.isArray(obs) ? obs : (typeof obs === 'string' && obs.trim() ? [{ id: 'legacy', texto: obs, fechaRegistro: '', registradoPor: '' }] : []);
-                              if (obsArray.length === 0) return null;
-                              return (
-                                <div className="border border-amber-200 rounded-lg overflow-hidden">
-                                  <div className="bg-amber-50 px-3 py-2 border-b border-amber-200">
-                                    <p className="text-xs font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
-                                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
-                                      Observaciones ({obsArray.length})
-                                    </p>
-                                  </div>
-                                  <div className="p-3 bg-white space-y-2">
-                                    {obsArray.map((ob, idx) => (
-                                      <div key={ob.id || idx} className="flex gap-2.5 items-start">
-                                        <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-[10px] font-bold flex-shrink-0 mt-0.5">
-                                          {idx + 1}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-xs text-gray-800 leading-relaxed">{ob.texto}</p>
-                                          {(ob.registradoPor || ob.fechaRegistro) && (
-                                            <p className="text-[10px] text-gray-400 mt-1">
-                                              {ob.registradoPor && <span>— {ob.registradoPor}</span>}
-                                              {ob.fechaRegistro && <span> • {new Date(ob.fechaRegistro).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
-                                            </p>
-                                          )}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              );
-                            })()}
-                          </div>
-
-
-                          {actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 && (
-                            <div className="mt-3 ml-11 border-t border-dashed border-gray-200 pt-3">
-                              <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
-                                Tareas ({actividad.tareasSeguimiento.filter(t => t.completada).length}/{actividad.tareasSeguimiento.length} completadas)
-                              </p>
-                              <div className="space-y-1.5">
-                                {actividad.tareasSeguimiento.map((tarea) => {
-                                  const fechaTarea = tarea.fechaEntrega || (tarea as any).fechaLimite || null;
-                                  const fechaLimite = fechaTarea ? new Date(fechaTarea) : null;
-                                  const hoy = new Date();
-                                  const diasRestantes = fechaLimite ? Math.ceil((fechaLimite.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : null;
-                                  const estaVencida = diasRestantes !== null && diasRestantes < 0 && !tarea.completada;
-                                  const estaProxima = diasRestantes !== null && diasRestantes >= 0 && diasRestantes <= 7 && !tarea.completada;
-                                  const cantAdjuntos = tarea.adjuntosTarea?.length || 0;
-                                  const tieneObservacion = tarea.observaciones && tarea.observaciones.trim();
-                                  
-                                  return (
-                                    <div key={tarea.id} className={`p-3 rounded-lg border transition-colors ${
-                                      tarea.completada ? 'bg-green-50/60 border-green-200' : 
-                                      estaVencida ? 'bg-red-50/60 border-red-200' :
-                                      estaProxima ? 'bg-amber-50/60 border-amber-200' :
-                                      'bg-white border-gray-200'
-                                    }`}>
-                                      {/* Fila 1: Checkbox + Descripción */}
-                                      <div className="flex items-start gap-2.5">
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); puedeGestionarTareas(rol) && toggleCompletarTarea(rol.numero, actividad.id, tarea.id); }}
-                                          disabled={!puedeGestionarTareas(rol)}
-                                          className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                                            tarea.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white hover:border-blue-400'
-                                          } ${puedeGestionarTareas(rol) ? 'cursor-pointer' : 'cursor-default'}`}
-                                        >
-                                          {tarea.completada && (
-                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
-                                          )}
-                                        </button>
-                                        <div className="flex-1 min-w-0">
-                                          <p className={`text-sm font-medium leading-snug ${tarea.completada ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                                            {tarea.descripcion}
-                                          </p>
-                                        </div>
-                                      </div>
-
-                                      {/* Fila 2: Metadatos SIEMPRE visibles */}
-                                      <div className="ml-7 mt-2 flex items-center gap-2 flex-wrap">
-                                        {/* ⏰ Fecha límite — SIEMPRE visible */}
-                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${
-                                          !fechaLimite ? 'bg-gray-100 text-gray-400 border border-dashed border-gray-300' :
-                                          tarea.completada ? 'bg-gray-100 text-gray-400' :
-                                          estaVencida ? 'bg-red-100 text-red-700 border border-red-300' :
-                                          estaProxima ? 'bg-amber-100 text-amber-700 border border-amber-300' :
-                                          'bg-gray-100 text-gray-600'
-                                        }`}>
-                                          ⏰ {!fechaLimite ? 'Sin fecha límite' : estaVencida ? `Vencida (${Math.abs(diasRestantes!)} días)` : `Límite: ${fechaLimite.toLocaleDateString('es-CO')}`}
-                                        </span>
-
-                                        {/* 👤 Responsables — SIEMPRE visible (fallback: responsable del rol) */}
-                                        {(() => {
-                                          const tieneResp = tarea.responsables && tarea.responsables.length > 0;
-                                          const rolResps = (rol as any).responsables as Auditor[] | undefined;
-                                          const respNames = tieneResp
-                                            ? tarea.responsables!
-                                                .map((r: any) => (typeof r === 'string' ? r : r?.nombre || r?.name || r?.email || ''))
-                                                .filter(Boolean)
-                                                .join(', ')
-                                            : (rolResps && rolResps.length > 0 ? rolResps.map(r => r.nombre).join(', ') : null);
-                                          const esFallback = !tieneResp && respNames;
-                                          return (
-                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] ${
-                                              tieneResp ? 'bg-blue-50 text-blue-700 border border-blue-200 font-medium' :
-                                              esFallback ? 'bg-teal-50 text-teal-700 border border-teal-200 font-medium' :
-                                              'bg-gray-100 text-gray-400 border border-dashed border-gray-300'
-                                            }`}>
-                                              👤 {respNames || 'Sin responsable'}
-                                              {esFallback && <span className="text-[8px] bg-teal-100 text-teal-600 px-1 rounded font-bold ml-0.5">ROL</span>}
-                                            </span>
-                                          );
-                                        })()}
-
-                                        {/* 📎 Adjuntos — SIEMPRE visible */}
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            const input = document.createElement('input');
-                                            input.type = 'file';
-                                            input.multiple = true;
-                                            input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip';
-                                            input.onchange = () => {
-                                              agregarAdjuntosTarea(rol.numero, actividad.id, tarea.id, input.files);
-                                            };
-                                            input.click();
-                                          }}
-                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${
-                                            cantAdjuntos > 0
-                                              ? 'bg-purple-50 text-purple-700 border-purple-200 font-medium hover:bg-purple-100'
-                                              : 'bg-gray-100 text-gray-500 border-dashed border-gray-300 hover:bg-gray-200'
-                                          }`}
-                                          title="Clic para adjuntar evidencia"
-                                        >
-                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-                                          {cantAdjuntos > 0 ? `${cantAdjuntos} archivo${cantAdjuntos !== 1 ? 's' : ''}` : 'Sin adjuntos'}
-                                        </button>
-
-                                        {/* 💬 Comentario — SIEMPRE visible */}
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setComentarioTareaId(tarea.id);
-                                            setTextoComentarioTarea((tarea.observaciones || '').trim());
-                                          }}
-                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${
-                                            tieneObservacion
-                                              ? 'bg-amber-50 text-amber-700 border-amber-200 font-medium hover:bg-amber-100'
-                                              : 'bg-gray-100 text-gray-500 border-dashed border-gray-300 hover:bg-gray-200'
-                                          }`}
-                                          title="Clic para agregar o editar comentario"
-                                        >
-                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
-                                          {tieneObservacion ? 'Con comentario' : 'Sin comentarios'}
-                                        </button>
-
-                                        {/* ✅ Completada */}
-                                        {tarea.completada && (
-                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded text-[11px] font-semibold border border-green-200">
-                                            ✅ {tarea.fechaCompletado ? new Date(tarea.fechaCompletado).toLocaleDateString('es-CO') : 'Completada'}
-                                          </span>
-                                        )}
-
-                                        {/* 🔒 Requisitos para completar */}
-                                        {!tarea.completada && (tarea.requiereAdjuntos || tarea.requiereObservaciones) && (
+                                      {responsablesActividadNormalizados.length === 0 && (
+                                        /* Fallback: mostrar responsable(s) del rol */
+                                        (rol as any).responsables && (rol as any).responsables.length > 0 ? (
                                           <>
-                                            {tarea.requiereAdjuntos && (
-                                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${
-                                                cantAdjuntos > 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-300'
-                                              }`}>
-                                                📎 {cantAdjuntos > 0 ? '✓ Adjunto OK' : 'Adjunto requerido'}
-                                              </span>
-                                            )}
-                                            {tarea.requiereObservaciones && (
-                                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${
-                                                tieneObservacion ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-300'
-                                              }`}>
-                                                📝 {tieneObservacion ? '✓ Observación OK' : 'Observación requerida'}
-                                              </span>
-                                            )}
+                                            {(rol as any).responsables.slice(0, 1).map((resp: Auditor) => (
+                                              <div key={resp.id} className="flex items-center gap-1.5 bg-teal-50 border border-teal-200 rounded-full px-3 py-1">
+                                                <div className="w-5 h-5 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                                  {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
+                                                </div>
+                                                <span className="text-sm font-medium text-gray-900 whitespace-nowrap">{resp.nombre}</span>
+                                                <span className="text-[9px] bg-teal-100 text-teal-700 px-1.5 py-0.5 rounded font-bold uppercase">Resp. del Rol</span>
+                                              </div>
+                                            ))}
                                           </>
-                                        )}
-                                      </div>
-
-                                      {/* Fila 3: Texto del comentario si existe */}
-                                      {tieneObservacion && (
-                                        <div className="ml-7 mt-2 px-3 py-2 bg-white border border-gray-200 rounded-lg">
-                                          <p className="text-[11px] font-bold text-gray-500 mb-0.5 flex items-center gap-1 uppercase tracking-wider">
-                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
-                                            Comentario
-                                          </p>
-                                          <p className="text-xs text-gray-700 leading-relaxed">{tarea.observaciones}</p>
-                                        </div>
-                                      )}
-
-                                      {/* Editor rápido de comentario de tarea */}
-                                      {comentarioTareaId === tarea.id && (
-                                        <div className="ml-7 mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
-                                          <textarea
-                                            value={textoComentarioTarea}
-                                            onChange={(e) => setTextoComentarioTarea(e.target.value)}
-                                            className="w-full px-2 py-1.5 border border-amber-300 rounded text-xs resize-none"
-                                            rows={2}
-                                            placeholder="Escribe un comentario para la tarea..."
-                                          />
-                                          <div className="mt-2 flex items-center gap-2">
-                                            <button
-                                              type="button"
-                                              onClick={() => agregarComentarioTarea(rol.numero, actividad.id, tarea.id, textoComentarioTarea)}
-                                              className="px-2 py-1 text-xs bg-amber-600 hover:bg-amber-700 text-white rounded"
-                                            >
-                                              Guardar comentario
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setComentarioTareaId(null);
-                                                setTextoComentarioTarea('');
-                                              }}
-                                              className="px-2 py-1 text-xs bg-white border border-gray-300 rounded"
-                                            >
-                                              Cancelar
-                                            </button>
-                                          </div>
-                                        </div>
+                                        ) : (
+                                          <span className="text-sm text-gray-400 italic">Sin asignar</span>
+                                        )
                                       )}
                                     </div>
                                   );
-                                })}
+                                })()}
                               </div>
 
-                              {/* ═══ Botón + Agregar tarea de seguimiento ═══ */}
-                              {puedeGestionarTareas(rol) && (
-                                formTareaActividadId === actividad.id ? (
-                                  <div className="mt-3 p-3 bg-teal-50 border-2 border-teal-300 rounded-lg" onClick={(e) => e.stopPropagation()}>
-                                    <div className="flex items-center justify-between mb-2">
-                                      <h5 className="text-xs font-bold text-teal-800 uppercase tracking-wider flex items-center gap-1">
-                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                                        Nueva tarea de seguimiento
-                                      </h5>
-                                      <button onClick={() => { setFormTareaActividadId(null); setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false }); }} className="text-teal-600 hover:text-teal-800 text-sm">✕</button>
+                              {/* "" DETALLES DE LA PROGRAMACIN Y OBSERVACIONES "" */}
+                              <div className="mt-3 ml-11 space-y-3">
+                                {/*  Detalles de la Programación del Plan Anual  */}
+                                {(actividad.control || actividad.evaluacion || actividad.seguimiento) && (
+                                  <div className="border border-blue-200 rounded-lg overflow-hidden">
+                                    <div className="bg-blue-50 px-3 py-2 border-b border-blue-200">
+                                      <p className="text-xs font-bold text-blue-800 uppercase tracking-wider flex items-center gap-1.5">
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                        Detalles de la Programación
+                                      </p>
                                     </div>
-                                    <div className="space-y-2">
-                                      <input
-                                        type="text"
-                                        value={nuevaTarea.descripcion}
-                                        onChange={(e) => setNuevaTarea({ ...nuevaTarea, descripcion: e.target.value })}
-                                        placeholder="Descripción de la tarea *"
-                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-teal-500"
-                                      />
-                                      <div className="grid grid-cols-2 gap-2">
-                                        <select
-                                          value={nuevaTarea.responsable}
-                                          onChange={(e) => setNuevaTarea({ ...nuevaTarea, responsable: e.target.value })}
-                                          className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-teal-500"
-                                        >
-                                          <option value="">Responsable (opcional)</option>
-                                          {auditores.map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
-                                          {/* Fallback: responsables del rol */}
-                                          {(rol as any).responsables?.filter((r: Auditor) => !auditores.some(a => a.id === r.id)).map((r: Auditor) => (
-                                            <option key={r.id} value={r.nombre}>{r.nombre} (Rol)</option>
-                                          ))}
-                                        </select>
-                                        <input
-                                          type="date"
-                                          value={nuevaTarea.fechaLimite}
-                                          onChange={(e) => setNuevaTarea({ ...nuevaTarea, fechaLimite: e.target.value })}
-                                          className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-teal-500"
-                                        />
-                                      </div>
-                                      {/* Requisitos para completar la tarea */}
-                                      <div className="flex items-center gap-4 py-1">
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                          <button
-                                            type="button"
-                                            onClick={() => setNuevaTarea({ ...nuevaTarea, requiereAdjuntos: !nuevaTarea.requiereAdjuntos })}
-                                            className={`relative w-8 h-4 rounded-full transition-colors ${
-                                              nuevaTarea.requiereAdjuntos ? 'bg-teal-500' : 'bg-gray-300'
-                                            }`}
-                                          >
-                                            <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
-                                              nuevaTarea.requiereAdjuntos ? 'translate-x-4' : ''
-                                            }`} />
-                                          </button>
-                                          <span className="text-xs text-gray-700">📎 Requiere adjunto</span>
-                                        </label>
-                                        <label className="flex items-center gap-2 cursor-pointer">
-                                          <button
-                                            type="button"
-                                            onClick={() => setNuevaTarea({ ...nuevaTarea, requiereObservaciones: !nuevaTarea.requiereObservaciones })}
-                                            className={`relative w-8 h-4 rounded-full transition-colors ${
-                                              nuevaTarea.requiereObservaciones ? 'bg-teal-500' : 'bg-gray-300'
-                                            }`}
-                                          >
-                                            <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
-                                              nuevaTarea.requiereObservaciones ? 'translate-x-4' : ''
-                                            }`} />
-                                          </button>
-                                          <span className="text-xs text-gray-700">📝 Requiere observación</span>
-                                        </label>
-                                      </div>
-                                      <div className="flex justify-end gap-2">
-                                        <button
-                                          onClick={() => { setFormTareaActividadId(null); setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false }); }}
-                                          className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-400 rounded-md hover:bg-gray-100"
-                                        >Cancelar</button>
-                                        <button
-                                          onClick={() => agregarTareaSeguimiento(rol.numero, actividad.id)}
-                                          disabled={guardandoTarea || !nuevaTarea.descripcion.trim()}
-                                          className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors ${
-                                            guardandoTarea || !nuevaTarea.descripcion.trim()
-                                              ? 'bg-gray-300 text-gray-500 border border-gray-400 cursor-not-allowed'
-                                              : 'bg-teal-700 text-white border border-teal-800 hover:bg-teal-800 shadow-sm'
-                                          }`}
-                                        >{guardandoTarea ? 'Guardando...' : '✚ Agregar tarea'}</button>
-                                      </div>
+                                    <div className="p-3 bg-white space-y-2">
+                                      {actividad.control && (
+                                        <div>
+                                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Control</span>
+                                          <p className="text-xs text-gray-800 leading-relaxed mt-0.5">{actividad.control}</p>
+                                        </div>
+                                      )}
+                                      {actividad.evaluacion && (
+                                        <div>
+                                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Evaluación</span>
+                                          <p className="text-xs text-gray-800 leading-relaxed mt-0.5">{actividad.evaluacion}</p>
+                                        </div>
+                                      )}
+                                      {actividad.seguimiento && (
+                                        <div>
+                                          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Seguimiento</span>
+                                          <p className="text-xs text-gray-800 leading-relaxed mt-0.5">{actividad.seguimiento}</p>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
-                                ) : (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); setFormTareaActividadId(actividad.id); }}
-                                    className="mt-3 w-full py-2 text-xs font-semibold text-teal-700 bg-teal-50 border-2 border-dashed border-teal-300 rounded-lg hover:bg-teal-100 hover:border-teal-400 transition-colors flex items-center justify-center gap-1.5"
-                                  >
-                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                                    Agregar tarea de seguimiento
-                                  </button>
-                                )
+                                )}
+
+                                {/*  Observaciones de Cumplimiento (texto completo)  */}
+                                {(() => {
+                                  const obs = actividad.observacionesCumplimiento;
+                                  const obsArray: ObservacionCumplimiento[] = Array.isArray(obs) ? obs : (typeof obs === 'string' && obs.trim() ? [{ id: 'legacy', texto: obs, fechaRegistro: '', registradoPor: '' }] : []);
+                                  if (obsArray.length === 0) return null;
+                                  return (
+                                    <div className="border border-amber-200 rounded-lg overflow-hidden">
+                                      <div className="bg-amber-50 px-3 py-2 border-b border-amber-200">
+                                        <p className="text-xs font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+                                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                                          Observaciones ({obsArray.length})
+                                        </p>
+                                      </div>
+                                      <div className="p-3 bg-white space-y-2">
+                                        {obsArray.map((ob, idx) => (
+                                          <div key={ob.id || idx} className="flex gap-2.5 items-start">
+                                            <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-amber-700 text-[10px] font-bold flex-shrink-0 mt-0.5">
+                                              {idx + 1}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                              <p className="text-xs text-gray-800 leading-relaxed">{ob.texto}</p>
+                                              {(ob.registradoPor || ob.fechaRegistro) && (
+                                                <p className="text-[10px] text-gray-400 mt-1">
+                                                  {ob.registradoPor && <span> {ob.registradoPor}</span>}
+                                                  {ob.fechaRegistro && <span> • {new Date(ob.fechaRegistro).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
+                                                </p>
+                                              )}
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+
+
+                              {actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 && (
+                                <div className="mt-3 ml-11 border-t border-dashed border-gray-200 pt-3">
+                                  <p className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                                    Tareas ({actividad.tareasSeguimiento.filter(t => t.completada).length}/{actividad.tareasSeguimiento.length} completadas)
+                                  </p>
+                                  <div className="space-y-1.5">
+                                    {actividad.tareasSeguimiento.map((tarea) => {
+                                      const fechaTarea = tarea.fechaEntrega || (tarea as any).fechaLimite || null;
+                                      const fechaLimite = fechaTarea ? new Date(fechaTarea) : null;
+                                      const hoy = new Date();
+                                      const diasRestantes = fechaLimite ? Math.ceil((fechaLimite.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                                      const estaVencida = diasRestantes !== null && diasRestantes < 0 && !tarea.completada;
+                                      const estaProxima = diasRestantes !== null && diasRestantes >= 0 && diasRestantes <= 7 && !tarea.completada;
+                                      const cantAdjuntos = tarea.adjuntosTarea?.length || 0;
+                                      const tieneObservacion = tarea.observaciones && tarea.observaciones.trim();
+
+                                      return (
+                                        <div key={tarea.id} className={`p-3 rounded-lg border transition-colors ${tarea.completada ? 'bg-green-50/60 border-green-200' :
+                                            estaVencida ? 'bg-red-50/60 border-red-200' :
+                                              estaProxima ? 'bg-amber-50/60 border-amber-200' :
+                                                'bg-white border-gray-200'
+                                          }`}>
+                                          {/* Fila 1: Checkbox + Descripción */}
+                                          <div className="flex items-start gap-2.5">
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); puedeGestionarTareas(rol) && toggleCompletarTarea(rol.numero, actividad.id, tarea.id); }}
+                                              disabled={!puedeGestionarTareas(rol)}
+                                              className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${tarea.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white hover:border-blue-400'
+                                                } ${puedeGestionarTareas(rol) ? 'cursor-pointer' : 'cursor-default'}`}
+                                            >
+                                              {tarea.completada && (
+                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                              )}
+                                            </button>
+                                            <div className="flex-1 min-w-0">
+                                              <p className={`text-sm font-medium leading-snug ${tarea.completada ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                                                {tarea.descripcion}
+                                              </p>
+                                            </div>
+                                          </div>
+
+                                          {/* Fila 2: Metadatos SIEMPRE visibles */}
+                                          <div className="ml-7 mt-2 flex items-center gap-2 flex-wrap">
+                                            {/* ⏰ Fecha límite  SIEMPRE visible */}
+                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold ${!fechaLimite ? 'bg-gray-100 text-gray-400 border border-dashed border-gray-300' :
+                                                tarea.completada ? 'bg-gray-100 text-gray-400' :
+                                                  estaVencida ? 'bg-red-100 text-red-700 border border-red-300' :
+                                                    estaProxima ? 'bg-amber-100 text-amber-700 border border-amber-300' :
+                                                      'bg-gray-100 text-gray-600'
+                                              }`}>
+                                              ⏰ {!fechaLimite ? 'Sin fecha límite' : estaVencida ? `Vencida (${Math.abs(diasRestantes!)} días)` : `Límite: ${fechaLimite.toLocaleDateString('es-CO')}`}
+                                            </span>
+
+                                            {/* x Responsables  SIEMPRE visible (fallback: responsable del rol) */}
+                                            {(() => {
+                                              const tieneResp = tarea.responsables && tarea.responsables.length > 0;
+                                              const rolResps = (rol as any).responsables as Auditor[] | undefined;
+                                              const respNames = tieneResp
+                                                ? tarea.responsables!
+                                                  .map((r: any) => (typeof r === 'string' ? r : r?.nombre || r?.name || r?.email || ''))
+                                                  .filter(Boolean)
+                                                  .join(', ')
+                                                : (rolResps && rolResps.length > 0 ? rolResps.map(r => r.nombre).join(', ') : null);
+                                              const esFallback = !tieneResp && respNames;
+                                              return (
+                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] ${tieneResp ? 'bg-blue-50 text-blue-700 border border-blue-200 font-medium' :
+                                                    esFallback ? 'bg-teal-50 text-teal-700 border border-teal-200 font-medium' :
+                                                      'bg-gray-100 text-gray-400 border border-dashed border-gray-300'
+                                                  }`}>
+                                                  👤 {respNames || 'Sin responsable'}
+                                                  {esFallback && <span className="text-[8px] bg-teal-100 text-teal-600 px-1 rounded font-bold ml-0.5">ROL</span>}
+                                                </span>
+                                              );
+                                            })()}
+
+                                            {/* 📎 Adjuntos  SIEMPRE visible */}
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                const input = document.createElement('input');
+                                                input.type = 'file';
+                                                input.multiple = true;
+                                                input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip';
+                                                input.onchange = () => {
+                                                  agregarAdjuntosTarea(rol.numero, actividad.id, tarea.id, input.files);
+                                                };
+                                                input.click();
+                                              }}
+                                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${cantAdjuntos > 0
+                                                  ? 'bg-purple-50 text-purple-700 border-purple-200 font-medium hover:bg-purple-100'
+                                                  : 'bg-gray-100 text-gray-500 border-dashed border-gray-300 hover:bg-gray-200'
+                                                }`}
+                                              title="Clic para adjuntar evidencia"
+                                            >
+                                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                              {cantAdjuntos > 0 ? `${cantAdjuntos} archivo${cantAdjuntos !== 1 ? 's' : ''}` : 'Sin adjuntos'}
+                                            </button>
+
+                                            {/* x Comentario  SIEMPRE visible */}
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setComentarioTareaId(tarea.id);
+                                                setTextoComentarioTarea((tarea.observaciones || '').trim());
+                                              }}
+                                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${tieneObservacion
+                                                  ? 'bg-amber-50 text-amber-700 border-amber-200 font-medium hover:bg-amber-100'
+                                                  : 'bg-gray-100 text-gray-500 border-dashed border-gray-300 hover:bg-gray-200'
+                                                }`}
+                                              title="Clic para agregar o editar comentario"
+                                            >
+                                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                                              {tieneObservacion ? 'Con comentario' : 'Sin comentarios'}
+                                            </button>
+
+                                            {/* S& Completada */}
+                                            {tarea.completada && (
+                                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded text-[11px] font-semibold border border-green-200">
+                                                {tarea.fechaCompletado ? new Date(tarea.fechaCompletado).toLocaleDateString('es-CO') : 'Completada'}
+                                              </span>
+                                            )}
+
+                                            {/* x Requisitos para completar */}
+                                            {!tarea.completada && (tarea.requiereAdjuntos || tarea.requiereObservaciones) && (
+                                              <>
+                                                {tarea.requiereAdjuntos && (
+                                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${cantAdjuntos > 0 ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-300'
+                                                    }`}>
+                                                    📎 {cantAdjuntos > 0 ? '✅ Adjunto OK' : 'Adjunto requerido'}
+                                                  </span>
+                                                )}
+                                                {tarea.requiereObservaciones && (
+                                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${tieneObservacion ? 'bg-green-50 text-green-700 border-green-200' : 'bg-orange-50 text-orange-700 border-orange-300'
+                                                    }`}>
+                                                    📝 {tieneObservacion ? '✅ Observación OK' : 'Observación requerida'}
+                                                  </span>
+                                                )}
+                                              </>
+                                            )}
+                                          </div>
+
+                                          {/* Fila 3: Texto del comentario si existe */}
+                                          {tieneObservacion && (
+                                            <div className="ml-7 mt-2 px-3 py-2 bg-white border border-gray-200 rounded-lg">
+                                              <p className="text-[11px] font-bold text-gray-500 mb-0.5 flex items-center gap-1 uppercase tracking-wider">
+                                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                                                Comentario
+                                              </p>
+                                              <p className="text-xs text-gray-700 leading-relaxed">{tarea.observaciones}</p>
+                                            </div>
+                                          )}
+
+                                          {/* Editor rápido de comentario de tarea */}
+                                          {comentarioTareaId === tarea.id && (
+                                            <div className="ml-7 mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg">
+                                              <textarea
+                                                value={textoComentarioTarea}
+                                                onChange={(e) => setTextoComentarioTarea(e.target.value)}
+                                                className="w-full px-2 py-1.5 border border-amber-300 rounded text-xs resize-none"
+                                                rows={2}
+                                                placeholder="Escribe un comentario para la tarea..."
+                                              />
+                                              <div className="mt-2 flex items-center gap-2">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => agregarComentarioTarea(rol.numero, actividad.id, tarea.id, textoComentarioTarea)}
+                                                  className="px-2 py-1 text-xs bg-amber-600 hover:bg-amber-700 text-white rounded"
+                                                >
+                                                  Guardar comentario
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setComentarioTareaId(null);
+                                                    setTextoComentarioTarea('');
+                                                  }}
+                                                  className="px-2 py-1 text-xs bg-white border border-gray-300 rounded"
+                                                >
+                                                  Cancelar
+                                                </button>
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* """ Botón + Agregar tarea de seguimiento """ */}
+                                  {puedeGestionarTareas(rol) && (
+                                    formTareaActividadId === actividad.id ? (
+                                      <div className="mt-3 p-3 bg-teal-50 border-2 border-teal-300 rounded-lg" onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex items-center justify-between mb-2">
+                                          <h5 className="text-xs font-bold text-teal-800 uppercase tracking-wider flex items-center gap-1">
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                            Nueva tarea de seguimiento
+                                          </h5>
+                                          <button onClick={() => { setFormTareaActividadId(null); setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false }); }} className="text-teal-600 hover:text-teal-800 text-sm">×</button>
+                                        </div>
+                                        <div className="space-y-2">
+                                          <input
+                                            type="text"
+                                            value={nuevaTarea.descripcion}
+                                            onChange={(e) => setNuevaTarea({ ...nuevaTarea, descripcion: e.target.value })}
+                                            placeholder="Descripción de la tarea *"
+                                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-teal-500"
+                                          />
+                                          <div className="grid grid-cols-2 gap-2">
+                                            <select
+                                              value={nuevaTarea.responsable}
+                                              onChange={(e) => setNuevaTarea({ ...nuevaTarea, responsable: e.target.value })}
+                                              className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-teal-500"
+                                            >
+                                              <option value="">Responsable (opcional)</option>
+                                              {auditores.map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
+                                              {/* Fallback: responsables del rol */}
+                                              {(rol as any).responsables?.filter((r: Auditor) => !auditores.some(a => a.id === r.id)).map((r: Auditor) => (
+                                                <option key={r.id} value={r.nombre}>{r.nombre} (Rol)</option>
+                                              ))}
+                                            </select>
+                                            <input
+                                              type="date"
+                                              value={nuevaTarea.fechaLimite}
+                                              onChange={(e) => setNuevaTarea({ ...nuevaTarea, fechaLimite: e.target.value })}
+                                              className="px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-teal-500"
+                                            />
+                                          </div>
+                                          {/* Requisitos para completar la tarea */}
+                                          <div className="flex items-center gap-4 py-1">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                              <button
+                                                type="button"
+                                                onClick={() => setNuevaTarea({ ...nuevaTarea, requiereAdjuntos: !nuevaTarea.requiereAdjuntos })}
+                                                className={`relative w-8 h-4 rounded-full transition-colors ${nuevaTarea.requiereAdjuntos ? 'bg-teal-500' : 'bg-gray-300'
+                                                  }`}
+                                              >
+                                                <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${nuevaTarea.requiereAdjuntos ? 'translate-x-4' : ''
+                                                  }`} />
+                                              </button>
+                                              <span className="text-xs text-gray-700">📎 Requiere adjunto</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                              <button
+                                                type="button"
+                                                onClick={() => setNuevaTarea({ ...nuevaTarea, requiereObservaciones: !nuevaTarea.requiereObservaciones })}
+                                                className={`relative w-8 h-4 rounded-full transition-colors ${nuevaTarea.requiereObservaciones ? 'bg-teal-500' : 'bg-gray-300'
+                                                  }`}
+                                              >
+                                                <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${nuevaTarea.requiereObservaciones ? 'translate-x-4' : ''
+                                                  }`} />
+                                              </button>
+                                              <span className="text-xs text-gray-700">📝 Requiere observación</span>
+                                            </label>
+                                          </div>
+                                          <div className="flex justify-end gap-2">
+                                            <button
+                                              onClick={() => { setFormTareaActividadId(null); setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false }); }}
+                                              className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-400 rounded-md hover:bg-gray-100"
+                                            >Cancelar</button>
+                                            <button
+                                              onClick={() => agregarTareaSeguimiento(rol.numero, actividad.id)}
+                                              disabled={guardandoTarea || !nuevaTarea.descripcion.trim()}
+                                              className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors ${guardandoTarea || !nuevaTarea.descripcion.trim()
+                                                  ? 'bg-gray-300 text-gray-500 border border-gray-400 cursor-not-allowed'
+                                                  : 'bg-teal-700 text-white border border-teal-800 hover:bg-teal-800 shadow-sm'
+                                                }`}
+                                            >{guardandoTarea ? 'Guardando...' : '+ Agregar tarea'}</button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setFormTareaActividadId(actividad.id); }}
+                                        className="mt-3 w-full py-2 text-xs font-semibold text-teal-700 bg-teal-50 border-2 border-dashed border-teal-300 rounded-lg hover:bg-teal-100 hover:border-teal-400 transition-colors flex items-center justify-center gap-1.5"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                        Agregar tarea de seguimiento
+                                      </button>
+                                    )
+                                  )}
+                                </div>
+                              )}
+                              {(!actividad.tareasSeguimiento || actividad.tareasSeguimiento.length === 0) && puedeGestionarTareas(rol) && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setFormTareaActividadId(actividad.id); }}
+                                  className="mt-3 ml-11 w-[calc(100%-2.75rem)] py-2 text-xs font-semibold text-teal-700 bg-teal-50 border-2 border-dashed border-teal-300 rounded-lg hover:bg-teal-100 hover:border-teal-400 transition-colors flex items-center justify-center gap-1.5"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                  Agregar tarea de seguimiento
+                                </button>
                               )}
                             </div>
-                          )}
-                          {(!actividad.tareasSeguimiento || actividad.tareasSeguimiento.length === 0) && puedeGestionarTareas(rol) && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setFormTareaActividadId(actividad.id); }}
-                              className="mt-3 ml-11 w-[calc(100%-2.75rem)] py-2 text-xs font-semibold text-teal-700 bg-teal-50 border-2 border-dashed border-teal-300 rounded-lg hover:bg-teal-100 hover:border-teal-400 transition-colors flex items-center justify-center gap-1.5"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                              Agregar tarea de seguimiento
-                            </button>
-                          )}
-                        </div>
-                      ))
-                    )}
+                          ))
+                        )}
 
-                    {/* Formulario para nueva actividad — SOLO en BORRADOR */}
-                    {plan.estado === 'BORRADOR' && (
-                      mostrarFormNuevaActividad === rol.numero ? (
-                        <motion.div
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="p-4 border-2 border-blue-300 bg-blue-50 rounded-lg space-y-3"
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <h4 className="font-semibold text-blue-900">Nueva actividad para Rol {rol.numero}</h4>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setMostrarFormNuevaActividad(null); }}
-                              className="text-blue-600 hover:text-blue-800"
-                            >✕</button>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-900 mb-1">Nombre de la actividad *</label>
-                            <input type="text" value={nuevaActividad.nombre} onChange={(e) => setNuevaActividad({ ...nuevaActividad, nombre: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Ej: Auditoría al proceso de contratación" onClick={(e) => e.stopPropagation()} />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-900 mb-1">Descripción</label>
-                            <textarea value={nuevaActividad.descripcion} onChange={(e) => setNuevaActividad({ ...nuevaActividad, descripcion: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Descripción detallada" rows={2} onClick={(e) => e.stopPropagation()} />
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-sm font-semibold text-gray-900 mb-1">Fecha inicio</label>
-                              <input type="date" value={nuevaActividad.fechaInicio} onChange={(e) => setNuevaActividad({ ...nuevaActividad, fechaInicio: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" onClick={(e) => e.stopPropagation()} />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-semibold text-gray-900 mb-1">Fecha fin</label>
-                              <input type="date" value={nuevaActividad.fechaFin} onChange={(e) => setNuevaActividad({ ...nuevaActividad, fechaFin: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" onClick={(e) => e.stopPropagation()} />
-                            </div>
-                          </div>
-                          <div className="flex gap-2 pt-2">
-                            <button onClick={(e) => { e.stopPropagation(); agregarActividadInline(rol.numero); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center gap-2">
-                              <Check className="w-4 h-4" /> Guardar actividad
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); setMostrarFormNuevaActividad(null); }} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium">
-                              Cancelar
-                            </button>
-                          </div>
-                        </motion.div>
-                      ) : (
-                        puedeAsignarActividades && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setMostrarFormNuevaActividad(rol.numero); }}
-                            className="w-full px-4 py-3 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 rounded-lg text-gray-600 hover:text-blue-600 font-medium flex items-center justify-center gap-2 transition-colors"
-                          >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                            Agregar actividad adicional
-                          </button>
-                        )
-                      )
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        );
-      })}
+                        {/* Formulario para nueva actividad  SOLO en BORRADOR */}
+                        {plan.estado === 'BORRADOR' && (
+                          mostrarFormNuevaActividad === rol.numero ? (
+                            <motion.div
+                              initial={{ opacity: 0, y: -10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="p-4 border-2 border-blue-300 bg-blue-50 rounded-lg space-y-3"
+                            >
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className="font-semibold text-blue-900">Nueva actividad para Rol {rol.numero}</h4>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setMostrarFormNuevaActividad(null); }}
+                                  className="text-blue-600 hover:text-blue-800"
+                                >×</button>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-semibold text-gray-900 mb-1">Nombre de la actividad *</label>
+                                <input type="text" value={nuevaActividad.nombre} onChange={(e) => setNuevaActividad({ ...nuevaActividad, nombre: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Ej: Auditoría al proceso de contratación" onClick={(e) => e.stopPropagation()} />
+                              </div>
+                              <div>
+                                <label className="block text-sm font-semibold text-gray-900 mb-1">Descripción</label>
+                                <textarea value={nuevaActividad.descripcion} onChange={(e) => setNuevaActividad({ ...nuevaActividad, descripcion: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="Descripción detallada" rows={2} onClick={(e) => e.stopPropagation()} />
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-sm font-semibold text-gray-900 mb-1">Fecha inicio</label>
+                                  <input type="date" value={nuevaActividad.fechaInicio} onChange={(e) => setNuevaActividad({ ...nuevaActividad, fechaInicio: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" onClick={(e) => e.stopPropagation()} />
+                                </div>
+                                <div>
+                                  <label className="block text-sm font-semibold text-gray-900 mb-1">Fecha fin</label>
+                                  <input type="date" value={nuevaActividad.fechaFin} onChange={(e) => setNuevaActividad({ ...nuevaActividad, fechaFin: e.target.value })} className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" onClick={(e) => e.stopPropagation()} />
+                                </div>
+                              </div>
+                              <div className="flex gap-2 pt-2">
+                                <button onClick={(e) => { e.stopPropagation(); agregarActividadInline(rol.numero); }} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center gap-2">
+                                  <Check className="w-4 h-4" /> Guardar actividad
+                                </button>
+                                <button onClick={(e) => { e.stopPropagation(); setMostrarFormNuevaActividad(null); }} className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium">
+                                  Cancelar
+                                </button>
+                              </div>
+                            </motion.div>
+                          ) : (
+                            puedeAsignarActividades && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setMostrarFormNuevaActividad(rol.numero); }}
+                                className="w-full px-4 py-3 border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 rounded-lg text-gray-600 hover:text-blue-600 font-medium flex items-center justify-center gap-2 transition-colors"
+                              >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                                Agregar actividad adicional
+                              </button>
+                            )
+                          )
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
         </>
       )}
     </motion.div>
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 // FUNCIONES HELPER PARA SEGUIMIENTO
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 // Función para calcular porcentaje automático basado en puntos de control
 function calcularPorcentajeAutomatico(actividad: Actividad): number {
   if (!actividad.puntosControl || actividad.puntosControl.length === 0) {
     return actividad.porcentajeAvance; // Si no hay puntos, usar el valor manual existente
   }
-  
+
   const puntosCompletados = actividad.puntosControl.filter(p => p.estado === 'completado').length;
   const totalPuntos = actividad.puntosControl.length;
-  
+
   return Math.round((puntosCompletados / totalPuntos) * 100);
 }
 
 // Función para obtener texto de periodicidad desde frecuencia configurada
 function obtenerTextoPeriodicidad(frecuencia?: FrecuenciaPuntoControl): string {
   if (!frecuencia) return '';
-  
+
   const mapeo: Record<FrecuenciaPuntoControl, string> = {
     'semanal': 'Seguimiento semanal',
     'mensual': 'Seguimiento mensual',
-    'bimensual': 'Seguimiento bimensual',
+    'bimensual': 'Seguimiento bimestral',
     'trimestral': 'Seguimiento trimestral',
+    'cuatrimestral': 'Seguimiento cuatrimestral',
     'semestral': 'Seguimiento semestral',
     'anual': 'Seguimiento anual',
     'personalizada': 'Seguimiento personalizado'
   };
-  
+
   return mapeo[frecuencia] || '';
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// [DEPRECATED - ELIMINADA] SECCIÓN 3: SEGUIMIENTO Y CONTROL
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+// [DEPRECATED - ELIMINADA] SECCIN 3: SEGUIMIENTO Y CONTROL
 // Esta sección fue unificada con la Sección de Resumen en "SeccionGestionYSeguimiento"
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, auditores = [] }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onAbrirRol4?: () => void; auditores?: Auditor[] }) {
   const [actividadExpandida, setActividadExpandida] = useState<number | string | null>(null);
@@ -6763,12 +7582,12 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
   const abrirSeguimiento = (actividad: Actividad) => {
     // Calcular porcentaje automático si tiene puntos de control
     const porcentajeCalculado = calcularPorcentajeAutomatico(actividad);
-    
+
     // Obtener periodicidad automática si tiene frecuencia configurada
-    const controlAutomatico = actividad.frecuenciaPuntosControl 
+    const controlAutomatico = actividad.frecuenciaPuntosControl
       ? obtenerTextoPeriodicidad(actividad.frecuenciaPuntosControl)
       : actividad.control;
-    
+
     setFormulario({
       control: controlAutomatico,
       evaluacion: actividad.evaluacion,
@@ -6782,11 +7601,11 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
 
   // Función para desactivar una actividad (soft delete)
   const desactivarActividad = async (rolNumero: number, actividadId: number | string) => {
-    console.log('🚫 [desactivarActividad] Desactivando actividad:', { rolNumero, actividadId });
-    
+    console.log('xa [desactivarActividad] Desactivando actividad:', { rolNumero, actividadId });
+
     try {
       const res = await actividadesApi.delete(String(actividadId));
-      console.log('🚫 [desactivarActividad] Respuesta del backend:', res);
+      console.log('xa [desactivarActividad] Respuesta del backend:', res);
 
       if (res.success) {
         // Actualizar estado local - marcar como inactiva
@@ -6796,7 +7615,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
             if (rol.numero === rolNumero) {
               return {
                 ...rol,
-                actividades: rol.actividades.map(act => 
+                actividades: rol.actividades.map(act =>
                   act.id === actividadId ? { ...act, activo: false } : act
                 )
               };
@@ -6836,10 +7655,10 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
             ...rol,
             actividades: rol.actividades.map(act => {
               if (act.id === actividadId) {
-                const obsActuales = Array.isArray(act.observacionesCumplimiento) 
-                  ? act.observacionesCumplimiento 
+                const obsActuales = Array.isArray(act.observacionesCumplimiento)
+                  ? act.observacionesCumplimiento
                   : [];
-                return { 
+                return {
                   ...act,
                   observacionesCumplimiento: [
                     ...obsActuales,
@@ -6869,10 +7688,10 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
             ...rol,
             actividades: rol.actividades.map(act => {
               if (act.id === actividadId) {
-                const obsActuales = Array.isArray(act.observacionesCumplimiento) 
-                  ? act.observacionesCumplimiento 
+                const obsActuales = Array.isArray(act.observacionesCumplimiento)
+                  ? act.observacionesCumplimiento
                   : [];
-                return { 
+                return {
                   ...act,
                   observacionesCumplimiento: obsActuales.filter((obs: ObservacionCumplimiento) => obs.id !== observacionId)
                 };
@@ -6900,15 +7719,15 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
               if (act.id === actividadId) {
                 const apoyoExiste = (act.responsablesApoyo || []).some(r => r.id === auditor.id);
                 const esPrincipal = act.responsable?.id === auditor.id;
-                
+
                 if (apoyoExiste || esPrincipal) {
-                  toast.error('Responsable ya asignado', { 
+                  toast.error('Responsable ya asignado', {
                     description: esPrincipal ? 'Ya es el responsable principal' : 'Ya está en el equipo de apoyo'
                   });
                   return act;
                 }
-                
-                return { 
+
+                return {
                   ...act,
                   responsablesApoyo: [
                     ...(act.responsablesApoyo || []),
@@ -6938,7 +7757,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
             ...rol,
             actividades: rol.actividades.map(act => {
               if (act.id === actividadId) {
-                return { 
+                return {
                   ...act,
                   responsablesApoyo: (act.responsablesApoyo || []).filter(r => r.id !== auditorId)
                 };
@@ -6962,29 +7781,29 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
       ?.actividades.find(a => a.id === actividadId);
 
     if (
-      formulario.porcentaje === 100 && 
-      actividadActual?.requiereAutorizacionJefeOCI && 
+      formulario.porcentaje === 100 &&
+      actividadActual?.requiereAutorizacionJefeOCI &&
       !actividadActual?.autorizadaPorJefeOCI
     ) {
-      toast.error('Autorización requerida', { 
-        description: 'Esta actividad requiere autorización del Jefe OCI antes de completarse al 100%' 
+      toast.error('Autorización requerida', {
+        description: 'Esta actividad requiere autorización del Jefe OCI antes de completarse al 100%'
       });
       return;
     }
 
-    const nuevoEstado: EstadoActividad = 
+    const nuevoEstado: EstadoActividad =
       formulario.porcentaje === 100 ? 'COMPLETADA' :
-      formulario.porcentaje > 0 ? 'EN_EJECUCION' :
-      'PENDIENTE';
+        formulario.porcentaje > 0 ? 'EN_EJECUCION' :
+          'PENDIENTE';
 
     // Mapear estado del frontend al formato del backend
-    const estadoBackend = 
+    const estadoBackend =
       nuevoEstado === 'COMPLETADA' ? 'completada' :
-      nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' :
-      'pendiente';
+        nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' :
+          'pendiente';
 
     setGuardando(true);
-    
+
     try {
       // Preparar payload - Backend espera estos campos exactos
       const payload = {
@@ -6994,16 +7813,16 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
         evaluacion: formulario.evaluacion,
         seguimiento: formulario.seguimiento
       };
-      
+
       console.log('[GUARDAR] Payload:', payload);
       const response = await actividadesApi.update(String(actividadId), payload);
       console.log('[GUARDAR] Respuesta backend:', response);
-      
+
       if (!response.success) {
         const errorMsg = response.error || 'No se pudo actualizar la actividad';
-        toast.error('No se puede completar', { 
+        toast.error('No se puede completar', {
           description: errorMsg,
-          duration: 6000 
+          duration: 6000
         });
         setGuardando(false);
         return;
@@ -7011,9 +7830,9 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
     } catch (error: any) {
       console.error('[GUARDAR] Error al guardar en backend:', error);
       const errorMsg = error?.response?.data?.message || error?.message || 'Error al guardar el seguimiento';
-      toast.error('Error al guardar', { 
+      toast.error('Error al guardar', {
         description: errorMsg,
-        duration: 6000 
+        duration: 6000
       });
       setGuardando(false);
       return;
@@ -7027,7 +7846,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
             ...rol,
             actividades: rol.actividades.map(act => {
               if (act.id === actividadId) {
-                return { 
+                return {
                   ...act,
                   control: formulario.control,
                   evaluacion: formulario.evaluacion,
@@ -7065,12 +7884,12 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
           <div>
             <h3 className="font-semibold text-blue-900 mb-2">Sistema de seguimiento y control</h3>
             <p className="text-sm text-blue-700 mb-2">
-              Registra el <strong>control</strong> (periodicidad), la <strong>evaluación</strong> (estado), 
+              Registra el <strong>control</strong> (periodicidad), la <strong>evaluación</strong> (estado),
               y el <strong>seguimiento</strong> (acciones y evidencias) de cada actividad.
             </p>
             <p className="text-sm text-blue-700 flex items-center gap-1.5">
               <CalendarClock className="w-4 h-4" />
-              <strong>Automático:</strong> El porcentaje de avance y la periodicidad se calculan automáticamente 
+              <strong>Automático:</strong> El porcentaje de avance y la periodicidad se calculan automáticamente
               en actividades con puntos de control configurados.
             </p>
           </div>
@@ -7102,7 +7921,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                 Programa Integrado
               </button>
             )}
-            <SemaforoSeguimientoPAI 
+            <SemaforoSeguimientoPAI
               porcentaje={Math.round(rol.actividades.reduce((s, a) => s + a.porcentajeAvance, 0) / rol.actividades.length)}
               variant="circular"
               size="lg"
@@ -7112,8 +7931,8 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
 
           <div className="space-y-3">
             {rol.actividades.map((actividad, idx) => (
-              <div 
-                key={`${rol.numero}-${idx}-${actividad.id}`} 
+              <div
+                key={`${rol.numero}-${idx}-${actividad.id}`}
                 style={{ contentVisibility: 'auto', containIntrinsicSize: '250px' }}
                 className={`border-2 rounded-lg overflow-hidden ${actividad.activo === false ? 'border-red-200 bg-red-50/30 opacity-60' : 'border-gray-200'}`}
               >
@@ -7132,11 +7951,10 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                           </span>
                         )}
                         {actividad.requiereAutorizacionJefeOCI && (
-                          <span className={`px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 ${
-                            actividad.autorizadaPorJefeOCI
+                          <span className={`px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 ${actividad.autorizadaPorJefeOCI
                               ? 'bg-green-100 text-green-700 border border-green-300'
                               : 'bg-orange-100 text-orange-700 border border-orange-300'
-                          }`}>
+                            }`}>
                             <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                               <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                             </svg>
@@ -7144,11 +7962,10 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                           </span>
                         )}
                         {actividad.requiereVerificacionDirector && (
-                          <span className={`px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 ${
-                            actividad.verificadaPorDirector
+                          <span className={`px-2 py-0.5 rounded text-xs font-semibold flex items-center gap-1 ${actividad.verificadaPorDirector
                               ? 'bg-green-100 text-green-700 border border-green-300'
                               : 'bg-amber-100 text-amber-700 border border-amber-300'
-                          }`}>
+                            }`}>
                             <Shield className="w-3 h-3" />
                             {actividad.verificadaPorDirector ? 'Verificada Director' : 'Requiere Verificación'}
                           </span>
@@ -7167,19 +7984,18 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                         )}
                       </div>
                     </div>
-                    <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${
-                      actividad.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
-                      actividad.estado === 'EN_EJECUCION' ? 'bg-orange-100 text-orange-700' :
-                      'bg-gray-100 text-gray-700'
-                    }`}>
-                      {actividad.estado === 'COMPLETADA' ? '✓ Completada' : 
-                       actividad.estado === 'EN_EJECUCION' ? '⏳ En ejecución' : '⏸ Pendiente'}
+                    <span className={`px-3 py-1 rounded-lg text-xs font-semibold ${actividad.estado === 'COMPLETADA' ? 'bg-green-100 text-green-700' :
+                        actividad.estado === 'EN_EJECUCION' ? 'bg-orange-100 text-orange-700' :
+                          'bg-gray-100 text-gray-700'
+                      }`}>
+                      {actividad.estado === 'COMPLETADA' ? 'Completada' :
+                        actividad.estado === 'EN_EJECUCION' ? '⏳ En ejecución' : '⏸ Pendiente'}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
-                      <SemaforoSeguimientoPAI 
+                      <SemaforoSeguimientoPAI
                         porcentaje={actividad.porcentajeAvance}
                         variant="bar"
                         size="md"
@@ -7200,7 +8016,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                         }}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium"
                       >
-                        {actividadExpandida === actividad.id ? '✕ Cerrar' : '📝 Seguimiento'}
+                        {actividadExpandida === actividad.id ? '× Cerrar' : 'Seguimiento'}
                       </button>
                       {/* Botón Desactivar - siempre visible si activo no es false */}
                       <button
@@ -7213,11 +8029,10 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                             desactivarActividad(rol.numero, actividad.id);
                           }
                         }}
-                        className={`px-3 py-2 text-sm rounded-lg font-medium border-2 flex items-center gap-1 ${
-                          actividad.activo === false 
-                            ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' 
+                        className={`px-3 py-2 text-sm rounded-lg font-medium border-2 flex items-center gap-1 ${actividad.activo === false
+                            ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
                             : 'bg-red-100 hover:bg-red-200 text-red-700 border-red-300'
-                        }`}
+                          }`}
                         title={actividad.activo === false ? 'Actividad ya inactiva' : 'Desactivar actividad'}
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -7237,18 +8052,17 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                       <p className="text-sm text-gray-900">{actividad.control || 'Sin definir'}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-gray-600 mb-1">📊 EVALUACIÓN</p>
+                      <p className="text-xs font-semibold text-gray-600 mb-1">Evaluación</p>
                       <p className="text-sm text-gray-900">{actividad.evaluacion || 'Sin evaluar'}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-gray-600 mb-1">✅ SEGUIMIENTO (Tareas)</p>
+                      <p className="text-xs font-semibold text-gray-600 mb-1">SEGUIMIENTO (Tareas)</p>
                       {actividad.tareasSeguimiento && actividad.tareasSeguimiento.length > 0 ? (
                         <ul className="space-y-1.5 mt-1">
                           {actividad.tareasSeguimiento.map((tarea) => (
                             <li key={tarea.id} className="flex items-start gap-2 text-sm">
-                              <span className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${
-                                tarea.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white'
-                              }`}>
+                              <span className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${tarea.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white'
+                                }`}>
                                 {tarea.completada && (
                                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
@@ -7283,10 +8097,10 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                         <span>adjunto{actividad.adjuntos.length !== 1 ? 's' : ''}</span>
                       </div>
                     )}
-                    {!tieneObservaciones(actividad.observacionesCumplimiento) && 
-                     (!actividad.adjuntos || actividad.adjuntos.length === 0) && (
-                      <span className="text-xs text-gray-400 italic">Sin evidencias registradas</span>
-                    )}
+                    {!tieneObservaciones(actividad.observacionesCumplimiento) &&
+                      (!actividad.adjuntos || actividad.adjuntos.length === 0) && (
+                        <span className="text-xs text-gray-400 italic">Sin evidencias registradas</span>
+                      )}
                   </div>
                 </div>
 
@@ -7315,7 +8129,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                   Actividad con puntos de control configurados
                                 </p>
                                 <p className="text-xs text-green-700">
-                                  <strong>{actividad.puntosControl.filter(p => p.estado === 'completado').length}</strong> de <strong>{actividad.puntosControl.length}</strong> puntos completados • 
+                                  <strong>{actividad.puntosControl.filter(p => p.estado === 'completado').length}</strong> de <strong>{actividad.puntosControl.length}</strong> puntos completados •
                                   Periodicidad: <strong>{actividad.frecuenciaPuntosControl}</strong>
                                 </p>
                                 <p className="text-xs text-green-600 mt-1">
@@ -7346,11 +8160,10 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                 disabled={!!(actividad.puntosControl && actividad.puntosControl.length > 0)}
                                 className="flex-1"
                               />
-                              <div className={`w-20 px-4 py-2 border-2 rounded-lg text-center ${
-                                actividad.puntosControl && actividad.puntosControl.length > 0 
-                                  ? 'bg-green-100 border-green-300' 
+                              <div className={`w-20 px-4 py-2 border-2 rounded-lg text-center ${actividad.puntosControl && actividad.puntosControl.length > 0
+                                  ? 'bg-green-100 border-green-300'
                                   : 'bg-gray-100 border-gray-300'
-                              }`}>
+                                }`}>
                                 <span className="text-2xl font-bold">{formulario.porcentaje}</span>
                                 <span className="text-sm">%</span>
                               </div>
@@ -7399,7 +8212,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
 
                           {/* Evaluación */}
                           <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
-                            <label className="block text-sm font-semibold mb-2">📊 Evaluación</label>
+                            <label className="block text-sm font-semibold mb-2">Evaluación</label>
                             <textarea
                               value={formulario.evaluacion}
                               onChange={(e) => setFormulario({ ...formulario, evaluacion: e.target.value })}
@@ -7412,25 +8225,24 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                           {/* Seguimiento - Tareas interactivas */}
                           <div className="bg-white rounded-lg border-2 border-green-200 p-4">
                             <label className="text-sm font-semibold mb-3 flex items-center gap-2">
-                              ✅ Tareas de seguimiento
+                              Tareas de seguimiento
                               <span className="text-xs text-gray-500 font-normal">({(actividad.tareasSeguimiento || []).filter(t => t.completada).length}/{(actividad.tareasSeguimiento || []).length} completadas)</span>
                             </label>
 
                             {/* Lista de tareas */}
                             <div className="space-y-2 mt-3">
                               {(actividad.tareasSeguimiento || []).map((tarea) => (
-                                <div key={tarea.id} className={`flex items-start gap-3 p-3 rounded-lg border transition-all ${
-                                  tarea.completada ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200 hover:border-blue-300'
-                                }`}>
+                                <div key={tarea.id} className={`flex items-start gap-3 p-3 rounded-lg border transition-all ${tarea.completada ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200 hover:border-blue-300'
+                                  }`}>
                                   <button
                                     onClick={async () => {
                                       const nombreUsuario = currentUser?.nombre || currentUser?.nombre_completo || plan.jefeOCI?.nombre || 'Usuario';
                                       const nuevasTareas = (actividad.tareasSeguimiento || []).map(t =>
-                                        t.id === tarea.id ? { 
-                                          ...t, 
-                                          completada: !t.completada, 
+                                        t.id === tarea.id ? {
+                                          ...t,
+                                          completada: !t.completada,
                                           fechaCompletada: !t.completada ? new Date().toISOString().split('T')[0] : undefined,
-                                          completadaPor: !t.completada ? nombreUsuario : undefined 
+                                          completadaPor: !t.completada ? nombreUsuario : undefined
                                         } : t
                                       );
                                       const nuevoRoles = plan.roles.map(r => ({
@@ -7449,9 +8261,8 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                         console.warn('[Tareas] Error al persistir:', e);
                                       }
                                     }}
-                                    className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                                      tarea.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white hover:border-blue-400'
-                                    }`}
+                                    className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${tarea.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white hover:border-blue-400'
+                                      }`}
                                   >
                                     {tarea.completada && (
                                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -7491,11 +8302,11 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                               }
                                             }}
                                             className="w-3.5 h-3.5 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-[8px] transition-colors"
-                                          >✕</button>
+                                          >×</button>
                                         </div>
                                       ))}
                                       {tarea.fechaCompletado && (
-                                        <span className="text-xs text-green-600">✓ {tarea.fechaCompletado}</span>
+                                        <span className="text-xs text-green-600">Completada: {tarea.fechaCompletado}</span>
                                       )}
                                       {(tarea.responsables || []).length === 0 && (
                                         <select
@@ -7620,7 +8431,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                               />
                             </div>
                             <p className="text-xs text-gray-500 mt-2">
-                              ℹ️ Este campo es diferente de las <strong>Observaciones</strong> del botón "Gestionar evidencias" (abajo). Aquí registra las acciones concretas realizadas.
+                              ️ Este campo es diferente de las <strong>Observaciones</strong> del botón "Gestionar evidencias" (abajo). Aquí registra las acciones concretas realizadas.
                             </p>
                           </div>
 
@@ -7636,7 +8447,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                 {actividad.responsablesApoyo.map((resp) => (
                                   <span key={resp.id} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-purple-50 border border-purple-200 rounded-full text-[10px] text-purple-800">
                                     {resp.nombre}
-                                    <button onClick={() => { if (confirm(`¿Eliminar a ${resp.nombre}?`)) eliminarResponsableApoyo(rol.numero, actividad.id, resp.id); }} className="text-purple-400 hover:text-red-500 leading-none ml-0.5">✕</button>
+                                    <button onClick={() => { if (confirm(`¿Eliminar a ${resp.nombre}?`)) eliminarResponsableApoyo(rol.numero, actividad.id, resp.id); }} className="text-purple-400 hover:text-red-500 leading-none ml-0.5">×</button>
                                   </span>
                                 ))}
                               </>
@@ -7673,7 +8484,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                 Gestionar evidencias
                               </button>
                             </div>
-                            
+
                             {/* Archivos */}
                             <div className="text-sm mb-3">
                               {actividad.adjuntos && actividad.adjuntos.length > 0 ? (
@@ -7689,7 +8500,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                               )}
                             </div>
 
-                            {/* Observaciones de Cumplimiento - SISTEMA DE MÚLTIPLES ENTRADAS */}
+                            {/* Observaciones de Cumplimiento - SISTEMA DE MaLTIPLES ENTRADAS */}
                             <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
                               <label className="block text-sm font-semibold mb-3 flex items-center gap-2">
                                 <FileText className="w-4 h-4 text-blue-600" />
@@ -7708,9 +8519,9 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                             {obs.registradoPor}
                                           </p>
                                           <p className="text-[10px] text-blue-600">
-                                            {new Date(obs.fechaRegistro).toLocaleString('es-CO', { 
-                                              dateStyle: 'short', 
-                                              timeStyle: 'short' 
+                                            {new Date(obs.fechaRegistro).toLocaleString('es-CO', {
+                                              dateStyle: 'short',
+                                              timeStyle: 'short'
                                             })}
                                           </p>
                                         </div>
@@ -7756,7 +8567,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                             </div>
                           </div>
 
-                          {/* Sistema de Autorización del Jefe OCI - CONFIGURADO EN CREACIÓN */}
+                          {/* Sistema de Autorización del Jefe OCI - CONFIGURADO EN CREACIN */}
                           {actividad.requiereAutorizacionJefeOCI && (
                             <div className="bg-gradient-to-r from-orange-50 to-red-50 border-2 border-orange-300 rounded-lg p-4">
                               <div className="flex items-start gap-3 mb-3">
@@ -7765,7 +8576,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                 </svg>
                                 <div className="flex-1">
                                   <p className="font-semibold text-orange-900 mb-1">
-                                    🔐 Requiere Autorización del Jefe OCI
+                                    🔒 Requiere Autorización del Jefe OCI
                                   </p>
                                   <p className="text-xs text-orange-700">
                                     Esta actividad fue configurada en la creación del Plan para requerir autorización del Jefe de la OCI antes de completarse al 100%
@@ -7780,7 +8591,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                     <div className="bg-green-50 border-2 border-green-300 rounded-lg p-3">
                                       <div className="flex items-center gap-2 text-green-800 mb-2">
                                         <CheckCircle2 className="w-5 h-5" />
-                                        <p className="font-bold">✓ Autorizada por el Jefe OCI</p>
+                                        <p className="font-bold">✅ Autorizada por el Jefe OCI</p>
                                       </div>
                                       <p className="text-xs text-green-700">
                                         Fecha: {actividad.fechaAutorizacion ? new Date(actividad.fechaAutorizacion).toLocaleString('es-CO') : 'N/A'}
@@ -7801,7 +8612,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                       <p className="text-xs text-yellow-800 mb-3">
                                         Esta actividad alcanzará el 100% pero requiere la autorización del Jefe OCI para considerarse completada.
                                       </p>
-                                      
+
                                       {/* Solo el Jefe OCI puede autorizar */}
                                       <div className="space-y-2">
                                         <textarea
@@ -7897,7 +8708,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                   <div className="bg-green-50 border-2 border-green-300 rounded-lg p-3">
                                     <div className="flex items-center gap-2 text-green-800 mb-2">
                                       <CheckCircle2 className="w-5 h-5" />
-                                      <p className="font-bold">✓ Verificada por el Director OCI</p>
+                                      <p className="font-bold">✅ Verificada por el Director OCI</p>
                                     </div>
                                     <p className="text-xs text-green-700">
                                       Fecha: {actividad.fechaVerificacion ? new Date(actividad.fechaVerificacion).toLocaleString('es-CO') : 'N/A'}
@@ -7918,7 +8729,7 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                     <p className="text-xs text-yellow-800 mb-3">
                                       Esta actividad ha sido completada pero requiere la verificación y aprobación del Director de Control Interno para ser considerada finalizada.
                                     </p>
-                                    
+
                                     {/* Solo el Director puede verificar - simulación de permisos */}
                                     <div className="space-y-2">
                                       <textarea
@@ -8032,9 +8843,9 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
   );
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// SECCIÓN 3: APROBACIÓN (antes Sección 4)
-// ════════════════════════════════════════════════════════════════════════════
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+// SECCIN 3: APROBACIN (antes Sección 4)
+// """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
 const ESTADO_PLAN_A_BACKEND: Record<EstadoPlan, string> = {
   BORRADOR: 'borrador',
@@ -8047,12 +8858,18 @@ const ESTADO_PLAN_A_BACKEND: Record<EstadoPlan, string> = {
 
 function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan = false, puedeActivarPlan = false, puedeEditarPlan = false, auditores = [] }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; puedeAprobarPlan?: boolean; puedeActivarPlan?: boolean; puedeEditarPlan?: boolean; auditores?: Auditor[] }) {
   const [guardando, setGuardando] = useState(false);
-  const currentUser = (() => {
-    try {
-      const userDataStr = localStorage.getItem('esap_user_data');
-      return userDataStr ? JSON.parse(userDataStr) : null;
-    } catch(e) { return null; }
-  })();
+  const currentUser = (window as any).__esap_auth_cache || null;
+
+  const emailSesion = (currentUser?.email || currentUser?.person?.email || currentUser?.usuario?.email || '').trim().toLowerCase();
+  const emailResponsablePlan = (plan.jefeOCI?.email || '').trim().toLowerCase();
+  const idsSesion = [currentUser?.idPerson, currentUser?.id, currentUser?.userId, currentUser?.sub]
+    .filter((v: unknown) => v != null && String(v).length > 0)
+    .map((v: unknown) => String(v));
+  const idResponsablePlan = plan.jefeOCI?.id != null && plan.jefeOCI.id !== '' ? String(plan.jefeOCI.id) : '';
+  const esResponsableDelPlan = !!currentUser && (
+    (idResponsablePlan && idsSesion.some((x) => x === idResponsablePlan))
+    || (emailSesion && emailResponsablePlan && emailSesion === emailResponsablePlan)
+  );
 
   const [modalObservacion, setModalObservacion] = useState<{ isOpen: boolean, auditorId: string | null, texto: string }>({ isOpen: false, auditorId: null, texto: '' });
   const [modalSubsanar, setModalSubsanar] = useState({ isOpen: false, texto: '' });
@@ -8080,7 +8897,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
 
   // Aplicar el comité real o usar vacío
   const equipo = plan.equipoAprobacion || [];
-  
+
   const historial = (plan.equipoAprobacion || []).map(a => ({
     ...a,
     auditorId: a.id || a.auditorId,
@@ -8089,6 +8906,42 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   }));
 
   const fueDevuelto = plan.estado === 'DEVUELTO' || historial.some(h => h.estado === 'OBSERVADA');
+
+  const { esMiTurnoComoAprobador, aprobadorMiTurno } = useMemo(() => {
+    const coincideSesionConAprobador = (a: Auditor) => {
+      const emA = (a.email || '').trim().toLowerCase();
+      if (emailSesion && emA && emailSesion === emA) return true;
+      const aid = a.id != null ? String(a.id) : '';
+      return !!(aid && idsSesion.some((id) => id === aid));
+    };
+    if (plan.estado !== 'EN_REVISION' || !equipo.length) {
+      return { esMiTurnoComoAprobador: false, aprobadorMiTurno: null as Auditor | null };
+    }
+    const idxUsuario = equipo.findIndex(coincideSesionConAprobador);
+    if (idxUsuario === -1) {
+      return { esMiTurnoComoAprobador: false, aprobadorMiTurno: null as Auditor | null };
+    }
+    const aprobador = equipo[idxUsuario];
+    const track = historial.find(h => h.auditorId === aprobador.id) || { estado: 'PENDIENTE' };
+    const isPendiente = track.estado === 'PENDIENTE';
+    if (!isPendiente) {
+      return { esMiTurnoComoAprobador: false, aprobadorMiTurno: null as Auditor | null };
+    }
+    const isSecuencial = plan.ordenAprobacion === 'secuencial';
+    let isWaitingTurn = false;
+    if (isSecuencial) {
+      const firstPendingIdx = equipo.findIndex((ap) => {
+        const t = historial.find(hi => hi.auditorId === ap.id);
+        return !t || t.estado === 'PENDIENTE';
+      });
+      if (firstPendingIdx !== -1 && idxUsuario > firstPendingIdx) isWaitingTurn = true;
+    }
+    const isActiveTurn = !isWaitingTurn && isPendiente;
+    return {
+      esMiTurnoComoAprobador: isActiveTurn,
+      aprobadorMiTurno: isActiveTurn ? aprobador : null,
+    };
+  }, [plan.estado, plan.ordenAprobacion, equipo, historial, emailSesion, idsSesion]);
 
   const cambiarEstadoGeneral = async (nuevoEstado: EstadoPlan, historialPersonalizado?: any[]) => {
     const arrHistorial = historialPersonalizado || plan.historialAprobaciones || historial;
@@ -8102,11 +8955,11 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
     setGuardando(true);
     try {
       const estadoBackend = ESTADO_PLAN_A_BACKEND[nuevoEstado];
-      const payload: any = { 
+      const payload: any = {
         estado: estadoBackend as any,
         equipo_aprobacion: arrHistorial
       };
-      
+
       const res = await planAnualApi.update(plan.id, payload);
       if (res.success) {
         toast.success('Cambio Registrado', { description: `Trazabilidad guardada en la base de datos.` });
@@ -8119,13 +8972,13 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
       console.error("Excepción en cambiarEstadoGeneral:", e);
       let msg = 'No se pudo guardar el estado en el servidor. ';
       if (e?.response?.data?.message) {
-        msg += typeof e.response.data.message === 'string' 
-          ? e.response.data.message 
+        msg += typeof e.response.data.message === 'string'
+          ? e.response.data.message
           : JSON.stringify(e.response.data.message);
       } else if (e?.message) {
         msg += e.message;
       }
-      
+
       const status = e?.response?.status;
       if (status === 403) {
         msg = `Operación denegada (403 Forbidden). Por favor repórtele al administrador del sistema que verifique sus permisos (ej. CIP.PLAN_ANUAL_APPROVE).`;
@@ -8139,7 +8992,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   };
 
   const handleAprobarAuditor = (auditorId: string, nombre: string, email?: string) => {
-    const sessionUser = JSON.parse(localStorage.getItem('esap_user_data') || '{}');
+    const sessionUser = (window as any).__esap_auth_cache || {};
     setModalOTPConfig({
       isOpen: true,
       accion: 'aprobar_auditor',
@@ -8151,16 +9004,22 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   };
 
   const handleEnviarComiteOTP = () => {
+    if (!esResponsableDelPlan) {
+      toast.error('Solo el responsable del plan puede enviar al comité', {
+        description: `Coordina con ${plan.jefeOCI?.nombre || 'el responsable asignado'} o con el comité de aprobación PAI si necesitas continuar el trámite.`,
+      });
+      return;
+    }
     if (fueDevuelto) {
       setModalSubsanar({ isOpen: true, texto: '' });
     } else {
-      const sessionUser = JSON.parse(localStorage.getItem('esap_user_data') || '{}');
+      const sessionUser = (window as any).__esap_auth_cache || {};
       setModalOTPConfig({
         isOpen: true,
         accion: 'enviar_comite',
         auditorId: null,
         userName: sessionUser.nombre || plan.responsable || 'Responsable del Plan',
-        userEmail: sessionUser.email || '', 
+        userEmail: sessionUser.email || '',
         detalle: 'Envío del Proyecto al Comité de Aprobación',
       });
     }
@@ -8176,31 +9035,31 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
 
   const handleConfirmarSubsanacion = () => {
     if (!modalSubsanar.texto.trim()) return;
-    
+
     // Convertir de OBSERVADA a PENDIENTE, guardando el comentario de subsanación
-    const nuevoHistorial = historial.map(h => 
-      h.estado === 'OBSERVADA' 
-        ? { ...h, estado: 'PENDIENTE' as const, respuestaSubsanacion: modalSubsanar.texto, fechaRespuesta: new Date().toISOString() } 
+    const nuevoHistorial = historial.map(h =>
+      h.estado === 'OBSERVADA'
+        ? { ...h, estado: 'PENDIENTE' as const, respuestaSubsanacion: modalSubsanar.texto, fechaRespuesta: new Date().toISOString() }
         : h
     );
-    
+
     setModalSubsanar({ isOpen: false, texto: '' });
     toast.success('Subsanación enviada exitosamente', { description: 'El plan regresó a fase de revisión de firmas.' });
-    
+
     // Al re-enviarlo por subsanación no requiere firma OTP, va directo a revisión
     cambiarEstadoGeneral('EN_REVISION', nuevoHistorial);
   };
 
   const ejecutarAprobacionReal = (auditorId: string, metadata: FirmaElectronicaMetadata) => {
-    const nuevoHistorial = historial.map(h => 
-      h.auditorId === auditorId ? { 
-        ...h, 
-        estado: 'APROBADA' as const, 
+    const nuevoHistorial = historial.map(h =>
+      h.auditorId === auditorId ? {
+        ...h,
+        estado: 'APROBADA' as const,
         fecha: metadata.fechaFirma,
         firmaElectronica: metadata
       } : h
     );
-    
+
     if (nuevoHistorial.every(h => h.estado === 'APROBADA')) {
       cambiarEstadoGeneral('APROBADO', nuevoHistorial);
     } else {
@@ -8211,21 +9070,21 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
 
   const handleRechazarObservacion = () => {
     if (!modalObservacion.auditorId || !modalObservacion.texto.trim()) return;
-    
-    const nuevoHistorial = historial.map(h => 
-      h.auditorId === modalObservacion.auditorId 
-        ? { ...h, estado: 'OBSERVADA' as const, observacion: modalObservacion.texto, fecha: new Date().toISOString() } 
+
+    const nuevoHistorial = historial.map(h =>
+      h.auditorId === modalObservacion.auditorId
+        ? { ...h, estado: 'OBSERVADA' as const, observacion: modalObservacion.texto, fecha: new Date().toISOString() }
         : h
     );
-    
+
     setModalObservacion({ isOpen: false, auditorId: null, texto: '' });
     toast.error('Plan devuelto con observaciones', { description: 'El plan regresó a fase de ajustes.' });
-    
+
     // Almacenar forzosamente la observación en el payload del equipo
     cambiarEstadoGeneral('DEVUELTO', nuevoHistorial);
   };
 
-  const exportarLogCSV = () => {
+  const exportarTrazabilidadAprobacionCSV = () => {
     try {
       const escapeCSV = (str?: string) => {
         if (!str) return '""';
@@ -8284,20 +9143,20 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
       ].join(';');
 
       const csvContent = ['sep=;', cabeceras, fase1, ...filasAprobadores, fase3].join('\n');
-      
+
       const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `Trazabilidad_PAI_${plan.vigencia || new Date().getFullYear()}.csv`);
+      link.setAttribute('download', `Trazabilidad_Aprobacion_Plan_Anual_${plan.vigencia || new Date().getFullYear()}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      
-      toast.success('Log de aprobación exportado correctamente');
+
+      toast.success('Trazabilidad de aprobación exportada correctamente');
     } catch (e) {
-      toast.error('Error al exportar el log CSV');
+      toast.error('Error al exportar la trazabilidad en CSV');
       console.error(e);
     }
   };
@@ -8310,7 +9169,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="space-y-6 relative">
-      
+
       {/* Estado general y timeline */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-6 shadow-sm relative z-0">
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
@@ -8318,21 +9177,21 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
             <FileCheck className="w-6 h-6 text-blue-600" />
             Trazabilidad de Aprobación
           </h2>
-          <button 
+          <button
             type="button"
-            onClick={exportarLogCSV}
+            onClick={exportarTrazabilidadAprobacionCSV}
             className="flex items-center justify-center gap-2 px-4 py-2 text-sm bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 border border-emerald-200 hover:border-emerald-300 rounded-xl transition-all font-semibold shadow-sm w-fit active:scale-95"
-            title="Descargar Logs completos en formato .CSV"
+            title="Descargar trazabilidad completa de aprobación en formato CSV"
           >
             <Download className="w-4 h-4" />
-            Descargar Logs (CSV)
+            Descargar trazabilidad de aprobación (CSV)
           </button>
         </div>
 
         {/* Cintas de estado general */}
         <div className="mb-8 flex gap-4 text-sm font-semibold text-center border-b border-gray-100 pb-6 overflow-x-auto">
           <div className={`px-4 py-2 rounded-lg flex-1 whitespace-nowrap ${plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO' ? 'bg-orange-100 text-orange-700 border-2 border-orange-300' : 'bg-gray-50 text-gray-400'}`}>
-            1. Formulación 
+            1. Formulación
             {plan.estado === 'DEVUELTO' && <span className="ml-2 bg-red-100 text-red-600 px-2 py-0.5 rounded-full text-xs">DEVUELTO</span>}
           </div>
           <div className={`px-4 py-2 rounded-lg flex-1 whitespace-nowrap ${plan.estado === 'EN_REVISION' ? 'bg-blue-100 text-blue-700 border-2 border-blue-300' : 'bg-gray-50 text-gray-400'}`}>
@@ -8382,8 +9241,8 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
               <Users className="w-5 h-5 text-gray-400" />
               Comité Aprobador PAI ({equipo.length})
             </h3>
-            {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && !isEditingCommittee && (
-              <button 
+            {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && esResponsableDelPlan && !isEditingCommittee && (
+              <button
                 onClick={() => {
                   setComiteDraft(plan.equipoAprobacion || []);
                   setOrdenDraft(plan.ordenAprobacion || 'secuencial');
@@ -8466,23 +9325,23 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                 <button onClick={() => setIsEditingCommittee(false)} className="px-4 py-2 bg-white border-2 border-gray-200 text-gray-600 hover:bg-gray-50 rounded-lg text-sm font-bold transition-colors">
                   Cancelar
                 </button>
-                <button 
+                <button
                   onClick={async () => {
                     if (comiteDraft.length === 0) {
                       toast.error('Debe seleccionar al menos un aprobador');
                       return;
                     }
 
-                    // ⚡ NUEVO: Persistencia REAL en Base de Datos
+                    // a NUEVO: Persistencia REAL en Base de Datos
                     const isSavingId = toast.loading('Guardando en base de datos...');
                     try {
-                      const res = await planAnualApi.update(plan.id, { 
-                        equipo_aprobacion: comiteDraft, 
-                        orden_aprobacion: ordenDraft 
+                      const res = await planAnualApi.update(plan.id, {
+                        equipo_aprobacion: comiteDraft,
+                        orden_aprobacion: ordenDraft
                       });
-                      
+
                       toast.dismiss(isSavingId);
-                      
+
                       if (res.success) {
                         onActualizar({ ...plan, equipoAprobacion: comiteDraft, ordenAprobacion: ordenDraft });
                         setIsEditingCommittee(false);
@@ -8495,7 +9354,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                       toast.error(e.message || 'Error al persistir cambios en el comité');
                       console.error('Error actualizando comité:', e);
                     }
-                  }} 
+                  }}
                   className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center gap-2"
                 >
                   <Check className="w-4 h-4" /> Guardar Cambios
@@ -8508,8 +9367,8 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                 <div className="col-span-full p-8 text-center bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl">
                   <AlertCircle className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                   <p className="text-gray-500 font-medium mb-4">No se ha designado un comité aprobador para este plan.</p>
-                  {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && (
-                    <button 
+                  {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && esResponsableDelPlan && (
+                    <button
                       onClick={() => { setComiteDraft([]); setOrdenDraft('secuencial'); setIsEditingCommittee(true); }}
                       className="px-5 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold rounded-lg transition-colors border border-blue-200"
                     >
@@ -8518,59 +9377,59 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                   )}
                 </div>
               ) : ([
-                /* Resumen de progreso del comité — visible para TODOS */
+                /* Resumen de progreso del comité  visible para TODOS */
                 plan.estado === 'EN_REVISION' && equipo.length > 0 && (() => {
-                    const totalVotos = equipo.length;
-                    const votosAprobados = historial.filter(h => h.estado === 'APROBADA').length;
-                    const votosObservados = historial.filter(h => h.estado === 'OBSERVADA').length;
-                    const votosPendientes = totalVotos - votosAprobados - votosObservados;
-                    const porcentaje = totalVotos > 0 ? Math.round((votosAprobados / totalVotos) * 100) : 0;
-                    const esParalelo = plan.ordenAprobacion !== 'secuencial';
-                    return (
-                      <div key="__progress_header" className="col-span-full mb-2 p-4 bg-gradient-to-r from-blue-50 via-white to-blue-50 border-2 border-blue-100 rounded-xl">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <Shield className="w-5 h-5 text-blue-600" />
-                            <span className="font-bold text-sm text-blue-900">
-                              Progreso de Aprobación — <span className="text-blue-600">{esParalelo ? 'Paralelo' : 'Secuencial'}</span>
-                            </span>
-                          </div>
-                          <span className="text-sm font-black text-blue-700">{porcentaje}%</span>
-                        </div>
-                        <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden mb-3">
-                          <div 
-                            className="h-full bg-gradient-to-r from-blue-500 via-green-400 to-emerald-500 rounded-full transition-all duration-1000 ease-out"
-                            style={{ width: `${porcentaje}%` }}
-                          />
-                        </div>
-                        <div className="flex items-center gap-4 text-xs font-semibold">
-                          <span className="flex items-center gap-1.5 text-green-700">
-                            <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                            {votosAprobados} Aprobada{votosAprobados !== 1 ? 's' : ''}
-                          </span>
-                          <span className="flex items-center gap-1.5 text-red-600">
-                            <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                            {votosObservados} Observada{votosObservados !== 1 ? 's' : ''}
-                          </span>
-                          <span className="flex items-center gap-1.5 text-blue-600">
-                            <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
-                            {votosPendientes} Pendiente{votosPendientes !== 1 ? 's' : ''}
-                          </span>
-                          <span className="ml-auto text-gray-400 text-[10px]">
-                            {esParalelo ? 'Todos firman simultáneamente' : `Turno ${votosAprobados + 1} de ${totalVotos}`}
+                  const totalVotos = equipo.length;
+                  const votosAprobados = historial.filter(h => h.estado === 'APROBADA').length;
+                  const votosObservados = historial.filter(h => h.estado === 'OBSERVADA').length;
+                  const votosPendientes = totalVotos - votosAprobados - votosObservados;
+                  const porcentaje = totalVotos > 0 ? Math.round((votosAprobados / totalVotos) * 100) : 0;
+                  const esParalelo = plan.ordenAprobacion !== 'secuencial';
+                  return (
+                    <div key="__progress_header" className="col-span-full mb-2 p-4 bg-gradient-to-r from-blue-50 via-white to-blue-50 border-2 border-blue-100 rounded-xl">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <Shield className="w-5 h-5 text-blue-600" />
+                          <span className="font-bold text-sm text-blue-900">
+                            Progreso de Aprobación  <span className="text-blue-600">{esParalelo ? 'Paralelo' : 'Secuencial'}</span>
                           </span>
                         </div>
+                        <span className="text-sm font-black text-blue-700">{porcentaje}%</span>
                       </div>
-                    );
-                  })(),
-                  ...equipo.map((aprobador, idx) => {
+                      <div className="h-2.5 bg-gray-200 rounded-full overflow-hidden mb-3">
+                        <div
+                          className="h-full bg-gradient-to-r from-blue-500 via-green-400 to-emerald-500 rounded-full transition-all duration-1000 ease-out"
+                          style={{ width: `${porcentaje}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-4 text-xs font-semibold">
+                        <span className="flex items-center gap-1.5 text-green-700">
+                          <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                          {votosAprobados} Aprobada{votosAprobados !== 1 ? 's' : ''}
+                        </span>
+                        <span className="flex items-center gap-1.5 text-red-600">
+                          <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                          {votosObservados} Observada{votosObservados !== 1 ? 's' : ''}
+                        </span>
+                        <span className="flex items-center gap-1.5 text-blue-600">
+                          <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+                          {votosPendientes} Pendiente{votosPendientes !== 1 ? 's' : ''}
+                        </span>
+                        <span className="ml-auto text-gray-400 text-[10px]">
+                          {esParalelo ? 'Todos firman simultáneamente' : `Turno ${votosAprobados + 1} de ${totalVotos}`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })(),
+                ...equipo.map((aprobador, idx) => {
                   const track = historial.find(h => h.auditorId === aprobador.id) || { estado: 'PENDIENTE', auditorNombre: aprobador.nombre };
                   const isPendiente = track.estado === 'PENDIENTE';
                   const isAprobado = track.estado === 'APROBADA';
                   const isObservado = track.estado === 'OBSERVADA';
                   const isSecuencial = plan.ordenAprobacion === 'secuencial';
                   const isParalelo = !isSecuencial;
-                  
+
                   // Calcular si el usuario está bloqueado por el flujo secuencial
                   let isWaitingTurn = false;
                   if (isSecuencial) {
@@ -8581,7 +9440,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                     if (firstPendingIdx !== -1 && idx > firstPendingIdx) isWaitingTurn = true;
                   }
                   // En paralelo NUNCA hay bloqueo de turno
-                  
+
                   const getInitials = (name: string) => name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
 
                   // En paralelo: todos los pendientes están activos simultáneamente
@@ -8594,13 +9453,12 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                   const pendientes = totalEquipo - aprobados - observados;
 
                   return (
-                    <div key={aprobador.id} className={`p-4 border-2 rounded-xl flex flex-col gap-3 relative transition-all duration-500 ${
-                      isAprobado ? 'border-green-200 bg-green-50' : 
-                      isObservado ? 'border-red-200 bg-red-50' : 
-                      isActiveTurn ? 'border-blue-400 bg-blue-50/60 shadow-lg shadow-blue-100/60 scale-[1.02] z-10' :
-                      'border-gray-200 bg-gray-50/40 opacity-70 grayscale-[15%]'
-                    }`}>
-                      
+                    <div key={aprobador.id} className={`p-4 border-2 rounded-xl flex flex-col gap-3 relative transition-all duration-500 ${isAprobado ? 'border-green-200 bg-green-50' :
+                        isObservado ? 'border-red-200 bg-red-50' :
+                          isActiveTurn ? 'border-blue-400 bg-blue-50/60 shadow-lg shadow-blue-100/60 scale-[1.02] z-10' :
+                            'border-gray-200 bg-gray-50/40 opacity-70 grayscale-[15%]'
+                      }`}>
+
                       {/* Badge: Turno Actual (secuencial) o Pendiente de Firma (paralelo) */}
                       {isActiveTurn && (
                         <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-blue-600 text-white text-[9px] font-black uppercase tracking-wider py-0.5 px-3 text-center rounded-full shadow border border-blue-400 z-20 flex items-center justify-center gap-1.5 whitespace-nowrap">
@@ -8618,15 +9476,14 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
 
                       <div className={`flex items-center justify-between ${(isActiveTurn || (isObservado && plan.estado === 'DEVUELTO')) ? 'mt-1' : ''}`}>
                         <div className="flex items-center gap-3 relative">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-sm shrink-0 ${
-                            isAprobado ? 'bg-green-600 text-white' : 
-                            isObservado ? 'bg-red-600 text-white' : 
-                            isActiveTurn ? 'bg-blue-600 text-white ring-4 ring-blue-100 shadow-md' :
-                            'bg-gray-400 text-white opacity-80'
-                          }`}>
-                            {isAprobado ? <Check className="w-4 h-4"/> : isObservado ? <X className="w-4 h-4"/> : (isSecuencial ? idx + 1 : idx + 1)}
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-sm shrink-0 ${isAprobado ? 'bg-green-600 text-white' :
+                              isObservado ? 'bg-red-600 text-white' :
+                                isActiveTurn ? 'bg-blue-600 text-white ring-4 ring-blue-100 shadow-md' :
+                                  'bg-gray-400 text-white opacity-80'
+                            }`}>
+                            {isAprobado ? <Check className="w-4 h-4" /> : isObservado ? <X className="w-4 h-4" /> : (isSecuencial ? idx + 1 : idx + 1)}
                           </div>
-                          
+
                           {track.firmaElectronica && (
                             <div className="absolute -top-2 -right-2 text-yellow-500 bg-white rounded-full p-0.5 shadow-sm" title="Firmado Electrónicamente">
                               <Shield className="w-4 h-4 fill-yellow-100" />
@@ -8643,24 +9500,22 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-1.5 shrink-0">
-                          {/* Status badge — premium pill */}
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[10px] uppercase font-black tracking-wider rounded-lg border backdrop-blur-sm transition-all ${
-                            isAprobado ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white border-green-400 shadow-sm shadow-green-200' :
-                            isObservado ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white border-red-400 shadow-sm shadow-red-200' :
-                            isActiveTurn ? 'bg-gradient-to-r from-blue-500 to-blue-700 text-white border-blue-400 shadow-md shadow-blue-200 animate-pulse' :
-                            'bg-gray-50 text-gray-400 border-gray-200'
-                          }`}>
+                          {/* Status badge  premium pill */}
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-[10px] uppercase font-black tracking-wider rounded-lg border backdrop-blur-sm transition-all ${isAprobado ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white border-green-400 shadow-sm shadow-green-200' :
+                              isObservado ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white border-red-400 shadow-sm shadow-red-200' :
+                                isActiveTurn ? 'bg-gradient-to-r from-blue-500 to-blue-700 text-white border-blue-400 shadow-md shadow-blue-200 animate-pulse' :
+                                  'bg-gray-50 text-gray-400 border-gray-200'
+                            }`}>
                             {isAprobado && <Check className="w-3 h-3" />}
                             {isObservado && <AlertTriangle className="w-3 h-3" />}
                             {isActiveTurn && <div className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />}
                             {isWaitingTurn ? 'En espera' : track.estado}
                           </span>
-                          {/* Role chip — subtle */}
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md shrink-0 ${
-                            isActiveTurn ? 'bg-blue-50 text-blue-700 border border-blue-100' : 
-                            isAprobado ? 'bg-green-50 text-green-700 border border-green-100' :
-                            'bg-gray-50 text-gray-500 border border-gray-100'
-                          }`}>
+                          {/* Role chip  subtle */}
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md shrink-0 ${isActiveTurn ? 'bg-blue-50 text-blue-700 border border-blue-100' :
+                              isAprobado ? 'bg-green-50 text-green-700 border border-green-100' :
+                                'bg-gray-50 text-gray-500 border border-gray-100'
+                            }`}>
                             {aprobador.cargo || 'Aprobador PAI'}
                           </span>
                         </div>
@@ -8671,7 +9526,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                         <div className="mt-1">
                           <div className="flex items-center gap-2 mb-1.5">
                             <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                              <div 
+                              <div
                                 className="h-full bg-gradient-to-r from-green-400 to-emerald-500 rounded-full transition-all duration-700"
                                 style={{ width: `${totalEquipo > 0 ? (aprobados / totalEquipo) * 100 : 0}%` }}
                               />
@@ -8682,7 +9537,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                           </div>
                           {observados > 0 && (
                             <p className="text-[10px] text-red-500 font-medium">
-                              ⚠ {observados} observación{observados > 1 ? 'es' : ''} registrada{observados > 1 ? 's' : ''}
+                              a {observados} observación{observados > 1 ? 'es' : ''} registrada{observados > 1 ? 's' : ''}
                             </p>
                           )}
                         </div>
@@ -8708,19 +9563,19 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                           (currentUser && (currentUser.email || currentUser.person?.email || currentUser.usuario?.email)?.trim().toLowerCase() === aprobador.email?.trim().toLowerCase()) ? (
                             <div className="flex gap-2 mt-2 pt-3 border-t border-gray-200">
                               <button onClick={() => handleAprobarAuditor(aprobador.id, aprobador.nombre, aprobador.email)} className="flex-1 bg-white hover:bg-green-50 text-green-700 border border-green-200 text-sm font-medium py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 shadow-sm">
-                                <Shield className="w-4 h-4"/> Aprobar (Firma)
+                                <Shield className="w-4 h-4" /> Aprobar (Firma)
                               </button>
                               <button onClick={() => setModalObservacion({ isOpen: true, auditorId: aprobador.id, texto: '' })} className="flex-1 bg-white hover:bg-red-50 text-red-700 border border-red-200 text-sm font-medium py-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 shadow-sm">
-                                <X className="w-4 h-4"/> Observar
+                                <X className="w-4 h-4" /> Observar
                               </button>
                             </div>
                           ) : (
                             <div className="mt-2 pt-3 border-t border-gray-200 text-center">
                               <div className="bg-gray-50 text-gray-500 text-[11px] font-semibold py-2 px-3 rounded-lg flex items-center justify-center border border-gray-200">
-                                <Shield className="w-3 h-3 mr-2 opacity-60 text-blue-500"/> 
-                                {track?.respuestaSubsanacion 
-                                  ? `El usuario se encuentra verificando la respuesta de subsanación...` 
-                                  : isParalelo 
+                                <Shield className="w-3 h-3 mr-2 opacity-60 text-blue-500" />
+                                {track?.respuestaSubsanacion
+                                  ? `El usuario se encuentra verificando la respuesta de subsanación...`
+                                  : isParalelo
                                     ? `Esperando firma de ${aprobador.nombre.split(' ')[0]}...`
                                     : `Esperando revisión de este usuario...`}
                               </div>
@@ -8729,7 +9584,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                         ) : (
                           <div className="mt-2 pt-3 border-t border-gray-200">
                             <div className="bg-gray-100 text-gray-500 text-[11px] font-semibold py-2 px-3 rounded-lg flex items-center gap-2 justify-center italic border border-gray-200/60">
-                              <Loader2 className="w-3 h-3 animate-spin"/> Esperando turno previo...
+                              <Loader2 className="w-3 h-3 animate-spin" /> Esperando turno previo...
                             </div>
                           </div>
                         )
@@ -8763,9 +9618,56 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
       {/* Botoneras Generales */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-6 relative z-0">
         <h2 className="text-xl font-bold text-gray-900 mb-4">Acciones de Flujo</h2>
-        
+
         <div className="space-y-3 relative z-0">
-          {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && (
+          {plan.estado === 'EN_REVISION' && puedeAprobarPlan && esMiTurnoComoAprobador && aprobadorMiTurno && (
+            <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-xl shadow-sm">
+              <p className="text-sm font-bold text-blue-950 mb-1 flex items-center gap-2">
+                <Shield className="w-5 h-5 text-blue-600 shrink-0" />
+                Tu turno de aprobación (comité PAI)
+              </p>
+              <p className="text-xs text-blue-900/90 mb-4">
+                Puedes firmar electrónicamente como <strong>{aprobadorMiTurno.nombre}</strong>. El plan permanece en revisión hasta completar todas las firmas del comité.
+              </p>
+              <button
+                type="button"
+                onClick={() =>
+                  handleAprobarAuditor(aprobadorMiTurno.id, aprobadorMiTurno.nombre, aprobadorMiTurno.email)
+                }
+                disabled={guardando}
+                className="w-full px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 shadow-md"
+              >
+                {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
+                Aprobar plan (firma electrónica)
+              </button>
+            </div>
+          )}
+
+          {plan.estado === 'EN_REVISION' && !puedeAprobarPlan && esMiTurnoComoAprobador && aprobadorMiTurno && (
+            <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-700">
+              <p className="font-semibold text-gray-900 mb-1">Es tu turno en el comité</p>
+              <p className="text-xs text-gray-600">
+                Tu usuario coincide con un firmante pendiente, pero no tienes permiso de aprobación del plan anual en la plataforma. Solicita el permiso correspondiente o que otro miembro con facultad complete la firma.
+              </p>
+            </div>
+          )}
+
+          {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && !esResponsableDelPlan && (
+            <div className="p-4 bg-amber-50 border-2 border-amber-200 rounded-xl flex items-start gap-3 text-amber-950">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
+              <div className="text-sm leading-relaxed">
+                <p className="font-bold text-amber-900 mb-1">Aún no se envía al comité de aprobación</p>
+                <p className="text-amber-900/90">
+                  El trámite de <strong>envío y firma</strong> ante el comité PAI lo realiza únicamente el <strong>responsable del plan</strong>
+                  {plan.jefeOCI?.nombre ? (
+                    <> (<span className="font-semibold">{plan.jefeOCI.nombre}</span>)</>
+                  ) : null}
+                  . Si debes avanzar la prueba o el flujo, coordina con esa persona o con quien integre el comité de aprobación según corresponda.
+                </p>
+              </div>
+            </div>
+          )}
+          {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && esResponsableDelPlan && (
             <button onClick={handleEnviarComiteOTP} disabled={!puedeEnviarRevision || guardando} className="w-full px-6 py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
               {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
               {fueDevuelto ? 'Subsanar y Re-enviar a Comité de Aprobación (Firma)' : 'Enviar a Comité de Aprobación (Firma)'}
@@ -8778,7 +9680,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
               Activar Plan (Hacer Vigente)
             </button>
           )}
-          
+
           {plan.estado === 'APROBADO' && !puedeActivarPlan && (
             <div className="p-4 bg-green-50 border-2 border-green-200 rounded-lg flex items-start gap-3 text-green-800">
               <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" />
@@ -8791,7 +9693,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
 
           {plan.estado === 'VIGENTE' && (
             <div className="bg-white border text-left border-gray-200 rounded-2xl overflow-hidden transition-all duration-300 shadow-sm">
-              <button 
+              <button
                 onClick={() => setIsTraceExpanded(!isTraceExpanded)}
                 className="w-full flex items-center justify-between p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
               >
@@ -8808,10 +9710,10 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                   <ChevronDown className="w-4 h-4" />
                 </div>
               </button>
-              
+
               <AnimatePresence>
                 {isTraceExpanded && (
-                  <motion.div 
+                  <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
@@ -8819,7 +9721,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                   >
                     <div className="px-4 md:px-8 py-8 bg-gray-50/50 rounded-b-2xl">
                       <div className="relative border-l-2 border-indigo-200 ml-4 flex flex-col gap-10">
-                        
+
                         {/* Paso 1: Creación */}
                         <div className="relative pl-8">
                           <div className="absolute -left-[13px] top-0 w-6 h-6 rounded-full bg-white border-4 border-indigo-300 shadow-sm flex items-center justify-center">
@@ -8841,17 +9743,17 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                             </div>
                           </div>
                         </div>
-                        
+
                         {/* Paso 2: Aprobaciones Comité */}
                         {equipo.map((aprobador, idx) => {
                           const track = historial.find(h => h.auditorId === aprobador.id) || { estado: 'PENDIENTE' } as any;
                           const isAprobado = track.estado === 'APROBADA';
                           const isObservado = track.estado === 'OBSERVADA';
                           const isPendiente = track.estado === 'PENDIENTE';
-                          
+
                           const dotColor = isAprobado ? 'border-green-400 bg-green-500' : isObservado ? 'border-red-400 bg-red-500' : 'border-blue-300 bg-white';
                           const innerDot = isPendiente ? 'bg-blue-400' : '';
-                          
+
                           return (
                             <div key={`trace-${aprobador.id}`} className="relative pl-8">
                               <div className={`absolute -left-[13px] top-2 w-6 h-6 rounded-full border-4 ${dotColor} shadow-md flex items-center justify-center z-10`}>
@@ -8859,17 +9761,15 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                                 {isObservado && <X className="w-3 h-3 text-white" strokeWidth={3} />}
                                 {isPendiente && <div className={`w-2 h-2 rounded-full ${innerDot}`} />}
                               </div>
-                              <div className={`p-5 rounded-2xl border-2 transition-all shadow-sm ${
-                                isAprobado ? 'bg-white border-green-100 hover:border-green-300' : 
-                                isObservado ? 'bg-red-50/30 border-red-100 hover:border-red-300' : 
-                                'bg-white border-gray-100 hover:border-blue-100'
-                              } relative`}>
-                                <div className={`absolute w-3 h-3 rotate-[-45deg] -left-[7px] top-3 ${
-                                  isAprobado ? 'bg-white border-l-2 border-t-2 border-green-100' : 
-                                  isObservado ? 'bg-red-50/30 border-l-2 border-t-2 border-red-100' : 
-                                  'bg-white border-l-2 border-t-2 border-gray-100'
-                                }`}></div>
-                                
+                              <div className={`p-5 rounded-2xl border-2 transition-all shadow-sm ${isAprobado ? 'bg-white border-green-100 hover:border-green-300' :
+                                  isObservado ? 'bg-red-50/30 border-red-100 hover:border-red-300' :
+                                    'bg-white border-gray-100 hover:border-blue-100'
+                                } relative`}>
+                                <div className={`absolute w-3 h-3 rotate-[-45deg] -left-[7px] top-3 ${isAprobado ? 'bg-white border-l-2 border-t-2 border-green-100' :
+                                    isObservado ? 'bg-red-50/30 border-l-2 border-t-2 border-red-100' :
+                                      'bg-white border-l-2 border-t-2 border-gray-100'
+                                  }`}></div>
+
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 pb-3 border-b border-gray-100/60">
                                   <div>
                                     <h4 className="font-bold text-gray-900 text-sm flex items-center gap-2">
@@ -8890,11 +9790,10 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                                     </p>
                                   </div>
                                   <div className="shrink-0">
-                                    <span className={`px-3 py-1 text-[11px] font-bold uppercase tracking-wider rounded-lg border ${
-                                      isAprobado ? 'bg-green-100 text-green-800 border-green-200' :
-                                      isObservado ? 'bg-red-100 text-red-800 border-red-200' :
-                                      'bg-gray-100 text-gray-600 border-gray-200'
-                                    }`}>
+                                    <span className={`px-3 py-1 text-[11px] font-bold uppercase tracking-wider rounded-lg border ${isAprobado ? 'bg-green-100 text-green-800 border-green-200' :
+                                        isObservado ? 'bg-red-100 text-red-800 border-red-200' :
+                                          'bg-gray-100 text-gray-600 border-gray-200'
+                                      }`}>
                                       {track.estado}
                                     </span>
                                   </div>
@@ -8959,7 +9858,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                           </div>
                           <div className="bg-gradient-to-br from-green-50 to-emerald-100/50 p-5 rounded-2xl border-2 border-green-200 shadow-md relative overflow-hidden">
                             <div className="absolute w-4 h-4 rotate-[-45deg] -left-[9px] top-2 bg-green-50 border-l-2 border-t-2 border-green-200"></div>
-                            
+
                             <div className="relative z-10">
                               <div className="flex justify-between items-start">
                                 <div>
@@ -8972,12 +9871,12 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                                 <div className="px-3 py-2 bg-green-50/50 flex items-center border-r border-green-100">
                                   <CalendarClock className="w-4 h-4 text-green-600" />
                                   <span className="text-[12px] text-green-800 font-bold uppercase tracking-wider ml-2">
-                                    {plan.fechaAprobacion 
-                                      ? new Date(plan.fechaAprobacion).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }) 
+                                    {plan.fechaAprobacion
+                                      ? new Date(plan.fechaAprobacion).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' })
                                       : 'Confirmado'}
                                   </span>
                                 </div>
-                                <button 
+                                <button
                                   onClick={(e) => { e.stopPropagation(); exportarCertificadoAprobacionPDF(plan, equipo, historial); }}
                                   className="px-4 py-2 flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white transition-colors focus:outline-none"
                                   title="Generar Certificado Digital PDF"
@@ -8987,11 +9886,11 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                                 </button>
                               </div>
                             </div>
-                            
+
                             <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-green-500/10 rounded-full blur-2xl"></div>
                           </div>
                         </div>
-                        
+
                       </div>
                     </div>
                   </motion.div>
@@ -9001,20 +9900,20 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
           )}
         </div>
       </div>
-      
+
       {/* Modal / Dialogo de Observación (Render Flotante Top-Level Z-Index) */}
       <AnimatePresence>
         {modalObservacion.isOpen && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm"
           >
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
               className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-lg border-2 border-red-100"
             >
               <h3 className="text-xl font-bold text-gray-900 mb-2 flex items-center gap-2 text-red-700">
-                <AlertCircle className="w-5 h-5"/> Registrar Observación
+                <AlertCircle className="w-5 h-5" /> Registrar Observación
               </h3>
               <p className="text-sm text-gray-600 mb-4">
                 El plan será devuelto al estado inicial (DEVUELTO) para que el responsable lo corrija y lo vuelva a enviar.
@@ -9027,15 +9926,15 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                 autoFocus
               />
               <div className="flex gap-3 justify-end mt-6">
-                <button 
-                  onClick={() => setModalObservacion({ isOpen: false, auditorId: null, texto: '' })} 
+                <button
+                  onClick={() => setModalObservacion({ isOpen: false, auditorId: null, texto: '' })}
                   className="px-5 py-2.5 font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
                 >
                   Cancelar
                 </button>
-                <button 
-                  disabled={!modalObservacion.texto.trim()} 
-                  onClick={handleRechazarObservacion} 
+                <button
+                  disabled={!modalObservacion.texto.trim()}
+                  onClick={handleRechazarObservacion}
                   className="px-5 py-2.5 font-medium bg-red-600 text-white hover:bg-red-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm"
                 >
                   Confirmar y Devolver
@@ -9048,11 +9947,11 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
 
       <AnimatePresence>
         {modalSubsanar.isOpen && (
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm"
           >
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 10 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 10 }}
               className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6"
             >
@@ -9065,7 +9964,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                   <p className="text-sm text-gray-500">Comunique los ajustes a los miembros del comité</p>
                 </div>
               </div>
-              
+
               <p className="text-sm text-gray-600 mb-4 bg-gray-50 p-3 rounded-lg border border-gray-100 italic">
                 Dado que el plan ya fue firmado por usted y las firmas previas aún son vinculantes, su re-envío de ajustes omitirá una doble validación de OTP y pasará de inmediato a la fase de revisión.
               </p>
@@ -9077,15 +9976,15 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                 autoFocus
               />
               <div className="flex gap-3 justify-end mt-6">
-                <button 
-                  onClick={() => setModalSubsanar({ isOpen: false, texto: '' })} 
+                <button
+                  onClick={() => setModalSubsanar({ isOpen: false, texto: '' })}
                   className="px-5 py-2.5 font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
                 >
                   Cancelar
                 </button>
-                <button 
-                  disabled={!modalSubsanar.texto.trim()} 
-                  onClick={handleConfirmarSubsanacion} 
+                <button
+                  disabled={!modalSubsanar.texto.trim()}
+                  onClick={handleConfirmarSubsanacion}
                   className="px-5 py-2.5 font-medium bg-green-600 text-white hover:bg-green-700 rounded-lg disabled:opacity-50 transition-colors shadow-sm"
                 >
                   Confirmar y Re-enviar

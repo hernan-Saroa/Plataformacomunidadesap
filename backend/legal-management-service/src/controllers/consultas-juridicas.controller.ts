@@ -1,16 +1,20 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UploadedFile, UseInterceptors, BadRequestException, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ConsultasJuridicasService } from '../services/consultas-juridicas.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('consultas-juridicas')
 export class ConsultasJuridicasController {
     constructor(private readonly consultasService: ConsultasJuridicasService) { }
 
     @Get()
-    async findAll() {
-        const consultas = await this.consultasService.findAll();
+    async findAll(@Req() req?: any) {
+        const access = getLegalAccessFromRequest(req);
+        const consultas = await this.consultasService.findAll({
+            asignadoKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
         // Add calculated diasRestantes to each consulta
         return consultas.map(c => ({
             ...c,
@@ -56,7 +60,8 @@ export class ConsultasJuridicasController {
             prioridad: body.prioridad || 'media',
             complejidad: body.complejidad,
             terminoLegalDias: parseInt(body.terminoLegalDias) || 30,
-            abogadoAsignadoId: body.abogadoAsignadoId || null
+            abogadoAsignadoId: body.abogadoAsignadoId || null,
+            abogadoAsignadoNombre: body.abogadoAsignadoNombre || null
         };
 
         const fileData = file ? {
@@ -113,10 +118,36 @@ export class ConsultasJuridicasController {
     @Patch(':id/gestionar-respuesta')
     async gestionarRespuesta(
         @Param('id') id: string,
-        @Body() body: { respuesta: string, enviar: boolean | string, usuario?: string }
+        @Body() body: { respuesta: string, enviar: boolean | string, usuario?: string, destinatariosAdicionales?: string[] }
     ) {
         const enviar = body.enviar === true || body.enviar === 'true';
-        return this.consultasService.updateRespuesta(id, body.respuesta, enviar, body.usuario);
+        return this.consultasService.updateRespuesta(id, body.respuesta, enviar, body.usuario, body.destinatariosAdicionales);
+    }
+
+    // --- Endpoints de Workflow Revisión Jefe ---
+
+    @Patch(':id/enviar-a-jefe')
+    async enviarAJefe(
+        @Param('id') id: string,
+        @Body() body: { respuesta: string; usuario?: string; destinatariosAdicionales?: string[] }
+    ) {
+        return this.consultasService.enviarAJefe(id, body.respuesta, body.usuario, body.destinatariosAdicionales);
+    }
+
+    @Patch(':id/aprobar-respuesta')
+    async aprobarRespuesta(
+        @Param('id') id: string,
+        @Body() body: { usuario?: string; destinatariosAdicionales?: string[] }
+    ) {
+        return this.consultasService.aprobarRespuesta(id, body.usuario, body.destinatariosAdicionales);
+    }
+
+    @Patch(':id/devolver-respuesta')
+    async devolverRespuesta(
+        @Param('id') id: string,
+        @Body() body: { comentario: string; usuario?: string }
+    ) {
+        return this.consultasService.devolverRespuesta(id, body.comentario, body.usuario);
     }
 
     // --- Endpoints de Archivo ---

@@ -7,7 +7,7 @@ import {
   Camera, Upload, Link as LinkIcon, MessageSquare, Hash
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Avatar, AvatarImage, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
+import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Separator } from '@esap-mfe/shared-ui/separator';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@esap-mfe/shared-ui/tabs';
@@ -65,7 +65,7 @@ export function ProfileModal({
     time: new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }),
     device: 'Chrome en Windows',
     location: 'Bogotá, Colombia',
-    ip: '192.168.1.1'
+    ip: 'IP interna protegida'
   };
 
   // Mock data para estadísticas
@@ -169,7 +169,6 @@ export function ProfileModal({
               <div className="flex items-center gap-2 md:gap-2.5">
                 <div className="relative group flex-shrink-0">
                   <Avatar className="w-12 h-12 md:w-14 md:h-14 ring-2 ring-white/40">
-                    <AvatarImage src={`https://ui-avatars.com/api/?name=${userName}&size=80&background=fff&color=1e5da8&bold=true`} />
                     <AvatarFallback className="bg-white/20 backdrop-blur-md text-white text-base md:text-lg font-black">
                       {userInitials}
                     </AvatarFallback>

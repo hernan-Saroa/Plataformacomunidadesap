@@ -41,7 +41,7 @@ async function apiRequest<T>(
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
   try {
-    const token = localStorage.getItem('esap_auth_token');
+const token = localStorage.getItem('esap_auth_token');
     const urlObj = new URL(`${API_BASE_URL}${endpoint}`);
     urlObj.searchParams.append('_t', new Date().getTime().toString());
 
@@ -52,6 +52,7 @@ async function apiRequest<T>(
         'Pragma': 'no-cache',
         'Expires': '0',
         ...(token && { 'Authorization': `Bearer ${token}` }),
+        credentials: 'include',
         ...options?.headers,
       },
       ...options,
@@ -190,6 +191,18 @@ export const auditoriasApi = {
    */
   getPersonasDisponibles: async (): Promise<ApiResponse<any[]>> => {
     return apiRequest<any[]>('/auditorias/personas/disponibles');
+  },
+
+  /**
+   * Búsqueda libre de personas (auth.personas) por nombre, email o identificación.
+   * Devuelve { idPersona, id, nombre, email, numeroIdentificacion, ... }.
+   * Pensado para autocompletar selectores del formulario.
+   */
+  searchPersonas: async (q: string): Promise<ApiResponse<any[]>> => {
+    if (!q || q.trim().length < 2) {
+      return { success: true, data: [] } as ApiResponse<any[]>;
+    }
+    return apiRequest<any[]>(`/auditorias/personas/search?q=${encodeURIComponent(q.trim())}`);
   },
 
   /**
@@ -831,6 +844,63 @@ export const configuracionesProfesionalesOCIApi = {
   },
 };
 
+// ==================== NOTIFICACIONES ====================
+
+export const notificacionesApi = {
+  /**
+   * Obtener notificaciones por usuario
+   */
+  obtenerPorUsuario: async (usuarioId: string): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/notificaciones/usuario/${usuarioId}`);
+  },
+
+  /**
+   * Marcar notificación como leída
+   */
+  marcarLeida: async (id: string, usuarioId: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/notificaciones/${id}/leida`, {
+      method: 'PUT',
+      body: JSON.stringify({ usuarioId }),
+    });
+  },
+
+  /**
+   * Marcar todas las notificaciones como leídas
+   */
+  marcarTodasLeidas: async (usuarioId: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/notificaciones/usuario/${usuarioId}/todas-leidas`, {
+      method: 'PUT',
+    });
+  },
+
+  /**
+   * Eliminar notificación
+   */
+  eliminar: async (id: string, usuarioId: string): Promise<ApiResponse<void>> => {
+    return apiRequest<void>(`/notificaciones/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ usuarioId }),
+    });
+  },
+
+  /**
+   * Obtener preferencias de notificación
+   */
+  getPreferencias: async (usuarioId: string): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/notificaciones/preferencias/${usuarioId}`);
+  },
+
+  /**
+   * Guardar preferencias de notificación
+   */
+  updatePreferencias: async (usuarioId: string, preferencias: any): Promise<ApiResponse<any>> => {
+    return apiRequest<any>(`/notificaciones/preferencias/${usuarioId}`, {
+      method: 'PUT',
+      body: JSON.stringify(preferencias),
+    });
+  },
+};
+
 // Compatibilidad con imports previos que usan la sigla OCIG.
 export const configuracionesProfesionalesOCIGApi = configuracionesProfesionalesOCIApi;
 
@@ -845,4 +915,5 @@ export const controlInternoApi = {
   listasChequeo: listasChequeoApi,
   informesLey: informesLeyApi,
   configuracionesProfesionalesOCI: configuracionesProfesionalesOCIApi,
+  notificaciones: notificacionesApi,
 };

@@ -1,10 +1,11 @@
 
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Res, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, UseInterceptors, UploadedFile, BadRequestException, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import type { Response } from 'express';
 import { TerminosService } from '../services/terminos.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('terminos')
 export class TerminosController {
@@ -13,11 +14,28 @@ export class TerminosController {
 
     @Post('manual')
     async createManual(@Body() body: any) {
-        // Defaults for manual creation
+        // Normalizar origenModulo: el frontend puede mandar 'DEFENSA_JUDICIAL' pero la BD
+        // espera el código corto ('DEFENSA'). Mapeamos todos los posibles alias.
+        const MODULO_MAP: Record<string, string> = {
+            'DEFENSA_JUDICIAL': 'DEFENSA',
+            'DEFENSA': 'DEFENSA',
+            'JUZGAMIENTO': 'JUZGAMIENTO',
+            'JUZGAMIENTO_DISCIPLINARIO': 'JUZGAMIENTO',
+            'ASESORIA': 'ASESORIA',
+            'ASESORIA_JURIDICA': 'ASESORIA',
+            'ORGANOS_CONTROL': 'ORGANOS_CONTROL',
+            'PROCESOS_COACTIVOS': 'PROCESOS_COACTIVOS',
+            'MANUAL': 'MANUAL',
+        };
+        const origenModulo = MODULO_MAP[body.origenModulo] || body.origenModulo || 'MANUAL';
+
+        // Limpiar campos UUID: strings vacías deben ser null para evitar error de Postgres
+        const responsableId = body.responsableId && body.responsableId.trim() !== '' ? body.responsableId : null;
+        const referenciaId  = body.referenciaId  && body.referenciaId.trim()  !== '' ? body.referenciaId  : null;
+
         const fechaBase = body.fechaBase ? new Date(body.fechaBase) : new Date();
         const fechaVencimiento = body.fechaVencimiento ? new Date(body.fechaVencimiento) : null;
 
-        // Calculate days if dates exist
         let diasTermino = body.diasTermino || 0;
         if (fechaVencimiento && !diasTermino) {
             const diffTime = Math.abs(fechaVencimiento.getTime() - fechaBase.getTime());
@@ -26,7 +44,9 @@ export class TerminosController {
 
         return this.terminosService.create({
             ...body,
-            origenModulo: body.origenModulo || 'MANUAL',
+            origenModulo,
+            responsableId,
+            referenciaId,
             fechaBase,
             fechaVencimiento,
             diasTermino,
@@ -50,14 +70,23 @@ export class TerminosController {
     async getCalendario(
         @Query('start') start: string,
         @Query('end') end: string,
-        @Query('responsableId') responsableId?: string
+        @Query('responsableId') responsableId?: string,
+        @Req() req?: any,
     ) {
-        return this.terminosService.getCalendario(start, end, responsableId);
+        const access = getLegalAccessFromRequest(req);
+        return this.terminosService.getCalendario(start, end, {
+            responsableId: access.esResuelveSolo ? undefined : responsableId,
+            responsableKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Get('listado')
-    async getListado(@Query('responsableId') responsableId?: string) {
-        return this.terminosService.getSemaforoList(responsableId);
+    async getListado(@Query('responsableId') responsableId?: string, @Req() req?: any) {
+        const access = getLegalAccessFromRequest(req);
+        return this.terminosService.getSemaforoList({
+            responsableId: access.esResuelveSolo ? undefined : responsableId,
+            responsableKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Get('reportes/eficiencia')
@@ -77,6 +106,13 @@ export class TerminosController {
 
     @Patch(':id')
     async update(@Param('id') id: string, @Body() body: any) {
+        // Limpiar UUIDs vacíos para evitar error de Postgres
+        if (body.responsableId !== undefined && (!body.responsableId || body.responsableId.trim() === '')) {
+            body.responsableId = null;
+        }
+        if (body.referenciaId !== undefined && (!body.referenciaId || body.referenciaId.trim() === '')) {
+            body.referenciaId = null;
+        }
         return this.terminosService.update(id, body);
     }
 
@@ -102,13 +138,14 @@ export class TerminosController {
     }
 
     @Get(':id/notas')
-    async getNotas(@Param('id') id: string) {
-        return this.terminosService.getNotas(id);
+    async getNotas(@Param('id') id: string, @Req() req?: any) {
+        return this.terminosService.getNotas(id, getLegalAccessFromRequest(req));
     }
 
     @Post(':id/notas')
-    async addNota(@Param('id') id: string, @Body() body: { texto: string; usuario?: string }) {
-        return this.terminosService.addNota(id, body.texto, body.usuario || 'Sistema');
+    async addNota(@Param('id') id: string, @Body() body: { texto: string; usuario?: string; usuarioId?: string }, @Req() req?: any) {
+        const access = getLegalAccessFromRequest(req);
+        return this.terminosService.addNota(id, body.texto, body.usuario || 'Sistema', access.userId || body.usuarioId);
     }
 
     @Post(':id/upload-documento')

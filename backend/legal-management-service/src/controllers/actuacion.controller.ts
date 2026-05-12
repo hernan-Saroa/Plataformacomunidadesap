@@ -1,14 +1,23 @@
 import { Controller, Get, Post, Body, Param, NotFoundException, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ActuacionService } from '../services/actuacion.service';
 import { Actuacion } from '../entities/actuacion.entity';
+import { Expediente } from '../entities/expediente.entity';
+import { LegalNotificationsService } from '../services/legal-notifications.service';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 
 @Controller('expedientes/:id/actuaciones')
 export class ActuacionController {
-    constructor(private readonly actuacionService: ActuacionService) { }
+    constructor(
+        private readonly actuacionService: ActuacionService,
+        private readonly legalNotifications: LegalNotificationsService,
+        @InjectRepository(Expediente)
+        private readonly expedienteRepository: Repository<Expediente>,
+    ) { }
 
     @Get()
     async listar(@Param('id') id: string): Promise<Actuacion[]> {
@@ -60,7 +69,53 @@ export class ActuacionController {
             documentoNombre: file ? file.originalname : undefined
         };
 
-        return this.actuacionService.registrarActuacion(id, data);
+        const result = await this.actuacionService.registrarActuacion(id, data);
+
+        // Cargar expediente si es necesario para notificaciones
+        const necesitaExpediente = file || body.tipoActuacion === 'NOTA_INTERNA';
+        if (necesitaExpediente) {
+            const expediente = await this.expedienteRepository.findOne({
+                where: { id },
+                select: ['id', 'radicado', 'jurisdiccion', 'tipoProceso', 'abogadoSustanciador'],
+            });
+            if (expediente) {
+                const radicado = (expediente.radicado || '').toUpperCase();
+                const esDisciplinario =
+                    expediente.jurisdiccion === 'DISCIPLINARIO' ||
+                    expediente.jurisdiccion === 'Disciplinaria' ||
+                    expediente.tipoProceso === 'DISCIPLINARIO' ||
+                    expediente.tipoProceso === 'Disciplinario' ||
+                    radicado.startsWith('PD-');
+                const modulo: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO_DISCIPLINARIO' =
+                    (body.modulo === 'DEFENSA_JUDICIAL' || body.modulo === 'JUZGAMIENTO_DISCIPLINARIO')
+                        ? body.modulo
+                        : esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+
+                if (file) {
+                    await this.legalNotifications.notifyDocumentoSubido({
+                        modulo,
+                        radicado: expediente.radicado,
+                        procesoId: expediente.id,
+                        nombreDocumento: file.originalname,
+                        subidoPor: body.subidoPor || body.responsable || body.usuario || 'Sistema',
+                    });
+                }
+
+                if (body.tipoActuacion === 'NOTA_INTERNA' && expediente.abogadoSustanciador) {
+                    const autorNombre = body.responsable || body.usuario || body.autorNombre || 'Un usuario';
+                    const moduloVista = esDisciplinario ? 'juzgamiento' : 'defensa-judicial';
+                    this.legalNotifications.notifyObservacionAgregada({
+                        radicado: expediente.radicado,
+                        procesoId: expediente.id,
+                        abogadoId: expediente.abogadoSustanciador,
+                        autorNombre,
+                        moduloVista,
+                    }).catch(() => {});
+                }
+            }
+        }
+
+        return result;
     }
 }
 

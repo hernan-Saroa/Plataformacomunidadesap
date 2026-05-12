@@ -21,10 +21,7 @@ import { User } from './user.entity';
 import { InternalServiceAccess } from '../auth/decorators/internal-service.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import {
-  AUTH_MANAGE_ROLES,
-  AUTH_READ_ROLES,
-} from '../auth/authorization.constants';
+import { AUTH_MANAGE_ROLES } from '../auth/authorization.constants';
 
 type AuthRequest = Request & {
   user?: {
@@ -84,7 +81,6 @@ export class UsersController {
 
   @Get()
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async findAll(
     @Req() req: AuthRequest,
     @Query('page') page: number = 1,
@@ -121,7 +117,6 @@ export class UsersController {
 
   @Get(':id')
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async findOne(@Req() req: AuthRequest, @Param('id') id: string) {
     const exposeInternalIds = this.isInternalServiceRequest(req);
     const user = await this.usersService.findById(id, {
@@ -179,5 +174,15 @@ export class UsersController {
     });
 
     return this.toPersonResponseDto(user, exposeInternalIds);
+  }
+
+  @Put(':id/password')
+  @Roles(...AUTH_MANAGE_ROLES)
+  async adminResetPassword(
+    @Param('id') id: string,
+    @Body('new_password') newPassword: string,
+  ) {
+    await this.usersService.adminResetPassword(id, newPassword);
+    return { message: 'Contraseña actualizada exitosamente' };
   }
 }

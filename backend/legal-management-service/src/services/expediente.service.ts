@@ -12,6 +12,7 @@ import { NotaExpediente } from '../entities/nota-expediente.entity';
 import { Audiencia } from '../entities/audiencia.entity';
 import { Acta } from '../entities/acta.entity';
 import { ConfigurationsService } from './configurations.service';
+import { LegalNotificationsService } from './legal-notifications.service';
 
 @Injectable()
 export class ExpedienteService {
@@ -24,7 +25,8 @@ export class ExpedienteService {
         private decisionRepository: Repository<DecisionDisciplinaria>,
         @InjectRepository(ExcepcionProcesal)
         private excepcionRepository: Repository<ExcepcionProcesal>,
-        private readonly configService: ConfigurationsService
+        private readonly configService: ConfigurationsService,
+        private readonly legalNotifications: LegalNotificationsService
     ) { }
 
     async findOneByRadicado(radicado: string): Promise<Expediente | null> {
@@ -86,7 +88,7 @@ export class ExpedienteService {
         });
     }
 
-    async crearExpediente(data: Partial<Expediente>): Promise<Expediente> {
+    async crearExpediente(data: Partial<Expediente>, creadoPor: string = 'Sistema'): Promise<Expediente> {
         if (data.radicado) {
             const existing = await this.expedienteRepository.findOne({ where: { radicado: data.radicado } });
             if (existing) {
@@ -125,7 +127,34 @@ export class ExpedienteService {
         }
 
         const nuevoExpediente = this.expedienteRepository.create(data);
-        return this.expedienteRepository.save(nuevoExpediente);
+        const saved = await this.expedienteRepository.save(nuevoExpediente);
+
+        const esDisciplinario =
+            saved.jurisdiccion === 'DISCIPLINARIO' ||
+            saved.jurisdiccion === 'Disciplinaria' ||
+            saved.tipoProceso === 'DISCIPLINARIO' ||
+            saved.tipoProceso === 'Disciplinario';
+        const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+
+        await this.legalNotifications.notifyProcesoCreado({
+            modulo,
+            radicado: saved.radicado,
+            procesoId: saved.id,
+            creadoPor,
+        });
+
+        if (saved.abogadoSustanciador) {
+            await this.legalNotifications.notifyAbogadoAsignado({
+                modulo,
+                radicado: saved.radicado,
+                procesoId: saved.id,
+                abogadoId: saved.abogadoSustanciador,
+                asignadoPor: creadoPor,
+                esReasignacion: false,
+            });
+        }
+
+        return saved;
     }
 
     private addBusinessDays(startDate: Date, days: number): Date {
@@ -141,7 +170,7 @@ export class ExpedienteService {
         return currentDate;
     }
 
-    async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
+    async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string; abogadoSustanciadorKeys?: string[] }): Promise<Expediente[]> {
         const queryBuilder = this.expedienteRepository.createQueryBuilder('expediente');
         // queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones'); // Removed due to loose coupling
         queryBuilder.leftJoinAndSelect('expediente.evidencias', 'evidencias');
@@ -172,6 +201,14 @@ export class ExpedienteService {
 
         if (filtros.search) {
             queryBuilder.andWhere('(expediente.radicado ILIKE :search OR expediente.demandante ILIKE :search OR expediente.demandado ILIKE :search)', { search: `%${filtros.search}%` });
+        }
+
+        if (filtros.abogadoSustanciadorKeys?.length) {
+            const normalizedKeys = filtros.abogadoSustanciadorKeys.map((key) => key.toLowerCase());
+            queryBuilder.andWhere(
+                '(expediente.abogadoSustanciador IN (:...abogadoSustanciadorKeys) OR LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys))',
+                { abogadoSustanciadorKeys: filtros.abogadoSustanciadorKeys, normalizedKeys },
+            );
         }
 
         const { entities, raw } = await queryBuilder.orderBy('expediente.createdAt', 'DESC').getRawAndEntities();
@@ -234,7 +271,9 @@ export class ExpedienteService {
         }
 
         // 2b. Detectar reasignación de abogado
+        let nuevoAbogadoId: string | undefined;
         if (data.abogadoSustanciador && data.abogadoSustanciador !== currentExpediente.abogadoSustanciador) {
+            nuevoAbogadoId = data.abogadoSustanciador;
             const abogadoAnterior = currentExpediente.abogadoSustanciador;
             if (abogadoAnterior) {
                 // Append to abogadosAnteriores (deduplicated)
@@ -250,6 +289,26 @@ export class ExpedienteService {
         await this.expedienteRepository.update(id, data);
         const updated = await this.findOne(id);
         if (!updated) throw new Error('Expediente no encontrado post-update');
+
+        // Notificar al nuevo abogado si hubo reasignación
+        if (nuevoAbogadoId) {
+            const esDisciplinario =
+                updated.jurisdiccion === 'DISCIPLINARIO' ||
+                updated.jurisdiccion === 'Disciplinaria' ||
+                updated.tipoProceso === 'DISCIPLINARIO' ||
+                updated.tipoProceso === 'Disciplinario';
+            const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+
+            await this.legalNotifications.notifyAbogadoAsignado({
+                modulo,
+                radicado: updated.radicado,
+                procesoId: updated.id,
+                abogadoId: nuevoAbogadoId,
+                asignadoPor: 'Sistema',
+                esReasignacion: true,
+            });
+        }
+
         return updated;
     }
 
@@ -548,6 +607,33 @@ export class ExpedienteService {
 
         const updated = await this.findOne(principalId);
         if (!updated) throw new Error('Expediente no encontrado post-update');
+
+        const esDisciplinario =
+            updated.jurisdiccion === 'DISCIPLINARIO' ||
+            updated.jurisdiccion === 'Disciplinaria' ||
+            updated.tipoProceso === 'DISCIPLINARIO' ||
+            updated.tipoProceso === 'Disciplinario';
+        const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+
+        await this.legalNotifications.notifyProcesoAnexado({
+            modulo,
+            radicadoAnexado: anexado.radicado,
+            radicadoPrincipal: updated.radicado,
+            procesoPrincipalId: updated.id,
+            anexadoPor: usuario,
+        });
+
+        await this.legalNotifications.notifyAbogadosProcesoAnexado({
+            modulo,
+            radicadoAnexado: anexado.radicado,
+            radicadoPrincipal: updated.radicado,
+            procesoPrincipalId: updated.id,
+            procesoAnexadoId: anexado.id,
+            anexadoPor: usuario,
+            abogadoPrincipalId: updated.abogadoSustanciador ?? undefined,
+            abogadoAnexadoId: anexado.abogadoSustanciador ?? undefined,
+        });
+
         return updated;
     }
 

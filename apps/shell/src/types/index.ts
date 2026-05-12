@@ -69,9 +69,9 @@ export interface LoginCredentials {
 
 export interface LoginResponse {
   user: User;
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
 }
 
 export interface RefreshTokenResponse {
@@ -696,9 +696,44 @@ export interface ReviewRequest {
   
   // Estado de la solicitud
   status: 'pending' | 'under_review' | 'approved' | 'rejected' | 'expired' | 'duplicate';
+  approvalStatus?: 'PENDING_APPROVAL' | 'PENDING_HEAD_APPROVAL' | 'APPROVED_FINAL' | 'REJECTED_FINAL' | 'OBSERVATION' | 'HEAD_OBSERVATION' | string | null;
+  reviewRecommendation?: 'APPROVED' | 'REJECTED' | 'OBSERVATION' | string | null;
+  reviewRecommendationReason?: string | null;
+  reviewPayload?: Record<string, unknown> | null;
+  reviewSubmittedAt?: string | null;
+  reviewSubmittedByName?: string | null;
+  approverDecision?: 'APPROVED' | 'REJECTED' | 'OBSERVATION' | string | null;
+  approverNotes?: string | null;
+  approvedAt?: string | null;
+  approverName?: string | null;
+  headDecision?: 'APPROVED' | 'REJECTED' | 'OBSERVATION' | string | null;
+  headNotes?: string | null;
+  headReviewedAt?: string | null;
+  headReviewerName?: string | null;
+  reviewTimeline?: Array<{
+    type: string;
+    label: string;
+    notes?: string;
+    actorId?: string;
+    actorName?: string;
+    actorEmail?: string;
+    createdAt: string;
+  }>;
+  reviewFiles?: Array<{
+    id: string;
+    requestId: string;
+    originalName: string;
+    storedName: string;
+    mimeType: string;
+    sizeBytes: number;
+    uploadedBy?: string;
+    uploadedAt: string;
+    url?: string;
+  }>;
   
   // Fechas
   createdAt: string;
+  updatedAt?: string;
   reviewedAt?: string;
   
   // Revisión por el backoffice
@@ -708,7 +743,7 @@ export interface ReviewRequest {
   adminNotes?: string;
   
   // Resolución
-  resolution?: 'graduate_found' | 'graduate_not_found' | 'invalid_data' | 'duplicate_request' | 'expired';
+  resolution?: 'graduate_found' | 'graduate_not_found' | 'invalid_data' | 'duplicate_request' | 'expired' | 'pending_approval';
   resolutionDetails?: string;
   
   // Si se encuentra el graduado, se puede generar el certificado

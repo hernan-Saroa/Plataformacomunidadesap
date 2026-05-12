@@ -5,6 +5,7 @@ import { json, urlencoded } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.getHttpAdapter().getInstance().disable?.('x-powered-by');
   const requestTimeoutMs = Number(process.env.HTTP_REQUEST_TIMEOUT_MS || 6 * 60 * 60 * 1000);
 
   // Increase body size limit for file uploads (up to 250MB)
@@ -43,7 +44,7 @@ async function bootstrap() {
   app.enableCors({
     origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'x-client-platform', 'x-client-version', 'X-Access-Token', 'X-Auth-Token', 'Cache-Control', 'Pragma', 'Expires'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'x-client-platform', 'x-client-version', 'X-Access-Token', 'X-Auth-Token', 'X-User-ID', 'X-User-Roles', 'X-User-Email', 'X-User-Name', 'Cache-Control', 'Pragma', 'Expires'],
     credentials: true,
     maxAge: 86400, // 24 hours
   });

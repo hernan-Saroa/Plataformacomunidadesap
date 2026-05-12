@@ -37,6 +37,7 @@ import { ModalHeaderClean } from './ModalHeaderClean';
 import { ModalGestionDocumentos } from './ModalGestionDocumentos';
 import { ModalNuevaDemandaRESTAURADO } from './ModalNuevaDemandaRESTAURADO';
 import { ModalAnexarProceso } from './ModalAnexarProceso';
+import { ModalProvisionContable } from './ModalProvisionContable';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
 import { copyToClipboard } from '../../../../utils/clipboard';
 import { legalService, correosJuridicosService } from '../../../../services/api/legal.service';
@@ -76,6 +77,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [modalProgramarAudienciaAbierto, setModalProgramarAudienciaAbierto] = useState(false);
   const [modalAnexarAbierto, setModalAnexarAbierto] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false);
 
   // Estado para visor de documentos inline
   const [visorAbierto, setVisorAbierto] = useState(false);
@@ -296,6 +298,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         lugar: a.ubicacion || 'Sede Judicial',
         modalidad: a.modalidad,
         linkReunion: a.linkReunion,
+        abogadoId: a.abogadoId,
         abogadoResponsable: a.nombreAbogado || expediente.abogadoAsignado || 'Abogado Asignado',
         estado: a.estado || 'Programada',
         historial: a.historial || [],
@@ -449,17 +452,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     try {
       toast.loading('⬇️ Iniciando descarga...', { id: 'descarga-doc' });
 
-      // Obtener token para autenticación
-      const token = localStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(fullUrl, {
         method: 'GET',
-        headers,
-        credentials: 'include', // Importante para CORS en producción
+        credentials: 'include',
       });
 
       if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -519,16 +514,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       const id = expediente.uuid || expediente.id;
       const url = legalService.getDocumentosDownloadZipUrl(id);
 
-      // Obtener token para autenticación
-      const token = localStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(url, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
       if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -739,21 +726,30 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       setReasignando(true);
       const id = expediente.uuid || expediente.id;
 
-      // Update expediente with new lawyer
-      // Assuming updateExpediente can take abogadoId or similar.
-      // Checking legal.service interface: updateExpediente(id, data: Partial<Expediente>)
-      // Expediente interface has `abogadoSustanciador`.
-
       await legalService.updateExpediente(id, {
         abogadoSustanciador: selectedAbogado
       });
 
+      // Obtener nombre del abogado seleccionado para actualizar las tareas
+      const abogadoObj = abogados.find(a => a.id === selectedAbogado);
+      const nuevoNombre = abogadoObj
+        ? (abogadoObj.nombreCompleto || `${abogadoObj.nombre || ''} ${abogadoObj.apellido || ''}`.trim() || abogadoObj.name || 'Sin asignar (Temporal)')
+        : 'Sin asignar (Temporal)';
+
+      // Reasignar solo las tareas pendientes/en proceso — las completadas se quedan como están
+      const tareasActuales = await legalService.getTareasByExpediente(id);
+      await Promise.all(
+        tareasActuales
+          .filter((t: any) => t.estado !== 'completada')
+          .map((t: any) => legalService.updateTarea(t.id, { responsableNombre: nuevoNombre }))
+      );
+
       toast.success('👨‍💼 Abogado reasignado', {
-        description: 'El expediente ha sido transferido correctamente'
+        description: `El expediente y sus tareas fueron transferidos a ${nuevoNombre}`
       });
 
       setShowReasignarModal(false);
-      // Refresh parent if needed
+      loadTareas(id);
       if (onUpdate) onUpdate();
 
     } catch (error) {
@@ -803,6 +799,18 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       formData.append('nombre', file.name);
       formData.append('tipo', 'DOCUMENTO_GENERAL'); // Default type
       formData.append('origen', 'CARGA_DIRECTA');
+      formData.append('modulo', 'DEFENSA_JUDICIAL');
+      const currentUserNombreDirect = ((): string => {
+        const u = authService.getCurrentUser() as any;
+        return (
+          u?.fullName ||
+          u?.person?.full_name ||
+          `${u?.person?.first_name ?? ''} ${u?.person?.last_name ?? ''}`.trim() ||
+          u?.username ||
+          'Sistema'
+        );
+      })();
+      formData.append('subidoPor', currentUserNombreDirect);
 
       await legalService.crearDocumento(formData);
 
@@ -837,6 +845,20 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       if (etapaActual) {
         formData.append('etapa', etapaActual);
       }
+
+      // Datos para la notificación al Jefe de Gestión Legal
+      formData.append('modulo', 'DEFENSA_JUDICIAL');
+      const currentUserNombre = ((): string => {
+        const u = authService.getCurrentUser() as any;
+        return (
+          u?.fullName ||
+          u?.person?.full_name ||
+          `${u?.person?.first_name ?? ''} ${u?.person?.last_name ?? ''}`.trim() ||
+          u?.username ||
+          'Sistema'
+        );
+      })();
+      formData.append('subidoPor', currentUserNombre);
 
       await legalService.crearDocumento(formData);
       toast.success('✅ Documento cargado exitosamente');
@@ -896,10 +918,13 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       const modalidadVal = (audienciaData.modalidad === 'Virtual' ? 'VIRTUAL' : 'PRESENCIAL') as 'VIRTUAL' | 'PRESENCIAL';
 
       // Adaptar formato si es necesario
+      const abogadoSeleccionado = abogados.find((a: any) => a.id === audienciaData.abogadoResponsable);
       const dataToSend = {
         expedienteId: id,
-        abogadoId: audienciaData.abogadoResponsable || expediente.abogadoAsignado, // Asegurar ID
-        titulo: audienciaData.tipo + ' - ' + audienciaData.lugar, // TODO: Check if titulo logic needs adjustment for updates
+        abogadoId: audienciaData.abogadoResponsable || expediente.abogadoAsignado,
+        abogadoNombre: abogadoSeleccionado?.nombreCompleto || abogadoSeleccionado?.nombre || audienciaData.abogadoResponsable || '',
+        abogadoEmail: abogadoSeleccionado?.email || '',
+        titulo: audienciaData.tipo + ' - ' + audienciaData.lugar,
         fechaHoraInicio: new Date(`${audienciaData.fecha}T${audienciaData.hora}`).toISOString(),
         duracionMinutos: 60, // Default o pedir en modal
         modalidad: modalidadVal,
@@ -1000,11 +1025,23 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       // But user wanted "Fully functional".
       // Let's assume createNota is available or we mock it via actuacion.
 
+      const autorNota = ((): string => {
+        const u = authService.getCurrentUser() as any;
+        return (
+          u?.fullName ||
+          u?.person?.full_name ||
+          `${u?.person?.first_name ?? ''} ${u?.person?.last_name ?? ''}`.trim() ||
+          u?.username ||
+          'Un usuario'
+        );
+      })();
+
       await legalService.createActuacion({
         expedienteId: id,
         tipoActuacion: 'NOTA_INTERNA',
         descripcion: `[${notaData.tipo}] ${notaData.titulo}: ${notaData.contenido}`,
-        fechaActuacion: new Date().toISOString()
+        fechaActuacion: new Date().toISOString(),
+        responsable: autorNota,
       });
 
       toast.success('✅ Nota interna agregada');
@@ -1391,16 +1428,41 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
             }
             actions={
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsEditModalOpen(true)}
-                  className="text-blue-600 border-blue-600 hover:bg-blue-50 bg-white shadow-sm flex-shrink-0"
-                >
-                  <Edit className="w-4 h-4 mr-2" />
-                  Editar Proceso
-                </Button>
-                {!(expediente as any).procesoPrincipalId && (!(expediente as any).procesosAnexados || (expediente as any).procesosAnexados.length === 0) && (
+                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditModalOpen(true)}
+                    className="text-blue-600 border-blue-600 hover:bg-blue-50 bg-white shadow-sm flex-shrink-0"
+                  >
+                    <Edit className="w-4 h-4 mr-2" />
+                    Editar Proceso
+                  </Button>
+                )}
+                {(() => {
+                  const currentUser = authService.getCurrentUser() as any;
+                  const currentUserName = (
+                    currentUser?.fullName ||
+                    currentUser?.person?.full_name ||
+                    `${currentUser?.person?.first_name ?? ''} ${currentUser?.person?.last_name ?? ''}`.trim()
+                  )?.toLowerCase().trim();
+                  const esAbogadoResponsable =
+                    !!currentUserName && currentUserName === expediente.abogadoAsignado?.toLowerCase().trim();
+                  return (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsProvisionModalOpen(true)}
+                      disabled={!esAbogadoResponsable}
+                      title={!esAbogadoResponsable ? 'Solo el abogado responsable puede registrar la provisión contable' : 'Registrar valoración y provisión contable'}
+                      className="text-amber-600 border-amber-600 hover:bg-amber-50 bg-white shadow-sm flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <DollarSign className="w-4 h-4 mr-2" />
+                      Provisión Contable
+                    </Button>
+                  );
+                })()}
+                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && !(expediente as any).procesoPrincipalId && (!(expediente as any).procesosAnexados || (expediente as any).procesosAnexados.length === 0) && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -1575,15 +1637,17 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         </div>
                       </div>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full text-xs font-bold"
-                      onClick={handleReasignarAbogado}
-                    >
-                      <User className="w-3 h-3 mr-1" />
-                      Reasignar Profesional
-                    </Button>
+                    {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ABOGADO_REASIGNAR) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs font-bold"
+                        onClick={handleReasignarAbogado}
+                      >
+                        <User className="w-3 h-3 mr-1" />
+                        Reasignar Profesional
+                      </Button>
+                    )}
                   </Card>
                 </div>
 
@@ -1873,7 +1937,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   profesionalAsignado={expediente.abogadoAsignado || 'Oficina Jurídica'}
                   tituloSeccion="Documentos del Expediente"
                   moduloContexto="defensa-judicial"
-                  onUploadDocument={handleUploadDocumentoDesdeTab}
+                  onUploadDocument={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD) ? handleUploadDocumentoDesdeTab : undefined}
                   onViewDocument={handleVerDocumento}
                   onDownloadDocument={handleDescargarDocumento}
                   onDownloadAll={handleDescargarTodos}
@@ -1885,13 +1949,13 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 <TabActuacionesExpediente
                   actuaciones={actuaciones}
                   botonesAccion={[
-                    {
+                    ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_CREATE) ? [{
                       label: 'Registrar',
                       icono: <Plus className="w-3 h-3 mr-1" />,
                       onClick: () => setModalRegistrarActuacionAbierto(true),
                       color: '#003DA5'
-                    },
-                    {
+                    }] : []),
+                    ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_AUDIENCIA_CREATE) ? [{
                       label: 'Programar Audiencia',
                       icono: <Calendar className="w-3 h-3 mr-1" />,
                       onClick: () => {
@@ -1899,14 +1963,14 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         setModalProgramarAudienciaAbierto(true);
                       },
                       color: '#7C3AED'
-                    }
+                    }] : [])
                   ]}
                   audienciasProgramadas={audienciasProgramadas}
-                  onReasignarAudiencia={(audiencia) => {
+                  onReasignarAudiencia={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUDIENCIA_EDIT) ? (audiencia) => {
                     setAudienciaAReasignar(audiencia);
                     setModalProgramarAudienciaAbierto(true);
-                  }}
-                  onEliminarAudiencia={(id) => handleEliminarAudiencia(id.toString())}
+                  } : undefined}
+                  onEliminarAudiencia={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUDIENCIA_DELETE) ? (id) => handleEliminarAudiencia(id.toString()) : undefined}
                   labelRegistrar="Registrar Primera Actuación"
                   onRegistrarPrimera={() => setModalRegistrarActuacionAbierto(true)}
                 />
@@ -1918,9 +1982,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   tareas={tareas}
                   setTareas={setTareas}
                   expedienteId={String(expediente.uuid || expediente.id)}
-                  onCrearTarea={() => setModalCrearTareaAbierto(true)}
-                  onEditarTarea={handleEditarTarea}
-                  onMarcarCompletada={(id) => handleMarcarCompletada(String(id))}
+                  onCrearTarea={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_CREATE) ? () => setModalCrearTareaAbierto(true) : undefined}
+                  onEditarTarea={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_TAREA_EDIT) ? handleEditarTarea : undefined}
+                  onMarcarCompletada={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_TAREA_COMPLETE) ? (id) => handleMarcarCompletada(String(id)) : undefined}
                 />
               </TabsContent>
 
@@ -1928,7 +1992,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
               <TabsContent value="notas" className="space-y-3">
                 <TabNotasExpediente
                   notas={notas}
-                  onAgregarNota={() => setModalAgregarNotaAbierto(true)}
+                  onAgregarNota={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_CREATE) ? () => setModalAgregarNotaAbierto(true) : undefined}
                 />
               </TabsContent>
 
@@ -2043,24 +2107,28 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   <Bell className="w-3.5 h-3.5 mr-1" />
                   Notificar
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleArchivar}
-                  className="font-bold text-xs text-orange-600 border-orange-300 hover:bg-orange-50"
-                >
-                  <Archive className="w-3.5 h-3.5 mr-1" />
-                  Archivar
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleEliminar}
-                  className="font-bold text-xs text-red-600 border-red-300 hover:bg-red-50"
-                >
-                  <Trash2 className="w-3.5 h-3.5 mr-1" />
-                  Eliminar
-                </Button>
+                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ARCHIVAR) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleArchivar}
+                    className="font-bold text-xs text-orange-600 border-orange-300 hover:bg-orange-50"
+                  >
+                    <Archive className="w-3.5 h-3.5 mr-1" />
+                    Archivar
+                  </Button>
+                )}
+                {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleEliminar}
+                    className="font-bold text-xs text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 mr-1" />
+                    Eliminar
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -2248,12 +2316,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       </Dialog>
 
       {/* ==================== MODALES SECUNDARIOS (FUERA DEL DIALOG PRINCIPAL) ==================== */}
-      < ModalNotificar
+      <ModalNotificar
         isOpen={modalNotificarAbierto}
-        onClose={() => setModalNotificarAbierto(false)
-        }
+        onClose={() => setModalNotificarAbierto(false)}
         expediente={expediente}
         abogadosDisponibles={abogadosDisponibles}
+        rolUsuarioActual={
+          authService.hasRole('MONITOREO_GESTION_LEGAL') ? 'MONITOREO_GESTION_LEGAL' :
+          authService.hasRole('JEFE_GESTION_LEGAL') ? 'JEFE_GESTION_LEGAL' :
+          authService.hasRole('RESUELVE_GESTION_LEGAL') ? 'RESUELVE_GESTION_LEGAL' : ''
+        }
       />
       <ModalCompartir
         isOpen={modalCompartirAbierto}
@@ -2265,7 +2337,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         onClose={() => setModalCrearTareaAbierto(false)}
         expediente={expediente}
         onGuardar={handleCrearTarea}
-        abogadosDisponibles={abogadosDisponibles}
       />
       {
         tareaParaEditar && (
@@ -2279,7 +2350,6 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
             tareaInicial={tareaParaEditar}
             onGuardar={handleGuardarEdicionTarea}
             modoEdicion={true}
-            abogadosDisponibles={abogadosDisponibles}
           />
         )
       }
@@ -2411,6 +2481,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
           onClose={() => setIsEditModalOpen(false)}
           onSave={handleGuardarEdicion}
           expedienteEdit={expediente}
+        />
+      )}
+
+      {/* Modal de Valoración y Provisión Contable */}
+      {isProvisionModalOpen && (
+        <ModalProvisionContable
+          isOpen={isProvisionModalOpen}
+          onClose={() => setIsProvisionModalOpen(false)}
+          expediente={expediente}
+          onUpdate={onUpdate}
         />
       )}
 

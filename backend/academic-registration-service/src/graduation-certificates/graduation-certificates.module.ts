@@ -9,12 +9,14 @@ import { Signer } from './signer.entity';
 import { TemplateConfig } from './template-config.entity';
 import { TemplateConfigChange } from './template-config-change.entity';
 import { GraduateFile } from './graduate-file.entity';
+import { GraduationRequestReviewFile } from './graduation-request-review-file.entity';
 import { GraduationCertificatesController } from './graduation-certificates.controller';
 import { GraduatesController } from './graduates.controller';
 import { GraduationCertificatesService } from './graduation-certificates.service';
 import { PdfGeneratorService } from './pdf-generator.service';
 import { GraduateOracleIntegrationController } from './graduate-oracle-integration.controller';
 import { GraduateOracleIntegrationService } from './graduate-oracle-integration.service';
+import { GraduateMysqlIntegrationService } from './graduate-mysql-integration.service';
 
 @Module({
   imports: [
@@ -28,6 +30,7 @@ import { GraduateOracleIntegrationService } from './graduate-oracle-integration.
       TemplateConfig,
       TemplateConfigChange,
       GraduateFile,
+      GraduationRequestReviewFile,
     ]),
   ],
   controllers: [
@@ -38,8 +41,13 @@ import { GraduateOracleIntegrationService } from './graduate-oracle-integration.
   providers: [
     GraduationCertificatesService,
     PdfGeneratorService,
+    GraduateMysqlIntegrationService,
     GraduateOracleIntegrationService,
   ],
-  exports: [GraduationCertificatesService, GraduateOracleIntegrationService],
+  exports: [
+    GraduationCertificatesService,
+    GraduateMysqlIntegrationService,
+    GraduateOracleIntegrationService,
+  ],
 })
 export class GraduationCertificatesModule {}

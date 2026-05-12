@@ -31,6 +31,7 @@ import { toast } from 'sonner';
 // Servicio API
 import { controlInternoService } from '../../../services/api/controlInternoService';
 import { getServiceUrl, API_MODE } from '../../../config/environment';
+import { notificationsService } from '../../../services/api/notificationsService';
 
 // Design System
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
@@ -964,6 +965,19 @@ function ModalCargarDocumento({ expediente, onClose, onCargar }: ModalCargarDocu
         },
         (progress) => setProgreso(progress)
       );
+
+      // 🚀 DISPARAR EVENTO AL BACKEND
+      try {
+        await notificationsService.triggerEvent('EVT-DOC-001', {
+          auditoriaId: expediente.id,
+          auditoriaCodigo: expediente.codigoAuditoria,
+          tituloCustom: 'Nuevo Documento Cargado',
+          mensajeCustom: `Se ha cargado el documento ${nombreDocumento.trim()} en el expediente ${expediente.codigoAuditoria}.`,
+          url_accion: '/control-interno/expedientes',
+        });
+      } catch (e) {
+        console.error('Error disparando notificación:', e);
+      }
 
       toast.success('Documento Cargado Exitosamente', {
         description: `${nombreDocumento} agregado a ${FASES_AUDITORIA.find(f => f.id === fase)?.nombre}`,

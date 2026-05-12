@@ -98,6 +98,7 @@ import { DisciplinaryProcessTasksService } from './services/disciplinary-process
 import { DisciplinaryProcessNotesService } from './services/disciplinary-process-notes.service';
 import { DisciplinaryProcessReassignmentService } from './services/disciplinary-process-reassignment.service';
 import { JuridicaEmailService } from './services/juridica-email.service';
+import { DisciplinaryEmailService } from './services/disciplinary-email.service';
 import { DisciplinaryBehaviorService } from './services/disciplinary-behavior.service';
 import { NotificationClientService } from './services/notification-client.service';
 import { RolesGuard } from './auth/roles.guard';
@@ -200,6 +201,7 @@ import { RolesGuard } from './auth/roles.guard';
     DisciplinaryProcessNotesService,
     DisciplinaryProcessReassignmentService,
     JuridicaEmailService,
+    DisciplinaryEmailService,
     DisciplinaryBehaviorService,
     NotificationClientService,
     RolesGuard,

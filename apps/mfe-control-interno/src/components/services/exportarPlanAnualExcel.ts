@@ -127,22 +127,17 @@ export interface ColumnaExcel {
 }
 
 export const COLUMNAS_DISPONIBLES: ColumnaExcel[] = [
-  { key: 'rol', label: 'Rol', defaultVisible: true },
-  { key: 'numero', label: 'Nº', defaultVisible: true },
-  { key: 'actividad', label: 'Actividad', defaultVisible: true },
-  { key: 'descripcion', label: 'Descripción', defaultVisible: true },
+  { key: 'idActividad', label: 'Idactividad', defaultVisible: true },
+  { key: 'idRol', label: 'Idrol', defaultVisible: true },
+  { key: 'actividad', label: 'Lista de actividades', defaultVisible: true },
   { key: 'responsable', label: 'Responsable', defaultVisible: true },
-  { key: 'fechaInicio', label: 'Fecha Inicio', defaultVisible: true },
-  { key: 'fechaFin', label: 'Fecha Fin', defaultVisible: true },
-  { key: 'fechaCorte', label: 'Fecha de Corte', defaultVisible: true },
-  { key: 'estado', label: 'Estado', defaultVisible: true },
-  { key: 'avance', label: '% Avance', defaultVisible: true },
+  { key: 'fechaInicio', label: 'Fecha inicio', defaultVisible: true },
+  { key: 'fechaFin', label: 'Fecha final', defaultVisible: true },
   { key: 'control', label: 'Control', defaultVisible: true },
-  { key: 'evaluacion', label: 'Evaluación', defaultVisible: true },
-  { key: 'seguimiento', label: 'Seguimiento', defaultVisible: true },
-  { key: 'observaciones', label: 'Observaciones', defaultVisible: true },
-  { key: 'tareas', label: 'Tareas', defaultVisible: true },
-  { key: 'obsTareas', label: 'Obs. Tareas', defaultVisible: false },
+  { key: 'estado', label: 'Estado', defaultVisible: true },
+  { key: 'descripcionTarea', label: 'Seguimiento y evaluación tareas', defaultVisible: true },
+  { key: 'fechaSeguimientoTareas', label: 'Fecha', defaultVisible: true },
+  { key: 'evaluacionTarea', label: 'Evaluación tarea', defaultVisible: true },
   { key: 'evidencias', label: 'Evidencias', defaultVisible: true },
 ];
 
@@ -338,12 +333,10 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
     ws.getRow(6).height = 8;
 
     const COLUMN_WIDTHS: Record<string, number> = {
-      rol: 22, numero: 5, actividad: 35, descripcion: 30, responsable: 22,
-      fechaInicio: 12, fechaFin: 12, fechaCorte: 12, estado: 13, avance: 10,
-      control: 25, evaluacion: 25, seguimiento: 35,
-      observaciones: 35, tareas: 35, obsTareas: 30, evidencias: 28,
+      idActividad: 10, idRol: 24, actividad: 48, fechaInicio: 12, fechaFin: 12, responsable: 24,
+      control: 32, estado: 10, descripcionTarea: 42, fechaSeguimientoTareas: 14, evaluacionTarea: 14, evidencias: 30,
     };
-    const TEXT_COLUMNS = new Set(['actividad', 'descripcion', 'control', 'evaluacion', 'seguimiento', 'observaciones', 'tareas', 'obsTareas', 'evidencias']);
+    const TEXT_COLUMNS = new Set(['idRol', 'actividad', 'control', 'descripcionTarea', 'evidencias']);
 
     const headerRow = ws.getRow(7);
     activeColumns.forEach((col, idx) => {
@@ -380,7 +373,6 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
       
       for (let i = 0; i < actividades.length; i++) {
         const a = actividades[i];
-        const dataRow = ws.getRow(rowNum);
         const isEven = (rowNum - 8) % 2 === 0;
 
         // ═══════════════════════════════════════════════════════════════════
@@ -438,42 +430,32 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
         sumaAvancePlan += porcentaje;
         totalActividadesPlan++;
 
-        // Fecha de corte
-        const fechaCorteStr = actAny.fecha_corte || actAny.fechaCorte || '';
-        const fechaCorte = fechaCorteStr ? safeParse(fechaCorteStr).toLocaleDateString('es-CO') : '';
-
-        // Observaciones de cumplimiento (texto concatenado)
-        let obsTexto = '';
-        const obsData = actAny.observacionesCumplimiento;
-        if (Array.isArray(obsData) && obsData.length > 0) {
-          obsTexto = obsData.map((ob: any, idx: number) => {
-            const fecha = ob.fechaRegistro ? new Date(ob.fechaRegistro).toLocaleDateString('es-CO') : '';
-            const autor = ob.registradoPor || '';
-            return `${idx + 1}. ${ob.texto || ''}${autor ? ' — ' + autor : ''}${fecha ? ' (' + fecha + ')' : ''}`;
-          }).join('\n');
-        } else if (typeof obsData === 'string' && obsData.trim()) {
-          obsTexto = obsData;
-        }
-
         // Tareas de seguimiento
         const tareas: TareaSeg[] = actAny.tareasSeguimiento || [];
-        let tareasTexto = '';
-        let obsTareasTexto = '';
-        if (tareas.length > 0) {
-          tareasTexto = tareas.map((t, idx) => {
-            const estado = t.completada ? '✓' : '✗';
-            const fechaLim = t.fechaEntrega ? new Date(t.fechaEntrega).toLocaleDateString('es-CO') : 'Sin fecha';
-            const resp = t.responsables?.join(', ') || '';
-            return `${idx + 1}. [${estado}] ${t.descripcion} | Límite: ${fechaLim}${resp ? ' | ' + resp : ''}`;
-          }).join('\n');
-          // Observaciones de tareas
-          const tareasConObs = tareas.filter(t => t.observaciones?.trim());
-          if (tareasConObs.length > 0) {
-            obsTareasTexto = tareasConObs.map((t, idx) => {
-              return `${idx + 1}. ${t.descripcion}: ${t.observaciones}`;
-            }).join('\n');
-          }
-        }
+        const filasTarea = tareas.length > 0
+          ? tareas.map((t) => {
+              const fechaSeg = (t as any).fechaSeguimiento
+                || (t as any).fecha_seguimiento
+                || (t as any).fechaEvaluacion
+                || (t as any).fecha_evaluacion
+                || t.fechaCompletado
+                || (t as any).fechaCompletada
+                || (t as any).fecha_completada
+                || t.fechaEntrega
+                || (t as any).fechaLimite
+                || (t as any).fecha_limite;
+              const evaluacionTareaRaw = (t as any).evaluacion
+                ?? (t as any).evaluacionTarea
+                ?? (t as any).porcentajeAvance
+                ?? (t as any).porcentaje_avance
+                ?? (t as any).porcentaje;
+              return {
+                descripcionTarea: t.descripcion || '',
+                fechaSeguimiento: fechaSeg ? safeParse(fechaSeg).toLocaleDateString('es-CO') : 'Sin fecha',
+                evaluacionTarea: evaluacionTareaRaw ?? porcentaje,
+              };
+            })
+          : [{ descripcionTarea: actAny.seguimiento || '', fechaSeguimiento: '', evaluacionTarea: porcentaje }];
 
         // Evidencias (archivos adjuntos)
         const adjuntos = actAny.adjuntos || [];
@@ -483,72 +465,64 @@ export async function exportarPlanAnualExcel(plan: PlanAnual, options?: ExportOp
           ? todosAdjuntos.map((n: string) => `✓ ${n}`).join('\n')
           : 'Sin evidencia';
 
-        // Map key → value for all possible columns
-        const allValues: Record<string, any> = {
-          rol: rol.nombre,
-          numero: i + 1,
-          actividad: a.nombre,
-          descripcion: actAny.descripcion || '',
-          responsable: responsableNombre,
-          fechaInicio: fechaInicio,
-          fechaFin: fechaFin,
-          fechaCorte: fechaCorte,
-          estado: actAny.estado || '',
-          avance: porcentaje,
-          control: actAny.control || '',
-          evaluacion: actAny.evaluacion || '',
-          seguimiento: actAny.seguimiento || '',
-          observaciones: obsTexto,
-          tareas: tareasTexto,
-          obsTareas: obsTareasTexto,
-          evidencias: evidenciasTexto,
-        };
-
-        // Only output selected columns
-        activeColumns.forEach((col, colIdx) => {
-          const cell = dataRow.getCell(colIdx + 1);
-          let value = allValues[col.key] ?? '';
-
-          // Formato porcentaje
-          if (col.key === 'avance') value = `${value}%`;
-
-          cell.value = value;
-          cell.font = { name: 'Calibri', size: 10, color: { argb: EXCEL_COLORS.textDark } };
-          const isTextCol = TEXT_COLUMNS.has(col.key);
-          cell.alignment = {
-            horizontal: isTextCol ? 'left' : 'center',
-            vertical: 'top',
-            wrapText: isTextCol
-          };
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: isEven ? 'FFFFFFFF' : 'FFF8FAFC' }
-          };
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FFDDDDDD' } },
-            bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } },
-            left: { style: 'thin', color: { argb: 'FFDDDDDD' } },
-            right: { style: 'thin', color: { argb: 'FFDDDDDD' } }
+        for (const filaTarea of filasTarea) {
+          const dataRow = ws.getRow(rowNum);
+          // Map key → value for all possible columns (una fila por tarea)
+          const allValues: Record<string, any> = {
+            idActividad: i + 1,
+            idRol: `${rol.nombre}${(rol as any).id ? ` (${(rol as any).id})` : ''}`,
+            actividad: a.nombre,
+            responsable: responsableNombre,
+            fechaInicio: fechaInicio,
+            fechaFin: fechaFin,
+            estado: porcentaje,
+            control: actAny.control || '',
+            descripcionTarea: filaTarea.descripcionTarea,
+            fechaSeguimientoTareas: filaTarea.fechaSeguimiento,
+            evaluacionTarea: filaTarea.evaluacionTarea,
+            evidencias: evidenciasTexto,
           };
 
-          // Color especial para estado
-          if (col.key === 'estado' && value) {
-            const estado = String(value).toUpperCase();
-            if (estado === 'COMPLETADA') {
-              cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.success } };
-            } else if (estado === 'EN_EJECUCION' || estado === 'EN EJECUCIÓN') {
-              cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.warning } };
-            } else if (estado === 'PENDIENTE') {
-              cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.info } };
+          activeColumns.forEach((col, colIdx) => {
+            const cell = dataRow.getCell(colIdx + 1);
+            let value = allValues[col.key] ?? '';
+            if (col.key === 'estado' || col.key === 'evaluacionTarea') value = Number.isFinite(Number(value)) ? Number(value) : value;
+
+            cell.value = value;
+            cell.font = { name: 'Calibri', size: 10, color: { argb: EXCEL_COLORS.textDark } };
+            const isTextCol = TEXT_COLUMNS.has(col.key);
+            cell.alignment = {
+              horizontal: isTextCol ? 'left' : 'center',
+              vertical: 'top',
+              wrapText: isTextCol
+            };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: isEven ? 'FFFFFFFF' : 'FFF8FAFC' }
+            };
+            cell.border = {
+              top: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+              bottom: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+              left: { style: 'thin', color: { argb: 'FFDDDDDD' } },
+              right: { style: 'thin', color: { argb: 'FFDDDDDD' } }
+            };
+
+            if (col.key === 'estado' && value) {
+              const estado = String(value).toUpperCase();
+              if (estado === 'COMPLETADA') {
+                cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.success } };
+              } else if (estado === 'EN_EJECUCION' || estado === 'EN EJECUCIÓN') {
+                cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.warning } };
+              } else if (estado === 'PENDIENTE') {
+                cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: EXCEL_COLORS.info } };
+              }
             }
-          }
-        });
+          });
 
-        // Auto-height: más alto si hay tareas/observaciones
-        const maxLines = Math.max(1, tareasTexto.split('\n').length, obsTexto.split('\n').length);
-        dataRow.height = Math.max(25, maxLines * 14);
-        rowNum++;
+          dataRow.height = Math.max(25, String(filaTarea.descripcionTarea || '').split('\n').length * 14);
+          rowNum++;
+        }
       }
       
       // ═══════════════════════════════════════════════════════════════════════

@@ -14,7 +14,7 @@ const mockEnv = {
   AZURE_TENANT_ID: 'development-disabled',
   AZURE_CLIENT_ID: 'development-disabled', 
   AZURE_CLIENT_SECRET: 'development-disabled',
-  EMAIL_ACCOUNT_QA: 'desarrollo.ccd@esap.edu.co',
+  LEGAL_EMAIL_ACCOUNT: 'desarrollo.ccd@esap.edu.co',
   PORT: '3008',
   DATABASE_URL: 'postgresql://postgres:12345678@localhost:5432/legal_management_db',
   API_GATEWAY_URL: 'http://localhost:3000',
@@ -162,7 +162,7 @@ describe('Pruebas de Integración - Sistema Completo', () => {
     });
 
     it('should use correct email account', () => {
-      expect(mockEnv.EMAIL_ACCOUNT_QA).toBe('desarrollo.ccd@esap.edu.co');
+      expect(mockEnv.LEGAL_EMAIL_ACCOUNT).toBe('desarrollo.ccd@esap.edu.co');
     });
   });
 
@@ -220,7 +220,7 @@ describe('Pruebas de Integración - Sistema Completo', () => {
       expect(mockEnv.AZURE_TENANT_ID).toBe('development-disabled');
       expect(mockEnv.AZURE_CLIENT_ID).toBe('development-disabled');
       expect(mockEnv.AZURE_CLIENT_SECRET).toBe('development-disabled');
-      expect(mockEnv.EMAIL_ACCOUNT_QA).toBe('desarrollo.ccd@esap.edu.co');
+      expect(mockEnv.LEGAL_EMAIL_ACCOUNT).toBe('desarrollo.ccd@esap.edu.co');
     });
 
     it('should maintain service mapping in proxy config', () => {

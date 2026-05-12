@@ -1,25 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, TrendingUp, Sparkles, ArrowLeft, ChevronDown } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, TrendingUp, Sparkles, ArrowLeft, ChevronDown, AlertTriangle, Shield, GraduationCap, Users, BookOpen, MapPin, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { ESAPLogo } from '../assets/ESAPLogo';
 import { ModalRecuperarContrasena } from './ModalRecuperarContrasena';
 import { authService } from '../../services/api/authService';
-import { de } from 'date-fns/locale';
+import loginHeroImage from '../../assets/photo-1623156167557-281309073eef.png';
 
 interface MicrosoftCallbackResponse {
   code: string;
   state: string;
   error?: string;
   errorDescription?: string;
-}
-
-interface Usuario {
-  id: string;
-  nombre: string;
-  tipo: 'externo' | 'interno';
-  email: string;
-  rol?: string;
 }
 
 interface LoginPageProps {
@@ -32,7 +24,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     ((import.meta.env.VITE_LOGIN_OPTIONS as string | undefined) || 'both')
       .trim()
       .toLowerCase();
-  const showMicrosoftLogin = false;
+  const showMicrosoftLogin = true;
   const showCredentialLogin = !showMicrosoftLogin || loginOptions !== 'microsoft';
 
   const [email, setEmail] = useState('');
@@ -41,14 +33,19 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
   const [showRecuperarModal, setShowRecuperarModal] = useState(false);
   const [isMicrosoftLoading, setIsMicrosoftLoading] = useState(false);
   const [microsoftLoginError, setMicrosoftLoginError] = useState<string | null>(null);
+  const [bgLoaded, setBgLoaded] = useState(false);
 
   // IMPORTANTE: Forzar tema claro en el login SIEMPRE
   useEffect(() => {
     document.documentElement.classList.remove('dark');
+    const img = new Image();
+    img.onload = () => setBgLoaded(true);
+    img.src = loginHeroImage;
   }, []);
 
   useEffect(() => {
@@ -177,20 +174,15 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     setIsLoading(true);
 
     // 🔥 LIMPIAR CACHÉ COMPLETAMENTE AL HACER LOGIN
-    localStorage.removeItem('esap-sesion-activa');
-    console.log('🗑️ LocalStorage limpiado');
+    sessionStorage.removeItem('esap-sesion-activa');
 
     try {
-      console.log('📡 Llamando a authService.login');
-      
       // Llamar a la API de autenticación real
       const response = await authService.login({
         email: email.toLowerCase(),
         password,
         rememberMe,
       });
-
-      console.log('✅ [6] Auth service response received:', response);
 
       // Determinar el tipo de usuario basado en el email para mostrar mensaje personalizado
       const emailLower = email.toLowerCase();
@@ -253,20 +245,23 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         });
       }
 
-      console.log('🔄 [7] Calling onLogin handler with user data');
       // Pasar los datos del usuario autenticado al handler de login (igual que el LoginPage de esap)
+      setRemainingAttempts(null);
       onLogin(response.user, response.accessToken, rememberMe);
-      console.log('✅ [8] onLogin handler completed');
     } catch (error: any) {
-      console.error('❌ Error de autenticación:', error);
       const statusCode =
+        error?.status ??
         error?.statusCode ??
+        error?.response?.status ??
         error?.response?.data?.statusCode ??
-        error?.response?.status;
+        null;
       const errorMessage =
         typeof error?.message === 'string' && error.message.trim()
           ? error.message
           : 'Ocurrió un error inesperado. Intenta nuevamente.';
+      if (![400, 401, 429].includes(statusCode)) {
+        console.error('Error de autenticación:', error);
+      }
 
       // Manejar diferentes tipos de errores
       if (statusCode === 429) {
@@ -281,8 +276,11 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
             duration: 10000,
           });
         } else {
+          const match = errorMessage.match(/Te (?:queda|quedan) (\d+) intento/);
+          const parsed = match ? parseInt(match[1], 10) : null;
+          if (parsed !== null && parsed <= 3) setRemainingAttempts(parsed);
           toast.error('Credenciales incorrectas', {
-            description: 'El correo electrónico o contraseña son incorrectos.',
+            description: errorMessage,
             duration: 5000,
           });
           setErrors({
@@ -366,156 +364,142 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center">
-      {/* Contenedor con max-width para pantallas grandes */}
-      <div className="w-full max-w-[1600px] mx-auto flex min-h-screen">
-        {/* Left Side - Login Form */}
-        <div className="flex-1 flex items-center justify-center py-8 px-4 lg:px-8 xl:justify-end xl:pr-20 2xl:pr-32 relative overflow-hidden">
-          {/* Subtle background decoration */}
-          <div className="absolute inset-0 opacity-[0.015]">
-            <div className="absolute top-1/4 -left-20 w-96 h-96 bg-[#1e5da8] rounded-full blur-3xl" />
-            <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-[#1e5da8] rounded-full blur-3xl" />
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
+    <div
+      data-login-page-root
+      className="esap-login-root fixed inset-0 grid h-screen w-screen max-w-none overflow-hidden bg-white"
+      style={{
+        width: '100dvw',
+        minWidth: '100dvw',
+        height: '100dvh',
+        minHeight: '100dvh',
+        margin: 0,
+        maxWidth: 'none',
+        position: 'fixed',
+        inset: 0,
+        display: 'grid',
+        overflow: 'hidden',
+        backgroundColor: '#fff',
+        zIndex: 0,
+      }}
+    >
+      <div data-login-left-pane className="esap-login-left flex flex-col min-h-screen lg:min-h-0 bg-white relative">
+        <div className="flex-shrink-0 px-6 sm:px-10 pt-6 sm:pt-8">
+          <motion.button
+            initial={{ opacity: 0, x: -10 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6 }}
-            className="w-full max-w-md relative z-10"
+            transition={{ delay: 0.1 }}
+            onClick={onBackToHome}
+            className="inline-flex items-center gap-2 text-gray-400 hover:text-[#1e5da8] transition-colors group"
           >
-            {/* Logo - Mobile Only */}
-            <div className="lg:hidden flex justify-center mb-6">
-              <ESAPLogo variant="color" className="h-10 w-auto" />
+            <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
+            <span style={{ fontSize: '15px' }} className="font-medium">Volver al inicio</span>
+          </motion.button>
+        </div>
+
+        <div className="flex-1 flex items-center justify-center px-6 sm:px-10 py-8 overflow-y-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="w-full max-w-[420px]"
+          >
+            <div className="lg:hidden flex justify-center mb-10">
+              <ESAPLogo variant="color" className="h-14 w-auto" />
             </div>
 
-            {/* Back to Home Button */}
-            <motion.button
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 }}
-              onClick={onBackToHome}
-              className="flex items-center gap-2 text-gray-600 hover:text-[#003DA5] transition-colors mb-6 group"
-            >
-              <ArrowLeft className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
-              <span className="font-medium">Volver al inicio</span>
-            </motion.button>
-
-            {/* Header */}
-            <div className="mb-5">
-              <motion.h1 
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="text-gray-900 mb-2"
-              >
+            <div style={{ marginBottom: '32px' }}>
+              <h1 style={{ fontSize: '32px', lineHeight: '1.15' }} className="font-extrabold text-gray-900 mb-2">
                 Iniciar Sesión
-              </motion.h1>
-              <motion.p 
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="text-gray-600"
-              >
+              </h1>
+              <p style={{ fontSize: '16px', lineHeight: '1.5' }} className="text-gray-400">
                 Accede a tu cuenta ESAP
-              </motion.p>
+              </p>
             </div>
 
-            {/* Social Login Button */}
             {showMicrosoftLogin && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className="mb-5"
-              >
+              <div style={{ marginBottom: '24px' }}>
                 {microsoftLoginError && (
                   <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                     {microsoftLoginError}
                   </div>
                 )}
-
                 <button
                   type="button"
                   onClick={() => handleSocialLogin('Microsoft')}
                   disabled={isLoading || isMicrosoftLoading}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-gray-300 rounded-xl hover:bg-gray-50 hover:border-gray-400 transition-all group"
+                  style={{ height: '52px', fontSize: '15px', borderRadius: '12px' }}
+                  className="w-full flex items-center justify-center gap-2.5 border-2 border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Building2 className="w-5 h-5 text-gray-600 group-hover:text-gray-900" />
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
+                  <Building2 className="w-5 h-5" />
+                  <span className="font-semibold">
                     {isMicrosoftLoading ? 'Conectando con Microsoft...' : 'Iniciar sesión con Microsoft'}
                   </span>
                 </button>
-              </motion.div>
+              </div>
             )}
 
             {showCredentialLogin && (
               <>
-                {/* Divider */}
-                {showMicrosoftLogin && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.5 }}
-                    className="relative mb-5"
-                  >
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-gray-300" />
-                    </div>
-                    <div className="relative flex justify-center text-sm">
-                      <span className="px-4 bg-white text-gray-500">O continúa con tu correo</span>
-                    </div>
-                  </motion.div>
-                )}
+                <div className="relative" style={{ marginBottom: '28px' }}>
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-200" />
+                  </div>
+                  <div className="relative flex justify-center">
+                    <span style={{ fontSize: '13px' }} className="px-4 bg-white text-gray-400 font-medium">
+                      {showMicrosoftLogin ? 'O continúa con tu correo' : 'Continúa con tu correo'}
+                    </span>
+                  </div>
+                </div>
 
-                {/* Login Form */}
-                <motion.form
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.6 }}
-                  onSubmit={handleSubmit}
-                  className="space-y-4"
-                >
-                  {/* Email Field */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
+                <form onSubmit={handleSubmit}>
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{ fontSize: '14px', marginBottom: '8px' }} className="block font-semibold text-gray-700">
                       Correo Electrónico
                     </label>
-                    <div className="relative">
-                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <div
+                      className={`flex items-center transition-all ${
+                        errors.email
+                          ? 'border-red-300 bg-red-50/50 focus-within:border-red-500 focus-within:ring-4 focus-within:ring-red-100'
+                          : 'border-gray-200 bg-gray-50/60 focus-within:bg-white focus-within:border-[#1e5da8] focus-within:ring-4 focus-within:ring-[#1e5da8]/10'
+                      }`}
+                      style={{ height: '52px', borderRadius: '12px', borderWidth: '2px', borderStyle: 'solid' }}
+                    >
+                      <div className="flex items-center justify-center flex-shrink-0 pointer-events-none" style={{ width: '52px' }}>
+                        <Mail style={{ width: '18px', height: '18px' }} className="text-gray-400" />
+                      </div>
                       <input
                         type="email"
                         value={email}
                         onChange={(e) => {
                           setEmail(e.target.value);
                           setErrors({ ...errors, email: undefined });
+                          setRemainingAttempts(null);
                         }}
                         placeholder="correo@esap.edu.co"
-                        className={`w-full pl-12 pr-4 py-2.5 border-2 rounded-xl transition-all outline-none ${
-                          errors.email
-                            ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-100'
-                            : 'border-gray-300 focus:border-[#003DA5] focus:ring-4 focus:ring-[#003DA5]/10'
-                        }`}
                         disabled={isLoading}
+                        style={{ fontSize: '15px', border: 'none', outline: 'none', background: 'transparent', padding: '0 16px 0 0', width: '100%', height: '100%' }}
                       />
                     </div>
                     {errors.email && (
-                      <motion.p
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        className="text-red-500 text-sm mt-1.5"
-                      >
-                        {errors.email}
-                      </motion.p>
+                      <p style={{ fontSize: '13px', marginTop: '6px' }} className="text-red-500">{errors.email}</p>
                     )}
                   </div>
 
-                  {/* Password Field */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-900 mb-2">
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={{ fontSize: '14px', marginBottom: '8px' }} className="block font-semibold text-gray-700">
                       Contraseña
                     </label>
-                    <div className="relative">
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <div
+                      className={`flex items-center transition-all ${
+                        errors.password
+                          ? 'border-red-300 bg-red-50/50 focus-within:border-red-500 focus-within:ring-4 focus-within:ring-red-100'
+                          : 'border-gray-200 bg-gray-50/60 focus-within:bg-white focus-within:border-[#1e5da8] focus-within:ring-4 focus-within:ring-[#1e5da8]/10'
+                      }`}
+                      style={{ height: '52px', borderRadius: '12px', borderWidth: '2px', borderStyle: 'solid' }}
+                    >
+                      <div className="flex items-center justify-center flex-shrink-0 pointer-events-none" style={{ width: '52px' }}>
+                        <Lock style={{ width: '18px', height: '18px' }} className="text-gray-400" />
+                      </div>
                       <input
                         type={showPassword ? 'text' : 'password'}
                         value={password}
@@ -524,59 +508,70 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                           setErrors({ ...errors, password: undefined });
                         }}
                         placeholder="••••••••"
-                        className={`w-full pl-12 pr-12 py-2.5 border-2 rounded-xl transition-all outline-none ${
-                          errors.password
-                            ? 'border-red-300 bg-red-50 focus:border-red-500 focus:ring-4 focus:ring-red-100'
-                            : 'border-gray-300 focus:border-[#003DA5] focus:ring-4 focus:ring-[#003DA5]/10'
-                        }`}
                         disabled={isLoading}
+                        style={{ fontSize: '15px', border: 'none', outline: 'none', background: 'transparent', padding: '0', width: '100%', height: '100%', flex: '1' }}
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                        className="flex items-center justify-center flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+                        style={{ width: '52px', height: '100%' }}
+                        tabIndex={-1}
                       >
-                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        {showPassword
+                          ? <EyeOff style={{ width: '18px', height: '18px' }} />
+                          : <Eye style={{ width: '18px', height: '18px' }} />
+                        }
                       </button>
                     </div>
                     {errors.password && (
-                      <motion.p
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        className="text-red-500 text-sm mt-1.5"
+                      <p style={{ fontSize: '13px', marginTop: '6px' }} className="text-red-500">{errors.password}</p>
+                    )}
+                    {remainingAttempts !== null && remainingAttempts > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="mt-2 p-2.5 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2"
                       >
-                        {errors.password}
-                      </motion.p>
+                        <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                        <p className="text-red-600 text-xs leading-snug">
+                          <span className="font-semibold">
+                            Te {remainingAttempts === 1 ? 'queda' : 'quedan'} {remainingAttempts} intento{remainingAttempts === 1 ? '' : 's'}.
+                          </span>{' '}
+                          Tu cuenta será bloqueada temporalmente por 15 minutos o deberás restablecer tu contraseña.
+                        </p>
+                      </motion.div>
                     )}
                   </div>
 
-                  {/* Remember Me & Forgot Password */}
-                  <div className="flex items-center justify-between pt-1">
-                    <label className="flex items-center gap-2 cursor-pointer group">
+                  <div className="flex items-center justify-between" style={{ marginBottom: '24px' }}>
+                    <label className="flex items-center gap-2.5 cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={rememberMe}
                         onChange={(e) => setRememberMe(e.target.checked)}
-                        className="w-4 h-4 rounded border-2 border-gray-300 text-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20 cursor-pointer"
+                        style={{ width: '18px', height: '18px' }}
+                        className="rounded border-2 border-gray-300 text-[#1e5da8] focus:ring-2 focus:ring-[#1e5da8]/20 cursor-pointer"
                       />
-                      <span className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors">
+                      <span style={{ fontSize: '14px' }} className="text-gray-600 group-hover:text-gray-900 transition-colors">
                         Recordarme
                       </span>
                     </label>
                     <button
                       type="button"
                       onClick={() => setShowRecuperarModal(true)}
-                      className="text-sm text-[#003DA5] hover:text-[#1a4d8a] transition-colors font-semibold"
+                      style={{ fontSize: '14px' }}
+                      className="text-[#1e5da8] hover:text-[#164078] transition-colors font-semibold"
                     >
                       ¿Olvidaste tu contraseña?
                     </button>
                   </div>
 
-                  {/* Submit Button */}
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full py-3 bg-[#1e5da8] hover:bg-[#1a4d8a] active:bg-[#164078] text-white rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 shadow-lg shadow-[#1e5da8]/20 hover:shadow-xl hover:shadow-[#1e5da8]/30 active:scale-[0.98]"
+                    style={{ height: '52px', fontSize: '16px', borderRadius: '12px' }}
+                    className="w-full font-semibold bg-[#1e5da8] hover:bg-[#164078] active:bg-[#0f3562] text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 shadow-lg shadow-[#1e5da8]/25 hover:shadow-xl hover:shadow-[#1e5da8]/35 active:scale-[0.98]"
                   >
                     {isLoading ? (
                       <>
@@ -590,208 +585,271 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                       </>
                     )}
                   </button>
-                </motion.form>
+                </form>
 
-                {/* Credenciales de Prueba - Collapsible */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.8 }}
-                  style={{ display: 'none' }}
-                  className="mt-5 bg-blue-50 border-2 border-blue-200 rounded-xl overflow-hidden"
+                <div
+                  className="bg-blue-50/80 border border-blue-200 overflow-hidden"
+                  style={{ marginTop: '28px', borderRadius: '12px', display: 'none' }}
                 >
                   <button
                     type="button"
                     onClick={() => setIsCredentialsOpen(!isCredentialsOpen)}
-                    className="w-full p-3 flex items-center justify-between hover:bg-blue-100/50 transition-colors group"
+                    style={{ padding: '14px 16px'}}
+                    className="w-full flex items-center justify-between hover:bg-blue-100/50 transition-colors"
                   >
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-blue-900" />
-                      <span className="text-xs font-semibold text-blue-900">Credenciales de prueba</span>
+                    <div className="flex items-center gap-2.5">
+                      <Sparkles style={{ width: '18px', height: '18px' }} className="text-blue-700 flex-shrink-0" />
+                      <span style={{ fontSize: '14px' }} className="font-semibold text-blue-800">Credenciales de prueba</span>
                     </div>
-                    <ChevronDown 
-                      className={`w-4 h-4 text-blue-900 transition-transform duration-300 ${
-                        isCredentialsOpen ? 'rotate-180' : ''
-                      }`}
+                    <ChevronDown
+                      className={`w-5 h-5 text-blue-700 transition-transform duration-300 flex-shrink-0 ${isCredentialsOpen ? 'rotate-180' : ''}`}
                     />
                   </button>
-                  
-                  <motion.div
-                    initial={false}
-                    animate={{
-                      height: isCredentialsOpen ? 'auto' : 0,
-                      opacity: isCredentialsOpen ? 1 : 0
-                    }}
-                    transition={{ duration: 0.3, ease: 'easeInOut' }}
-                    className="overflow-hidden"
-                  >
-                    <div className="px-3 pb-3 space-y-1.5 text-xs text-blue-800">
-                      <p className="font-semibold text-blue-900 mb-2">📧 Email: cualquier correo válido</p>
-                      <p className="font-semibold text-blue-900 mb-2">🔒 Contraseña: cualquier texto (min. 6 caracteres)</p>
-                      
-                      {/* Usuarios Externos - Portal */}
-                      <div className="pt-2 border-t border-blue-200">
-                        <p className="font-bold text-blue-900 mb-1.5 flex items-center gap-1">
-                          👥 PORTAL TRANSACCIONAL (Externos)
-                        </p>
-                        <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">estudiantes@esap.edu.co</code>
-                        <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">egresados@esap.edu.co</code>
-                        <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">docentes@esap.edu.co</code>
-                        <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">funcionario@esap.edu.co <span className="text-blue-600">(Funcionario)</span></code>
-                        <code className="block px-2 py-1 bg-white rounded text-[10px]">planta@esap.edu.co <span className="text-blue-600">(Docente Planta)</span></code>
-                      </div>
 
-                      {/* Usuarios Internos - Backoffice */}
-                      <div className="pt-2 border-t border-blue-200">
-                        <p className="font-bold text-blue-900 mb-1.5 flex items-center gap-1">
-                          🏢 BACKOFFICE ADMINISTRATIVO (Internos)
-                        </p>
-                        <p className="text-[10px] text-blue-700 mb-1.5 italic">✅ Acceso total a todos los módulos:</p>
-                        <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">superuser@esap.edu.co <span className="text-blue-600">(Super Admin)</span></code>
-                        <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">rector@esap.edu.co <span className="text-blue-600">(Rector)</span></code>
-                        <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">director@esap.edu.co <span className="text-blue-600">(Director)</span></code>
-                        <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">admin@esap.edu.co <span className="text-blue-600">(Administrador)</span></code>
-                        <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">cerlaboral@esap.edu.co <span className="text-blue-600">(Certificados)</span></code>
-                        <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">ar.empresarial@esap.edu.co <span className="text-blue-600">(Arq. Empresarial)</span></code>
-                        <code className="block px-2 py-1 bg-white rounded text-[10px] mb-1">arqempresarial@esap.edu.co <span className="text-blue-600">(Arq. Empresarial)</span></code>
-                        
-                        <p className="text-[10px] text-orange-700 mb-1.5 mt-3 italic">⚠️ Acceso exclusivo a un solo módulo:</p>
-                        <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">ocig@esap.edu.co <span className="text-orange-700">(🔍 Solo Control Interno OCIG)</span></code>
-                        <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">c.disciplinario@esap.edu.co <span className="text-orange-700">(⚖️ Solo Control Disciplinario)</span></code>
-                        <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">gestion.profesoral@esap.edu.co <span className="text-orange-700">(📚 Solo Gestión Profesoral)</span></code>
-                        <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">gestion.legal@esap.edu.co <span className="text-orange-700">(⚖️ Solo Gestión Legal)</span></code>
-                        <code className="block px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] mb-1">registro.academico@esap.edu.co <span className="text-orange-700">(📚 Solo Registro Académico)</span></code>
-                      </div>
-                    </div>
-                  </motion.div>
-                </motion.div>
+                  <AnimatePresence>
+                    {isCredentialsOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className="overflow-hidden"
+                      >
+                        <div style={{ padding: '0 16px 16px', fontSize: '13px' }} className="text-blue-800">
+                          <p style={{ fontSize: '11px', marginBottom: '8px', marginTop: '4px' }} className="text-blue-600 italic">
+                            Clic en cualquier perfil para auto-llenar el formulario
+                          </p>
+                          <div className="space-y-1.5">
+                            {[
+                              { email: 'superuser@esap.edu.co', label: 'Super Admin', sublabel: 'Backoffice - Acceso total', icon: <Shield style={{ width: 13, height: 13 }} />, color: '#DC2626', bg: '#FEF2F2' },
+                              { email: 'funcionario@esap.edu.co', label: 'Administrativo', sublabel: 'Backoffice - Operaciones', icon: <Users style={{ width: 13, height: 13 }} />, color: '#FF6D00', bg: '#FFF7ED' },
+                            ].map(cred => (
+                              <button
+                                key={cred.email}
+                                type="button"
+                                onClick={() => {
+                                  setEmail(cred.email);
+                                  setPassword('Esap2026*');
+                                  setErrors({});
+                                  setRemainingAttempts(null);
+                                  toast.success(`Credenciales de ${cred.label} cargadas`);
+                                }}
+                                className="w-full text-left flex items-center gap-2.5 hover:bg-blue-100/80 transition-all rounded-lg group"
+                                style={{ padding: '7px 10px' }}
+                              >
+                                <div style={{ width: 28, height: 28, borderRadius: 7, background: cred.bg, color: cred.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  {cred.icon}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#1E3A5F' }} className="truncate">{cred.email}</div>
+                                  <div style={{ fontSize: '11px', color: '#6B7280' }}>{cred.sublabel}</div>
+                                </div>
+                                <div style={{ fontSize: '10px', padding: '2px 6px', borderRadius: 5, background: cred.bg, color: cred.color, fontWeight: 700, flexShrink: 0 }}>
+                                  {cred.label}
+                                </div>
+                              </button>
+                            ))}
+
+                            <div style={{ padding: '6px 0 2px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{ flex: 1, height: 1, background: '#BFDBFE' }} />
+                              <span style={{ fontSize: '10px', fontWeight: 800, color: '#1E40AF' }}>MODULO PTA - FLUJO MULTINIVEL</span>
+                              <div style={{ flex: 1, height: 1, background: '#BFDBFE' }} />
+                            </div>
+
+                            {[
+                              { email: 'gestion.profesoral@esap.edu.co', label: 'G. Profesoral', sublabel: 'N3 - Aprobacion final', icon: <Shield style={{ width: 13, height: 13 }} />, color: '#059669', bg: '#D1FAE5' },
+                              { email: 'director.academico@esap.edu.co', label: 'Director Acad.', sublabel: 'Dashboard directivo + SNA', icon: <GraduationCap style={{ width: 13, height: 13 }} />, color: '#7C3AED', bg: '#F3E8FF' },
+                              { email: 'decanatura@esap.edu.co', label: 'Decanatura', sublabel: 'N2 - Aprob. por programa', icon: <BookOpen style={{ width: 13, height: 13 }} />, color: '#003DA5', bg: '#EFF6FF' },
+                              { email: 'jefatura.antioquia@esap.edu.co', label: 'Jef. Antioquia', sublabel: 'N1 - Territorial Antioquia', icon: <MapPin style={{ width: 13, height: 13 }} />, color: '#D97706', bg: '#FEF3C7' },
+                              { email: 'jefatura.valle@esap.edu.co', label: 'Jef. Valle', sublabel: 'N1 - Territorial Valle', icon: <MapPin style={{ width: 13, height: 13 }} />, color: '#D97706', bg: '#FEF3C7' },
+                              { email: 'docente@esap.edu.co', label: 'Docente', sublabel: 'Portal - Crea y gestiona PTA', icon: <User style={{ width: 13, height: 13 }} />, color: '#6B7280', bg: '#F3F4F6' },
+                            ].map(cred => (
+                              <button
+                                key={cred.email}
+                                type="button"
+                                onClick={() => {
+                                  setEmail(cred.email);
+                                  setPassword('Esap2026*');
+                                  setErrors({});
+                                  setRemainingAttempts(null);
+                                  toast.success(`Credenciales de ${cred.label} cargadas`);
+                                }}
+                                className="w-full text-left flex items-center gap-2.5 hover:bg-blue-100/80 transition-all rounded-lg group"
+                                style={{ padding: '7px 10px' }}
+                              >
+                                <div style={{ width: 28, height: 28, borderRadius: 7, background: cred.bg, color: cred.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  {cred.icon}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#1E3A5F' }} className="truncate">{cred.email}</div>
+                                  <div style={{ fontSize: '11px', color: '#6B7280' }}>{cred.sublabel}</div>
+                                </div>
+                                <div style={{ fontSize: '10px', padding: '2px 6px', borderRadius: 5, background: cred.bg, color: cred.color, fontWeight: 700, flexShrink: 0 }}>
+                                  {cred.label}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+
+                          <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, background: '#EFF6FF', border: '1px solid #BFDBFE' }} className="flex items-center gap-2">
+                            <Lock style={{ width: 13, height: 13 }} className="text-blue-700 flex-shrink-0" />
+                            <span style={{ fontSize: '12px', color: '#1E40AF', fontWeight: 600 }}>
+                              Contraseña universal: <code className="bg-white px-1.5 py-0.5 rounded text-blue-900 ml-1 font-bold">Esap2026*</code>
+                            </span>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <p style={{ fontSize: '14px', marginTop: '28px' }} className="text-center text-gray-400">
+                  ¿No tienes cuenta?{' '}
+                  <button className="text-[#1e5da8] hover:text-[#164078] transition-colors font-semibold">
+                    Regístrate aquí
+                  </button>
+                </p>
               </>
-            )}
-
-            {/* Footer */}
-            {showCredentialLogin && (
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.9 }}
-                className="text-center text-sm text-gray-600 mt-5"
-              >
-                ¿No tienes cuenta?{' '}
-                <button className="text-[#003DA5] hover:text-[#1a4d8a] transition-colors">
-                  Regístrate aquí
-                </button>
-              </motion.p>
             )}
           </motion.div>
         </div>
 
-        {/* Right Side - Welcome Section (Desktop Only) */}
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.8 }}
-          className="hidden lg:flex flex-1 bg-gradient-to-br from-[#1e5da8] via-[#2563a8] to-[#1a4d8a] relative overflow-hidden"
-        >
-          {/* Animated Background Pattern */}
-          <div className="absolute inset-0 opacity-10">
-            <motion.div
-              className="absolute top-20 left-20 w-72 h-72 bg-white rounded-full blur-3xl"
-              animate={{
-                scale: [1, 1.2, 1],
-                opacity: [0.3, 0.5, 0.3],
-              }}
-              transition={{
-                duration: 8,
-                repeat: Infinity,
-                ease: 'easeInOut',
-              }}
-            />
-            <motion.div
-              className="absolute bottom-20 right-20 w-96 h-96 bg-white rounded-full blur-3xl"
-              animate={{
-                scale: [1, 1.3, 1],
-                opacity: [0.2, 0.4, 0.2],
-              }}
-              transition={{
-                duration: 10,
-                repeat: Infinity,
-                ease: 'easeInOut',
-              }}
-            />
-          </div>
+        <div className="flex-shrink-0 lg:hidden px-6 pb-6">
+          <p style={{ fontSize: '12px' }} className="text-center text-gray-300">
+            © {new Date().getFullYear()} ESAP - Escuela Superior de Administración Pública
+          </p>
+        </div>
+      </div>
 
-          {/* Grid Pattern */}
-          <div className="absolute inset-0 opacity-5" style={{
-            backgroundImage: 'linear-gradient(white 1px, transparent 1px), linear-gradient(90deg, white 1px, transparent 1px)',
-            backgroundSize: '50px 50px'
-          }} />
+      <motion.div
+        data-login-hero-pane
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.8 }}
+        className="esap-login-hero relative overflow-hidden"
+      >
+        <div className="absolute inset-0">
+          <img
+            src={loginHeroImage}
+            alt=""
+            className={`w-full h-full object-cover transition-opacity duration-1000 ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              background: 'linear-gradient(90deg, rgba(10, 31, 66, 0.7) 0%, rgba(38, 93, 165, 0.8) 46%, rgba(28, 53, 94, 0.8) 100%)',
+            }}
+          />
+        </div>
 
-          {/* Content */}
-          <div className="relative z-10 flex flex-col justify-between p-6 lg:p-8 xl:p-12 2xl:p-16 text-white w-full">
-            {/* Logo */}
+        <div className="absolute inset-0" style={{
+          opacity: 0.075,
+          backgroundImage: 'linear-gradient(rgba(255,255,255,0.75) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.75) 1px, transparent 1px)',
+          backgroundSize: '60px 60px'
+        }} />
+
+        <div className="relative z-10 flex flex-col justify-between w-full p-10 xl:p-14 2xl:p-20" style={{ padding: '75px' }}>
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+          >
+            <ESAPLogo variant="white" className="h-16 xl:h-[74px] w-auto" />
+          </motion.div>
+
+          <div className="space-y-8 xl:space-y-10">
             <motion.div
-              initial={{ opacity: 0, y: -20 }}
+              initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="flex items-start"
+              transition={{ delay: 0.6, duration: 0.6 }}
             >
-              <ESAPLogo variant="white" className="h-16 w-auto" />
+              <h2
+                style={{ fontSize: '26px', lineHeight: '1.12' }}
+                className="font-extrabold text-white max-w-[360px]"
+              >
+                Bienvenido a la
+                <span
+                  className="block"
+                  style={{ color: '#67d7f2', fontSize: '26px', lineHeight: '1.12' }}
+                >
+                  ComUNIdad ESAP
+                </span>
+              </h2>
+              <p style={{ fontSize: '16px', lineHeight: '1.55', marginTop: '24px', color: 'rgba(229, 238, 252, 0.86)' }} className="max-w-[590px]">
+                Tu plataforma integral para todos los servicios académicos, administrativos y comunitarios de la ESAP.
+              </p>
             </motion.div>
 
-            {/* Main Content */}
-            <div className="space-y-4 lg:space-y-6 xl:space-y-8">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
-                className="space-y-3 lg:space-y-4"
-              >
-                <h2 className="text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl text-white/95 leading-tight max-w-lg">
-                  Bienvenido a La Comunidad ESAP
-                </h2>
-              </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.9 }}
+              className="flex flex-wrap gap-3"
+            >
+              {[
+                { icon: <Users style={{ width: '16px', height: '16px' }} />, label: '+17 mil', sub: 'Estudiantes' },
+                { icon: <GraduationCap style={{ width: '16px', height: '16px' }} />, label: '66 años', sub: 'de Historia' },
+                { icon: <Shield style={{ width: '16px', height: '16px' }} />, label: '84%', sub: 'Cobertura' },
+              ].map((s) => (
+                <div
+                  key={s.label}
+                  className="flex items-center gap-3 text-white"
+                  style={{
+                    padding: '12px 20px',
+                    borderRadius: '12px',
+                    background: 'rgba(255, 255, 255, 0.12)',
+                    border: '1px solid rgba(255, 255, 255, 0.18)',
+                    backdropFilter: 'blur(10px)',
+                  }}
+                >
+                  <div className="opacity-70">{s.icon}</div>
+                  <div>
+                    <div style={{ fontSize: '17px' }} className="font-bold leading-none">{s.label}</div>
+                    <div style={{ fontSize: '13px', color: 'rgba(219, 230, 248, 0.78)' }} className="mt-1">{s.sub}</div>
+                  </div>
+                </div>
+              ))}
+            </motion.div>
+          </div>
 
-              {/* Social Proof */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.9 }}
-                className="flex items-center gap-3 lg:gap-4 pt-3 lg:pt-4"
-              >
-                <div className="flex -space-x-2 lg:-space-x-3">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div
-                      key={i}
-                      className="w-8 h-8 lg:w-9 lg:h-9 xl:w-10 xl:h-10 rounded-full bg-white/20 backdrop-blur-sm border-2 border-[#1e5da8] flex items-center justify-center text-xs lg:text-sm text-white"
-                    >
-                      {String.fromCharCode(64 + i)}
-                    </div>
-                  ))}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.2 }}
+            className="space-y-5"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex -space-x-2.5">
+                {['A', 'B', 'C', 'D', 'E'].map((letter) => (
+                  <div
+                    key={letter}
+                    className="w-9 h-9 rounded-full bg-white/15 backdrop-blur-sm border-2 border-white/20 flex items-center justify-center"
+                    style={{ fontSize: '13px' }}
+                  >
+                    <span className="text-white font-semibold">{letter}</span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <TrendingUp style={{ width: '14px', height: '14px' }} className="text-emerald-400" />
+                  <span style={{ fontSize: '14px' }} className="text-white/90 font-medium">Más de 17,000 usuarios activos</span>
                 </div>
-                <div className="flex items-center gap-1.5 lg:gap-2">
-                  <TrendingUp className="w-3.5 h-3.5 lg:w-4 lg:h-4 text-white/80" />
-                  <span className="text-xs lg:text-sm text-white/90">Más de 17k personas confían en ESAP</span>
-                </div>
-              </motion.div>
+              </div>
             </div>
 
-            {/* Footer */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 1.1 }}
-              className="text-xs lg:text-sm text-white/60"
-            >
-              © {new Date().getFullYear()} ESAP - Escuela Superior de Administración Pública
-            </motion.div>
-          </div>
-        </motion.div>
-      </div>
-      
-      {/* Modal de Recuperar Contraseña */}
-      <ModalRecuperarContrasena 
-        isOpen={showRecuperarModal} 
-        onClose={() => setShowRecuperarModal(false)} 
+            <div className="pt-4 border-t border-white/10">
+              <p style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.38)' }}>
+                © {new Date().getFullYear()} ESAP - Escuela Superior de Administración Pública. Todos los derechos reservados.
+              </p>
+            </div>
+          </motion.div>
+        </div>
+      </motion.div>
+
+      <ModalRecuperarContrasena
+        isOpen={showRecuperarModal}
+        onClose={() => setShowRecuperarModal(false)}
       />
     </div>
   );

@@ -495,7 +495,7 @@ const generarLogsMock = () => {
       registroId: 'usr-2026-234',
       modulo: 'Gestión de Usuarios',
       cambios: {
-        despues: { ultimoAcceso: '2026-01-14T08:30:00Z', ip: '192.168.1.45', navegador: 'Chrome 120' }
+        despues: { ultimoAcceso: '2026-01-14T08:30:00Z', ip: 'IP interna protegida', navegador: 'Chrome 120' }
       }
     },
     {
@@ -548,7 +548,7 @@ const generarLogsMock = () => {
       accionData.cambios,
       {
         modulo: accionData.modulo as any,
-        ip: `192.168.1.${Math.floor(Math.random() * 255)}`
+        ip: 'IP interna protegida'
       }
     ).then(log => {
       // Ajustar timestamp

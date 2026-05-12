@@ -8,13 +8,14 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
+import {
   FolderOpen, Search, Download, Upload, ChevronRight, ChevronDown, FileText,
   Eye, EyeOff, Calendar, User, AlertCircle, Trash2,
   FileCheck, FileWarning, Scale, Gavel, AlertTriangle, Shield,
   MessageSquare, Bell, X, Clock, Folders,
   ArrowUp, ArrowDown, History, Info,
-  Paperclip, Send, FileSpreadsheet, List, Printer, Share2, Loader2, Play, ExternalLink
+  Paperclip, Send, FileSpreadsheet, List, Printer, Share2, Loader2, Play, ExternalLink,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
@@ -1102,12 +1103,10 @@ export function ExpedientesElectronicosWorldClass() {
       // ?view=true hace que el backend devuelva Content-Type correcto (ej. application/pdf) e inline
       const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download?view=true`;
       const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
-      const token = localStorage.getItem('esap_access_token');
-
       // Cargar el documento como blob para crear una URL local
       const response = await fetch(downloadUrl, {
         method: 'GET',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        credentials: 'include',
       });
       
       if (!response.ok) {
@@ -1174,11 +1173,9 @@ export function ExpedientesElectronicosWorldClass() {
       // Construir la URL del documento usando buildApiUrl (respeta gateway/direct)
       const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download`;
       const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
-      const token = localStorage.getItem('esap_access_token');
-
       const response = await fetch(downloadUrl, {
         method: 'GET',
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        credentials: 'include',
       });
       
       if (!response.ok) {

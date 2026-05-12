@@ -14,6 +14,8 @@ export interface CreateRoleDto {
   icon?: string;
   color?: string;
   type?: 'sistema' | 'personalizado';
+  sistema_destino?: string;
+  alcance?: any;
   category?: 'backoffice' | 'portal' | 'sistema' | 'academico' | 'directivo' | 'administrativo';
   requires_2fa?: boolean;
   permissionIds?: string[];
@@ -26,6 +28,8 @@ export interface UpdateRoleDto {
   icon?: string;
   color?: string;
   type?: 'sistema' | 'personalizado';
+  sistema_destino?: string;
+  alcance?: any;
   category?: 'backoffice' | 'portal' | 'sistema' | 'academico' | 'directivo' | 'administrativo';
   requires_2fa?: boolean;
   permissionIds?: string[];
@@ -36,6 +40,7 @@ export interface RoleFilters {
   type?: 'sistema' | 'personalizado';
   is_active?: boolean;
   requires_2fa?: boolean;
+  sistema_destino?: 'Backoffice' | 'Portal' | 'Ambos';
   page?: number;
   limit?: number;
 }
@@ -65,6 +70,27 @@ export class RolesService {
     return typeof value === 'string' && POSTGRES_UUID_PATTERN.test(value.trim());
   }
 
+  private async findPermissionsByIdsOrCodes(permissionIds: string[]): Promise<Permission[]> {
+    if (!permissionIds.length) {
+      return [];
+    }
+
+    const uuidIds = permissionIds.filter(id => this.isPostgresUuid(id));
+    const codeIds = permissionIds.filter(id => !this.isPostgresUuid(id));
+
+    const whereConditions: any[] = [];
+    if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
+    if (codeIds.length > 0) whereConditions.push({ code: In(codeIds) });
+
+    if (!whereConditions.length) {
+      return [];
+    }
+
+    return this.permissionRepo.find({
+      where: whereConditions,
+    });
+  }
+
   async findAll(filters: RoleFilters = {}): Promise<{ roles: Role[], total: number }> {
     const query = this.roleRepo.createQueryBuilder('role');
 
@@ -85,6 +111,10 @@ export class RolesService {
 
     if (filters.requires_2fa !== undefined) {
       query.andWhere('role.requires_2fa = :requires_2fa', { requires_2fa: filters.requires_2fa });
+    }
+
+    if (filters.sistema_destino) {
+      query.andWhere('role.sistema_destino = :sistema_destino', { sistema_destino: filters.sistema_destino });
     }
 
     // Agregar subqueries para conteos
@@ -185,25 +215,19 @@ export class RolesService {
       icon: createRoleDto.icon || 'Shield',
       color: createRoleDto.color || '#003DA5',
       type: createRoleDto.type || 'personalizado',
+      sistema_destino: createRoleDto.sistema_destino || 'Backoffice',
+      alcance: createRoleDto.alcance,
       category: createRoleDto.category || 'sistema',
       requires_2fa: createRoleDto.requires_2fa || false,
       created_by: createdBy,
       is_active: true,
     });
 
-    // Asignar permisos si se proporcionan
-    if (createRoleDto.permissionIds && createRoleDto.permissionIds.length > 0) {
-      const uuidIds = createRoleDto.permissionIds.filter(id => this.isPostgresUuid(id));
-      const codeIds = createRoleDto.permissionIds.filter(id => !this.isPostgresUuid(id));
-      
-      const whereConditions: any[] = [];
-      if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
-      if (codeIds.length > 0) whereConditions.push({ code: In(codeIds) });
-
-      const permissions = await this.permissionRepo.find({
-        where: whereConditions
-      });
-      role.permissions = permissions;
+    // Asignar exactamente los permisos seleccionados al crear el rol.
+    if (createRoleDto.permissionIds !== undefined) {
+      role.permissions = await this.findPermissionsByIdsOrCodes(
+        createRoleDto.permissionIds,
+      );
     }
 
     return this.roleRepo.save(role);
@@ -225,6 +249,8 @@ export class RolesService {
     if (updateRoleDto.description !== undefined) role.description = updateRoleDto.description;
     if (updateRoleDto.icon) role.icon = updateRoleDto.icon;
     if (updateRoleDto.color) role.color = updateRoleDto.color;
+    if (updateRoleDto.sistema_destino) role.sistema_destino = updateRoleDto.sistema_destino;
+    if (updateRoleDto.alcance !== undefined) role.alcance = updateRoleDto.alcance;
     if (updateRoleDto.category) role.category = updateRoleDto.category;
     if (updateRoleDto.requires_2fa !== undefined) role.requires_2fa = updateRoleDto.requires_2fa;
     if (updatedBy) role.updated_by = updatedBy;
@@ -239,21 +265,7 @@ export class RolesService {
 
     // Actualizar permisos si se proporcionan
     if (updateRoleDto.permissionIds !== undefined) {
-      if (updateRoleDto.permissionIds.length === 0) {
-        role.permissions = [];
-      } else {
-        const uuidIds = updateRoleDto.permissionIds.filter(id => this.isPostgresUuid(id));
-        const codeIds = updateRoleDto.permissionIds.filter(id => !this.isPostgresUuid(id));
-        
-        const whereConditions: any[] = [];
-        if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
-        if (codeIds.length > 0) whereConditions.push({ code: In(codeIds) });
-
-        const permissions = await this.permissionRepo.find({
-          where: whereConditions
-        });
-        role.permissions = permissions;
-      }
+      role.permissions = await this.findPermissionsByIdsOrCodes(updateRoleDto.permissionIds);
     }
 
     return this.roleRepo.save(role);
@@ -280,12 +292,21 @@ export class RolesService {
   async duplicate(id: string, duplicatedBy?: string): Promise<Role> {
     const originalRole = await this.findOne(id);
 
+    // Generar código único para el rol duplicado
+    const duplicatedName = `${originalRole.name} (Copia)`;
+    const code = this.generateCode(duplicatedName);
+
     const duplicatedRole = this.roleRepo.create({
-      name: `${originalRole.name} (Copia)`,
+      id: uuidv4(),
+      code,
+      name: duplicatedName,
       description: originalRole.description,
       icon: originalRole.icon,
       color: originalRole.color,
       type: 'personalizado',
+      sistema_destino: originalRole.sistema_destino,
+      alcance: originalRole.alcance,
+      category: originalRole.category,
       requires_2fa: originalRole.requires_2fa,
       is_active: true,
       created_by: duplicatedBy,
@@ -368,21 +389,7 @@ export class RolesService {
       throw new NotFoundException('Rol no encontrado');
     }
 
-    if (permissionIds.length === 0) {
-      role.permissions = [];
-    } else {
-      const uuidIds = permissionIds.filter(id => this.isPostgresUuid(id));
-      const codeIds = permissionIds.filter(id => !this.isPostgresUuid(id));
-      
-      const whereConditions: any[] = [];
-      if (uuidIds.length > 0) whereConditions.push({ id_permission: In(uuidIds) });
-      if (codeIds.length > 0) whereConditions.push({ code: In(codeIds) });
-
-      const permissions = await this.permissionRepo.find({
-        where: whereConditions
-      });
-      role.permissions = permissions;
-    }
+    role.permissions = await this.findPermissionsByIdsOrCodes(permissionIds);
 
     if (updatedBy) role.updated_by = updatedBy;
 

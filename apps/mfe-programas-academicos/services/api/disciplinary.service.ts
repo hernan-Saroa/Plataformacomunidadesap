@@ -696,20 +696,14 @@ class DisciplinaryService {
             ? restPath
             : `/api/v1${restPath}`;
         const url = buildApiUrl('control-disciplinario', endpoint);
-
-        // Obtener token de autenticacion
-        const token = localStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/octet-stream',
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(url, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -758,19 +752,14 @@ class DisciplinaryService {
             // URL relativa, construir URL completa
             fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
         }
-
-        const token = localStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': '*/*', // Aceptar cualquier cosa (binarios)
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(fullUrl, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -997,20 +986,14 @@ class DisciplinaryService {
         // Usar buildApiUrl para respetar el modo de conexión
         const endpoint = `/api/v1/configuration/export/zip`;
         const url = buildApiUrl('control-disciplinario', endpoint);
-
-        // Obtener token
-        const token = localStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/zip',
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(url, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -1513,10 +1496,6 @@ class DisciplinaryService {
         emailDestinatario: string;
         createdAt: string;
     }> {
-        // Debug: verificar que hay token disponible
-        const token = localStorage.getItem('esap_auth_token');
-        console.log('[DEBUG] Token available:', !!token);
-        console.log('[DEBUG] Token prefix:', token?.substring(0, 20));
 
         // Obtener la URL base del frontend para generar enlaces correctos
         // Esto asegura que la URL funcione en todos los ambientes (local, dev, qa, pre, prod)

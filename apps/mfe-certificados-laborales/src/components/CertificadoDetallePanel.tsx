@@ -61,8 +61,12 @@ interface CertificadoDetallePanelProps {
     observations?: string;
     request?: {
       observations?: string;
+      technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+      technicalBonusCategory?: 'DIRECTIVOS' | 'COORDINADORES' | null;
     };
     technical_bonus?: number;
+    technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+    technicalBonusCategory?: 'DIRECTIVOS' | 'COORDINADORES' | null;
     incluyeSalario?: boolean;
     incluyePrimaTecnica?: boolean;
     templateSnapshot?: any;
@@ -137,7 +141,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
       observations: certificado.request?.observations || certificado.observations,
       templateType: certificado.templateType,
       includeCodeLabel: true,
-      codeLabel: 'Codigo',
+      codeLabel: 'Código',
     }) ||
     certificado.empleado.cargo
   );
@@ -614,7 +618,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     const copiado = await copiarAlPortapapeles(certificado.consecutivo);
     if (copiado) {
       toast.success('Consecutivo copiado', {
-        description: 'El numero de consecutivo fue copiado al portapapeles'
+        description: 'El número de consecutivo fue copiado al portapapeles'
       });
     } else {
       toast.error('No se pudo copiar el consecutivo');
@@ -662,6 +666,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     <AnimatePresence>
       {isOpen && (
         <motion.div
+          key="panel-content"
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
           exit={{ opacity: 0, height: 0 }}
@@ -770,7 +775,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                             </p>
                             {incluyePrimaTecnicaCertificado && primaTecnicaCertificado > 0 && (
                               <p className="text-xs text-emerald-700 mt-1 pl-5">
-                                Prima Tecnica: ${Number(primaTecnicaCertificado).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} COP
+                                Prima técnica y/o coordinación: ${Number(primaTecnicaCertificado).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} COP
                               </p>
                             )}
                           </>
@@ -1090,6 +1095,12 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
               incluyeSalario: incluyeSalarioCertificado,
               incluyePrimaTecnica: incluyePrimaTecnicaCertificado,
               technical_bonus: primaTecnicaCertificado,
+              technical_bonus_category:
+                certificado.technical_bonus_category ??
+                certificado.technicalBonusCategory ??
+                certificado.request?.technical_bonus_category ??
+                certificado.request?.technicalBonusCategory ??
+                null,
             }}
           />
 

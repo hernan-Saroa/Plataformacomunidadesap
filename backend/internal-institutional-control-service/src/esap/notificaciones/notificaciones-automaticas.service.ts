@@ -134,42 +134,38 @@ export class NotificacionesAutomaticasService {
               continue; // Ya se envió esta notificación
             }
 
-            // Obtener usuarios a notificar (auditor líder, auditor asignado, responsable del área)
-            const usuariosNotificar = await this.obtenerUsuariosAuditoria(auditoria);
+            // ✅ SINCRONIZACIÓN CON CONFIGURACIÓN: Obtener roles para alertas de vencimiento (EVT-AUD-002)
+            let rolesDestinatarios = ['Auditor Líder', 'Auditor de Equipo']; // Fallback
+            try {
+              const configGlobal = await this.notificacionesService.getGlobalConfig();
+              if (configGlobal && configGlobal.tiposNotificacion && configGlobal.tiposNotificacion['EVT-AUD-002']) {
+                const configEvento = configGlobal.tiposNotificacion['EVT-AUD-002'] as any;
+                rolesDestinatarios = configEvento.destinatarios || rolesDestinatarios;
+              }
+            } catch (e) {}
 
-            if (usuariosNotificar.length === 0) {
-              this.logger.warn(`No se encontraron usuarios para notificar en auditoría ${auditoria.codigo}`);
-              continue;
-            }
+            // ✅ SINCRONIZACIÓN CON CONFIGURACIÓN: Disparar evento para que el motor resuelva destinatarios (Jefe OCI, Líder, etc.)
+            const fechaVencimiento = new Date(auditoria.fechaFin).toLocaleDateString('es-CO', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            });
 
-            for (const usuarioId of usuariosNotificar) {
-              const fechaVencimiento = new Date(auditoria.fechaFin).toLocaleDateString('es-CO', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-              });
+            await this.notificacionesService.dispararEvento('EVT-AUD-DEADLINE', {
+              auditoriaId: auditoria.id,
+              auditoriaCodigo: auditoria.codigo,
+              tituloCustom: `Auditoría próxima a vencer - ${auditoria.codigo}`,
+              mensajeCustom: `La auditoría "${auditoria.nombre}" (${auditoria.codigo}) vence en ${diasAnticipacion} ${diasAnticipacion === 1 ? 'día' : 'días'} (${fechaVencimiento}).`,
+              metadata: {
+                auditoriaId: auditoria.id,
+                auditoriaCodigo: auditoria.codigo,
+                fechaVencimiento: auditoria.fechaFin.toISOString(),
+                diasAnticipacion,
+              },
+              url_accion: `/control-interno/auditorias/${auditoria.id}`,
+            });
 
-              await this.notificacionesService.create({
-                usuarioId: usuarioId.toString(),
-                tipoNotificacion: TipoNotificacion.ALERTA_VENCIMIENTO,
-                titulo: `Auditoría próxima a vencer - ${auditoria.codigo}`,
-                mensaje: `La auditoría "${auditoria.nombre}" (${auditoria.codigo}) vence en ${diasAnticipacion} ${diasAnticipacion === 1 ? 'día' : 'días'} (${fechaVencimiento}).`,
-                prioridad:
-                  diasAnticipacion <= 3
-                    ? PrioridadNotificacion.ALTA
-                    : PrioridadNotificacion.NORMAL,
-                canal: CanalNotificacion.AMBOS,
-                metadata: {
-                  auditoriaId: auditoria.id,
-                  auditoriaCodigo: auditoria.codigo,
-                  fechaVencimiento: auditoria.fechaFin.toISOString(),
-                  diasAnticipacion,
-                },
-                accionUrl: `/control-interno/auditorias/${auditoria.id}`,
-              });
-
-              enviadas++;
-            }
+            enviadas++;
           } catch (error) {
             this.logger.error(
               `Error al crear notificación para auditoría ${auditoria.id}: ${error.message}`,
@@ -274,15 +270,12 @@ export class NotificacionesAutomaticasService {
             }
 
             await this.notificacionesService.create({
-              usuarioId: usuarioId.toString(),
+              usuarioId,
               tipoNotificacion: TipoNotificacion.ALERTA_VENCIMIENTO,
               titulo: `Plan de Mejoramiento Pendiente - ${plan.codigo}`,
               mensaje: `El Plan de Mejoramiento "${plan.titulo}" (${plan.codigo})${auditoriaInfo} debe ser presentado antes del ${fechaVencimiento} (faltan ${diasAnticipacion} ${diasAnticipacion === 1 ? 'día' : 'días'}).`,
-              prioridad:
-                diasAnticipacion <= 3
-                  ? PrioridadNotificacion.ALTA
-                  : PrioridadNotificacion.NORMAL,
-              canal: CanalNotificacion.AMBOS,
+              prioridad: PrioridadNotificacion.ALTA,
+              canal: CanalNotificacion.SISTEMA,
               metadata: {
                 planMejoramientoId: plan.id,
                 planCodigo: plan.codigo,
@@ -385,15 +378,12 @@ export class NotificacionesAutomaticasService {
             });
 
             await this.notificacionesService.create({
-              usuarioId: usuarioId.toString(),
+              usuarioId,
               tipoNotificacion: TipoNotificacion.RECORDATORIO_PLAZO,
               titulo: `Seguimiento Trimestral Próximo - ${seguimiento.plan.codigo}`,
               mensaje: `El seguimiento trimestral del Plan de Mejoramiento ${seguimiento.plan.codigo} vence en ${diasAnticipacion} ${diasAnticipacion === 1 ? 'día' : 'días'} (${fechaVencimiento}).`,
-              prioridad:
-                diasAnticipacion <= 3
-                  ? PrioridadNotificacion.ALTA
-                  : PrioridadNotificacion.NORMAL,
-              canal: CanalNotificacion.AMBOS,
+              prioridad: PrioridadNotificacion.ALTA,
+              canal: CanalNotificacion.SISTEMA,
               metadata: {
                 planMejoramientoId: seguimiento.planId,
                 planCodigo: seguimiento.plan.codigo,
@@ -479,34 +469,34 @@ export class NotificacionesAutomaticasService {
    * Obtiene los usuarios a notificar para una auditoría
    */
   private async obtenerUsuariosAuditoria(auditoria: Auditoria): Promise<string[]> {
-    const usuarios: string[] = [];
+    const personIds: string[] = [];
+    if (auditoria.auditorLiderId) personIds.push(String(auditoria.auditorLiderId));
+    if (auditoria.auditorAsignadoId) personIds.push(String(auditoria.auditorAsignadoId));
 
-    if (auditoria.auditorLiderId) {
-      usuarios.push(auditoria.auditorLiderId);
+    if (personIds.length === 0) return [];
+
+    try {
+      const result = await this.dataSource.query(
+        `SELECT id_user FROM auth."user" WHERE id_person = ANY($1::uuid[]) AND is_active = true`,
+        [personIds]
+      );
+      return result.map((r: any) => String(r.id_user)).filter(Boolean);
+    } catch (e) {
+      return [];
     }
-
-    if (auditoria.auditorAsignadoId && !usuarios.includes(auditoria.auditorAsignadoId)) {
-      usuarios.push(auditoria.auditorAsignadoId);
-    }
-
-    // TODO: Obtener responsable del área auditada desde la base de datos
-    // Por ahora solo se notifica a los auditores
-
-    return usuarios;
   }
 
   /**
    * Obtiene el usuario responsable de un plan de mejoramiento
    */
-  private async obtenerUsuarioResponsablePlan(plan: PlanMejoramiento): Promise<number | null> {
+  private async obtenerUsuarioResponsablePlan(plan: PlanMejoramiento): Promise<string | null> {
     try {
       // Buscar usuario por nombre del responsable
-      // Esto es un placeholder - debería buscar en la tabla de usuarios/auth
       const nombreCompleto = plan.responsableImplementacion.trim();
       
       const result = await this.dataSource.query(
         `
-        SELECT u.id_tercero
+        SELECT u.id_user
         FROM auth."user" u
         WHERE (
           LOWER(TRIM(u.nombre || ' ' || COALESCE(u.apellido, ''))) = LOWER(TRIM($1))
@@ -520,13 +510,9 @@ export class NotificacionesAutomaticasService {
       );
 
       if (result && result.length > 0) {
-        return Number(result[0].id_tercero);
+        return String(result[0].id_user);
       }
 
-      // Si no se encuentra, retornar null
-      this.logger.warn(
-        `No se encontró usuario responsable para plan ${plan.codigo}: ${plan.responsableImplementacion}`,
-      );
       return null;
     } catch (error) {
       this.logger.error(

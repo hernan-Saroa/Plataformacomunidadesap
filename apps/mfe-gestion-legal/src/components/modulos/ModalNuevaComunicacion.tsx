@@ -39,6 +39,8 @@ export interface NuevaComunicacionData {
 }
 
 export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData }: ModalNuevaComunicacionProps) {
+  // For forwards: keep the original body separate so the textarea only shows the user's comment
+  const [originalBody, setOriginalBody] = useState<string>('');
   const [formData, setFormData] = useState<Partial<NuevaComunicacionData>>(initialData || {});
   const [enviando, setEnviando] = useState(false);
   const [archivos, setArchivos] = useState<File[]>([]);
@@ -47,7 +49,14 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData 
   // Update form data when initialData or isOpen changes
   useEffect(() => {
     if (isOpen) {
-      setFormData(initialData || {});
+      if (initialData?.isForward) {
+        // Separate original body from user comment — user's textarea starts empty
+        setOriginalBody(initialData.cuerpo || '');
+        setFormData({ ...initialData, cuerpo: '' });
+      } else {
+        setOriginalBody('');
+        setFormData(initialData || {});
+      }
       setArchivos([]);
     }
   }, [isOpen, initialData]);
@@ -71,7 +80,8 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData 
       toast.error('⚠️ Error de validación', { description: 'Debe ingresar el asunto' });
       return;
     }
-    if (!formData.cuerpo?.trim()) {
+    // For forwards, cuerpo is the user's comment — it can be empty (the original body is sent automatically by Graph)
+    if (!formData.cuerpo?.trim() && !formData.isForward) {
       toast.error('⚠️ Error de validación', { description: 'Debe ingresar el cuerpo del mensaje' });
       return;
     }
@@ -109,11 +119,12 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData 
 
       // Llamar API real según si es Forward, Reply o Send
       if (formData.isForward && formData.originalCorreoId) {
-        // Para Reenviar
+        // Para Reenviar — incluye adjuntos subidos por el usuario además de los originales (Graph los incluye nativamente)
         const result = await correosJuridicosService.forwardEmail(
           formData.originalCorreoId,
           formData.para.trim(),
-          formData.cuerpo.trim()
+          formData.cuerpo.trim(),
+          attachmentsBase64.length > 0 ? attachmentsBase64 : undefined
         );
         isSuccess = result?.success !== false;
       } else if (formData.isReply && formData.originalCorreoId) {
@@ -292,18 +303,31 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData 
 
                 <div className="space-y-2">
                   <Label htmlFor="cuerpo" className="text-sm font-bold text-gray-700">
-                    Mensaje <span className="text-red-500">*</span>
+                    {formData.isForward ? 'Comentario (opcional)' : <>Mensaje <span className="text-red-500">*</span></>}
                   </Label>
                   <Textarea
                     id="cuerpo"
-                    placeholder="Escriba aquí el contenido del correo..."
+                    placeholder={formData.isForward
+                      ? 'Escriba un comentario adicional al reenvío (opcional)...'
+                      : 'Escriba aquí el contenido del correo...'}
                     value={formData.cuerpo || ''}
                     onChange={(e) => setFormData({ ...formData, cuerpo: e.target.value })}
-                    rows={8}
-                    required
+                    rows={formData.isForward ? 4 : 8}
                     className="resize-none"
                   />
                 </div>
+
+                {/* Cuerpo original — visible solo en reenvíos, solo lectura */}
+                {formData.isForward && originalBody && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Correo original incluido</p>
+                    <div
+                      className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 max-h-40 overflow-y-auto"
+                      dangerouslySetInnerHTML={{ __html: originalBody }}
+                    />
+                    <p className="text-xs text-gray-400">Los adjuntos del correo original también se incluirán automáticamente.</p>
+                  </div>
+                )}
               </div>
             </Card>
 

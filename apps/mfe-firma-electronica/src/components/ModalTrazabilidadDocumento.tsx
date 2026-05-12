@@ -93,12 +93,12 @@ export function ModalTrazabilidadDocumento({
 
   // Datos de actividad del documento
   const actividadDocumento = [
-    { id: 1, accion: 'Documento creado', usuario: documento.cargadoPor, fecha: '23/12/2024', hora: '09:15 AM', dispositivo: 'Web - Chrome', ip: '192.168.1.100', icono: FileText, color: 'blue' },
+    { id: 1, accion: 'Documento creado', usuario: documento.cargadoPor, fecha: '23/12/2024', hora: '09:15 AM', dispositivo: 'Web - Chrome', ip: 'IP interna protegida', icono: FileText, color: 'blue' },
     { id: 2, accion: 'Email enviado', destinatario: documento.firmantes[0]?.email, fecha: '23/12/2024', hora: '09:20 AM', dispositivo: 'Sistema', icono: Mail, color: 'purple' },
-    { id: 3, accion: 'Documento abierto', usuario: documento.firmantes[0]?.nombre, fecha: '23/12/2024', hora: '10:15 AM', dispositivo: 'Web - Safari', ip: '192.168.1.105', icono: Eye, color: 'cyan' },
-    { id: 4, accion: 'Documento firmado', usuario: documento.firmantes[0]?.nombre, fecha: documento.firmantes[0]?.fechaFirma, hora: documento.firmantes[0]?.horaFirma, dispositivo: 'Web - Safari', ip: '192.168.1.105', icono: CheckCircle, color: 'green' },
+    { id: 3, accion: 'Documento abierto', usuario: documento.firmantes[0]?.nombre, fecha: '23/12/2024', hora: '10:15 AM', dispositivo: 'Web - Safari', ip: 'IP interna protegida', icono: Eye, color: 'cyan' },
+    { id: 4, accion: 'Documento firmado', usuario: documento.firmantes[0]?.nombre, fecha: documento.firmantes[0]?.fechaFirma, hora: documento.firmantes[0]?.horaFirma, dispositivo: 'Web - Safari', ip: 'IP interna protegida', icono: CheckCircle, color: 'green' },
     { id: 5, accion: 'Email enviado', destinatario: documento.firmantes[1]?.email, fecha: '23/12/2024', hora: '10:30 AM', dispositivo: 'Sistema', icono: Mail, color: 'purple' },
-    { id: 6, accion: 'Documento abierto', usuario: documento.firmantes[1]?.nombre, fecha: '23/12/2024', hora: '14:22 AM', dispositivo: 'Mobile - iOS', ip: '192.168.1.110', icono: Smartphone, color: 'cyan' },
+    { id: 6, accion: 'Documento abierto', usuario: documento.firmantes[1]?.nombre, fecha: '23/12/2024', hora: '14:22 AM', dispositivo: 'Mobile - iOS', ip: 'IP interna protegida', icono: Smartphone, color: 'cyan' },
     { id: 7, accion: 'Recordatorio enviado', destinatario: documento.firmantes[2]?.email, fecha: '24/12/2024', hora: '09:00 AM', dispositivo: 'Sistema', icono: Bell, color: 'orange' }
   ];
 

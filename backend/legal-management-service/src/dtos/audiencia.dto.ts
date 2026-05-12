@@ -1,6 +1,8 @@
 export class CreateAudienciaDto {
     expedienteId: string;
     abogadoId: string;
+    abogadoNombre: string;
+    abogadoEmail?: string;
     titulo: string;
     fechaHoraInicio: Date;
     duracionMinutos: number;

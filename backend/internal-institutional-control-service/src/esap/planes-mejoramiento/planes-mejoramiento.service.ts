@@ -71,10 +71,13 @@ export class PlanesMejoramientoService {
 
     const estadoKanban = this.normalizarTexto(String(auditoria.estadoKanban || ''));
     const fase = this.normalizarTexto(String(auditoria.fase || ''));
-    const enComunicacion = estadoKanban === 'comunicacion' || fase === 'comunicacion';
+    const faseValida = 
+      estadoKanban === 'comunicacion' || fase === 'comunicacion' ||
+      estadoKanban === 'seguimiento' || fase === 'seguimiento' ||
+      estadoKanban === 'finalizada' || fase === 'finalizada';
 
-    if (!enComunicacion) {
-      throw new BadRequestException('El Plan de Mejoramiento solo puede crearse cuando la auditoría está en la etapa Comunicación');
+    if (!faseValida) {
+      throw new BadRequestException('El Plan de Mejoramiento solo puede crearse cuando la auditoría está en etapa Comunicación, Seguimiento o Finalizada');
     }
   }
 
@@ -248,6 +251,57 @@ export class PlanesMejoramientoService {
   }
 
   /**
+   * Determina el estado real/actual de un plan basado en sus acciones, fechas y avance.
+   * Esto garantiza una distribución automática y coherente en el Kanban.
+   */
+  private determinarEstadoReal(plan: PlanMejoramiento, totalAcciones: number, porcentajeAvance: number): PlanMejoramientoEstado {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+
+    const fechaLimite = new Date(plan.fechaLimite);
+    fechaLimite.setHours(0, 0, 0, 0);
+
+    const esVencido = fechaLimite < hoy && porcentajeAvance < 100;
+
+    // 1. Si está completado al 100%, el estado es siempre COMPLETADO
+    if (porcentajeAvance >= 100) {
+      return PlanMejoramientoEstado.COMPLETADO;
+    }
+
+    // 2. Si la fecha límite ya pasó y no está completado, es VENCIDO (Con Retraso en FE)
+    if (esVencido) {
+      return PlanMejoramientoEstado.VENCIDO;
+    }
+
+    // 3. Estados de flujo de aprobación
+    if (plan.estado === PlanMejoramientoEstado.RECHAZADO) {
+      return PlanMejoramientoEstado.RECHAZADO;
+    }
+
+    if (plan.estado === PlanMejoramientoEstado.REVISION) {
+      return PlanMejoramientoEstado.REVISION;
+    }
+
+    // 4. Si no tiene acciones, está en FORMULACION (Borrador)
+    if (totalAcciones === 0) {
+      return PlanMejoramientoEstado.BORRADOR;
+    }
+
+    // 5. Si está aprobado y tiene acciones
+    if (plan.estado === PlanMejoramientoEstado.APROBADO || plan.estado === PlanMejoramientoEstado.EN_EJECUCION) {
+      // Si ya tiene algún avance reportado, está en ejecución
+      if (porcentajeAvance > 0) {
+        return PlanMejoramientoEstado.EN_EJECUCION;
+      }
+      // Si no tiene avance pero ya fue aprobado, sigue en APROBADO
+      return PlanMejoramientoEstado.APROBADO;
+    }
+
+    // Por defecto, mantener el estado que tenga en DB o caer a BORRADOR
+    return plan.estado || PlanMejoramientoEstado.BORRADOR;
+  }
+
+  /**
    * Cuenta acciones terminadas (misma lógica que el Kanban / frontend)
    */
   private contarAccionesCompletadas(acciones: AccionCorrectiva[]): number {
@@ -290,6 +344,34 @@ export class PlanesMejoramientoService {
   }
 
   /**
+   * Determina el estado real de una acción basado en su progreso y fecha de fin
+   */
+  private determinarEstadoAccionReal(accion: AccionCorrectiva): AccionCorrectivaEstado {
+    const progreso = Math.min(100, Math.max(0, Number(accion.porcentajeAvance ?? 0)));
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const fechaFin = accion.fechaFin ? new Date(accion.fechaFin) : null;
+
+    // Si ya está completada por porcentaje
+    if (progreso >= 100) {
+      return AccionCorrectivaEstado.COMPLETADA;
+    }
+
+    // Si está vencida (fecha fin menor a hoy)
+    if (fechaFin && fechaFin < hoy) {
+      return AccionCorrectivaEstado.VENCIDA;
+    }
+
+    // Si tiene progreso pero no está al 100%
+    if (progreso > 0) {
+      return AccionCorrectivaEstado.EN_PROGRESO;
+    }
+
+    // Por defecto, programada
+    return AccionCorrectivaEstado.PROGRAMADA;
+  }
+
+  /**
    * Serializa un plan de mejoramiento para la respuesta JSON
    * Evita referencias circulares (accion.plan → plan) y expone totales para listados/Kanban
    */
@@ -300,10 +382,15 @@ export class PlanesMejoramientoService {
     const porcentajeAvance = this.promedioPorcentajeAvanceAcciones(accionesRaw);
     const totalHallazgos = this.contarHallazgosParaKanban(plan, accionesRaw);
 
+    // Determinar el estado automático basado en las condiciones actuales
+    const estadoCalculado = this.determinarEstadoReal(plan, totalAcciones, porcentajeAvance);
+
     const acciones = accionesRaw.map((accion) => {
       const { plan: _omitPlan, ...rest } = accion as AccionCorrectiva & { plan?: PlanMejoramiento };
+      const estadoCalculado = this.determinarEstadoAccionReal(accion);
       return {
         ...rest,
+        estado: estadoCalculado, // Usar el estado calculado dinámicamente
         fechaInicio: this.serializeDate(accion.fechaInicio),
         fechaFin: this.serializeDate(accion.fechaFin),
       };
@@ -323,6 +410,7 @@ export class PlanesMejoramientoService {
 
     return {
       ...plan,
+      estado: estadoCalculado, // Usar el estado calculado dinámicamente
       fechaLimite: this.serializeDate(plan.fechaLimite),
       fechaAprobacion: this.serializeDate(plan.fechaAprobacion),
       acciones,
@@ -1009,6 +1097,7 @@ export class PlanesMejoramientoService {
     // Serializar fechas para evitar problemas de zona horaria
     return {
       ...saved,
+      estado: this.determinarEstadoAccionReal(saved),
       fechaInicio: this.serializeDate(saved.fechaInicio),
       fechaFin: this.serializeDate(saved.fechaFin),
     } as any;
@@ -1090,6 +1179,7 @@ export class PlanesMejoramientoService {
     // Serializar fechas para evitar problemas de zona horaria
     return {
       ...saved,
+      estado: this.determinarEstadoAccionReal(saved),
       fechaInicio: this.serializeDate(saved.fechaInicio),
       fechaFin: this.serializeDate(saved.fechaFin),
     } as any;
@@ -1496,59 +1586,90 @@ export class PlanesMejoramientoService {
       }
     }
 
-    // Obtener usuarios que deben recibir notificaciones
-    const usuariosNotificar: string[] = [];
+    // ✅ SINCRONIZACIÓN CON CONFIGURACIÓN: Obtener roles destinatarios
+    let rolesDestinatarios = ['Responsable Plan Mejoramiento', 'Jefe OCIG', 'Auditor Líder']; // Fallback
+    try {
+      const configGlobal = await this.notificacionesService.getGlobalConfig();
+      if (configGlobal && configGlobal.tiposNotificacion && configGlobal.tiposNotificacion['EVT-PM-001']) {
+        const configEvento = configGlobal.tiposNotificacion['EVT-PM-001'] as any;
+        rolesDestinatarios = configEvento.destinatarios || rolesDestinatarios;
+      }
+    } catch (e) {}
 
-    // 1. Buscar el responsable de implementación por nombre
-    if (plan.responsableImplementacion) {
+    const usuariosNotificar = new Set<string>();
+
+    if (rolesDestinatarios.includes('Jefe OCIG')) {
       try {
-        console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Buscando responsable: "${plan.responsableImplementacion}"`);
-        const responsable = await this.dataSource.query(
-          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR CONCAT(nom_tercero, ' ', pri_apellido) ILIKE $1 LIMIT 1`,
-          [`%${plan.responsableImplementacion}%`]
+        const jefesOCI = await this.obtenerJefesControlInterno();
+        jefesOCI.forEach((id) => usuariosNotificar.add(String(id)));
+        console.log(
+          `[PlanesMejoramientoService.crearNotificacionesPlanCreado] ${jefesOCI.length} Jefe(s) de Control Interno encontrado(s)`,
         );
-        
-        if (responsable && responsable.length > 0) {
-          const idTercero = String(responsable[0].id_tercero);
-          usuariosNotificar.push(idTercero);
-          console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Responsable encontrado: id_tercero=${idTercero}`);
-        } else {
-          console.warn(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] No se encontró responsable con nombre: "${plan.responsableImplementacion}"`);
-        }
       } catch (error) {
-        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al buscar responsable:`, error);
+        console.error(
+          `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener Jefes de Control Interno:`,
+          error,
+        );
       }
     }
 
-    // 2. Obtener Jefes de Control Interno
-    try {
-      const jefesOCI = await this.obtenerJefesControlInterno();
-      usuariosNotificar.push(...jefesOCI);
-      console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] ${jefesOCI.length} Jefe(s) de Control Interno encontrado(s)`);
-    } catch (error) {
-      console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener Jefes de Control Interno:`, error);
-    }
-
-    // 3. Obtener auditor líder si hay auditoría
-    if (auditoriaId) {
+    if (rolesDestinatarios.includes('Auditor Líder') && auditoriaId) {
       try {
-        const auditoria = await this.auditoriaRepository.findOne({
-          where: { id: auditoriaId },
-        });
+        const auditoria = await this.auditoriaRepository.findOne({ where: { id: auditoriaId } });
         if (auditoria?.auditorLiderId) {
           const auditorLiderId = String(auditoria.auditorLiderId);
-          if (!usuariosNotificar.includes(auditorLiderId)) {
-            usuariosNotificar.push(auditorLiderId);
-            console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Auditor líder agregado: id_tercero=${auditorLiderId}`);
-          }
+          usuariosNotificar.add(auditorLiderId);
+          console.log(
+            `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Auditor líder agregado: id_user=${auditorLiderId}`,
+          );
         }
       } catch (error) {
-        console.error(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener auditor líder:`, error);
+        console.error(
+          `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener auditor líder:`,
+          error,
+        );
       }
     }
 
-    // Eliminar duplicados
-    const usuariosUnicos = [...new Set(usuariosNotificar)];
+    if (rolesDestinatarios.includes('Responsable Plan Mejoramiento') && plan.responsableImplementacion) {
+      try {
+        const responsable = await this.dataSource.query(
+          `
+          SELECT u.id_user
+          FROM auth.personas p
+          INNER JOIN auth."user" u ON u.id_person = p.id_person
+          WHERE (
+            p.nom_largo ILIKE $1
+            OR CONCAT(p.nom_tercero, ' ', p.pri_apellido) ILIKE $1
+            OR p.dir_email ILIKE $1
+            OR u.username ILIKE $1
+          )
+            AND COALESCE(u.is_active, TRUE) = TRUE
+          LIMIT 1
+          `,
+          [`%${plan.responsableImplementacion}%`],
+        );
+
+        if (responsable && responsable.length > 0) {
+          const idUsuario = String(responsable[0].id_user);
+          usuariosNotificar.add(idUsuario);
+          console.log(
+            `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Responsable encontrado: id_user=${idUsuario}`,
+          );
+        } else {
+          console.warn(
+            `[PlanesMejoramientoService.crearNotificacionesPlanCreado] No se encontró responsable con nombre/email: "${plan.responsableImplementacion}"`,
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al buscar responsable:`,
+          error,
+        );
+      }
+    }
+
+    const usuariosUnicos = [...usuariosNotificar];
     console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Total de usuarios a notificar: ${usuariosUnicos.length}`);
 
     // Crear notificaciones para cada usuario
@@ -1579,21 +1700,38 @@ export class PlanesMejoramientoService {
   }
 
   /**
-   * Obtiene los IDs de usuarios con rol JEFE_CONTROL_INTERNO
+   * Obtiene los IDs de usuarios (UUID `id_user`) con rol JEFE_CONTROL_INTERNO.
+   *
+   * Se aceptan distintas variantes del código del rol que han existido a lo largo
+   * del proyecto (`JEFE_CONTROL_INTERNO`, `JEGE_OCI`, `JEFE_OCI`) para no perder
+   * destinatarios cuando el catálogo de roles se ha renombrado.
    */
   private async obtenerJefesControlInterno(): Promise<string[]> {
     try {
       const result = await this.dataSource.query(`
-        SELECT DISTINCT u.id_tercero
+        SELECT DISTINCT u.id_user
         FROM auth."user" u
         INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
         INNER JOIN auth.role r ON r.id = ur.id_rol
-        WHERE r.code = 'JEFE_CONTROL_INTERNO'
-          AND ur.is_active = true
-          AND u.is_active = true
+        WHERE (
+          UPPER(TRIM(r.code)) IN (
+            'JEFE_CONTROL_INTERNO',
+            'JEFE_OCIG',
+            'JEFE_OCI',
+            'JEGE_OCI',
+            'ADMIN',
+            'SUPER_ADMIN'
+          )
+          OR r.name ILIKE '%Jefe%Control%Interno%'
+          OR r.name ILIKE '%Jefe%OCI%'
+        )
+          AND COALESCE(ur.is_active, TRUE) = TRUE
+          AND COALESCE(u.is_active, TRUE) = TRUE
       `);
 
-      return result.map((row: any) => String(row.id_tercero));
+      const ids = result.map((row: { id_user: string }) => String(row.id_user));
+      console.log(`[Notificaciones-PM] Jefes OCI detectados: ${ids.length} usuarios`);
+      return ids;
     } catch (error) {
       console.error('[PlanesMejoramientoService.obtenerJefesControlInterno] Error:', error);
       return [];

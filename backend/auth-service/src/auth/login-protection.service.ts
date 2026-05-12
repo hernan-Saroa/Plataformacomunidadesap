@@ -11,6 +11,7 @@ export interface LoginRateLimitState {
 export interface AccountLockState {
   locked: boolean;
   retryAfterSeconds?: number;
+  remainingAttempts?: number;
 }
 
 interface IpRateLimitEntry {
@@ -38,7 +39,7 @@ export class LoginProtectionService {
   );
   private readonly accountLockThreshold = this.readPositiveInt(
     'AUTH_LOGIN_ACCOUNT_LOCK_THRESHOLD',
-    5,
+    10,
   );
   private readonly accountLockMs = this.readPositiveInt(
     'AUTH_LOGIN_ACCOUNT_LOCK_MS',
@@ -141,6 +142,7 @@ export class LoginProtectionService {
       );
       return {
         locked: true,
+        remainingAttempts: 0,
         retryAfterSeconds: Math.max(
           Math.ceil((lockedUntil! - now) / 1000),
           1,
@@ -148,7 +150,10 @@ export class LoginProtectionService {
       };
     }
 
-    return { locked: false };
+    return {
+      locked: false,
+      remainingAttempts: this.accountLockThreshold - currentFailures,
+    };
   }
 
   clearFailedAttempts(accountKeys: string[]): void {
@@ -159,6 +164,11 @@ export class LoginProtectionService {
     for (const key of accountKeys) {
       this.accountFailures.delete(key);
     }
+  }
+
+  clearIpRateLimit(ipAddress: string): void {
+    const key = this.normalizeKey(ipAddress) || 'unknown-ip';
+    this.ipAttempts.delete(key);
   }
 
   private buildRateLimitState(

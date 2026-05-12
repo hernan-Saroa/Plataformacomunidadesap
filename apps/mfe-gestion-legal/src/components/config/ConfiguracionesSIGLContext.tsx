@@ -163,6 +163,8 @@ export const casosPorEstado: Record<string, Record<string, number>> = {
     'asignado': 0,
     'en_analisis': 0,
     'en_revision': 0,
+    'pendiente_revision_jefe': 0,
+    'devuelta_por_jefe': 0,
     'respondido': 0,
   },
 };
@@ -274,7 +276,9 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'asignado', nombre: 'Asignado', color: '#8B5CF6', orden: 2, activo: true },
       { id: 'en_analisis', nombre: 'En Análisis', color: '#06B6D4', orden: 3, activo: true },
       { id: 'en_revision', nombre: 'En Revisión', color: '#F59E0B', orden: 4, activo: true },
-      { id: 'respondido', nombre: 'Respondido', color: '#10B981', orden: 5, activo: true },
+      { id: 'pendiente_revision_jefe', nombre: 'Pendiente Revisión Jefe', color: '#8B5CF6', orden: 5, activo: true },
+      { id: 'devuelta_por_jefe', nombre: 'Devuelta por Jefe', color: '#EF4444', orden: 6, activo: true },
+      { id: 'respondido', nombre: 'Respondido', color: '#10B981', orden: 7, activo: true },
     ],
     tiempos: [
       { id: 'analisis-inicial', tipo: 'Análisis Inicial', dias: 3, alertaDias: 1, activo: true },

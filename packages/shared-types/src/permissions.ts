@@ -21,6 +21,12 @@ export enum Permissions {
   GESTION_LEGAL_DEFENSA_JUDICIAL_ACTAS_CREATE = 'gestion-legal.defensa-judicial.actas.create',
   GESTION_LEGAL_DEFENSA_JUDICIAL_ACTAS_DELETE = 'gestion-legal.defensa-judicial.actas.delete',
   GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT = 'gestion-legal.defensa-judicial.estados.edit',
+  GESTION_LEGAL_DEFENSA_JUDICIAL_ABOGADO_REASIGNAR = 'gestion-legal.defensa-judicial.abogado.reasignar',
+  GESTION_LEGAL_DEFENSA_JUDICIAL_AUDIENCIA_EDIT = 'gestion-legal.defensa-judicial.expediente.actuacion.audiencia.edit',
+  GESTION_LEGAL_DEFENSA_JUDICIAL_AUDIENCIA_DELETE = 'gestion-legal.defensa-judicial.expediente.actuacion.audiencia.delete',
+  GESTION_LEGAL_DEFENSA_JUDICIAL_TAREA_EDIT = 'gestion-legal.defensa-judicial.expediente.tarea.edit',
+  GESTION_LEGAL_DEFENSA_JUDICIAL_TAREA_COMPLETE = 'gestion-legal.defensa-judicial.expediente.tarea.complete',
+  GESTION_LEGAL_DEFENSA_JUDICIAL_ARCHIVAR = 'gestion-legal.defensa-judicial.archivar',
 
   // Gestión Legal - Juzgamiento Disciplinario
   GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_MANAGE = 'gestion-legal.juzgamiento-disciplinario.manage',
@@ -48,6 +54,11 @@ export enum Permissions {
   GESTION_LEGAL_ASESORIA_JURIDICA_DELETE = 'gestion-legal.asesoria-juridica.delete',
   GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD = 'gestion-legal.asesoria-juridica.expediente.doc.upload',
   GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_DELETE = 'gestion-legal.asesoria-juridica.expediente.doc.delete',
+  GESTION_LEGAL_ASESORIA_JURIDICA_ETAPA_EDIT = 'gestion-legal.asesoria-juridica.etapa.edit',
+  GESTION_LEGAL_ASESORIA_JURIDICA_COMENTARIO_CREATE = 'gestion-legal.asesoria-juridica.comentario.create',
+  GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER = 'gestion-legal.asesoria-juridica.responder',
+  GESTION_LEGAL_ASESORIA_JURIDICA_APROBAR_RESPUESTA = 'gestion-legal.asesoria-juridica.aprobar-respuesta',
+  GESTION_LEGAL_ASESORIA_JURIDICA_DEVOLVER_RESPUESTA = 'gestion-legal.asesoria-juridica.devolver-respuesta',
 
   // Gestión Legal - Centro de Comunicaciones
   GESTION_LEGAL_COMUNICACIONES_MANAGE = 'gestion-legal.comunicaciones.manage',
@@ -67,6 +78,7 @@ export enum Permissions {
   GESTION_LEGAL_ORGANOS_CONTROL_RESPUESTA_SEND = 'gestion-legal.organos-control.respuesta.send',
   GESTION_LEGAL_ORGANOS_CONTROL_RESPUESTA_ERASE = 'gestion-legal.organos-control.respuesta.erase',
   GESTION_LEGAL_ORGANOS_CONTROL_SOLICITAR_INSUMO = 'gestion-legal.organos-control.solicitar-insumo',
+  GESTION_LEGAL_ORGANOS_CONTROL_ABOGADO_REASIGNAR = 'gestion-legal.organos-control.abogado.reasignar',
 
   // Gestión Legal - Procesos Coactivos
   GESTION_LEGAL_PROCESOS_COACTIVOS_MANAGE = 'gestion-legal.procesos-coactivos.manage',
@@ -91,6 +103,9 @@ export enum Permissions {
   // Gestión Legal - Planes de Mejoramiento
   GESTION_LEGAL_PLANES_MEJORAMIENTO_MANAGE = 'gestion-legal.planes-mejoramiento.manage',
   GESTION_LEGAL_PLANES_MEJORAMIENTO_CREATE = 'gestion-legal.planes-mejoramiento.create',
+
+  // Gestión Legal - Reportes
+  GESTION_LEGAL_REPORTES_MANAGE = 'gestion-legal.reportes.manage',
 
   // Gestión Legal - Configuraciones
   GESTION_LEGAL_CONFIGURACIONES_MANAGE = 'gestion-legal.configuraciones.manage',

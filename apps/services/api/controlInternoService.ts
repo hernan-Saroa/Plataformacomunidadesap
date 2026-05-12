@@ -348,14 +348,9 @@ class ControlInternoAPIClient {
       'Accept': 'application/json; charset=utf-8',
     };
 
-    // Agregar token si existe
-    const token = localStorage.getItem('esap_auth_token');
-    if (token) {
-      defaultHeaders['Authorization'] = `Bearer ${token}`;
-    }
-
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: {
         ...defaultHeaders,
         ...options.headers,
@@ -428,17 +423,12 @@ class ControlInternoAPIClient {
     onProgress?: (progress: number) => void
   ): Promise<T> {
     const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
-    
-    // Agregar token si existe
     const headers: HeadersInit = {};
-    const token = localStorage.getItem('esap_auth_token');
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
     // NO establecer Content-Type para FormData - el navegador lo hará automáticamente con el boundary
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+      xhr.withCredentials = true;
 
       // Manejar progreso
       if (onProgress) {
@@ -507,6 +497,13 @@ class ControlInternoService {
   // UNIVERSO DE AUDITORÍAS
   // ==========================================================================
   
+  /**
+   * Obtiene la lista de IDs de usuarios con roles de Jefe OCI o Administrador
+   */
+  async getJefesControlInterno(): Promise<string[]> {
+    return client.get<string[]>('/auditorias/jefes-control-interno');
+  }
+
   /**
    * Obtiene procesos auditables. Por defecto solo activos (para catálogo parametrizado).
    */
@@ -1455,10 +1452,8 @@ class ControlInternoService {
    */
   async descargarDocumentoAccion(planId: string, documentoId: string): Promise<Blob> {
     const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/planes-mejoramiento/${planId}/documentos/${documentoId}/descargar`;
-    const token = localStorage.getItem('esap_auth_token');
-    
     const response = await fetch(url, {
-      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+      credentials: 'include',
     });
     
     if (!response.ok) {
@@ -1806,12 +1801,8 @@ class ControlInternoService {
    */
   async downloadEvidencia(id: string): Promise<Blob> {
     const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/evidencias/${id}/download`;
-    const token = localStorage.getItem('esap_auth_token');
-    
     const response = await fetch(url, {
-      headers: {
-        'Authorization': token ? `Bearer ${token}` : '',
-      },
+      credentials: 'include',
     });
 
     if (!response.ok) {

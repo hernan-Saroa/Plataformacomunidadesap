@@ -28,7 +28,9 @@
  * 12. Verificación de Títulos
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { apiClient } from '../../../services/api/apiClient';
+import { exportToCSV, exportToExcel, exportToPDF } from '../../utils/reportExport';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Download, RefreshCw, Filter, Calendar, Search,
@@ -40,7 +42,7 @@ import {
   Target, BarChart3, Save, Share2
 } from 'lucide-react';
 import { Card, Badge, Progress, Tooltip, TooltipContent, TooltipTrigger, Tabs, TabsContent, TabsList, TabsTrigger, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
 import { EmptyStatePremium } from './EmptyStatesPremium';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { ReportBuilderModal } from './ReportBuilderModal';
@@ -55,7 +57,7 @@ import { UnifiedStatsCards, type StatCardData } from './UnifiedStatsCards';
 /**
  * Categorías de reportes (12 módulos principales - OPTIMIZADO)
  */
-type ReportCategory = 
+type ReportCategory =
   | 'dashboard'           // Dashboard Ejecutivo
   | 'usuarios'            // Usuarios y Personas
   | 'estructura'          // Estructura Organizacional (Territoriales/Sedes)
@@ -67,7 +69,8 @@ type ReportCategory =
   | 'certificados-lab'    // Certificados Laborales
   | 'profesoral'          // Gestión Profesoral
   | 'control-interno'     // Control Interno
-  | 'verificacion';       // Verificación de Títulos
+  | 'verificacion'        // Verificación de Títulos
+  | 'gestion-legal';      // Gestión Legal (SIGL)
 
 type ExportFormat = 'csv' | 'excel' | 'pdf' | 'json';
 type ReportStatus = 'disponible' | 'generando' | 'error';
@@ -309,6 +312,82 @@ const REPORTES_PREDEFINIDOS: Report[] = [
     filtrosDisponibles: ['Estado', 'Programa', 'Fecha', 'Entidad'],
     estado: 'disponible',
   },
+
+  // ─────────────────────────────────────────────────────────────
+  // CATEGORÍA: GESTIÓN LEGAL (SIGL)
+  // ─────────────────────────────────────────────────────────────
+  {
+    id: 'GL-001',
+    nombre: 'Trazabilidad de Procesos Judiciales',
+    descripcion: 'Historial completo de expedientes judiciales: actuaciones, términos, estados y resultados',
+    categoria: 'gestion-legal',
+    registros: 320,
+    tamanoEstimado: '1.2 MB',
+    campos: ['Radicado', 'Tipo Proceso', 'Demandante', 'Despacho', 'Etapa Actual', 'Fecha Inicio', 'Próximo Término', 'Abogado', 'Estado'],
+    filtrosDisponibles: ['Tipo Proceso', 'Etapa', 'Abogado', 'Despacho', 'Rango de Fechas'],
+    estado: 'disponible',
+    requierePermiso: 'gestion.legal.defensa_judicial.manage',
+  },
+  {
+    id: 'GL-002',
+    nombre: 'Comunicaciones y Centro de Despacho',
+    descripcion: 'Trazabilidad de todas las comunicaciones recibidas, enviadas, reenviadas y respondidas con historial de acciones',
+    categoria: 'gestion-legal',
+    registros: 1840,
+    tamanoEstimado: '3.5 MB',
+    campos: ['ID Correo', 'Tipo', 'Remitente', 'Asunto', 'Fecha Recepción', 'Clasificación IA', 'Módulo Sugerido', 'Estado', 'Respondido', 'Reenviado', 'Expediente Vinculado'],
+    filtrosDisponibles: ['Tipo', 'Estado', 'Clasificación IA', 'Rango de Fechas', 'Expediente'],
+    estado: 'disponible',
+    requierePermiso: 'gestion.legal.comunicaciones.manage',
+  },
+  {
+    id: 'GL-003',
+    nombre: 'Control de Términos Procesales',
+    descripcion: 'Estado de todos los términos procesales con alertas de vencimiento y días hábiles restantes',
+    categoria: 'gestion-legal',
+    registros: 215,
+    tamanoEstimado: '580 KB',
+    campos: ['Número Radicado', 'Tipo Actuación', 'Expediente', 'Fecha Inicio', 'Fecha Vencimiento', 'Días Restantes', 'Estado', 'Responsable'],
+    filtrosDisponibles: ['Estado', 'Responsable', 'Tipo Actuación', 'Rango Vencimiento'],
+    estado: 'disponible',
+    requierePermiso: 'gestion.legal.terminos.manage',
+  },
+  {
+    id: 'GL-004',
+    nombre: 'Procesos Disciplinarios',
+    descripcion: 'Seguimiento de procesos disciplinarios por etapa, funcionario involucrado y resultado',
+    categoria: 'gestion-legal',
+    registros: 87,
+    tamanoEstimado: '440 KB',
+    campos: ['Número Proceso', 'Investigado', 'Cargo', 'Tipo Falta', 'Etapa', 'Quejoso', 'Fecha Apertura', 'Abogado', 'Estado'],
+    filtrosDisponibles: ['Etapa', 'Tipo Falta', 'Abogado', 'Estado', 'Rango de Fechas'],
+    estado: 'disponible',
+    requierePermiso: 'gestion.legal.juzgamiento_disciplinario.manage',
+  },
+  {
+    id: 'GL-005',
+    nombre: 'Requerimientos de Órganos de Control',
+    descripcion: 'Trazabilidad de requerimientos de Contraloría, Procuraduría, Personería y demás entes de control',
+    categoria: 'gestion-legal',
+    registros: 142,
+    tamanoEstimado: '620 KB',
+    campos: ['ID Requerimiento', 'Organismo', 'Tipo', 'Fecha Recepción', 'Fecha Límite Respuesta', 'Responsable', 'Estado', 'Respuesta Enviada'],
+    filtrosDisponibles: ['Organismo', 'Tipo', 'Estado', 'Responsable', 'Rango de Fechas'],
+    estado: 'disponible',
+    requierePermiso: 'gestion.legal.organos_control.manage',
+  },
+  {
+    id: 'GL-006',
+    nombre: 'Consultas de Asesoría Jurídica',
+    descripcion: 'Registro completo de consultas jurídicas recibidas, asignadas y respondidas por área',
+    categoria: 'gestion-legal',
+    registros: 394,
+    tamanoEstimado: '870 KB',
+    campos: ['ID Consulta', 'Área Solicitante', 'Tema', 'Fecha Solicitud', 'Abogado Asignado', 'Fecha Respuesta', 'Días de Atención', 'Estado'],
+    filtrosDisponibles: ['Área Solicitante', 'Abogado', 'Estado', 'Rango de Fechas'],
+    estado: 'disponible',
+    requierePermiso: 'gestion.legal.asesoria_juridica.manage',
+  },
 ];
 
 // COMPONENTE: STATS CARDS
@@ -396,6 +475,7 @@ function ReportCard({ report, onGenerate, onToggleFavorite, delay = 0 }: ReportC
       profesoral: { icon: BookOpen, color: '#0891b2', bgColor: '#cffafe', label: 'Profesoral' },
       'control-interno': { icon: Shield, color: '#dc2626', bgColor: '#fee2e2', label: 'Control Interno' },
       verificacion: { icon: Award, color: '#7c3aed', bgColor: '#ede9fe', label: 'Verificación' },
+      'gestion-legal': { icon: Layers, color: '#003DA5', bgColor: '#EFF6FF', label: 'Gestión Legal' },
     };
     return configs[categoria];
   };
@@ -611,7 +691,29 @@ export function ReportsModuleV2() {
   // Estados para reportes
   const [allReports, setAllReports] = useState<Report[]>([...REPORTES_PREDEFINIDOS, ...customReports]);
 
-  // Categorías con contador (12 módulos principales - OPTIMIZADO)
+  // Cargar estadísticas reales de Gestión Legal
+  useEffect(() => {
+    const fetchLegalStats = async () => {
+      try {
+        const response = await apiClient.get<any[]>('/legal/api/v1/reportes/stats');
+        const stats = response.data || response; // En caso de que axios devuelva data, y fetch no (apiClient lo unifica)
+        setAllReports(prev => prev.map(report => {
+          if (report.categoria === 'gestion-legal') {
+            const stat = (Array.isArray(stats) ? stats : []).find(s => s.id === report.id);
+            if (stat) {
+              return { ...report, registros: stat.registros, tamanoEstimado: stat.tamanoEstimado };
+            }
+          }
+          return report;
+        }));
+      } catch (error) {
+        console.error('Error cargando estadísticas de reportes legales:', error);
+      }
+    };
+    fetchLegalStats();
+  }, []);
+
+  // Categorías con contador (13 módulos principales + Gestión Legal)
   const categories = [
     { id: 'todos', label: 'Todas las Categorías', icon: Package },
     { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -626,6 +728,7 @@ export function ReportsModuleV2() {
     { id: 'profesoral', label: 'Profesoral', icon: BookOpen },
     { id: 'control-interno', label: 'Control Interno', icon: Shield },
     { id: 'verificacion', label: 'Verificación', icon: Award },
+    { id: 'gestion-legal', label: 'Gestión Legal', icon: Layers },
   ];
 
   // Filtrar reportes
@@ -638,16 +741,44 @@ export function ReportsModuleV2() {
   });
 
   // Handlers
-  const handleGenerateReport = (report: Report, format: ExportFormat) => {
-    toast.success(`Generando reporte "${report.nombre}" en formato ${format.toUpperCase()}...`, {
-      description: `Se descargará automáticamente cuando esté listo (${report.tamanoEstimado})`,
-      duration: 3000,
-    });
+  const handleGenerateReport = async (report: Report, format: ExportFormat) => {
+    if (report.categoria === 'gestion-legal') {
+      const toastId = toast.loading(`Generando reporte "${report.nombre}" en formato ${format.toUpperCase()}...`);
+      try {
+        const response = await apiClient.get<any[]>(`/legal/api/v1/reportes/data/${report.id}`);
+        const data = response.data || response; // manejar si apiClient devuelve data o el objeto directo
+        
+        const reportConfig = {
+          name: report.nombre,
+          description: report.descripcion,
+          source: 'Gestión Legal',
+          fields: report.campos,
+          filters: [],
+          exportFormat: format,
+          dateRange: 'Todo el historial',
+        };
 
-    // Simular descarga
-    setTimeout(() => {
-      toast.success('✅ Reporte descargado exitosamente');
-    }, 2000);
+        if (format === 'csv') exportToCSV(data, reportConfig.name);
+        else if (format === 'excel') exportToExcel(data, reportConfig.name);
+        else if (format === 'pdf') exportToPDF(data, reportConfig.name, reportConfig as any);
+        
+        // Simulando que json no está soportado en los botones directos, pero si llegara
+        toast.success('✅ Reporte descargado exitosamente', { id: toastId });
+      } catch (error) {
+        toast.error('❌ Error al generar el reporte', { id: toastId });
+        console.error(error);
+      }
+    } else {
+      toast.success(`Generando reporte "${report.nombre}" en formato ${format.toUpperCase()}...`, {
+        description: `Se descargará automáticamente cuando esté listo (${report.tamanoEstimado})`,
+        duration: 3000,
+      });
+
+      // Simular descarga para otros módulos
+      setTimeout(() => {
+        toast.success('✅ Reporte descargado exitosamente');
+      }, 2000);
+    }
   };
 
   const handleToggleFavorite = (reportId: string) => {
@@ -675,8 +806,6 @@ export function ReportsModuleV2() {
   };
 
   return (
-    <>
-    <Toaster position="top-right" richColors />
     <Container4K className="space-y-6">
       {/* Header - DÍA 5: ResponsiveHeader */}
       <ResponsiveHeader
@@ -880,6 +1009,5 @@ export function ReportsModuleV2() {
         />
       )}
     </Container4K>
-    </>
   );
 }

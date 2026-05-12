@@ -127,7 +127,10 @@ export function ModuloAsesoriaJuridicaV3() {
   const loadConsultas = async () => {
     try {
       setLoading(true);
-      const data = await legalService.getConsultasJuridicas();
+      const [data, abogadosData] = await Promise.all([
+        legalService.getConsultasJuridicas(),
+        legalService.getAbogadosDashboard(),
+      ]);
 
       if (!Array.isArray(data)) {
         console.error('Error: La respuesta no es un array', data);
@@ -153,7 +156,7 @@ export function ModuloAsesoriaJuridicaV3() {
         fechaRadicacion: new Date(c.fechaRecepcion),
         diasTotales: c.terminoLegalDias || 30,
         diasRestantes: c.diasRestantes || 30,
-        abogadoAsignado: c.abogadoAsignado?.nombreCompleto || 'Sin asignar',
+        abogadoAsignado: c.abogadoAsignadoNombre || c.abogadoAsignado?.nombreCompleto || 'Sin asignar',
         abogadoAsignadoId: c.abogadoAsignadoId || c.abogadoAsignado?.id || '', // ID needed for Select
         prioridad: (c.prioridad || 'media').toUpperCase(),
         normativaAplicable: [],
@@ -161,9 +164,73 @@ export function ModuloAsesoriaJuridicaV3() {
         timeline: [],
         respuesta: c.respuesta || '',
         fechaRespuesta: c.fechaRespuesta || null,
-        estado: c.estado || ''
+        destinatariosAdicionales: c.destinatariosAdicionales || null,
+        comentarioDevolucionJefe: c.comentarioDevolucionJefe || '',
+        estado: c.estado || '',
+        documentoRespuestaUrl: c.documentoRespuestaUrl || null
       }));
-      setConsultas(mapped);
+
+      // Si el usuario tiene rol RESUELVE_GESTION_LEGAL, solo mostrar sus consultas asignadas
+      const currentUser = authService.getCurrentUser() as any;
+      const isResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
+      let consultasFiltradas = mapped;
+      if (isResuelve && currentUser) {
+        const cuEmail: string = (
+          currentUser.email ??
+          currentUser.person?.email ??
+          currentUser.mail ??
+          ''
+        ).toLowerCase();
+        const cuName: string = (
+          currentUser.fullName ??
+          currentUser.full_name ??
+          currentUser.name ??
+          (currentUser.firstName || currentUser.first_name
+            ? `${currentUser.firstName ?? currentUser.first_name ?? ''} ${currentUser.lastName ?? currentUser.last_name ?? ''}`.trim()
+            : null) ??
+          (currentUser.person?.first_name
+            ? `${currentUser.person.first_name ?? ''} ${currentUser.person.last_name ?? ''}`.trim()
+            : null) ??
+          ''
+        ).toLowerCase();
+        const cuIds = new Set<string>(
+          [
+            currentUser.id,
+            currentUser.id_user,
+            currentUser.user?.id,
+            currentUser.user?.id_user,
+            currentUser.person?.id,
+          ].filter(Boolean)
+        );
+
+        const myAbogado = Array.isArray(abogadosData)
+          ? abogadosData.find((a: any) => {
+              if (a.id && cuIds.has(a.id)) return true;
+              if ((a as any).rawId && cuIds.has((a as any).rawId)) return true;
+              if ((a as any).authId && cuIds.has((a as any).authId)) return true;
+              if (cuEmail && a.email && (a.email as string).toLowerCase() === cuEmail) return true;
+              const aNombre = (a.nombre ?? a.nombreCompleto ?? '').toLowerCase();
+              if (cuName && aNombre && aNombre === cuName) return true;
+              return false;
+            })
+          : null;
+
+        if (myAbogado) {
+          consultasFiltradas = mapped.filter(c => {
+            if (myAbogado.id && c.abogadoAsignadoId === myAbogado.id) return true;
+            if ((myAbogado as any).rawId && c.abogadoAsignadoId === (myAbogado as any).rawId) return true;
+            if ((myAbogado as any).authId && c.abogadoAsignadoId === (myAbogado as any).authId) return true;
+            if (myAbogado.nombre && c.abogadoAsignado === myAbogado.nombre) return true;
+            if (myAbogado.nombreCompleto && c.abogadoAsignado === myAbogado.nombreCompleto) return true;
+            return false;
+          });
+        } else {
+          // Si no se encontró en la lista, filtrar directamente por IDs del currentUser
+          consultasFiltradas = mapped.filter(c => cuIds.has(c.abogadoAsignadoId));
+        }
+      }
+
+      setConsultas(consultasFiltradas);
       // Sincronizar consultaSeleccionada con los datos frescos para que el modal expediente
       // muestre la información actualizada después de una edición
       setConsultaSeleccionada(prev => {
@@ -191,6 +258,8 @@ export function ModuloAsesoriaJuridicaV3() {
       'asignado': 'Asignado',
       'en_analisis': 'En Análisis',
       'en_revision': 'En Revisión',
+      'pendiente_revision_jefe': 'Pendiente Revisión Jefe',
+      'devuelta_por_jefe': 'Devuelta por Jefe',
       'respondido': 'Respondido',
       'cerrado': 'Respondido',
       'vencido': 'Vencida'
@@ -635,8 +704,8 @@ export function ModuloAsesoriaJuridicaV3() {
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Asesoría Jurídica"
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_CREATE) ? handleRestaurar : undefined}
+          onEliminarPermanente={authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_CREATE) ? handleEliminarPermanente : undefined}
         />
       )}
 

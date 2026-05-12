@@ -78,6 +78,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [respuestaTexto, setRespuestaTexto] = useState('');
+  const [destinatariosAdicionales, setDestinatariosAdicionales] = useState<string[]>([]);
+  const [nuevoDestinatario, setNuevoDestinatario] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Estados para workflow firmado/sin firmar
@@ -90,14 +92,24 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   useEffect(() => {
     if (isOpen && consulta?.uuid) {
       loadDocumentos();
-      // Cargar respuesta existente si hay
-      if (consulta.respuesta) {
-        setRespuestaTexto(consulta.respuesta);
-      } else {
-        setRespuestaTexto('');
+      setRespuestaTexto(consulta.respuesta || '');
+      try {
+        const adicionales = consulta.destinatariosAdicionales
+          ? JSON.parse(consulta.destinatariosAdicionales)
+          : [];
+        setDestinatariosAdicionales(Array.isArray(adicionales) ? adicionales : []);
+      } catch {
+        setDestinatariosAdicionales([]);
       }
     }
-  }, [isOpen, consulta?.uuid, consulta?.respuesta]);
+  }, [isOpen, consulta?.uuid, consulta?.respuesta, consulta?.destinatariosAdicionales]);
+
+  // Recargar documentos al cambiar a la pestaña de respuesta (para validación de firmado)
+  useEffect(() => {
+    if (isOpen && consulta?.uuid && tabActivo === 'respuesta') {
+      loadDocumentos();
+    }
+  }, [tabActivo]);
 
   const loadDocumentos = async () => {
     if (!consulta?.uuid) return;
@@ -118,7 +130,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
     try {
       toast.loading('Guardando borrador...');
-      await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, false);
+      const usuarioNombreBorrador = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
+      await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, false, usuarioNombreBorrador, destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined);
       toast.dismiss();
       toast.success('Borrador guardado correctamente');
       // Recargar datos para reflejar el borrador guardado
@@ -132,51 +145,177 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
   };
 
-  const handleEnviarRespuesta = async () => {
-    if (!consulta?.uuid || !respuestaTexto.trim()) return;
-
-    // Validar que tenga email del solicitante
-    if (!consulta.emailSolicitante) {
-      toast.error('No se puede enviar: el solicitante no tiene correo electrónico registrado');
+  const handleAgregarDestinatario = () => {
+    const email = nuevoDestinatario.trim().toLowerCase();
+    if (!email) return;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast.error('Ingrese un correo electrónico válido');
       return;
     }
+    if (email === consulta?.emailSolicitante?.toLowerCase()) {
+      toast.error('Este correo ya es el destinatario principal');
+      return;
+    }
+    if (destinatariosAdicionales.includes(email)) {
+      toast.error('Este correo ya fue agregado');
+      return;
+    }
+    setDestinatariosAdicionales(prev => [...prev, email]);
+    setNuevoDestinatario('');
+  };
 
-    // Reemplazo de confirmación nativa por personalizada
+  const handleEliminarDestinatario = (email: string) => {
+    setDestinatariosAdicionales(prev => prev.filter(e => e !== email));
+  };
+
+  // Estado para devolver respuesta (jefe)
+  const [showDevolverModal, setShowDevolverModal] = useState(false);
+  const [comentarioDevolucion, setComentarioDevolucion] = useState('');
+
+  // Detección de rol: jefe = JEFE_GESTION_LEGAL o tiene el permiso de aprobar (post-migración)
+  const esJefe = authService.hasRole('JEFE_GESTION_LEGAL')
+    || authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_APROBAR_RESPUESTA);
+  const esAbogadoResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL')
+    || (!esJefe && authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER));
+
+  const handleEnviarAJefe = async () => {
+    if (!consulta?.uuid || !respuestaTexto.trim()) return;
+
     const confirmado = await confirm({
       title: 'Plataforma ESAP',
-      description: `¿Está seguro de enviar esta respuesta por correo a ${consulta.emailSolicitante}?`,
+      description: '¿Enviar esta respuesta al jefe para su revisión y aprobación?',
       variant: 'info',
-      confirmText: 'Aceptar',
+      confirmText: 'Enviar al Jefe',
       cancelText: 'Cancelar'
     });
 
     if (!confirmado) return;
 
     try {
-      toast.loading('Enviando respuesta por correo...', { id: 'send-response' });
+      toast.loading('Enviando al jefe para revisión...', { id: 'send-jefe' });
+      const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
+      await legalService.enviarRespuestaAJefe(consulta.uuid, respuestaTexto, usuarioNombre, destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined);
+      toast.success('✅ Respuesta enviada al jefe para revisión', { id: 'send-jefe' });
+      if (onUpdate) onUpdate();
+      onClose();
+    } catch (error) {
+      console.error('Error enviando al jefe:', error);
+      toast.error('Error al enviar al jefe', { id: 'send-jefe' });
+    }
+  };
 
-      // 1. Enviar correo al solicitante
+  const handleAprobarYEnviar = async () => {
+    if (!consulta?.uuid) return;
+
+    if (!consulta.emailSolicitante) {
+      toast.error('No se puede enviar: el solicitante no tiene correo electrónico registrado');
+      return;
+    }
+
+    // Validar que todos los documentos estén firmados antes de enviar
+    if (documentos.length > 0) {
+      const sinFirmar = documentos.filter(d => !d.firmado);
+      if (sinFirmar.length > 0) {
+        toast.error(`No se puede enviar: hay ${sinFirmar.length} documento(s) sin firmar. Todos los documentos deben estar firmados antes de enviar la respuesta.`);
+        return;
+      }
+    }
+
+    const todosDestinatarios = [consulta.emailSolicitante, ...destinatariosAdicionales];
+    const listaDestinatarios = todosDestinatarios.join(', ');
+
+    const confirmado = await confirm({
+      title: 'Plataforma ESAP',
+      description: `¿Aprobar y enviar esta respuesta al solicitante (${listaDestinatarios})?${documentos.length > 0 ? ` Se adjuntarán ${documentos.length} documento(s) firmado(s).` : ''}`,
+      variant: 'info',
+      confirmText: 'Aprobar y Enviar',
+      cancelText: 'Cancelar'
+    });
+
+    if (!confirmado) return;
+
+    try {
+      toast.loading('Aprobando y enviando respuesta con documentos...', { id: 'approve-response' });
+
+      // Preparar documentos firmados como adjuntos base64 para el correo
+      const attachments: { name: string; contentBytes: string; contentType: string }[] = [];
+      const docsParaAdjuntar = documentos.filter(d => d.firmado && (d.archivoUrl || d.url));
+      for (const doc of docsParaAdjuntar) {
+        try {
+          const fullUrl = getFullUrl(doc.archivoUrl || doc.url);
+          if (!fullUrl) {
+            console.warn(`⚠️ No se pudo construir URL para doc: ${doc.nombre}`);
+            continue;
+          }
+          console.log(`📎 Descargando adjunto: ${doc.nombre} desde ${fullUrl}`);
+          const response = await fetch(fullUrl);
+          if (!response.ok) {
+            console.error(`❌ Error descargando adjunto ${doc.nombre}: HTTP ${response.status} ${response.statusText}`);
+            continue;
+          }
+          const blob = await response.blob();
+          const buffer = await blob.arrayBuffer();
+          const base64 = btoa(
+            new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+          );
+          attachments.push({
+            name: doc.archivoNombreOriginal || doc.nombre || 'documento.pdf',
+            contentBytes: base64,
+            contentType: doc.mimeType || 'application/pdf',
+          });
+        } catch (err) {
+          console.error(`Error preparando adjunto ${doc.nombre}:`, err);
+        }
+      }
+      if (docsParaAdjuntar.length > 0 && attachments.length < docsParaAdjuntar.length) {
+        toast.warning(`⚠️ ${docsParaAdjuntar.length - attachments.length} documento(s) no se pudieron adjuntar al correo`);
+      }
+
       const asunto = `Respuesta a Consulta Jurídica ${consulta.id} - ${consulta.funcionarioSolicitante}`;
       await correosJuridicosService.sendEmail({
         to: consulta.emailSolicitante,
+        cc: destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined,
         subject: asunto,
-        body: respuestaTexto
+        body: consulta.respuesta || respuestaTexto,
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
 
-      // 2. Guardar respuesta en BD y marcar como respondida
       const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
-      await legalService.guardarRespuestaConsulta(consulta.uuid, respuestaTexto, true, usuarioNombre);
+      await legalService.aprobarRespuestaConsulta(
+        consulta.uuid,
+        usuarioNombre,
+        destinatariosAdicionales.length > 0 ? destinatariosAdicionales : undefined
+      );
 
-      toast.success('✅ Respuesta enviada correctamente', {
-        id: 'send-response',
-        description: `Correo enviado a ${consulta.emailSolicitante}`
+      toast.success('✅ Respuesta aprobada y enviada al solicitante', {
+        id: 'approve-response',
+        description: `Correo enviado a ${listaDestinatarios}${attachments.length > 0 ? ` con ${attachments.length} documento(s) adjunto(s)` : ''}`
       });
 
       if (onUpdate) onUpdate();
       onClose();
     } catch (error) {
-      console.error('Error enviando respuesta:', error);
-      toast.error('Error al enviar la respuesta', { id: 'send-response' });
+      console.error('Error aprobando respuesta:', error);
+      toast.error('Error al aprobar y enviar la respuesta', { id: 'approve-response' });
+    }
+  };
+
+  const handleDevolverRespuesta = async () => {
+    if (!consulta?.uuid || !comentarioDevolucion.trim()) return;
+
+    try {
+      toast.loading('Devolviendo respuesta...', { id: 'devolver-response' });
+      const usuarioNombre = user ? `${user.firstName} ${user.lastName}`.trim() : 'Usuario Sistema';
+      await legalService.devolverRespuestaConsulta(consulta.uuid, comentarioDevolucion, usuarioNombre);
+      toast.success('Respuesta devuelta al abogado con comentarios', { id: 'devolver-response' });
+      setShowDevolverModal(false);
+      setComentarioDevolucion('');
+      if (onUpdate) onUpdate();
+      onClose();
+    } catch (error) {
+      console.error('Error devolviendo respuesta:', error);
+      toast.error('Error al devolver la respuesta', { id: 'devolver-response' });
     }
   };
 
@@ -345,9 +484,11 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     }
     try {
       toast.loading('Asignando abogado...', { id: 'assign-lawyer' });
-      await legalService.updateConsultaJuridica(consulta.uuid || '', { abogadoAsignadoId: abogadoSeleccionado });
-
       const abogado = abogados.find(a => a.id === abogadoSeleccionado);
+      await legalService.updateConsultaJuridica(consulta.uuid || '', {
+        abogadoAsignadoId: abogadoSeleccionado,
+        abogadoAsignadoNombre: abogado?.nombreCompleto || abogado?.nombre || '',
+      });
       toast.success(`Abogado reasignado a: ${abogado?.nombreCompleto || 'Desconocido'}`, { id: 'assign-lawyer' });
       setEditandoAbogado(false);
 
@@ -577,15 +718,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
       const prefix = API_MODE === 'direct' ? '' : '/legal/api/v1';
       const url = `${baseUrl}${prefix}/consultas-juridicas/${consulta.uuid}/documentos/download-zip`;
 
-      const token = localStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(url, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
 
@@ -671,8 +805,15 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
    * Abrir modal para seleccionar si el documento está firmado o no
    */
   const handleIniciarSubida = () => {
-    setFirmadoSelection(null);
-    setShowFirmadoModal(true);
+    if (esAbogadoResuelve && !esJefe) {
+      // Abogado solo puede subir documentos sin firmar — no mostrar selector
+      setFirmadoSelection(false);
+      fileInputRef.current?.click();
+    } else {
+      // Jefe puede elegir firmado o sin firmar
+      setFirmadoSelection(null);
+      setShowFirmadoModal(true);
+    }
   };
 
   /**
@@ -688,14 +829,25 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
   };
 
   /**
-   * Subir nuevo documento al expediente con indicador de firmado
+   * Subir nuevo documento al expediente con indicador de firmado.
    */
   const handleSubirDocumento = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !consulta?.uuid) return;
 
-    if (file.type !== 'application/pdf') {
-      toast.error('Solo se permiten archivos PDF en este módulo');
+    const nombreLower = (file.name || '').toLowerCase();
+    const esDocx =
+      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      nombreLower.endsWith('.docx');
+    const esPdf = file.type === 'application/pdf' || nombreLower.endsWith('.pdf');
+
+    if (firmadoSelection === true && !esPdf) {
+      toast.error('Para documentos "Firmado" solo se permite formato PDF');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (firmadoSelection !== true && !esPdf && !esDocx) {
+      toast.error('Solo se permiten archivos PDF o Word (.doc, .docx)');
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -705,7 +857,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
     formData.append('archivo', file);
     formData.append('nombre', file.name);
     formData.append('tipoDocumento', 'adjunto');
-    formData.append('firmado', firmadoSelection ? 'true' : 'false');
+    formData.append('firmado', firmadoSelection === true ? 'true' : 'false');
 
     try {
       await legalService.uploadDocumentoConsulta(consulta.uuid, formData);
@@ -784,32 +936,34 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
             subtitulo={consulta.temaJuridico}
             badgePrincipal={`${semaforo.icon} ${semaforo.label}`}
             actions={
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowEditarModal(true)}
-                className="flex items-center gap-1.5 text-blue-700 border-blue-300 hover:bg-blue-50"
-              >
-                <Edit className="w-3.5 h-3.5" />
-                Editar
-              </Button>
+              authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_CREATE) ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowEditarModal(true)}
+                  className="flex items-center gap-1.5 text-blue-700 border-blue-300 hover:bg-blue-50"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  Editar
+                </Button>
+              ) : undefined
             }
             badges={
               <>
                 <span className="inline-flex items-center rounded-md px-2 py-0.5 bg-blue-100 text-blue-700 border-blue-300 font-semibold text-xs border gap-1">
                   {consulta.etapa}
-                  <button
-                    onClick={() => {
-                      // Usar el estado original (ID) si existe, sino la etapa visual
-                      // Esto asegura que el Select seleccione la opción correcta si coincide con un ID de configuración
-                      setEtapaSeleccionada(consulta.estado || consulta.etapa);
-                      setEditandoEtapa(true);
-                    }}
-                    className="ml-1 p-0.5 hover:bg-blue-200 rounded-full transition-colors"
-                    title="Cambiar etapa"
-                  >
-                    <Edit className="w-3 h-3" />
-                  </button>
+                  {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_ETAPA_EDIT) && (
+                    <button
+                      onClick={() => {
+                        setEtapaSeleccionada(consulta.estado || consulta.etapa);
+                        setEditandoEtapa(true);
+                      }}
+                      className="ml-1 p-0.5 hover:bg-blue-200 rounded-full transition-colors"
+                      title="Cambiar etapa"
+                    >
+                      <Edit className="w-3 h-3" />
+                    </button>
+                  )}
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 bg-gray-100 text-gray-700 border-gray-300 font-semibold text-xs border">
                   <Clock className="w-3 h-3" />
@@ -856,15 +1010,17 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                   {!editandoAbogado ? (
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-bold text-gray-900 truncate">{consulta.abogadoAsignado || 'Sin asignar'}</p>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => setEditandoAbogado(true)}
-                        title="Reasignar Abogado"
-                      >
-                        <Edit className="w-3 h-3 text-gray-500" />
-                      </Button>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_CREATE) && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => setEditandoAbogado(true)}
+                          title="Reasignar Abogado"
+                        >
+                          <Edit className="w-3 h-3 text-gray-500" />
+                        </Button>
+                      )}
                     </div>
                   ) : (
                     <div className="flex items-center gap-1 mt-1">
@@ -901,20 +1057,20 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                       <Badge variant="outline" className="font-bold">
                         {consulta.etapa}
                       </Badge>
-                      {/* Permitir editar si no está finalizada (opcional, usuario no especificó restricción de editar si ya está enviada, pero dijo "menos a enviada") */}
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6"
-                        onClick={() => {
-                          // Mapear etapa actual a valor backend si es necesario, o inicializar vacio
-                          setEtapaSeleccionada('');
-                          setEditandoEtapa(true);
-                        }}
-                        title="Cambiar Etapa"
-                      >
-                        <Edit className="w-3 h-3 text-gray-500" />
-                      </Button>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_ETAPA_EDIT) && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-6 w-6"
+                          onClick={() => {
+                            setEtapaSeleccionada('');
+                            setEditandoEtapa(true);
+                          }}
+                          title="Cambiar Etapa"
+                        >
+                          <Edit className="w-3 h-3 text-gray-500" />
+                        </Button>
+                      )}
                     </div>
                   ) : (
                     <div className="flex items-center gap-1 mt-1">
@@ -1123,7 +1279,7 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                     ref={fileInputRef}
                     onChange={handleSubirDocumento}
                     className="hidden"
-                    accept=".pdf"
+                    accept={firmadoSelection === true ? '.pdf,application/pdf' : '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'}
                   />
 
                   <div className="flex items-center justify-between gap-4 mb-4">
@@ -1244,8 +1400,8 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                             </div>
                           </div>
                           <div className="flex-shrink-0 flex items-center gap-2">
-                            {/* Botón Subir Firmado — solo para docs sin firmar */}
-                            {!doc.firmado && authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
+                            {/* Botón Subir Firmado — solo para jefe (JEFE_GESTION_LEGAL), no abogados */}
+                            {!doc.firmado && esJefe && authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_EXPEDIENTE_DOC_UPLOAD) && (
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -1301,40 +1457,49 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
 
                 {/* TAB: RESPUESTA */}
                 <TabsContent value="respuesta" className="space-y-4 mt-0">
-                  {(consulta.estado === 'respondido' || consulta.estado === 'Respondida') ? (
+
+                  {/* ESTADO: RESPONDIDO — Solo lectura */}
+                  {(consulta.estado === 'respondido' || consulta.estado === 'Respondida') && (
                     <Card className="p-6 bg-green-50 border-green-200">
                       <div className="flex items-center gap-3 mb-4">
                         <CheckCircle className="w-6 h-6 text-green-600" />
                         <div>
-                          <h3 className="font-bold text-gray-900">Concepto Jurídico Emitido</h3>
+                          <h3 className="font-bold text-gray-900">Respuesta Enviada</h3>
                           {consulta.fechaRespuesta && (
                             <p className="text-sm text-gray-600">
                               {new Date(consulta.fechaRespuesta).toLocaleDateString('es-CO', {
-                                weekday: 'long',
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
+                                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
                               })}
                             </p>
                           )}
                         </div>
                       </div>
-
-                      {/* Indicador de envío por correo */}
                       {consulta.emailSolicitante && (
-                        <div className="bg-blue-50 p-3 mb-4 rounded-lg border border-blue-200 flex items-center gap-3">
-                          <Mail className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                          <div>
+                        <div className="bg-blue-50 p-3 mb-4 rounded-lg border border-blue-200">
+                          <div className="flex items-center gap-3 mb-1">
+                            <Mail className="w-5 h-5 text-blue-600 flex-shrink-0" />
                             <p className="text-sm font-semibold text-blue-800">Respuesta enviada por correo</p>
-                            <p className="text-xs text-blue-600">Destinatario: {consulta.emailSolicitante}</p>
+                          </div>
+                          <div className="ml-8 space-y-1">
+                            <p className="text-xs text-blue-700 font-medium">Destinatario principal: <span className="font-normal">{consulta.emailSolicitante}</span></p>
+                            {consulta.destinatariosAdicionales && (() => {
+                              try {
+                                const adicionales: string[] = JSON.parse(consulta.destinatariosAdicionales);
+                                return adicionales.length > 0 ? (
+                                  <div>
+                                    <p className="text-xs text-blue-700 font-medium mb-1">Destinatarios adicionales:</p>
+                                    {adicionales.map((email: string) => (
+                                      <p key={email} className="text-xs text-blue-600 ml-2">• {email}</p>
+                                    ))}
+                                  </div>
+                                ) : null;
+                              } catch { return null; }
+                            })()}
                           </div>
                         </div>
                       )}
-
                       <div className="bg-white p-6 rounded-lg border border-green-200">
-                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
-                          {consulta.respuesta}
-                        </p>
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{consulta.respuesta}</p>
                       </div>
                       {consulta.documentoRespuestaUrl && (
                         <div className="mt-4">
@@ -1345,42 +1510,246 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                         </div>
                       )}
                     </Card>
-                  ) : (
-                    <Card className="p-6 bg-amber-50 border-amber-200">
+                  )}
+
+                  {/* ESTADO: PENDIENTE REVISIÓN JEFE — Vista del jefe para aprobar o devolver */}
+                  {consulta.estado === 'pendiente_revision_jefe' && esJefe && (
+                    <Card className="p-6 bg-purple-50 border-purple-200">
                       <div className="flex items-center gap-3 mb-4">
-                        <AlertCircle className="w-6 h-6 text-amber-600" />
-                        <h3 className="font-bold text-gray-900">Envío de Respuesta</h3>
+                        <Gavel className="w-6 h-6 text-purple-600" />
+                        <div>
+                          <h3 className="font-bold text-gray-900">Revisión del Jefe — Borrador Pendiente</h3>
+                          <p className="text-sm text-gray-600">El abogado ha enviado la siguiente respuesta para su aprobación.</p>
+                        </div>
                       </div>
-                      <div className="bg-blue-50 p-3 mb-4 rounded border border-blue-100 text-xs text-blue-800">
-                        <p>Puede guardar un borrador tantas veces como necesite. Al enviar la respuesta, el caso quedará cerrado y se notificará al solicitante.</p>
+
+                      <div className="bg-white p-4 rounded-lg border border-purple-200 mb-4">
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{consulta.respuesta}</p>
                       </div>
-                      <Textarea
-                        placeholder="Redacte aquí el concepto jurídico con fundamento en la normativa aplicable..."
-                        rows={12}
-                        className="mb-4 bg-white"
-                        value={respuestaTexto}
-                        onChange={(e) => setRespuestaTexto(e.target.value)}
-                      />
+
+                      {/* Destinatarios para cuando el jefe apruebe */}
+                      <div className="mb-4 p-3 bg-white rounded-lg border border-gray-200">
+                        <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                          <Mail className="w-3.5 h-3.5" /> Se enviará al solicitante
+                        </p>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full flex-1 truncate">
+                            {consulta.emailSolicitante || 'Sin correo registrado'} <span className="text-blue-500">(principal)</span>
+                          </span>
+                        </div>
+                        {destinatariosAdicionales.map((email) => (
+                          <div key={email} className="flex items-center gap-2 mb-2">
+                            <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full flex-1 truncate">{email}</span>
+                            <button type="button" onClick={() => handleEliminarDestinatario(email)} className="text-red-400 hover:text-red-600 flex-shrink-0 text-xs leading-none" title="Quitar destinatario">✕</button>
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-2 mt-2">
+                          <input
+                            type="email"
+                            value={nuevoDestinatario}
+                            onChange={(e) => setNuevoDestinatario(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAgregarDestinatario(); } }}
+                            placeholder="Agregar destinatario adicional..."
+                            className="flex-1 text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          />
+                          <Button type="button" variant="outline" size="sm" onClick={handleAgregarDestinatario} className="text-xs h-7 px-2">+ Agregar</Button>
+                        </div>
+                      </div>
+
                       <div className="flex items-center gap-3">
                         <Button
-                          onClick={handleEnviarRespuesta}
-                          disabled={!respuestaTexto.trim()}
+                          onClick={handleAprobarYEnviar}
                           className="bg-green-600 hover:bg-green-700 text-white"
                         >
-                          <Send className="w-4 h-4 mr-2" />
-                          Enviar Respuesta Final
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          Aprobar y Enviar al Solicitante
                         </Button>
                         <Button
                           variant="outline"
-                          onClick={handleGuardarBorrador}
-                          disabled={!respuestaTexto.trim()}
+                          onClick={() => setShowDevolverModal(true)}
+                          className="border-red-300 text-red-700 hover:bg-red-50"
                         >
-                          <Archive className="w-4 h-4 mr-2" />
-                          Guardar Borrador
+                          <AlertCircle className="w-4 h-4 mr-2" />
+                          Devolver con Comentarios
                         </Button>
                       </div>
                     </Card>
                   )}
+
+                  {/* ESTADO: PENDIENTE REVISIÓN JEFE — Vista del abogado (solo lectura, esperando) */}
+                  {consulta.estado === 'pendiente_revision_jefe' && !esJefe && (
+                    <Card className="p-6 bg-purple-50 border-purple-200">
+                      <div className="flex items-center gap-3 mb-4">
+                        <Clock className="w-6 h-6 text-purple-600" />
+                        <div>
+                          <h3 className="font-bold text-gray-900">Pendiente de Aprobación</h3>
+                          <p className="text-sm text-gray-600">La respuesta fue enviada al jefe y está esperando su revisión.</p>
+                        </div>
+                      </div>
+                      <div className="bg-white p-4 rounded-lg border border-purple-200">
+                        <p className="text-xs text-gray-500 mb-2 font-medium">Borrador enviado:</p>
+                        <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{consulta.respuesta}</p>
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* ESTADO: DEVUELTA POR JEFE */}
+                  {consulta.estado === 'devuelta_por_jefe' && (
+                    <>
+                      {/* Comentario del jefe — visible para todos */}
+                      <Card className="p-4 bg-red-50 border-red-200">
+                        <div className="flex items-center gap-3 mb-2">
+                          <AlertTriangle className="w-5 h-5 text-red-600" />
+                          <h3 className="font-bold text-red-800">Respuesta devuelta por el Jefe</h3>
+                        </div>
+                        <div className="bg-white p-3 rounded border border-red-200">
+                          <p className="text-xs text-red-700 font-medium mb-1">Motivo / Comentarios:</p>
+                          <p className="text-sm text-red-800 whitespace-pre-wrap">
+                            {consulta.comentarioDevolucionJefe || <span className="italic text-red-400">Sin comentario registrado</span>}
+                          </p>
+                        </div>
+                      </Card>
+
+                      {/* Jefe: solo lectura — espera a que el abogado reenvíe */}
+                      {esJefe && (
+                        <Card className="p-4 bg-gray-50 border-gray-200">
+                          <div className="flex items-center gap-3">
+                            <Clock className="w-5 h-5 text-gray-400" />
+                            <p className="text-sm text-gray-500">Esperando correcciones del abogado. No hay acción disponible hasta que reenvíe la respuesta.</p>
+                          </div>
+                        </Card>
+                      )}
+
+                      {/* Abogado: editor para corregir y reenviar */}
+                      {esAbogadoResuelve && (
+                        <Card className="p-6 bg-amber-50 border-amber-200">
+                          <div className="flex items-center gap-3 mb-4">
+                            <Edit className="w-6 h-6 text-amber-600" />
+                            <h3 className="font-bold text-gray-900">Corregir y Reenviar al Jefe</h3>
+                          </div>
+                          <Textarea
+                            placeholder="Corrija el concepto jurídico según las indicaciones del jefe..."
+                            rows={10}
+                            className="mb-4 bg-white"
+                            value={respuestaTexto}
+                            onChange={(e) => setRespuestaTexto(e.target.value)}
+                          />
+                          <div className="flex items-center gap-3">
+                            <Button
+                              onClick={handleEnviarAJefe}
+                              disabled={!respuestaTexto.trim()}
+                              className="bg-purple-600 hover:bg-purple-700 text-white"
+                            >
+                              <Send className="w-4 h-4 mr-2" />
+                              Reenviar al Jefe para Revisión
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={handleGuardarBorrador}
+                              disabled={!respuestaTexto.trim()}
+                            >
+                              <Archive className="w-4 h-4 mr-2" />
+                              Guardar Borrador
+                            </Button>
+                          </div>
+                        </Card>
+                      )}
+                    </>
+                  )}
+
+                  {/* ESTADO: EN EDICIÓN — solo abogados (resuelve), no jefes */}
+                  {consulta.estado !== 'respondido' && consulta.estado !== 'Respondida' &&
+                   consulta.estado !== 'pendiente_revision_jefe' && consulta.estado !== 'devuelta_por_jefe' &&
+                   !esJefe && (
+                    <Card className="p-6 bg-amber-50 border-amber-200">
+                      <div className="flex items-center gap-3 mb-4">
+                        <AlertCircle className="w-6 h-6 text-amber-600" />
+                        <h3 className="font-bold text-gray-900">Redactar Respuesta</h3>
+                      </div>
+                      <div className="bg-blue-50 p-3 mb-4 rounded border border-blue-100 text-xs text-blue-800">
+                        <p>Redacte la respuesta y envíela al jefe para revisión. El jefe la aprobará y la enviará al solicitante, o la devolverá con comentarios.</p>
+                      </div>
+
+                      <Textarea
+                        placeholder="Redacte aquí el concepto jurídico con fundamento en la normativa aplicable..."
+                        rows={10}
+                        className="mb-4 bg-white"
+                        value={respuestaTexto}
+                        onChange={(e) => setRespuestaTexto(e.target.value)}
+                        disabled={!authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER)}
+                      />
+
+                      {/* Destinatarios adicionales — el jefe podrá editarlos antes de aprobar */}
+                      <div className="mb-4 p-3 bg-white rounded-lg border border-gray-200">
+                        <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                          <Mail className="w-3.5 h-3.5" /> Destinatarios adicionales (CC)
+                        </p>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full flex-1 truncate">
+                            {consulta.emailSolicitante || 'Sin correo registrado'} <span className="text-blue-500">(principal)</span>
+                          </span>
+                        </div>
+                        {destinatariosAdicionales.map((email) => (
+                          <div key={email} className="flex items-center gap-2 mb-2">
+                            <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full flex-1 truncate">{email}</span>
+                            <button type="button" onClick={() => handleEliminarDestinatario(email)} className="text-red-400 hover:text-red-600 flex-shrink-0 text-xs leading-none" title="Quitar destinatario">✕</button>
+                          </div>
+                        ))}
+                        <div className="flex items-center gap-2 mt-2">
+                          <input
+                            type="email"
+                            value={nuevoDestinatario}
+                            onChange={(e) => setNuevoDestinatario(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAgregarDestinatario(); } }}
+                            placeholder="Agregar destinatario adicional..."
+                            className="flex-1 text-xs border border-gray-200 rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          />
+                          <Button type="button" variant="outline" size="sm" onClick={handleAgregarDestinatario} className="text-xs h-7 px-2">+ Agregar</Button>
+                        </div>
+                      </div>
+
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_RESPONDER) && (
+                        <div className="flex items-center gap-3">
+                          <Button
+                            onClick={handleEnviarAJefe}
+                            disabled={!respuestaTexto.trim()}
+                            className="bg-purple-600 hover:bg-purple-700 text-white"
+                          >
+                            <Send className="w-4 h-4 mr-2" />
+                            Enviar al Jefe para Revisión
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={handleGuardarBorrador}
+                            disabled={!respuestaTexto.trim()}
+                          >
+                            <Archive className="w-4 h-4 mr-2" />
+                            Guardar Borrador
+                          </Button>
+                        </div>
+                      )}
+                    </Card>
+                  )}
+
+                  {/* JEFE: Sin borrador pendiente — card informativo bloqueado */}
+                  {consulta.estado !== 'respondido' && consulta.estado !== 'Respondida' &&
+                   consulta.estado !== 'pendiente_revision_jefe' && consulta.estado !== 'devuelta_por_jefe' &&
+                   esJefe && (
+                    <Card className="p-6 bg-gray-50 border-gray-200">
+                      <div className="flex items-center gap-3 mb-3">
+                        <Clock className="w-6 h-6 text-gray-400" />
+                        <div>
+                          <h3 className="font-bold text-gray-600">Sin respuesta pendiente de revisión</h3>
+                          <p className="text-sm text-gray-500">El abogado aún no ha enviado la respuesta para su aprobación.</p>
+                        </div>
+                      </div>
+                      <div className="bg-white p-4 rounded border border-dashed border-gray-300 text-center">
+                        <Gavel className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                        <p className="text-sm text-gray-400">Cuando el abogado complete la respuesta y la envíe al jefe, aparecerá aquí para su revisión.</p>
+                      </div>
+                    </Card>
+                  )}
+
                 </TabsContent>
 
                 {/* TAB: TIMELINE */}
@@ -1428,27 +1797,29 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
                 {/* TAB: COMENTARIOS */}
                 <TabsContent value="comentarios" className="space-y-4 mt-0">
                   {/* Nuevo Comentario */}
-                  <Card className="p-4 bg-blue-50 border-blue-200">
-                    <div className="flex items-center gap-3 mb-3">
-                      <MessageSquare className="w-5 h-5 text-blue-600" />
-                      <h3 className="font-bold text-gray-900">Agregar Comentario</h3>
-                    </div>
-                    <Textarea
-                      placeholder="Escriba su comentario sobre la consulta..."
-                      rows={3}
-                      className="mb-3 bg-white"
-                      value={nuevoComentario}
-                      onChange={(e) => setNuevoComentario(e.target.value)}
-                    />
-                    <Button
-                      size="sm"
-                      onClick={handleAgregarComentario}
-                      disabled={!nuevoComentario.trim()}
-                    >
-                      <Send className="w-4 h-4 mr-2" />
-                      Publicar Comentario
-                    </Button>
-                  </Card>
+                  {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_COMENTARIO_CREATE) && (
+                    <Card className="p-4 bg-blue-50 border-blue-200">
+                      <div className="flex items-center gap-3 mb-3">
+                        <MessageSquare className="w-5 h-5 text-blue-600" />
+                        <h3 className="font-bold text-gray-900">Agregar Comentario</h3>
+                      </div>
+                      <Textarea
+                        placeholder="Escriba su comentario sobre la consulta..."
+                        rows={3}
+                        className="mb-3 bg-white"
+                        value={nuevoComentario}
+                        onChange={(e) => setNuevoComentario(e.target.value)}
+                      />
+                      <Button
+                        size="sm"
+                        onClick={handleAgregarComentario}
+                        disabled={!nuevoComentario.trim()}
+                      >
+                        <Send className="w-4 h-4 mr-2" />
+                        Publicar Comentario
+                      </Button>
+                    </Card>
+                  )}
 
                   {/* Comentarios Existentes */}
                   {loadingComentarios ? (
@@ -1499,19 +1870,20 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           {/* FOOTER CON ACCIONES */}
           <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
             <div className="flex items-center justify-end gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                className="text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
-                onClick={(e: React.MouseEvent) => {
-                  e.preventDefault();
-                  console.log('Click en Archivar');
-                  setShowArchivarModal(true);
-                }}
-              >
-                <Archive className="w-4 h-4 mr-2" />
-                Archivar
-              </Button>
+              {authService.hasPermission(Permissions.GESTION_LEGAL_ASESORIA_JURIDICA_CREATE) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="text-orange-600 border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+                  onClick={(e: React.MouseEvent) => {
+                    e.preventDefault();
+                    setShowArchivarModal(true);
+                  }}
+                >
+                  <Archive className="w-4 h-4 mr-2" />
+                  Archivar
+                </Button>
+              )}
               <Button type="button" onClick={onClose}>
                 Cerrar
               </Button>
@@ -1642,6 +2014,39 @@ export function ModalExpedienteConsulta({ isOpen, onClose, consulta, onUpdate }:
           if (onUpdate) onUpdate();
         }}
       />
+
+      {/* MODAL: Devolver respuesta con comentarios (jefe) */}
+      <Dialog open={showDevolverModal} onOpenChange={setShowDevolverModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Devolver Respuesta al Abogado</DialogTitle>
+            <DialogDescription>
+              Indique los comentarios o correcciones necesarias. El abogado los verá antes de reenviar la respuesta.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Textarea
+              placeholder="Describa qué debe corregirse o mejorar en la respuesta..."
+              value={comentarioDevolucion}
+              onChange={(e) => setComentarioDevolucion(e.target.value)}
+              className="min-h-[120px]"
+            />
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => { setShowDevolverModal(false); setComentarioDevolucion(''); }}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleDevolverRespuesta}
+              disabled={!comentarioDevolucion.trim()}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              <AlertCircle className="w-4 h-4 mr-2" />
+              Devolver con Comentarios
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* VISOR INLINE DE DOCUMENTOS */}
       {docParaVisor && (

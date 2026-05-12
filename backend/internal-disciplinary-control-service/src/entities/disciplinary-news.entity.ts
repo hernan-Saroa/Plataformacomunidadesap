@@ -81,16 +81,20 @@ export class DisciplinaryNews {
   dependenciaDenunciado: string;
 
   @Column({ type: 'jsonb', nullable: true })
-  denunciante: PersonInfo;
+  denunciante: PersonInfo | PersonInfo[];
 
   @Column({ type: 'jsonb', nullable: true })
-  disciplinable: PersonInfo;
+  disciplinable: PersonInfo | PersonInfo[];
 
-  @Column({ type: 'text' })
-  hechos: string;
+   @Column({ type: 'text' })
+   hechos: string;
 
-  @Column({ type: 'text', array: true, nullable: true })
-  conductas?: string[];
+
+    @Column({ type: 'varchar', length: 100, name: 'conducta_disciplinaria' })
+    conducta?: string;
+
+   @Column({ type: 'text', array: true, nullable: true })
+   conductas?: string[];
 
    @Column({ type: 'varchar', length: 50, default: 'RADICADA' })
    estado: string;

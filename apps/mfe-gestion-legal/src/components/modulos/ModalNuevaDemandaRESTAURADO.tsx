@@ -418,13 +418,11 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
       });
   }, []);
 
-  // Cargar abogados activos desde legal_management.abogados al montar
+  // Cargar abogados con rol resuelve desde el servicio de auth
   useEffect(() => {
     legalService.getAbogados()
       .then((data: any[]) => {
-        const activos = (data || [])
-          .filter((a: any) => a.estado === 'ACTIVO')
-          .map((a: any) => ({ id: a.id, nombre: a.nombreCompleto }));
+        const activos = (data || []).map((a: any) => ({ id: a.id, nombre: a.nombreCompleto || a.nombre }));
         setAbogadosAPI(activos);
       })
       .catch(() => { });
@@ -1024,94 +1022,6 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                   </div>
                 </Card>
 
-                {/* NUEVO BLOQUE: Valoración y Provisión Contable */}
-                <Card className="p-4 bg-amber-50 border-amber-200">
-                  <div className="flex items-start gap-3 mb-4">
-                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <h3 className="font-bold text-gray-900">Valoración y Provisión Contable</h3>
-                      <p className="text-sm text-gray-600">Registre el nivel de riesgo y la estimación económica</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="nivelRiesgo" className="text-sm font-bold text-gray-700">
-                        Nivel de Riesgo del Proceso
-                      </Label>
-                      <Select
-                        value={formData.nivelRiesgo}
-                        onValueChange={(value: string) => setFormData({ ...formData, nivelRiesgo: value })}
-                      >
-                        <SelectTrigger id="nivelRiesgo" className="bg-white">
-                          <SelectValue placeholder="Seleccione riesgo..." />
-                        </SelectTrigger>
-                        <SelectContent className="z-[100000]">
-                          <SelectItem value="Bajo">Bajo</SelectItem>
-                          <SelectItem value="Medio">Medio</SelectItem>
-                          <SelectItem value="Alto">Alto</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="provisionContable" className="text-sm font-bold text-gray-700">
-                        Provisión Contable (COP)
-                        <span className="text-xs font-normal text-gray-400 ml-1">(máx. 12 dígitos)</span>
-                      </Label>
-                      <Input
-                        id="provisionContable"
-                        type="text"
-                        inputMode="numeric"
-                        placeholder="0"
-                        value={formData.provisionContable === 0 ? '' : String(Math.floor(Number(formData.provisionContable) || 0))}
-                        onChange={(e) => {
-                          const raw = e.target.value.replace(/[^0-9]/g, '');
-                          if (!raw || raw.startsWith('0')) {
-                            setFormData({ ...formData, provisionContable: 0 });
-                            return;
-                          }
-                          const limitado = raw.slice(0, 12);
-                          setFormData({ ...formData, provisionContable: parseInt(limitado, 10) });
-                        }}
-                      />
-                      {formData.cuantia > 0 && formData.provisionContable > formData.cuantia && (
-                        <p className="text-xs text-amber-600 flex items-start gap-1 mt-1">
-                          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                          <span>
-                            <strong>Regla de negocio:</strong> La provisión supera la cuantía inicial. Al guardar, el sistema asume que la diferencia incluye proyecciones de intereses de mora, multas o costas judiciales acumuladas.
-                          </span>
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="fechaEstimacionProvision" className="text-sm font-bold text-gray-700">
-                        Fecha de Estimación
-                      </Label>
-                      <Input
-                        id="fechaEstimacionProvision"
-                        type="date"
-                        value={formData.fechaEstimacionProvision}
-                        onChange={(e) => setFormData({ ...formData, fechaEstimacionProvision: e.target.value })}
-                        className="bg-white"
-                      />
-                    </div>
-
-                    <div className="md:col-span-2 space-y-2">
-                      <Label htmlFor="observacionesProvision" className="text-sm font-bold text-gray-700">
-                        Justificación y observaciones
-                      </Label>
-                      <Textarea
-                        id="observacionesProvision"
-                        placeholder="Detalle los motivos que sustentan la valoración y el monto..."
-                        value={formData.observacionesProvision}
-                        onChange={(e) => setFormData({ ...formData, observacionesProvision: e.target.value })}
-                        className="bg-white min-h-[80px]"
-                      />
-                    </div>
-                  </div>
-                </Card>
               </>
             )}
 

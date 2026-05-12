@@ -465,37 +465,18 @@ export const API_ENDPOINTS = {
   },
 };
 
-// Headers comunes para todas las requests
-export const getDefaultHeaders = (includeAuth = true): HeadersInit => {
-  const headers: HeadersInit = {
+// Headers comunes para todas las requests.
+// Los tokens JWT viajan como cookie HttpOnly y el navegador los envia
+// automaticamente gracias a credentials:'include' en CORS_CONFIG.
+// NO se inyecta Authorization ni X-Access-Token desde el frontend.
+export const getDefaultHeaders = (_includeAuth = true): HeadersInit => {
+  return {
     'Content-Type': 'application/json; charset=utf-8',
     'Accept': 'application/json; charset=utf-8',
     'X-Client-Version': '1.0.0',
     'X-Client-Platform': 'web',
   };
-
-  if (includeAuth) {
-    const primaryToken = localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    const legacyToken = localStorage.getItem('esap_access_token');
-    const token = primaryToken || legacyToken;
-
-    // Compatibilidad con módulos legados: migrar token antiguo a la clave nueva.
-    if (!primaryToken && legacyToken) {
-      localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, legacyToken);
-    }
-
-    if (token) {
-      headers[config.AUTH.TOKEN_HEADER] = `${config.AUTH.TOKEN_PREFIX} ${token}`;
-      // Header redundante para entornos con proxy/SSL que no reenvían Authorization.
-      if (API_MODE !== 'direct') {
-        headers['X-Access-Token'] = token;
-      }
-    }
-  }
-
-  return headers;
 };
-
 // Configuración de CORS para desarrollo
 export const CORS_CONFIG = {
   credentials: 'include' as RequestCredentials,

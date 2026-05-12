@@ -109,7 +109,7 @@
                                             responsableGeneral: string;
                                             fechaCreacion: string;
                                             fechaVencimiento: string;
-                                            estado: 'FORMULACION' | 'APROBACION' | 'EN_EJECUCION' | 'EN_SEGUIMIENTO' | 'CUMPLIDO';
+                                            estado: 'BORRADOR' | 'REVISION' | 'FORMULACION' | 'APROBACION' | 'EN_EJECUCION' | 'EN_SEGUIMIENTO' | 'CUMPLIDO' | 'RECHAZADO' | 'VENCIDO';
                                             progresoGlobal: number;
                                             hallazgos: Hallazgo[];
                                             acciones: AccionCorrectiva[];
@@ -405,7 +405,14 @@
                                             const [tabActiva, setTabActiva] = useState<TabActiva>('resumen');
                                             const [modalActualizacion, setModalActualizacion] = useState(false);
                                             const [modalCrearAccion, setModalCrearAccion] = useState(false);
-                                            
+
+                                            // Aprobación / Rechazo del plan (usa endpoints existentes del backend)
+                                            const [procesandoAprobacion, setProcesandoAprobacion] = useState(false);
+                                            const [modalRechazoAbierto, setModalRechazoAbierto] = useState(false);
+                                            const [motivoRechazo, setMotivoRechazo] = useState('');
+                                            const [observacionesAprobacion, setObservacionesAprobacion] = useState('');
+                                            const [modalAprobacionAbierto, setModalAprobacionAbierto] = useState(false);
+
                                             // ✅ HOOK DE BACKEND - Carga datos reales
                                             const {
                                               plan,
@@ -417,6 +424,54 @@
                                               actualizarAccion,
                                               eliminarAccion
                                             } = usePlanMejoramientoDetalle(planId);
+
+                                            const handleAprobarPlan = useCallback(async () => {
+                                              if (!plan) return;
+                                              setProcesandoAprobacion(true);
+                                              try {
+                                                await controlInternoService.aprobarPlanMejoramiento(
+                                                  plan.id,
+                                                  observacionesAprobacion.trim() || undefined,
+                                                );
+                                                toast.success(`Plan ${plan.codigo} aprobado exitosamente`);
+                                                setModalAprobacionAbierto(false);
+                                                setObservacionesAprobacion('');
+                                                await refetch();
+                                                onPlanActualizado?.();
+                                              } catch (err: any) {
+                                                toast.error('Error al aprobar el plan', {
+                                                  description: err?.message || 'Intenta de nuevo en unos segundos.',
+                                                });
+                                              } finally {
+                                                setProcesandoAprobacion(false);
+                                              }
+                                            }, [plan, observacionesAprobacion, refetch, onPlanActualizado]);
+
+                                            const handleRechazarPlan = useCallback(async () => {
+                                              if (!plan) return;
+                                              const motivo = motivoRechazo.trim();
+                                              if (motivo.length < 10) {
+                                                toast.error('El motivo de rechazo debe tener al menos 10 caracteres');
+                                                return;
+                                              }
+                                              setProcesandoAprobacion(true);
+                                              try {
+                                                await controlInternoService.rechazarPlanMejoramiento(plan.id, motivo);
+                                                toast.success(`Plan ${plan.codigo} rechazado`, {
+                                                  description: 'El responsable deberá ajustar y reenviar.',
+                                                });
+                                                setModalRechazoAbierto(false);
+                                                setMotivoRechazo('');
+                                                await refetch();
+                                                onPlanActualizado?.();
+                                              } catch (err: any) {
+                                                toast.error('Error al rechazar el plan', {
+                                                  description: err?.message || 'Intenta de nuevo en unos segundos.',
+                                                });
+                                              } finally {
+                                                setProcesandoAprobacion(false);
+                                              }
+                                            }, [plan, motivoRechazo, refetch, onPlanActualizado]);
 
                                             const crearAccionYNotificar = useCallback(
                                               async (data: any) => {
@@ -515,9 +570,15 @@
                                               const accionesCompletadas = plan.acciones.filter(
                                                 (a) => a.estado === 'COMPLETADA' || (a.progreso ?? 0) >= 100
                                               ).length;
-                                              const accionesEnEjecucion = plan.acciones.filter(a => a.estado === 'EN_EJECUCION').length;
-                                              const accionesPendientes = plan.acciones.filter(a => a.estado === 'PENDIENTE').length;
-                                              const accionesVencidas = plan.acciones.filter(a => a.estado === 'VENCIDA').length;
+                                              const accionesEnEjecucion = plan.acciones.filter(
+                                                (a) => a.estado === 'EN_EJECUCION' || ((a.progreso ?? 0) > 0 && (a.progreso ?? 0) < 100)
+                                              ).length;
+                                              const accionesPendientes = plan.acciones.filter(
+                                                (a) => a.estado === 'PENDIENTE' && (a.progreso ?? 0) === 0
+                                              ).length;
+                                              const accionesVencidas = plan.acciones.filter(
+                                                (a) => a.estado === 'VENCIDA' && (a.progreso ?? 0) < 100
+                                              ).length;
 
                                               const totalHallazgos = plan.hallazgos.length;
                                               const hallazgosResueltos = plan.hallazgos.filter(h => h.progreso === 100).length;
@@ -821,12 +882,16 @@
                                               }
                                             };
 
-                                            const estadoConfig = {
+                                            const estadoConfig: Record<PlanMejoramientoDetalle['estado'], { bg: string; text: string; label: string }> = {
+                                              BORRADOR: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Borrador' },
+                                              REVISION: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'En Revisión' },
                                               FORMULACION: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Formulación' },
-                                              APROBACION: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Aprobación' },
+                                              APROBACION: { bg: 'bg-yellow-100', text: 'text-yellow-700', label: 'Aprobado' },
                                               EN_EJECUCION: { bg: 'bg-green-100', text: 'text-green-700', label: 'En Ejecución' },
                                               EN_SEGUIMIENTO: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'En Seguimiento' },
-                                              CUMPLIDO: { bg: 'bg-gray-100', text: 'text-gray-700', label: 'Cumplido' }
+                                              CUMPLIDO: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Cumplido' },
+                                              RECHAZADO: { bg: 'bg-red-100', text: 'text-red-700', label: 'Rechazado' },
+                                              VENCIDO: { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Vencido' },
                                             };
 
                                             // ═══════════════════════════════════════════════════════════════════════════
@@ -924,12 +989,37 @@
                                                         </div>
                                                       </div>
 
-                                                      <button
-                                                        onClick={onClose}
-                                                        className="ml-4 p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors flex-shrink-0"
-                                                      >
-                                                        <X className="w-5 h-5" />
-                                                      </button>
+                                                      <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+                                                        {(plan.estado === 'BORRADOR' || plan.estado === 'REVISION' || plan.estado === 'FORMULACION') && (
+                                                          <>
+                                                            <button
+                                                              onClick={() => setModalAprobacionAbierto(true)}
+                                                              disabled={procesandoAprobacion}
+                                                              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                                              title="Aprobar el plan de mejoramiento"
+                                                            >
+                                                              <Check className="w-4 h-4" />
+                                                              <span className="hidden sm:inline">Aprobar Plan</span>
+                                                            </button>
+                                                            <button
+                                                              onClick={() => setModalRechazoAbierto(true)}
+                                                              disabled={procesandoAprobacion}
+                                                              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                                              title="Rechazar el plan y solicitar ajustes"
+                                                            >
+                                                              <XCircle className="w-4 h-4" />
+                                                              <span className="hidden sm:inline">Rechazar</span>
+                                                            </button>
+                                                          </>
+                                                        )}
+                                                        <button
+                                                          onClick={onClose}
+                                                          className="p-2 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+                                                          title="Cerrar"
+                                                        >
+                                                          <X className="w-5 h-5" />
+                                                        </button>
+                                                      </div>
                                                     </div>
 
                                                     {/* Barra de Progreso Global */}
@@ -1097,6 +1187,135 @@
                                                     </div>
                                                   </div>
                                                 </div>
+
+                                                {/* Modal de Aprobación del Plan */}
+                                                {modalAprobacionAbierto && (
+                                                  <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4">
+                                                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !procesandoAprobacion && setModalAprobacionAbierto(false)} />
+                                                    <div className="relative w-full max-w-md bg-white rounded-xl shadow-2xl flex flex-col">
+                                                      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+                                                        <div className="flex items-center gap-2">
+                                                          <div className="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center">
+                                                            <Check className="w-5 h-5 text-emerald-700" />
+                                                          </div>
+                                                          <h3 className="text-base font-semibold text-gray-900">Aprobar Plan de Mejoramiento</h3>
+                                                        </div>
+                                                        <button
+                                                          onClick={() => !procesandoAprobacion && setModalAprobacionAbierto(false)}
+                                                          className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500"
+                                                          disabled={procesandoAprobacion}
+                                                        >
+                                                          <X className="w-4 h-4" />
+                                                        </button>
+                                                      </div>
+                                                      <div className="p-5 space-y-3">
+                                                        <p className="text-sm text-gray-700">
+                                                          Vas a aprobar el plan <strong>{plan.codigo}</strong>. El plan pasará a estado <em>Aprobado</em> y se notificará al responsable.
+                                                        </p>
+                                                        <div>
+                                                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                            Observaciones (opcional)
+                                                          </label>
+                                                          <textarea
+                                                            value={observacionesAprobacion}
+                                                            onChange={(e) => setObservacionesAprobacion(e.target.value)}
+                                                            rows={3}
+                                                            maxLength={500}
+                                                            placeholder="Comentarios sobre la aprobación..."
+                                                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                            disabled={procesandoAprobacion}
+                                                          />
+                                                          <div className="text-xs text-gray-400 text-right mt-1">{observacionesAprobacion.length}/500</div>
+                                                        </div>
+                                                      </div>
+                                                      <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+                                                        <button
+                                                          onClick={() => setModalAprobacionAbierto(false)}
+                                                          disabled={procesandoAprobacion}
+                                                          className="px-4 py-2 text-sm rounded-lg text-gray-700 hover:bg-gray-200 disabled:opacity-60"
+                                                        >
+                                                          Cancelar
+                                                        </button>
+                                                        <button
+                                                          onClick={handleAprobarPlan}
+                                                          disabled={procesandoAprobacion}
+                                                          className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium disabled:opacity-60"
+                                                        >
+                                                          {procesandoAprobacion ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                                                          Confirmar Aprobación
+                                                        </button>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                )}
+
+                                                {/* Modal de Rechazo del Plan */}
+                                                {modalRechazoAbierto && (
+                                                  <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4">
+                                                    <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => !procesandoAprobacion && setModalRechazoAbierto(false)} />
+                                                    <div className="relative w-full max-w-md bg-white rounded-xl shadow-2xl flex flex-col">
+                                                      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+                                                        <div className="flex items-center gap-2">
+                                                          <div className="w-9 h-9 rounded-full bg-red-100 flex items-center justify-center">
+                                                            <XCircle className="w-5 h-5 text-red-700" />
+                                                          </div>
+                                                          <h3 className="text-base font-semibold text-gray-900">Rechazar Plan de Mejoramiento</h3>
+                                                        </div>
+                                                        <button
+                                                          onClick={() => !procesandoAprobacion && setModalRechazoAbierto(false)}
+                                                          className="p-1.5 hover:bg-gray-100 rounded-md text-gray-500"
+                                                          disabled={procesandoAprobacion}
+                                                        >
+                                                          <X className="w-4 h-4" />
+                                                        </button>
+                                                      </div>
+                                                      <div className="p-5 space-y-3">
+                                                        <p className="text-sm text-gray-700">
+                                                          Vas a rechazar el plan <strong>{plan.codigo}</strong>. El responsable deberá ajustar las acciones y reenviar.
+                                                        </p>
+                                                        <div>
+                                                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                            Motivo del rechazo <span className="text-red-500">*</span>
+                                                          </label>
+                                                          <textarea
+                                                            value={motivoRechazo}
+                                                            onChange={(e) => setMotivoRechazo(e.target.value)}
+                                                            rows={4}
+                                                            maxLength={1000}
+                                                            placeholder="Indica con claridad las razones del rechazo (mínimo 10 caracteres)..."
+                                                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                                                            disabled={procesandoAprobacion}
+                                                          />
+                                                          <div className="flex items-center justify-between mt-1">
+                                                            <div className={`text-xs ${motivoRechazo.trim().length < 10 ? 'text-red-500' : 'text-gray-400'}`}>
+                                                              {motivoRechazo.trim().length < 10
+                                                                ? `Faltan ${10 - motivoRechazo.trim().length} caracteres`
+                                                                : 'Motivo válido'}
+                                                            </div>
+                                                            <div className="text-xs text-gray-400">{motivoRechazo.length}/1000</div>
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                      <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+                                                        <button
+                                                          onClick={() => setModalRechazoAbierto(false)}
+                                                          disabled={procesandoAprobacion}
+                                                          className="px-4 py-2 text-sm rounded-lg text-gray-700 hover:bg-gray-200 disabled:opacity-60"
+                                                        >
+                                                          Cancelar
+                                                        </button>
+                                                        <button
+                                                          onClick={handleRechazarPlan}
+                                                          disabled={procesandoAprobacion || motivoRechazo.trim().length < 10}
+                                                          className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                                                        >
+                                                          {procesandoAprobacion ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                                                          Confirmar Rechazo
+                                                        </button>
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                )}
 
                                                 {/* Modal de Actualización */}
                                                 {modalActualizacion && (
@@ -1532,29 +1751,53 @@
                                           }
 
                                           // ════════════════════════════════════════════════════════════════════════════
-                                          // TAB: ACCIONES — filtros por avance del HALLAZGO (0% / 1–99% / 100%)
+                                          // TAB: ACCIONES — filtros por ESTADO EFECTIVO del hallazgo
+                                          // H_PENDIENTE  : todas sus acciones están pendientes (progreso = 0)
+                                          // H_EJECUCION  : al menos una acción en progreso O estados mixtos
+                                          // H_COMPLETADA : TODAS las acciones están completadas (progreso ≥ 100)
                                           // ════════════════════════════════════════════════════════════════════════════
 
-                                          /** % de avance del hallazgo = proporción de acciones completadas (alineado con backend) */
+                                          type FiltroHallazgoAcciones = 'TODOS' | 'H_PENDIENTE' | 'H_EJECUCION' | 'H_COMPLETADA';
+
+                                          /** Calcula el estado efectivo de una acción (igual que backend determinarEstadoAccionReal) */
+                                          function estadoEfectivoAccion(a: AccionCorrectiva): 'COMPLETADA' | 'VENCIDA' | 'EN_EJECUCION' | 'PENDIENTE' {
+                                            const prog = a.progreso ?? 0;
+                                            if (prog >= 100) return 'COMPLETADA';
+                                            if (a.estado === 'VENCIDA') return 'VENCIDA';
+                                            if (prog > 0) return 'EN_EJECUCION';
+                                            return 'PENDIENTE';
+                                          }
+
+                                          /**
+                                           * Determina el bucket del hallazgo basándose en los estados efectivos de sus acciones:
+                                           * - H_COMPLETADA : TODAS completadas
+                                           * - H_PENDIENTE  : TODAS pendientes (sin progreso)
+                                           * - H_EJECUCION  : cualquier mezcla (en ejecución, completadas + pendientes, etc.)
+                                           */
+                                          function bucketHallazgoPorEstados(
+                                            plan: PlanMejoramientoDetalle,
+                                            hallazgoId: string
+                                          ): Exclude<FiltroHallazgoAcciones, 'TODOS'> {
+                                            const accs = plan.acciones.filter((a) => a.hallazgoId === hallazgoId);
+                                            if (accs.length === 0) return 'H_PENDIENTE'; // sin acciones = pendiente
+                                            const estados = accs.map(estadoEfectivoAccion);
+                                            const todasCompletadas = estados.every((e) => e === 'COMPLETADA');
+                                            if (todasCompletadas) return 'H_COMPLETADA';
+                                            const todasPendientes = estados.every((e) => e === 'PENDIENTE');
+                                            if (todasPendientes) return 'H_PENDIENTE';
+                                            // Mezcla de cualquier tipo → En ejecución
+                                            return 'H_EJECUCION';
+                                          }
+
+                                          /** % de avance visual del hallazgo (para mostrar en la cabecera de grupo) */
                                           function progresoHallazgoDesdeAcciones(
                                             plan: PlanMejoramientoDetalle,
                                             hallazgoId: string
                                           ): number {
                                             const accs = plan.acciones.filter((a) => a.hallazgoId === hallazgoId);
                                             if (accs.length === 0) return 0;
-                                            const completadas = accs.filter(
-                                              (a) =>
-                                                a.estado === 'COMPLETADA' || (a.progreso ?? 0) >= 100
-                                            ).length;
-                                            return Math.round((completadas / accs.length) * 100);
-                                          }
-
-                                          type FiltroHallazgoAcciones = 'TODOS' | 'H_PENDIENTE' | 'H_EJECUCION' | 'H_COMPLETADA';
-
-                                          function bucketHallazgoPorPct(pct: number): Exclude<FiltroHallazgoAcciones, 'TODOS'> {
-                                            if (pct <= 0) return 'H_PENDIENTE';
-                                            if (pct >= 100) return 'H_COMPLETADA';
-                                            return 'H_EJECUCION';
+                                            const sum = accs.reduce((s, a) => s + Math.min(100, Math.max(0, a.progreso ?? 0)), 0);
+                                            return Math.round(sum / accs.length);
                                           }
 
                                           interface TabAccionesProps {
@@ -1569,28 +1812,35 @@
                                             const [filtroHallazgo, setFiltroHallazgo] = useState<FiltroHallazgoAcciones>('TODOS');
                                             const [modalCrearAccion, setModalCrearAccion] = useState(false);
 
+                                            // ── Contadores por ACCIÓN individual (no por hallazgo) ─────────────────
                                             const conteosPorBucket = useMemo(() => {
                                               let pend = 0;
                                               let ejec = 0;
                                               let comp = 0;
-                                              for (const h of plan.hallazgos) {
-                                                const pct = progresoHallazgoDesdeAcciones(plan, h.id);
-                                                const b = bucketHallazgoPorPct(pct);
-                                                if (b === 'H_PENDIENTE') pend += 1;
-                                                else if (b === 'H_EJECUCION') ejec += 1;
-                                                else comp += 1;
+                                              for (const a of plan.acciones) {
+                                                const e = estadoEfectivoAccion(a);
+                                                if (e === 'COMPLETADA') comp += 1;
+                                                else if (e === 'EN_EJECUCION') ejec += 1;
+                                                else pend += 1; // PENDIENTE o VENCIDA se cuentan en pendientes
                                               }
                                               return { pend, ejec, comp };
-                                            }, [plan.hallazgos, plan.acciones]);
+                                            }, [plan.acciones]);
 
+                                            // ── Filtrar hallazgos que tengan AL MENOS 1 acción en el estado seleccionado ──
                                             const hallazgosFiltrados = useMemo(() => {
+                                              if (filtroHallazgo === 'TODOS') return plan.hallazgos;
                                               return plan.hallazgos.filter((h) => {
-                                                const pct = progresoHallazgoDesdeAcciones(plan, h.id);
-                                                const b = bucketHallazgoPorPct(pct);
-                                                if (filtroHallazgo === 'TODOS') return true;
-                                                return b === filtroHallazgo;
+                                                const accs = plan.acciones.filter((a) => a.hallazgoId === h.id);
+                                                return accs.some((a) => {
+                                                  const e = estadoEfectivoAccion(a);
+                                                  if (filtroHallazgo === 'H_COMPLETADA') return e === 'COMPLETADA';
+                                                  if (filtroHallazgo === 'H_EJECUCION') return e === 'EN_EJECUCION';
+                                                  if (filtroHallazgo === 'H_PENDIENTE') return e === 'PENDIENTE' || e === 'VENCIDA';
+                                                  return false;
+                                                });
                                               });
                                             }, [plan.hallazgos, plan.acciones, filtroHallazgo]);
+
 
                                             const accionesFiltradas = useMemo(() => {
                                               const ids = new Set(hallazgosFiltrados.map((h) => h.id));
@@ -1604,10 +1854,10 @@
                                                     <div>
                                                       <h3 className="text-base font-medium text-gray-900">Acciones correctivas por hallazgo</h3>
                                                       <p className="text-sm text-gray-600">
-                                                        Filtros según avance del hallazgo:{' '}
-                                                        <span className="font-medium text-gray-800">0% pendiente</span>,{' '}
-                                                        <span className="font-medium text-gray-800">1–99% en ejecución</span>,{' '}
-                                                        <span className="font-medium text-gray-800">100% completado</span>
+                                                        Filtros por estado de acción:{' '}
+                                                        <span className="font-medium text-gray-800">Pendiente</span>,{' '}
+                                                        <span className="font-medium text-gray-800">En Ejecución</span>,{' '}
+                                                        <span className="font-medium text-gray-800">Completada</span>
                                                       </p>
                                                       <p className="text-xs text-gray-500 mt-1">
                                                         {hallazgosFiltrados.length} hallazgo(s) · {accionesFiltradas.length} acción(es)
@@ -1627,12 +1877,12 @@
                                                     <FiltroButton
                                                       active={filtroHallazgo === 'TODOS'}
                                                       onClick={() => setFiltroHallazgo('TODOS')}
-                                                      label={`Todas (${plan.hallazgos.length})`}
+                                                      label={`Todas (${plan.acciones.length})`}
                                                     />
                                                     <FiltroButton
                                                       active={filtroHallazgo === 'H_PENDIENTE'}
                                                       onClick={() => setFiltroHallazgo('H_PENDIENTE')}
-                                                      label={`Pendientes 0% (${conteosPorBucket.pend})`}
+                                                      label={`Pendientes (${conteosPorBucket.pend})`}
                                                       color="gray"
                                                     />
                                                     <FiltroButton
@@ -1667,9 +1917,17 @@
                                                 ) : (
                                                   hallazgosFiltrados.map((hallazgo) => {
                                                     const pct = progresoHallazgoDesdeAcciones(plan, hallazgo.id);
-                                                    const accsDeH = plan.acciones.filter((a) => a.hallazgoId === hallazgo.id);
+                                                    const accsDeH = plan.acciones.filter((a) => {
+                                                      if (a.hallazgoId !== hallazgo.id) return false;
+                                                      if (filtroHallazgo === 'TODOS') return true;
+                                                      const e = estadoEfectivoAccion(a);
+                                                      if (filtroHallazgo === 'H_COMPLETADA') return e === 'COMPLETADA';
+                                                      if (filtroHallazgo === 'H_EJECUCION') return e === 'EN_EJECUCION';
+                                                      if (filtroHallazgo === 'H_PENDIENTE') return e === 'PENDIENTE' || e === 'VENCIDA';
+                                                      return false;
+                                                    });
                                                     const desc = (hallazgo.descripcion || '').trim();
-                                                    const bucket = bucketHallazgoPorPct(pct);
+                                                    const bucket = bucketHallazgoPorEstados(plan, hallazgo.id);
                                                     const bucketLabel =
                                                       bucket === 'H_PENDIENTE'
                                                         ? 'Pendiente'
@@ -1801,7 +2059,17 @@
                                               VENCIDA: { bg: 'bg-red-100', text: 'text-red-700', label: 'Vencida', icon: XCircle }
                                             };
 
-                                            const config = estadoConfig[accion.estado];
+                                            // Calcular estado efectivo igual que el backend (determinarEstadoAccionReal)
+                                            // Esto garantiza que el badge sea coherente aunque el estado en BD esté desactualizado
+                                            const estadoEfectivo = ((): 'PENDIENTE' | 'EN_EJECUCION' | 'COMPLETADA' | 'VENCIDA' => {
+                                              const prog = accion.progreso ?? 0;
+                                              if (prog >= 100) return 'COMPLETADA';
+                                              if (accion.estado === 'VENCIDA') return 'VENCIDA';
+                                              if (prog > 0) return 'EN_EJECUCION';
+                                              return 'PENDIENTE';
+                                            })();
+
+                                            const config = estadoConfig[estadoEfectivo];
                                             const Icon = config.icon;
                                             const hallazgo = plan.hallazgos.find(h => h.id === accion.hallazgoId);
 
@@ -1815,8 +2083,8 @@
                                             };
 
                                             const handleMarcarCompletada = async () => {
-                                              // Validar que no esté ya completada
-                                              if (accion.estado === 'COMPLETADA') {
+                                              // Validar que no esté ya completada (usar estadoEfectivo para coherencia con badge)
+                                              if (estadoEfectivo === 'COMPLETADA') {
                                                 toast.warning('Acción ya completada', {
                                                   description: 'Esta acción ya se encuentra en estado completado',
                                                 });
@@ -1966,7 +2234,7 @@
                                                         <Upload className="w-3.5 h-3.5" />
                                                         Cargar Evidencia
                                                       </button>
-                                                      {accion.estado !== 'COMPLETADA' && (
+                                                      {estadoEfectivo !== 'COMPLETADA' && (
                                                         <button 
                                                           onClick={handleMarcarCompletada}
                                                           className="px-3 py-1.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded text-sm hover:shadow transition-all flex items-center gap-1.5"

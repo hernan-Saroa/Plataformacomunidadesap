@@ -54,7 +54,7 @@ async function apiRequest<T>(
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
   try {
-    const token = localStorage.getItem('esap_auth_token');
+const token = localStorage.getItem('esap_auth_token');
     
     const urlObj = new URL(`${API_BASE_URL}${endpoint}`);
     urlObj.searchParams.append('_t', new Date().getTime().toString());
@@ -66,6 +66,7 @@ async function apiRequest<T>(
         'Pragma': 'no-cache',
         'Expires': '0',
         ...(token && { 'Authorization': `Bearer ${token}` }),
+        credentials: 'include',
         ...options?.headers,
       },
       ...options,
@@ -174,9 +175,8 @@ export const planAnualApi = {
    */
   exportExcel: async (planId: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const token = localStorage.getItem('esap_auth_token');
       const response = await fetch(`${API_BASE_URL}${PLAN_ANUAL_ENDPOINT}/${planId}/export/excel`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        credentials: 'include',
       });
       if (!response.ok) {
         const text = await response.text();

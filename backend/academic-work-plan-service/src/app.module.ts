@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PtaModule } from './pta/pta.module';
+import { BancoDocentesModule } from './pta/banco-docentes/banco-docentes.module';
 import { PlanTrabajoAcademicoEntity } from './pta/entities/plan-trabajo-academico.entity';
 import { HistorialEstadoPtaEntity } from './pta/entities/historial-estado-pta.entity';
 import { PtaEvidenciaEntity } from './pta/entities/pta-evidencia.entity';
@@ -55,6 +56,7 @@ import { PtaEventoEntity } from './pta/entities/pta-evento.entity';
     }),
     AuthModule,
     PtaModule,
+    BancoDocentesModule,
   ],
   controllers: [AppController],
   providers: [

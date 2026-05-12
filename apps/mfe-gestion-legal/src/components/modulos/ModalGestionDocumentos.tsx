@@ -18,7 +18,7 @@ import {
 import { toast } from 'sonner';
 import { ocService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
-
+import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 interface DocumentoSeleccionado {
@@ -277,10 +277,8 @@ export function ModalGestionDocumentos({
 
       const fullUrl = `${baseUrl}${prefix}/files/${filename}`;
 
-      // Fetching data to force download (with auth header)
-      const token = localStorage.getItem('esap_auth_token');
       const response = await fetch(fullUrl, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Network response was not ok.');
       const blob = await response.blob();
@@ -304,9 +302,8 @@ export function ModalGestionDocumentos({
     toast.info('Preparando descarga ZIP...');
     try {
       const url = ocService.getDocumentosDownloadUrl(requerimientoId, nombreRequerimiento);
-      const token = localStorage.getItem('esap_auth_token');
       const response = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        credentials: 'include',
       });
       if (!response.ok) throw new Error(`Error ${response.status}`);
       const blob = await response.blob();
@@ -485,14 +482,16 @@ export function ModalGestionDocumentos({
                       >
                         <Download className="w-4 h-4" />
                       </Button> */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEliminarCargado(doc.id)}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {authService.hasPermission(Permissions.GESTION_LEGAL_ORGANOS_CONTROL_ELABORAR) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEliminarCargado(doc.id)}
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}

@@ -15,10 +15,7 @@ import type { CreateRoleDto, UpdateRoleDto, RoleFilters, RoleStats } from './rol
 import { InternalServiceAccess } from '../auth/decorators/internal-service.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import {
-  AUTH_MANAGE_ROLES,
-  AUTH_READ_ROLES,
-} from '../auth/authorization.constants';
+import { AUTH_MANAGE_ROLES } from '../auth/authorization.constants';
 
 export interface RoleResponse {
   id: string;
@@ -28,6 +25,8 @@ export interface RoleResponse {
   icon: string;
   color: string;
   type: 'sistema' | 'personalizado';
+  sistema_destino: string;
+  alcance?: any;
   is_active: boolean;
   requires_2fa: boolean;
   usuarios_count: number;
@@ -45,7 +44,6 @@ export class RolesController {
 
   @Get()
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async findAll(@Query() filters: RoleFilters): Promise<{ roles: RoleResponse[], total: number }> {
     const result = await this.rolesService.findAll(filters);
     return {
@@ -57,6 +55,8 @@ export class RolesController {
         icon: role.icon,
         color: role.color,
         type: role.type,
+        sistema_destino: role.sistema_destino,
+        alcance: role.alcance,
         is_active: role.is_active,
         requires_2fa: role.requires_2fa,
         usuarios_count: role.usuarios_count || 0,
@@ -72,14 +72,12 @@ export class RolesController {
 
   @Get('stats')
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async getStats(): Promise<RoleStats> {
     return this.rolesService.getStats();
   }
 
   @Get(':id')
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async findOne(@Param('id') id: string): Promise<RoleResponse> {
     const role = await this.rolesService.findOne(id) as any;
     return {
@@ -90,6 +88,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: role.usuarios_count || 0,
@@ -113,6 +113,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: 0,
@@ -136,6 +138,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: role.usuarios_count || 0,
@@ -166,6 +170,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: 0,
@@ -189,6 +195,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: role.usuarios_count || 0,
@@ -212,6 +220,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: role.usuarios_count || 0,
@@ -225,7 +235,6 @@ export class RolesController {
 
   @Get(':id/permissions')
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async getPermissions(@Param('id') id: string) {
     const permissions = await this.rolesService.getPermissions(id);
     // Mapear campos para consistencia con frontend
@@ -252,6 +261,8 @@ export class RolesController {
       icon: role.icon,
       color: role.color,
       type: role.type,
+      sistema_destino: role.sistema_destino,
+      alcance: role.alcance,
       is_active: role.is_active,
       requires_2fa: role.requires_2fa,
       usuarios_count: role.usuarios_count || 0,
@@ -265,7 +276,6 @@ export class RolesController {
 
   @Get('permissions/all')
   @InternalServiceAccess()
-  @Roles(...AUTH_READ_ROLES)
   async getAllPermissions() {
     return this.rolesService.getAllPermissions();
   }

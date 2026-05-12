@@ -22,13 +22,11 @@ import {
   ProcessStatus,
 } from '../entities/disciplinary-process.entity';
 
-// Función para verificar si un tipo es de apertura (incluyendo dinámicos)
-const isAperturaType = (tipo: string): boolean => {
-  return tipo === AutoType.AUTO_APERTURA ||
-         tipo === AutoType.AUTO_APERTURA_INVESTIGACION ||
-         tipo === AutoType.AUTO_APERTURA_INDAGACION ||
-         tipo.startsWith('AUTO_APERTURA_');
-};
+const AUTO_CONSECUTIVE_MARKERS = [
+  '[Consecutivo_Auto]',
+  '[CONSECUTIVO_AUTO]',
+  '[consecutivo_auto]',
+];
 
 @Injectable()
 export class AutoService {
@@ -242,39 +240,20 @@ export class AutoService {
       auto.numero = await this.sequenceService.generateAutoConsecutivo();
       await this.prepareApprovedDocument(auto);
 
-      if (isAperturaType(auto.tipo) && auto.etapaDestino) {
-        const fechaAprobacion = new Date();
-        const etapaAnterior = auto.process.etapaActual;
-
-        const { proceso: procesoActualizado, tiempoAcumuladoDias } =
-          await this.processService.changeStageByAutoApertura(
-            auto.processId,
-            auto.etapaDestino as ProcessStage,
-            fechaAprobacion,
-          );
-
-        const tiempoTexto =
-          tiempoAcumuladoDias !== null
-            ? `Tiempo acumulado en etapa anterior: ${tiempoAcumuladoDias} día(s) hábil(es).`
-            : 'Tiempo acumulado en etapa anterior: no disponible.';
-
-        const nombreAprobador = auto.process?.abogadoAsignado?.nombreCompleto || 'Jefe OCID';
-        await this.actuacionesRepository.save({
-          processId: auto.processId,
-          tipo: 'CAMBIO_ETAPA',
-          etapa: procesoActualizado.etapaActual,
-          descripcion: `Cambio de etapa por aprobación de auto de apertura (${auto.numero}). Etapa anterior: ${etapaAnterior}. Nueva etapa: ${procesoActualizado.etapaActual}. ${tiempoTexto}`,
-          responsableNombre: nombreAprobador,
-          fechaActuacion: fechaAprobacion,
-          observaciones: `Auto: ${auto.tipo} | Aprobado por: ${nombreAprobador}`,
-        });
-      }
-
       // Nota: Para auto pliego de cargos, se aprueba pero no se cierra el proceso inmediatamente.
       // El envío a jurídica se hace posteriormente mediante el botón "Envío a jurídica".
 
       if (auto.tipo === AutoType.AUTO_ARCHIVO) {
         await this.archiveProcess(auto.processId, aprobadoPorId);
+      }
+
+      // Si es AUTO_APERTURA_*, transicionar el proceso a la etapa destino
+      if (auto.tipo.startsWith('AUTO_APERTURA_') && auto.etapaDestino) {
+        await this.processService.changeStageByAutoApertura(
+          auto.processId,
+          auto.etapaDestino as ProcessStage,
+          new Date(),
+        );
       }
 
       // Si es AUTO_PRORROGA, extender la fecha de vencimiento de la etapa activa
@@ -770,12 +749,22 @@ export class AutoService {
         await this.documentConversionService.convertWordToPdf(
           auto.documentUrl,
           approvedPdfName,
+          AUTO_CONSECUTIVE_MARKERS.map((marker) => ({
+            marker,
+            value: auto.numero,
+          })),
         );
 
-      await this.pdfModifierService.addConsecutive(
-        convertedDocument.documentUrl,
-        auto.numero,
+      const replacedAutoConsecutive = AUTO_CONSECUTIVE_MARKERS.some((marker) =>
+        convertedDocument.placeholdersReplaced?.includes(marker),
       );
+
+      if (!replacedAutoConsecutive) {
+        await this.pdfModifierService.addConsecutive(
+          convertedDocument.documentUrl,
+          auto.numero,
+        );
+      }
 
       auto.documentUrl = convertedDocument.documentUrl;
       auto.documentName = approvedPdfName;

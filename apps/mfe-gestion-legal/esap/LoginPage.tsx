@@ -56,8 +56,8 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     if (autoLoginAttemptedRef.current) return;
     if (!authService.isAuthenticated()) return;
 
-    const token = localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    const storedUser = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
+    const token = sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
+    const storedUser = sessionStorage.getItem(config.STORAGE_KEYS.USER_DATA);
     if (!token || !storedUser) return;
 
     try {

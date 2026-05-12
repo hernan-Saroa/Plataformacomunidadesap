@@ -17,11 +17,12 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { createPortal } from 'react-dom';
+import * as mammoth from 'mammoth';
 import {
   X, ChevronRight, ChevronLeft, Check, Scale, FileText, Download,
   Upload, AlertCircle, CheckCircle, Info, File, Calendar, User,
   Paperclip, Eye, Search, Clock, Sparkles, Send, AlertTriangle,
-  FileCheck, Zap, Shield, Star, ExternalLink
+  FileCheck, Zap, Shield, Star
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Card } from '@esap-mfe/shared-ui/card';
@@ -29,20 +30,19 @@ import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { ETAPAS_PROCESO, type EtapaProcesoId, type TipoAuto, type PlantillaArchivo } from './configuracion/SeccionPlantillasAutosUnificada';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
-import { API_MODE, MICROSERVICE_URLS, buildApiUrl } from '../../../config/environment';
+import { buildApiUrl } from '../../../config/environment';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // Tipos de auto que disparan acciones automáticas al aprobarse
-const TIPOS_CON_ACCION = [
-  'AUTO_APERTURA',
-  'AUTO_APERTURA_INVESTIGACION',
-  'AUTO_APERTURA_INDAGACION',
+const TIPOS_CON_ACCION_ESTATICOS = [
   'AUTO_ARCHIVO',
   'AUTO_FORMULACION_PLIEGO',
   'PLIEGO_CARGOS',
   'AUTO_PRORROGA',
 ];
+const tieneAccion = (tipo: string): boolean =>
+  tipo?.startsWith('AUTO_APERTURA_') || TIPOS_CON_ACCION_ESTATICOS.includes(tipo);
 
 // ==================== DATOS MOCK ====================
 const TIPOS_AUTOS_MOCK: TipoAuto[] = [
@@ -214,6 +214,11 @@ export function WizardCrearAutoWorldClass({
 
   // Estado para el visor de documento PDF
   const [visorDocumento, setVisorDocumento] = useState<{ show: boolean; documento: AutoGenerado | null }>({ show: false, documento: null });
+  const [wordPreview, setWordPreview] = useState<{ loading: boolean; html: string; error: string }>({
+    loading: false,
+    html: '',
+    error: '',
+  });
 
   // Estados de Tipos de Auto desde el backend
   const [loadingTiposAuto, setLoadingTiposAuto] = useState(false);
@@ -223,6 +228,76 @@ export function WizardCrearAutoWorldClass({
   const tiposAutos = tiposAuto;
 
   // ==================== FUNCIONES AUXILIARES ====================
+  const getAutoDocumentUrl = (documentUrl?: string): string => {
+    if (!documentUrl) return '';
+
+    if (/^https?:\/\//i.test(documentUrl)) {
+      return documentUrl;
+    }
+
+    const withoutServicePrefix = documentUrl.replace(/^\/control-disciplinario/, '');
+    const normalizedPath = withoutServicePrefix.startsWith('/')
+      ? withoutServicePrefix
+      : `/${withoutServicePrefix}`;
+
+    if (normalizedPath.startsWith('/api/v1/files/') || normalizedPath.startsWith('/api/v1/uploads/')) {
+      return buildApiUrl('control-disciplinario', normalizedPath.replace(/^\/api\/v1/, ''));
+    }
+
+    if (normalizedPath.startsWith('/files/') || normalizedPath.startsWith('/uploads/')) {
+      return buildApiUrl('control-disciplinario', normalizedPath);
+    }
+
+    return buildApiUrl(
+      'control-disciplinario',
+      normalizedPath.startsWith('/api/v1/')
+        ? normalizedPath
+        : `/api/v1${normalizedPath}`,
+    );
+  };
+
+  const getAutoDocumentName = (auto?: AutoGenerado | null): string => {
+    return auto?.archivoAdjunto?.nombre || auto?.documentUrl?.split('/').pop() || '';
+  };
+
+  const isWordDocument = (auto?: AutoGenerado | null): boolean => {
+    const source = `${getAutoDocumentName(auto)} ${auto?.documentUrl || ''}`.toLowerCase();
+    return source.endsWith('.doc') || source.endsWith('.docx');
+  };
+
+  const isDocxDocument = (auto?: AutoGenerado | null): boolean => {
+    const source = `${getAutoDocumentName(auto)} ${auto?.documentUrl || ''}`.toLowerCase();
+    return source.endsWith('.docx');
+  };
+
+  const isPdfDocument = (auto?: AutoGenerado | null): boolean => {
+    const source = `${getAutoDocumentName(auto)} ${auto?.documentUrl || ''}`.toLowerCase();
+    return source.endsWith('.pdf');
+  };
+
+  const descargarAutoGenerado = async (auto: AutoGenerado) => {
+    if (!auto.documentUrl) {
+      toast.error('Documento no disponible', {
+        description: 'Este auto no tiene un archivo asociado para descargar',
+      });
+      return;
+    }
+
+    const fileName = auto.archivoAdjunto?.nombre || `${auto.numero || 'auto'}.pdf`;
+
+    try {
+      await disciplinaryService.downloadFileFromUrl(auto.documentUrl, fileName);
+      toast.success('Descarga iniciada', {
+        description: fileName,
+      });
+    } catch (error) {
+      console.error('Error descargando auto:', error);
+      toast.error('No se pudo descargar el auto', {
+        description: error instanceof Error ? error.message : 'Intenta nuevamente',
+      });
+    }
+  };
+
   const cargarAutosGenerados = async () => {
     if (!proceso?.id) return;
     setCargandoAutos(true);
@@ -255,6 +330,60 @@ export function WizardCrearAutoWorldClass({
   useEffect(() => {
     cargarTiposAuto();
   }, []);
+
+  useEffect(() => {
+    const cargarPreviewWord = async () => {
+      const documento = visorDocumento.documento;
+
+      setWordPreview({ loading: false, html: '', error: '' });
+
+      if (!visorDocumento.show || !documento?.documentUrl || !isWordDocument(documento)) {
+        return;
+      }
+
+      if (!isDocxDocument(documento)) {
+        setWordPreview({
+          loading: false,
+          html: '',
+          error: 'La vista previa solo está disponible para archivos Word .docx. Puedes descargar este archivo para abrirlo.',
+        });
+        return;
+      }
+
+      try {
+        setWordPreview({ loading: true, html: '', error: '' });
+
+        const response = await fetch(getAutoDocumentUrl(documento.documentUrl), {
+          credentials: 'include',
+          headers: {
+            Accept: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error ${response.status}: no se pudo cargar el documento`);
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+
+        setWordPreview({
+          loading: false,
+          html: result.value || '<p>El documento no tiene contenido visible para previsualizar.</p>',
+          error: '',
+        });
+      } catch (error) {
+        console.error('Error previsualizando Word del auto:', error);
+        setWordPreview({
+          loading: false,
+          html: '',
+          error: error instanceof Error ? error.message : 'No se pudo previsualizar el documento Word',
+        });
+      }
+    };
+
+    void cargarPreviewWord();
+  }, [visorDocumento.show, visorDocumento.documento?.id, visorDocumento.documento?.documentUrl]);
 
   const cargarTiposAuto = async () => {
     setLoadingTiposAuto(true);
@@ -375,7 +504,7 @@ export function WizardCrearAutoWorldClass({
         toast.error('Las observaciones deben tener al menos 10 caracteres');
         return;
       }
-      const esApertura = tipoSeleccionado?.tipo && ['AUTO_APERTURA', 'AUTO_APERTURA_INVESTIGACION', 'AUTO_APERTURA_INDAGACION'].includes(tipoSeleccionado.tipo);
+      const esApertura = tipoSeleccionado?.tipo && tieneAccion(tipoSeleccionado.tipo) && tipoSeleccionado.tipo.startsWith('AUTO_APERTURA_');
       if (tipoSeleccionado?.tipo === 'AUTO_PRORROGA' && !prorrogaMeses) {
         toast.error('Debes seleccionar la duración de la prórroga: 3 o 6 meses');
         return;
@@ -438,7 +567,7 @@ export function WizardCrearAutoWorldClass({
       return;
     }
 
-    const esApertura = tipoSeleccionado?.tipo && ['AUTO_APERTURA', 'AUTO_APERTURA_INVESTIGACION', 'AUTO_APERTURA_INDAGACION'].includes(tipoSeleccionado.tipo);
+    const esApertura = tipoSeleccionado?.tipo && tieneAccion(tipoSeleccionado.tipo) && tipoSeleccionado.tipo.startsWith('AUTO_APERTURA_');
 
     try {
       setGuardando(true);
@@ -930,7 +1059,7 @@ export function WizardCrearAutoWorldClass({
                                       >
                                         {etapa.nombre}
                                       </span>
-                                      {tipo.tipo && TIPOS_CON_ACCION.includes(tipo.tipo) && (
+                                      {tipo.tipo && tieneAccion(tipo.tipo) && (
                                         <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-100 text-amber-700 flex items-center gap-1">
                                           <Zap className="w-3 h-3" />
                                           Con acción
@@ -1254,6 +1383,32 @@ export function WizardCrearAutoWorldClass({
                       </div>
                     )}
 
+                    <div
+                      className="rounded-2xl p-5"
+                      style={{
+                        background: 'linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%)',
+                        border: '1px solid rgba(37, 99, 235, 0.25)'
+                      }}
+                    >
+                      <div className="flex items-start gap-3.5">
+                        <div className="p-2 rounded-xl bg-blue-600/10">
+                          <Info className="w-5 h-5 text-blue-700" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-blue-950 mb-1">
+                            Variable para el consecutivo del auto
+                          </p>
+                          <p className="text-xs text-blue-900 leading-relaxed">
+                            En el archivo Word escribe exactamente{' '}
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-white border border-blue-200 font-mono font-bold text-blue-800">
+                              [Consecutivo_Auto]
+                            </span>{' '}
+                            en el lugar donde debe aparecer el numero. Al aprobar, se reemplaza por el consecutivo final.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Upload Area Premium */}
                     <div className="bg-white border-2 border-gray-200 rounded-2xl p-6 shadow-lg">
                       {!archivoAdjunto ? (
@@ -1549,17 +1704,9 @@ export function WizardCrearAutoWorldClass({
                             {/* Botón Descargar */}
                             {auto.documentUrl && (
                               <button
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation();
-                                  // Construir URL de descarga
-                                  const downloadUrl = auto.documentUrl?.startsWith('http') 
-                                    ? auto.documentUrl 
-                                    : buildApiUrl('control-disciplinario', `/api/v1${auto.documentUrl}`);
-                                  
-                                  window.open(downloadUrl, '_blank');
-                                  toast.success('Abriendo documento', {
-                                    description: auto.archivoAdjunto?.nombre || 'Documento'
-                                  });
+                                  await descargarAutoGenerado(auto);
                                 }}
                                 className="p-2 rounded-lg hover:bg-green-50 transition-colors"
                                 title="Descargar documento"
@@ -1701,22 +1848,53 @@ export function WizardCrearAutoWorldClass({
                   </div>
                 </div>
 
-                {/* Visor PDF */}
+                {/* Visor de documento */}
                 <div className="h-[60vh] bg-gray-100">
-                  {visorDocumento.documento.documentUrl ? (
+                  {visorDocumento.documento.documentUrl && isPdfDocument(visorDocumento.documento) ? (
                     <iframe
-                      src={visorDocumento.documento.documentUrl.startsWith('http') 
-                        ? visorDocumento.documento.documentUrl 
-                        : buildApiUrl('control-disciplinario', `/api/v1${visorDocumento.documento.documentUrl}`)}
+                      src={getAutoDocumentUrl(visorDocumento.documento.documentUrl)}
                       title={visorDocumento.documento.numero}
                       className="w-full h-full"
                     />
+                  ) : visorDocumento.documento.documentUrl && isWordDocument(visorDocumento.documento) ? (
+                    <div className="h-full overflow-auto bg-gray-100 p-4">
+                      {wordPreview.loading ? (
+                        <div className="flex items-center justify-center h-full">
+                          <div className="text-center">
+                            <div className="w-10 h-10 mx-auto mb-4 rounded-full border-4 border-blue-200 border-t-blue-700 animate-spin" />
+                            <p className="text-gray-600 font-semibold">Cargando vista previa...</p>
+                          </div>
+                        </div>
+                      ) : wordPreview.error ? (
+                        <div className="flex items-center justify-center h-full">
+                          <div className="text-center max-w-md px-6">
+                            <FileText className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                            <p className="text-gray-700 font-bold">No se pudo previsualizar este Word</p>
+                            <p className="text-sm text-gray-500 mt-2">{wordPreview.error}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-white shadow-sm mx-auto min-h-full max-w-4xl p-8">
+                          <div
+                            className="prose prose-sm max-w-none text-gray-900"
+                            style={{ fontFamily: 'Times New Roman, serif', lineHeight: 1.55 }}
+                            dangerouslySetInnerHTML={{ __html: wordPreview.html }}
+                          />
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <div className="flex items-center justify-center h-full">
                       <div className="text-center">
                         <FileText className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                        <p className="text-gray-500">Documento no disponible</p>
-                        <p className="text-xs text-gray-400 mt-1">El archivo no ha sido cargado</p>
+                        <p className="text-gray-500">
+                          {visorDocumento.documento.documentUrl ? 'Vista previa no disponible' : 'Documento no disponible'}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {visorDocumento.documento.documentUrl
+                            ? 'Puedes descargar el archivo para abrirlo'
+                            : 'El archivo no ha sido cargado'}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -1732,18 +1910,15 @@ export function WizardCrearAutoWorldClass({
                   Cerrar
                 </Button>
                 <Button
-                  onClick={() => {
+                  onClick={async () => {
                     if (!visorDocumento.documento?.documentUrl) return;
-                    const url = visorDocumento.documento.documentUrl.startsWith('http')
-                      ? visorDocumento.documento.documentUrl
-                      : buildApiUrl('control-disciplinario', `/api/v1${visorDocumento.documento.documentUrl}`);
-                    window.open(url, '_blank');
+                    await descargarAutoGenerado(visorDocumento.documento);
                   }}
                   disabled={!visorDocumento.documento?.documentUrl}
                   style={{ background: '#003DA5', color: '#FFFFFF' }}
                 >
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Abrir en nueva pestaña
+                  <Download className="w-4 h-4 mr-2" />
+                  Descargar
                 </Button>
               </div>
             </motion.div>

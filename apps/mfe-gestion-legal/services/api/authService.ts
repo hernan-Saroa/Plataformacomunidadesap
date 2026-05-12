@@ -14,6 +14,8 @@ import type {
 } from '../../types';
 
 class AuthService {
+  // Cache en memoria: los JWT siguen protegidos como cookies HttpOnly.
+  private _cachedUser: AuthUser | null = null;
   /**
    * Login con Microsoft (OAuth)
    */
@@ -72,32 +74,25 @@ class AuthService {
   }
 
   /**
-   * Refresh del access token
+   * Refresh de sesion con cookie HttpOnly.
+   * El frontend no lee ni guarda refresh tokens.
    */
   async refreshToken(): Promise<RefreshTokenResponse> {
-    const refreshToken = this.getRefreshToken();
-    
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
-
-    const response = await apiClient.post<RefreshTokenResponse>(
+    return apiClient.post<RefreshTokenResponse>(
       API_ENDPOINTS.AUTH.REFRESH,
-      { refreshToken },
+      {},
       { skipAuth: true }
     );
-
-    // Actualizar access token
-    this.saveAccessToken(response.accessToken);
-
-    return response;
   }
-
   /**
    * Verificar token actual
    */
   async verifyToken(): Promise<AuthUser> {
-    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY);
+    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY, undefined, {
+      retries: 0,
+      skipAuthRefresh: true,
+      skipErrorToast: true,
+    });
   }
 
   /**
@@ -137,18 +132,32 @@ class AuthService {
   // ==========================================================================
 
   /**
+   * Permite restaurar el usuario tras verifyToken sin persistir datos sensibles.
+   */
+  setCurrentUserCache(user: AuthUser): void {
+    this._cachedUser = user;
+    if (typeof window !== 'undefined') {
+      (window as any).__esap_auth_cache = user;
+    }
+  }
+  /**
    * Verifica si el usuario está autenticado
    */
   isAuthenticated(): boolean {
-    return !!this.getAccessToken();
+    return this.getCurrentUser() !== null;
   }
 
   /**
    * Obtiene el usuario actual del localStorage
    */
   getCurrentUser(): AuthUser | null {
-    const userData = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
-    return userData ? JSON.parse(userData) : null;
+    if (typeof window !== 'undefined') {
+      const sharedUser = (window as any).__esap_auth_cache ?? null;
+      if (this._cachedUser !== sharedUser) {
+        this._cachedUser = sharedUser;
+      }
+    }
+    return this._cachedUser;
   }
 
   /**
@@ -156,8 +165,32 @@ class AuthService {
    */
   hasPermission(permission: string): boolean {
     const user = this.getCurrentUser();
-    if (user?.roles.find(r => r.code === 'SUPER_ADMIN')) return true;
-    return user?.permissions?.includes(permission) || false;
+    if (!user) return false;
+    if (this.isSuperAdmin()) return true;
+
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+    const directPermissions = Array.isArray(user.permissions)
+      ? user.permissions
+          .map((permissionItem: any) =>
+            typeof permissionItem === 'string'
+              ? permissionItem
+              : permissionItem?.code,
+          )
+          .filter(Boolean)
+      : [];
+    const rolePermissions = roles.flatMap((role: any) =>
+      Array.isArray(role?.permissions)
+        ? role.permissions
+            .map((rolePermission: any) =>
+              typeof rolePermission === 'string'
+                ? rolePermission
+                : rolePermission?.code,
+            )
+            .filter(Boolean)
+        : [],
+    );
+
+    return [...directPermissions, ...rolePermissions].includes(permission);
   }
 
   /**
@@ -165,8 +198,11 @@ class AuthService {
    */
   isSuperAdmin(): boolean {
     const user = this.getCurrentUser();
-    if (user?.roles.find(r => r.code === 'SUPER_ADMIN')) return true;
-    return false;
+    return (user?.roles || []).some((role: any) =>
+      typeof role === 'string'
+        ? role === 'SUPER_ADMIN'
+        : role?.code === 'SUPER_ADMIN' || role?.name === 'SUPER_ADMIN',
+    );
   }
 
   /**
@@ -201,37 +237,21 @@ class AuthService {
   // MÉTODOS PRIVADOS
   // ==========================================================================
 
-  private saveTokens(accessToken: string, refreshToken: string): void {
-    localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
-    // Compatibilidad con cliente legacy que usa otra clave.
-    localStorage.setItem('esap_access_token', accessToken);
-    localStorage.setItem(config.STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
-  }
-
-  private saveAccessToken(accessToken: string): void {
-    localStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
-    localStorage.setItem('esap_access_token', accessToken);
+  private saveTokens(_accessToken?: string, _refreshToken?: string): void {
+    // Los tokens JWT se gestionan como cookies HttpOnly por el backend.
+    // El frontend no los almacena en sessionStorage/localStorage.
   }
 
   private saveUserData(user: AuthUser): void {
-    localStorage.setItem(config.STORAGE_KEYS.USER_DATA, JSON.stringify(user));
-  }
-
-  private getAccessToken(): string | null {
-    return (
-      localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
-      localStorage.getItem('esap_access_token')
-    );
-  }
-
-  private getRefreshToken(): string | null {
-    return localStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+    this.setCurrentUserCache(user);
   }
 
   private clearAuthData(): void {
-    localStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    localStorage.removeItem('esap_access_token');
-    localStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+    this._cachedUser = null;
+    if (typeof window !== 'undefined') {
+      delete (window as any).__esap_auth_cache;
+    }
+    sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     apiClient.clearCache();
   }
@@ -245,6 +265,38 @@ class AuthService {
    */
   async getProfesionales(): Promise<ProfesionalUser[]> {
     return apiClient.get<ProfesionalUser[]>(`${API_ENDPOINTS.AUTH.BASE}/users`);
+  }
+
+  async getAbogadosRolResuelve(): Promise<AbogadoResuelve[]> {
+    // El backend filtra por roles.id (UUID), no por nombre/code, así que
+    // traemos todos los usuarios activos y filtramos client-side por rol resuelve
+    const response = await apiClient.get<{ data: any[]; meta: any } | any[]>(
+      '/auth/api/v1/users',
+      { status: 'active', limit: 1000 }
+    );
+    const users = Array.isArray(response) ? response : (response?.data ?? []);
+    return users
+      .filter((u: any) => {
+        const roles: any[] = u.user?.roles ?? u.roles ?? u.person?.roles ?? [];
+        const hasResuelve = roles.some((r: any) => {
+          const code = (r.code ?? '').toUpperCase();
+          const name = (r.name ?? '').toLowerCase();
+          return code === 'RESUELVE_GESTION_LEGAL' || name.includes('resuelve');
+        });
+        const hasExcludedRole = roles.some((r: any) => {
+          const code = (r.code ?? '').toUpperCase();
+          const name = (r.name ?? '').toLowerCase();
+          return code === 'SECRETARIADO_GESTION_LEGAL' || name.includes('secretariado') ||
+                 code === 'MONITOREO_GESTION_LEGAL' || name.includes('monitoreo');
+        });
+        return hasResuelve && !hasExcludedRole;
+      })
+      .map((u: any) => ({
+        id: u.user?.id_user ?? u.id_user ?? u.id,
+        nombreCompleto: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+        nombre: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+        email: u.email ?? u.person?.email ?? '',
+      }));
   }
 }
 
@@ -264,6 +316,13 @@ export interface ProfesionalUser {
 
 // Alias para compatibilidad con código existente
 export type User = ProfesionalUser;
+
+export interface AbogadoResuelve {
+  id: string;
+  nombreCompleto: string;
+  nombre: string;
+  email: string;
+}
 
 export const authService = new AuthService();
 export default authService;

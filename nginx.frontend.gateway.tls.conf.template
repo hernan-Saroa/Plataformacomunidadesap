@@ -1,11 +1,16 @@
-server {
+﻿server {
     listen 80;
     server_name ${TLS_SERVER_NAME};
+    server_tokens off;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
 
     location = /health {
         access_log off;
         return 200 "healthy\n";
         add_header Content-Type text/plain;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
     }
 
     location ^~ /.well-known/acme-challenge/ {
@@ -21,6 +26,8 @@ server {
 server {
     listen 443 ssl;
     server_name ${TLS_SERVER_NAME};
+    server_tokens off;
+    set $esap_csp "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; script-src 'self'; style-src 'self' 'nonce-$request_id'; img-src 'self' data: blob: https://unpkg.com https://images.unsplash.com https://ui-avatars.com https://api.dicebear.com https://api.qrserver.com; font-src 'self' data:; connect-src 'self' https://login.microsoftonline.com https://login.microsoft.com; frame-src 'self' blob: https://login.microsoftonline.com; object-src 'none'; worker-src 'self' blob: https://cdnjs.cloudflare.com; media-src 'self' data: blob:; manifest-src 'self';";
 
     ssl_certificate ${TLS_CERT_PATH};
     ssl_certificate_key ${TLS_KEY_PATH};
@@ -46,6 +53,9 @@ server {
         access_log off;
         expires 30d;
         add_header Cache-Control "public";
+        add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
     }
 
     location ^~ /services/ {
@@ -60,6 +70,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header X-Access-Token $http_x_access_token;
+        proxy_hide_header X-Powered-By;
         proxy_cache_bypass $http_upgrade;
         proxy_read_timeout 300s;
         proxy_send_timeout 300s;
@@ -72,6 +83,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header X-Powered-By;
     }
 
     location ^~ /remotes/mfe-gestion-profesoral/ {
@@ -81,6 +93,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header X-Powered-By;
     }
 
     location ^~ /remotes/mfe-programas-academicos/ {
@@ -90,6 +103,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header X-Powered-By;
     }
 
     location ^~ /remotes/mfe-gestion-personas/ {
@@ -99,6 +113,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header X-Powered-By;
     }
 
     location ^~ /remotes/mfe-auditoria/ {
@@ -108,6 +123,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header X-Powered-By;
     }
 
     location ^~ /remotes/mfe-reportes/ {
@@ -117,6 +133,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header X-Powered-By;
     }
 
     location ^~ /remotes/mfe-registro-academico/ {
@@ -126,6 +143,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header X-Powered-By;
     }
 
     location ^~ /remotes/mfe-certificados-laborales/ {
@@ -135,6 +153,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header X-Powered-By;
     }
 
     location ^~ /remotes/mfe-firma-electronica/ {
@@ -144,6 +163,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header X-Powered-By;
     }
 
     location ^~ /remotes/mfe-control-interno/ {
@@ -153,6 +173,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header X-Powered-By;
     }
 
     location ^~ /remotes/mfe-control-disciplinario/ {
@@ -162,6 +183,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header X-Powered-By;
     }
 
     location ^~ /remotes/mfe-gestion-legal/ {
@@ -171,6 +193,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header X-Powered-By;
     }
 
     location ^~ /remotes/mfe-pta/ {
@@ -180,6 +203,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header X-Powered-By;
     }
 
     location / {
@@ -189,11 +213,25 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Accept-Encoding "";
+        proxy_hide_header X-Powered-By;
+        proxy_hide_header X-Frame-Options;
+        proxy_hide_header Content-Security-Policy;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+        add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
+        add_header Content-Security-Policy $esap_csp always;
+        sub_filter '__ESAP_CSP_NONCE__' '$request_id';
+        sub_filter_once off;
     }
 
     location /health {
         access_log off;
         return 200 "healthy\n";
         add_header Content-Type text/plain;
+        add_header Strict-Transport-Security "${TLS_HSTS_VALUE}" always;
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
     }
 }

@@ -23,6 +23,7 @@ export interface DisciplinaryNews {
     origen: 'ANONIMO' | 'QUEJOSO' | 'OFICIO' | 'REMISION';
     fechaQueja?: string;
     fechaRecepcion?: string;
+    fechaHechos?: string;
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
@@ -410,6 +411,7 @@ export interface CreateNewsDto {
     territorial: string;
     dependenciaDenunciado: string;
     hechos: string;
+    conducta: string;
     conductas?: string[];
     adjuntos?: string[];
     denunciante: any;
@@ -514,6 +516,7 @@ class DisciplinaryService {
         formData.append('hechos', data.hechos);
         formData.append('denunciante', JSON.stringify(data.denunciante));
         formData.append('disciplinable', JSON.stringify(data.disciplinable));
+        formData.append('conducta', data.conducta);
         if (data.fechaHechos) {
             formData.append('fechaHechos', data.fechaHechos);
         }
@@ -536,6 +539,7 @@ class DisciplinaryService {
         territorial?: string;
         dependenciaDenunciado?: string;
         hechos?: string;
+        conducta?: string;
         denunciante?: any;
         disciplinable?: any;
         conductas?: string[];
@@ -810,19 +814,14 @@ class DisciplinaryService {
             : `/api/v1${restPath}`;
         const url = buildApiUrl('control-disciplinario', endpoint);
 
-        // Obtener token de autenticacion
-        const token = localStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/octet-stream',
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(url, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -872,18 +871,14 @@ class DisciplinaryService {
             fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
         }
 
-        const token = localStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': '*/*', // Aceptar cualquier cosa (binarios)
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(fullUrl, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -978,8 +973,12 @@ class DisciplinaryService {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/content`, { contenidoHtml });
     }
 
-    async updateProcess(id: string, data: Partial<DisciplinaryProcess> & { abogadoId?: string; hechos?: string; disciplinable?: any }): Promise<DisciplinaryProcess> {
+    async updateProcess(id: string, data: Partial<DisciplinaryProcess> & { abogadoId?: string; hechos?: string; disciplinable?: any; denunciante?: any; conducta?: string }): Promise<DisciplinaryProcess> {
         return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}`, data);
+    }
+
+    async restoreProcess(id: string): Promise<DisciplinaryProcess> {
+        return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/restore`, {});
     }
 
     async getProcesoByRadicado(radicado: string): Promise<DisciplinaryProcess> {
@@ -1017,6 +1016,13 @@ class DisciplinaryService {
 
     async getHistorialVersiones(id: string): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/versions`);
+    }
+
+    async uploadDocumentoRevision(id: string, file: File, comentario: string): Promise<any> {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (comentario) formData.append('comentario', comentario);
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
     }
 
     // --- TÉRMINOS PROCESALES ---
@@ -1111,19 +1117,14 @@ class DisciplinaryService {
         const endpoint = `/api/v1/configuration/export/zip`;
         const url = buildApiUrl('control-disciplinario', endpoint);
 
-        // Obtener token
-        const token = localStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/zip',
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(url, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -1474,6 +1475,20 @@ class DisciplinaryService {
     }
 
     /**
+     * Reordenar comportamientos disciplinarios
+     */
+    async reorderDisciplinaryBehaviors(ids: string[]): Promise<void> {
+        return apiClient.post(`${SERVICE_PREFIX}/disciplinary-behaviors/reorder`, { ids });
+    }
+
+    /**
+     * Enviar correo electrónico
+     */
+    async sendEmail(emailData: { to: string; subject: string; body?: string; html?: string }): Promise<{ success: boolean; message: string }> {
+        return apiClient.post<{ success: boolean; message: string }>(`${SERVICE_PREFIX}/disciplinary-processes/send-email`, emailData);
+    }
+
+    /**
      * Activar/desactivar configuración de oficio
      */
     async toggleOficioConfigurationEstado(id: string): Promise<OficioConfiguration> {
@@ -1633,11 +1648,6 @@ class DisciplinaryService {
         emailDestinatario: string;
         createdAt: string;
     }> {
-        // Debug: verificar que hay token disponible
-        const token = localStorage.getItem('esap_auth_token');
-        console.log('[DEBUG] Token available:', !!token);
-        console.log('[DEBUG] Token prefix:', token?.substring(0, 20));
-
         // Obtener la URL base del frontend para generar enlaces correctos
         // Esto asegura que la URL funcione en todos los ambientes (local, dev, qa, pre, prod)
         const frontendBaseUrl = typeof window !== 'undefined' ? window.location.origin : undefined;

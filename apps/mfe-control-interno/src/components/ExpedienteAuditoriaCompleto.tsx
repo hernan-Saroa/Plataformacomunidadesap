@@ -37,6 +37,7 @@ import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { notificationsService } from '../../services/api/notificationsService';
 
 // UI Components
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
@@ -62,6 +63,8 @@ import { SeccionListasChequeoExpediente } from './SeccionListasChequeoExpediente
 // Servicio API
 import { controlInternoService } from '../../../services/api/controlInternoService';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
+import { exportarPDFInformeEjecutivo } from './services/exportarPDFInformeCierreEjecutivo';
+import { dibujarEncabezadoInstitucional, dibujarPieInstitucional, type ConfiguracionDocumento } from './services/pdfESAPHeader';
 
 // ============ TIPOS ============
 
@@ -691,6 +694,19 @@ export function ExpedienteAuditoriaCompleto({
         auditoriaId: auditoriaId,
       });
       
+      // 🚀 DISPARAR EVENTO AL BACKEND
+      try {
+        await notificationsService.triggerEvent('EVT-DOC-001', {
+          auditoriaId: auditoriaId,
+          auditoriaCodigo: auditoria?.codigo || `AUD-${auditoriaId.substring(0,4)}`,
+          tituloCustom: 'Nuevo Documento Cargado',
+          mensajeCustom: `Se ha cargado el documento ${metadata.nombre} en el expediente ${auditoria?.codigo || ''}.`,
+          url_accion: '/control-interno/auditorias-oci',
+        });
+      } catch (e) {
+        console.error('Error disparando notificación:', e);
+      }
+      
       // Recargar documentos después de subir
       await recargarDocumentos();
       return true;
@@ -923,21 +939,17 @@ export function ExpedienteAuditoriaCompleto({
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
-      let yPos = 20;
+      const configAvance: ConfiguracionDocumento = {
+        codigo: 'EM-FO-003',
+        version: 2,
+        fecha: '24/02/2025',
+        titulo: 'INFORME DE AVANCE DE AUDITORÍA',
+        proceso: 'EVALUACIÓN CONTROL Y MEJORA'
+      };
 
-      // Encabezado corporativo ESAP
-      doc.setFillColor(0, 61, 165);
-      doc.rect(0, 0, pageWidth, 15, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'bold');
-      doc.text('ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP', pageWidth / 2, 10, { align: 'center' });
-      
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(16);
-      yPos = 25;
-      doc.text('INFORME DE AVANCE DE AUDITORÍA', pageWidth / 2, yPos, { align: 'center' });
-      
+      let yPos = dibujarEncabezadoInstitucional(doc, configAvance, 10);
+      yPos += 5;
+
       const fecha = new Date();
       const año = fecha.getFullYear();
       const mes = String(fecha.getMonth() + 1).padStart(2, '0');
@@ -948,11 +960,10 @@ export function ExpedienteAuditoriaCompleto({
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(100, 100, 100);
-      yPos = 32;
       doc.text(`Código: ${nomenclatura}`, pageWidth / 2, yPos, { align: 'center' });
       doc.text(`Fecha: ${dia}/${mes}/${año}`, pageWidth / 2, yPos + 5, { align: 'center' });
       
-      yPos = 45;
+      yPos += 15;
       
       // Sección 1: Información General
       doc.setFillColor(0, 61, 165);
@@ -1099,18 +1110,11 @@ export function ExpedienteAuditoriaCompleto({
       
       yPos = (doc as any).lastAutoTable.finalY + 15;
       
-      // Pie de página
+      // Pie de página institucional
       const totalPages = (doc as any).internal.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
-        doc.setDrawColor(0, 61, 165);
-        doc.setLineWidth(0.5);
-        doc.line(14, pageHeight - 20, pageWidth - 14, pageHeight - 20);
-        doc.setFontSize(8);
-        doc.setTextColor(100, 100, 100);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Informe generado el ${dia}/${mes}/${año} - OCI - Página ${i} de ${totalPages}`, pageWidth / 2, pageHeight - 15, { align: 'center' });
-        doc.text(nomenclatura, pageWidth / 2, pageHeight - 10, { align: 'center' });
+        dibujarPieInstitucional(doc, i, true);
       }
       
       doc.save(`Informe_Avance_${auditoria.codigo}_${año}${mes}${dia}.pdf`);
@@ -1338,10 +1342,7 @@ export function ExpedienteAuditoriaCompleto({
           <div className="flex items-center justify-between">
             {/* ACCIONES PRIMARIAS - SEGÚN ESTÁNDAR */}
             <div className="flex items-center gap-3">
-              <Button variant="outline" onClick={onClose} className="font-bold">
-                <X className="w-3.5 h-3.5 mr-1.5" />
-                Cerrar
-              </Button>
+
               
               {/* MÉTRICAS EN DESKTOP - SEGÚN ESTÁNDAR: hidden md:block */}
               <div className="text-xs text-gray-600 hidden md:block">
@@ -1358,10 +1359,6 @@ export function ExpedienteAuditoriaCompleto({
 
             {/* ACCIONES SECUNDARIAS - SEGÚN ESTÁNDAR */}
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" className="font-bold text-xs" onClick={exportarExpedienteExcel}>
-                <Download className="w-3.5 h-3.5 mr-1" />
-                Exportar Excel
-              </Button>
               <Button 
                 size="sm"
                 style={{ background: '#003DA5', color: '#FFFFFF' }}
@@ -2161,15 +2158,17 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
     const cargar = async () => {
       setLoading(true);
       try {
-        const [resCierre, planesData, hallazgosData] = await Promise.all([
+        const [resCierre, planesData, hallazgosData, planIndData] = await Promise.all([
           controlInternoService.getResumenEjecutivoCierre(auditoriaId).catch(() => null),
           controlInternoService.getPlanesMejoramientoByAuditoria(auditoriaId).catch(() => []),
           controlInternoService.getHallazgosByAuditoria(auditoriaId).catch(() => []),
+          controlInternoService.getPlanIndividualByAuditoria(auditoriaId).catch(() => null),
         ]);
         if (!cancelled) {
           setResumen(resCierre);
           setPlanes(Array.isArray(planesData) ? planesData : []);
           setHallazgos(Array.isArray(hallazgosData) ? hallazgosData : []);
+          (window as any).planIndividualActual = planIndData;
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -2234,7 +2233,8 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
   const construirAuditoriaPdfData = () => {
     const fechaInicioPdf = resumen?.fechaInicio || auditoria.cronograma?.fechaInicio;
     const fechaFinPdf = resumen?.fechaFin || auditoria.cronograma?.fechaFin;
-    const territorialAuditoria = (auditoria as any).territorial || undefined;
+    const vigenciaExpediente = (auditoria as any).año || (auditoria as any).vigencia || (auditoria.codigo?.split('-')[1]);
+    const territorialAuditoria = auditoria.territorial || (auditoria as any).sede || 'Antioquia';
 
     return {
       codigo: resumen?.codigo || auditoria.codigo,
@@ -2245,6 +2245,7 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
       procesoNombre: auditoria.procesoNombre,
       nivelRiesgo: auditoria.nivelRiesgo,
       territorial: territorialAuditoria,
+      año: vigenciaExpediente || new Date().getFullYear(),
       auditorLider: auditoria.auditorLider?.nombre || '—',
       auditorLiderEmail: auditoria.auditorLider?.email || '—',
       responsableArea: {
@@ -2282,30 +2283,101 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
         ultimaModificacion: auditoria.metadata?.ultimaModificacion,
         modificadoPor: auditoria.metadata?.modificadoPor,
       },
+      objetivo: (auditoria as any).objetivo || (auditoria as any).objetivoGeneral || (auditoria as any).objetivo_general || '',
+      objetivos: ((auditoria as any).objetivos?.length > 0) 
+                 ? (auditoria as any).objetivos.map((o: any) => o.descripcion || o.nombre || o)
+                 : ((auditoria as any).objetivoGeneral || (auditoria as any).objetivo_general || (auditoria as any).proposito || (window as any).planIndividualActual?.objetivos?.map((o: any) => o.descripcion || o.nombre) || []),
+      alcance: auditoria.alcance || (auditoria as any).alcanceAuditoria || (auditoria as any).alcance_auditoria || (auditoria as any).cobertura || (window as any).planIndividualActual?.alcance || '',
+      criterios: ((auditoria as any).criterios?.length > 0)
+                 ? (auditoria as any).criterios.map((c: any) => c.descripcion || c.nombre || c)
+                 : ((auditoria as any).criteriosAuditoria?.map((c: any) => c.nombre || c.descripcion) || (auditoria as any).normatividad || (window as any).planIndividualActual?.criterios?.map((c: any) => c.descripcion || c.nombre) || []),
     };
   };
 
   const generarYDescargarEjecutivo = async () => {
     try {
-      const { exportarPDFInformeEjecutivo } = await import('./services/exportarPDFInformeCierreEjecutivo');
+      setLoading(true);
+      const [auditoriaCompleta, planFrescos] = await Promise.all([
+        controlInternoService.getAuditoriaById(auditoriaId),
+        controlInternoService.getPlanIndividualByAuditoria(auditoriaId).catch(() => null)
+      ]);
+      
+      if (planFrescos) {
+        (window as any).planIndividualActual = planFrescos;
+      }
+
+      // --- LÓGICA DE FORMATEO EXACTA ---
+      const territorial = auditoriaCompleta.sede?.nombre || auditoriaCompleta.territorial || 'Sede Central';
+      // Usando inicio/fin que son los campos reales
+      const fInicio = auditoriaCompleta.cronograma?.inicio || auditoriaCompleta.cronograma?.fechaInicio || (auditoriaCompleta as any).fechaInicio;
+      const fFin = auditoriaCompleta.cronograma?.fin || auditoriaCompleta.cronograma?.fechaFin || (auditoriaCompleta as any).fechaFin;
+      
+      const formatearFechaLarga = (fecha: any) => {
+        if (!fecha) return '—';
+        const d = new Date(fecha);
+        if (isNaN(d.getTime())) return '—';
+        const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+        return `${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
+      };
+
+      const rangoFechas = (fInicio && fFin) 
+        ? `${formatearFechaLarga(fInicio)} – ${formatearFechaLarga(fFin)}`
+        : (fInicio ? formatearFechaLarga(fInicio) : '—');
+
+      const periodoInicio = resumen?.fechaInicio || (auditoriaCompleta as any).fechaInicio;
+      const periodoFin = resumen?.fechaFin || (auditoriaCompleta as any).fechaFin;
+      const periodoAuditoria = (periodoInicio && periodoFin) 
+        ? `${formatearFechaLarga(periodoInicio)} – ${formatearFechaLarga(periodoFin)}`
+        : (periodoInicio ? formatearFechaLarga(periodoInicio) : rangoFechas);
+
+      const equipoAuditores = (auditoriaCompleta.equipoAuditores || []).map((a: any) => ({
+        nombre: a.nombre || a.nombreCompleto || 'Auditor',
+        rol: a.rol || a.cargo || 'Equipo Auditor'
+      }));
+
+      // Formatear criterios para evitar [object Object]
+      const criteriosFormateados = ((auditoriaCompleta as any).criterios?.length > 0)
+        ? (auditoriaCompleta as any).criterios.map((c: any) => c.descripcion || c.nombre || c).join('\n')
+        : ((auditoriaCompleta as any).normatividad || planFrescos?.criterios?.map((c: any) => c.descripcion || c.nombre).join('\n') || '');
+
+      const auditoriaParaPdf = {
+        ...auditoriaCompleta,
+        territorial: territorial,
+        rangoFechas: rangoFechas,
+        periodoAuditoria: periodoAuditoria,
+        equipoAuditores: equipoAuditores,
+        criterios: criteriosFormateados,
+        objetivo: auditoriaCompleta.objetivo || auditoriaCompleta.objetivoGeneral || (auditoriaCompleta as any).objetivo_general || '',
+        objetivos: (auditoriaCompleta.objetivos?.length > 0) 
+                   ? auditoriaCompleta.objetivos.map((o: any) => o.descripcion || o.nombre || o)
+                   : (auditoriaCompleta.objetivoGeneral || (auditoriaCompleta as any).objetivo_general || planFrescos?.objetivos?.map((o: any) => o.descripcion || o.nombre) || []),
+        alcance: auditoriaCompleta.alcance || auditoriaCompleta.alcanceAuditoria || (auditoriaCompleta as any).alcance_auditoria || planFrescos?.alcance || '',
+      };
+
       const datos = {
-        auditoria: construirAuditoriaPdfData(),
+        auditoria: auditoriaParaPdf,
         resumen: resumen ? { ...resumen } : null,
         planes: planes,
         hallazgos: hallazgos.map((h: any) => ({
           id: h.id,
           codigo: h.codigo,
           titulo: h.titulo,
-          descripcion: h.descripcion || '',
+          descripcion: h.descripcion || h.condicion || '',
           gravedad: h.gravedad,
           decisionAuditor: h.decisionAuditor,
           estado: h.estado,
+          criterioIncumplido: h.criterioIncumplido || h.criterio || '',
+          causas: Array.isArray(h.causas) ? h.causas : [h.causas].filter(Boolean),
+          efectos: Array.isArray(h.efectos) ? h.efectos : [h.efectos].filter(Boolean),
+          recomendaciones: Array.isArray(h.recomendaciones) ? h.recomendaciones : [h.recomendaciones].filter(Boolean),
         })),
       };
       await exportarPDFInformeEjecutivo(datos);
       toast.success('Informe ejecutivo descargado');
     } catch (e: any) {
       toast.error(e?.message || 'Error al generar el PDF');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -2455,46 +2527,6 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
 
       {/* Botones descarga — Preliminar, Final, Cierre y Ejecutivo se generan por la plataforma */}
       <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200">
-        {docCierre ? (
-          <Button variant="outline" className="border-green-600 text-green-700 hover:bg-green-50" onClick={() => descargarDoc(docCierre)}>
-            <Download className="w-4 h-4 mr-2" />
-            Informe de Cierre
-          </Button>
-        ) : (
-          <>
-            <Button
-              variant="outline"
-              className="border-green-600 text-green-700 hover:bg-green-50"
-              onClick={async () => {
-                try {
-                  const { exportarPDFInformeCierre } = await import('./services/exportarPDFInformeCierreEjecutivo');
-                  const datos = {
-                    auditoria: construirAuditoriaPdfData(),
-                    resumen: resumen ? { ...resumen, leccionesAprendidas: resumen.leccionesAprendidas, recomendacionesFuturasAuditorias: resumen.recomendacionesFuturasAuditorias } : null,
-                    planes: planes,
-                    hallazgos: hallazgos.map((h: any) => ({
-                      id: h.id,
-                      codigo: h.codigo,
-                      titulo: h.titulo,
-                      descripcion: h.descripcion || '',
-                      gravedad: h.gravedad,
-                      decisionAuditor: h.decisionAuditor,
-                      estado: h.estado,
-                      fundamentacionTecnica: h.fundamentacionTecnica,
-                    })),
-                  };
-                  await exportarPDFInformeCierre(datos);
-                  toast.success('Informe de cierre descargado');
-                } catch (e: any) {
-                  toast.error(e?.message || 'Error al generar el PDF');
-                }
-              }}
-            >
-              <FileText className="w-4 h-4 mr-2" />
-              Generar / Descargar Informe de Cierre
-            </Button>
-          </>
-        )}
         {docEjecutivo ? (
           <Button variant="outline" className="border-blue-600 text-blue-700 hover:bg-blue-50" onClick={() => descargarDoc(docEjecutivo)}>
             <Download className="w-4 h-4 mr-2" />

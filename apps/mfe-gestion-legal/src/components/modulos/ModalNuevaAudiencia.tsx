@@ -29,6 +29,8 @@ export function ModalNuevaAudiencia({ isOpen, onClose, expedienteId, onSuccess }
         ubicacion: '',
         linkReunion: '',
         abogadoId: '',
+        abogadoNombre: '',
+        abogadoEmail: '',
         notasPreparacion: ''
     });
 
@@ -73,6 +75,8 @@ export function ModalNuevaAudiencia({ isOpen, onClose, expedienteId, onSuccess }
             await legalService.createAudiencia({
                 expedienteId,
                 abogadoId: formData.abogadoId,
+                abogadoNombre: formData.abogadoNombre,
+                abogadoEmail: formData.abogadoEmail,
                 titulo: formData.titulo,
                 fechaHoraInicio: new Date(formData.fechaHoraInicio).toISOString(),
                 duracionMinutos: parseInt(formData.duracionMinutos),
@@ -178,7 +182,10 @@ export function ModalNuevaAudiencia({ isOpen, onClose, expedienteId, onSuccess }
                             <Label>Abogado Responsable *</Label>
                             <Select
                                 value={formData.abogadoId}
-                                onValueChange={(val) => setFormData({ ...formData, abogadoId: val })}
+                                onValueChange={(val) => {
+                                    const abo = abogados.find((a) => a.id === val);
+                                    setFormData({ ...formData, abogadoId: val, abogadoNombre: abo?.nombreCompleto ?? abo?.nombre ?? '', abogadoEmail: abo?.email ?? '' });
+                                }}
                             >
                                 <SelectTrigger>
                                     <SelectValue placeholder="Seleccione abogado" />

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, GraduationCap, TrendingUp, Users, Award, Sparkles, Home, ArrowLeft, ChevronDown } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Loader2, LogIn, Building2, GraduationCap, TrendingUp, Users, Award, Sparkles, Home, ArrowLeft, ChevronDown, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { authService } from '../../services/api/authService';
@@ -29,6 +29,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
   const autoLoginAttemptedRef = useRef(false);
@@ -56,9 +57,9 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     if (autoLoginAttemptedRef.current) return;
     if (!authService.isAuthenticated()) return;
 
-    const token = localStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    const storedUser = localStorage.getItem(config.STORAGE_KEYS.USER_DATA);
-    if (!token || !storedUser) return;
+    // Token gestionado por cookie HttpOnly (OTIC-001): ya no está en sessionStorage.
+    const storedUser = sessionStorage.getItem(config.STORAGE_KEYS.USER_DATA);
+    if (!storedUser) return;
 
     try {
       const user = JSON.parse(storedUser);
@@ -67,7 +68,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         description: 'Estas conectado como ' + user.username,
         duration: 5000,
       });
-      onLogin(user, token, true);
+      onLogin(user, '', true);
     } catch (error) {
       console.error('Error al auto-iniciar sesión:', error);
     }
@@ -97,29 +98,20 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    console.log('🚀 [1] Starting login process');
-    console.log('🚀 [2] Form data:', { email, password: password ? '***' : '', rememberMe });
-
     if (!validateForm()) {
-      console.log('❌ [3] Form validation failed', errors);
       toast.error('Por favor corrija los errores en el formulario');
       return;
     }
 
-    console.log('✅ [4] Form validation passed');
     setIsLoading(true);
 
     try {
-      console.log('📡 [5] About to call authService.login');
-
       // Llamar a la API de autenticación real
       const response = await authService.login({
         email: email.toLowerCase(),
         password,
         rememberMe,
       });
-
-      console.log('✅ [6] Auth service response received:', response);
 
       // Determinar el tipo de usuario basado en el email para mostrar mensaje personalizado
       const emailLower = email.toLowerCase();
@@ -222,21 +214,24 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         });
       }
 
-      console.log('🔄 [7] Calling onLogin handler with user data');
       // Pasar los datos del usuario autenticado al handler de login
+      setRemainingAttempts(null);
       onLogin(response.user, response.accessToken, rememberMe);
-      console.log('✅ [8] onLogin handler completed');
 
     } catch (error: any) {
-      console.error('❌ Error de autenticación:', error);
       const statusCode =
+        error?.status ??
         error?.statusCode ??
+        error?.response?.status ??
         error?.response?.data?.statusCode ??
-        error?.response?.status;
+        null;
       const errorMessage =
         typeof error?.message === 'string' && error.message.trim()
           ? error.message
           : 'Ocurrió un error inesperado. Intenta nuevamente.';
+      if (![400, 401, 429].includes(statusCode)) {
+        console.error('Error de autenticación:', error);
+      }
 
       // Manejar diferentes tipos de errores
       if (statusCode === 429) {
@@ -245,8 +240,11 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
           duration: 7000,
         });
       } else if (statusCode === 401) {
+        const match = errorMessage.match(/Te (?:queda|quedan) (\d+) intento/);
+        const parsed = match ? parseInt(match[1], 10) : null;
+        if (parsed !== null && parsed <= 3) setRemainingAttempts(parsed);
         toast.error('Credenciales incorrectas', {
-          description: 'El correo electrónico o contraseña son incorrectos.',
+          description: errorMessage,
           duration: 5000,
         });
         setErrors({
@@ -381,6 +379,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                     onChange={(e) => {
                       setEmail(e.target.value);
                       setErrors({ ...errors, email: undefined });
+                      setRemainingAttempts(null);
                     }}
                     placeholder="correo@esap.edu.co"
                     style={{ paddingLeft: '2.75rem' }}
@@ -443,6 +442,21 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
                   >
                     {errors.password}
                   </motion.p>
+                )}
+                {remainingAttempts !== null && remainingAttempts > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-2 p-2.5 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2"
+                  >
+                    <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <p className="text-red-600 text-xs leading-snug">
+                      <span className="font-semibold">
+                        Te {remainingAttempts === 1 ? 'queda' : 'quedan'} {remainingAttempts} intento{remainingAttempts === 1 ? '' : 's'}.
+                      </span>{' '}
+                      Tu cuenta será bloqueada temporalmente por 15 minutos o deberás restablecer tu contraseña.
+                    </p>
+                  </motion.div>
                 )}
               </div>
 

@@ -180,7 +180,6 @@ const TEMPLATE_TEXT_FIELDS: Array<{
   { key: 'issuePlaceDateLabel', label: 'Etiqueta lugar y fecha' },
   { key: 'registryLabel', label: 'Etiqueta registro-folio-libro' },
   { key: 'closingText', label: 'Texto de cierre' },
-  { key: 'signerTitle', label: 'Texto del firmante', rows: 2 },
   { key: 'validationMessage', label: 'Mensaje de validacion', rows: 2 },
 ];
 
@@ -238,6 +237,19 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [templateSignatureForm, setTemplateSignatureForm] = useState(
     DEFAULT_TEMPLATE_SIGNATURE_FORM,
   );
+  const canEditCertificates = authService.hasPermission(
+    Permissions.GRADUATES_CERTIFICATES_EDIT,
+  );
+  const canExportCertificates = authService.hasPermission(
+    Permissions.GRADUATES_CERTIFICATES_EXPORT,
+  );
+  const canResendCertificates = authService.hasPermission(
+    Permissions.GRADUATES_CERTIFICATES_REENVIAR,
+  );
+  const canViewQrValidationHistory = authService.hasPermission(
+    Permissions.GRADUATES_VERIFY_CERTIFICATE,
+  );
+  const canShowCertificateRowActions = canEditCertificates || canResendCertificates;
   const [editCertificateForm, setEditCertificateForm] = useState({
     fullName: '',
     idNumber: '',
@@ -632,7 +644,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const qrCardMinHeight = qrDisplaySize + 60;
 
   useEffect(() => {
-    if (!isQrModalOpen || !qrPreviewCertificate?.id) {
+    if (!isQrModalOpen || !qrPreviewCertificate?.id || !canViewQrValidationHistory) {
       return;
     }
 
@@ -691,9 +703,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, [isQrModalOpen, qrPreviewCertificate?.id]);
+  }, [isQrModalOpen, qrPreviewCertificate?.id, canViewQrValidationHistory]);
 
   const handleOpenEditCertificate = async (cert: CertificateRecord) => {
+    if (!canEditCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Editar Certificados para consultar o editar este certificado.',
+      });
+      return;
+    }
+
     setSelectedCertificate(cert);
     setIsExistingGraduate(false);
     const initialProgram = (cert.graduate.program || '').trim();
@@ -762,6 +781,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
   const handleSaveCertificate = async () => {
     if (!selectedCertificate) return;
+    if (!canEditCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Editar Certificados para guardar cambios.',
+      });
+      return;
+    }
+
     const trimmedFullName = editCertificateForm.fullName.trim();
     const trimmedIdNumber = editCertificateForm.idNumber.trim();
     const trimmedEmail = editCertificateForm.email.trim();
@@ -1019,6 +1045,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   };
 
   const handleOpenTemplateEditor = async () => {
+    if (!canEditCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Editar Certificados para modificar la plantilla.',
+      });
+      return;
+    }
+
     setIsTemplateEditorOpen(true);
     setIsLoadingTemplateConfig(true);
 
@@ -1066,6 +1099,10 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
         toast.error('El nombre del firmante es obligatorio');
         return;
       }
+      if (!templateForm.signerTitle.trim()) {
+        toast.error('El cargo del firmante es obligatorio');
+        return;
+      }
       if (
         !templateSignatureForm.signatureImageDataUrl &&
         !templateSignatureForm.signatureUrl
@@ -1077,8 +1114,14 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
     setIsSavingTemplateConfig(true);
     try {
-      const response = await graduadosService.plantilla.actualizarTextos({
+      const nextTemplateForm = {
         ...templateForm,
+        signerTitle: templateSignatureForm.enabled
+          ? templateForm.signerTitle.trim()
+          : DEFAULT_CERTIFICATE_TEMPLATE_TEXTS.signerTitle,
+      };
+      const response = await graduadosService.plantilla.actualizarTextos({
+        ...nextTemplateForm,
         electronicSignatureEnabled: templateSignatureForm.enabled,
         signerName: templateSignatureForm.enabled
           ? templateSignatureForm.signerName.trim()
@@ -1365,6 +1408,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   };
 
   const handleResendCertificate = async (cert: CertificateRecord) => {
+    if (!canResendCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Reenviar Certificados para ejecutar esta accion.',
+      });
+      return;
+    }
+
     if (resendingCertificateId === cert.id) {
       return;
     }
@@ -1472,8 +1522,26 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   };
+
+  const handleOpenExportModal = () => {
+    if (!canExportCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Exportar Certificados para descargar esta informacion.',
+      });
+      return;
+    }
+
+    setIsExportModalOpen(true);
+  };
   
   const handleExportCertificates = () => {
+    if (!canExportCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Exportar Certificados para descargar esta informacion.',
+      });
+      return;
+    }
+
     if (!filteredCertificates.length) {
       toast.info('No hay registros para exportar');
       return;
@@ -1749,7 +1817,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       </motion.div>
 
       <div className="flex justify-end gap-3 flex-wrap">
-        {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EDIT) && (
+        {canEditCertificates && (
           <button
             onClick={() => void handleOpenTemplateEditor()}
             className="inline-flex items-center justify-center gap-2 transition-all"
@@ -1777,9 +1845,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           </button>
         )}
 
-        {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EXPORT) && (
+        {canExportCertificates && (
           <button
-            onClick={() => setIsExportModalOpen(true)}
+            onClick={handleOpenExportModal}
             className="inline-flex items-center justify-center gap-2 transition-all"
             style={{
               background: '#FFFFFF',
@@ -2137,6 +2205,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         <Eye className="w-4 h-4" />
                       </button>
 
+                      {canShowCertificateRowActions && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
@@ -2156,13 +2225,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EDIT) && (
+                          {canEditCertificates && (
                           <DropdownMenuItem onClick={() => handleOpenEditCertificate(cert)}>
                             <Eye className="w-4 h-4 mr-2" />
                             Ver certificado
                           </DropdownMenuItem>
                           )}
-                          {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_REENVIAR) && (
+                          {canResendCertificates && (
                           <DropdownMenuItem
                             onClick={() => handleResendCertificate(cert)}
                             disabled={resendingCertificateId === cert.id}
@@ -2177,6 +2246,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           )}
                         </DropdownMenuContent>
                       </DropdownMenu>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2423,11 +2493,27 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               Historial Completo de Escaneos
                             </h4>
                             <Badge className="bg-gray-100 text-gray-700 border-gray-200 border text-xs">
-                              {cert.scanHistory.length} registros
+                              {canViewQrValidationHistory
+                                ? `${cert.scanHistory.length} registros`
+                                : 'Permiso requerido'}
                             </Badge>
                           </div>
                           
-                          {cert.scanHistory.length === 0 ? (
+                          {!canViewQrValidationHistory ? (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                              <div className="flex items-start gap-2">
+                                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+                                <div>
+                                  <p className="text-sm font-semibold text-amber-900">
+                                    Necesitas permiso para ver este historial de verificaciones.
+                                  </p>
+                                  <p className="mt-1 text-xs text-amber-800">
+                                    Activa el permiso Verificar Certificado para consultar los escaneos QR registrados.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ) : cert.scanHistory.length === 0 ? (
                             <div className="text-center py-6">
                               <Monitor className="w-10 h-10 mx-auto mb-2 text-gray-300" />
                               <p className="text-sm text-gray-500">No hay escaneos registrados</p>
@@ -2869,12 +2955,20 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         <Checkbox
                           id="template-electronic-signature"
                           checked={templateSignatureForm.enabled}
-                          onCheckedChange={(checked) =>
+                          onCheckedChange={(checked) => {
+                            const enabled = checked === true;
                             setTemplateSignatureForm((prev) => ({
                               ...prev,
-                              enabled: checked === true,
-                            }))
-                          }
+                              enabled,
+                            }));
+                            if (!enabled) {
+                              setTemplateForm((prev) => ({
+                                ...prev,
+                                signerTitle:
+                                  DEFAULT_CERTIFICATE_TEMPLATE_TEXTS.signerTitle,
+                              }));
+                            }
+                          }}
                           disabled={isSavingTemplateConfig}
                         />
                         <div className="min-w-0 flex-1">
@@ -2885,7 +2979,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                             Incluir firma electronica
                           </Label>
                           <p className="mt-1 text-xs text-gray-500">
-                            La firma se aplicara a los certificados generados despues de guardar esta plantilla.
+                            La firma se aplicara a los certificados generados despues de guardar esta plantilla. Requiere nombre, imagen y cargo.
                           </p>
                         </div>
                       </div>
@@ -2894,7 +2988,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         <div className="grid grid-cols-1 gap-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
                           <div className="space-y-2">
                             <Label htmlFor="template-signer-name">
-                              Nombre del firmante
+                              Nombre del firmante *
                             </Label>
                             <Input
                               id="template-signer-name"
@@ -2911,7 +3005,26 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           </div>
 
                           <div className="space-y-2">
-                            <Label>Imagen de la firma</Label>
+                            <Label htmlFor="template-signer-title">
+                              Cargo o titulo del firmante *
+                            </Label>
+                            <Input
+                              id="template-signer-title"
+                              value={templateForm.signerTitle}
+                              onChange={(event) =>
+                                handleTemplateTextChange(
+                                  'signerTitle',
+                                  event.target.value,
+                                )
+                              }
+                              placeholder="Ej: Administrador jefe Registro academico"
+                              maxLength={255}
+                              disabled={isSavingTemplateConfig}
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Imagen de la firma *</Label>
                             <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-blue-200 bg-white px-4 py-5 text-center transition-colors hover:border-blue-400">
                               <input
                                 type="file"
@@ -3062,7 +3175,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                                   {templateSignatureForm.signerName || 'Nombre del firmante'}
                                 </p>
                                 <p className="text-[15px] font-semibold leading-5 text-gray-900">
-                                  Director(a) de Direccion Tecnica Registro y Control
+                                  {templateForm.signerTitle || 'Cargo o titulo del firmante'}
                                 </p>
                               </div>
                             ) : (
@@ -3215,8 +3328,8 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
       {/* Modal: Ver Código QR Único */}
       <Dialog open={isQrModalOpen} onOpenChange={setIsQrModalOpen}>
-        <DialogContent className="w-[calc(100vw-1rem)] sm:w-[92vw] max-w-2xl max-h-[calc(100vh-1rem)] sm:max-h-[90vh] overflow-hidden top-2 sm:top-1/2 sm:-translate-y-1/2 grid-rows-[auto,minmax(0,1fr),auto] p-3 sm:p-6">
-          <DialogHeader>
+        <DialogContent className="w-[calc(100vw-1rem)] sm:w-[92vw] max-w-2xl max-h-[calc(100vh-1rem)] sm:max-h-[90vh] overflow-hidden top-2 sm:top-1/2 sm:-translate-y-1/2 flex flex-col gap-0 p-0">
+          <DialogHeader className="flex-shrink-0 px-4 pt-4 pb-3 sm:px-6 sm:pt-6 sm:pb-4 border-b border-gray-200">
             <DialogTitle className="flex items-center gap-2 pr-8 text-base leading-snug sm:text-lg">
               <QrCode className="w-5 h-5 text-amber-600" />
               Código QR Único - Validación Pública
@@ -3226,7 +3339,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             </DialogDescription>
           </DialogHeader>
 
-          <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain pr-1 py-2 sm:py-4">
+          <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overscroll-contain px-4 sm:px-6 py-3 sm:py-5">
             {/* QR Placeholder + Estado */}
             <div className={`${qrPreviewCertificate?.status === 'active' ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'} border-2 rounded-xl p-4 sm:p-6`}>
               <div className="flex flex-col items-center text-center">
@@ -3341,7 +3454,18 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             </div>
 
             {/* Historial de Validaciones (Escaneos del QR) */}
-            {qrPreviewCertificate && qrPreviewCertificate.scanHistory.length > 0 && (
+            {qrPreviewCertificate && !canViewQrValidationHistory && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-amber-900 mb-2 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  Historial de Validaciones
+                </h4>
+                <p className="text-xs text-amber-800">
+                  Necesitas permiso para ver este historial de verificaciones.
+                </p>
+              </div>
+            )}
+            {qrPreviewCertificate && canViewQrValidationHistory && qrPreviewCertificate.scanHistory.length > 0 && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
                   <History className="w-4 h-4 text-green-600" />
@@ -3458,7 +3582,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-shrink-0 px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-200 bg-gray-50">
             <button
               onClick={() => setIsQrModalOpen(false)}
               className="px-4 py-2 text-sm font-medium rounded-lg border-2"
