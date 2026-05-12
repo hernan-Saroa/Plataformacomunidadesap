@@ -17,6 +17,11 @@ import {
   TechnicalBonusAssignment,
   type TechnicalBonusCategory,
 } from './technical-bonus-assignment.entity';
+import {
+  TechnicalBonusTemplate,
+  DEFAULT_TECHNICAL_BONUS_TEMPLATES,
+  type TechnicalBonusTemplateCategory,
+} from './technical-bonus-template.entity';
 
 type TemplateType = 'docente' | 'administrador';
 
@@ -1339,6 +1344,8 @@ export class CertificatesService {
     private validationRepo: Repository<CertificateValidation>,
     @InjectRepository(TechnicalBonusAssignment)
     private technicalBonusRepo: Repository<TechnicalBonusAssignment>,
+    @InjectRepository(TechnicalBonusTemplate)
+    private technicalBonusTemplateRepo: Repository<TechnicalBonusTemplate>,
     private certificateGenerator: CertificateGeneratorService,
     private laborPdfService: LaborCertificatePdfService,
     private templateConfigService: TemplateConfigService,
@@ -1495,6 +1502,17 @@ export class CertificatesService {
         )
       : false;
 
+    let technicalBonusTemplate: string | undefined;
+    if (includeTechnicalBonus) {
+      const snapshotTemplate = (certificate as Certificate & {
+        template_snapshot?: any;
+      }).template_snapshot?.technicalBonusTemplate;
+      if (snapshotTemplate) {
+        technicalBonusTemplate = snapshotTemplate;
+      }
+      // Sin snapshot (certificados anteriores): el PDF service usa el texto hardcoded
+    }
+
     const attachment = await this.laborPdfService.generateCertificatePdf(
       certificate,
       {
@@ -1502,6 +1520,7 @@ export class CertificatesService {
         includeTechnicalBonus,
         templateType: options.templateType,
         publicBaseUrl: options.publicBaseUrl,
+        technicalBonusTemplate,
       },
     );
 
@@ -2062,6 +2081,71 @@ export class CertificatesService {
   }
 
   // ============================================
+  // TECHNICAL BONUS TEMPLATES
+  // ============================================
+
+  private parseTechnicalBonusTemplateCategory(
+    raw: string,
+  ): TechnicalBonusTemplateCategory {
+    const normalized = String(raw || '').trim().toUpperCase();
+    if (normalized === 'DIRECTIVOS' || normalized === 'COORDINADORES') {
+      return normalized as TechnicalBonusTemplateCategory;
+    }
+    throw new BadRequestException(
+      'Categoria invalida. Debe ser DIRECTIVOS o COORDINADORES.',
+    );
+  }
+
+  async getTechnicalBonusTemplate(categoryRaw: string) {
+    const category = this.parseTechnicalBonusTemplateCategory(categoryRaw);
+    const record = await this.technicalBonusTemplateRepo.findOne({
+      where: { category },
+    });
+    const templateText = record?.template_text ?? DEFAULT_TECHNICAL_BONUS_TEMPLATES[category];
+    return {
+      category,
+      template_text: templateText,
+      updated_at: record?.updated_at ?? null,
+      updated_by: record?.updated_by ?? null,
+    };
+  }
+
+  async updateTechnicalBonusTemplate(
+    categoryRaw: string,
+    templateText: string,
+    updatedBy?: string,
+  ) {
+    const category = this.parseTechnicalBonusTemplateCategory(categoryRaw);
+    const raw = String(templateText || '').trim();
+    if (!raw) {
+      throw new BadRequestException('El texto de la plantilla no puede estar vacío.');
+    }
+
+    let record = await this.technicalBonusTemplateRepo.findOne({
+      where: { category },
+    });
+
+    if (!record) {
+      record = this.technicalBonusTemplateRepo.create({
+        category,
+        template_text: raw,
+        updated_by: updatedBy || null,
+      });
+    } else {
+      record.template_text = raw;
+      record.updated_by = updatedBy || null;
+    }
+
+    const saved = await this.technicalBonusTemplateRepo.save(record);
+    return {
+      category: saved.category,
+      template_text: saved.template_text,
+      updated_at: saved.updated_at,
+      updated_by: saved.updated_by,
+    };
+  }
+
+  // ============================================
   // CERTIFICATES
   // ============================================
 
@@ -2358,6 +2442,18 @@ export class CertificatesService {
       throw new BadRequestException(
         'No tienes Prima Tecnica registrada en este momento. No es posible incluirla en el certificado.',
       );
+    }
+
+    if (includeTechnicalBonus && technicalBonus.category) {
+      try {
+        const tplRecord = await this.getTechnicalBonusTemplate(technicalBonus.category);
+        templateSnapshot = {
+          ...(templateSnapshot || {}),
+          technicalBonusTemplate: tplRecord.template_text,
+        };
+      } catch {
+        // Si falla, el PDF service usa el texto hardcoded como fallback
+      }
     }
 
     const certificate = this.certificateRepo.create({

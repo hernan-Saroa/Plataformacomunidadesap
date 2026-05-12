@@ -104,6 +104,7 @@ export function VisorPDFCertificado({
   const previewWrapRef = useRef<HTMLDivElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [plantillaConfig, setPlantillaConfig] = useState<any>(null);
+  const [templatePrimaTecnica, setTemplatePrimaTecnica] = useState<string | null>(null);
   const [templateType, setTemplateType] = useState<'docente' | 'administrador'>('docente');
   const [autoActionHandled, setAutoActionHandled] = useState(false);
   const [previewScale, setPreviewScale] = useState(() => {
@@ -198,6 +199,13 @@ export function VisorPDFCertificado({
         const snapshot = obtenerSnapshotPlantilla();
         const tipoDetectado = resolverTipoPlantilla();
         setTemplateType(tipoDetectado);
+
+        const snapshotTemplate =
+          (certificado as any)?.templateSnapshot?.technicalBonusTemplate ||
+          (certificado as any)?.template_snapshot?.technicalBonusTemplate ||
+          null;
+        setTemplatePrimaTecnica(snapshotTemplate);
+
         if (snapshot) {
           setPlantillaConfig(snapshot);
           return;
@@ -913,9 +921,17 @@ export function VisorPDFCertificado({
       (certificado as any).request?.technicalBonusCategory,
   );
   const conceptoPrimaTecnica = obtenerConceptoPrimaTecnica(categoriaPrimaTecnica);
-  const primaTecnicaParrafo = incluirPrimaTecnica && primaTecnicaParaMostrar > 0
-    ? `<p>Percibe una ${conceptoPrimaTecnica} en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignación básica mensual de ${primaTecnicaEnLetras} ($${formatearMonto(primaTecnicaParaMostrar)}) pesos m/cte.</p>`
-    : '';
+  const primaTecnicaParrafo = (() => {
+    if (!incluirPrimaTecnica || primaTecnicaParaMostrar <= 0) return '';
+    if (templatePrimaTecnica) {
+      const rendered = templatePrimaTecnica
+        .replace(/\{porcentaje\}/g, porcentajePrimaTexto)
+        .replace(/\{valor_letras\}/g, primaTecnicaEnLetras)
+        .replace(/\{valor_numerico\}/g, formatearMonto(primaTecnicaParaMostrar));
+      return `<p>${rendered}</p>`;
+    }
+    return `<p>Percibe una ${conceptoPrimaTecnica} en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignación básica mensual de ${primaTecnicaEnLetras} ($${formatearMonto(primaTecnicaParaMostrar)}) pesos m/cte.</p>`;
+  })();
 
   const qrToken =
     certificado.qrCode ||

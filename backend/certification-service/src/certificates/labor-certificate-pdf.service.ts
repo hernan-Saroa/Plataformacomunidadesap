@@ -14,6 +14,7 @@ type PdfOptions = {
   includeTechnicalBonus?: boolean;
   templateType?: TemplateType;
   publicBaseUrl?: string;
+  technicalBonusTemplate?: string;
 };
 
 @Injectable()
@@ -107,6 +108,7 @@ export class LaborCertificatePdfService {
       includeSalary,
       includeTechnicalBonus,
       templateHtml: config?.certificateContentHtml || '',
+      technicalBonusTemplate: options.technicalBonusTemplate,
     });
 
     const verificationCode =
@@ -457,8 +459,9 @@ export class LaborCertificatePdfService {
     includeSalary: boolean;
     includeTechnicalBonus: boolean;
     templateHtml: string;
+    technicalBonusTemplate?: string;
   }): string {
-    const { certificate, templateType, includeSalary, includeTechnicalBonus, templateHtml } = params;
+    const { certificate, templateType, includeSalary, includeTechnicalBonus, templateHtml, technicalBonusTemplate } = params;
 
     const certificateExtras = certificate as Certificate & {
       cod_cargo?: string;
@@ -629,6 +632,7 @@ export class LaborCertificatePdfService {
           bonusBase,
           bonusPercentage,
           bonusCategory,
+          technicalBonusTemplate,
         );
       }
     }
@@ -753,14 +757,22 @@ export class LaborCertificatePdfService {
     bonusValue: number,
     bonusPercentage: number,
     bonusCategory?: string | null,
+    customTemplate?: string,
   ): string {
     const bonusValueText = this.numeroALetras(bonusValue);
-    const bonusConcept = this.resolveTechnicalBonusConcept(bonusCategory);
-    const bonusText = `<p>Percibe una ${bonusConcept} en un porcentaje igual al (${this.formatPercentage(
-      bonusPercentage,
-    )}%) sobre la asignación básica mensual de ${bonusValueText} ($${this.formatMoney(
-      bonusValue,
-    )}) pesos m/cte.</p>`;
+    const formattedPercentage = this.formatPercentage(bonusPercentage);
+    const formattedMoney = this.formatMoney(bonusValue);
+    let bonusText: string;
+    if (customTemplate) {
+      const rendered = customTemplate
+        .replace(/\{porcentaje\}/g, formattedPercentage)
+        .replace(/\{valor_letras\}/g, bonusValueText)
+        .replace(/\{valor_numerico\}/g, formattedMoney);
+      bonusText = `<p>${rendered}</p>`;
+    } else {
+      const bonusConcept = this.resolveTechnicalBonusConcept(bonusCategory);
+      bonusText = `<p>Percibe una ${bonusConcept} en un porcentaje igual al (${formattedPercentage}%) sobre la asignación básica mensual de ${bonusValueText} ($${formattedMoney}) pesos m/cte.</p>`;
+    }
 
     const expideRegex = /<(p|div|li)[^>]*>[\s\S]*?se expide[\s\S]*?<\/\1>/i;
     const bonusRegex = /<(p|div|li)[^>]*>[\s\S]*?prima\s+(?:t(?:e|\u00e9)cnica|de\s+coordinaci(?:o|\u00f3)n|coordinaci(?:o|\u00f3)n)[\s\S]*?<\/\1>/gi;
