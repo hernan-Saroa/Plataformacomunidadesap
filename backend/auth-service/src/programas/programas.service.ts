@@ -119,4 +119,11 @@ export class ProgramasService {
     const programa = await this.obtenerPrograma(id);
     await this.programaRepo.remove(programa);
   }
+
+  async obtenerAsignaturasPrograma(programaId: string) {
+    return await this.asignaturaRepo.find({
+      where: { programaId },
+      order: { semestre: 'ASC', nombre: 'ASC' }
+    });
+  }
 }

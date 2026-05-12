@@ -31,4 +31,9 @@ export class ProgramasController {
   eliminar(@Param('id') id: string) {
     return this.programasService.eliminarPrograma(id);
   }
+
+  @Get(':id/asignaturas')
+  obtenerAsignaturasPrograma(@Param('id') id: string) {
+    return this.programasService.obtenerAsignaturasPrograma(id);
+  }
 }
