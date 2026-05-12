@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { controlInternoService } from '../../../services/api/controlInternoService';
+import { notificationsService } from '../../../services/api/notificationsService';
 import { HeaderSeccionConfig } from './HeaderSeccionConfig';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -354,13 +355,13 @@ export function NotificacionesModule() {
     return 'admin';
   }, []);
 
-  // ✅ Cargar configuración desde el backend
+  // ✅ Cargar configuración desde el backend (Global para el módulo)
   const cargarConfiguracion = useCallback(async () => {
     setCargando(true);
     setError(null);
     try {
-      const usuarioId = getUsuarioId();
-      console.log('[NotificacionesModule] Cargando configuración para usuario:', usuarioId);
+      const usuarioId = 'GLOBAL_CONFIG';
+      console.log('[NotificacionesModule] Guardando configuración GLOBAL...');
       
       // Cargar preferencias de notificación
       const preferencias = await controlInternoService.getPreferenciasNotificacion(usuarioId);
@@ -369,30 +370,46 @@ export function NotificacionesModule() {
       // Mapear preferencias del backend a eventos del frontend
       if (preferencias?.tiposNotificacion) {
         const tiposBackend = preferencias.tiposNotificacion;
-        
-        // ✅ Crear nuevos eventos actualizados directamente desde el MOCK
-        const eventosActualizados = EVENTOS_NOTIFICABLES_MOCK.map(evento => {
-          const configBackend = tiposBackend[evento.id];
-          if (configBackend) {
-            const nuevoCanal = (configBackend.email && configBackend.sistema) ? 'ambos' as const : 
-                              configBackend.email ? 'email' as const : 'sistema' as const;
-            console.log(`[NotificacionesModule] Aplicando config backend para ${evento.id}: activo=${configBackend.activo}, canal=${nuevoCanal}`);
-            return {
-              ...evento,
+        const eventosBase = [...EVENTOS_NOTIFICABLES_MOCK];
+        const eventosFinales: EventoNotificable[] = [];
+
+        Object.keys(tiposBackend).forEach(id => {
+          const configBackend = tiposBackend[id];
+          const nuevoCanal = (configBackend.email && configBackend.sistema) ? 'ambos' as const : 
+                            configBackend.email ? 'email' as const : 'sistema' as const;
+
+          const eventoMock = eventosBase.find(e => e.id === id);
+          if (eventoMock) {
+            // Regla por defecto, actualizamos con datos del backend
+            eventosFinales.push({
+              ...eventoMock,
               activo: configBackend.activo === true || configBackend.activo === 'true',
-              canal: nuevoCanal
-            };
+              canal: nuevoCanal,
+              destinatarios: configBackend.roles && configBackend.roles.length > 0 ? configBackend.roles : eventoMock.destinatarios
+            });
+            const idx = eventosBase.findIndex(e => e.id === id);
+            if (idx > -1) eventosBase.splice(idx, 1);
+          } else {
+            // Regla personalizada recuperada de la base de datos
+            eventosFinales.push({
+              id: id,
+              categoria: configBackend.categoria || 'Personalizada',
+              nombre: configBackend.nombre || 'Notificación Personalizada',
+              descripcion: configBackend.descripcion || '',
+              activo: configBackend.activo === true || configBackend.activo === 'true',
+              canal: nuevoCanal,
+              destinatarios: configBackend.roles || [],
+              esPersonalizada: true
+            });
           }
-          console.log(`[NotificacionesModule] Sin config backend para ${evento.id}, usando default`);
-          return evento;
         });
-        
-        console.log('[NotificacionesModule] Eventos actualizados:', 
-          eventosActualizados.map(e => ({ id: e.id, activo: e.activo, canal: e.canal }))
-        );
-        
-        // Actualizar estado con los nuevos eventos
-        setEventos(eventosActualizados);
+
+        // Agregar los del mock que aún no han sido guardados en backend
+        eventosBase.forEach(evento => {
+          eventosFinales.push(evento);
+        });
+
+        setEventos(eventosFinales);
       }
 
       // Cargar historial de notificaciones (TODAS las del sistema para visibilidad completa)
@@ -449,19 +466,27 @@ export function NotificacionesModule() {
   const guardarConfiguracionBackend = useCallback(async (eventosActualizados: EventoNotificable[]) => {
     setGuardando(true);
     try {
-      const usuarioId = getUsuarioId();
+      const usuarioId = 'GLOBAL_CONFIG';
+      console.log('[NotificacionesModule] Guardando configuración GLOBAL...');
       
       // Convertir eventos a formato de preferencias del backend
-      const tiposNotificacion: Record<string, { email: boolean; sistema: boolean; activo: boolean }> = {};
+      const tiposNotificacion: Record<string, any> = {};
       eventosActualizados.forEach(evento => {
         tiposNotificacion[evento.id] = {
           email: evento.canal === 'email' || evento.canal === 'ambos',
           sistema: evento.canal === 'sistema' || evento.canal === 'ambos',
-          activo: evento.activo
+          activo: evento.activo,
+          roles: evento.destinatarios, // Guardar roles
+          nombre: evento.nombre, // Guardar metadatos para recuperarlos después
+          titulo: evento.nombre, // Para el trigger del backend
+          descripcion: evento.descripcion,
+          mensaje: evento.descripcion, // Para el trigger del backend
+          categoria: evento.categoria,
+          esPersonalizada: evento.esPersonalizada || false
         };
       });
 
-      await controlInternoService.updatePreferenciasNotificacion(usuarioId, {
+      await controlInternoService.updatePreferenciasNotificacion('GLOBAL_CONFIG', {
         tiposNotificacion,
         recibirEmail: eventosActualizados.some(e => e.activo && (e.canal === 'email' || e.canal === 'ambos')),
         recibirSistema: eventosActualizados.some(e => e.activo && (e.canal === 'sistema' || e.canal === 'ambos'))
@@ -753,6 +778,7 @@ export function NotificacionesModule() {
           <TabHistorial
             key="historial"
             historial={historial}
+            eventos={eventos}
             onEjecutarJob={handleEjecutarJob}
             onRecargar={cargarConfiguracion}
           />
@@ -1011,11 +1037,12 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
 
 interface TabHistorialProps {
   historial: NotificacionEnviada[];
+  eventos: EventoNotificable[];
   onEjecutarJob: () => void;
   onRecargar: () => void;
 }
 
-function TabHistorial({ historial, onEjecutarJob, onRecargar }: TabHistorialProps) {
+function TabHistorial({ historial, eventos, onEjecutarJob, onRecargar }: TabHistorialProps) {
   const [ejecutandoJob, setEjecutandoJob] = useState(false);
 
   const handleEjecutar = async () => {
@@ -1070,7 +1097,9 @@ function TabHistorial({ historial, onEjecutarJob, onRecargar }: TabHistorialProp
         </div>
       </div>
 
-      {historial.map((notif) => (
+      {historial.map((notif) => {
+        const eventoBase = eventos.find(e => e.id === notif.eventoId);
+        return (
         <div
           key={notif.id}
           className={`bg-white rounded-xl border-2 p-4 hover:shadow-md transition-all ${
@@ -1128,11 +1157,16 @@ function TabHistorial({ historial, onEjecutarJob, onRecargar }: TabHistorialProp
                     Leída
                   </span>
                 )}
+                <span className="flex items-center gap-1 bg-gray-100 text-gray-700 px-2 py-1 rounded font-mono text-[10px] border border-gray-200 uppercase">
+                  <Settings className="w-3 h-3" />
+                  {eventoBase ? `${notif.eventoId} (${eventoBase.categoria})` : notif.eventoId}
+                </span>
               </div>
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {historial.length === 0 && (
         <div className="bg-white rounded-xl border-2 border-gray-200 p-12 text-center">
@@ -1240,6 +1274,22 @@ function ModalEditarEvento({ evento, onGuardar, onCerrar }: ModalEditarEventoPro
             {/* Nombre y Descripción (solo para nuevas) */}
             {evento.esPersonalizada && (
               <>
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-2">
+                    Identificador Único (ID) <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.id}
+                    onChange={(e) => setForm({ ...form, id: e.target.value.replace(/\s+/g, '-').toUpperCase() })}
+                    placeholder="Ej: EVT-CUSTOM-001"
+                    disabled={evento.nombre !== ''}
+                    className={`w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-mono text-sm ${evento.nombre !== '' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Identificador usado en el historial y campanita para reconocer la regla.</p>
+                </div>
+                
                 <div>
                   <label className="block text-sm font-bold text-gray-900 mb-2">
                     Nombre de la Notificación <span className="text-red-600">*</span>

@@ -230,5 +230,20 @@ export class NotificacionesController {
       };
     }
   }
+
+  /**
+   * POST /notificaciones/disparar-evento
+   * Dispara un evento de notificación que resuelve destinatarios y canales en el backend
+   */
+  @Post('disparar-evento')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  @HttpCode(HttpStatus.OK)
+  async dispararEvento(@Body() body: { 
+    eventoCode: string;
+    context: any;
+  }) {
+    return this.notificacionesService.dispararEvento(body.eventoCode, body.context);
+  }
 }
 

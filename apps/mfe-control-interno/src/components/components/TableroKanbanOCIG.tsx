@@ -19,6 +19,8 @@ import { type EstadoKanban } from '../utils/esapThemeOCI';
 import { ESAP_CLASSES } from '../utils/esapThemeOCI';
 import { toast } from 'sonner';
 import { useConfiguracionKanban } from '../services/useConfiguracionKanban';
+import { notificationsService } from '../../services/api/notificationsService';
+import { controlInternoService } from '../../services/api/controlInternoService';
 
 // ═════════════════════════════════════════════════════════════════════════
 // DATOS DE EJEMPLO
@@ -189,7 +191,10 @@ export function TableroKanbanOCI() {
     console.log('📥 Exportar:', { formato, totalAuditorias });
   };
 
-  const handleDrop = (auditoriaId: string, nuevoEstado: EstadoKanban) => {
+  const handleDrop = async (auditoriaId: string, nuevoEstado: EstadoKanban) => {
+    // 1. Encontrar la auditoría antes de actualizar para tener sus datos
+    const auditoriaMovida = auditorias.find(a => a.id === auditoriaId);
+    
     setAuditorias((prev) =>
       prev.map((aud) =>
         aud.id === auditoriaId ? { ...aud, estado: nuevoEstado } : aud
@@ -202,6 +207,23 @@ export function TableroKanbanOCI() {
     });
 
     console.log('🔄 Auditoría movida:', { auditoriaId, nuevoEstado });
+
+    // 🚀 DISPARAR EVENTO AL BACKEND (El backend resuelve destinatarios y canales)
+    try {
+      if (auditoriaMovida) {
+        await notificationsService.triggerEvent('EVT-KANBAN-001', {
+          auditoriaId: auditoriaId,
+          auditoriaCodigo: auditoriaMovida.codigo,
+          nuevoEstado: nuevoEstado,
+          tituloCustom: 'Auditoría Movida',
+          mensajeCustom: `La auditoría ${auditoriaMovida.codigo} ha sido movida a la etapa: ${nuevoEstado}.`,
+          url_accion: `/control-interno/auditorias/${auditoriaId}`,
+        });
+        console.log(`✅ Evento KANBAN_MOVE disparado al backend.`);
+      }
+    } catch (err) {
+      console.error('❌ Error al disparar evento al Shell:', err);
+    }
   };
 
   return (
