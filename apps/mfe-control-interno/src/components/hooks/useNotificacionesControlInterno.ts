@@ -90,7 +90,9 @@ export function useNotificacionesControlInterno() {
       // sin importar si es super admin o no. Cada usuario solo debe ver sus propias notificaciones.
       // Consultar notificaciones del backend usando el UUID del usuario
       // El backend se encargará de convertir UUID a id_tercero
+      console.log('[useNotificacionesControlInterno] Consultando para:', currentUsuarioId);
       const response = await controlInternoApi.notificaciones.obtenerPorUsuario(currentUsuarioId);
+      console.log('[useNotificacionesControlInterno] Respuesta:', response);
       
       if (response.success && response.data) {
         setNotificaciones(response.data);

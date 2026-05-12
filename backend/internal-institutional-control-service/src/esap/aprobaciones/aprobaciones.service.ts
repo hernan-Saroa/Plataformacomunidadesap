@@ -30,33 +30,7 @@ export class AprobacionesService {
     return `APR-${prefijo}-${año}-${String(count + 1).padStart(5, '0')}`;
   }
 
-  /**
-   * Obtiene los UUIDs (id_user) de usuarios con rol Jefe de Control Interno.
-   * Busca por múltiples variantes del código de rol para mayor compatibilidad.
-   */
-  private async obtenerJefesControlInterno(): Promise<string[]> {
-    try {
-      const result = await this.dataSource.query(`
-        SELECT DISTINCT u.id_user
-        FROM auth."user" u
-        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
-        INNER JOIN auth.role r ON r.id = ur.id_rol
-        WHERE UPPER(r.code) IN (
-          'JEFE_CONTROL_INTERNO',
-          'JEFE_OCI',
-          'JEFE_OCIG',
-          'CONTROL_INTERNO_JEFE',
-          'OCI_JEFE'
-        )
-          AND (ur.is_active = true OR ur.is_active IS NULL)
-          AND u.is_active = true
-      `);
-      return result.map((row: any) => String(row.id_user)).filter(Boolean);
-    } catch (error) {
-      console.error('[AprobacionesService.obtenerJefesControlInterno] Error:', error);
-      return [];
-    }
-  }
+
 
   /**
    * Crear una nueva solicitud de aprobación
@@ -96,25 +70,18 @@ export class AprobacionesService {
 
     const saved = await this.aprobacionRepository.save(aprobacion);
 
-    // Notificar a los Jefes OCI sobre la nueva solicitud de aprobación
+    // ✅ SINCRONIZACIÓN CON CONFIGURACIÓN: Notificar solicitud (EVT-APR-REQUESTED)
     try {
-      const jefesOCI = await this.obtenerJefesControlInterno();
-      for (const jefeId of jefesOCI) {
-        await this.notificacionesService.create({
-          usuarioId: jefeId,
-          tipoNotificacion: TipoNotificacion.OTRO,
-          titulo: `Nueva solicitud de aprobación: ${saved.titulo}`,
-          mensaje: `${createAprobacionDto.solicitante || 'Un usuario'} ha enviado una solicitud de aprobación "${saved.titulo}" (${saved.codigo}). Tipo: ${saved.tipo}.`,
-          prioridad: prioridad === AprobacionPrioridad.ALTA ? PrioridadNotificacion.ALTA : PrioridadNotificacion.NORMAL,
-          canal: CanalNotificacion.AMBOS,
-          metadata: {
-            aprobacionId: saved.id,
-            aprobacionCodigo: saved.codigo,
-            tipo: saved.tipo,
-          },
-          accionUrl: `/control-interno/aprobaciones/${saved.id}`,
-        });
-      }
+      await this.notificacionesService.dispararEvento('EVT-APR-REQUESTED', {
+        tituloCustom: `Nueva solicitud de aprobación: ${saved.titulo}`,
+        mensajeCustom: `${createAprobacionDto.solicitante || 'Un usuario'} ha enviado una solicitud de aprobación "${saved.titulo}" (${saved.codigo}). Tipo: ${saved.tipo}.`,
+        metadata: {
+          aprobacionId: saved.id,
+          aprobacionCodigo: saved.codigo,
+          tipo: saved.tipo,
+        },
+        url_accion: `/control-interno/aprobaciones/${saved.id}`,
+      });
     } catch (notifError) {
       console.error('[AprobacionesService.create] Error al enviar notificaciones:', notifError);
     }
@@ -211,48 +178,21 @@ export class AprobacionesService {
       }
     }
 
-    // ✅ SINCRONIZACIÓN CON CONFIGURACIÓN: Obtener roles destinatarios
-    let rolesDestinatarios = ['Auditor Líder', 'Jefe OCIG']; // Fallback
+    // ✅ SINCRONIZACIÓN CON CONFIGURACIÓN: Notificar aprobación (EVT-APR-001)
     try {
-      const configGlobal = await this.notificacionesService.getGlobalConfig();
-      if (configGlobal && configGlobal.tiposNotificacion && configGlobal.tiposNotificacion['EVT-APR-001']) {
-        const configEvento = configGlobal.tiposNotificacion['EVT-APR-001'] as any;
-        rolesDestinatarios = configEvento.destinatarios || rolesDestinatarios;
-      }
-    } catch (e) {}
-
-    const usuariosNotificar = new Set<string>();
-    
-    // 1. Si los roles incluyen "Jefe OCIG"
-    if (rolesDestinatarios.includes('Jefe OCIG')) {
-      const jefesOCI = await this.obtenerJefesControlInterno();
-      jefesOCI.forEach(id => usuariosNotificar.add(id));
-    }
-    
-    // 2. Si los roles incluyen "Auditor Líder" (el que creó la solicitud)
-    if (rolesDestinatarios.includes('Auditor Líder') && aprobacion.solicitante) {
-      usuariosNotificar.add(aprobacion.solicitante);
-    }
-
-    // Enviar notificaciones
-    for (const usuarioId of usuariosNotificar) {
-      try {
-        await this.notificacionesService.create({
-          usuarioId,
-          tipoNotificacion: TipoNotificacion.APROBACION_PLAN,
-          titulo: `✅ Aprobación completada: ${savedAprobacion.titulo}`,
-          mensaje: `La solicitud "${savedAprobacion.titulo}" (${savedAprobacion.codigo}) ha sido APROBADA por ${aprobadoPor || 'el sistema'}.`,
-          prioridad: PrioridadNotificacion.ALTA,
-          canal: CanalNotificacion.AMBOS,
-          metadata: {
-            aprobacionId: savedAprobacion.id,
-            aprobacionCodigo: savedAprobacion.codigo,
-            tipo: savedAprobacion.tipo,
-            aprobadoPor: aprobadoPor || 'Sistema',
-          },
-          accionUrl: `/control-interno/aprobaciones/${savedAprobacion.id}`,
-        });
-      } catch (e) {}
+      await this.notificacionesService.dispararEvento('EVT-APR-001', {
+        tituloCustom: `✅ Aprobación completada: ${savedAprobacion.titulo}`,
+        mensajeCustom: `La solicitud "${savedAprobacion.titulo}" (${savedAprobacion.codigo}) ha sido APROBADA por ${aprobadoPor || 'el sistema'}.`,
+        metadata: {
+          aprobacionId: savedAprobacion.id,
+          aprobacionCodigo: savedAprobacion.codigo,
+          tipo: savedAprobacion.tipo,
+          aprobadoPor: aprobadoPor || 'Sistema',
+        },
+        url_accion: `/control-interno/aprobaciones/${savedAprobacion.id}`,
+      });
+    } catch (e) {
+      console.error('[AprobacionesService.aprobar] Error al notificar:', e);
     }
 
     return savedAprobacion;
@@ -288,46 +228,22 @@ export class AprobacionesService {
       }
     }
 
-    // ✅ SINCRONIZACIÓN CON CONFIGURACIÓN (RECHAZO)
-    let rolesDestinatarios = ['Auditor Líder', 'Jefe OCIG']; // Fallback
+    // ✅ SINCRONIZACIÓN CON CONFIGURACIÓN: Notificar rechazo (EVT-APR-002)
     try {
-      const configGlobal = await this.notificacionesService.getGlobalConfig();
-      if (configGlobal && configGlobal.tiposNotificacion && configGlobal.tiposNotificacion['EVT-APR-002']) {
-        const configEvento = configGlobal.tiposNotificacion['EVT-APR-002'] as any;
-        rolesDestinatarios = configEvento.destinatarios || rolesDestinatarios;
-      }
-    } catch (e) {}
-
-    const usuariosNotificar = new Set<string>();
-    
-    if (rolesDestinatarios.includes('Jefe OCIG')) {
-      const jefesOCI = await this.obtenerJefesControlInterno();
-      jefesOCI.forEach(id => usuariosNotificar.add(id));
-    }
-    
-    if (rolesDestinatarios.includes('Auditor Líder') && aprobacion.solicitante) {
-      usuariosNotificar.add(aprobacion.solicitante);
-    }
-
-    for (const usuarioId of usuariosNotificar) {
-      try {
-        await this.notificacionesService.create({
-          usuarioId,
-          tipoNotificacion: TipoNotificacion.RECHAZO_PLAN,
-          titulo: `❌ Solicitud rechazada: ${savedAprobacion.titulo}`,
-          mensaje: `La solicitud "${savedAprobacion.titulo}" (${savedAprobacion.codigo}) ha sido RECHAZADA por ${rechazadoPor || 'el sistema'}. Motivo: ${rechazarDto.motivo_rechazo}`,
-          prioridad: PrioridadNotificacion.ALTA,
-          canal: CanalNotificacion.AMBOS,
-          metadata: {
-            aprobacionId: savedAprobacion.id,
-            aprobacionCodigo: savedAprobacion.codigo,
-            tipo: savedAprobacion.tipo,
-            rechazadoPor: rechazadoPor || 'Sistema',
-            motivo: rechazarDto.motivo_rechazo,
-          },
-          accionUrl: `/control-interno/aprobaciones/${savedAprobacion.id}`,
-        });
-      } catch (e) {}
+      await this.notificacionesService.dispararEvento('EVT-APR-002', {
+        tituloCustom: `❌ Solicitud rechazada: ${savedAprobacion.titulo}`,
+        mensajeCustom: `La solicitud "${savedAprobacion.titulo}" (${savedAprobacion.codigo}) ha sido RECHAZADA por ${rechazadoPor || 'el sistema'}. Motivo: ${rechazarDto.motivo_rechazo}`,
+        metadata: {
+          aprobacionId: savedAprobacion.id,
+          aprobacionCodigo: savedAprobacion.codigo,
+          tipo: savedAprobacion.tipo,
+          rechazadoPor: rechazadoPor || 'Sistema',
+          motivo: rechazarDto.motivo_rechazo,
+        },
+        url_accion: `/control-interno/aprobaciones/${savedAprobacion.id}`,
+      });
+    } catch (e) {
+      console.error('[AprobacionesService.rechazar] Error al notificar:', e);
     }
 
     return savedAprobacion;
