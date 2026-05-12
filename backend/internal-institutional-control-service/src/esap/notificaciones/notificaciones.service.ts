@@ -204,6 +204,208 @@ export class NotificacionesService {
   }
 
   /**
+   * MOTOR CENTRALIZADO: Dispara un evento de notificación resolviendo destinatarios y canales
+   */
+  async dispararEvento(eventoCode: string, context: { 
+    auditoriaId?: string;
+    auditoriaCodigo?: string;
+    planId?: string;
+    usuarioId?: string; // Destinatario explícito si aplica
+    tituloCustom?: string;
+    mensajeCustom?: string;
+    metadata?: any;
+    url_accion?: string;
+  }): Promise<{ total: number; exitosos: number }> {
+    console.log(`[Notificaciones] 🚀 Disparando evento: ${eventoCode}`);
+    
+    try {
+      const configGlobal = await this.getGlobalConfig();
+      const configEvento = configGlobal?.tiposNotificacion ? configGlobal.tiposNotificacion[eventoCode] : null;
+
+      if (configEvento && (configEvento as any).activo === false) {
+        console.warn(`[Notificaciones] Evento ${eventoCode} desactivado en configuración global.`);
+        return { total: 0, exitosos: 0 };
+      }
+
+      // 1. Resolver Destinatarios por Roles si no hay un usuario explícito
+      const destinatariosSet = new Set<string>();
+      if (context.usuarioId) {
+        destinatariosSet.add(context.usuarioId);
+      }
+
+      const rolesConfigurados = (configEvento as any)?.roles || [];
+      
+        // 🛡️ FALLBACK: Si no hay roles en la DB, usar roles por defecto
+        let rolesDestinatarios = rolesConfigurados;
+        if (rolesDestinatarios.length === 0) {
+          // Mapear códigos extendidos a categorías para fallbacks
+          if (eventoCode.startsWith('EVT-KANBAN')) {
+            rolesDestinatarios = ['JEFE_OCI', 'JEFE_OCIG', 'AUDITOR_LIDER', 'EQUIPO_AUDITOR', 'ADMIN', 'SUPER_ADMIN'];
+          } else if (eventoCode.startsWith('EVT-PM') || eventoCode.includes('PLAN')) {
+            rolesDestinatarios = ['JEFE_OCI', 'JEFE_OCIG', 'RESPONSABLE_PLAN_MEJORAMIENTO', 'AUDITOR_LIDER', 'EQUIPO_AUDITOR', 'ADMIN', 'SUPER_ADMIN'];
+          } else if (eventoCode.startsWith('EVT-APR')) {
+            rolesDestinatarios = ['JEFE_OCI', 'JEFE_OCIG', 'AUDITOR_LIDER', 'EQUIPO_AUDITOR', 'ADMIN', 'SUPER_ADMIN'];
+          } else if (eventoCode.startsWith('EVT-DOC')) {
+            rolesDestinatarios = ['JEFE_OCI', 'JEFE_OCIG', 'AUDITOR_LIDER', 'EQUIPO_AUDITOR', 'ADMIN', 'SUPER_ADMIN'];
+          } else {
+            rolesDestinatarios = ['JEFE_OCI', 'JEFE_OCIG', 'AUDITOR_LIDER', 'EQUIPO_AUDITOR', 'ADMIN', 'SUPER_ADMIN'];
+          }
+          console.log(`[Notificaciones] 🛡️ Usando fallbacks para ${eventoCode}: ${rolesDestinatarios.join(', ')}`);
+        }
+
+        if (rolesDestinatarios.length > 0) {
+          for (const rol of rolesDestinatarios) {
+            const ids = await this.resolverUsuariosPorRol(rol, context);
+            console.log(`[Notificaciones] 👥 Rol '${rol}' resuelto a ${ids.length} usuarios`);
+            ids.forEach(id => destinatariosSet.add(id));
+          }
+        }
+
+      if (rolesDestinatarios.length > 0) {
+        for (const rol of rolesDestinatarios) {
+          const ids = await this.resolverUsuariosPorRol(rol, context);
+          ids.forEach(id => destinatariosSet.add(id));
+        }
+      }
+
+      const destinatarios = Array.from(destinatariosSet);
+      if (destinatarios.length === 0) {
+        console.warn(`[Notificaciones] No se encontraron destinatarios para el evento ${eventoCode}`);
+        return { total: 0, exitosos: 0 };
+      }
+
+      // 2. Ejecutar envío para cada destinatario
+      let exitosos = 0;
+      for (const idUsuario of destinatarios) {
+        try {
+          await this.create({
+            usuarioId: idUsuario,
+            tipoNotificacion: eventoCode as any,
+            titulo: context.tituloCustom || (configEvento as any)?.titulo || 'Notificación de Sistema',
+            mensaje: context.mensajeCustom || (configEvento as any)?.mensaje || 'Tiene una nueva actividad pendiente.',
+            prioridad: (configEvento as any)?.prioridad || PrioridadNotificacion.NORMAL,
+            metadata: { ...context.metadata, eventoCode, auditoriaId: context.auditoriaId },
+            accionUrl: context.url_accion || (configEvento as any)?.url_accion || '',
+          });
+          exitosos++;
+        } catch (err) {
+          console.error(`[Notificaciones] Error enviando a ${idUsuario}:`, err.message);
+        }
+      }
+
+      return { total: destinatarios.length, exitosos };
+    } catch (error) {
+      console.error(`[Notificaciones] Error crítico en dispararEvento:`, error.message);
+      return { total: 0, exitosos: 0 };
+    }
+  }
+
+  /**
+   * Resuelve los UUIDs de usuarios basados en un rol dinámico y el contexto
+   */
+  private async resolverUsuariosPorRol(rol: string, context: any): Promise<string[]> {
+    const ids: string[] = [];
+    // Normalizar el nombre del rol enviado desde el frontend (ej: "Jefe OCIG" -> "JEFE_OCIG")
+    const rolUpper = rol.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '_');
+
+    switch (rolUpper) {
+      case 'SUPER_ADMIN':
+      case 'ADMINISTRADOR_SISTEMA':
+        const superAdmins = await this.dataSource.query(
+          `SELECT DISTINCT u.id_user 
+           FROM auth."user" u
+           LEFT JOIN auth.user_roles ur ON ur.id_user = u.id_user
+           LEFT JOIN auth.role r ON r.id = ur.id_rol
+           WHERE u.is_active = true 
+           AND (UPPER(r.code) IN ('SUPER_ADMIN', 'ADMIN') OR r.name ILIKE '%Administrador%')`
+        );
+        superAdmins.forEach((sa: any) => ids.push(sa.id_user));
+        break;
+
+      case 'JEFE_OCI':
+      case 'JEFE_OCIG':
+      case 'JEFE_DE_OCI':
+      case 'JEFE_DE_OCIG':
+      case 'JEFE_CONTROL_INTERNO':
+      case 'JEFE_DE_CONTROL_INTERNO':
+      case 'ADMIN':
+      case 'ADMINISTRADOR':
+        const jefes = await this.obtenerJefesControlInterno();
+        jefes.forEach(j => ids.push(j));
+        break;
+
+      case 'AUDITOR_LIDER':
+        if (context.auditoriaId) {
+          const aud = await this.dataSource.query(
+            `SELECT u.id_user 
+             FROM control_interno.auditoria a
+             INNER JOIN auth."user" u ON u.id_person = a.auditor_lider_id
+             WHERE a.id = $1`, 
+            [context.auditoriaId]
+          );
+          if (aud[0]?.id_user) ids.push(aud[0].id_user);
+        }
+        break;
+
+      case 'EQUIPO_AUDITOR':
+      case 'AUDITOR_EQUIPO':
+      case 'AUDITOR_DE_EQUIPO':
+      case 'EQUIPO_DE_TRABAJO':
+      case 'EQUIPO_AUDITORIA':
+        if (context.auditoriaId) {
+          const miembros = await this.dataSource.query(
+            `SELECT DISTINCT u.id_user 
+             FROM auth."user" u
+             LEFT JOIN control_interno.equipo_auditor ea ON u.id_person = ea.persona_id AND ea.auditoria_id = $1 AND ea.activo = true
+             LEFT JOIN control_interno.auditoria a ON a.id = $1
+             WHERE ea.persona_id IS NOT NULL 
+                OR u.id_person = a.auditor_lider_id 
+                OR u.id_person = a.auditor_asignado_id`, 
+            [context.auditoriaId]
+          );
+          miembros.forEach((m: any) => ids.push(m.id_user));
+        }
+        break;
+        
+      case 'COMITE':
+      case 'COMITE_INSTITUCIONAL':
+        // Por defecto, si hay un comité configurado general o por auditoría, se le envía.
+        // Si no existe tabla, enviamos al Jefe OCI y Super Admin como contingencia del comité
+        const comiteContingencia = await this.obtenerJefesControlInterno();
+        comiteContingencia.forEach(j => ids.push(j));
+        break;
+        
+      case 'AUDITADO':
+      case 'JEFE_DEPENDENCIA':
+        // Por ahora se envía al Jefe OCI como contingencia para dependencias externas
+        const jefesDep = await this.obtenerJefesControlInterno();
+        jefesDep.forEach(j => ids.push(j));
+        break;
+
+      case 'RESPONSABLE_PLAN_MEJORAMIENTO':
+        if (context.planId) {
+          const res = await this.dataSource.query(`
+            SELECT u.id_user 
+            FROM control_interno.plan_mejoramiento pm
+            INNER JOIN auth."user" u ON (
+              LOWER(TRIM(u.username)) = LOWER(TRIM(pm.responsable_implementacion))
+              OR LOWER(TRIM(u.email)) = LOWER(TRIM(pm.responsable_implementacion))
+            )
+            WHERE pm.id = $1 AND u.is_active = true
+            LIMIT 1
+          `, [context.planId]);
+          
+          if (res.length > 0) {
+            ids.push(res[0].id_user);
+          }
+        }
+        break;
+    }
+    
+    return ids;
+  }
+
+  /**
    * Crea una nueva notificación
    */
   async create(createDto: CreateNotificacionDto): Promise<Notificacion> {
@@ -252,10 +454,18 @@ export class NotificacionesService {
         : defaults[evtCode];
       
       if (configEvento && configEvento.activo) {
-        if (configEvento.email && configEvento.sistema) canalFinal = CanalNotificacion.AMBOS;
-        else if (configEvento.email) canalFinal = CanalNotificacion.EMAIL;
-        else if (configEvento.sistema) canalFinal = CanalNotificacion.SISTEMA;
-        
+        // Forzar canales para eventos críticos si no hay configuración
+      if (!configEvento) {
+        if (createDto.tipoNotificacion.toString().startsWith('EVT-KANBAN') || 
+            createDto.tipoNotificacion.toString().startsWith('EVT-PM')) {
+          canalFinal = CanalNotificacion.AMBOS;
+        }
+      } else if (configEvento) {
+        const c = configEvento as any;
+        if (c.sistema && c.email) canalFinal = CanalNotificacion.AMBOS;
+        else if (c.email) canalFinal = CanalNotificacion.EMAIL;
+        else canalFinal = CanalNotificacion.SISTEMA;
+      }
         // ✅ NUEVA LÓGICA: Si la configuración define roles (destinatarios), 
         // podríamos expandir esto aquí, pero por ahora aseguramos que el 
         // canal sea el correcto.
@@ -297,6 +507,29 @@ export class NotificacionesService {
     }
 
     const saved = await this.notificacionRepository.save(notificacion);
+
+    // 🚀 INTEGRACIÓN CON LA CAMPANITA GLOBAL DEL SHELL 🚀
+    // Escribir directamente en la tabla notifications.notificacion para que la UI la vea
+    try {
+      await this.dataSource.query(
+        `INSERT INTO notifications.notificacion 
+         (id_usuario_destinatario, tipo_notificacion, titulo, mensaje, prioridad, tiene_accion, url_accion, color) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          usuarioIdFinal,
+          createDto.tipoNotificacion,
+          tituloNormalizado,
+          mensajeNormalizado,
+          'Media',
+          createDto.accionUrl ? true : false,
+          createDto.accionUrl || null,
+          'blue'
+        ]
+      );
+      console.log(`[Notificaciones] ✅ Sincronizado exitosamente con la campanita global para el usuario ${usuarioIdFinal}`);
+    } catch (err) {
+      console.error(`[Notificaciones] ❌ Error sincronizando con la campanita global:`, err.message);
+    }
 
     console.log(`[NotificacionesService.create] ✅ Notificación creada exitosamente: ID=${saved.id}, usuarioId=${usuarioIdFinal}, estado=${saved.estado}`);
 
@@ -368,15 +601,19 @@ export class NotificacionesService {
       try {
         const emailDestino = await this.obtenerEmailUsuario(notificacion.usuarioId);
         if (emailDestino) {
-          await this.enviarCorreoReal(notificacion, emailDestino);
-          notificacion.enviadaEmail = true;
-          notificacion.fechaEnvioEmail = new Date();
-          notificacion.estado = EstadoNotificacion.ENVIADA;
+          try {
+            await this.enviarCorreoReal(notificacion, emailDestino);
+            notificacion.enviadaEmail = true;
+            notificacion.fechaEnvioEmail = new Date();
+            notificacion.estado = EstadoNotificacion.ENVIADA;
+          } catch (smtpError) {
+            console.error(`[Notificaciones] ❌ Error aisaldo de SMTP al enviar a ${emailDestino}. La notificación de sistema seguirá activa. Detalles:`, smtpError.message);
+          }
         } else {
           console.warn(`[Notificaciones] ⚠️ Abortando email: Usuario ${notificacion.usuarioId} no tiene correo registrado.`);
         }
       } catch (err) {
-        console.error(`[Notificaciones] ❌ Error en el proceso de despacho de email:`, err.message);
+        console.error(`[Notificaciones] ❌ Error general en el proceso de despacho de email:`, err.message);
       }
     }
 
@@ -790,25 +1027,28 @@ export class NotificacionesService {
    */
   private async obtenerJefesControlInterno(): Promise<string[]> {
     try {
-      // Buscar por múltiples variantes del código de rol para mayor compatibilidad
+      // Búsqueda agresiva: cualquier usuario activo que tenga el string de rol o la relación
       const result = await this.dataSource.query(`
         SELECT DISTINCT u.id_user
         FROM auth."user" u
-        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
-        INNER JOIN auth.role r ON r.id = ur.id_rol
-        WHERE UPPER(r.code) IN (
-          'JEFE_CONTROL_INTERNO',
-          'JEFE_OCI',
-          'JEFE_OCIG',
-          'CONTROL_INTERNO_JEFE',
-          'OCI_JEFE'
+        LEFT JOIN auth.user_roles ur ON ur.id_user = u.id_user
+        LEFT JOIN auth.role r ON r.id = ur.id_rol
+        WHERE u.is_active = true
+        AND (
+          UPPER(r.code) IN (
+            'JEFE_CONTROL_INTERNO', 'JEFE_OCI', 'JEFE_OCIG', 
+            'CONTROL_INTERNO_JEFE', 'OCI_JEFE', 'ADMIN', 'SUPER_ADMIN',
+            'JEFATURA_CONTROL_INTERNO'
+          )
+          OR r.name ILIKE '%Jefe%Control%Interno%'
+          OR r.name ILIKE '%Jefe%OCI%'
+          OR r.name ILIKE '%Jefe%OCIG%'
+          OR r.name ILIKE '%Administrador%'
         )
-          AND (ur.is_active = true OR ur.is_active IS NULL)
-          AND u.is_active = true
       `);
 
       const uuids = result.map((row: any) => String(row.id_user)).filter(Boolean);
-      console.log(`[NotificacionesService.obtenerJefesControlInterno] Encontrados ${uuids.length} jefes OCI`);
+      console.log(`[NotificacionesService.obtenerJefesControlInterno] Encontrados ${uuids.length} usuarios de gestión/OCI`);
       return uuids;
     } catch (error) {
       console.error('Error al obtener Jefes de Control Interno:', error);

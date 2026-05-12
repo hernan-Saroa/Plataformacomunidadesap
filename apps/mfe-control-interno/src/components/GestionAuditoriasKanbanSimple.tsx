@@ -58,6 +58,7 @@ import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAud
 
 // ✅ Servicio para crear planes de mejoramiento
 import controlInternoService from '../../../services/api/controlInternoService';
+import { notificationsService } from '../../services/api/notificationsService';
 
 // ✅ INTEGRACIÓN: Contextos de Hallazgos y Tareas
 import { useHallazgos } from './HallazgosContext';
@@ -2765,6 +2766,21 @@ export function GestionAuditoriasKanbanSimple() {
       };
       
       console.log('📋 Trazabilidad - Movimiento de tarjeta:', eventoTrazabilidad);
+
+      // 🚀 DISPARAR EVENTO AL BACKEND (Notificaciones Campanita + Email)
+      try {
+        await notificationsService.triggerEvent('EVT-KANBAN-001', {
+          auditoriaId: item.id,
+          auditoriaCodigo: item.codigo,
+          nuevoEstado: nuevoEstado,
+          tituloCustom: 'Auditoría Movida',
+          mensajeCustom: `La auditoría ${item.codigo} ha sido movida a la etapa: ${nuevoEstado}.`,
+          url_accion: `/control-interno/auditorias/${item.id}`,
+        });
+        console.log(`✅ Evento KANBAN_MOVE disparado exitosamente al backend.`);
+      } catch (err) {
+        console.error('❌ Error al disparar evento al Shell:', err);
+      }
 
       toast.success(`✅ ${item.codigo} movido a ${nuevoEstado}`, {
         description: `Estado actualizado en el servidor`
