@@ -2373,6 +2373,7 @@ export class CertificatesService {
       position_location: request.position_location,
       monthly_salary: request.monthly_salary,
       technical_bonus: technicalBonus.value,
+      technical_bonus_category: technicalBonus.category,
       include_salary: includeSalary,
       include_technical_bonus: includeTechnicalBonus,
       salary_text: request.salary_text,

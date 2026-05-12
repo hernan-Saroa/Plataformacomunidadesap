@@ -61,8 +61,12 @@ interface CertificadoDetallePanelProps {
     observations?: string;
     request?: {
       observations?: string;
+      technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+      technicalBonusCategory?: 'DIRECTIVOS' | 'COORDINADORES' | null;
     };
     technical_bonus?: number;
+    technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+    technicalBonusCategory?: 'DIRECTIVOS' | 'COORDINADORES' | null;
     incluyeSalario?: boolean;
     incluyePrimaTecnica?: boolean;
     templateSnapshot?: any;
@@ -1091,6 +1095,12 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
               incluyeSalario: incluyeSalarioCertificado,
               incluyePrimaTecnica: incluyePrimaTecnicaCertificado,
               technical_bonus: primaTecnicaCertificado,
+              technical_bonus_category:
+                certificado.technical_bonus_category ??
+                certificado.technicalBonusCategory ??
+                certificado.request?.technical_bonus_category ??
+                certificado.request?.technicalBonusCategory ??
+                null,
             }}
           />
 
