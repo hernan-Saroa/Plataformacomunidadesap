@@ -26,9 +26,10 @@ async function bootstrap() {
     prefix: '/uploads/',
   });
 
-  await app.listen(process.env.PORT ?? 3002);
+  await app.listen(process.env.PORT ?? 3002, '0.0.0.0');
   console.log(
     `🎓 Academic Registration Service running on port ${process.env.PORT ?? 3002}`,
   );
 }
 bootstrap();
+// reload

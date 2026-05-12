@@ -1538,6 +1538,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               color: rol.color || '#3B82F6',
               icono: obtenerIconoRol(rol.rol_numero ?? rol.numero ?? 0),
               descripcion: rol.descripcion || '',
+              responsables: rol.responsables || [],
               actividades: (rol.actividades || []).map((act: any) => ({
                 id: act.id,
                 nombre: act.nombre || '',
@@ -1654,7 +1655,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   // Hook para crear plan en backend
   const { mutate: crearPlanEnBackend, loading: creandoPlan } = useCreatePlanAnual();
 
-  const handleCrearPlan = async (vigencia: number, jefeOCI: Auditor, rolesConfig: any[], fechaInicio: string, fechaFin: string, comiteAprobacion?: Auditor[], ordenAprobacion?: string): Promise<boolean> => {
+  const handleCrearPlan = async (vigencia: number, jefeOCI: Auditor, rolesConfig: any[], fechaInicio: string, fechaFin: string, comiteAprobacion?: Auditor[], ordenAprobacion?: string, esAutoGuardado: boolean = false): Promise<boolean> => {
     try {
       // ═══════════════════════════════════════════════════════════════
       // DEBUG: Resumen completo de lo que se va a enviar al backend
@@ -1831,8 +1832,12 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             });
           }
 
-          toast.success('Plan guardado exitosamente');
-          setPlanAEditar(undefined);
+          if (!esAutoGuardado) {
+            toast.success('Plan guardado exitosamente');
+            setPlanAEditar(undefined);
+          } else {
+            toast.success('Borrador sincronizado con el servidor');
+          }
           return true;
         } else {
           toast.error('Error al actualizar el plan', { description: resp.error });
@@ -1854,6 +1859,23 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
     // ✅ Sincronizar año activo con la vigencia del plan recién creado
     if (planCreado) {
       setAñoActual(vigencia);
+      if (!planAEditar) {
+        setPlanAEditar({
+          id: planCreado.id,
+          vigencia: planCreado.año || vigencia,
+          version: planCreado.version || 1,
+          estado: 'BORRADOR',
+          nombrePlan: planCreado.nombre || 'Plan Anual',
+          totalActividades: planCreado.total_actividades || 0,
+          jefeOCI: jefeOCI,
+          fechaCreacion: planCreado.createdAt || new Date().toISOString(),
+          fechaInicio: fechaInicio,
+          fechaFin: fechaFin,
+          equipoAprobacion: comiteAprobacion || [],
+          ordenAprobacion: ordenAprobacion || 'secuencial',
+          roles: []
+        } as any);
+      }
     }
 
     if (planCreado && planCreado.roles) {
@@ -2025,7 +2047,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
           duration: 10000
         });
       }
-      return true;
+      return planCreado || true;
     } else {
       // crearPlanEnBackend devolvió null — el hook ya mostró toast, pero reforzamos el mensaje
       console.error('[handleCrearPlan] ❌ No se pudo crear el plan. Posible duplicado de vigencia.');

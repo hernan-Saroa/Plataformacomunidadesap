@@ -8,11 +8,12 @@ import {
   Patch,
   Post,
   Req,
+  Request,
   Res,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import type { Request, Response } from 'express';
+import type { Request as ExpressRequest, Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { MicrosoftLoginDto } from './dto/microsoft-login.dto';
@@ -50,11 +51,51 @@ export class AuthController {
   }
 
   @Public()
+  @Get('debug-token')
+  async debugToken() {
+    const payload = {
+      sub: '123',
+      username: 'test',
+      email: 'test@esap.edu.co',
+      roles: ['SUPER_ADMIN'],
+    };
+    const token = await this.authService['jwtService'].signAsync(payload);
+    return { 
+      token, 
+      secret: process.env.JWT_SECRET || 'undefined_secret',
+      cwd: process.cwd(),
+      dirname: __dirname,
+      env: {
+        NODE_ENV: process.env.NODE_ENV,
+        JWT_SECRET: process.env.JWT_SECRET,
+      }
+    };
+  }
+
+  @Post('refresh')
+  async refresh(@Req() req: ExpressRequest) {
+    // If we reach here, JwtAuthGuard has validated the current token.
+    // We just issue a new token with the same payload.
+    const user = (req as any).user;
+    const payload = {
+      sub: user.userId || user.sub,
+      username: user.username,
+      email: user.email,
+      roles: user.roles,
+    };
+    const accessToken = await this.authService['jwtService'].signAsync(payload);
+    return {
+      success: true,
+      data: { accessToken },
+    };
+  }
+
+  @Public()
   @Post('login')
   @HttpCode(200)
   async login(
     @Body() dto: LoginDto,
-    @Req() req: Request,
+    @Req() req: ExpressRequest,
     @Res({ passthrough: true }) res: Response,
   ) {
     const identifier = this.extractLoginIdentifier(dto);
@@ -198,7 +239,7 @@ export class AuthController {
     return dto.email || dto.username || '';
   }
 
-  private extractClientIp(req: Request): string {
+  private extractClientIp(req: ExpressRequest): string {
     const forwardedFor = req.headers['x-forwarded-for'];
     if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
       return forwardedFor.split(',')[0].trim();

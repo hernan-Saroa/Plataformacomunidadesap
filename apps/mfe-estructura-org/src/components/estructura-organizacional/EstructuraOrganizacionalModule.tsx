@@ -11,7 +11,7 @@ import {
   ChevronRight, GitBranch, Network, Users, Loader2, ChevronDown, Pencil, Trash2,
   GraduationCap
 } from 'lucide-react';
-import { Card, Button, Badge, Input } from '@esap-mfe/shared-ui';
+import { Card, Button, Badge, Input, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
 import { toast, Toaster } from 'sonner';
 import { estructuraService } from '../../services/estructuraService';
 import { CreateSeccionalSedeModal } from './CreateSeccionalSedeModal';
@@ -123,84 +123,52 @@ export function EstructuraOrganizacionalModule() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#003DA5] to-blue-600 flex items-center justify-center shrink-0">
-              <Building2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
-                Estructura Organizacional
-              </h1>
-              <p className="text-sm text-gray-600 mt-0.5 line-clamp-1">
-                Gestion de seccionales y sedes ESAP
-              </p>
-            </div>
+    <Container4K className="space-y-6">
+      <div className="relative z-50">
+        <ResponsiveHeader
+          title="Estructura Organizacional"
+          description="Gestión de seccionales y sedes ESAP"
+          icon={Building2}
+          primaryAction={isSuperAdmin ? {
+            label: "Nuevo",
+            icon: Plus,
+            onClick: () => setShowDropdown(!showDropdown),
+            variant: "primary"
+          } : undefined}
+          secondaryActions={[
+            {
+              label: "Exportar",
+              icon: Download,
+              onClick: handleExportar,
+              variant: "secondary"
+            },
+            {
+              label: "Importar",
+              icon: Upload,
+              onClick: handleImportar,
+              variant: "secondary"
+            }
+          ]}
+        />
+        {isSuperAdmin && showDropdown && (
+          <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-[100]">
+            <div className="fixed inset-0 z-[-1]" onClick={() => setShowDropdown(false)} />
+            <button
+              onClick={() => { handleCrear('seccional'); setShowDropdown(false); }}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 transition-colors"
+            >
+              <div className="w-2 h-2 rounded-full bg-green-500" />
+              Nueva Seccional
+            </button>
+            <button
+              onClick={() => { handleCrear('sede'); setShowDropdown(false); }}
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 transition-colors"
+            >
+              <div className="w-2 h-2 rounded-full bg-orange-500" />
+              Nueva Sede
+            </button>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleImportar}
-            className="gap-2"
-          >
-            <Upload className="w-4 h-4" />
-            <span className="hidden sm:inline">Importar</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportar}
-            className="gap-2"
-          >
-            <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Exportar</span>
-          </Button>
-
-          {/* Dropdown para crear */}
-          {isSuperAdmin && (
-            <div className="relative">
-              <Button
-                onClick={() => setShowDropdown(!showDropdown)}
-                className="gap-2 bg-[#003DA5] hover:bg-[#002d7a]"
-              >
-                <Plus className="w-4 h-4" />
-                Nuevo
-                <ChevronDown className="w-4 h-4" />
-              </Button>
-
-              {showDropdown && (
-                <>
-                  <div
-                    className="fixed inset-0 z-10"
-                    onClick={() => setShowDropdown(false)}
-                  />
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
-                    <button
-                      onClick={() => handleCrear('seccional')}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    >
-                      <div className="w-2 h-2 rounded-full bg-green-500" />
-                      Nueva Seccional
-                    </button>
-                    <button
-                      onClick={() => handleCrear('sede')}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
-                    >
-                      <div className="w-2 h-2 rounded-full bg-orange-500" />
-                      Nueva Sede
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Busqueda */}
@@ -284,7 +252,7 @@ export function EstructuraOrganizacionalModule() {
         seccionales={seccionales}
         editItem={editItem}
       />
-    </div>
+    </Container4K>
   );
 }
 

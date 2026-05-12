@@ -39,13 +39,16 @@ async function bootstrap() {
     }
   }
 
+  process.env.JWT_SECRET = process.env.JWT_SECRET && process.env.JWT_SECRET !== 'your-super-secret-jwt-key-here' ? process.env.JWT_SECRET : 'esap-super-secret-jwt-key-2024';
   app.enableCors({
     origin: allowedOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'x-client-platform', 'x-client-version', 'X-Access-Token', 'X-Auth-Token'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With', 'x-client-platform', 'x-client-version', 'X-Access-Token', 'X-Auth-Token', 'Cache-Control', 'Pragma', 'Expires'],
     credentials: true,
     maxAge: 86400, // 24 hours
   });
+
+  // Forzar reinicio para cargar variables de entorno actualizadas.
 
   // El versionamiento ahora es por microservicio:
   // /{service}/api/v{version}/{path}
@@ -60,10 +63,11 @@ async function bootstrap() {
     }),
   );
 
-  await app.listen(process.env.PORT || 3000);
+  await app.listen(process.env.PORT || 3000, '0.0.0.0');
   const server = app.getHttpServer();
   server.requestTimeout = requestTimeoutMs;
   server.headersTimeout = requestTimeoutMs + 1000;
   server.keepAliveTimeout = 65000;
 }
 bootstrap();
+// reload

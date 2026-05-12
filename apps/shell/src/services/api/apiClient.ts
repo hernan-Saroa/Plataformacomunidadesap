@@ -395,7 +395,7 @@ export class ApiClient {
       clearTimeout(timeoutId);
 
       // Token expirado: refrescar y reintentar UNA sola vez conservando método y body.
-      if (response.status === 401 && !skipAuth && allowRefresh) {
+      if (response.status === 401) { console.error("?? 401 UNAUTHORIZED EN URL: ", url); } if (response.status === 401 && !skipAuth && allowRefresh) {
         const newToken = await this.refreshAccessToken();
         if (newToken) {
           return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false);
@@ -461,7 +461,7 @@ export class ApiClient {
       clearTimeout(timeoutId);
 
       // Token expirado: refrescar y reintentar una sola vez.
-      if (response.status === 401 && !skipAuth && allowRefresh) {
+      if (response.status === 401) { console.error("?? 401 UNAUTHORIZED EN URL: ", url); } if (response.status === 401 && !skipAuth && allowRefresh) {
         const newToken = await this.refreshAccessToken();
         if (newToken) {
           return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, false);
@@ -711,6 +711,8 @@ export class ApiClient {
     localStorage.removeItem('esap_access_token');
     localStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
     localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
+    localStorage.removeItem('esap-sesion-activa');
+    localStorage.removeItem('esap_user_profile');
 
     toast.error('Sesión expirada', {
       description: 'Por favor, inicia sesión nuevamente',

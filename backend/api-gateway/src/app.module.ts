@@ -5,6 +5,7 @@ import { AuditModule } from './audit/audit.module';
 import { AuditInterceptor } from './audit/audit.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { IS_PUBLIC_KEY } from './auth/public.decorator';
 
 @Module({
   imports: [GatewayModule, AuditModule, AuthModule],

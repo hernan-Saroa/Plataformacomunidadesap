@@ -364,6 +364,16 @@ class ControlInternoAPIClient {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: response.statusText }));
+      
+      // Manejar token expirado centralizadamente para redirigir al login
+      if (response.status === 401 || error.message === 'jwt expired') {
+        localStorage.removeItem('esap_auth_token');
+        localStorage.removeItem('esap_access_token');
+        localStorage.removeItem('esap-sesion-activa');
+        localStorage.removeItem('esap_user_profile');
+        window.location.href = '/login';
+      }
+      
       throw new Error(error.message || `HTTP ${response.status}`);
     }
 

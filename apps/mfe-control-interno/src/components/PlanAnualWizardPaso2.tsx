@@ -230,6 +230,25 @@ export function Paso2Avanzado({ rolesConfig, onRolesChange, actividadesPorRol }:
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  {/* Barra de progreso de asignación */}
+                  <div className="flex items-center gap-2 mr-2">
+                    <div className="flex flex-col items-end">
+                      <span className="text-xs text-gray-500 font-medium">Avance asignación</span>
+                      <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden mt-1">
+                        <div 
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{ 
+                            width: `${actividadesBase.length > 0 ? Math.min(100, Math.round((totalRol / actividadesBase.length) * 100)) : 0}%`,
+                            backgroundColor: rol.color 
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-gray-700">
+                      {actividadesBase.length > 0 ? Math.min(100, Math.round((totalRol / actividadesBase.length) * 100)) : 0}%
+                    </span>
+                  </div>
+
                   <span className="px-3 py-1 rounded-lg text-sm font-semibold" style={{ 
                     backgroundColor: rol.color + '20', 
                     color: rol.color 

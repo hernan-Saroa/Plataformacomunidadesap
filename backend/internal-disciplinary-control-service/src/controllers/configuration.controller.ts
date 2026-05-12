@@ -47,7 +47,11 @@ export class ConfigurationController {
 
     @Get('stages')
     async getStageConfigs() {
-        return this.stageConfigRepo.find({ order: { orden: 'ASC' } });
+        try {
+            return await this.stageConfigRepo.find({ order: { orden: 'ASC' } });
+        } catch (error) {
+            return { error: true, message: error.message, stack: error.stack };
+        }
     }
 
     @Post('stages')

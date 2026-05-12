@@ -56,9 +56,15 @@ async function apiRequest<T>(
   try {
     const token = localStorage.getItem('esap_auth_token');
     
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const urlObj = new URL(`${API_BASE_URL}${endpoint}`);
+    urlObj.searchParams.append('_t', new Date().getTime().toString());
+    
+    const response = await fetch(urlObj.toString(), {
       headers: {
         'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
         ...(token && { 'Authorization': `Bearer ${token}` }),
         ...options?.headers,
       },

@@ -789,7 +789,7 @@ function SelectorProfesional({
 interface WizardCreacionProps {
   planAEditar?: PlanAnual;
   onCancelar: () => void;
-  onCrear: (vigencia: number, jefeOCI: Auditor, rolesConfig: RolConfig[], fechaInicio: string, fechaFin: string) => Promise<boolean>;
+  onCrear: (vigencia: number, jefeOCI: Auditor, rolesConfig: RolConfig[], fechaInicio: string, fechaFin: string, comiteAprobacion?: Auditor[], ordenAprobacion?: string, esAutoGuardado?: boolean) => Promise<boolean | any>;
   onTerminado?: () => void;
   planesExistentes?: PlanAnual[];
 }
@@ -1020,7 +1020,11 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
             responsablesMap.set(act.responsable.id, act.responsable);
           }
         });
-        const responsablesRol = Array.from(responsablesMap.values());
+        
+        // Si el rol ya tiene responsables explícitos guardados, usarlos; si no, derivar de las actividades
+        const responsablesRol = rolEdit.responsables && rolEdit.responsables.length > 0
+          ? rolEdit.responsables
+          : Array.from(responsablesMap.values());
 
         return {
           ...rolDef,
@@ -1211,9 +1215,20 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
     return true;
   };
 
-  const avanzarPaso = () => {
+  const avanzarPaso = async () => {
     if (paso === 1 && !validarPaso1()) return;
     if (paso === 2 && !validarPaso2()) return;
+    
+    // Auto-guardado en backend al cambiar de paso
+    if (jefeSeleccionado && fechaInicio && fechaFin) {
+      try {
+        await onCrear(vigencia, jefeSeleccionado, rolesConfig, fechaInicio, fechaFin, comiteAprobacion, ordenAprobacion, true);
+        setLastSaved(new Date());
+      } catch (error) {
+        console.error('Error auto-guardando al avanzar de paso', error);
+      }
+    }
+    
     setPaso(paso + 1);
   };
 
@@ -1324,7 +1339,7 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
               )}
             </AnimatePresence>
             <button 
-              onClick={() => {
+              onClick={async () => {
                 const borradorActual = {
                   idPlan: planAEditar?.id,
                   vigencia,
@@ -1342,9 +1357,21 @@ export function WizardCreacion({ planAEditar, onCancelar, onCrear, onTerminado, 
                 localStorage.setItem(draftKey, JSON.stringify(borradorActual));
                 setLastSaved(new Date());
                 
-                toast.success('Borrador guardado manualmente', {
-                  description: 'Tu progreso está seguro.'
-                });
+                // Auto-guardado en backend si tiene lo básico
+                if (jefeSeleccionado && fechaInicio && fechaFin) {
+                  try {
+                    await onCrear(vigencia, jefeSeleccionado, rolesConfig, fechaInicio, fechaFin, comiteAprobacion, ordenAprobacion, true);
+                    toast.success('Borrador guardado en la base de datos', {
+                      description: 'Tu progreso está seguro.'
+                    });
+                  } catch (error) {
+                    console.error('Error en auto-guardado', error);
+                  }
+                } else {
+                  toast.success('Borrador guardado localmente', {
+                    description: 'Tu progreso está seguro en el navegador.'
+                  });
+                }
               }}
               title="Guardar borrador"
               className="p-2 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
@@ -1632,6 +1659,12 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             const responsablesAutorizados = auditores.filter((a: any) => 
               REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esAutorizadoParaResponsablePlan(a.cargo)
             );
+            
+            // Garantizar que el jefe actual siempre esté en la lista, incluso si su cargo no coincide exactamente
+            if (jefeOCI && !responsablesAutorizados.some(a => a.id === jefeOCI.id)) {
+              responsablesAutorizados.push(jefeOCI);
+            }
+            
             return responsablesAutorizados.length === 0 ? (
               <div className="flex items-center gap-2 px-4 py-3 border-2 border-orange-300 rounded-lg bg-orange-50">
                 <AlertCircle className="w-5 h-5 text-orange-600" />
@@ -1881,8 +1914,17 @@ function Paso2({
         if (act.id === actId) {
           const yaAsignado = (act.responsables || []).some(r => r.id === auditor.id);
           if (yaAsignado) return act;
+          
+          // Asignar en cascada a tareas sin responsable
+          const nuevasTareas = (act.tareasSeguimiento || []).map(t => {
+            if (!t.responsables || t.responsables.length === 0) {
+              return { ...t, responsables: [auditor] };
+            }
+            return t;
+          });
+
           // Solo permitir un responsable por actividad
-          return { ...act, responsables: [auditor] };
+          return { ...act, responsables: [auditor], tareasSeguimiento: nuevasTareas };
         }
         return act;
       })
@@ -1912,8 +1954,17 @@ function Paso2({
           if (i !== index) return act;
           const yaAsignado = (act.responsables || []).some(r => r.id === auditor.id);
           if (yaAsignado) return act;
+          
+          // Asignar en cascada a tareas sin responsable
+          const nuevasTareas = (act.tareasSeguimiento || []).map(t => {
+            if (!t.responsables || t.responsables.length === 0) {
+              return { ...t, responsables: [auditor] };
+            }
+            return t;
+          });
+
           // Solo permitir un responsable por actividad personalizada
-          return { ...act, responsables: [auditor] };
+          return { ...act, responsables: [auditor], tareasSeguimiento: nuevasTareas };
         })
       };
     });
@@ -2088,6 +2139,25 @@ function Paso2({
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
+                  {/* Barra de progreso de asignación */}
+                  <div className="flex items-center gap-2 mr-2">
+                    <div className="flex flex-col items-end">
+                      <span className="text-xs text-gray-500 font-medium">Avance asignación</span>
+                      <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden mt-1">
+                        <div 
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{ 
+                            width: `${actividadesBase.length > 0 ? Math.min(100, Math.round((totalRol / actividadesBase.length) * 100)) : 0}%`,
+                            backgroundColor: rol.color 
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-gray-700">
+                      {actividadesBase.length > 0 ? Math.min(100, Math.round((totalRol / actividadesBase.length) * 100)) : 0}%
+                    </span>
+                  </div>
+
                   <span className="px-3 py-1 rounded-lg text-sm font-semibold" style={{ 
                     backgroundColor: rol.color + '20', 
                     color: rol.color 
@@ -2160,19 +2230,28 @@ function Paso2({
                                   const nuevaConfig = rolesConfig.map(r => {
                                     if (r.numero === rol.numero) {
                                       const nuevosResponsables = [...(r.responsables || []), auditor];
+                                      
+                                      const asignarAActividadYTareas = (act: any) => {
+                                        const tieneResponsableAct = act.responsables && act.responsables.length > 0;
+                                        const nuevasTareas = (act.tareasSeguimiento || []).map((t: any) => {
+                                          if (!t.responsables || t.responsables.length === 0) {
+                                            return { ...t, responsables: [auditor] };
+                                          }
+                                          return t;
+                                        });
+
+                                        return {
+                                          ...act,
+                                          responsables: tieneResponsableAct ? act.responsables : [auditor],
+                                          tareasSeguimiento: nuevasTareas
+                                        };
+                                      };
+
                                       return {
                                         ...r,
                                         responsables: nuevosResponsables,
-                                        actividadesSeleccionadas: r.actividadesSeleccionadas.map(act => (
-                                          (!act.responsables || act.responsables.length === 0)
-                                            ? { ...act, responsables: [auditor] }
-                                            : act
-                                        )),
-                                        actividadesCustom: r.actividadesCustom.map(act => (
-                                          (!act.responsables || act.responsables.length === 0)
-                                            ? { ...act, responsables: [auditor] }
-                                            : act
-                                        ))
+                                        actividadesSeleccionadas: r.actividadesSeleccionadas.map(asignarAActividadYTareas),
+                                        actividadesCustom: r.actividadesCustom.map(asignarAActividadYTareas)
                                       };
                                     }
                                     return r;
@@ -2604,9 +2683,9 @@ function Paso2({
                                                     {(tarea.responsables || []).map((resp, ri) => (
                                                       <span key={ri} className="inline-flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[10px]">
                                                         <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[7px] font-bold">
-                                                          {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                                          {(typeof resp === 'string' ? resp : (resp?.nombre || '')).split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
                                                         </span>
-                                                        <span className="text-blue-800 font-medium">{resp.split(' ').slice(0, 2).join(' ')}</span>
+                                                        <span className="text-blue-800 font-medium">{(typeof resp === 'string' ? resp : (resp?.nombre || '')).split(' ').slice(0, 2).join(' ')}</span>
                                                         <button
                                                           type="button"
                                                           onClick={(e) => {
@@ -3082,9 +3161,9 @@ function Paso2({
                                                   {(tarea.responsables || []).map((resp, ri) => (
                                                     <span key={ri} className="inline-flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[10px]">
                                                       <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[7px] font-bold">
-                                                        {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                                        {(typeof resp === 'string' ? resp : (resp?.nombre || '')).split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
                                                       </span>
-                                                      <span className="text-blue-800 font-medium">{resp.split(' ').slice(0, 2).join(' ')}</span>
+                                                      <span className="text-blue-800 font-medium">{(typeof resp === 'string' ? resp : (resp?.nombre || '')).split(' ').slice(0, 2).join(' ')}</span>
                                                       <button
                                                         onClick={() => {
                                                           const nuevaConfig = rolesConfig.map(r => {
@@ -3607,7 +3686,49 @@ interface DashboardPlanProps {
 
 const PLAN_ANUAL_STORAGE_KEY = 'esap:plan_anual_activo';
 
-export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan, onEditarPlan }: DashboardPlanProps) {
+export function DashboardPlan({ plan: planRaw, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan, onEditarPlan }: DashboardPlanProps) {
+  // Corregir problemas de codificación de la base de datos dinámicamente y heredar responsables
+  const plan = {
+    ...planRaw,
+    roles: planRaw.roles ? planRaw.roles.map(r => {
+      let nombre = r.nombre;
+      if (r.numero === 1) nombre = 'Liderazgo estratégico';
+      if (r.numero === 2) nombre = 'Enfoque hacia la prevención';
+      if (r.numero === 3) nombre = 'Evaluación de la gestión del riesgo';
+      if (r.numero === 4) nombre = 'Evaluación y seguimiento';
+      if (r.numero === 5) nombre = 'Relación con entes externos de control';
+      
+      // Identificar el responsable principal del rol (puede venir en el rol o heredar del plan)
+      const responsablePrincipal = (r.responsables && r.responsables.length > 0) 
+        ? r.responsables 
+        : (planRaw.jefeOCI ? [planRaw.jefeOCI] : []);
+
+      const actividades = r.actividades ? r.actividades.map(act => {
+        // Heredar responsable a la actividad si está huérfana
+        const actResponsables = (act.responsables && act.responsables.length > 0)
+          ? act.responsables
+          : (act.responsable && typeof act.responsable === 'object' ? [act.responsable] : responsablePrincipal);
+
+        const tareasSeguimiento = act.tareasSeguimiento ? act.tareasSeguimiento.map(t => {
+          // Heredar responsable a la tarea si está huérfana (hereda de actividad o rol)
+          if (!t.responsables || t.responsables.length === 0) {
+            return { ...t, responsables: [...actResponsables] };
+          }
+          return t;
+        }) : [];
+        
+        return { 
+          ...act, 
+          responsable: act.responsable || actResponsables[0] || null,
+          responsables: actResponsables,
+          tareasSeguimiento 
+        };
+      }) : [];
+
+      return { ...r, nombre, responsables: responsablePrincipal, actividades };
+    }) : []
+  };
+
   const [seccion, setSeccion] = useState<'gestion' | 'asignar' | 'aprobar'>('gestion');
   const [mostrarModalExportacion, setMostrarModalExportacion] = useState(false);
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
@@ -3738,15 +3859,13 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const { totalActividades, actividadesAsignadas, actividadesCompletadas, actividadesEnEjecucion, avancePromedio } = useMemo(() => {
     const total = plan.roles.reduce((sum, rol) => sum + rol.actividades.length, 0);
     const asignadas = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.responsable !== null).length, 0);
-    const completadas = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.estado === 'COMPLETADA').length, 0);
-    const enEjecucion = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.estado === 'EN_EJECUCION').length, 0);
+    const completadas = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => a.estado === 'COMPLETADA' || a.estado === 'completada' || a.estado === 'Completada' || a.porcentajeAvance === 100).length, 0);
+    const enEjecucion = plan.roles.reduce((sum, rol) => sum + rol.actividades.filter(a => 
+      a.estado === 'EN_EJECUCION' || a.estado === 'en-progreso' || a.estado === 'En Ejecución' || ((a.porcentajeAvance || 0) > 0 && (a.porcentajeAvance || 0) < 100)
+    ).length, 0);
     
     const avance = total > 0 
-      ? Math.round(plan.roles.reduce((sum, rol) => sum + rol.actividades.reduce((s, a) => {
-          const pct = (a.estado === 'Completada' || a.estado === 'COMPLETADA') ? 100 
-                    : (a.entradasSeguimiento && a.entradasSeguimiento.length > 0 ? calcularPorcentajeCortes(a) : 0);
-          return s + pct;
-        }, 0), 0) / total) 
+      ? Math.round(plan.roles.reduce((sum, rol) => sum + rol.actividades.reduce((s, a) => s + (a.porcentajeAvance || 0), 0), 0) / total) 
       : 0;
 
     return { totalActividades: total, actividadesAsignadas: asignadas, actividadesCompletadas: completadas, actividadesEnEjecucion: enEjecucion, avancePromedio: avance };
@@ -4194,6 +4313,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               </select>
             )}
 
+
+
             {onCrearNuevo && (
               <button 
                 onClick={onCrearNuevo}
@@ -4203,8 +4324,6 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
                 Nuevo Plan
               </button>
             )}
-
-
 
             {(puedeExportarPlan || puedeSeguimiento || esSuperUsuario) && (
             <button
@@ -4687,12 +4806,24 @@ function SeccionGestionYSeguimiento({
     const tareasActualizadas = tareasActuales.map(t => 
       t.id === tareaId ? { ...t, completada: !t.completada, fechaCompletado: !t.completada ? new Date().toISOString() : undefined } : t
     );
+    
+    // Auto-calcular porcentaje de avance de la actividad basado en sus tareas
+    const totalTareas = tareasActualizadas.length;
+    const tareasCompletadas = tareasActualizadas.filter(t => t.completada).length;
+    const nuevoPorcentaje = totalTareas > 0 ? Math.round((tareasCompletadas / totalTareas) * 100) : (actividadActual.porcentajeAvance || 0);
+    const nuevoEstado = nuevoPorcentaje === 100 ? 'COMPLETADA' : nuevoPorcentaje > 0 ? 'EN_EJECUCION' : 'PENDIENTE';
+
     const planActualizado = {
       ...plan,
       roles: plan.roles.map(rol => {
         if (rol.numero === rolNumero) {
           return { ...rol, actividades: rol.actividades.map(act => 
-            act.id === actividadId ? { ...act, tareasSeguimiento: tareasActualizadas } : act
+            act.id === actividadId ? { 
+              ...act, 
+              tareasSeguimiento: tareasActualizadas,
+              porcentajeAvance: nuevoPorcentaje,
+              estado: nuevoEstado as any
+            } : act
           )};
         }
         return rol;
@@ -4702,7 +4833,12 @@ function SeccionGestionYSeguimiento({
     // Persistir
     if (typeof actividadId === 'string' && actividadId.length >= 32) {
       const backendTareas = mapTareasParaBackend(tareasActualizadas);
-      actividadesApi.update(String(actividadId), { tareas_seguimiento: backendTareas } as any)
+      const estadoBackend = nuevoEstado === 'COMPLETADA' ? 'completada' : nuevoEstado === 'EN_EJECUCION' ? 'en-progreso' : 'pendiente';
+      actividadesApi.update(String(actividadId), { 
+        tareas_seguimiento: backendTareas,
+        porcentaje_avance: nuevoPorcentaje,
+        estado: estadoBackend as any
+      } as any)
         .catch(e => console.error('Error persistiendo tarea:', e));
     }
     toast.success(tareasActualizadas.find(t => t.id === tareaId)?.completada ? 'Tarea completada' : 'Tarea reabierta');
@@ -5610,10 +5746,22 @@ function SeccionGestionYSeguimiento({
 
       {/* Información general - RESPONSIVE GRID */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-6 shadow-sm">
-        <h2 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-          <div className="w-1.5 h-6 bg-blue-600 rounded-full" />
-          Información general
-        </h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+            <div className="w-1.5 h-6 bg-blue-600 rounded-full" />
+            Información general
+          </h2>
+          {onEditarPlan && (plan.estado === 'BORRADOR' || plan.estado === 'EN_REVISION') && (
+            <button
+              onClick={() => onEditarPlan(plan as any)}
+              className="px-3 py-1.5 sm:px-4 sm:py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 rounded-lg font-bold flex items-center gap-2 transition-colors border border-blue-200 shadow-sm text-xs sm:text-sm"
+              title="Editar información del plan"
+            >
+              <Edit3 className="w-4 h-4" />
+              Editar Plan
+            </button>
+          )}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <div>
             <p className="text-sm text-gray-600 mb-1">Vigencia</p>
@@ -5742,15 +5890,7 @@ function SeccionGestionYSeguimiento({
                     <p>{obtenerTotalActividadesPlanAnterior(planAnterior)} actividades</p>
                   </div>
                   
-                  {planAnterior.estado === 'BORRADOR' && onEditarPlan && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onEditarPlan(planAnterior); }}
-                      className="ml-2 p-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors flex items-center justify-center group"
-                      title="Editar plan en formato de creación"
-                    >
-                      <Edit3 className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                    </button>
-                  )}
+
                 </div>
               </div>
             ))}
@@ -5952,7 +6092,9 @@ function SeccionGestionYSeguimiento({
                   backgroundColor: rol.color + '20', 
                   color: rol.color 
                 }}>
-                  {Math.round((asignadas / (rol.actividades.length || 1)) * 100)}% asignado
+                  {plan.estado === 'BORRADOR' || plan.estado === 'EN_REVISION'
+                    ? `${Math.round((asignadas / (rol.actividades.length || 1)) * 100)}% asignado`
+                    : `${avance}% completado`}
                 </span>
                 <motion.div
                   animate={{ rotate: isExpanded ? 180 : 0 }}
@@ -7325,9 +7467,9 @@ function __DEPRECATED__SeccionSeguimiento({ plan, onActualizar, onAbrirRol4, aud
                                       {(tarea.responsables || []).map((resp, ri) => (
                                         <div key={ri} className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 text-[10px] font-medium">
                                           <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center text-white text-[7px] font-bold flex-shrink-0">
-                                            {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                                            {(typeof resp === 'string' ? resp : (resp?.nombre || '')).split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
                                           </div>
-                                          <span className="text-gray-700">{resp}</span>
+                                          <span className="text-gray-700">{typeof resp === 'string' ? resp : resp?.nombre}</span>
                                           <button
                                             onClick={async () => {
                                               const nuevasTareas = (actividad.tareasSeguimiento || []).map(t =>

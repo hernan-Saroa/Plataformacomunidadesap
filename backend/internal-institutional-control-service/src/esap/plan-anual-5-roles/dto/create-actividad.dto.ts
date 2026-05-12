@@ -152,6 +152,10 @@ export class CreateActividadDto {
     fechaLimite?: string;
     fechaCompletada?: string;
     completadaPor?: string;
+    requiereAdjuntos?: boolean;
+    requiereObservaciones?: boolean;
+    observaciones?: string;
+    adjuntosTarea?: any[];
   }>;
 }
 

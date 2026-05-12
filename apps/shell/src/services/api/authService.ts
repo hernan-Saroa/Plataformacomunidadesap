@@ -247,6 +247,8 @@ class AuthService {
     localStorage.removeItem('esap_access_token');
     localStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
     localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
+    localStorage.removeItem('esap-sesion-activa');
+    localStorage.removeItem('esap_user_profile');
     apiClient.clearCache();
   }
 

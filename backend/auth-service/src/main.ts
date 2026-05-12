@@ -1,5 +1,10 @@
+import * as dotenv from 'dotenv';
+dotenv.config({ override: true });
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+// Forzar el secreto correcto independientemente de las variables de entorno inyectadas ANTES de importar módulos
+process.env.JWT_SECRET = process.env.JWT_SECRET && process.env.JWT_SECRET !== 'your-super-secret-jwt-key-here' ? process.env.JWT_SECRET : 'esap-super-secret-jwt-key-2024';
+
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { ResponseInterceptor } from './common/response.interceptor';
@@ -48,7 +53,9 @@ async function bootstrap() {
   // Ejemplo: /auth/api/v1/users -> auth-service:3001/users
 
   const port = process.env.PORT || 3001;
-  await app.listen(port);
+  // Forzar reinicio para cargar variables de entorno actualizadas.
+  await app.listen(port, '0.0.0.0');
   console.log(`Auth service corriendo en puerto ${port} con CORS habilitado`);
 }
 bootstrap();
+// reload

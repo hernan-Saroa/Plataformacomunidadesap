@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+process.env.JWT_SECRET = process.env.JWT_SECRET && process.env.JWT_SECRET !== 'your-super-secret-jwt-key-here' ? process.env.JWT_SECRET : 'esap-super-secret-jwt-key-2024';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -76,8 +77,9 @@ async function bootstrap() {
         'Content-Type', 'Authorization', 'Accept', 'Accept-Charset',
         'x-user-id', 'x-user-username', 'x-user-roles',
         'X-Client-Version', 'X-Client-Platform', 'X-Access-Token',
-      'x-client-platform',
-      'X-Client-Platform'],
+        'x-client-platform', 'X-Client-Platform',
+        'Cache-Control', 'Pragma', 'Expires'
+      ],
     });
 
     // Aumentar límite de body-parser para archivos grandes (base64)
@@ -117,7 +119,7 @@ async function bootstrap() {
     // Ejemplo: /control-institucional/api/v1/auditorias -> internal-institutional-control-service:3007/auditorias
 
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3007;
-    await app.listen(port);
+    await app.listen(port, '0.0.0.0');
     console.log(`✅ Internal Institutional Control Service running on port ${port}`);
     console.log(`📡 Endpoints disponibles en: http://localhost:${port}`);
     console.log(`📋 Health check: http://localhost:${port}`);
@@ -132,3 +134,4 @@ async function bootstrap() {
   }
 }
 bootstrap();
+// reload

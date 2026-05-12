@@ -84,7 +84,7 @@ const getBrowserGatewayUrl = (): string | null => {
   const { protocol, hostname, origin } = window.location;
 
   if (isLoopbackHost(hostname)) {
-    return `${protocol}//${hostname}:3000`;
+    return `${protocol}//${hostname}:4000`;
   }
 
   return `${origin.replace(/\/$/, '')}/services`;

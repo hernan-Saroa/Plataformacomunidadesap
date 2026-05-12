@@ -97,6 +97,6 @@ export const databaseConfig: TypeOrmModuleOptions = {
     DisciplinaryProcessReassignmentRequest,
     DisciplinaryBehavior,
   ],
-  synchronize: false,
+  synchronize: process.env.NODE_ENV !== 'production',
   logging: false,
 };

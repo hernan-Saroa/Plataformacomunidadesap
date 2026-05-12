@@ -22,6 +22,7 @@ async function bootstrap() {
   });
 
   // Force restart 2025-12-30
-  await app.listen(process.env.PORT ?? 3008);
+  await app.listen(process.env.PORT ?? 3008, '0.0.0.0');
 }
 bootstrap();
+// reload

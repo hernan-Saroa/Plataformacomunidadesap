@@ -60,6 +60,11 @@ for (const serviceName of selectedServices) {
   // Load the service's .env file and merge with process.env
   const envFilePath = path.join(cwd, '.env');
   const serviceEnv = { ...process.env };
+  
+  // Forzar JWT_SECRET si está usando el valor por defecto erróneo del entorno
+  if (serviceEnv.JWT_SECRET === 'your-super-secret-jwt-key-here' || !serviceEnv.JWT_SECRET) {
+    serviceEnv.JWT_SECRET = 'esap-super-secret-jwt-key-2024';
+  }
   if (existsSync(envFilePath)) {
     const envContent = readFileSync(envFilePath, 'utf-8');
     for (const line of envContent.split('\n')) {

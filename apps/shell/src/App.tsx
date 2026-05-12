@@ -389,12 +389,19 @@ export default function App() {
         console.error('Error al restaurar sesión de auth:', error);
       }
     } else {
-      if (sesionGuardada) {
+      if (sesionGuardada && !authToken) {
         toast.error('Sesión ha expirado', {
           description: 'Por seguridad la sesión se ha cerrado',
           duration: 5000,
         });
-        localStorage.clear();
+        const keysToRemove = [
+          'esap_auth_token',
+          'esap_access_token',
+          'esap_user_data',
+          'esap-sesion-activa',
+          'esap_user_profile'
+        ];
+        keysToRemove.forEach(key => localStorage.removeItem(key));
         sesionGuardada = null;
       }
     }
@@ -582,11 +589,20 @@ export default function App() {
         ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
         : user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
 
+      const roles = user?.roles?.map((role: any) => role.code) || [];
+      const permissions = extractPermissionCodes(user);
+      
+      // ✅ SIEMPRE guardar esap_user_data para todos (incluyendo Administradores)
+      // para que funcione la restauración de sesión al recargar la página.
+      localStorage.setItem('esap_user_data', JSON.stringify({
+        ...user,
+        roles: user?.roles || roles.map((code: string) => ({ code, name: code })),
+        permissions
+      }));
+
       console.log('👤 User info extracted:', { userEmail, userName });
 
       // Determinar tipo de usuario basado en roles del backend
-      const roles = user?.roles?.map((role: any) => role.code) || [];
-      const permissions = extractPermissionCodes(user);
       const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
       const hasConfigRole = !(roles.includes('ESTUDIANTE') || roles.includes('DOCENTE') || roles.includes('GRADUADO') || roles.includes('ASPIRANTE'))
       // const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO')  || roles.includes('GESTION_LEGAL');
@@ -773,7 +789,15 @@ export default function App() {
 
   // Handler para logout (desde cualquier ambiente)
   const handleLogout = (viewToast = true) => {
-    localStorage.clear();
+    // Preservar borradores (drafts) al hacer logout, solo eliminar keys de sesión
+    const keysToRemove = [
+      'esap_auth_token',
+      'esap_access_token',
+      'esap_user_data',
+      'esap-sesion-activa',
+      'esap_user_profile'
+    ];
+    keysToRemove.forEach(key => localStorage.removeItem(key));
     if (viewToast) {
       toast.success('Sesión cerrada exitosamente', {
         description: 'Has cerrado sesión de forma segura',
@@ -783,6 +807,7 @@ export default function App() {
     setUserType('portal');
     setUserRoles([]);
     setUserData(null);
+    setUsuarioActual(null);
     setCurrentView('landing');
     setVistaActual('landing');
     // Limpiar timers

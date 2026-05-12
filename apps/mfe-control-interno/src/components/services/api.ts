@@ -42,9 +42,15 @@ async function apiRequest<T>(
 ): Promise<ApiResponse<T>> {
   try {
     const token = localStorage.getItem('esap_auth_token');
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const urlObj = new URL(`${API_BASE_URL}${endpoint}`);
+    urlObj.searchParams.append('_t', new Date().getTime().toString());
+
+    const response = await fetch(urlObj.toString(), {
       headers: {
         'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
         ...(token && { 'Authorization': `Bearer ${token}` }),
         ...options?.headers,
       },
@@ -55,6 +61,16 @@ async function apiRequest<T>(
     const data = text ? JSON.parse(text) : null;
 
     if (!response.ok) {
+      if (response.status === 401 || (data && data.error === 'jwt expired')) {
+        localStorage.removeItem('esap_auth_token');
+        localStorage.removeItem('esap_access_token');
+        localStorage.removeItem('esap-sesion-activa');
+        localStorage.removeItem('esap_user_profile');
+        window.location.href = '/login';
+        // Return a promise that never resolves to prevent further execution during redirect
+        return new Promise(() => {});
+      }
+
       return {
         success: false,
         error: data?.error || 'Error en la petición',
@@ -225,7 +241,7 @@ export const auditoriasApi = {
    * Obtener todas las auditorías para vista Kanban
    */
   getAllKanban: async (): Promise<ApiResponse<Auditoria[]>> => {
-    return apiRequest<Auditoria[]>('/auditorias/kanban');
+    return apiRequest<Auditoria[]>('/auditorias/kanban/all');
   },
 
   /**
