@@ -21,12 +21,17 @@ import {
   ChevronDown,
   CheckCircle,
   AlertCircle,
-  Loader2
+  Loader2,
+  BarChart3,
+  Layers
 } from 'lucide-react';
-import { Card, Badge, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
+import { Card, Badge, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, Container4K, ResponsiveHeader, ConfirmationDialog } from '@esap-mfe/shared-ui';
 import { toast, Toaster } from 'sonner';
 import { PaginationPremium } from './shared/PaginationPremium';
 import { CreateProgramaModal } from './CreateProgramaModal';
+import { PlanesEstudioDashboard } from './PlanesEstudioDashboard';
+import { OfertaAsignaturasModule } from './OfertaAsignaturasModule';
+import { AsignaturasPlanEstudios } from './AsignaturasPlanEstudios';
 import { useAuth } from '../hooks';
 import { programasService, apiClient, type ProgramaAcademicoDTO } from '../../services/api';
 
@@ -56,6 +61,8 @@ export function ProgramasAcademicosModule() {
   const [currentPage, setCurrentPage] = useState(1);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [programaToEdit, setProgramaToEdit] = useState<ProgramaAcademico | null>(null);
+  const [programaToDelete, setProgramaToDelete] = useState<ProgramaAcademico | null>(null);
+  const [activeView, setActiveView] = useState<'lista' | 'dashboard' | 'oferta-asignaturas'>('lista');
   const itemsPerPage = 10;
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
@@ -104,12 +111,14 @@ export function ProgramasAcademicosModule() {
   // Calculate totalPages from pagination data
   const totalPages = pagination ? Math.ceil(pagination.total / pagination.porPagina) : 1;
 
-  // Stats (usando el total del backend)
+  // Stats
   const stats = {
     totalProgramas: pagination?.total || 0,
-    activos: programas.filter(p => p.estado === 'ACTIVO').length,
-    totalEstudiantes: 0, // Estos campos ya no existen en la nueva tabla
-    totalGraduados: 0
+    programasConPlan: programas.filter(p => (p.totalAsignaturas || 0) > 0).length,
+    totalAsignaturas: programas.reduce((sum, p) => sum + (p.totalAsignaturas || 0), 0),
+    totalCreditos: programas.reduce((sum, p) => sum + (p.creditosPlan || 0), 0),
+    totalEstudiantes: programas.reduce((sum, p) => sum + (p.estudiantesActivos || 0), 0),
+    totalGraduados: programas.reduce((sum, p) => sum + (p.graduados || 0), 0),
   };
 
   // Filtros únicos
@@ -155,16 +164,22 @@ export function ProgramasAcademicosModule() {
     setShowCreateModal(true);
   };
 
-  const handleDelete = async (programa: ProgramaAcademico) => {
-    if (window.confirm(`¿Estás seguro de que quieres eliminar el programa "${programa.nombre}"?`)) {
+  const handleDelete = (programa: ProgramaAcademico) => {
+    setProgramaToDelete(programa);
+  };
+
+  const confirmDelete = async () => {
+    if (programaToDelete) {
       try {
-        await apiClient.delete(`/auth/api/v1/programas-academicos/${programa.id}`);
-        toast.success('Programa Eliminado', { description: `Se eliminó: ${programa.nombre}` });
+        await apiClient.delete(`/auth/api/v1/programas-academicos/${programaToDelete.id}`);
+        toast.success('Programa Eliminado', { description: `Se eliminó: ${programaToDelete.nombre}` });
         // Recargar datos
         window.location.reload();
       } catch (error) {
         console.error('Error deleting programa:', error);
         toast.error('Error al eliminar el programa');
+      } finally {
+        setProgramaToDelete(null);
       }
     }
   };
@@ -234,6 +249,84 @@ export function ProgramasAcademicosModule() {
         }}
       />
 
+      {/* Stats Summary */}
+      {stats.totalAsignaturas > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+          className="flex overflow-x-auto pb-2 -mx-4 px-4 lg:mx-0 lg:px-0 lg:grid lg:grid-cols-4 gap-3 hide-scrollbar"
+        >
+          {[
+            { label: 'Programas', value: stats.totalProgramas, sub: `${stats.programasConPlan} con plan`, color: 'text-[#003DA5]', bg: 'bg-blue-50 border-blue-200', icon: GraduationCap },
+            { label: 'Con Plan de Estudios', value: stats.programasConPlan, sub: `de ${stats.totalProgramas}`, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200', icon: BookOpen },
+            { label: 'Asignaturas Totales', value: stats.totalAsignaturas, sub: `${stats.totalCreditos} creditos`, color: 'text-purple-600', bg: 'bg-purple-50 border-purple-200', icon: Layers },
+            { label: 'Estudiantes', value: stats.totalEstudiantes, sub: `${stats.totalGraduados} graduados`, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-200', icon: Users },
+          ].map((stat) => (
+            <Card key={stat.label} className={`${stat.bg} border p-3 min-w-[200px] lg:min-w-0 flex-shrink-0`}>
+              <div className="flex items-center gap-2">
+                <stat.icon className={`w-4 h-4 ${stat.color}`} />
+                <span className="text-[10px] uppercase tracking-wider font-bold text-gray-500">{stat.label}</span>
+              </div>
+              <p className={`text-2xl font-black ${stat.color} mt-1`}>{stat.value.toLocaleString()}</p>
+              <p className="text-[11px] text-gray-500">{stat.sub}</p>
+            </Card>
+          ))}
+        </motion.div>
+      )}
+
+      {/* View Toggle: Lista vs Dashboard vs Oferta Asignaturas */}
+      {stats.programasConPlan > 0 && (
+        <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl w-full md:w-fit overflow-x-auto hide-scrollbar">
+          <button
+            onClick={() => setActiveView('lista')}
+            className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+              activeView === 'lista' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <GraduationCap className="w-3.5 h-3.5" />
+            Lista de Programas
+          </button>
+          <button
+            onClick={() => setActiveView('dashboard')}
+            className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+              activeView === 'dashboard' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5" />
+            Dashboard Planes de Estudio
+          </button>
+          <button
+            onClick={() => setActiveView('oferta-asignaturas')}
+            className={`flex items-center flex-shrink-0 whitespace-nowrap gap-1.5 px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+              activeView === 'oferta-asignaturas' ? 'bg-white text-[#003DA5] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            Oferta de Asignaturas (426)
+          </button>
+        </div>
+      )}
+
+      {/* Dashboard View */}
+      {activeView === 'dashboard' ? (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <PlanesEstudioDashboard />
+        </motion.div>
+      ) : activeView === 'oferta-asignaturas' ? (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <OfertaAsignaturasModule onBack={() => setActiveView('lista')} />
+        </motion.div>
+      ) : (
+      <>
       {/* Búsqueda y Filtros */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
@@ -303,8 +396,10 @@ export function ProgramasAcademicosModule() {
               className="px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20 focus:border-[#003DA5] bg-white cursor-pointer font-medium text-sm transition-all"
             >
               <option value="all">Todos los estados</option>
-              <option value="ACTIVO">Activo</option>
-              <option value="INACTIVO">Inactivo</option>
+              <option value="Activo">Activo</option>
+              <option value="Inactivo">Inactivo</option>
+              <option value="En Trámite">En Trámite</option>
+              <option value="Suspendido">Suspendido</option>
             </select>
           </div>
         </div>
@@ -374,11 +469,11 @@ export function ProgramasAcademicosModule() {
               <div>
                 <h2 className="font-black text-gray-900 text-lg">Programas Académicos</h2>
                 <p className="text-xs text-gray-600 mt-0.5">
-                  Mostrando {programas.length} de {pagination?.total || 0} programas
+                  Mostrando {paginatedProgramas.length} de {filteredProgramas.length} programas
                 </p>
               </div>
               <Badge variant="outline" className="font-semibold">
-                Total: {pagination?.total || 0}
+                Total: {filteredProgramas.length}
               </Badge>
             </div>
           </div>
@@ -412,18 +507,17 @@ export function ProgramasAcademicosModule() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
-                <AnimatePresence mode="popLayout">
-                  {paginatedProgramas.map((programa, index) => (
-                    <React.Fragment key={`programa-fragment-${programa.id}`}>
-                      <motion.tr
-                        key={`programa-${programa.id}`}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2, delay: index * 0.05 }}
-                        className="hover:bg-gray-50 transition-colors cursor-pointer group"
-                        onClick={() => setExpandedProgramaId(expandedProgramaId === programa.id ? null : programa.id)}
-                      >
+                <AnimatePresence>
+                  {paginatedProgramas.map((programa, index) => [
+                    <motion.tr
+                      key={programa.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.2, delay: index * 0.05 }}
+                      className="hover:bg-gray-50 transition-colors cursor-pointer group"
+                      onClick={() => setExpandedProgramaId(expandedProgramaId === programa.id ? null : programa.id)}
+                    >
                         <td className="px-6 py-4">
                           <div>
                             <p className="font-bold text-gray-900 text-sm group-hover:text-[#003DA5] transition-colors">
@@ -441,19 +535,16 @@ export function ProgramasAcademicosModule() {
                         </td>
 
                         <td className="px-6 py-4">
-                          {(() => {
+                          {(programa.totalAsignaturas || 0) > 0 ? (() => {
                             const pct = programa.creditos > 0 ? Math.min((programa.creditosPlan / programa.creditos) * 100, 100) : 0;
                             const barColor = pct >= 100 ? 'bg-emerald-500' : pct >= 75 ? 'bg-blue-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-400';
                             const textColor = pct >= 100 ? 'text-emerald-600' : pct >= 75 ? 'text-blue-600' : pct >= 50 ? 'text-amber-600' : 'text-red-500';
                             const iconColor = pct >= 100 ? 'text-emerald-500' : pct >= 75 ? 'text-blue-500' : pct >= 50 ? 'text-amber-500' : 'text-red-400';
-
                             return (
                               <div className="space-y-1.5 min-w-[130px]">
                                 <div className="flex items-center gap-1.5">
                                   <BookOpen className={`w-3.5 h-3.5 ${iconColor}`} />
-                                  <span className="text-xs font-semibold text-gray-900">
-                                    {programa.totalAsignaturas} asignaturas
-                                  </span>
+                                  <span className="text-xs font-semibold text-gray-900">{programa.totalAsignaturas} asignaturas</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
@@ -463,12 +554,17 @@ export function ProgramasAcademicosModule() {
                                     />
                                   </div>
                                   <span className={`text-[10px] font-bold ${textColor} whitespace-nowrap`}>
-                                    {programa.creditosPlan}/{programa.creditos || 0} cr.
+                                    {programa.creditosPlan || 0}/{programa.creditos} cr.
                                   </span>
                                 </div>
                               </div>
                             );
-                          })()}
+                          })() : (
+                            <div className="flex items-center gap-1.5">
+                              <BookOpen className="w-4 h-4 text-gray-300" />
+                              <span className="text-xs text-gray-400 italic">Sin plan</span>
+                            </div>
+                          )}
                         </td>
 
                         <td className="px-6 py-4">
@@ -526,11 +622,11 @@ export function ProgramasAcademicosModule() {
                             </button>
                           </div>
                         </td>
-                      </motion.tr>
+                      </motion.tr>,
 
-                      {expandedProgramaId === programa.id && (
+                      expandedProgramaId === programa.id && (
                         <motion.tr
-                          key={`programa-expanded-${programa.id}`}
+                          key={`${programa.id}-expanded`}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
@@ -543,127 +639,66 @@ export function ProgramasAcademicosModule() {
                               className="overflow-hidden"
                             >
                               <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border-t border-b-2 border-[#003DA5]/20 p-6">
-                                <div className="grid md:grid-cols-3 gap-4">
+                                <div className="grid md:grid-cols-2 gap-4">
                                   <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
                                     <h4 className="font-black text-gray-900 text-sm mb-3 flex items-center gap-2">
                                       <FileText className="w-4 h-4 text-[#003DA5]" />
                                       Información Académica
                                     </h4>
                                     <div className="space-y-2 text-sm">
-                                      <p className="text-gray-700"><span className="font-semibold">Duración:</span> {programa.duracion} semestres ({programa.creditos} créditos)</p>
+                                      <p className="text-gray-700"><span className="font-semibold">Duración:</span> {programa.duracionSemestres} semestres ({programa.creditos} créditos)</p>
                                       <p className="text-gray-700"><span className="font-semibold">Jornada:</span> {programa.jornada}</p>
                                       <p className="text-gray-700"><span className="font-semibold">Facultad:</span> {programa.facultad}</p>
-                                      {programa.costoMatricula && <p className="text-gray-700"><span className="font-semibold">Costo matrícula:</span> ${programa.costoMatricula.toLocaleString()}</p>}
+                                      <p className="text-gray-700"><span className="font-semibold">Costo matrícula:</span> ${(programa.costoMatricula || 0).toLocaleString()}</p>
+                                      <p className="text-gray-700"><span className="font-semibold">Docentes:</span> {programa.docentesAsignados}</p>
                                     </div>
                                   </div>
 
-                                  <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-                                    <h4 className="font-black text-gray-900 text-sm mb-3 flex items-center gap-2">
-                                      <Award className="w-4 h-4 text-[#003DA5]" />
-                                      Registro y Acreditación
-                                    </h4>
-                                    <div className="space-y-2 text-sm">
-                                      {programa.registroCalificado && (
-                                        <>
-                                          <p className="text-gray-700"><span className="font-semibold">Reg. Calificado:</span> {programa.registroCalificado.numero_registro_calificado}</p>
-                                          <p className="text-gray-700"><span className="font-semibold">Vigencia RC:</span> {new Date(programa.registroCalificado.vigencia).toLocaleDateString('es-CO')}</p>
-                                          {programa.registroCalificado.acreditacion && (
-                                            <>
-                                              <p className="text-gray-700"><span className="font-semibold">Acreditación:</span> {programa.registroCalificado.acreditacion.tipo_acreditacion}</p>
-                                              <p className="text-gray-700"><span className="font-semibold">Vigencia:</span> {new Date(programa.registroCalificado.acreditacion.vigencia).toLocaleDateString('es-CO')}</p>
-                                            </>
-                                          )}
-                                        </>
-                                      )}
-                                      <p className="text-gray-700"><span className="font-semibold">Creación:</span> {new Date(programa.createdAt).toLocaleDateString('es-CO')}</p>
-                                    </div>
-                                  </div>
-
-                                  <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-                                    <h4 className="font-black text-gray-900 text-sm mb-3 flex items-center gap-2">
-                                      <BookOpen className="w-4 h-4 text-[#003DA5]" />
-                                      Plan de Estudios
-                                    </h4>
-                                    <div className="space-y-3 text-sm">
-                                      {(() => {
-                                        const pct = programa.creditos > 0 ? Math.min((programa.creditosPlan / programa.creditos) * 100, 100) : 0;
-                                        const statusText = pct >= 100 ? 'Completado' : pct >= 75 ? 'Avanzado' : pct >= 50 ? 'En progreso' : 'Incompleto';
-                                        const statusColor = pct >= 100 ? 'text-emerald-600' : pct >= 75 ? 'text-blue-600' : pct >= 50 ? 'text-amber-600' : 'text-red-600';
-
-                                        return (
+                                    <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+                                      <h4 className="font-black text-gray-900 text-sm mb-3 flex items-center gap-2">
+                                        <Award className="w-4 h-4 text-[#003DA5]" />
+                                        Registro y Acreditación
+                                      </h4>
+                                      <div className="space-y-2 text-sm">
+                                        <p className="text-gray-700"><span className="font-semibold">Reg. Calificado:</span> {programa.registroCalificado?.numero || 'Pendiente'}</p>
+                                        <p className="text-gray-700"><span className="font-semibold">Vigencia RC:</span> {programa.registroCalificado?.vigencia ? new Date(programa.registroCalificado.vigencia).toLocaleDateString('es-CO') : 'N/A'}</p>
+                                        {programa.acreditacion && (
                                           <>
-                                            <div className="flex justify-between items-center">
-                                              <span className="font-semibold text-gray-900">Asignaturas:</span>
-                                              <span className={`font-bold ${statusColor}`}>{programa.totalAsignaturas}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                              <span className="font-semibold text-gray-900">Créditos completados:</span>
-                                              <span className={`font-bold ${statusColor}`}>
-                                                {programa.creditosPlan}/{programa.creditos || 0}
-                                              </span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                              <span className="font-semibold text-gray-900">Créditos completados:</span>
-                                              <span className={`font-bold ${statusColor}`}>
-                                                {programa.creditosPlan}/{programa.creditos || 0}
-                                              </span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                              <span className="font-semibold text-gray-900">Estado:</span>
-                                              <span className={`font-bold ${statusColor}`}>{statusText}</span>
-                                            </div>
-                                            <div className="mt-3">
-                                              <div className="flex justify-between text-xs text-gray-600 mb-1">
-                                                <span>Progreso</span>
-                                                <span>{Math.round(pct)}%</span>
-                                              </div>
-                                              <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                                                <div
-                                                  className={`h-full rounded-full transition-all duration-500 ${
-                                                    pct >= 100 ? 'bg-emerald-500' : pct >= 75 ? 'bg-blue-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-400'
-                                                  }`}
-                                                  style={{ width: `${pct}%` }}
-                                                />
-                                              </div>
-                                            </div>
+                                            <p className="text-gray-700"><span className="font-semibold">Acreditación:</span> {programa.acreditacion?.tipo}</p>
+                                            <p className="text-gray-700"><span className="font-semibold">Vigencia:</span> {programa.acreditacion?.vigencia ? new Date(programa.acreditacion.vigencia).toLocaleDateString('es-CO') : 'N/A'}</p>
                                           </>
-                                        );
-                                      })()}
+                                        )}
+                                        <p className="text-gray-700"><span className="font-semibold">Creación:</span> {programa.fechaCreacion ? new Date(programa.fechaCreacion).toLocaleDateString('es-CO') : 'N/A'}</p>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
 
                                 <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 mt-4">
                                   <h4 className="font-black text-gray-900 text-sm mb-2">Descripción</h4>
                                   <p className="text-sm text-gray-700">{programa.descripcion}</p>
-                                  {programa.requisitosDeIngreso && (
-                                    <>
-                                      <h4 className="font-black text-gray-900 text-sm mb-2 mt-4">Requisitos de Ingreso</h4>
-                                      <p className="text-sm text-gray-700">{programa.requisitosDeIngreso}</p>
-                                    </>
-                                  )}
-                                  {programa.perfilEgresado && (
-                                    <>
-                                      <h4 className="font-black text-gray-900 text-sm mb-2 mt-4">Perfil del Egresado</h4>
-                                      <p className="text-sm text-gray-700">{programa.perfilEgresado}</p>
-                                    </>
-                                  )}
                                 </div>
+
+                                {/* Plan de Estudios — Asignaturas */}
+                                <AsignaturasPlanEstudios
+                                  programaId={String(programa.id)}
+                                  programaNombre={programa.nombre}
+                                  totalCreditos={programa.creditos || 160}
+                                  totalSemestres={programa.duracionSemestres || 10}
+                                />
                               </div>
                             </motion.div>
                           </td>
                         </motion.tr>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </AnimatePresence>
+                      )
+                    ])}
+                  </AnimatePresence>
               </tbody>
             </table>
           </div>
 
           {/* Vista Mobile */}
           <div className="lg:hidden divide-y divide-gray-200">
-            <AnimatePresence mode="popLayout">
+            <AnimatePresence>
               {paginatedProgramas.map((programa, index) => (
                 <motion.div
                   key={programa.id}
@@ -685,11 +720,92 @@ export function ProgramasAcademicosModule() {
                       <Building2 className="w-3.5 h-3.5" />
                       {programa.sede}
                     </div>
+                    <div className="flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5" />
+                      {programa.estudiantesActivos}
+                    </div>
+                    {(programa.totalAsignaturas || 0) > 0 && (
+                      <div className="flex items-center gap-1">
+                        <BookOpen className="w-3.5 h-3.5 text-emerald-500" />
+                        <span className="font-semibold">{programa.totalAsignaturas} asig.</span>
+                        <span className="text-gray-400">({programa.creditosPlan} cr.)</span>
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-1">
-                    {programa.nivelFormacion && getNivelBadge(programa.nivelFormacion)}
-                    {programa.modalidad && <Badge variant="outline" className="text-xs">{programa.modalidad}</Badge>}
+                    {getNivelBadge(programa.nivelFormacion)}
+                    <Badge variant="outline" className="text-xs">{programa.modalidad}</Badge>
                   </div>
+
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedProgramaId(expandedProgramaId === programa.id ? null : programa.id);
+                        }}
+                        className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-bold text-[#003DA5] bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all min-h-[44px]"
+                      >
+                        {expandedProgramaId === programa.id ? 'Ocultar' : 'Ver Detalles'}
+                        <ChevronDown className={`w-4 h-4 transition-transform ${expandedProgramaId === programa.id ? 'rotate-180' : ''}`} />
+                      </button>
+
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleEdit(programa); }}
+                        className="flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 active:scale-95 transition-all min-h-[44px]"
+                      >
+                        <Edit className="w-4 h-4" />
+                        Editar
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDelete(programa); }}
+                      className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 active:scale-95 transition-all border border-red-100 min-h-[44px]"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Eliminar Programa
+                    </button>
+                  </div>
+
+                  {expandedProgramaId === programa.id && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden mt-3"
+                    >
+                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-100 p-4 space-y-4 shadow-inner">
+                        <div>
+                          <h4 className="font-bold text-gray-900 text-[13px] mb-2 flex items-center gap-1">
+                            <FileText className="w-3.5 h-3.5 text-[#003DA5]" />
+                            Información Académica
+                          </h4>
+                          <div className="space-y-1.5 text-xs text-gray-700">
+                            <p><span className="font-semibold text-gray-900">Duración:</span> {programa.duracionSemestres} semestres</p>
+                            <p><span className="font-semibold text-gray-900">Jornada:</span> {programa.jornada}</p>
+                            <p><span className="font-semibold text-gray-900">Facultad:</span> {programa.facultad}</p>
+                            <p><span className="font-semibold text-gray-900">Costo:</span> ${(programa.costoMatricula || 0).toLocaleString()} COP</p>
+                          </div>
+                        </div>
+                        
+                        {(programa.totalAsignaturas || 0) > 0 && (
+                           <div>
+                             <h4 className="font-bold text-gray-900 text-[13px] mb-3 flex items-center gap-1">
+                                <BookOpen className="w-3.5 h-3.5 text-[#003DA5]" />
+                                Plan de Estudios
+                             </h4>
+                             <AsignaturasPlanEstudios
+                                programaId={String(programa.id)}
+                                programaNombre={programa.nombre}
+                                totalCreditos={programa.creditos || 160}
+                                totalSemestres={programa.duracionSemestres || 10}
+                             />
+                           </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -733,10 +849,24 @@ export function ProgramasAcademicosModule() {
 
       {/* Modal para Crear/Editar Programa */}
       {showCreateModal && (
-        <CreateProgramaModal 
+        <CreateProgramaModal
           onClose={handleCloseModal}
           programaToEdit={programaToEdit}
         />
+      )}
+
+      {/* Dialog para Eliminar Programa */}
+      <ConfirmationDialog
+        isOpen={!!programaToDelete}
+        title="Eliminar Programa"
+        message={`¿Estás seguro de eliminar el programa "${programaToDelete?.nombre}"?\nEsta acción no se puede deshacer.`}
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        type="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setProgramaToDelete(null)}
+      />
+      </>
       )}
     </Container4K>
     </>
