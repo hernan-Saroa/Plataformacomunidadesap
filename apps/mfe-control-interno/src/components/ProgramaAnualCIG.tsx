@@ -50,6 +50,8 @@ import { FormularioNuevaAuditoria } from './FormularioNuevaAuditoria';
 
 // ============ SERVICIO BACKEND ============
 import { controlInternoService } from '@/services/api/controlInternoService';
+// import { notificationsService } from '@/services/api/notificationsService';
+import { notificationsService } from '../../services/api/notificationsService';
 
 // ============ INTEGRACIÓN CONTEXT ============
 import { useIntegracionAuditoriaPlanes, type AuditoriaProgramada } from './IntegracionAuditoriasPlanesContext';
@@ -323,7 +325,7 @@ export function ProgramaAnualOCIG() {
   };
 
   // ✅ NUEVO: Handler para aprobar programa
-  const handleAprobarPrograma = () => {
+  const handleAprobarPrograma = async () => {
     // 1. Validar que haya auditorías aprobadas
     const auditoriasParaKanban = auditoriasProgramadas.filter(
       aud => aud.estadoPrograma === 'Aprobado' || aud.estadoPrograma === 'Pendiente Aprobación'
@@ -364,6 +366,17 @@ export function ProgramaAnualOCIG() {
     // 3. Agregar al context
     console.log('📋 Enviando', auditoriasFormateadas.length, 'auditorías al Kanban');
     agregarAuditoriasProgramadas(auditoriasFormateadas);
+
+    // 🚀 DISPARAR EVENTO AL BACKEND
+    try {
+      await notificationsService.triggerEvent('EVT-PA-001', {
+        tituloCustom: 'Programa Anual Aprobado',
+        mensajeCustom: `Se ha aprobado el Programa Anual con ${auditoriasFormateadas.length} auditorías.`,
+        url_accion: '/control-interno/plan-anual',
+      });
+    } catch (e) {
+      console.error('Error disparando notificación:', e);
+    }
 
     // 4. Marcar como aprobado
     setProgramaAprobado(true);

@@ -13,6 +13,7 @@ import { Geopolitica } from './users/geopolitica.entity';
 import { Sede } from './users/sede.entity';
 import { Seccional } from './users/seccional.entity';
 import { ProgramaAcademico } from './programas/programa.entity';
+import { Asignatura } from './programas/asignatura.entity';
 import { ProgramasModule } from './programas/programas.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 
@@ -37,6 +38,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
         Sede,
         Seccional,
         ProgramaAcademico,
+        Asignatura,
       ],
       synchronize: false, // Desactivado para evitar conflictos con tablas existentes
     }),

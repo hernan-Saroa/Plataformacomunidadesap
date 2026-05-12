@@ -21,6 +21,8 @@ import { FileText, Users, Calendar, CheckCircle, ChevronRight, ChevronLeft, Targ
 import { ModalWorldClass } from './ModalWorldClass';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
+// import { notificationsService } from '@/services/api/notificationsService';
+import { notificationsService } from '../../services/api/notificationsService';
 
 // ============ TIPOS ============
 
@@ -118,6 +120,20 @@ export function InicioAuditoriaWizardWorldClass({
     await new Promise(resolve => setTimeout(resolve, 1500));
     
     onIniciar(auditoria);
+
+    // 🚀 DISPARAR EVENTO AL BACKEND
+    try {
+      await notificationsService.triggerEvent('EVT-AUD-001', {
+        auditoriaId: auditoria.id,
+        auditoriaCodigo: auditoria.codigo,
+        tituloCustom: 'Auditoría Iniciada',
+        mensajeCustom: `La auditoría ${auditoria.codigo} ha sido formalmente iniciada.`,
+        url_accion: `/control-interno/auditorias/${auditoria.id}`,
+      });
+    } catch (e) {
+      console.error('Error disparando notificación:', e);
+    }
+
     toast.success('Auditoría iniciada correctamente', {
       description: `${auditoria.codigo} - Se generaron todos los documentos oficiales`
     });

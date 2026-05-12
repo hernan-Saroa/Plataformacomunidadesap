@@ -5,15 +5,16 @@
  */
 
 import { useState, useEffect } from 'react';
-import { 
+import {
   Building2, Plus, Search, Download, Upload, MapPin,
   ChevronRight, GitBranch, Network, Users, Loader2, ChevronDown, Pencil, Trash2,
-  GraduationCap
+  GraduationCap, RefreshCw, AlertTriangle
 } from 'lucide-react';
 import { Card, Button, Badge, Input } from '@esap-mfe/shared-ui';
 import { toast, Toaster } from 'sonner';
 import { estructuraService } from '../../services/estructuraService';
 import { CreateSeccionalSedeModal } from './CreateSeccionalSedeModal';
+import { AsignarUsuariosModal } from './AsignarUsuariosModal';
 import { useAuth } from '../../hooks';
 import type { Seccional, Sede, EstadisticasEstructuraOrganizacional } from '../../services/api/types';
 
@@ -32,6 +33,9 @@ export function EstructuraOrganizacionalModule() {
   const [tipoCreacion, setTipoCreacion] = useState<TipoCreacion>('sede');
   const [showDropdown, setShowDropdown] = useState(false);
   const [editItem, setEditItem] = useState<Seccional | Sede | null>(null);
+  const [showAsignarModal, setShowAsignarModal] = useState(false);
+  const [sinTerritorial, setSinTerritorial] = useState(0);
+  const [sinCetap, setSinCetap] = useState(0);
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
 
@@ -55,6 +59,16 @@ export function EstructuraOrganizacionalModule() {
       toast.error('Error al cargar la estructura organizacional');
     } finally {
       setLoading(false);
+    }
+
+    try {
+      const resp = await estructuraService.getUsuariosSinAsignar();
+      if (resp.success && resp.data) {
+        setSinTerritorial(resp.data.filter((u: any) => u.sinTerritorial).length);
+        setSinCetap(resp.data.filter((u: any) => !u.cetapId).length);
+      }
+    } catch {
+      // endpoint no disponible aún, no mostrar alerta
     }
   };
 
@@ -142,6 +156,16 @@ export function EstructuraOrganizacionalModule() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={cargarDatos}
+            className="gap-2"
+            title="Actualizar datos"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span className="hidden sm:inline">Actualizar</span>
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -245,6 +269,28 @@ export function EstructuraOrganizacionalModule() {
         </div>
       </Card>
 
+      {/* Alerta usuarios sin asignar */}
+      {(sinTerritorial > 0 || sinCetap > 0) && (
+        <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+          <div className="flex-1 text-sm text-amber-800">
+            {sinTerritorial > 0 && (
+              <span className="font-medium">{sinTerritorial} usuario(s) sin territorial</span>
+            )}
+            {sinTerritorial > 0 && sinCetap > 0 && <span> · </span>}
+            {sinCetap > 0 && (
+              <span className="font-medium">{sinCetap} usuario(s) sin CETAP</span>
+            )}
+          </div>
+          <button
+            onClick={() => setShowAsignarModal(true)}
+            className="text-sm font-medium text-amber-800 underline hover:text-amber-900 shrink-0"
+          >
+            Asignar ahora
+          </button>
+        </div>
+      )}
+
       {/* Vista segun seleccion */}
       {loading ? (
         <Card className="p-12">
@@ -282,6 +328,23 @@ export function EstructuraOrganizacionalModule() {
         tipo={tipoCreacion}
         seccionales={seccionales}
         editItem={editItem}
+      />
+
+      {/* Modal Asignar Usuarios */}
+      <AsignarUsuariosModal
+        isOpen={showAsignarModal}
+        onClose={() => setShowAsignarModal(false)}
+        onSuccess={cargarDatos}
+        territoriales={seccionales
+          .filter(s => s.codSeccional?.toUpperCase() !== 'SCENT')
+          .map(s => ({
+            id: String(s.idSeccional),
+            nombre: s.nomSeccional,
+            cetap: sedes
+              .filter(sede => sede.idSeccional === s.idSeccional)
+              .map(sede => ({ id: String(sede.idSede), nombre: sede.nomSede }))
+          }))
+        }
       />
     </div>
   );

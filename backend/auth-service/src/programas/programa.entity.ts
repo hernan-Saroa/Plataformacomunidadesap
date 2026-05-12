@@ -55,4 +55,8 @@ export class ProgramaAcademico {
 
   @Column({ name: 'updated_at', type: 'timestamp with time zone', default: () => 'NOW()' })
   updatedAt: Date;
+
+  // Virtual properties for calculated plan de estudios stats (populated by service)
+  totalAsignaturas?: number;
+  creditosPlan?: number;
 }

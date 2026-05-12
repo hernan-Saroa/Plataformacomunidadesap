@@ -13,6 +13,19 @@ export interface AcreditacionPrograma {
   vigencia: string;
 }
 
+export interface AsignaturaDTO {
+  id: string;
+  programaId: string;
+  nombre: string;
+  codigo?: string;
+  creditos: number;
+  horas: number;
+  nucleoTematico?: string;
+  semestre?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ProgramaAcademicoDTO {
   id: string;
   codigo: string;
@@ -30,6 +43,8 @@ export interface ProgramaAcademicoDTO {
   registroCalificado?: any;
   perfilEgresado?: string;
   estado: string;
+  totalAsignaturas?: number;
+  creditosPlan?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -77,5 +92,9 @@ export const programasService = {
 
   async eliminar(id: string): Promise<void> {
     return apiClient.delete(`${SERVICE_PREFIX}/programas-academicos/${id}`);
+  },
+
+  async obtenerAsignaturas(programaId: string): Promise<AsignaturaDTO[]> {
+    return apiClient.get(`${SERVICE_PREFIX}/programas-academicos/${programaId}/asignaturas`);
   },
 };

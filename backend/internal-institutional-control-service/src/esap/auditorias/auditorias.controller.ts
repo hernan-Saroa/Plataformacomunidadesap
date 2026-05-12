@@ -50,6 +50,17 @@ export class AuditoriasController {
   ) {}
 
   /**
+   * GET /esap/auditorias/jefes-control-interno
+   * Obtiene la lista de IDs de usuarios con roles de Jefe OCI o Administrador
+   */
+  @Get('jefes-control-interno')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async getJefesControlInterno() {
+    return this.auditoriasService.obtenerJefesControlInterno();
+  }
+
+  /**
    * Helper para extraer usuario del token de forma opcional
    * Si el token está presente y es válido, retorna el usuario
    * Si no está presente o es inválido, retorna null sin lanzar error
