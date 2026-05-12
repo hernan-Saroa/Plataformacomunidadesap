@@ -37,6 +37,7 @@ import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import { notificationsService } from '../../services/api/notificationsService';
 
 // UI Components
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
@@ -692,6 +693,19 @@ export function ExpedienteAuditoriaCompleto({
         etapa: metadata.etapa,
         auditoriaId: auditoriaId,
       });
+      
+      // 🚀 DISPARAR EVENTO AL BACKEND
+      try {
+        await notificationsService.triggerEvent('EVT-DOC-001', {
+          auditoriaId: auditoriaId,
+          auditoriaCodigo: auditoria?.codigo || `AUD-${auditoriaId.substring(0,4)}`,
+          tituloCustom: 'Nuevo Documento Cargado',
+          mensajeCustom: `Se ha cargado el documento ${metadata.nombre} en el expediente ${auditoria?.codigo || ''}.`,
+          url_accion: '/control-interno/auditorias-oci',
+        });
+      } catch (e) {
+        console.error('Error disparando notificación:', e);
+      }
       
       // Recargar documentos después de subir
       await recargarDocumentos();

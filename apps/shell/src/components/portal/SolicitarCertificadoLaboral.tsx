@@ -444,6 +444,12 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           incluyeSalario: incluyeSalarioBackend,
           incluyePrimaTecnica: incluyePrimaBackend,
           technical_bonus: bonusBase,
+          technical_bonus_category:
+            cert.technical_bonus_category ??
+            cert.technicalBonusCategory ??
+            cert.request?.technical_bonus_category ??
+            cert.request?.technicalBonusCategory ??
+            null,
           career_category: cert.career_category,
           position_category: cert.position_category,
           cod_cargo: cert.cod_cargo || cert.codCargo,
@@ -1046,6 +1052,12 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         incluyeSalario: incluyeSalarioFinal,
         incluyePrimaTecnica: incluyePrimaFinal,
         technical_bonus: bonusBase,
+        technical_bonus_category:
+          cert.technical_bonus_category ??
+          cert.technicalBonusCategory ??
+          cert.request?.technical_bonus_category ??
+          cert.request?.technicalBonusCategory ??
+          null,
         career_category: cert.career_category,
         position_category: cert.position_category,
         cod_cargo: cert.cod_cargo || cert.codCargo,

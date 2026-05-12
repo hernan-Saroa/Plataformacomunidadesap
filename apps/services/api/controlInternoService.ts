@@ -488,6 +488,13 @@ class ControlInternoService {
   // ==========================================================================
   
   /**
+   * Obtiene la lista de IDs de usuarios con roles de Jefe OCI o Administrador
+   */
+  async getJefesControlInterno(): Promise<string[]> {
+    return client.get<string[]>('/auditorias/jefes-control-interno');
+  }
+
+  /**
    * Obtiene procesos auditables. Por defecto solo activos (para catálogo parametrizado).
    */
   async getProcesosAuditables(soloActivos = true): Promise<ProcesoAuditable[]> {

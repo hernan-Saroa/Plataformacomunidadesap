@@ -1,5 +1,5 @@
 import { DataSource } from 'typeorm';
-import { databaseConfig } from './src/database.config';
+import { databaseConfig } from '../../src/database.config';
 
 const AppDataSource = new DataSource({
     ...databaseConfig,
@@ -8,8 +8,8 @@ const AppDataSource = new DataSource({
 
 AppDataSource.initialize().then(async () => {
     try {
-        const result = await AppDataSource.query(`SELECT jurisdiccion, COUNT(*) FROM legal_management.expedientes GROUP BY jurisdiccion;`);
-        console.log(result);
+        const result = await AppDataSource.query(`SELECT COUNT(*) FROM legal_management.terminos_procesales;`);
+        console.log("Terminos:", result);
     } catch (e) {
         console.log("Error:", e.message);
     }

@@ -1,6 +1,6 @@
 import { DataSource, Not } from 'typeorm';
-import { databaseConfig } from './src/database.config';
-import { Expediente } from './src/entities/expediente.entity';
+import { databaseConfig } from '../../src/database.config';
+import { Expediente } from '../../src/entities/expediente.entity';
 
 const AppDataSource = new DataSource({
     ...databaseConfig,

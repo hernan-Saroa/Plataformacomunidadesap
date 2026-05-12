@@ -43,6 +43,8 @@ interface CertificadoLaboralListado {
   cod_grade?: string;
   campus?: string;
   technical_bonus?: number;
+  technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+  technicalBonusCategory?: 'DIRECTIVOS' | 'COORDINADORES' | null;
   incluyeSalario?: boolean;
   incluyePrimaTecnica?: boolean;
   templateSnapshot?: any;
@@ -397,6 +399,12 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
           cod_grade: cert.request?.cod_grade || cert.cod_grade || cert.codGrade,
           campus: cert.campus,
           technical_bonus: cert.technical_bonus ?? cert.request?.technical_bonus,
+          technical_bonus_category:
+            cert.technical_bonus_category ??
+            cert.technicalBonusCategory ??
+            cert.request?.technical_bonus_category ??
+            cert.request?.technicalBonusCategory ??
+            null,
           incluyeSalario,
           incluyePrimaTecnica,
           templateSnapshot: cert.template_snapshot || cert.templateSnapshot || null,

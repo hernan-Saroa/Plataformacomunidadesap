@@ -7,10 +7,12 @@ import {
   CheckCircle2,
   Download,
   FileSpreadsheet,
+  FileText,
   Loader2,
   PencilLine,
   Percent,
   Plus,
+  RotateCcw,
   Save,
   Search,
   Trash2,
@@ -183,7 +185,39 @@ const getHeaderIndex = (headers: string[], aliases: string[]) => {
   return headers.findIndex((header) => normalizedAliases.includes(normalizeHeaderText(header)));
 };
 
+const TEMPLATE_PLACEHOLDER_REGEX = /(\{porcentaje\}|\{valor_letras\}|\{valor_numerico\})/g;
+
+const PLACEHOLDER_COLORS: Record<string, string> = {
+  '{porcentaje}':    'bg-amber-100 text-amber-700 border-amber-200',
+  '{valor_letras}':  'bg-indigo-100 text-indigo-700 border-indigo-200',
+  '{valor_numerico}': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+};
+
+function renderTemplateHighlighted(text: string): React.ReactNode {
+  if (!text) return null;
+  const parts = text.split(TEMPLATE_PLACEHOLDER_REGEX);
+  return parts.map((part, index) => {
+    const colorClass = PLACEHOLDER_COLORS[part];
+    if (colorClass) {
+      return (
+        <code
+          key={index}
+          className={`inline rounded px-1 py-0.5 text-xs font-mono border ${colorClass}`}
+        >
+          {part}
+        </code>
+      );
+    }
+    return <React.Fragment key={index}>{part}</React.Fragment>;
+  });
+}
+
 const MODAL_ITEMS_PER_PAGE = 20;
+
+const DEFAULT_BONUS_TEMPLATES: Record<PrimaTecnicaCategoria, string> = {
+  DIRECTIVOS: 'Percibe una prima técnica en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+  COORDINADORES: 'Percibe una prima de coordinación en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+};
 const BULK_PREVIEW_ITEMS_LIMIT = 20;
 const BULK_NAME_ALLOWED_REGEX = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s'.-]+$/;
 const BULK_ID_NUMBER_REGEX = /^\d+$/;
@@ -270,6 +304,14 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
   const [bulkRows, setBulkRows] = React.useState<PrimaTecnicaBulkRow[]>([]);
   const [bulkParseError, setBulkParseError] = React.useState<string | null>(null);
   const [bulkResult, setBulkResult] = React.useState<PrimaTecnicaBulkResult | null>(null);
+  const [templateTextByCategory, setTemplateTextByCategory] = React.useState<
+    Record<PrimaTecnicaCategoria, string>
+  >({ DIRECTIVOS: '', COORDINADORES: '' });
+  const [isEditingTemplate, setIsEditingTemplate] = React.useState(false);
+  const [templateDraft, setTemplateDraft] = React.useState('');
+  const [isSavingTemplate, setIsSavingTemplate] = React.useState(false);
+  const [isLoadingTemplate, setIsLoadingTemplate] = React.useState(false);
+
   const searchRequestRef = React.useRef(0);
   const savePulseTimeoutRef = React.useRef<number | null>(null);
   const saveHighlightTimeoutRef = React.useRef<number | null>(null);
@@ -319,6 +361,19 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     }
   }, [isOpen]);
 
+  const fetchTemplate = React.useCallback(async (category: PrimaTecnicaCategoria) => {
+    if (!isOpen) return;
+    setIsLoadingTemplate(true);
+    try {
+      const result = await certificadosService.laborales.obtenerPlantillaPrimaTecnica(category);
+      setTemplateTextByCategory((prev) => ({ ...prev, [category]: result.template_text }));
+    } catch {
+      // Si falla, simplemente no se muestra texto precargado
+    } finally {
+      setIsLoadingTemplate(false);
+    }
+  }, [isOpen]);
+
   React.useEffect(() => {
     if (!isOpen) {
       searchRequestRef.current += 1;
@@ -348,11 +403,21 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
         COORDINADORES: 1,
       });
       setActiveCategory('DIRECTIVOS');
+      setTemplateTextByCategory({ DIRECTIVOS: '', COORDINADORES: '' });
+      setIsEditingTemplate(false);
+      setTemplateDraft('');
       return;
     }
 
     void fetchRecords();
   }, [isOpen, fetchRecords]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    void fetchTemplate(activeCategory);
+    setIsEditingTemplate(false);
+    setTemplateDraft('');
+  }, [isOpen, activeCategory, fetchTemplate]);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -988,6 +1053,47 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     }
   };
 
+  const handleSaveTemplate = async () => {
+    const trimmed = templateDraft.trim();
+    if (!trimmed) return;
+    setIsSavingTemplate(true);
+    try {
+      const result = await certificadosService.laborales.actualizarPlantillaPrimaTecnica(
+        activeCategory,
+        trimmed,
+      );
+      setTemplateTextByCategory((prev) => ({ ...prev, [activeCategory]: result.template_text }));
+      setIsEditingTemplate(false);
+      setTemplateDraft('');
+      toast.success('Plantilla de párrafo actualizada correctamente.');
+    } catch (error: any) {
+      toast.error(
+        String(error?.message || 'No se pudo guardar la plantilla.'),
+      );
+    } finally {
+      setIsSavingTemplate(false);
+    }
+  };
+
+  const handleResetTemplate = async () => {
+    setIsSavingTemplate(true);
+    try {
+      const defaultText = DEFAULT_BONUS_TEMPLATES[activeCategory];
+      const result = await certificadosService.laborales.actualizarPlantillaPrimaTecnica(
+        activeCategory,
+        defaultText,
+      );
+      setTemplateTextByCategory((prev) => ({ ...prev, [activeCategory]: result.template_text }));
+      setIsEditingTemplate(false);
+      setTemplateDraft('');
+      toast.success('Párrafo restablecido al texto original.');
+    } catch (error: any) {
+      toast.error(String(error?.message || 'No se pudo restablecer el párrafo.'));
+    } finally {
+      setIsSavingTemplate(false);
+    }
+  };
+
   const hasRecordMutationInProgress = Boolean(updatingRecordId || deletingRecordId);
 
   if (!mounted) return null;
@@ -1118,6 +1224,134 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                 exit="exit"
                 className="flex min-h-[320px] flex-1 flex-col gap-5"
               >
+
+            {/* ── Editor de párrafo de prima ── */}
+            <section className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 sm:p-5 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-blue-700" />
+                  <h3 className="text-slate-900 font-semibold text-sm sm:text-base">
+                    Párrafo de {activeCategory === 'DIRECTIVOS' ? 'prima técnica' : 'prima de coordinación'}
+                  </h3>
+                </div>
+                {!isEditingTemplate && (
+                  <div className="flex items-center gap-2">
+                    <motion.button
+                      type="button"
+                      onClick={handleResetTemplate}
+                      disabled={isSavingTemplate}
+                      title="Restablecer al texto original"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-all hover:bg-slate-100 hover:text-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                      whileHover={isSavingTemplate ? {} : { y: -1 }}
+                      whileTap={isSavingTemplate ? {} : { scale: 0.97 }}
+                    >
+                      {isSavingTemplate ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      )}
+                      <span>Restablecer</span>
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      onClick={() => {
+                        setTemplateDraft(templateTextByCategory[activeCategory]);
+                        setIsEditingTemplate(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all hover:bg-blue-100"
+                      whileHover={{ y: -1 }}
+                      whileTap={{ scale: 0.97 }}
+                    >
+                      <PencilLine className="w-3.5 h-3.5" />
+                      <span>Editar párrafo</span>
+                    </motion.button>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-xs text-slate-500">
+                Usa <code className="bg-white border border-slate-200 rounded px-1 py-0.5 font-mono text-indigo-700">{'{porcentaje}'}</code>{' '}
+                para el porcentaje,{' '}
+                <code className="bg-white border border-slate-200 rounded px-1 py-0.5 font-mono text-indigo-700">{'{valor_letras}'}</code>{' '}
+                para el valor en letras y{' '}
+                <code className="bg-white border border-slate-200 rounded px-1 py-0.5 font-mono text-indigo-700">{'{valor_numerico}'}</code>{' '}
+                para el valor numérico formateado.
+              </p>
+
+              {isLoadingTemplate ? (
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Cargando...</span>
+                </div>
+              ) : isEditingTemplate ? (
+                <div className="space-y-3">
+                  <textarea
+                    rows={3}
+                    value={templateDraft}
+                    onChange={(e) => setTemplateDraft(e.target.value)}
+                    className="w-full border-2 border-blue-200 rounded-lg p-3 text-sm outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100 resize-none bg-white"
+                    placeholder="Escribe el párrafo usando los placeholders indicados..."
+                    disabled={isSavingTemplate}
+                  />
+                  <div className="flex flex-wrap gap-2 justify-end">
+                    <motion.button
+                      type="button"
+                      onClick={handleSaveTemplate}
+                      disabled={isSavingTemplate || !templateDraft.trim()}
+                      className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                      whileHover={isSavingTemplate || !templateDraft.trim() ? {} : { y: -1 }}
+                      whileTap={isSavingTemplate || !templateDraft.trim() ? {} : { scale: 0.97 }}
+                    >
+                      {isSavingTemplate ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Guardando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-3.5 h-3.5" />
+                          <span>Guardar párrafo</span>
+                        </>
+                      )}
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      onClick={() => setTemplateDraft(DEFAULT_BONUS_TEMPLATES[activeCategory])}
+                      disabled={isSavingTemplate}
+                      title="Rellenar con el texto original"
+                      className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition-all hover:bg-slate-100 disabled:opacity-60"
+                      whileHover={isSavingTemplate ? {} : { y: -1 }}
+                      whileTap={isSavingTemplate ? {} : { scale: 0.97 }}
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Restablecer</span>
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      onClick={() => {
+                        setIsEditingTemplate(false);
+                        setTemplateDraft('');
+                      }}
+                      disabled={isSavingTemplate}
+                      className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100 disabled:opacity-60"
+                      whileHover={isSavingTemplate ? {} : { y: -1 }}
+                      whileTap={isSavingTemplate ? {} : { scale: 0.97 }}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>Cancelar</span>
+                    </motion.button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-700 bg-white rounded-lg border border-blue-100 px-3 py-2.5 leading-relaxed">
+                  {templateTextByCategory[activeCategory]
+                    ? renderTemplateHighlighted(templateTextByCategory[activeCategory])
+                    : <span className="text-slate-400 italic">Sin plantilla cargada.</span>
+                  }
+                </p>
+              )}
+            </section>
+
             <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <Search className="w-4 h-4 text-blue-700" />

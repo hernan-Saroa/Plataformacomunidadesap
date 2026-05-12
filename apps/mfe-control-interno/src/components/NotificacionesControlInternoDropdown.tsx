@@ -189,9 +189,12 @@ export function NotificacionesControlInternoDropdown({ isOpen, onClose }: Props)
                             {notif.mensaje}
                           </p>
 
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs text-gray-500">
+                          <div className="flex items-center justify-between mt-2">
+                            <span className="flex items-center gap-2 text-xs text-gray-500">
                               {formatearFecha(notif.createdAt)}
+                              <span className="bg-gray-100 px-1.5 py-0.5 rounded font-mono text-[10px] text-gray-500 border border-gray-200 uppercase" title="Identificador de la regla de notificación">
+                                {notif.tipoNotificacion}
+                              </span>
                             </span>
 
                             <div className="flex items-center gap-1">

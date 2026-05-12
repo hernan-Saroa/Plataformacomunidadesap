@@ -246,6 +246,40 @@ export const certificadosService = {
     },
 
     /**
+     * Obtener plantilla de parrafo de Prima Tecnica por categoria
+     */
+    async obtenerPlantillaPrimaTecnica(
+      category: 'DIRECTIVOS' | 'COORDINADORES',
+    ): Promise<{
+      category: 'DIRECTIVOS' | 'COORDINADORES';
+      template_text: string;
+      updated_at: string | null;
+      updated_by: string | null;
+    }> {
+      return apiClient.get(
+        `${SERVICE_PREFIX}/certificates/technical-bonus/template/${category}`,
+      );
+    },
+
+    /**
+     * Actualizar plantilla de parrafo de Prima Tecnica por categoria
+     */
+    async actualizarPlantillaPrimaTecnica(
+      category: 'DIRECTIVOS' | 'COORDINADORES',
+      templateText: string,
+    ): Promise<{
+      category: 'DIRECTIVOS' | 'COORDINADORES';
+      template_text: string;
+      updated_at: string | null;
+      updated_by: string | null;
+    }> {
+      return apiClient.put(
+        `${SERVICE_PREFIX}/certificates/technical-bonus/template/${category}`,
+        { template_text: templateText },
+      );
+    },
+
+    /**
      * Carga masiva de Prima Tecnica con reporte por fila
      */
     async cargarPrimaTecnicaMasiva(data: {
