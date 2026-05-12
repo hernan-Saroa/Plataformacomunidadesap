@@ -26,7 +26,7 @@ interface Asignatura {
   id: string;
   nombre: string;
   codigo?: string;
-  nucleo: string;
+  nucleo?: string;
   semestre: number;
   creditos: number;
   horas: number;
@@ -65,7 +65,8 @@ const NUCLEO_COLORS: Record<string, { bg: string; text: string; dot: string }> =
   'Institucional': { bg: 'bg-gray-100', text: 'text-gray-700', dot: 'bg-gray-500' },
 };
 
-const getNucleoColor = (nucleo: string) => {
+const getNucleoColor = (nucleo?: string) => {
+  if (!nucleo) return { bg: 'bg-gray-100', text: 'text-gray-600', dot: 'bg-gray-400' };
   // Match partial keys
   for (const [key, val] of Object.entries(NUCLEO_COLORS)) {
     if (nucleo.includes(key) || key.includes(nucleo)) return val;
@@ -112,7 +113,7 @@ function exportToCSV(asignaturas: Asignatura[], programaNombre: string) {
   URL.revokeObjectURL(url);
 }
 
-function exportToPDF(asignaturas: Asignatura[], programaNombre: string, totalCreditos: number, totalSemestres: number) {
+function exportToPDF(asignaturas: Asignatura[], programaNombre: string, totalCreditos?: number, totalSemestres?: number) {
   const sortedAsigs = [...asignaturas].sort((a, b) => (a.semestre || 1) - (b.semestre || 1) || a.nombre.localeCompare(b.nombre));
   const totalCr = asignaturas.reduce((s, a) => s + (a.creditos || 0), 0);
   const totalH = asignaturas.reduce((s, a) => s + (a.horas || 0), 0);
@@ -195,7 +196,7 @@ interface DragState {
   overSemestre: number | null;
 }
 
-export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCreditos = 160, totalSemestres = 10 }: Props) {
+export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCreditos, totalSemestres}: Props) {
   const [asignaturas, setAsignaturas] = useState<Asignatura[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -227,8 +228,13 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
   const loadAsignaturas = useCallback(async () => {
     setLoading(true);
     try {
+      console.log('programaId', programaId);
       const response = await apiClient.get(`/auth/api/v1/programas-academicos/${programaId}/asignaturas`);
-      setAsignaturas(response.data || []);
+      console.log('response', response);
+      const asignaturasData = (response || []).map(a => ({ ...a, nucleo: a.nucleo || 'General' }));
+      setAsignaturas(asignaturasData);
+      console.log('asignaturas', asignaturas);
+
     } catch (err) {
       console.error('Error cargando asignaturas:', err);
     }
@@ -244,7 +250,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       const response = await apiClient.post(`/auth/api/v1/programas-academicos/${programaId}/asignaturas`, {
         asignaturas,
       });
-      setAsignaturas(response.data || asignaturas);
+      setAsignaturas(response || asignaturas);
       setHasChanges(false);
       toast.success('Plan de estudios guardado', {
         description: `${asignaturas.length} asignaturas sincronizadas con Oferta Academica (PTA)`,
@@ -341,7 +347,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
   // Dynamic stats
   const totalCreditosPlan = asignaturas.reduce((sum, a) => sum + (a.creditos || 0), 0);
   const totalHorasPlan = asignaturas.reduce((sum, a) => sum + (a.horas || 0), 0);
-  const creditProgress = totalCreditos > 0 ? Math.min((totalCreditosPlan / totalCreditos) * 100, 100) : 0;
+  const creditProgress = totalCreditos && totalCreditos > 0 ? Math.min((totalCreditosPlan / totalCreditos) * 100, 100) : 0;
 
   // Dynamic nucleos from data
   const nucleosUnicos = useMemo(() => {
