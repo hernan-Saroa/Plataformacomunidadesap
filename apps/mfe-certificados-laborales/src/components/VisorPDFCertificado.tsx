@@ -33,6 +33,8 @@ interface VisorPDFCertificadoProps {
     incluyeSalario?: boolean;
     incluyePrimaTecnica?: boolean;
     technical_bonus?: number;
+    technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+    technicalBonusCategory?: 'DIRECTIVOS' | 'COORDINADORES' | null;
     templateSnapshot?: any;
     templateType?: 'docente' | 'administrador';
     template_snapshot?: any;
@@ -76,6 +78,17 @@ interface VisorPDFCertificadoProps {
 const CERTIFICATE_WIDTH = 816;
 const CERTIFICATE_HEIGHT = 1056;
 const DEFAULT_CERTIFICATE_FONT = 'Arial Narrow, Arial, sans-serif';
+type PrimaTecnicaCategoria = 'DIRECTIVOS' | 'COORDINADORES';
+
+const normalizarCategoriaPrimaTecnica = (value: unknown): PrimaTecnicaCategoria | null => {
+  const normalized = String(value || '').trim().toUpperCase();
+  return normalized === 'DIRECTIVOS' || normalized === 'COORDINADORES'
+    ? (normalized as PrimaTecnicaCategoria)
+    : null;
+};
+
+const obtenerConceptoPrimaTecnica = (categoria: PrimaTecnicaCategoria | null): string =>
+  categoria === 'COORDINADORES' ? 'prima de coordinación' : 'prima técnica';
 
 export function VisorPDFCertificado({
   isOpen,
@@ -893,8 +906,15 @@ export function VisorPDFCertificado({
     maximumFractionDigits: 2,
   });
   const primaTecnicaEnLetras = primaTecnicaParaMostrar > 0 ? numeroALetras(primaTecnicaParaMostrar) : '';
+  const categoriaPrimaTecnica = normalizarCategoriaPrimaTecnica(
+    (certificado as any).technical_bonus_category ??
+      (certificado as any).technicalBonusCategory ??
+      (certificado as any).request?.technical_bonus_category ??
+      (certificado as any).request?.technicalBonusCategory,
+  );
+  const conceptoPrimaTecnica = obtenerConceptoPrimaTecnica(categoriaPrimaTecnica);
   const primaTecnicaParrafo = incluirPrimaTecnica && primaTecnicaParaMostrar > 0
-    ? `<p>Percibe una prima técnica en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignación básica mensual de ${primaTecnicaEnLetras} ($${formatearMonto(primaTecnicaParaMostrar)}) pesos m/cte.</p>`
+    ? `<p>Percibe una ${conceptoPrimaTecnica} en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignación básica mensual de ${primaTecnicaEnLetras} ($${formatearMonto(primaTecnicaParaMostrar)}) pesos m/cte.</p>`
     : '';
 
   const qrToken =
