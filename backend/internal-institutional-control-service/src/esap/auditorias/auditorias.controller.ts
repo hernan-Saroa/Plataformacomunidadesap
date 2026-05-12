@@ -345,6 +345,24 @@ export class AuditoriasController {
   }
 
   /**
+   * GET /esap/auditorias/personas/search?q=...
+   * Búsqueda libre en auth.personas por nombre, email o identificación.
+   * Pensado para autocompletar el "responsable del área auditada" al crear
+   * una auditoría.
+   */
+  @Get('personas/search')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async searchPersonas(@Query('q') q?: string) {
+    if (!q || q.trim().length < 2) {
+      throw new BadRequestException(
+        'El parámetro q es obligatorio y debe tener al menos 2 caracteres',
+      );
+    }
+    return this.auditoriasService.searchPersonasByText(q);
+  }
+
+  /**
    * GET /esap/auditorias/codigo/:codigo
    * Busca una auditoría por código
    */

@@ -271,7 +271,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
     porcentajeAvance: number;
   } | null>(null);
   const [modalControversia, setModalControversia] = useState(false);
-  const [modalControversiaHallazgoId, setModalControversiaHallazgoId] = useState<string | null>(null);
+  // El modal de controversia es del auditado (vive en el Portal Transaccional).
+  // Aquí solo se conserva el modal de DECISIÓN, que sí es del auditor.
   const [modalDecisionHallazgoId, setModalDecisionHallazgoId] = useState<string | null>(null);
   const [modalPreview, setModalPreview] = useState<{ tipo: string; abierto: boolean }>({ tipo: '', abierto: false });
   /** Tras "Finalizar y Pasar a Seguimiento" se mantiene el mismo modal y se muestran secciones 5 y 6 */
@@ -629,45 +630,10 @@ export const ComunicacionAuditoriaModule: React.FC<{
     }
   };
 
-  const handleAceptarHallazgo = async (hallazgoId: string) => {
-    if (!useAPI) {
-      setHallazgos(prev => prev.map(h => h.id === hallazgoId ? { ...h, estado: 'aceptado' } : h));
-      toast.success('Hallazgo aceptado (demo)');
-      return;
-    }
-    try {
-      await controlInternoService.aceptarHallazgo(hallazgoId);
-      toast.success('Hallazgo aceptado');
-      await cargarDatos();
-    } catch (err: any) {
-      toast.error(err?.message || 'Error al aceptar');
-    }
-  };
-
-  const handlePresentarControversia = async (hallazgoId: string, argumentos: string, documentoId: string, documentoNombre: string) => {
-    if (!argumentos?.trim()) {
-      toast.error('Los argumentos son obligatorios');
-      return;
-    }
-    if (!documentoId || !documentoNombre) {
-      toast.error('El documento adjunto es obligatorio');
-      return;
-    }
-    if (!useAPI) {
-      setHallazgos(prev => prev.map(h => h.id === hallazgoId ? { ...h, estado: 'en-controversia', argumentosControversia: argumentos } : h));
-      setModalControversiaHallazgoId(null);
-      toast.success('Controversia presentada (demo)');
-      return;
-    }
-    try {
-      await controlInternoService.presentarControversia(hallazgoId, { argumentos, documentoId, documentoNombre });
-      toast.success('Controversia presentada');
-      setModalControversiaHallazgoId(null);
-      await cargarDatos();
-    } catch (err: any) {
-      toast.error(err?.message || 'Error al presentar controversia');
-    }
-  };
+  // NOTA: las acciones `aceptarHallazgo` y `presentarControversia` son del AUDITADO
+  // y se invocan desde el Portal Transaccional (MisAuditoriasControlInterno.tsx).
+  // El backoffice del auditor NO las expone — solo consume sus resultados (estado del
+  // hallazgo + argumentos + documento adjunto) para luego tomar la decisión.
 
   const handleDecisionAuditor = async (hallazgoId: string, tipoDecision: 'ratificado' | 'modificado' | 'retirado', fundamentacion: string) => {
     if (!fundamentacion?.trim()) {
@@ -1001,8 +967,6 @@ export const ComunicacionAuditoriaModule: React.FC<{
                 auditoria={{ ...auditoria, hallazgos }}
                 hallazgos={hallazgos}
                 estadoComunicacion={estadoComunicacion}
-                onAceptar={handleAceptarHallazgo}
-                onPresentarControversia={(hid) => setModalControversiaHallazgoId(hid)}
                 onDecisionAuditor={(hid) => setModalDecisionHallazgoId(hid)}
                 onDecisionConfirmar={handleDecisionAuditor}
                 loading={loading}
@@ -1233,14 +1197,9 @@ export const ComunicacionAuditoriaModule: React.FC<{
         </motion.div>
         )}
 
-        {/* MODAL PRESENTAR CONTROVERSIA (por hallazgo) */}
-        {modalControversiaHallazgoId && (
-          <ModalControversiaPorHallazgo
-            hallazgo={hallazgos.find(h => h.id === modalControversiaHallazgoId)}
-            onClose={() => setModalControversiaHallazgoId(null)}
-            onEnviar={handlePresentarControversia}
-          />
-        )}
+        {/* La presentación de controversia es una acción del auditado y se realiza
+            desde el Portal Transaccional (MisAuditoriasControlInterno.tsx).
+            En el backoffice del auditor el modal ya no se expone. */}
 
         {/* MODAL DECISIÓN DEL AUDITOR */}
         {modalDecisionHallazgoId && (
@@ -1536,12 +1495,12 @@ const SeccionGestionHallazgos: React.FC<{
   auditoria: Auditoria;
   hallazgos: Hallazgo[];
   estadoComunicacion: { conteo?: { pendiente: number; aceptado: number; enControversia: number } } | null;
-  onAceptar: (id: string) => void;
-  onPresentarControversia: (hallazgoId: string) => void;
+  /** El auditor SOLO toma decisión sobre las controversias presentadas por el auditado.
+   *  Aceptar y presentar controversia son acciones del auditado y viven en el portal. */
   onDecisionAuditor: (hallazgoId: string) => void;
   onDecisionConfirmar: (hallazgoId: string, tipo: 'ratificado' | 'modificado' | 'retirado', fundamentacion: string) => void;
   loading?: boolean;
-}> = ({ hallazgos, estadoComunicacion, onAceptar, onPresentarControversia, onDecisionAuditor, onDecisionConfirmar, loading }) => {
+}> = ({ hallazgos, estadoComunicacion, onDecisionAuditor, onDecisionConfirmar, loading }) => {
   const conteo = estadoComunicacion?.conteo || { pendiente: 0, aceptado: 0, enControversia: 0 };
   const pendientes = hallazgos.filter(h => h.estado === 'notificado');
   const aceptados = hallazgos.filter(h => h.estado === 'aceptado');
@@ -1601,15 +1560,13 @@ const SeccionGestionHallazgos: React.FC<{
                 )}
 
                 {pendiente && (
-                  <div className="flex flex-wrap gap-3 mt-4">
-                    <Button variant="outline" size="sm" className="border-green-600 text-green-700 hover:bg-green-50" onClick={() => onAceptar(hallazgo.id)} disabled={loading}>
-                      <CheckCircle2 className="w-4 h-4 mr-2" />
-                      Aceptar hallazgo
-                    </Button>
-                    <Button variant="outline" size="sm" className="border-amber-500 text-amber-700 hover:bg-amber-50" onClick={() => onPresentarControversia(hallazgo.id)} disabled={loading}>
-                      <MessageSquare className="w-4 h-4 mr-2" />
-                      Presentar controversia
-                    </Button>
+                  <div className="mt-4 p-3 rounded border border-amber-200 bg-amber-50 flex items-start gap-2">
+                    <Clock className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm text-amber-900 leading-snug">
+                      <span className="font-medium">Esperando respuesta del área auditada.</span>
+                      {' '}Tiene 10 días hábiles desde la notificación para aceptar el hallazgo o
+                      presentar controversia con argumentos y documento adjunto desde su Portal Transaccional.
+                    </div>
                   </div>
                 )}
 
@@ -2476,80 +2433,6 @@ const SeccionInformeCierre: React.FC<{
         </>
       )}
     </div>
-  );
-};
-
-// ====================================
-// MODAL: PRESENTAR CONTROVERSIA (por hallazgo)
-// ====================================
-
-const ModalControversiaPorHallazgo: React.FC<{
-  hallazgo?: Hallazgo | null;
-  onClose: () => void;
-  onEnviar: (hallazgoId: string, argumentos: string, documentoId: string, documentoNombre: string) => void;
-}> = ({ hallazgo, onClose, onEnviar }) => {
-  const [argumentos, setArgumentos] = useState('');
-  const [archivo, setArchivo] = useState<File | null>(null);
-  const [subiendo, setSubiendo] = useState(false);
-
-  const handleEnviar = async () => {
-    if (!hallazgo) return;
-    if (!argumentos.trim()) {
-      toast.error('Los argumentos técnicos son obligatorios');
-      return;
-    }
-    if (!archivo) {
-      toast.error('El documento adjunto es obligatorio (PDF, DOCX, JPG)');
-      return;
-    }
-    setSubiendo(true);
-    try {
-      const doc = await controlInternoService.createDocumento(archivo, {
-        nombre: `Controversia - ${hallazgo.codigo || hallazgo.id}`,
-        tipoDocumento: 'evidencia_controversia',
-        etapa: 'comunicacion',
-        hallazgoId: hallazgo.id,
-        auditoriaId: (hallazgo as any).auditoriaId,
-      });
-      onEnviar(hallazgo.id, argumentos, doc.id, doc.nombreArchivo || archivo.name);
-      onClose();
-    } catch (err: any) {
-      toast.error(err?.message || 'Error al subir documento');
-    } finally {
-      setSubiendo(false);
-    }
-  };
-
-  if (!hallazgo) return null;
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md w-[95vw]">
-        <DialogHeader className="border-b pb-3">
-          <DialogTitle className="text-base font-semibold flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-amber-600" />
-            Presentar controversia
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 pt-2">
-          <p className="text-sm text-gray-600 line-clamp-2">{hallazgo.titulo || hallazgo.descripcion}</p>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Argumentos técnicos y normativa aplicable *</label>
-            <TextareaSIGL value={argumentos} onChange={(val) => setArgumentos(val)} rows={4} placeholder="Describa los argumentos..." />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Documento de soporte (adjunto obligatorio) *</label>
-            <input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg" onChange={(e) => setArchivo(e.target.files?.[0] || null)} className="block w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:ring-2 focus:ring-green-500 focus:border-green-500" />
-            <p className="text-xs text-gray-500 mt-1">PDF, DOCX o JPG</p>
-          </div>
-          <div className="flex justify-end gap-2 pt-3">
-            <Button variant="outline" size="sm" onClick={onClose}>Cancelar</Button>
-            <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={handleEnviar} disabled={subiendo}>
-              {subiendo ? 'Enviando...' : 'Enviar controversia'}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 };
 

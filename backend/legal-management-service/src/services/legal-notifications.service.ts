@@ -443,4 +443,105 @@ export class LegalNotificationsService {
       this.logger.warn(`No se pudo notificar asignación del riesgo ${params.codigo} al abogado ${params.abogadoId}: ${err?.message}`);
     }
   }
+
+  /**
+   * Notifica cuando un riesgo entra en zona crítica (ALTO o EXTREMO).
+   */
+  async notifyRiesgoZonaCritica(params: {
+    riesgoId: string;
+    codigo: string;
+    nombreRiesgo: string;
+    zonaResidual: string;
+    abogadoId: string;
+    modificadoPor: string;
+  }): Promise<void> {
+    const meta = MODULE_META['GESTION_RIESGOS'];
+    const url = buildUrl('GESTION_RIESGOS');
+    const esExtremo = params.zonaResidual === 'EXTREMO';
+    const nivelAlerta = esExtremo ? 'Crítica' : 'Alta';
+
+    this.logger.log(`[NOTIFY] Riesgo Zona Crítica — codigo=${params.codigo} zona=${params.zonaResidual}`);
+
+    const basePayload = {
+      tipo_notificacion: 'RIESGO_ZONA_CRITICA',
+      titulo: `Alerta ${nivelAlerta}: Riesgo en zona ${params.zonaResidual}`,
+      mensaje: `El riesgo ${params.codigo} (${params.nombreRiesgo}) ha pasado a la zona residual ${params.zonaResidual}. Por favor revisar medidas urgentes.`,
+      descripcion_corta: `Riesgo ${params.codigo} en Zona ${params.zonaResidual}`,
+      icono: esExtremo ? 'AlertTriangle' : meta.icon,
+      color: esExtremo ? 'text-red-600' : 'text-orange-500',
+      prioridad: 'Alta' as any,
+      categoria: meta.categoria,
+      tiene_accion: true,
+      texto_boton_accion: 'Ver riesgo',
+      url_accion: url,
+      datos_adicionales: {
+        modulo: 'GESTION_RIESGOS',
+        riesgoId: params.riesgoId,
+        codigo: params.codigo,
+        zonaResidual: params.zonaResidual,
+        modificadoPor: params.modificadoPor
+      },
+    };
+
+    try {
+      // Notificar al responsable
+      if (params.abogadoId) {
+        await this.notificationClient.notifyUserById(params.abogadoId, basePayload);
+      }
+      // Notificar a jefatura
+      await this.notificationClient.notifyByRole(ROLE_JEFE, basePayload);
+    } catch (err: any) {
+      this.logger.warn(`No se pudo notificar cambio de zona del riesgo ${params.codigo}: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Notifica cuando se modifica la provisión contable de un riesgo.
+   */
+  async notifyRiesgoProvisionModificada(params: {
+    riesgoId: string;
+    codigo: string;
+    nombreRiesgo: string;
+    provisionAnterior: number;
+    provisionNueva: number;
+    abogadoId: string;
+    modificadoPor: string;
+  }): Promise<void> {
+    const meta = MODULE_META['GESTION_RIESGOS'];
+    const url = buildUrl('GESTION_RIESGOS');
+    this.logger.log(`[NOTIFY] Riesgo Provisión — codigo=${params.codigo}`);
+
+    const formatter = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' });
+    const cambio = params.provisionNueva > params.provisionAnterior ? 'aumentado' : 'disminuido';
+
+    const basePayload = {
+      tipo_notificacion: 'RIESGO_PROVISION',
+      titulo: `Provisión Contable Modificada`,
+      mensaje: `La provisión contable del riesgo ${params.codigo} (${params.nombreRiesgo}) ha ${cambio} a ${formatter.format(params.provisionNueva)}.`,
+      descripcion_corta: `Provisión Riesgo ${params.codigo} Modificada`,
+      icono: 'DollarSign',
+      color: 'text-emerald-600',
+      prioridad: 'Media' as any,
+      categoria: meta.categoria,
+      tiene_accion: true,
+      texto_boton_accion: 'Ver riesgo',
+      url_accion: url,
+      datos_adicionales: {
+        modulo: 'GESTION_RIESGOS',
+        riesgoId: params.riesgoId,
+        codigo: params.codigo,
+        provisionNueva: params.provisionNueva,
+        modificadoPor: params.modificadoPor
+      },
+    };
+
+    try {
+      if (params.abogadoId) {
+        await this.notificationClient.notifyUserById(params.abogadoId, basePayload);
+      }
+      await this.notificationClient.notifyByRole(ROLE_JEFE, basePayload);
+    } catch (err: any) {
+      this.logger.warn(`No se pudo notificar modificación de provisión del riesgo ${params.codigo}: ${err?.message}`);
+    }
+  }
 }

@@ -651,6 +651,12 @@ export function ModalNuevoRiesgo({ open, onClose, onRiesgoCreado, riesgoEditar }
                         {abogado.nombreCompleto} ({abogado.email})
                       </option>
                     ))}
+                    {/* Renderizar el responsable actual si ya no está en la lista activa (ej. perdió el rol o se desactivó) */}
+                    {formData.responsableId && !abogados.some(a => a.id === formData.responsableId) && !loadingAbogados && (
+                      <option value={formData.responsableId}>
+                        {formData.responsable || 'Usuario no disponible'} (Inactivo/Sin rol)
+                      </option>
+                    )}
                   </select>
                 </div>
 

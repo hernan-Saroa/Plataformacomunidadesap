@@ -1,10 +1,11 @@
 
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Res, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, Res, UseInterceptors, UploadedFile, BadRequestException, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import type { Response } from 'express';
 import { TerminosService } from '../services/terminos.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('terminos')
 export class TerminosController {
@@ -69,14 +70,23 @@ export class TerminosController {
     async getCalendario(
         @Query('start') start: string,
         @Query('end') end: string,
-        @Query('responsableId') responsableId?: string
+        @Query('responsableId') responsableId?: string,
+        @Req() req?: any,
     ) {
-        return this.terminosService.getCalendario(start, end, responsableId);
+        const access = getLegalAccessFromRequest(req);
+        return this.terminosService.getCalendario(start, end, {
+            responsableId: access.esResuelveSolo ? undefined : responsableId,
+            responsableKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Get('listado')
-    async getListado(@Query('responsableId') responsableId?: string) {
-        return this.terminosService.getSemaforoList(responsableId);
+    async getListado(@Query('responsableId') responsableId?: string, @Req() req?: any) {
+        const access = getLegalAccessFromRequest(req);
+        return this.terminosService.getSemaforoList({
+            responsableId: access.esResuelveSolo ? undefined : responsableId,
+            responsableKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Get('reportes/eficiencia')
@@ -128,13 +138,14 @@ export class TerminosController {
     }
 
     @Get(':id/notas')
-    async getNotas(@Param('id') id: string) {
-        return this.terminosService.getNotas(id);
+    async getNotas(@Param('id') id: string, @Req() req?: any) {
+        return this.terminosService.getNotas(id, getLegalAccessFromRequest(req));
     }
 
     @Post(':id/notas')
-    async addNota(@Param('id') id: string, @Body() body: { texto: string; usuario?: string }) {
-        return this.terminosService.addNota(id, body.texto, body.usuario || 'Sistema');
+    async addNota(@Param('id') id: string, @Body() body: { texto: string; usuario?: string; usuarioId?: string }, @Req() req?: any) {
+        const access = getLegalAccessFromRequest(req);
+        return this.terminosService.addNota(id, body.texto, body.usuario || 'Sistema', access.userId || body.usuarioId);
     }
 
     @Post(':id/upload-documento')

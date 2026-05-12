@@ -7,12 +7,14 @@ import { Certificate } from './certificate.entity';
 import { TemplateConfigService } from './template-config.service';
 
 type TemplateType = 'docente' | 'administrador';
+type TechnicalBonusCategory = 'DIRECTIVOS' | 'COORDINADORES';
 
 type PdfOptions = {
   includeSalary?: boolean;
   includeTechnicalBonus?: boolean;
   templateType?: TemplateType;
   publicBaseUrl?: string;
+  technicalBonusTemplate?: string;
 };
 
 @Injectable()
@@ -44,6 +46,22 @@ export class LaborCertificatePdfService {
       if (['false', '0', 'no', 'n'].includes(normalized)) return false;
     }
     return fallback;
+  }
+
+  private normalizeTechnicalBonusCategory(
+    value?: string | null,
+  ): TechnicalBonusCategory | null {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (normalized === 'DIRECTIVOS' || normalized === 'COORDINADORES') {
+      return normalized as TechnicalBonusCategory;
+    }
+    return null;
+  }
+
+  private resolveTechnicalBonusConcept(category?: string | null): string {
+    return this.normalizeTechnicalBonusCategory(category) === 'COORDINADORES'
+      ? 'prima de coordinación'
+      : 'prima técnica';
   }
 
   async generateCertificatePdf(
@@ -90,6 +108,7 @@ export class LaborCertificatePdfService {
       includeSalary,
       includeTechnicalBonus,
       templateHtml: config?.certificateContentHtml || '',
+      technicalBonusTemplate: options.technicalBonusTemplate,
     });
 
     const verificationCode =
@@ -440,8 +459,9 @@ export class LaborCertificatePdfService {
     includeSalary: boolean;
     includeTechnicalBonus: boolean;
     templateHtml: string;
+    technicalBonusTemplate?: string;
   }): string {
-    const { certificate, templateType, includeSalary, includeTechnicalBonus, templateHtml } = params;
+    const { certificate, templateType, includeSalary, includeTechnicalBonus, templateHtml, technicalBonusTemplate } = params;
 
     const certificateExtras = certificate as Certificate & {
       cod_cargo?: string;
@@ -594,11 +614,26 @@ export class LaborCertificatePdfService {
     if (includeTechnicalBonus) {
       const bonusBase = this.normalizeMoneyValue(certificate.technical_bonus);
       if (bonusBase > 0) {
+        const bonusCategory = this.normalizeTechnicalBonusCategory(
+          (certificate as Certificate & {
+            technical_bonus_category?: string | null;
+            request?: { technical_bonus_category?: string | null };
+          }).technical_bonus_category ||
+            (certificate as Certificate & {
+              request?: { technical_bonus_category?: string | null };
+            }).request?.technical_bonus_category,
+        );
         const bonusPercentage = this.calculateTechnicalBonusPercentage(
           bonusBase,
           salarioBase,
         );
-        result = this.insertTechnicalBonus(result, bonusBase, bonusPercentage);
+        result = this.insertTechnicalBonus(
+          result,
+          bonusBase,
+          bonusPercentage,
+          bonusCategory,
+          technicalBonusTemplate,
+        );
       }
     }
 
@@ -721,16 +756,26 @@ export class LaborCertificatePdfService {
     html: string,
     bonusValue: number,
     bonusPercentage: number,
+    bonusCategory?: string | null,
+    customTemplate?: string,
   ): string {
     const bonusValueText = this.numeroALetras(bonusValue);
-    const bonusText = `<p>Percibe una prima técnica en un porcentaje igual al (${this.formatPercentage(
-      bonusPercentage,
-    )}%) sobre la asignación básica mensual de ${bonusValueText} ($${this.formatMoney(
-      bonusValue,
-    )}) pesos m/cte.</p>`;
+    const formattedPercentage = this.formatPercentage(bonusPercentage);
+    const formattedMoney = this.formatMoney(bonusValue);
+    let bonusText: string;
+    if (customTemplate) {
+      const rendered = customTemplate
+        .replace(/\{porcentaje\}/g, formattedPercentage)
+        .replace(/\{valor_letras\}/g, bonusValueText)
+        .replace(/\{valor_numerico\}/g, formattedMoney);
+      bonusText = `<p>${rendered}</p>`;
+    } else {
+      const bonusConcept = this.resolveTechnicalBonusConcept(bonusCategory);
+      bonusText = `<p>Percibe una ${bonusConcept} en un porcentaje igual al (${formattedPercentage}%) sobre la asignación básica mensual de ${bonusValueText} ($${formattedMoney}) pesos m/cte.</p>`;
+    }
 
     const expideRegex = /<(p|div|li)[^>]*>[\s\S]*?se expide[\s\S]*?<\/\1>/i;
-    const bonusRegex = /<(p|div|li)[^>]*>[\s\S]*?prima\s+t(?:e|\u00e9)cnica[\s\S]*?<\/\1>/gi;
+    const bonusRegex = /<(p|div|li)[^>]*>[\s\S]*?prima\s+(?:t(?:e|\u00e9)cnica|de\s+coordinaci(?:o|\u00f3)n|coordinaci(?:o|\u00f3)n)[\s\S]*?<\/\1>/gi;
     const salaryRegex = /<(p|div|li)[^>]*>[\s\S]*?(salari|asignaci)[\s\S]*?<\/\1>/gi;
 
     let result = html;

@@ -51,6 +51,14 @@ interface MiembroEquipo {
   iniciales: string;
 }
 
+interface ResponsableArea {
+  idPersona: string;
+  nombre: string;
+  email: string;
+  cargo?: string;
+  numeroIdentificacion?: string;
+}
+
 interface Auditoria {
   // Identificación
   id: string;
@@ -62,6 +70,9 @@ interface Auditoria {
   objetivo: string;
   alcance: string;
   procesosIncluidos: string[];
+
+  // Responsable del área auditada (auditado) - se notifica e inicia sesión con su email
+  responsableArea?: ResponsableArea;
   
   // Ubicación
   areaAuditable: {
@@ -237,6 +248,15 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
   const [objetivo, setObjetivo] = useState(auditoriaExistente?.objetivo || '');
   const [alcance, setAlcance] = useState(auditoriaExistente?.alcance || '');
   const [procesosSeleccionados, setProcesosSeleccionados] = useState<string[]>(auditoriaExistente?.procesosIncluidos || []);
+  // Responsable del área auditada (campo del paso 2). Es la persona que recibe
+  // las notificaciones del proceso y la única que entra a su portal de auditado.
+  const [responsableArea, setResponsableArea] = useState<ResponsableArea | null>(
+    auditoriaExistente?.responsableArea || null,
+  );
+  const [busquedaResponsable, setBusquedaResponsable] = useState('');
+  const [resultadosResponsable, setResultadosResponsable] = useState<ResponsableArea[]>([]);
+  const [buscandoResponsable, setBuscandoResponsable] = useState(false);
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
   
   // PASO 3: Área Auditable
   const [areaSeleccionada, setAreaSeleccionada] = useState<typeof AREAS_AUDITABLES_MOCK[0] | null>(
@@ -366,6 +386,46 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
   // Lista de auditores a usar (backend si están disponibles, sino mock)
   const usuariosAuditores = auditoresBackend.length > 0 ? auditoresBackend : USUARIOS_AUDITORES;
 
+  // ============ AUTOCOMPLETADO RESPONSABLE DEL ÁREA (paso 2) ============
+  // Debounce: tras 350ms sin cambios en el query, consulta el backend.
+  useEffect(() => {
+    const q = busquedaResponsable.trim();
+    if (q.length < 2) {
+      setResultadosResponsable([]);
+      return;
+    }
+    let cancelado = false;
+    setBuscandoResponsable(true);
+    const timer = setTimeout(async () => {
+      try {
+        const { auditoriasApi } = await import('./services/api');
+        const resp = await auditoriasApi.searchPersonas(q);
+        if (cancelado) return;
+        if (resp.success && Array.isArray(resp.data)) {
+          setResultadosResponsable(
+            resp.data.map((p: any) => ({
+              idPersona: String(p.idPersona ?? p.id ?? ''),
+              nombre: p.nombre ?? '',
+              email: p.email ?? '',
+              cargo: p.cargo,
+              numeroIdentificacion: p.numeroIdentificacion,
+            })),
+          );
+        } else {
+          setResultadosResponsable([]);
+        }
+      } catch (err) {
+        if (!cancelado) {
+          console.warn('[FormularioNuevaAuditoria] Error buscando personas:', err);
+          setResultadosResponsable([]);
+        }
+      } finally {
+        if (!cancelado) setBuscandoResponsable(false);
+      }
+    }, 350);
+    return () => { cancelado = true; clearTimeout(timer); };
+  }, [busquedaResponsable]);
+
   // ============ FUNCIÓN DE CIERRE ============
 
   const handleCerrar = () => {
@@ -398,6 +458,14 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
     if (!alcance.trim()) nuevosErrores.alcance = 'El alcance es obligatorio';
     if (alcance.length < 20) nuevosErrores.alcance = 'El alcance debe ser más descriptivo (mín. 20 caracteres)';
     if (procesosSeleccionados.length === 0) nuevosErrores.procesos = 'Selecciona al menos un proceso';
+
+    // Responsable del área auditada (correo) es OBLIGATORIO: es quien recibe
+    // las notificaciones y accede al portal del auditado.
+    if (!responsableArea) {
+      nuevosErrores.responsableArea = 'Selecciona el responsable del área auditada';
+    } else if (!responsableArea.email || !responsableArea.email.includes('@')) {
+      nuevosErrores.responsableArea = 'La persona seleccionada no tiene un correo válido';
+    }
     
     setErrores(nuevosErrores);
     return Object.keys(nuevosErrores).length === 0;
@@ -628,6 +696,7 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
       objetivo,
       alcance,
       procesosIncluidos: procesosSeleccionados,
+      responsableArea: responsableArea || undefined,
       areaAuditable: {
         id: areaSeleccionada!.id,
         nombre: areaSeleccionada!.nombre,
@@ -1022,6 +1091,134 @@ export function FormularioNuevaAuditoria({ onVolver, onClose, onGuardar, auditor
                         {procesosSeleccionados.join(', ')}
                       </p>
                     </div>
+                  )}
+                </div>
+
+                {/* Responsable del Área Auditada (auditado) */}
+                <div className="border-t pt-6">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Responsable del Área Auditada *
+                  </label>
+                  <p className="text-xs text-gray-600 mb-3">
+                    Persona que recibirá la notificación del informe preliminar y accederá al
+                    portal del auditado. Búscalo por nombre, correo o número de identificación.
+                  </p>
+
+                  {responsableArea ? (
+                    <div className="p-4 rounded-lg border-2 border-blue-200 bg-blue-50 flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        <Avatar className="w-10 h-10 shrink-0">
+                          <AvatarFallback className="bg-blue-600 text-white text-xs font-bold">
+                            {(responsableArea.nombre || '')
+                              .split(' ')
+                              .filter(Boolean)
+                              .slice(0, 2)
+                              .map((s) => s[0])
+                              .join('')
+                              .toUpperCase() || 'RA'}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-sm text-gray-900 truncate">
+                            {responsableArea.nombre}
+                          </p>
+                          <p className="text-xs text-gray-700 truncate">
+                            {responsableArea.email}
+                          </p>
+                          {responsableArea.numeroIdentificacion && (
+                            <p className="text-[11px] text-gray-500">
+                              CC {responsableArea.numeroIdentificacion}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setResponsableArea(null);
+                          setBusquedaResponsable('');
+                          setResultadosResponsable([]);
+                          setMostrarSugerencias(false);
+                        }}
+                        className="shrink-0 text-xs text-blue-700 hover:text-blue-900 underline"
+                      >
+                        Cambiar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <Input
+                        placeholder="Ej. Carlos Pérez, jose.perez@esap.edu.co o 1.234.567.890"
+                        value={busquedaResponsable}
+                        onChange={(e) => {
+                          setBusquedaResponsable(e.target.value);
+                          setMostrarSugerencias(true);
+                          setErrores((prev) => {
+                            const n = { ...prev };
+                            delete n.responsableArea;
+                            return n;
+                          });
+                        }}
+                        onFocus={() => setMostrarSugerencias(true)}
+                        onBlur={() => setTimeout(() => setMostrarSugerencias(false), 150)}
+                        className={errores.responsableArea ? 'border-red-500' : ''}
+                      />
+
+                      {mostrarSugerencias && busquedaResponsable.trim().length >= 2 && (
+                        <div className="absolute z-20 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                          {buscandoResponsable && (
+                            <div className="px-3 py-2 text-xs text-gray-500">Buscando…</div>
+                          )}
+                          {!buscandoResponsable && resultadosResponsable.length === 0 && (
+                            <div className="px-3 py-2 text-xs text-gray-500">
+                              No se encontraron personas. Verifica el nombre o correo.
+                            </div>
+                          )}
+                          {resultadosResponsable.map((p) => (
+                            <button
+                              key={p.idPersona}
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => {
+                                setResponsableArea(p);
+                                setBusquedaResponsable('');
+                                setResultadosResponsable([]);
+                                setMostrarSugerencias(false);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                            >
+                              <div className="flex items-center gap-2">
+                                <Avatar className="w-7 h-7 shrink-0">
+                                  <AvatarFallback className="bg-gray-200 text-gray-700 text-[10px]">
+                                    {(p.nombre || '')
+                                      .split(' ')
+                                      .filter(Boolean)
+                                      .slice(0, 2)
+                                      .map((s) => s[0])
+                                      .join('')
+                                      .toUpperCase() || 'P'}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm text-gray-900 truncate">{p.nombre}</p>
+                                  <p className="text-xs text-gray-500 truncate">
+                                    {p.email}
+                                    {p.numeroIdentificacion ? ` · CC ${p.numeroIdentificacion}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {errores.responsableArea && (
+                    <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" />
+                      {errores.responsableArea}
+                    </p>
                   )}
                 </div>
               </div>

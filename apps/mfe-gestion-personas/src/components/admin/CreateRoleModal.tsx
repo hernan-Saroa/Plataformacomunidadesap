@@ -12,18 +12,7 @@ import {
   Check
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { localRolesService } from '../../services/api';
-
-interface Territorial {
-  id: string;
-  nombre: string;
-}
-
-interface CETAP {
-  id: string;
-  nombre: string;
-  territorialId: string;
-}
+import { localRolesService, type Territorial, type CETAP, type ProgramaAcademico } from '../../services/api';
 
 interface CreateRoleModalProps {
   isOpen: boolean;
@@ -58,8 +47,10 @@ export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProp
   const [step, setStep] = useState<1 | 2>(1);
   const [territoriales, setTerritoriales] = useState<Territorial[]>([]);
   const [cetaps, setCetaps] = useState<CETAP[]>([]);
+  const [programas, setProgramas] = useState<ProgramaAcademico[]>([]);
   const [loadingTerritoriales, setLoadingTerritoriales] = useState(false);
   const [loadingCetaps, setLoadingCetaps] = useState(false);
+  const [loadingProgramas, setLoadingProgramas] = useState(false);
 
   // Paso 1 State
   const [nombre, setNombre] = useState('');
@@ -75,10 +66,11 @@ export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProp
   const [selCetap, setSelCetap] = useState<string>('Todos');
   const [selPrograma, setSelPrograma] = useState<string>('Todos');
 
-  // Fetch territoriales when modal opens
+  // Fetch territoriales and programas when modal opens
   useEffect(() => {
     if (isOpen) {
       loadTerritoriales();
+      loadProgramas();
     }
   }, [isOpen]);
 
@@ -121,6 +113,21 @@ export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProp
     }
   };
 
+  const loadProgramas = async () => {
+    try {
+      setLoadingProgramas(true);
+      const programasData = await localRolesService.getProgramasAcademicos();
+      setProgramas(programasData);
+    } catch (error) {
+      console.error('Error loading programas académicos:', error);
+      toast.error('Error al cargar programas académicos', {
+        description: 'No se pudieron cargar los programas académicos disponibles'
+      });
+    } finally {
+      setLoadingProgramas(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   const getUsuariosSimulados = () => {
@@ -140,6 +147,27 @@ export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProp
   const handleSubmit = () => {
     if (!nombre.trim()) return;
 
+    // Función auxiliar para obtener nombre del territorial
+    const getTerritorialName = (territorialId: string) => {
+      if (territorialId === 'Todas') return 'Todas';
+      const territorial = territoriales.find(t => t.id === territorialId);
+      return territorial ? territorial.nombre : territorialId;
+    };
+
+    // Función auxiliar para obtener nombre del CETAP
+    const getCetapName = (cetapId: string) => {
+      if (cetapId === 'Todos') return 'Todos';
+      const cetap = cetaps.find(c => c.id === cetapId);
+      return cetap ? cetap.nombre : cetapId;
+    };
+
+    // Función auxiliar para obtener nombre del programa
+    const getProgramaName = (programaId: string) => {
+      if (programaId === 'Todos') return 'Todos';
+      const programa = programas.find(p => p.id === programaId);
+      return programa ? programa.nombre : programaId;
+    };
+
     // Preparar el objeto con la data del Wizard
     onSave?.({
       nombre,
@@ -150,9 +178,9 @@ export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProp
       requiere_2fa: requiere2FA,
       alcance: {
         tipo: tipoAlcance,
-        territorial: selTerritorial,
-        cetap: selCetap,
-        programa: selPrograma
+        territorial: getTerritorialName(selTerritorial),
+        cetap: getCetapName(selCetap),
+        programa: getProgramaName(selPrograma)
       }
     });
 
@@ -170,6 +198,7 @@ export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProp
     setSelPrograma('Todos');
     setTerritoriales([]);
     setCetaps([]);
+    setProgramas([]);
     onClose();
   };
 
@@ -396,10 +425,15 @@ export function CreateRoleModal({ isOpen, onClose, onSave }: CreateRoleModalProp
                         <label className="block text-xs font-bold text-gray-700 mb-1">Programa Académico</label>
                         <select
                           value={selPrograma} onChange={e => setSelPrograma(e.target.value)}
-                          className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] font-medium"
+                          disabled={loadingProgramas}
+                          className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] disabled:bg-gray-100 disabled:text-gray-400 font-medium"
                         >
                           <option value="Todos">Todos los programas</option>
-                          {/* Aquí irían las opciones dinámicas */}
+                          {programas.map(programa => (
+                            <option key={programa.id} value={programa.id}>
+                              {programa.nombre}
+                            </option>
+                          ))}
                         </select>
                       </div>
 

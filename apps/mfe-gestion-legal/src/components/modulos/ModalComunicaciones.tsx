@@ -22,6 +22,7 @@ interface ModalComunicacionesProps {
   isOpen: boolean;
   onClose: () => void;
   expediente: ExpedienteJudicial;
+  readOnly?: boolean;
 }
 
 // Datos mock de comunicaciones (REDUCIDOS)
@@ -37,13 +38,15 @@ const comunicacionesMock = [
   },
 ];
 
-export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComunicacionesProps) {
+export function ModalComunicaciones({ isOpen, onClose, expediente, readOnly = false }: ModalComunicacionesProps) {
   const [nuevoMensaje, setNuevoMensaje] = useState('');
   const [comunicaciones, setComunicaciones] = useState<any[]>([]);
   const [responderA, setResponderA] = useState<number | null>(null);
   const [idAEliminar, setIdAEliminar] = useState<number | null>(null);
 
   const handleEnviarMensaje = () => {
+    if (readOnly) return;
+
     if (!nuevoMensaje.trim()) {
       toast.error('Escribe un mensaje antes de enviar');
       return;
@@ -75,6 +78,8 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
   };
 
   const handleResponder = (idMensaje: number, nombreUsuario: string) => {
+    if (readOnly) return;
+
     const mensaje = comunicaciones.find(c => c.id === idMensaje);
 
     setResponderA(idMensaje);
@@ -104,6 +109,8 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
   };
 
   const handleReaccionar = (idMensaje: number) => {
+    if (readOnly) return;
+
     const reaccionesDisponibles = [
       { emoji: '👍', nombre: 'Me gusta', color: '#3B82F6' },
       { emoji: '❤️', nombre: 'Me encanta', color: '#EF4444' },
@@ -135,10 +142,14 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
   };
 
   const handleEliminarComentario = (idMensaje: number) => {
+    if (readOnly) return;
+
     setIdAEliminar(idMensaje);
   };
 
   const confirmarEliminar = () => {
+    if (readOnly) return;
+
     if (idAEliminar === null) return;
     setComunicaciones(prev => prev.filter(c => c.id !== idAEliminar));
     toast.success('Comentario eliminado');
@@ -146,6 +157,8 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
   };
 
   const handleAdjuntar = () => {
+    if (readOnly) return;
+
     toast.info('📎 Abriendo selector de archivos...', {
       description: 'Puedes adjuntar documentos legales al mensaje',
       duration: 2000
@@ -196,6 +209,8 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
   };
 
   const handleMencionar = () => {
+    if (readOnly) return;
+
     const usuarios = [
       { nombre: 'Juan Pérez López', rol: 'Abogado Defensor', activo: true },
       { nombre: 'María González', rol: 'Coordinadora Jurídica', activo: true },
@@ -229,6 +244,8 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
   };
 
   const handleEmoji = () => {
+    if (readOnly) return;
+
     const categorias = {
       'Reacciones': ['😊', '😃', '👍', '👏', '🙌', '💪'],
       'Estado': ['✅', '⚠️', '❌', '🔔', '⏰', '📌'],
@@ -386,7 +403,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
                       </p>
 
                       {/* Acciones del mensaje */}
-                      {com.tipo !== 'alert' && (
+                      {!readOnly && com.tipo !== 'alert' && (
                         <div className="flex items-center gap-2 mt-2">
                           <Button
                             size="sm"
@@ -426,6 +443,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
         </div>
 
         {/* Footer con input de nuevo mensaje */}
+        {!readOnly && (
         <div className="sticky bottom-0 bg-white border-t px-6 py-4">
           {/* Indicador de respuesta activa */}
           {responderA && (
@@ -515,9 +533,11 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
             💡 Usa <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Enter</kbd> para enviar y <kbd className="px-1.5 py-0.5 bg-gray-100 border border-gray-300 rounded text-xs">Shift + Enter</kbd> para nueva línea
           </p>
         </div>
+        )}
       </DialogContent>
     </Dialog>
 
+    {!readOnly && (
     <DialogoConfirmacion
       isOpen={idAEliminar !== null}
       onClose={() => setIdAEliminar(null)}
@@ -527,6 +547,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente }: ModalComuni
       tipo="peligro"
       textoConfirmar="Eliminar"
     />
+    )}
     </>
   );
 }

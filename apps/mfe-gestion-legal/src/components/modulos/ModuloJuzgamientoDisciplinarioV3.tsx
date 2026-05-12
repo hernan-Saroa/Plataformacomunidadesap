@@ -72,6 +72,10 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const [filtroGravedad, setFiltroGravedad] = useState<string>('TODAS');
   const [modalNuevoProcesoOpen, setModalNuevoProcesoOpen] = useState(false);
   const [procesoAbiertoExternamente, setProcesoAbiertoExternamente] = useState<ProcesoDisciplinario | null>(null);
+  const esMonitoreoGestionLegal = authService.hasRole('MONITOREO_GESTION_LEGAL');
+  const canMutateJuzgamiento =
+    !esMonitoreoGestionLegal &&
+    authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT);
 
   // Estado local para manejar drag and drop
   const [procesos, setProcesos] = useState<ProcesoDisciplinario[]>([]);
@@ -109,152 +113,71 @@ export function ModuloJuzgamientoDisciplinarioV3() {
   const [archivoCambio, setArchivoCambio] = useState<File | null>(null);
   const [guardandoCambio, setGuardandoCambio] = useState(false);
 
-  // ✅ Estado para items archivados/eliminados
-  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([
-    {
-      id: 'PD-999',
-      codigo: 'DISC-2023-999',
-      nombre: 'Falta Gravísima - Malversación de Fondos - Carlos Andrés Mora',
-      tipo: 'Proceso Disciplinario',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-12-20T15:30:00'),
-      usuarioArchivo: 'Dr. Juan Carlos Pérez',
-      motivoArchivo: 'Proceso terminado por prescripción de la acción disciplinaria (Art. 30 Ley 734/2002)',
-      metadatos: {
-        'Tipo Falta': 'GRAVÍSIMA',
-        'Funcionario': 'Carlos Andrés Mora Gutiérrez',
-        'Cargo': 'Coordinador Administrativo',
-        'Investigador': 'Dr. Juan Carlos Pérez',
-        'Fecha Inicio': '15/03/2020',
-        'Motivo Archivo': 'Prescripción'
-      }
-    },
-    {
-      id: 'PD-998',
-      codigo: 'DISC-2023-888',
-      nombre: 'Falta Grave - Incumplimiento de Horario - Ana María Castro',
-      tipo: 'Proceso Disciplinario',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-11-18T11:20:00'),
-      usuarioArchivo: 'Dra. Ana María López',
-      motivoArchivo: 'Archivo definitivo por ausencia de mérito para continuar la investigación disciplinaria',
-      metadatos: {
-        'Tipo Falta': 'GRAVE',
-        'Funcionario': 'Ana María Castro Pérez',
-        'Cargo': 'Asistente Administrativa',
-        'Investigador': 'Dra. Ana María López',
-        'Fecha Inicio': '10/08/2023',
-        'Resultado': 'Archivo por falta de mérito'
-      }
-    },
-    {
-      id: 'PD-997',
-      codigo: 'DISC-2023-777',
-      nombre: 'Falta Leve - Uso Indebido de Computador - Pedro Ramírez',
-      tipo: 'Proceso Disciplinario',
-      estado: 'ELIMINADO',
-      fechaArchivado: new Date('2024-10-25T09:45:00'),
-      usuarioArchivo: 'Dr. Juan Carlos Pérez',
-      motivoArchivo: 'Proceso duplicado - El caso real está bajo radicado DISC-2023-778. Error de digitación en el sistema',
-      metadatos: {
-        'Tipo Falta': 'LEVE',
-        'Funcionario': 'Pedro Ramírez González',
-        'Motivo Eliminación': 'Registro Duplicado'
-      }
-    },
-    {
-      id: 'PD-996',
-      codigo: 'DISC-2022-666',
-      nombre: 'Falta Gravísima - Acoso Laboral - Luis Fernando Díaz',
-      tipo: 'Proceso Disciplinario',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-09-12T16:10:00'),
-      usuarioArchivo: 'Dra. Ana María López',
-      motivoArchivo: 'Sanción ejecutoriada: Destitución e inhabilidad de 15 años. Resolución notificada y en firme',
-      metadatos: {
-        'Tipo Falta': 'GRAVÍSIMA',
-        'Funcionario': 'Luis Fernando Díaz Parra',
-        'Cargo': 'Jefe de Departamento',
-        'Sanción': 'Destitución e Inhabilidad 15 años',
-        'Fecha Sanción': '05/09/2024',
-        'Estado': 'Ejecutoriada'
-      }
-    },
-    {
-      id: 'PD-995',
-      codigo: 'DISC-2024-555',
-      nombre: 'Falta Grave - Absentismo Laboral - María Fernanda Torres',
-      tipo: 'Proceso Disciplinario',
-      estado: 'ELIMINADO',
-      fechaArchivado: new Date('2024-08-08T14:30:00'),
-      usuarioArchivo: 'Admin Sistema',
-      motivoArchivo: 'Registro erróneo - No corresponde a funcionario de ESAP. Persona externa a la institución',
-      metadatos: {
-        'Tipo Falta': 'GRAVE',
-        'Motivo Eliminación': 'Error de registro - No es funcionario ESAP'
-      }
-    },
-    {
-      id: 'PD-994',
-      codigo: 'DISC-2023-444',
-      nombre: 'Falta Gravísima - Cohecho - Roberto Sánchez Mora',
-      tipo: 'Proceso Disciplinario',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-07-15T10:00:00'),
-      usuarioArchivo: 'Dr. Juan Carlos Pérez',
-      motivoArchivo: 'Remisión a Fiscalía General de la Nación por presunta conducta punible (Art. 406 C.P.). Se suspende proceso disciplinario',
-      metadatos: {
-        'Tipo Falta': 'GRAVÍSIMA',
-        'Funcionario': 'Roberto Sánchez Mora',
-        'Cargo': 'Supervisor de Contratos',
-        'Investigador': 'Dr. Juan Carlos Pérez',
-        'Motivo': 'Remisión a Fiscalía',
-        'Radicado Fiscalía': 'FGN-2024-00123'
-      }
-    },
-    {
-      id: 'PD-993',
-      codigo: 'DISC-2023-333',
-      nombre: 'Falta Grave - Negligencia en Funciones - Carmen Lucía Vega',
-      tipo: 'Proceso Disciplinario',
-      estado: 'ARCHIVADO',
-      fechaArchivado: new Date('2024-06-20T13:45:00'),
-      usuarioArchivo: 'Dra. Ana María López',
-      motivoArchivo: 'Sanción ejecutoriada: Suspensión de 30 días sin remuneración. Ya cumplida íntegramente',
-      metadatos: {
-        'Tipo Falta': 'GRAVE',
-        'Funcionario': 'Carmen Lucía Vega Ruiz',
-        'Cargo': 'Profesional Especializado',
-        'Sanción': 'Suspensión 30 días',
-        'Fecha Sanción': '01/06/2024',
-        'Fecha Cumplimiento': '18/06/2024',
-        'Estado': 'Sanción cumplida'
-      }
+  // ✅ Estado para items archivados/eliminados (cargados desde backend, sin mocks)
+  const [itemsArchivados, setItemsArchivados] = useState<ItemArchivado[]>([]);
+
+  // Bug 2: Cargar archivados disciplinarios reales del backend
+  // Reutiliza el endpoint getExpedientesArchivados (juzgamiento y defensa
+  // comparten tabla `expedientes`) y filtra por jurisdicción/tipoProceso disciplinario.
+  const loadArchivadosBackend = async () => {
+    try {
+      const data = await legalService.getExpedientesArchivados();
+      const disciplinarios = (data || []).filter((exp: any) => {
+        const j = (exp.jurisdiccion || '').toString().toUpperCase();
+        const t = (exp.tipoProceso || '').toString().toUpperCase();
+        const r = (exp.radicado || '').toString().toUpperCase();
+        return j === 'DISCIPLINARIO' || j === 'DISCIPLINARIA' ||
+               t === 'DISCIPLINARIO' || t === 'DISCIPLINARIA' ||
+               r.startsWith('PD-');
+      });
+      const mapped: ItemArchivado[] = disciplinarios.map((exp: any) => ({
+        id: exp.id,
+        codigo: exp.radicado || exp.id,
+        nombre: `Proceso Disciplinario - ${exp.demandado || exp.disciplinado || 'Sin investigado'}`,
+        tipo: 'Proceso Disciplinario',
+        estado: exp.estadoArchivo as EstadoArchivado,
+        fechaArchivado: new Date(exp.fechaArchivo || new Date()),
+        usuarioArchivo: exp.usuarioArchivo || 'Sistema',
+        motivoArchivo: exp.motivoArchivo || 'Sin motivo especificado',
+        metadatos: {
+          'Investigado': exp.demandado || exp.disciplinado || 'No especificado',
+          'Cargo': exp.cargoInvestigado || 'No especificado',
+          'Dependencia': exp.dependenciaInvestigado || 'No especificada',
+          'Etapa': exp.etapa || exp.etapaProcesal || 'No especificada',
+          'Tipo Falta': exp.tipoFalta || 'No especificada',
+        },
+      }));
+      setItemsArchivados(mapped);
+    } catch (error) {
+      console.error('Error cargando archivados disciplinarios:', error);
+      setItemsArchivados([]);
     }
-  ]);
-
-  // ✅ Función para restaurar un proceso archivado
-  const handleRestaurar = async (itemId: string) => {
-    console.log('Restaurando proceso disciplinario:', itemId);
-
-    // Simulación: En producción esto haría una llamada al backend
-    // await api.restaurarProceso(itemId);
-
-    // Remover de la lista de archivados
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
-
-    // Aquí se agregaría de vuelta a los procesos activos
   };
 
-  // ✅ Función para eliminar permanentemente un proceso
+  // Bug 2: Restaurar un proceso disciplinario archivado vía backend.
+  const handleRestaurar = async (itemId: string) => {
+    try {
+      await legalService.restaurarExpediente(itemId);
+      toast.success('Proceso restaurado al Kanban');
+      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+      // Recargar procesos activos para que aparezca en el kanban
+      fetchProcesos();
+    } catch (error) {
+      console.error('Error restaurando proceso disciplinario:', error);
+      toast.error('Error al restaurar el proceso');
+    }
+  };
+
+  // Bug 2: Eliminar permanentemente vía backend.
   const handleEliminarPermanente = async (itemId: string) => {
-    console.log('Eliminando permanentemente proceso disciplinario:', itemId);
-
-    // Simulación: En producción esto haría una llamada al backend
-    // await api.eliminarPermanente(itemId);
-
-    // Remover de la lista de archivados
-    setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    try {
+      await legalService.eliminarPermanenteExpediente(itemId);
+      toast.success('Proceso eliminado permanentemente');
+      setItemsArchivados(prev => prev.filter(item => item.id !== itemId));
+    } catch (error) {
+      console.error('Error eliminando proceso disciplinario:', error);
+      toast.error('Error al eliminar el proceso');
+    }
   };
 
   // ✅ Log de configuraciones cargadas
@@ -374,7 +297,15 @@ export function ModuloJuzgamientoDisciplinarioV3() {
 
   useEffect(() => {
     fetchProcesos();
+    loadArchivadosBackend();
   }, []);
+
+  // Bug 2: recargar archivados cada vez que se entra a la vista
+  useEffect(() => {
+    if (tipoVista === 'archivados') {
+      loadArchivadosBackend();
+    }
+  }, [tipoVista]);
 
   // ✅ Listener: Abrir proceso desde notificación (evento legal:open-expediente-detail)
   useEffect(() => {
@@ -405,6 +336,11 @@ export function ModuloJuzgamientoDisciplinarioV3() {
 
   // Manejar movimiento de proceso entre etapas - AHORA REQUIERE JUSTIFICACIÓN
   const handleMoverProceso = async (procesoId: string, nuevaEtapa: string) => {
+    if (!canMutateJuzgamiento) {
+      toast.info('Este rol solo tiene permisos de consulta en Juzgamiento Disciplinario');
+      return;
+    }
+
     // Buscar el proceso para obtener info adicional
     const proceso = procesos.find(p => p.id === procesoId);
     if (!proceso) {
@@ -557,7 +493,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
           ]
         }}
         buttons={
-          authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT)
+          canMutateJuzgamiento
             ? [{
                 label: 'Nuevo Proceso',
                 labelMobile: 'Nuevo',
@@ -696,6 +632,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
                   isMobile={isMobile}
                   isTablet={isTablet}
                   handleMoverProceso={handleMoverProceso}
+                  canMove={canMutateJuzgamiento}
                   onRefresh={fetchProcesos}
                   onVerExpedienteAnexado={handleVerExpedienteAnexado}
                 />
@@ -711,6 +648,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
           procesos={procesos} // Nota: VistaLista podría necesitar ajuste si espera usar las etapas dinámicas para algo, pero por ahora pasamos los procesos crudos.
           isMobile={isMobile}
           isTablet={isTablet}
+          readOnly={esMonitoreoGestionLegal}
         />
       )}
 
@@ -833,8 +771,8 @@ export function ModuloJuzgamientoDisciplinarioV3() {
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Juzgamiento Disciplinario"
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={canMutateJuzgamiento ? handleRestaurar : undefined}
+          onEliminarPermanente={canMutateJuzgamiento ? handleEliminarPermanente : undefined}
         />
       )}
 
@@ -854,6 +792,7 @@ export function ModuloJuzgamientoDisciplinarioV3() {
         onClose={() => setProcesoAbiertoExternamente(null)}
         proceso={procesoAbiertoExternamente as any}
         onRefresh={fetchProcesos}
+        readOnly={esMonitoreoGestionLegal}
       />
     </div>
   );
@@ -873,14 +812,18 @@ interface ColumnaKanbanProps {
   isMobile: boolean;
   isTablet: boolean;
   handleMoverProceso: (procesoId: string, nuevaEtapa: string) => void;
+  canMove: boolean;
   onRefresh: () => void;
   onVerExpedienteAnexado: (id: string) => void;
 }
 
-function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, onRefresh, onVerExpedienteAnexado }: ColumnaKanbanProps) {
+function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, canMove, onRefresh, onVerExpedienteAnexado }: ColumnaKanbanProps) {
   const [{ isOver }, drop] = useDrop({
     accept: ItemTypes.PROCESO,
-    drop: (item: { id: string }) => handleMoverProceso(item.id, etapa.valor),
+    canDrop: () => canMove,
+    drop: (item: { id: string }) => {
+      if (canMove) handleMoverProceso(item.id, etapa.valor);
+    },
     collect: (monitor) => ({
       isOver: !!monitor.isOver(),
     }),
@@ -939,6 +882,7 @@ function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, onRefres
               proceso={proceso}
               isMobile={isMobile}
               handleMoverProceso={handleMoverProceso}
+              canMove={canMove}
               nuevaEtapa={etapa.valor}
               onRefresh={onRefresh}
               onVerExpedienteAnexado={onVerExpedienteAnexado}
@@ -964,12 +908,13 @@ interface TarjetaProcesoProps {
   proceso: ProcesoDisciplinario;
   isMobile: boolean;
   handleMoverProceso: (procesoId: string, nuevaEtapa: string) => void;
+  canMove: boolean;
   nuevaEtapa: string;
   onRefresh: () => void;
   onVerExpedienteAnexado?: (id: string) => void;
 }
 
-function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa, onRefresh, onVerExpedienteAnexado }: TarjetaProcesoProps) {
+function TarjetaProceso({ proceso, isMobile, handleMoverProceso, canMove, nuevaEtapa, onRefresh, onVerExpedienteAnexado }: TarjetaProcesoProps) {
   // Estados para modales
   const [modalProcesoOpen, setModalProcesoOpen] = useState(false);
   const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
@@ -978,6 +923,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa, onR
   const [{ isDragging }, drag] = useDrag({
     type: ItemTypes.PROCESO,
     item: { id: proceso.id },
+    canDrag: () => canMove,
     collect: (monitor) => ({
       isDragging: !!monitor.isDragging(),
     }),
@@ -1011,7 +957,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa, onR
   };
 
   return (
-    <div ref={drag as unknown as React.LegacyRef<HTMLDivElement>} style={{ opacity, cursor: 'move' }}>
+    <div ref={drag as unknown as React.LegacyRef<HTMLDivElement>} style={{ opacity, cursor: canMove ? 'move' : 'default' }}>
       <Card className="bg-white border border-gray-200 hover:shadow-md transition-all">
         <div className="h-1" style={{ background: '#003DA5' }} />
 
@@ -1128,6 +1074,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa, onR
           onClose={() => setModalProcesoOpen(false)}
           proceso={proceso as any}
           onRefresh={onRefresh}
+          readOnly={authService.hasRole('MONITOREO_GESTION_LEGAL')}
           onVerExpedienteAnexado={(id) => {
             setModalProcesoOpen(false); // Close current nested
             if (onVerExpedienteAnexado) onVerExpedienteAnexado(id);
@@ -1137,6 +1084,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, nuevaEtapa, onR
           isOpen={modalComunicacionesOpen}
           onClose={() => setModalComunicacionesOpen(false)}
           expediente={expedienteParaModales as any}
+          readOnly={authService.hasRole('MONITOREO_GESTION_LEGAL')}
         />
       </Card>
     </div>

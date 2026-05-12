@@ -1,47 +1,76 @@
 /**
- * Portal API - funciones para el Portal Transaccional (Legacy PTA)
+ * Portal API - funciones para el Portal Transaccional.
  *
- * Nota: En esta plataforma el backend puede variar (Gateway/Direct).
- * Por defecto intentamos contra el API Gateway bajo `/auth/api/v1/portal`.
- * Si no existe el endpoint, se devuelve fallback para no bloquear la UI.
+ * Reescrito para usar el `apiClient` unificado del shell, que ya maneja:
+ *   - Modo `direct`  (`localhost`)  -> microservicio `auth` en puerto 3001.
+ *   - Modo `gateway` (producción/intranet) -> `/services/auth/api/v1/...`.
+ *   - Token JWT real (sessionStorage `esap_auth_token`) en `Authorization: Bearer`.
+ *   - Header redundante `X-Access-Token` para gateways con SSL/proxy.
+ *   - Refresh de token cuando expira.
+ *
+ * IMPORTANTE: Algunos de estos endpoints (`/portal/perfil/:id`, `/portal/estadisticas/:id`,
+ * `/portal/certificados-laborales/:id`, etc.) **aún no existen** en el backend
+ * `auth-service`. Para no bloquear la UI cuando no responden, todas las funciones
+ * envuelven el llamado en try/catch y devuelven un fallback razonable
+ * (null, lista vacía, mensaje "No disponible"). El día que el backend los implemente
+ * funcionarán automáticamente sin tocar la UI.
  */
 
-import { config } from '../../config/environment';
-import { publicAnonKey } from '../../utils/supabase/info';
+import { apiClient } from '../../services/api/apiClient';
 
-const BASE_URL = (import.meta.env.VITE_PORTAL_API_URL as string | undefined) || config.API_BASE_URL;
-const PORTAL_PREFIX = (import.meta.env.VITE_PORTAL_API_PREFIX as string | undefined) || '/auth/api/v1/portal';
+const PORTAL_PREFIX = '/auth/api/v1/portal';
 
-function joinUrl(base: string, path: string) {
-  const normalizedBase = base.replace(/\/$/, '');
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `${normalizedBase}${normalizedPath}`;
-}
+// ────────────────────────────────────────────────────────────────────────────
+// Perfil
+// ────────────────────────────────────────────────────────────────────────────
 
-async function fetchApi(endpoint: string, options: RequestInit = {}) {
-  const url = joinUrl(joinUrl(BASE_URL, PORTAL_PREFIX), endpoint);
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
-      Authorization: `Bearer ${publicAnonKey}`,
-      ...(options.headers || {}),
-    },
-  });
-
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => 'Unknown error');
-    throw new Error(`API Error ${res.status}: ${errorText}`);
+export async function getPerfilPortal(personaId: string) {
+  try {
+    return await apiClient.get(`${PORTAL_PREFIX}/perfil/${personaId}`, undefined, { skipErrorToast: true });
+  } catch {
+    return null;
   }
-
-  return res.json();
 }
+
+export async function updatePerfilPortal(personaId: string, data: any) {
+  try {
+    return await apiClient.put(`${PORTAL_PREFIX}/perfil/${personaId}`, data, { skipErrorToast: true });
+  } catch (err) {
+    console.warn('[portalApi] updatePerfilPortal no disponible:', err);
+    return { success: false };
+  }
+}
+
+export async function updatePrivacidad(personaId: string, configPriv: any) {
+  try {
+    return await apiClient.put(`${PORTAL_PREFIX}/privacidad/${personaId}`, configPriv, { skipErrorToast: true });
+  } catch (err) {
+    console.warn('[portalApi] updatePrivacidad no disponible:', err);
+    return { success: false };
+  }
+}
+
+export async function uploadFotoPerfil(file: File, personaId: string) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('personaId', personaId);
+  try {
+    return await apiClient.upload(`${PORTAL_PREFIX}/foto-perfil`, formData);
+  } catch (err) {
+    console.warn('[portalApi] uploadFotoPerfil falló:', err);
+    throw err;
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Estadísticas / inicialización
+// ────────────────────────────────────────────────────────────────────────────
 
 export async function getEstadisticasPortal(personaId: string) {
   try {
-    return await fetchApi(`/estadisticas/${personaId}`);
+    return await apiClient.get(`${PORTAL_PREFIX}/estadisticas/${personaId}`, undefined, { skipErrorToast: true });
   } catch (err) {
-    console.warn('Error obteniendo estadísticas del portal:', err);
+    console.warn('[portalApi] getEstadisticasPortal no disponible:', err);
     return {
       success: false,
       data: {
@@ -65,76 +94,22 @@ export async function getEstadisticasPortal(personaId: string) {
 
 export async function inicializarDatosPortal(personaId: string) {
   try {
-    return await fetchApi(`/inicializar`, {
-      method: 'POST',
-      body: JSON.stringify({ personaId }),
-    });
+    return await apiClient.post(`${PORTAL_PREFIX}/inicializar`, { personaId }, { skipErrorToast: true });
   } catch (err) {
-    console.warn('Error inicializando datos del portal:', err);
+    console.warn('[portalApi] inicializarDatosPortal no disponible:', err);
     return { ok: true };
   }
 }
 
-export async function getPerfilPortal(personaId: string) {
-  try {
-    const url = joinUrl(joinUrl(BASE_URL, PORTAL_PREFIX), `/perfil/${personaId}`);
-    const res = await fetch(url, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${publicAnonKey}`,
-      },
-    });
-
-    if (!res.ok) {
-      return null;
-    }
-
-    return await res.json();
-  } catch {
-    return null;
-  }
-}
-
-export async function updatePerfilPortal(personaId: string, data: any) {
-  return fetchApi(`/perfil/${personaId}`, {
-    method: 'PUT',
-    body: JSON.stringify(data),
-  });
-}
-
-export async function updatePrivacidad(personaId: string, configPriv: any) {
-  return fetchApi(`/privacidad/${personaId}`, {
-    method: 'PUT',
-    body: JSON.stringify(configPriv),
-  });
-}
-
-export async function uploadFotoPerfil(file: File, personaId: string) {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('personaId', personaId);
-
-  const url = joinUrl(joinUrl(BASE_URL, PORTAL_PREFIX), '/foto-perfil');
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${publicAnonKey}`,
-    },
-    body: formData,
-  });
-
-  if (!res.ok) {
-    throw new Error(`Error uploading photo: ${res.status}`);
-  }
-
-  return res.json();
-}
+// ────────────────────────────────────────────────────────────────────────────
+// Certificados laborales
+// ────────────────────────────────────────────────────────────────────────────
 
 export async function getCertificadosLaboralesPortal(personaId: string) {
   try {
-    return await fetchApi(`/certificados-laborales/${personaId}`);
+    return await apiClient.get(`${PORTAL_PREFIX}/certificados-laborales/${personaId}`, undefined, { skipErrorToast: true });
   } catch (err) {
-    console.warn('Error obteniendo certificados laborales del portal:', err);
+    console.warn('[portalApi] getCertificadosLaboralesPortal no disponible:', err);
     return { success: true, data: [] };
   }
 }
@@ -147,21 +122,22 @@ export async function solicitarCertificadoLaboral(params: {
   observaciones?: string;
 }) {
   try {
-    return await fetchApi('/certificados-laborales/solicitar', {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
+    return await apiClient.post(`${PORTAL_PREFIX}/certificados-laborales/solicitar`, params, { skipErrorToast: true });
   } catch (err) {
-    console.warn('Error solicitando certificado laboral:', err);
+    console.warn('[portalApi] solicitarCertificadoLaboral no disponible:', err);
     return { success: false, error: 'No disponible' };
   }
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Carpeta digital
+// ────────────────────────────────────────────────────────────────────────────
+
 export async function getCarpetaDigitalPortal(personaId: string) {
   try {
-    return await fetchApi(`/carpeta-digital/${personaId}`);
+    return await apiClient.get(`${PORTAL_PREFIX}/carpeta-digital/${personaId}`, undefined, { skipErrorToast: true });
   } catch (err) {
-    console.warn('Error obteniendo carpeta digital del portal:', err);
+    console.warn('[portalApi] getCarpetaDigitalPortal no disponible:', err);
     return { success: true, data: { documentos: [], tipos_requeridos: [], persona: null } };
   }
 }
@@ -179,20 +155,5 @@ export async function uploadDocumentoCarpetaDigital(params: {
   formData.append('tipoDocumento', params.tipoDocumento);
   if (params.categoria) formData.append('categoria', params.categoria);
   if (params.descripcion) formData.append('descripcion', params.descripcion);
-
-  const url = joinUrl(joinUrl(BASE_URL, PORTAL_PREFIX), '/carpeta-digital/upload');
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${publicAnonKey}`,
-    },
-    body: formData,
-  });
-
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => 'Unknown error');
-    throw new Error(`Error uploading document: ${res.status} - ${errorText}`);
-  }
-
-  return res.json();
+  return apiClient.upload(`${PORTAL_PREFIX}/carpeta-digital/upload`, formData);
 }

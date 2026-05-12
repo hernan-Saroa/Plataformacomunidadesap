@@ -1,10 +1,11 @@
-import { Controller, Get, Post, Put, Delete, Body, Query, BadRequestException, Param, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Query, BadRequestException, Param, UseInterceptors, UploadedFiles, Req } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ExpedienteService } from '../services/expediente.service';
 import { Expediente } from '../entities/expediente.entity';
 import { NotificationClientService } from '../services/notification-client.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('expedientes')
 export class ExpedienteController {
@@ -18,8 +19,15 @@ export class ExpedienteController {
         @Query('estado') estado?: string,
         @Query('jurisdiccion') jurisdiccion?: string,
         @Query('search') search?: string,
+        @Req() req?: any,
     ): Promise<Expediente[]> {
-        return this.expedienteService.listarExpedientes({ estado, jurisdiccion, search });
+        const access = getLegalAccessFromRequest(req);
+        return this.expedienteService.listarExpedientes({
+            estado,
+            jurisdiccion,
+            search,
+            abogadoSustanciadorKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Get(':id')

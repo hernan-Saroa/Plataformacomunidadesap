@@ -1598,32 +1598,77 @@ export class PlanesMejoramientoService {
 
     const usuariosNotificar = new Set<string>();
 
-    // 1. Si los roles incluyen "Jefe OCIG"
     if (rolesDestinatarios.includes('Jefe OCIG')) {
-      const jefesOCI = await this.obtenerJefesControlInterno();
-      jefesOCI.forEach(id => usuariosNotificar.add(id));
+      try {
+        const jefesOCI = await this.obtenerJefesControlInterno();
+        jefesOCI.forEach((id) => usuariosNotificar.add(String(id)));
+        console.log(
+          `[PlanesMejoramientoService.crearNotificacionesPlanCreado] ${jefesOCI.length} Jefe(s) de Control Interno encontrado(s)`,
+        );
+      } catch (error) {
+        console.error(
+          `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener Jefes de Control Interno:`,
+          error,
+        );
+      }
     }
 
-    // 2. Si los roles incluyen "Auditor Líder"
     if (rolesDestinatarios.includes('Auditor Líder') && auditoriaId) {
-       try {
-         const auditoria = await this.auditoriaRepository.findOne({ where: { id: auditoriaId } });
-         if (auditoria?.auditorLiderId) usuariosNotificar.add(String(auditoria.auditorLiderId));
-       } catch (e) {}
+      try {
+        const auditoria = await this.auditoriaRepository.findOne({ where: { id: auditoriaId } });
+        if (auditoria?.auditorLiderId) {
+          const auditorLiderId = String(auditoria.auditorLiderId);
+          usuariosNotificar.add(auditorLiderId);
+          console.log(
+            `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Auditor líder agregado: id_user=${auditorLiderId}`,
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al obtener auditor líder:`,
+          error,
+        );
+      }
     }
 
-    // 3. Si los roles incluyen "Responsable Plan Mejoramiento"
     if (rolesDestinatarios.includes('Responsable Plan Mejoramiento') && plan.responsableImplementacion) {
       try {
         const responsable = await this.dataSource.query(
-          `SELECT id_user FROM auth.personas p JOIN auth."user" u ON u.id_person = p.id_person WHERE p.nom_largo ILIKE $1 LIMIT 1`,
-          [`%${plan.responsableImplementacion}%`]
+          `
+          SELECT u.id_user
+          FROM auth.personas p
+          INNER JOIN auth."user" u ON u.id_person = p.id_person
+          WHERE (
+            p.nom_largo ILIKE $1
+            OR CONCAT(p.nom_tercero, ' ', p.pri_apellido) ILIKE $1
+            OR p.dir_email ILIKE $1
+            OR u.username ILIKE $1
+          )
+            AND COALESCE(u.is_active, TRUE) = TRUE
+          LIMIT 1
+          `,
+          [`%${plan.responsableImplementacion}%`],
         );
-        if (responsable && responsable.length > 0) usuariosNotificar.add(responsable[0].id_user);
-      } catch (e) {}
+
+        if (responsable && responsable.length > 0) {
+          const idUsuario = String(responsable[0].id_user);
+          usuariosNotificar.add(idUsuario);
+          console.log(
+            `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Responsable encontrado: id_user=${idUsuario}`,
+          );
+        } else {
+          console.warn(
+            `[PlanesMejoramientoService.crearNotificacionesPlanCreado] No se encontró responsable con nombre/email: "${plan.responsableImplementacion}"`,
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[PlanesMejoramientoService.crearNotificacionesPlanCreado] Error al buscar responsable:`,
+          error,
+        );
+      }
     }
 
-    // Eliminar duplicados
     const usuariosUnicos = [...usuariosNotificar];
     console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Total de usuarios a notificar: ${usuariosUnicos.length}`);
 
@@ -1655,24 +1700,36 @@ export class PlanesMejoramientoService {
   }
 
   /**
-   * Obtiene los IDs de usuarios con rol JEFE_CONTROL_INTERNO
+   * Obtiene los IDs de usuarios (UUID `id_user`) con rol JEFE_CONTROL_INTERNO.
+   *
+   * Se aceptan distintas variantes del código del rol que han existido a lo largo
+   * del proyecto (`JEFE_CONTROL_INTERNO`, `JEGE_OCI`, `JEFE_OCI`) para no perder
+   * destinatarios cuando el catálogo de roles se ha renombrado.
    */
   private async obtenerJefesControlInterno(): Promise<string[]> {
     try {
       const result = await this.dataSource.query(`
-        SELECT DISTINCT u.id_user as id
+        SELECT DISTINCT u.id_user
         FROM auth."user" u
         INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
         INNER JOIN auth.role r ON r.id = ur.id_rol
         WHERE (
-          UPPER(r.code) IN ('JEFE_CONTROL_INTERNO', 'JEFE_OCIG', 'JEFE_OCI', 'ADMIN', 'SUPER_ADMIN')
+          UPPER(TRIM(r.code)) IN (
+            'JEFE_CONTROL_INTERNO',
+            'JEFE_OCIG',
+            'JEFE_OCI',
+            'JEGE_OCI',
+            'ADMIN',
+            'SUPER_ADMIN'
+          )
           OR r.name ILIKE '%Jefe%Control%Interno%'
           OR r.name ILIKE '%Jefe%OCI%'
         )
-        AND u.is_active = true
+          AND COALESCE(ur.is_active, TRUE) = TRUE
+          AND COALESCE(u.is_active, TRUE) = TRUE
       `);
-      
-      const ids = result.map(r => r.id);
+
+      const ids = result.map((row: { id_user: string }) => String(row.id_user));
       console.log(`[Notificaciones-PM] Jefes OCI detectados: ${ids.length} usuarios`);
       return ids;
     } catch (error) {

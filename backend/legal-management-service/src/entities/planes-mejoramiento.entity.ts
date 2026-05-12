@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { PlanHallazgo } from './plan-hallazgo.entity';
 
 // ENTIDAD PRINCIPAL: PLAN MEJORAMIENTO
 @Entity('planes_mejoramiento', { schema: 'legal_management' })
@@ -84,6 +85,9 @@ export class PlanMejoramiento {
 
   @OneToMany(() => PlanComentario, (comentario) => comentario.plan)
   comentarios: PlanComentario[];
+
+  @OneToMany(() => PlanHallazgo, (hallazgo) => hallazgo.plan)
+  hallazgos: PlanHallazgo[];
 }
 
 // ENTIDAD: EVIDENCIA

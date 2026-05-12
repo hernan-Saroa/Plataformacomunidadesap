@@ -192,6 +192,9 @@ export class RiesgosService {
             data.fechaCalculoProvision = new Date();
         }
 
+        // Capturar valor anterior de provisión antes de mutar
+        const provisionAnterior = Number(riesgo.provisionContable || 0);
+
         Object.assign(riesgo, data);
         const saved = await this.riesgoRepo.save(riesgo);
 
@@ -219,6 +222,31 @@ export class RiesgosService {
                 saved.zonaResidual,
                 'Sistema'
             );
+
+            // Notificar si pasa a zona Crítica (ALTO o EXTREMO)
+            if (saved.zonaResidual === 'ALTO' || saved.zonaResidual === 'EXTREMO') {
+                this.legalNotificationsService.notifyRiesgoZonaCritica({
+                    riesgoId: saved.id,
+                    codigo: saved.codigo,
+                    nombreRiesgo: saved.nombre,
+                    zonaResidual: saved.zonaResidual,
+                    abogadoId: saved.responsableId,
+                    modificadoPor: data['createdBy'] || 'Sistema'
+                });
+            }
+        }
+
+        // Notificar si cambia la provisión contable
+        if (data.provisionContable !== undefined && Number(saved.provisionContable) !== provisionAnterior) {
+            this.legalNotificationsService.notifyRiesgoProvisionModificada({
+                riesgoId: saved.id,
+                codigo: saved.codigo,
+                nombreRiesgo: saved.nombre,
+                provisionAnterior: provisionAnterior,
+                provisionNueva: Number(saved.provisionContable),
+                abogadoId: saved.responsableId,
+                modificadoPor: data['createdBy'] || 'Sistema'
+            });
         }
 
         // Notificar si el responsable cambió

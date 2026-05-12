@@ -151,8 +151,11 @@ class AuthService {
    * Obtiene el usuario actual del localStorage
    */
   getCurrentUser(): AuthUser | null {
-    if (!this._cachedUser && typeof window !== 'undefined' && (window as any).__esap_auth_cache) {
-      this._cachedUser = (window as any).__esap_auth_cache;
+    if (typeof window !== 'undefined') {
+      const sharedUser = (window as any).__esap_auth_cache ?? null;
+      if (this._cachedUser !== sharedUser) {
+        this._cachedUser = sharedUser;
+      }
     }
     return this._cachedUser;
   }

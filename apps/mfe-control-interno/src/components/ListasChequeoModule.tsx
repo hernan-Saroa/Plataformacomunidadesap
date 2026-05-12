@@ -590,8 +590,10 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
   const etapasActivas: { value: string; label: string }[] = (etapasDisponibles && etapasDisponibles.length > 0) ? etapasDisponibles : [...ETAPAS_KANBAN_AUDITORIA_FALLBACK];
 
   const documentosFiltrados = documentos.filter(doc => {
-    const cumpleBusqueda = doc.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-                          doc.descripcion.toLowerCase().includes(busqueda.toLowerCase());
+    const q = busqueda.toLowerCase();
+    const nombreSafe = (doc.nombre ?? '').toLowerCase();
+    const descSafe = (doc.descripcion ?? '').toLowerCase();
+    const cumpleBusqueda = nombreSafe.includes(q) || descSafe.includes(q);
     const cumpleCategoria = filtroCategoria === 'TODOS' || doc.categoria === filtroCategoria;
     
     // ✅ FILTRAR POR UUID DE ETAPA O POR NOMBRE (para compatibilidad)
@@ -637,7 +639,8 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
   // ═══════════════════════════════════════════════════════════════════
   const handleDescargar = async (documento: DocumentoBiblioteca) => {
     try {
-      const url = documento.urlDownload.startsWith('http') ? documento.urlDownload : `${window.location.origin}${documento.urlDownload}`;
+      const dl = documento.urlDownload ?? '';
+      const url = dl.startsWith('http') ? dl : `${window.location.origin}${dl}`;
       const res = await fetch(url, { headers: getDefaultHeaders() });
       if (!res.ok) {
         throw new Error(res.status === 401 ? 'No autorizado. Inicia sesión nuevamente.' : `Error ${res.status}`);
@@ -646,7 +649,7 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = documento.nombreArchivo || `${documento.nombre}.${documento.extension.toLowerCase()}`;
+      link.download = documento.nombreArchivo || `${documento.nombre ?? 'documento'}.${(documento.extension ?? 'bin').toLowerCase()}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

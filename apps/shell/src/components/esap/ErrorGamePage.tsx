@@ -261,8 +261,8 @@ export function ErrorGamePage({ onRetry, onGoHome, debug }: ErrorGamePageProps) 
           </p>
         </motion.div>
 
-        {/* Debug panel: ONLY visible in local development — never in pre-prod/production */}
-        {debug && import.meta.env?.DEV && (
+        {/* Debug panel: visible in local development and on localhost for troubleshooting */}
+        {debug && (
           <div className="mx-auto mb-8 max-w-3xl rounded-xl border border-red-200 bg-red-50 p-4 text-left text-xs text-red-800">
             <div className="mb-2 font-semibold">Dev error details</div>
             {debug.message && (

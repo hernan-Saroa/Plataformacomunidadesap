@@ -10,7 +10,7 @@ import {
   Gavel, FileText, Users, Clock, AlertTriangle, CheckCircle, X,
   Calendar, User, Building, Phone, Mail, MapPin, Briefcase,
   Eye, Download, Upload, Plus, Edit, Trash2, Send,
-  FileDown, Scale, Link as LinkIcon, Unlink
+  FileDown, Scale, Link as LinkIcon, Unlink, Archive
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import type { ProcesoDisciplinario, DecisionDisciplinaria } from '../core/types';
@@ -75,17 +75,37 @@ interface ModalProcesoDisciplinarioProps {
   proceso: ProcesoDisciplinario;
   onRefresh?: () => void;
   onVerExpedienteAnexado?: (procesoId: string) => void;
+  readOnly?: boolean;
 }
 
-export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh, onVerExpedienteAnexado }: ModalProcesoDisciplinarioProps) {
+export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh, onVerExpedienteAnexado, readOnly = false }: ModalProcesoDisciplinarioProps) {
   // ✅ Obtener configuraciones desde Context API
   const { tiposExcepcionesActivos, causalesEspecificasActivas } = useConfiguracionModulo('juzgamiento');
 
   if (!proceso) return null;
 
+  const esMonitoreoGestionLegal = readOnly || authService.hasRole('MONITOREO_GESTION_LEGAL');
+  const canEditProceso =
+    !esMonitoreoGestionLegal &&
+    authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT);
+  const canUploadDocumento =
+    !esMonitoreoGestionLegal &&
+    authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DOC_UPLOAD);
+  const canRegistrarDecision =
+    !esMonitoreoGestionLegal &&
+    authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION);
+  const canRegistrarActuacion = canEditProceso;
+
   const [tabActivo, setTabActivo] = useState('general');
   const [hasChanges, setHasChanges] = useState(false);
   const [modalCerrarOpen, setModalCerrarOpen] = useState(false);
+  // Bug 1: Modal de confirmación para desanexar proceso (reemplaza window.confirm nativo)
+  const [anexoADesanexar, setAnexoADesanexar] = useState<{ id: string; radicado?: string; investigado?: string } | null>(null);
+  const [desanexando, setDesanexando] = useState(false);
+  // Bug 2: Modal de archivar proceso disciplinario
+  const [modalArchivarOpen, setModalArchivarOpen] = useState(false);
+  const [motivoArchivar, setMotivoArchivar] = useState('');
+  const [archivandoProceso, setArchivandoProceso] = useState(false);
 
   // Fuente única para actuaciones con datos iniciales (se sobreescribe al cargar del backend)
   const [actuaciones, setActuaciones] = useState([
@@ -350,6 +370,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
 
   // Implementación Real de Carga de Archivos
   const handleFileUpload = async (e: any, tipo: string) => {
+    if (!canUploadDocumento) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -609,6 +630,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
 
 
   const handleAgregarPrueba = () => {
+    if (!canUploadDocumento) return;
     if (fileInputRef.current) {
       fileInputRef.current.value = ''; // Reset to allow selecting same file again
       fileInputRef.current.click();
@@ -633,6 +655,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
 
 
   const handleAgregarDocumento = () => {
+    if (!canUploadDocumento) return;
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.pdf,.doc,.docx,.jpg,.png';
@@ -645,6 +668,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   // ==================== FUNCIONES PARA ACTUACIONES ====================
 
   const handleGuardarActuacion = async (nuevaActuacion: NuevaActuacionData) => {
+    if (!canRegistrarActuacion) return;
     try {
       toast.loading('Guardando actuación...', { id: 'saving-actuacion' });
       const res = await legalService.createJuzgamientoActuacion(proceso.id, {
@@ -666,6 +690,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   };
 
   const handleCrearTarea = async () => {
+    if (!canEditProceso) return;
     if (!formTareaTitulo.trim()) {
       toast.error('El título de la tarea es obligatorio');
       return;
@@ -717,6 +742,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   };
 
   const handleEditarTarea = (tarea: TareaExpediente) => {
+    if (!canEditProceso) return;
     setTareaEnEdicion(tarea);
     // Pre-fill form with existing values
     setFormTareaTitulo(tarea.titulo);
@@ -780,6 +806,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   };
 
   const handleMarcarTareaCompletada = async (tareaId: string | number) => {
+    if (!canEditProceso) return;
     try {
       toast.loading('Actualizando tarea...', { id: 'completar-tarea' });
       await legalService.updateJuzgamientoTarea(proceso.id, String(tareaId), {
@@ -797,6 +824,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   };
 
   const handleAgregarNota = async () => {
+    if (!canEditProceso) return;
     if (!formNotaContenido.trim()) {
       toast.error('El contenido de la nota es obligatorio');
       return;
@@ -836,6 +864,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   // ==================== FUNCIONES PARA ÚLTIMA ACTUACIÓN PROCESAL ====================
 
   const handleGuardarCambios = () => {
+    if (!canEditProceso) return;
     toast.info('Los documentos se guardan automáticamente al subir.');
     setHasChanges(false);
     onClose();
@@ -844,6 +873,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
 
 
   const handleGuardarNuevaDecision = async (decision: any) => {
+    if (!canRegistrarDecision) return;
     try {
       toast.loading('Guardando decisión...', { id: 'saving-decision' });
       const res = await legalService.createJuzgamientoDecision(proceso.id, decision);
@@ -859,6 +889,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
 
   // Handler para guardar nueva excepción procesal
   const handleGuardarNuevaExcepcion = async (excepcion: any) => {
+    if (!canEditProceso) return;
     try {
       toast.loading('Guardando excepción...', { id: 'saving-exception' });
       const res = await legalService.createJuzgamientoExcepcion(proceso.id, excepcion);
@@ -874,6 +905,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
 
   // Handler para resolver excepción
   const handleResolverExcepcion = async (excepcionId: string, estado: 'RESUELTA' | 'RECHAZADA', resolucion: string) => {
+    if (!canEditProceso) return;
     try {
       toast.loading('Resolviendo excepción...', { id: 'resolving-exception' });
       const res = await legalService.resolverExcepcion(excepcionId, { estado, resolucion });
@@ -1213,6 +1245,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
             {/* ==================== TAB: GENERAL ==================== */}
             <TabsContent value="general" className="flex-1 overflow-y-auto p-6 space-y-4">
               {/* Botones Editar / Anexar */}
+              {canEditProceso && (
               <div className="flex items-center justify-end gap-2 -mt-2 mb-2">
                 <button
                   onClick={async () => {
@@ -1259,6 +1292,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                   Anexar Proceso
                 </button>
               </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Información del Proceso */}
@@ -1439,7 +1473,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                 profesionalAsignado={proceso.abogadoAsignado || 'Control Disciplinario'}
                 tituloSeccion="Documentos del Proceso Disciplinario"
                 moduloContexto="juzgamiento"
-                onUploadDocument={handleUploadDocumentoDesdeTab}
+                onUploadDocument={canUploadDocumento ? handleUploadDocumentoDesdeTab : undefined}
                 onViewDocument={(doc) => handleVerDocumento({
                   documentoUrl: doc.url,
                   nombre: doc.nombre,
@@ -1456,7 +1490,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
               <TabActuacionesExpediente
                 actuaciones={actuacionesParaTab}
                 botonesAccion={[
-                  {
+                  ...(canRegistrarDecision ? [{
                     label: 'Decisión',
                     icono: <CheckCircle className="w-3 h-3 mr-1" />,
                     onClick: () => {
@@ -1464,13 +1498,13 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                       setHasChanges(true);
                     },
                     color: '#059669'
-                  },
-                  {
+                  }] : []),
+                  ...(canRegistrarActuacion ? [{
                     label: 'Agregar Actuación',
                     icono: <Plus className="w-3 h-3 mr-1" />,
                     onClick: () => setModalNuevaActuacionOpen(true),
                     color: '#003DA5'
-                  }
+                  }] : [])
                 ]}
                 decisiones={decisiones.map((decision: any) => ({
                   tipoDecision: decision.tipoDecision,
@@ -1480,7 +1514,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                   sancion: decision.sancion
                 }))}
                 labelRegistrar="Registrar Primera Actuación"
-                onRegistrarPrimera={() => setModalNuevaActuacionOpen(true)}
+                onRegistrarPrimera={canRegistrarActuacion ? () => setModalNuevaActuacionOpen(true) : undefined}
               />
             </TabsContent>
 
@@ -1490,11 +1524,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                 tareas={tareas}
                 setTareas={setTareas}
                 expedienteId={proceso.id}
-                onCrearTarea={() => {
+                onCrearTarea={canEditProceso ? () => {
                   setModalCrearTareaAbierto(true);
-                }}
-                onEditarTarea={handleEditarTarea}
-                onMarcarCompletada={handleMarcarTareaCompletada}
+                } : undefined}
+                onEditarTarea={canEditProceso ? handleEditarTarea : undefined}
+                onMarcarCompletada={canEditProceso ? handleMarcarTareaCompletada : undefined}
               />
             </TabsContent>
 
@@ -1502,9 +1536,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
             <TabsContent value="notas" className="flex-1 overflow-y-auto p-6 space-y-4">
               <TabNotasExpediente
                 notas={notasInternas}
-                onAgregarNota={() => {
+                onAgregarNota={canEditProceso ? () => {
                   setModalAgregarNotaAbierto(true);
-                }}
+                } : undefined}
               />
             </TabsContent>
 
@@ -1515,6 +1549,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                   <h3 className="font-black text-xl flex items-center gap-2" style={{ color: '#003DA5' }}>
                     <LinkIcon className="w-6 h-6" /> Procesos Anexados
                   </h3>
+                  {canEditProceso && (
                   <Button
                     onClick={() => setModalAnexarAbierto(true)}
                     className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
@@ -1522,6 +1557,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                     <Plus className="w-4 h-4 mr-2" />
                     Anexar Proceso
                   </Button>
+                  )}
                 </div>
 
                 <div className="space-y-4">
@@ -1552,26 +1588,23 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                             <Eye className="w-4 h-4 mr-2" />
                             Ver Expediente
                           </Button>
+                          {canEditProceso && (
                           <Button
                             variant="outline"
                             size="sm"
                             className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
-                            onClick={async () => {
-                              if (window.confirm('¿Está seguro de desanexar este proceso?')) {
-                                try {
-                                  await legalService.desanexarJuzgamientoProceso(anexo.radicado || anexo.id, 'Usuario Actual');
-                                  toast.success('Proceso desanexado exitosamente');
-                                  setHasChanges(true);
-                                  onRefresh?.();
-                                } catch (e: any) {
-                                  toast.error('Error al desanexar proceso');
-                                }
-                              }
+                            onClick={() => {
+                              setAnexoADesanexar({
+                                id: anexo.id,
+                                radicado: anexo.radicado,
+                                investigado: anexo.investigado || anexo.demandado,
+                              });
                             }}
                           >
                             <Unlink className="w-4 h-4 mr-2" />
                             Desanexar
                           </Button>
+                          )}
                         </div>
                       </div>
                     ))
@@ -1579,7 +1612,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                     <div className="text-center p-8 border-2 border-dashed rounded-lg bg-gray-50 text-gray-500">
                       <LinkIcon className="w-12 h-12 mx-auto mb-3 text-gray-400" />
                       <p className="font-semibold mb-1">No hay procesos anexados</p>
-                      <p className="text-sm">Haga clic en "Anexar Proceso" para vincular otro expediente a este proceso.</p>
+                      <p className="text-sm">
+                        {canEditProceso
+                          ? 'Haga clic en "Anexar Proceso" para vincular otro expediente a este proceso.'
+                          : 'No hay procesos anexados.'}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1597,8 +1634,13 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
             onCompartir={handleCompartir}
             onDescargarPDF={handleDescargarPDF}
             onGuardar={
-              authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT)
+              canEditProceso
                 ? handleGuardarCambios
+                : undefined
+            }
+            onArchivar={
+              canEditProceso
+                ? () => setModalArchivarOpen(true)
                 : undefined
             }
             hasChanges={hasChanges}
@@ -1606,15 +1648,17 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
           />
         </DialogContent>
 
+        {canRegistrarDecision && (
         <FormularioRegistrarDecision
           isOpen={mostrarFormularioDecision}
           onClose={() => setMostrarFormularioDecision(false)}
           onGuardar={handleGuardarNuevaDecision}
           procesoId={proceso.id}
         />
+        )}
 
         {/* ==================== MODAL: NUEVA EXCEPCIÓN PROCESAL ==================== */}
-        {modalNuevaExcepcion && (
+        {canEditProceso && modalNuevaExcepcion && (
           <Dialog open={modalNuevaExcepcion} onOpenChange={setModalNuevaExcepcion}>
             <DialogContent hideCloseButton className="w-[90vw] max-w-[420px] p-0">
               <DialogTitle className="sr-only">Nueva Excepción Procesal</DialogTitle>
@@ -1877,7 +1921,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
         )}
 
         {/* Modal para Registrar Excepción Procesal */}
-        {mostrarFormularioExcepcion && (
+        {canEditProceso && mostrarFormularioExcepcion && (
           <FormularioExcepcionProcesal
             isOpen={mostrarFormularioExcepcion}
             onClose={() => setMostrarFormularioExcepcion(false)}
@@ -1887,6 +1931,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
         )}
 
         {/* Hidden File Input for Pruebas Upload */}
+        {canUploadDocumento && (
         <input
           type="file"
           ref={fileInputRef}
@@ -1895,15 +1940,18 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
           accept=".pdf,.doc,.docx,.jpg,.png,.xlsx,.zip"
           onChange={(e) => handleFileUpload(e, 'EVIDENCIA')}
         />
+        )}
         {/* ==================== MODAL: NUEVA ACTUACIÓN ==================== */}
+        {canRegistrarActuacion && (
         <ModalNuevaActuacion
           isOpen={modalNuevaActuacionOpen}
           onClose={() => setModalNuevaActuacionOpen(false)}
           onSave={handleGuardarActuacion}
           procesoId={proceso.id}
         />
+        )}
         {/* ==================== MODAL: CREAR TAREA ==================== */}
-        {modalCrearTareaAbierto && (
+        {canEditProceso && modalCrearTareaAbierto && (
           <Dialog open={modalCrearTareaAbierto} onOpenChange={(open) => {
             setModalCrearTareaAbierto(open);
             if (!open) { setFormTareaTitulo(''); setFormTareaDescripcion(''); setFormTareaPrioridad('media'); setFormTareaVencimiento(''); }
@@ -2071,7 +2119,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
         )}
 
         {/* ==================== MODAL: AGREGAR NOTA ==================== */}
-        {modalAgregarNotaAbierto && (
+        {canEditProceso && modalAgregarNotaAbierto && (
           <Dialog open={modalAgregarNotaAbierto} onOpenChange={(open) => {
             setModalAgregarNotaAbierto(open);
             if (!open) { setFormNotaContenido(''); setFormNotaTipo('seguimiento'); }
@@ -2188,8 +2236,156 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
         </DialogContent>
       </Dialog>
 
+      {/* Bug 1: Modal de confirmación para desanexar (reemplaza window.confirm) */}
+      <Dialog open={canEditProceso && !!anexoADesanexar} onOpenChange={(o) => { if (!o) setAnexoADesanexar(null); }}>
+        <DialogContent
+          hideCloseButton
+          className="w-[420px] max-w-[90vw] p-0 overflow-hidden"
+          style={{ zIndex: 10001 }}
+        >
+          <DialogTitle className="sr-only">Confirmar desanexión</DialogTitle>
+          <DialogDescription className="sr-only">
+            ¿Está seguro de desanexar este proceso disciplinario?
+          </DialogDescription>
+          <div className="flex items-center gap-3 px-5 py-4 bg-red-50 border-b border-red-200">
+            <div className="p-1.5 bg-red-100 rounded-lg flex-shrink-0">
+              <Unlink className="w-5 h-5 text-red-600" />
+            </div>
+            <h3 className="font-bold text-gray-900 text-sm">Confirmar desanexión</h3>
+          </div>
+          <div className="px-5 py-4">
+            <p className="text-sm text-gray-600 leading-relaxed mb-2">
+              ¿Está seguro de desanexar este proceso? Esta acción puede afectar la trazabilidad del expediente.
+            </p>
+            {anexoADesanexar?.radicado && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-xs font-bold text-gray-500 uppercase mb-0.5">Proceso a desanexar</p>
+                <p className="text-sm font-bold text-gray-800">{anexoADesanexar.radicado}</p>
+                {anexoADesanexar.investigado && (
+                  <p className="text-xs text-gray-600 mt-0.5">{anexoADesanexar.investigado}</p>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2 justify-end px-5 pb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={desanexando}
+              onClick={() => setAnexoADesanexar(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="bg-red-600 hover:bg-red-700 text-white font-bold"
+              disabled={desanexando}
+              onClick={async () => {
+                if (!anexoADesanexar) return;
+                setDesanexando(true);
+                try {
+                  await legalService.desanexarJuzgamientoProceso(
+                    anexoADesanexar.radicado || anexoADesanexar.id,
+                    'Usuario Actual'
+                  );
+                  toast.success('Proceso desanexado exitosamente');
+                  setHasChanges(true);
+                  onRefresh?.();
+                  setAnexoADesanexar(null);
+                } catch (e: any) {
+                  toast.error('Error al desanexar proceso');
+                } finally {
+                  setDesanexando(false);
+                }
+              }}
+            >
+              {desanexando ? 'Desanexando…' : 'Confirmar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bug 2: Modal de confirmación para archivar proceso disciplinario */}
+      <Dialog open={canEditProceso && modalArchivarOpen} onOpenChange={(o) => { if (!o) { setModalArchivarOpen(false); setMotivoArchivar(''); } }}>
+        <DialogContent
+          hideCloseButton
+          className="w-[460px] max-w-[90vw] p-0 overflow-hidden"
+          style={{ zIndex: 10001 }}
+        >
+          <DialogTitle className="sr-only">Archivar proceso disciplinario</DialogTitle>
+          <DialogDescription className="sr-only">
+            Confirma el archivo del proceso disciplinario.
+          </DialogDescription>
+          <div className="flex items-center gap-3 px-5 py-4 bg-orange-50 border-b border-orange-200">
+            <div className="p-1.5 bg-orange-100 rounded-lg flex-shrink-0">
+              <Archive className="w-5 h-5 text-orange-600" />
+            </div>
+            <h3 className="font-bold text-gray-900 text-sm">Archivar proceso</h3>
+          </div>
+          <div className="px-5 py-4 space-y-3">
+            <p className="text-sm text-gray-600 leading-relaxed">
+              El proceso quedará archivado y saldrá del Kanban activo. Podrá restaurarlo desde la vista de archivados.
+            </p>
+            <div>
+              <label className="text-xs font-bold text-gray-700 mb-1 block">
+                Motivo del archivo <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={motivoArchivar}
+                onChange={(e) => setMotivoArchivar(e.target.value)}
+                placeholder="Ej: Proceso finalizado por sanción ejecutoriada…"
+                className="w-full border-2 border-gray-300 focus:border-orange-500 rounded-lg p-2 text-sm resize-none"
+                rows={3}
+                disabled={archivandoProceso}
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end px-5 pb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={archivandoProceso}
+              onClick={() => { setModalArchivarOpen(false); setMotivoArchivar(''); }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              className="bg-orange-600 hover:bg-orange-700 text-white font-bold"
+              disabled={archivandoProceso || !motivoArchivar.trim()}
+              onClick={async () => {
+                if (!canEditProceso) return;
+                if (!motivoArchivar.trim()) return;
+                setArchivandoProceso(true);
+                try {
+                  const currentUser = authService.getCurrentUser() as any;
+                  const usuario = currentUser?.fullName || currentUser?.username || 'Usuario Actual';
+                  await legalService.archivarJuzgamientoProceso(
+                    (proceso as any).uuid || proceso.id,
+                    motivoArchivar.trim(),
+                    usuario,
+                  );
+                  toast.success('Proceso archivado exitosamente');
+                  setModalArchivarOpen(false);
+                  setMotivoArchivar('');
+                  onRefresh?.();
+                  onClose();
+                } catch (e: any) {
+                  console.error('Error archivando proceso:', e);
+                  toast.error('Error al archivar el proceso');
+                } finally {
+                  setArchivandoProceso(false);
+                }
+              }}
+            >
+              {archivandoProceso ? 'Archivando…' : 'Archivar'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal Anexar Proceso Disciplinario */}
-      {modalAnexarAbierto && (
+      {canEditProceso && modalAnexarAbierto && (
         <ModalAnexarProcesoDisciplinario
           isOpen={modalAnexarAbierto}
           onClose={() => setModalAnexarAbierto(false)}

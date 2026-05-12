@@ -13,33 +13,40 @@ export interface AcreditacionPrograma {
   vigencia: string;
 }
 
+export interface AsignaturaDTO {
+  id: string;
+  programaId: string;
+  nombre: string;
+  codigo?: string;
+  creditos: number;
+  horas: number;
+  nucleoTematico?: string;
+  semestre?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ProgramaAcademicoDTO {
-  id: number;
+  id: string;
   codigo: string;
   nombre: string;
-  nivelFormacion: string;
-  modalidad: string;
-  jornada: string;
-  duracionSemestres: number;
-  creditos: number;
-  facultad?: string;
-  estado: string;
   descripcion?: string;
-  perfilEgresado?: string;
-  requisitosIngreso?: string[];
+  nivelFormacion?: string;
+  facultad?: string;
+  modalidad?: string;
+  duracion?: number;
+  creditos?: number;
   costoMatricula?: number;
-  estudiantesActivos?: number;
-  graduados?: number;
-  docentesAsignados?: number;
-  fechaCreacion?: string;
-  ultimaActualizacion?: string;
-  sede?: {
-    idSede: number;
-    nomSede: string;
-    codSede?: string;
-  };
-  registroCalificado?: RegistroCalificado;
-  acreditaciones?: AcreditacionPrograma[];
+  requisitosDeIngreso?: string;
+  jornada?: string;
+  sede?: string;
+  registroCalificado?: any;
+  perfilEgresado?: string;
+  estado: string;
+  totalAsignaturas?: number;
+  creditosPlan?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ProgramasResponse {
@@ -54,7 +61,7 @@ export interface ProgramasFiltro {
   nivelFormacion?: string;
   modalidad?: string;
   estado?: string;
-  sedeId?: number;
+  sede?: string;
   page?: number;
   limit?: number;
 }
@@ -67,5 +74,27 @@ export const programasService = {
       params: filtros,
       requiresAuth: false,
     });
+  },
+
+  async obtener(id: string): Promise<ProgramaAcademicoDTO> {
+    return apiClient.get<ProgramaAcademicoDTO>(`${SERVICE_PREFIX}/programas-academicos/${id}`, {
+      requiresAuth: false,
+    });
+  },
+
+  async crear(programa: Omit<ProgramaAcademicoDTO, 'id' | 'createdAt' | 'updatedAt'>): Promise<ProgramaAcademicoDTO> {
+    return apiClient.post<ProgramaAcademicoDTO>(`${SERVICE_PREFIX}/programas-academicos`, programa);
+  },
+
+  async actualizar(id: string, programa: Partial<ProgramaAcademicoDTO>): Promise<ProgramaAcademicoDTO> {
+    return apiClient.put<ProgramaAcademicoDTO>(`${SERVICE_PREFIX}/programas-academicos/${id}`, programa);
+  },
+
+  async eliminar(id: string): Promise<void> {
+    return apiClient.delete(`${SERVICE_PREFIX}/programas-academicos/${id}`);
+  },
+
+  async obtenerAsignaturas(programaId: string): Promise<AsignaturaDTO[]> {
+    return apiClient.get(`${SERVICE_PREFIX}/programas-academicos/${programaId}/asignaturas`);
   },
 };

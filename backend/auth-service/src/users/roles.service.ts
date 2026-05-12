@@ -40,6 +40,7 @@ export interface RoleFilters {
   type?: 'sistema' | 'personalizado';
   is_active?: boolean;
   requires_2fa?: boolean;
+  sistema_destino?: 'Backoffice' | 'Portal' | 'Ambos';
   page?: number;
   limit?: number;
 }
@@ -110,6 +111,10 @@ export class RolesService {
 
     if (filters.requires_2fa !== undefined) {
       query.andWhere('role.requires_2fa = :requires_2fa', { requires_2fa: filters.requires_2fa });
+    }
+
+    if (filters.sistema_destino) {
+      query.andWhere('role.sistema_destino = :sistema_destino', { sistema_destino: filters.sistema_destino });
     }
 
     // Agregar subqueries para conteos
@@ -287,14 +292,21 @@ export class RolesService {
   async duplicate(id: string, duplicatedBy?: string): Promise<Role> {
     const originalRole = await this.findOne(id);
 
+    // Generar código único para el rol duplicado
+    const duplicatedName = `${originalRole.name} (Copia)`;
+    const code = this.generateCode(duplicatedName);
+
     const duplicatedRole = this.roleRepo.create({
-      name: `${originalRole.name} (Copia)`,
+      id: uuidv4(),
+      code,
+      name: duplicatedName,
       description: originalRole.description,
       icon: originalRole.icon,
       color: originalRole.color,
       type: 'personalizado',
       sistema_destino: originalRole.sistema_destino,
       alcance: originalRole.alcance,
+      category: originalRole.category,
       requires_2fa: originalRole.requires_2fa,
       is_active: true,
       created_by: duplicatedBy,

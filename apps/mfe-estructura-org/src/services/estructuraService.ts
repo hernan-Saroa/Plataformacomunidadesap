@@ -290,6 +290,25 @@ export const estructuraService = {
       } : undefined
     }));
   },
+
+  // ============================================
+  // ASIGNACIÓN DE USUARIOS
+  // ============================================
+
+  async getUsuariosSinAsignar(): Promise<{ success: boolean; data: any[] }> {
+    return apiClient.get<{ success: boolean; data: any[] }>(`${SERVICE_PREFIX}/estructura-organizacional/usuarios/sin-asignar`);
+  },
+
+  async asignarSeleccionados(
+    ids: string[],
+    territorialId: string,
+    cetapId: string
+  ): Promise<{ success: boolean; actualizados: number }> {
+    return apiClient.post<{ success: boolean; actualizados: number }>(
+      `${SERVICE_PREFIX}/estructura-organizacional/usuarios/asignar`,
+      { ids, territorialId, cetapId }
+    );
+  },
 };
 
 export default estructuraService;

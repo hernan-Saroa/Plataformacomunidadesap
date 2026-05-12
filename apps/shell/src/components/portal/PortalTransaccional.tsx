@@ -54,6 +54,7 @@ import { getEstadisticasPortal, inicializarDatosPortal, uploadFotoPerfil, getPer
 import { MisCertificadosLaborales } from './recursos-humanos/MisCertificadosLaborales';
 import { MisDocumentos } from './gestion-documental/MisDocumentos';
 import { PortalDocentePTA } from './pta/PortalDocentePTA';
+import { MisAuditoriasControlInterno } from './control-interno/MisAuditoriasControlInterno';
 import { toast } from 'sonner';
 import { NotificationsProvider } from '../esap/NotificationsContext';
 import { PortalNotificationBell } from './PortalNotificationBell';
@@ -98,10 +99,11 @@ type InternalView =
   | { type: 'gestion-documental' }
   | { type: 'carpeta-digital' }
   | { type: 'pta' }
+  | { type: 'mis-auditorias' }
   | { type: 'configuracion' }
   | { type: 'ayuda' };
 
-const CATEGORIAS = ['Todos', 'Recursos Humanos', 'Carpeta Digital', 'Académico'];
+const CATEGORIAS = ['Todos', 'Recursos Humanos', 'Carpeta Digital', 'Académico', 'Control Interno'];
 
 function SkeletonPulse({
   width,
@@ -212,6 +214,8 @@ export function PortalTransaccional({
       configuracion: { type: 'configuracion' },
       ayuda: { type: 'ayuda' },
       pta: { type: 'pta' },
+      'mis-auditorias': { type: 'mis-auditorias' },
+      'control-interno': { type: 'mis-auditorias' },
     };
     const target = viewMap[section];
     if (target) {
@@ -325,6 +329,8 @@ export function PortalTransaccional({
       setCurrentView({ type: 'carpeta-digital' });
     } else if (servicioId === 'pta-docente') {
       setCurrentView({ type: 'pta' });
+    } else if (servicioId === 'control-interno-gestion') {
+      setCurrentView({ type: 'mis-auditorias' });
     }
   };
 
@@ -375,6 +381,21 @@ export function PortalTransaccional({
         ],
         prioridad: 'Alta',
         prioridadColor: '#DC2626',
+      },
+      {
+        id: 'control-interno-gestion',
+        nombre: 'Control Interno de Gestión',
+        codigo: 'OCIG-001',
+        descripcion: 'Responde hallazgos, sube documentos y comunícate con el equipo auditor',
+        icon: <Shield style={{ width: 18, height: 18 }} />,
+        iconBg: '#FEF2F2',
+        iconColor: '#DC2626',
+        categoria: 'Control Interno',
+        badges: [
+          { label: 'Mis auditorías', color: '#1D4ED8', bgColor: '#EFF6FF' },
+        ],
+        prioridad: 'Media',
+        prioridadColor: '#D97706',
       },
     ];
 
@@ -635,6 +656,14 @@ export function PortalTransaccional({
             userPersonId={userPersonId}
             userName={userName}
             userEmail={userEmail}
+            onBack={() => setCurrentView({ type: 'dashboard' })}
+          />,
+        );
+      case 'mis-auditorias':
+        return renderWithLeftLayout(
+          <MisAuditoriasControlInterno
+            personaId={userPersonId}
+            userName={userName}
             onBack={() => setCurrentView({ type: 'dashboard' })}
           />,
         );

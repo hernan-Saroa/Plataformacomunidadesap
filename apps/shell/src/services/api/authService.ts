@@ -6,6 +6,7 @@
 
 import { apiClient } from './apiClient';
 import { API_ENDPOINTS, config } from '../../config/environment';
+import { clearAuthTokens, setAuthTokens } from './authTokenStore';
 import type { 
   LoginCredentials, 
   LoginResponse, 
@@ -166,6 +167,7 @@ class AuthService {
     this._cachedUser = user;
     // Compartir con otros MFEs en la misma ventana (no es almacenamiento persistente — OTIC-002)
     (window as any).__esap_auth_cache = user;
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user } }));
   }
 
   /**
@@ -273,9 +275,8 @@ class AuthService {
   // MÉTODOS PRIVADOS
   // ==========================================================================
 
-  private saveTokens(_accessToken?: string, _refreshToken?: string): void {
-    // Los tokens JWT se gestionan como cookies HttpOnly por el backend (OTIC-001).
-    // El frontend nunca los almacena en sessionStorage/localStorage.
+  private saveTokens(accessToken?: string, refreshToken?: string): void {
+    setAuthTokens(accessToken, refreshToken);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -288,6 +289,8 @@ class AuthService {
     this._cacheRevision += 1;
     this._cachedUser = null;
     delete (window as any).__esap_auth_cache;
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user: null } }));
+    clearAuthTokens();
     // Limpiar residuos de versiones anteriores que pudieran quedar en storage
     sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
