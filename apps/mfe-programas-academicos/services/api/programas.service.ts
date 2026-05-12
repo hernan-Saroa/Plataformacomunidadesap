@@ -30,6 +30,8 @@ export interface ProgramaAcademicoDTO {
   registroCalificado?: any;
   perfilEgresado?: string;
   estado: string;
+  totalAsignaturas?: number;
+  creditosPlan?: number;
   createdAt: string;
   updatedAt: string;
 }

@@ -78,12 +78,15 @@ export function ProgramasAcademicosModule() {
           },
           requiresAuth: false,
         });
-        setProgramas(response.data || []);
+        const programasData = response.data || [];
+        setProgramas(programasData);
         setPagination({
           total: response.total || 0,
           pagina: response.pagina || 1,
           porPagina: response.porPagina || itemsPerPage,
         });
+
+
       } catch (err) {
         console.error('Error loading programas:', err);
         setError('Error al cargar los programas académicos');
@@ -95,6 +98,8 @@ export function ProgramasAcademicosModule() {
 
     loadProgramas();
   }, [searchQuery, nivelFilter, modalidadFilter, sedeFilter, estadoFilter, currentPage]);
+
+
 
   // Calculate totalPages from pagination data
   const totalPages = pagination ? Math.ceil(pagination.total / pagination.porPagina) : 1;
@@ -390,6 +395,9 @@ export function ProgramasAcademicosModule() {
                     Nivel
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
+                    Plan de Estudios
+                  </th>
+                  <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
                     Sede
                   </th>
                   <th className="px-6 py-4 text-left text-xs font-black text-gray-700 uppercase tracking-wider">
@@ -430,6 +438,37 @@ export function ProgramasAcademicosModule() {
                             {getNivelBadge(programa.nivelFormacion)}
                             <p className="text-xs text-gray-500">{programa.modalidad}</p>
                           </div>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          {(() => {
+                            const pct = programa.creditos > 0 ? Math.min((programa.creditosPlan / programa.creditos) * 100, 100) : 0;
+                            const barColor = pct >= 100 ? 'bg-emerald-500' : pct >= 75 ? 'bg-blue-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-400';
+                            const textColor = pct >= 100 ? 'text-emerald-600' : pct >= 75 ? 'text-blue-600' : pct >= 50 ? 'text-amber-600' : 'text-red-500';
+                            const iconColor = pct >= 100 ? 'text-emerald-500' : pct >= 75 ? 'text-blue-500' : pct >= 50 ? 'text-amber-500' : 'text-red-400';
+
+                            return (
+                              <div className="space-y-1.5 min-w-[130px]">
+                                <div className="flex items-center gap-1.5">
+                                  <BookOpen className={`w-3.5 h-3.5 ${iconColor}`} />
+                                  <span className="text-xs font-semibold text-gray-900">
+                                    {programa.totalAsignaturas} asignaturas
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${barColor} transition-all duration-500`}
+                                      style={{ width: `${pct}%` }}
+                                    />
+                                  </div>
+                                  <span className={`text-[10px] font-bold ${textColor} whitespace-nowrap`}>
+                                    {programa.creditosPlan}/{programa.creditos || 0} cr.
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         <td className="px-6 py-4">
@@ -496,7 +535,7 @@ export function ProgramasAcademicosModule() {
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                         >
-                          <td colSpan={6} className="px-0 py-0">
+                          <td colSpan={7} className="px-0 py-0">
                             <motion.div
                               initial={{ height: 0 }}
                               animate={{ height: 'auto' }}
@@ -504,7 +543,7 @@ export function ProgramasAcademicosModule() {
                               className="overflow-hidden"
                             >
                               <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border-t border-b-2 border-[#003DA5]/20 p-6">
-                                <div className="grid md:grid-cols-2 gap-4">
+                                <div className="grid md:grid-cols-3 gap-4">
                                   <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
                                     <h4 className="font-black text-gray-900 text-sm mb-3 flex items-center gap-2">
                                       <FileText className="w-4 h-4 text-[#003DA5]" />
@@ -537,6 +576,59 @@ export function ProgramasAcademicosModule() {
                                         </>
                                       )}
                                       <p className="text-gray-700"><span className="font-semibold">Creación:</span> {new Date(programa.createdAt).toLocaleDateString('es-CO')}</p>
+                                    </div>
+                                  </div>
+
+                                  <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+                                    <h4 className="font-black text-gray-900 text-sm mb-3 flex items-center gap-2">
+                                      <BookOpen className="w-4 h-4 text-[#003DA5]" />
+                                      Plan de Estudios
+                                    </h4>
+                                    <div className="space-y-3 text-sm">
+                                      {(() => {
+                                        const pct = programa.creditos > 0 ? Math.min((programa.creditosPlan / programa.creditos) * 100, 100) : 0;
+                                        const statusText = pct >= 100 ? 'Completado' : pct >= 75 ? 'Avanzado' : pct >= 50 ? 'En progreso' : 'Incompleto';
+                                        const statusColor = pct >= 100 ? 'text-emerald-600' : pct >= 75 ? 'text-blue-600' : pct >= 50 ? 'text-amber-600' : 'text-red-600';
+
+                                        return (
+                                          <>
+                                            <div className="flex justify-between items-center">
+                                              <span className="font-semibold text-gray-900">Asignaturas:</span>
+                                              <span className={`font-bold ${statusColor}`}>{programa.totalAsignaturas}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                              <span className="font-semibold text-gray-900">Créditos completados:</span>
+                                              <span className={`font-bold ${statusColor}`}>
+                                                {programa.creditosPlan}/{programa.creditos || 0}
+                                              </span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                              <span className="font-semibold text-gray-900">Créditos completados:</span>
+                                              <span className={`font-bold ${statusColor}`}>
+                                                {programa.creditosPlan}/{programa.creditos || 0}
+                                              </span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                              <span className="font-semibold text-gray-900">Estado:</span>
+                                              <span className={`font-bold ${statusColor}`}>{statusText}</span>
+                                            </div>
+                                            <div className="mt-3">
+                                              <div className="flex justify-between text-xs text-gray-600 mb-1">
+                                                <span>Progreso</span>
+                                                <span>{Math.round(pct)}%</span>
+                                              </div>
+                                              <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                                                <div
+                                                  className={`h-full rounded-full transition-all duration-500 ${
+                                                    pct >= 100 ? 'bg-emerald-500' : pct >= 75 ? 'bg-blue-500' : pct >= 50 ? 'bg-amber-500' : 'bg-red-400'
+                                                  }`}
+                                                  style={{ width: `${pct}%` }}
+                                                />
+                                              </div>
+                                            </div>
+                                          </>
+                                        );
+                                      })()}
                                     </div>
                                   </div>
                                 </div>
