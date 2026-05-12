@@ -21,7 +21,8 @@ import { FileText, Users, Calendar, CheckCircle, ChevronRight, ChevronLeft, Targ
 import { ModalWorldClass } from './ModalWorldClass';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
-import { notificationsService } from '@/services/api/notificationsService';
+// import { notificationsService } from '@/services/api/notificationsService';
+import { notificationsService } from '../../services/api/notificationsService';
 
 // ============ TIPOS ============
 
