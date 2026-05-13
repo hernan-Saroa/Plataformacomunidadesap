@@ -38,7 +38,7 @@ export class ProgramasController {
   }
 
   @Post(':id/asignaturas')
-  guardarAsignaturasPrograma(@Param('id') id: string, @Body() asignaturas: any[]) {
-    return this.programasService.guardarAsignaturasPrograma(id, asignaturas);
+  guardarAsignaturasPrograma(@Param('id') id: string, @Body() body: { asignaturas: any[] }) {
+    return this.programasService.guardarAsignaturasPrograma(id, body.asignaturas);
   }
 }
