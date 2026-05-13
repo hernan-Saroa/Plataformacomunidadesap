@@ -26,9 +26,7 @@ Gestión completa de procesos disciplinarios y noticias.
 | **Ver Todos los Procesos** | Visualizar procesos activos | ✅ | ✅ | ❌ |
 | **Ver Mis Procesos** | Solo procesos asignados | ❌ | ❌ | ✅ |
 | **Editar Procesos** | Modificar información | ✅ | ✅ | ✅ |
-| **Convertir Noticia** | Convertir noticia en proceso | ✅ | ✅ | ❌ |
-| **Archivar** | Archivar procesos | ✅ | ✅ | ❌ |
-| **Remitir por Competencia** | Enviar a otras entidades | ✅ | ✅ | ❌ |
+| **Convertir Noticia** | Convertir noticia en proceso | ✅ | ❌ | ❌ |
 | **Ver Expediente** | Acceso a expedientes | ✅ | ✅ | ✅ |
 | **Ver Detalle** | Información completa | ✅ | ✅ | ✅ |
 | **Ver Archivos** | Documentos del proceso | ✅ | ✅ | ✅ |
@@ -40,18 +38,18 @@ Gestión completa de procesos disciplinarios y noticias.
 | **Ver Actuaciones** | Historial de actuaciones | ✅ | ✅ | ✅ |
 | **Crear Actuación** | Nueva actuación | ✅ | ✅ | ✅ |
 | **Ver Tareas** | Tareas asignadas | ✅ | ✅ | ✅ |
-| **Nueva Tarea** | Crear tareas | ✅ | ✅ | ❌ |
-| **Editar Tareas** | Modificar tareas | ❌ | ❌ | ✅ |
+| **Nueva Tarea** | Crear tareas | ✅ | ✅ | ✅ |
+| **Editar Tareas** | Modificar tareas | ✅ | ✅ | ✅ |
 | **Ver Notas** | Comentarios del proceso | ✅ | ✅ | ✅ |
 | **Guardar Nota** | Crear notas | ✅ | ✅ | ✅ |
-| **Eliminar Nota** | Borrar notas | ❌ | ❌ | ✅ |
+| **Eliminar Nota** | Borrar notas | ✅ | ✅ | ✅ |
 | **Asociar Procesos** | Vincular procesos | ✅ | ✅ | ✅ |
-| **Reasignación** | Cambiar asignación | ✅ | ✅ | ✅ |
-| **Movimiento Kanban** | Cambiar etapas | ✅ | ✅ | ✅ |
+| **Solicitud de Reasignación** | Solicitud de reasignación | ✅ | ✅ | ✅ |
+| **Movimiento Kanban** | Cambiar etapas | ✅ | ❌ | ✅ |
 | **Ver Vista Lista** | Lista de procesos | ✅ | ✅ | ✅ |
-| **Crear Pliego de Cargos** | Generar pliego | ✅ | ❌ | ❌ |
+| **Crear Pliego de Cargos** | Generar pliego | ✅ | ❌ | ✅ |
 | **Enviar a Revisión** | Jefe revisa documentos | ❌ | ❌ | ✅ |
-| **Remitir a Jurídica** | Enviar a jurídica | ✅ | ❌ | ❌ |
+| **Remitir a Jurídica** | Enviar a jurídica | ✅ | ❌ | ✅ |
 | **Cargar Archivos** | Subir archivos generales | ✅ | ✅ | ✅ |
 
 ### 🔍 **2. Noticias Disciplinarias**
@@ -66,6 +64,8 @@ Gestión de noticias antes de convertirse en procesos.
 | **Devolver Noticia** | Regresar al creador | ✅ | ❌ | ❌ |
 | **Ver Devueltas** | Todas devueltas | ✅ | ❌ | ❌ |
 | **Ver Mis Devueltas** | Solo las propias | ❌ | ✅ | ❌ |
+| **Archivar Noticias** | Archivar noticias | ✅ | ❌ | ❌ |
+| **Remitir por Competencia** | Enviar a otras entidades | ✅ | ❌ | ❌ |   
 
 ### ✅ **3. Revisión y Aprobación**
 Sistema de aprobación de documentos.
@@ -74,7 +74,6 @@ Sistema de aprobación de documentos.
 |---------|-------------|-----------|-----------|-------------|
 | **Ver Submódulo** | Acceso al módulo | ✅ | ❌ | ❌ |
 | **Ver Documentos** | Pendientes de aprobación | ✅ | ❌ | ❌ |
-| **Enviar Auto** | Subir para revisión | ✅ | ❌ | ✅ |
 | **Devolver** | Rechazar documento | ✅ | ❌ | ❌ |
 | **Aprobar** | Firmar y aprobar | ✅ | ❌ | ❌ |
 
@@ -96,10 +95,10 @@ Gestión de términos procesales y notificaciones.
 | Permiso | Descripción | Jefe OCID | Radicador | Profesional |
 |---------|-------------|-----------|-----------|-------------|
 | **Ver Submódulo** | Acceso a términos | ✅ | ✅ | ✅ |
-| **Ver Términos** | Todos los términos | ✅ | ✅ | ✅ |
-| **Ver Mis Términos** | Solo asignados | ✅ | ✅ | ✅ |
+| **Ver Términos** | Todos los términos | ✅ | ✅ | ❌ |
+| **Ver Mis Términos** | Solo asignados | ❌ | ❌ | ✅ |
 | **Crear Término** | Nuevo término | ✅ | ✅ | ❌ |
-| **Marcar Cumplido** | Completar término | ✅ | ✅ | ✅ |
+| **Marcar Cumplido** | Completar término | ✅ | ✅ | ✅ | //debe ser el que se le asigno el termino.
 | **Ver Historial** | Cambios en términos | ✅ | ✅ | ❌ |
 | **Exportar Excel** | Reporte en Excel | ✅ | ✅ | ❌ |
 | **Exportar PDF** | Reporte en PDF | ✅ | ✅ | ❌ |
@@ -160,5 +159,4 @@ Estos permisos permiten recuperar elementos archivados:
 
 ---
 
-*Esta documentación se basa en la migración de roles y permisos del Control Disciplinario. Los permisos pueden ser ajustados según las necesidades específicas de la institución.*</content>
-<parameter name="filePath">DOCUMENTACION_ROLES_PERMISOS_CONTROL_DISCIPLINARIO.md
+*Esta documentación se basa en la migración de roles y permisos del Control Disciplinario. Los permisos pueden ser ajustados según las necesidades específicas de la institución*

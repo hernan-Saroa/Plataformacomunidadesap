@@ -1,19 +1,19 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PROGRAMA DE AUDITOR\u00cdA - OCI ESAP
+ * PROGRAMA DE AUDITORÍA - OCI ESAP
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * M\u00f3dulo \u00fanico y completo que integra:
- * - Universo Auditable (D\u00d3NDE se puede auditar)
- * - Programa Anual de Auditor\u00edas (CU\u00c1NDO auditar)
- * - Profesionales OCI (QUI\u00c9N audita)
- * - Integraci\u00f3n con Auditor\u00edas OCI (ejecuci\u00f3n)
- * - Integraci\u00f3n con Planes de Mejoramiento (hallazgos)
+ * Módulo único y completo que integra:
+ * - Universo Auditable (DÓNDE se puede auditar)
+ * - Programa Anual de Auditorías (CUÁNDO auditar)
+ * - Profesionales OCI (QUIÉN audita)
+ * - Integración con Auditorías OCI (ejecución)
+ * - Integración con Planes de Mejoramiento (hallazgos)
  * 
  * Base normativa:
- * - Decreto 648 de 2017 (Rol 4 - Evaluaci\u00f3n del SCI)
- * - Gu\u00eda de Auditor\u00eda Interna DAFP
- * - Modelo Est\u00e1ndar de Control Interno MECI
+ * - Decreto 648 de 2017 (Rol 4 - Evaluación del SCI)
+ * - Guía de Auditoría Interna DAFP
+ * - Modelo Estándar de Control Interno MECI
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -29,23 +29,23 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
-// ✅ NUEVO: Cuestionario DAFP Visual SIMPLIFICADO - Implementaci\u00f3n exacta seg\u00fan CUESTIONARIO_FLUJO_DAFP_VISUAL.md
+// ✅ NUEVO: Cuestionario DAFP Visual SIMPLIFICADO - Implementación exacta según CUESTIONARIO_FLUJO_DAFP_VISUAL.md
 import { FormularioProcesoDafpVisual as FormularioProcesoAuditable, type FormularioDafpData as ProcesoAuditableData } from './FormularioProcesoDafpVisualSimplificado';
 import { ResponsiveTable, MobileCard, MobileCardRow, type Column } from '@esap-mfe/shared-ui/responsive-table';
 import { TabUniversoAuditableResponsive } from './TabUniversoAuditableResponsive';
 import { CronogramaAuditoriasPremium } from './CronogramaAuditoriasPremium';
 
 import { TooltipGuia } from './TooltipGuia';
-// ✅ HOOKS DE INTEGRACI\u00d3N CON BACKEND (reemplazan datos mock)
+// ✅ HOOKS DE INTEGRACIÓN CON BACKEND (reemplazan datos mock)
 import { useUniversoAuditableData, type ProcesoAuditableUI } from './hooks/useUniversoAuditableData';
 import { useProgramaAnualData, calcularEstadisticas, type AuditoriaProgramadaUI, type AuditoriaCreateData } from './hooks/useProgramaAnualData';
 import type { Estadisticas, EstadoAuditoria, TipoAuditoria } from './hooks/useProgramaAnualData';
 // ✅ HOOK DE EVALUACIONES DAFP (nueva funcionalidad)
 import { useEvaluacionesProcesoData, type EvaluacionProcesoUI } from './hooks/useEvaluacionesProcesoData';
-// ✅ UTILIDAD DE CONVERSI\u00d3N (separada para reutilizaci\u00f3n)
+// ✅ UTILIDAD DE CONVERSIÓN (separada para reutilización)
 import { convertirProcesoAFormularioDafp as convertirProcesoAFormulario } from './utils/procesoAuditableConverters';
 import { loadTipos, loadEspIds } from './ConfiguracionProcesosModule';
-// ✅ HOOK DE CONFIGURACI\u00d3N DE PROFESIONALES OCI (backend)
+// ✅ HOOK DE CONFIGURACIÓN DE PROFESIONALES OCI (backend)
 import { useConfiguracionProfesionales, type ProfesionalOCI } from './services/useConfiguracionProfesionales';
 // ✅ HOOK DE PERMISOS FLEXIBLE
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
@@ -56,8 +56,8 @@ import { ModuleHeaderBar } from './ModuleHeaderBar';
 // ════════════════════════════════════════════════════════════════════════════
 
 type TabActiva = 'universo' | 'programa' | 'profesionales';
-type NivelRiesgo = 'Cr\u00edtico' | 'Alto' | 'Medio' | 'Bajo';
-type TipoProceso = 'Estrat\u00e9gico' | 'Misional' | 'Apoyo' | 'Evaluaci\u00f3n';
+type NivelRiesgo = 'Crítico' | 'Alto' | 'Medio' | 'Bajo';
+type TipoProceso = 'Estratégico' | 'Misional' | 'Apoyo' | 'Evaluación';
 
 // Re-usar los tipos de ProcesoAuditable y AuditoriaProgramada desde hooks
 type ProcesoAuditable = ProcesoAuditableUI;
@@ -68,11 +68,11 @@ type AuditoriaProgramada = AuditoriaProgramadaUI;
 // ════════════════════════════════════════════════════════════════════════════
 
 /**
- * Horas estimadas por auditor\u00eda seg\u00fan nivel DAFP (Gu\u00eda RE-E-GE-034):
- *   Extremo  / Cada a\u00f1o    → 80h
- *   Alto     / Cada 2 a\u00f1os → 60h
- *   Moderado / Cada 3 a\u00f1os → 40h
- *   Bajo (Priorizado) / Cada 4 a\u00f1os → 24h
+ * Horas estimadas por auditoría según Guía RE-E-GE-034:
+ *   Extremo  / Cada año    → 80h
+ *   Alto     / Cada 2 años → 60h
+ *   Moderado / Cada 3 años → 40h
+ *   Bajo (Priorizado) / Cada 4 años → 24h
  *   Bajo / No auditar → 0h
  */
 function calcHorasEstimadas(nivelCriticidad?: string, ciclo?: string): number {
@@ -85,7 +85,7 @@ function calcHorasEstimadas(nivelCriticidad?: string, ciclo?: string): number {
   if (n === 'bajo')     return 24;
   if (n.includes('bajo')) return 24;
   // fallback por ciclo
-  if (c.includes('todos los a\u00f1os') || c.includes('cada a\u00f1o') || c.includes('anual')) return 80;
+  if (c.includes('todos los años') || c.includes('cada año') || c.includes('anual')) return 80;
   if (c.includes('2')) return 60;
   if (c.includes('3')) return 40;
   if (c.includes('4')) return 24;
@@ -97,16 +97,16 @@ function resolverResultadoDafp(ponderacion: number, modoEspecial?: string) {
     ponderacion < 1.5
       ? { nivel: 'Bajo', ciclo: 'No auditar' }
       : ponderacion < 2
-      ? { nivel: 'Bajo (Priorizado)', ciclo: 'Cada 4 a\u00f1os' }
+      ? { nivel: 'Bajo (Priorizado)', ciclo: 'Cada 4 años' }
       : ponderacion < 3
-      ? { nivel: 'Moderado', ciclo: 'Cada 3 a\u00f1os' }
+      ? { nivel: 'Moderado', ciclo: 'Cada 3 años' }
       : ponderacion < 4
-      ? { nivel: 'Alto', ciclo: 'Cada 2 a\u00f1os' }
+      ? { nivel: 'Alto', ciclo: 'Cada 2 años' }
       :
-      { nivel: 'Extremo', ciclo: 'Cada a\u00f1o' };
+      { nivel: 'Extremo', ciclo: 'Cada año' };
 
   if (modoEspecial === 'todos_los_anos') {
-    return { ...base, ciclo: 'Todos los a\u00f1os' };
+    return { ...base, ciclo: 'Todos los años' };
   }
 
   return base;
@@ -119,7 +119,7 @@ function resolverResultadoDafp(ponderacion: number, modoEspecial?: string) {
 interface UniversoAuditableUnificadoProps {
   vigencia?: number;
   onVolver?: () => void;
-  /** Modo solo seguimiento: arranca en pesta\u00f1a Programa y oculta botones de creaci\u00f3n */
+  /** Modo solo seguimiento: arranca en pestaña Programa y oculta botones de creación */
   modoSeguimiento?: boolean;
 }
 
@@ -130,7 +130,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
   const [busqueda, setBusqueda] = useState('');
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   
-  // ✅ INTEGRACI\u00d3N CON BACKEND — reemplaza todos los datos mock
+  // ✅ INTEGRACIÓN CON BACKEND — reemplaza todos los datos mock
   const {
     procesos,
     loading: loadingProcesos,
@@ -142,7 +142,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     refetch: refetchProcesos,
   } = useUniversoAuditableData();
 
-  // ✅ MAPA de procesos por ID para lookup r\u00e1pido (Mover aqu\u00ed para evitar ReferenceError)
+  // ✅ MAPA de procesos por ID para lookup rápido (Mover aquí para evitar ReferenceError)
   const procesosMap = useMemo(() => {
     const map = new Map<string, any>();
     procesos.forEach(p => map.set(p.id, p));
@@ -177,10 +177,10 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     if (!procesos.length && !evaluaciones.length) return [];
 
     const nivelRiesgoMap: Record<string, NivelRiesgo> = {
-      'Extremo': 'Cr\u00edtico', 'Alto': 'Alto', 'Moderado': 'Medio', 'Bajo': 'Bajo',
+      'Extremo': 'Crítico', 'Alto': 'Alto', 'Moderado': 'Medio', 'Bajo': 'Bajo',
     };
     const mapPonderacion: Record<string, NivelRiesgo> = {
-      'EXTREMO': 'Cr\u00edtico', 'ALTO': 'Alto', 'MODERADO': 'Medio', 'BAJO': 'Bajo', 'MUY BAJO': 'Bajo',
+      'EXTREMO': 'Crítico', 'ALTO': 'Alto', 'MODERADO': 'Medio', 'BAJO': 'Bajo', 'MUY BAJO': 'Bajo',
     };
 
     const evMap = new Map<string, EvaluacionProcesoUI>();
@@ -190,9 +190,11 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       }
     });
 
-    return procesos.map(p => {
+    return procesos
+      .filter(p => evMap.has(p.id))
+      .map(p => {
       const ev = evMap.get(p.id);
-      const nivelRiesgo = ev ? (nivelRiesgoMap[ev.nivelCriticidadDafp || ''] || mapPonderacion[ev.ponderacionRiesgo || ''] || 'Medio') : 'Medio';
+      const nivelRiesgo = ev ? (nivelRiesgoMap[ev.nivelCriticidadDafp || ''] || mapPonderacion[ev.ponderacionRiesgo || ''] || 'Medio') : 'Bajo';
       const scoreCalculado = ev?.ponderacionFinalDafp ? +(ev.ponderacionFinalDafp * 20).toFixed(0) : (ev?.scoreRiesgo || 0);
       const frecuencia = ev?.cicloRotacionDafp || ev?.planRotacion || 'Anual';
       
@@ -210,7 +212,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
         tipoProceso: p.tipoProceso || p.tipo,
         macroproceso: p.macroproceso,
         dependencia: p.dependencia,
-        dependenciaResponsable: p.dependencia || ev?.dependenciaResponsable || '', // ✅ Crucial para b\u00fasqueda
+        dependenciaResponsable: p.dependencia || ev?.dependenciaResponsable || '', // ✅ Crucial para búsqueda
         responsable: p.responsable,
         nivelRiesgo,
         puntajeRiesgo: scoreCalculado,
@@ -235,7 +237,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
           vigencia: ev.vigencia,
           fechaCorte: ev.fechaCorte,
         } as any : undefined,
-        auditable: ev?.decisionFinal === 'INCLUIR PLAN ANUAL',
+        auditable: ev?.decisionFinal === 'INCLUIR_PLAN_ANUAL' || ev?.decisionFinal === 'INCLUIR PLAN ANUAL' || (ev as any)?.priorizacionAnos?.length > 0,
         activo: ev?.activo ?? p.activo,
         createdAt: ev?.createdAt || p.createdAt,
         updatedAt: ev?.updatedAt || p.updatedAt,
@@ -267,10 +269,10 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
   const [procesoSeleccionado, setProcesoSeleccionado] = useState<ProcesoAuditable | null>(null);
   const [evaluacionSeleccionada, setEvaluacionSeleccionada] = useState<EvaluacionProcesoUI | null>(null);
 
-  // ✅ Estad\u00edsticas calculadas desde evaluaciones
+  // ✅ Estadísticas calculadas desde evaluaciones
   const estadisticasEvaluaciones = useMemo(() => {
     const total = evaluacionesComoFilas.length;
-    const criticos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Cr\u00edtico').length;
+    const criticos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Crítico').length;
     const altos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Alto').length;
     const medios = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Medio').length;
     const bajos = evaluacionesComoFilas.filter(e => e.nivelRiesgo === 'Bajo').length;
@@ -285,7 +287,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     };
   }, [evaluacionesComoFilas, estadisticas]);
   
-  // Filtrar evaluaciones (misma l\u00f3gica que antes pero sobre evaluaciones)
+  // Filtrar evaluaciones (misma lógica que antes pero sobre evaluaciones)
   const evaluacionesFiltradas = useMemo(() => {
     return evaluacionesComoFilas.filter(fila => {
       const cumpleFiltroRiesgo = filtroNivelRiesgo === 'TODOS' || fila.nivelRiesgo === filtroNivelRiesgo;
@@ -298,7 +300,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     });
   }, [evaluacionesComoFilas, filtroNivelRiesgo, filtroTipoProceso, busqueda]);
   
-  // ✅ HANDLERS con integraci\u00f3n backend
+  // ✅ HANDLERS con integración backend
   const handleAgregarProceso = async (nuevoProceso: ProcesoAuditableData) => {
     await agregarProceso(nuevoProceso);
   };
@@ -314,7 +316,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
   // ✅ HANDLER para crear/editar EVALUACIONES DAFP (nuevos registros por proceso)
   const handleAgregarEvaluacion = async (datos: ProcesoAuditableData, procesoId?: string) => {
     if (!procesoId) {
-      toast.error('Debe seleccionar un proceso del cat\u00e1logo');
+      toast.error('Debe seleccionar un proceso del catálogo');
       return;
     }
     
@@ -324,7 +326,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     const riesgoBaj = datos.riesgosBajos || 0;
     const totalRiesgos = riesgoExt + riesgoAlt + riesgoMod + riesgoBaj;
     
-    // Calcular ponderaci\u00f3n DAFP si tenemos todos los criterios
+    // Calcular ponderación DAFP si tenemos todos los criterios
     const riCuan = riesgoExt >= 1 ? 5 : riesgoAlt >= 1 ? 4 : riesgoMod >= 1 ? 3 : riesgoBaj >= 1 ? 2 : 1;
     const tiempo = datos.tiempoUltimaAuditoria || 0;
     const ad = datos.temasAltaDireccion || 0;
@@ -341,13 +343,6 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       nivelCriticidadDafp = resultado.nivel;
       cicloRotacionDafp = resultado.ciclo;
     }
-
-    console.log('[handleAgregarEvaluacion] Guardando evaluaci\u00f3n con datos:', {
-      procesoId,
-      riesgos: { riesgosExtremos: riesgoExt, riesgosAltos: riesgoAlt, riesgosModerados: riesgoMod, riesgosBajos: riesgoBaj, totalRiesgos },
-      criterios: { tiempoUltimaAuditoria: tiempo, temasAltaDireccion: ad, objetivosEstrategicos: obj, hallazgosAnteriores: hall },
-      resultado: { ponderacionFinalDafp, nivelCriticidadDafp, cicloRotacionDafp }
-    });
 
     const evaluacionData: Partial<EvaluacionProcesoUI> = {
       procesoId,
@@ -368,7 +363,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       mitigantes: Number(datos.mitigantes) || 0,
       scoreRiesgo: Number(datos.scoreRiesgoCEM) || 0,
       ponderacionRiesgo: datos.ponderacionRiesgo || 'BAJO',
-      // Criterios de priorizaci\u00f3n DAFP (migraci\u00f3n 179) - FORZAR VALORES DESDE EL FORMULARIO
+      // Criterios de priorización DAFP (migración 179) - FORZAR VALORES DESDE EL FORMULARIO
       tiempoUltimaAuditoria: Number(datos.tiempoUltimaAuditoria) || Number(tiempo),
       temasAltaDireccion: Number(datos.temasAltaDireccion) || Number(ad),
       objetivosEstrategicos: Number(datos.objetivosEstrategicos) || Number(obj),
@@ -376,20 +371,15 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       ponderacionFinalDafp: Number(ponderacionFinalDafp),
       nivelCriticidadDafp: nivelCriticidadDafp,
       cicloRotacionDafp: cicloRotacionDafp || 'No auditar',
-      decisionFinal: datos.decisionFinal || 'AUDITOR\u00cdA POSTERIOR',
+      decisionFinal: datos.decisionFinal || 'INCLUIR_AUDITORIA_POSTERIOR',
       motivoDecision: datos.motivoDecision || '',
       prioridadRegla: Number(datos.prioridadRegla) || 5,
     };
     
-    console.log('[handleAgregarEvaluacion] Evaluacion lista para guardar:', evaluacionData);
-
     const result = await agregarEvaluacion(evaluacionData);
-    console.log('[handleAgregarEvaluacion] Resultado:', result);
     if (result) {
-      console.log('[handleAgregarEvaluacion] Ejecutando refetchEvaluaciones...');
       await refetchEvaluaciones();
-      console.log('[handleAgregarEvaluacion] Refetch completado');
-      toast.success('Evaluaci\u00f3n creada exitosamente');
+      toast.success('Evaluación creada exitosamente');
     }
   };
 
@@ -400,7 +390,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     const riesgoBaj = datos.riesgosBajos || 0;
     const totalRiesgosCalc = riesgoExt + riesgoAlt + riesgoMod + riesgoBaj;
     
-    // Calcular ponderaci\u00f3n DAFP si tenemos todos los criterios
+    // Calcular ponderación DAFP si tenemos todos los criterios
     const riCuan = riesgoExt >= 1 ? 5 : riesgoAlt >= 1 ? 4 : riesgoMod >= 1 ? 3 : riesgoBaj >= 1 ? 2 : 1;
     const tiempo = datos.tiempoUltimaAuditoria || 0;
     const ad = datos.temasAltaDireccion || 0;
@@ -436,7 +426,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       mitigantes: datos.mitigantes || 0,
       scoreRiesgo: datos.scoreRiesgoCEM || 0,
       ponderacionRiesgo: datos.ponderacionRiesgo as any,
-      // Criterios de priorizaci\u00f3n DAFP (migraci\u00f3n 179)
+      // Criterios de priorización DAFP (migración 179)
       tiempoUltimaAuditoria: tiempo,
       temasAltaDireccion: ad,
       objetivosEstrategicos: obj,
@@ -451,22 +441,19 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
 
     await editarEvaluacion(evaluacionId, evaluacionData);
     await refetchEvaluaciones();
-    toast.success('Evaluaci\u00f3n actualizada');
+    toast.success('Evaluación actualizada');
   };
 
   return (
     <div className="h-full flex flex-col bg-gradient-to-br from-gray-50 to-blue-50/30">
       {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* INDICADOR DE ESTADO DE CONEXI\u00d3N */}
-      {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* INDICADOR DE ESTADO DE CONEXI\u00d3N / ERRORES GLOBALES */}
+      {/* INDICADOR DE ESTADO DE CONEXIÓN */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       {error && (!error.includes('permisos') || (error.includes('auditoria') && tabActiva !== 'programa')) && (
         <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between text-sm transition-all">
           <div className="flex items-center gap-2 text-amber-700">
             <WifiOff className="w-4 h-4" />
-            <span className="font-bold text-amber-700">Sin conexi\u00f3n al servidor</span>
+            <span className="font-bold text-amber-700">Sin conexión al servidor</span>
             <span className="text-amber-600">— {error}</span>
           </div>
           <button
@@ -484,10 +471,10 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       {/* ═══════════════════════════════════════════════════════════════ */}
       <div className="flex-shrink-0 px-3 pt-3">
         <ModuleHeaderBar
-          title={modoSeguimiento ? `Seguimiento y Evaluaci\u00f3n — ${vigencia}` : `Programa de Auditor\u00eda ${vigencia}`}
+          title={modoSeguimiento ? `Seguimiento y Evaluación — ${vigencia}` : `Programa de Auditoría ${vigencia}`}
           subtitle={modoSeguimiento
-            ? 'Visualizaci\u00f3n y seguimiento de auditor\u00edas del Universo'
-            : 'Gesti\u00f3n integral del universo auditable y programa anual'}
+            ? 'Visualización y seguimiento de auditorías del Universo'
+            : 'Gestión integral del universo auditable y programa anual'}
           icon={<Layers className="w-5 h-5 text-white" />}
           color="#003DA5"
           rightContent={onVolver ? (
@@ -505,7 +492,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       {/* CONTENIDO */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       <div className="flex-1 overflow-y-auto p-3">
-        {/* Tabs - dentro del \u00e1rea de contenido, separados del t\u00edtulo */}
+        {/* Tabs - dentro del área de contenido, separados del título */}
         <div className="mb-3">
           <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-gray-100 border border-gray-200">
             <button
@@ -521,7 +508,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
               <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
                 tabActiva === 'universo' ? 'bg-white/20' : 'bg-gray-200'
               }`}>
-                {estadisticas.procesosAuditables}
+                {estadisticasEvaluaciones.totalProcesos}
               </span>
             </button>
             <button
@@ -566,7 +553,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
           </div>
         )}
 
-        {/* Contenido cuando no est\u00e1 cargando */}
+        {/* Contenido cuando no está cargando */}
         {!loading && (
           <AnimatePresence mode="wait">
             {tabActiva === 'universo' && (
@@ -587,11 +574,9 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
                   setMostrarFormularioProceso(true);
                 }}
                 onEditarProceso={(filaEvaluacion) => {
-                  // Buscar el proceso maestro para pre-llenar el formulario
                   const procesoMaestro = procesosMap.get(filaEvaluacion._backendId || '');
                   if (procesoMaestro) setProcesoSeleccionado(procesoMaestro);
-                  // Guardar referencia a la evaluaci\u00f3n que se edita
-                  const evOriginal = evaluaciones.find(e => e.id === filaEvaluacion.id);
+                  const evOriginal = evaluaciones.find(e => e.id === (filaEvaluacion as any).idEvaluacion);
                   if (evOriginal) setEvaluacionSeleccionada(evOriginal);
                   setMostrarFormularioProceso(true);
                 }}
@@ -636,14 +621,11 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
       </div>
 
       {/* MODALES */}
-      {/* Formulario para gestionar auditor\u00edas programadas */}
       {mostrarFormulario && (
         <FormularioAuditoriaUnificado
           open={mostrarFormulario}
           onClose={() => setMostrarFormulario(false)}
           onSubmit={async (data: AuditoriaUnificadaFormData) => {
-            // Convertir datos del formulario al formato del hook
-            // ✅ Mapeo correcto de fechas: usar fechaInicioPlaneacion como fechaInicio
             const auditoriaData: AuditoriaCreateData = {
               tipoAuditoria: data.tipoAuditoria,
               titulo: data.titulo,
@@ -656,16 +638,12 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
               auditorAsignado: data.auditorAsignado,
               equipoAuditores: data.equipoAuditores,
               supervisorAsignado: data.supervisorAsignado,
-              // Responsable del Área Auditada (auditado). Se selecciona en el Paso 2
-              // del formulario y debe llegar al backend en campos planos para
-              // habilitar el portal del auditado.
               ...(data.responsableArea && {
                 responsableAreaIdPersona: data.responsableArea.idPersona,
                 responsableAreaNombre: data.responsableArea.nombre,
                 responsableAreaCargo: data.responsableArea.cargo || 'Responsable de Área Auditada',
                 responsableAreaEmail: data.responsableArea.email,
               }),
-              // ✅ FECHAS: Usar los campos correctos del formulario con valores por defecto
               fechaInicio: data.fechaInicioPlaneacion || data.fechaInicio || new Date().toISOString().split('T')[0],
               fechaFinPlaneacion: data.fechaFinPlaneacion,
               fechaInicioEjecucion: data.fechaInicioEjecucion,
@@ -684,9 +662,9 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
               hitos: data.hitos,
               vinculadaPlanAnual: data.vinculadaPlanAnual,
               planAnualId: data.planAnualId,
-              planAnualA\u00f1o: data.planAnualA\u00f1o,
+              planAnualAño: data.planAnualAño,
               rolDecretoAsociado: data.rolDecretoAsociado,
-              estadoKanban: data.estadoKanban || 'Plan Anual', // Crear en Plan Anual por defecto
+              estadoKanban: data.estadoKanban || 'Plan Anual',
               incluirHallazgosPreliminares: data.incluirHallazgosPreliminares,
               hallazgos: data.hallazgos,
             };
@@ -712,13 +690,13 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
           }}
           onSubmit={(proceso, procesoIdSeleccionado) => {
             // ✅ FIX: Universo Auditable crea EVALUACIONES, no procesos
-            // El proceso maestro viene del cat\u00e1logo (Configuraci\u00f3n → Procesos)
-            // Aqu\u00ed se crean evaluaciones DAFP del proceso seleccionado
+            // El proceso maestro viene del catálogo (Configuración → Procesos)
+            // Aquí se crean evaluaciones DAFP del proceso seleccionado
             if (evaluacionSeleccionada) {
-              // Modo EDIT: actualizar evaluaci\u00f3n existente
+              // Modo EDIT: actualizar evaluación existente
               handleEditarEvaluacion(proceso, evaluacionSeleccionada.id);
             } else {
-              // Modo CREATE: crear nueva evaluaci\u00f3n para el proceso seleccionado
+              // Modo CREATE: crear nueva evaluación para el proceso seleccionado
               handleAgregarEvaluacion(proceso, procesoIdSeleccionado || procesoSeleccionado?.id);
             }
             setMostrarFormularioProceso(false);
@@ -738,7 +716,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
                     const unidadesStr = unidades.length > 0
                       ? unidades.map((u: any) => u.nombre || u).filter(Boolean).join('; ')
                       : p.macroproceso || p._macroproceso || '';
-                    // Dependencia: usar el valor completo que viene de Configuraci\u00f3n (ya separado por '; ')
+                    // Dependencia: usar el valor completo que viene de Configuración (ya separado por '; ')
                     const depStr = p._dependencia || p.dependenciaResponsable || '';
                     return {
                       id: p.id,
@@ -835,13 +813,13 @@ interface TabProgramaAnualProps {
   estadisticas: Estadisticas;
   mostrarFormulario: boolean;
   setMostrarFormulario: (mostrar: boolean) => void;
-  /** Cuando false oculta el bot\u00f3n de crear nueva auditor\u00eda */
+  /** Cuando false oculta el botón de crear nueva auditoría */
   puedeCrear?: boolean;
-  /** Permiso espec\u00edfico para crear auditor\u00edas */
+  /** Permiso específico para crear auditorías */
   puedeCrearAuditoria?: boolean;
   /** Error opcional para mostrar banner de acceso restringido */
   error?: string | null;
-  /** Funci\u00f3n para reintentar la carga */
+  /** Función para reintentar la carga */
   onRefresh?: () => void;
 }
 
@@ -860,15 +838,15 @@ function TabProgramaAnual({
   const getColorEstado = (auditoria: AuditoriaProgramada) => {
     const kanban = (auditoria.estadoKanban || '').toLowerCase().trim();
     if (kanban === 'plan anual') return { bg: '#EDE9FE', text: '#5B21B6', icon: Clock, label: 'Plan Anual' };
-    if (kanban === 'planeaci\u00f3n' || kanban === 'planeacion') return { bg: '#DBEAFE', text: '#1E40AF', icon: Clock, label: 'Planeaci\u00f3n' };
-    if (kanban === 'ejecuci\u00f3n' || kanban === 'ejecucion') return { bg: '#FEF08A', text: '#854D0E', icon: Activity, label: 'Ejecuci\u00f3n' };
-    if (kanban === 'comunicaci\u00f3n' || kanban === 'comunicacion') return { bg: '#D1FAE5', text: '#065F46', icon: CheckCircle2, label: 'Comunicaci\u00f3n' };
+    if (kanban === 'planeación' || kanban === 'planeacion') return { bg: '#DBEAFE', text: '#1E40AF', icon: Clock, label: 'Planeación' };
+    if (kanban === 'ejecución' || kanban === 'ejecucion') return { bg: '#FEF08A', text: '#854D0E', icon: Activity, label: 'Ejecución' };
+    if (kanban === 'comunicación' || kanban === 'comunicacion') return { bg: '#D1FAE5', text: '#065F46', icon: CheckCircle2, label: 'Comunicación' };
     if (kanban === 'seguimiento') return { bg: '#E0F2FE', text: '#075985', icon: TrendingUp, label: 'Seguimiento' };
     if (kanban === 'finalizada') return { bg: '#F0FDF4', text: '#166534', icon: CheckCircle2, label: 'Finalizada' };
     // Fallback por estado UI
     const colores: Record<string, { bg: string; text: string; icon: any; label: string }> = {
-      'PROGRAMADA': { bg: '#DBEAFE', text: '#1E40AF', icon: Clock, label: 'Planeaci\u00f3n' },
-      'EN_EJECUCION': { bg: '#FEF08A', text: '#854D0E', icon: Activity, label: 'Ejecuci\u00f3n' },
+      'PROGRAMADA': { bg: '#DBEAFE', text: '#1E40AF', icon: Clock, label: 'Planeación' },
+      'EN_EJECUCION': { bg: '#FEF08A', text: '#854D0E', icon: Activity, label: 'Ejecución' },
       'COMPLETADA': { bg: '#D1FAE5', text: '#065F46', icon: CheckCircle2, label: 'Completada' },
       'CANCELADA': { bg: '#FEE2E2', text: '#991B1B', icon: X, label: 'Cancelada' }
     };
@@ -882,7 +860,7 @@ function TabProgramaAnual({
       exit={{ opacity: 0, y: -20 }}
       className="space-y-6"
     >
-      {/* 🚨 BANNER DE ERROR ESPEC\u00cdFICO DE PERMISOS PARA AUDITOR\u00cdAS */}
+      {/* 🚨 BANNER DE ERROR ESPECÍFICO DE PERMISOS PARA AUDITORÍAS */}
       {error && error.includes('permisos') && (
         <div className="bg-red-50 border-2 border-red-200 rounded-xl px-4 py-3 flex items-center justify-between text-sm animate-in fade-in slide-in-from-top-2">
           <div className="flex items-center gap-3 text-red-700">
@@ -905,23 +883,23 @@ function TabProgramaAnual({
           )}
         </div>
       )}
-      {/* Estad\u00edsticas del programa */}
+      {/* Estadísticas del programa */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="bg-white rounded-xl border-2 border-blue-200 p-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-blue-700">Total de auditor\u00edas</span>
+            <span className="text-sm font-semibold text-blue-700">Total de auditorías</span>
             <CalendarIcon className="w-5 h-5 text-blue-600" />
           </div>
           <p className="text-3xl font-black text-blue-700">{estadisticas.totalProgramadas}</p>
           <p className="mt-2 text-xs text-gray-600 leading-relaxed">
             Mismo universo que el tablero Kanban:{' '}
             <span className="font-semibold text-gray-800">
-              {estadisticas.enPlanAnual + estadisticas.enPlaneacion} planeaci\u00f3n
+              {estadisticas.enPlanAnual + estadisticas.enPlaneacion} planeación
             </span>
             {' · '}
-            <span className="font-semibold text-gray-800">{estadisticas.enEjecucion} ejecuci\u00f3n</span>
+            <span className="font-semibold text-gray-800">{estadisticas.enEjecucion} ejecución</span>
             {' · '}
-            <span className="font-semibold text-gray-800">{estadisticas.enComunicacion} comunicaci\u00f3n</span>
+            <span className="font-semibold text-gray-800">{estadisticas.enComunicacion} comunicación</span>
             {' · '}
             <span className="font-semibold text-gray-800">{estadisticas.enSeguimiento} seguimiento</span>
             {' · '}
@@ -931,20 +909,20 @@ function TabProgramaAnual({
 
         <div className="bg-white rounded-xl border-2 border-yellow-200 p-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-yellow-700">En Ejecuci\u00f3n</span>
+            <span className="text-sm font-semibold text-yellow-700">En Ejecución</span>
             <Activity className="w-5 h-5 text-yellow-600" />
           </div>
           <p className="text-3xl font-black text-yellow-700">{estadisticas.enEjecucion}</p>
-          <p className="text-xs text-yellow-600 mt-1">Auditor\u00edas activas</p>
+          <p className="text-xs text-yellow-600 mt-1">Auditorías activas</p>
         </div>
 
         <div className="bg-white rounded-xl border-2 border-purple-200 p-6">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-semibold text-purple-700">Cobertura Cr\u00edticos</span>
+            <span className="text-sm font-semibold text-purple-700">Cobertura Críticos</span>
             <Target className="w-5 h-5 text-purple-600" />
           </div>
           <p className="text-3xl font-black text-purple-700">{estadisticas.coberturaCriticos}%</p>
-          <p className="text-xs text-purple-600 mt-1">de procesos cr\u00edticos</p>
+          <p className="text-xs text-purple-600 mt-1">de procesos críticos</p>
         </div>
 
         <div className="bg-white rounded-xl border-2 border-green-200 p-6">
@@ -965,12 +943,12 @@ function TabProgramaAnual({
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
               <h2 className="text-xl font-black text-gray-900">
-                Programa Anual de Auditor\u00edas
+                Programa Anual de Auditorías
               </h2>
               <p className="text-sm text-gray-600 mt-1">
                 {vistaProgramaAnual === 'cronograma' 
-                  ? 'Vista de cronograma interactivo con m\u00faltiples vistas temporales' 
-                  : 'Auditor\u00edas calendarizadas por trimestre'}
+                  ? 'Vista de cronograma interactivo con múltiples vistas temporales' 
+                  : 'Auditorías calendarizadas por trimestre'}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -1006,13 +984,13 @@ function TabProgramaAnual({
                     if (puedeCrearAuditoria) {
                       setMostrarFormulario(true);
                     } else {
-                      toast.error('No cuentas con los permisos necesarios para realizar esta acci\u00f3n.');
+                      toast.error('No cuentas con los permisos necesarios para realizar esta acción.');
                     }
                   }}
                   className={`px-4 py-2 bg-gradient-to-r ${puedeCrearAuditoria ? 'from-blue-600 to-blue-700 hover:shadow-lg' : 'from-gray-400 to-gray-500 cursor-not-allowed'} text-white rounded-lg font-semibold flex items-center gap-2 transition-all`}
                 >
                   {puedeCrearAuditoria ? <Plus className="w-4 h-4" /> : <Layers className="w-4 h-4 opacity-50" />}
-                  {puedeCrearAuditoria ? 'Programar Auditor\u00eda' : 'Acceso Restringido'}
+                  {puedeCrearAuditoria ? 'Programar Auditoría' : 'Acceso Restringido'}
                 </button>
               )}
             </div>
@@ -1020,7 +998,7 @@ function TabProgramaAnual({
         </div>
 
         {/* ═══════════════════════════════════════════════════════════════ */}
-        {/* CONTENIDO DIN\u00c1MICO: LISTA O CRONOGRAMA */}
+        {/* CONTENIDO DINÁMICO: LISTA O CRONOGRAMA */}
         {/* ═══════════════════════════════════════════════════════════════ */}
         <AnimatePresence mode="wait">
           {vistaProgramaAnual === 'cronograma' ? (
@@ -1077,7 +1055,7 @@ function TabProgramaAnual({
                             <span className="ml-2 font-semibold text-gray-900">{auditoria.proceso.nombre}</span>
                           </div>
                           <div>
-                            <span className="text-gray-500">Auditor L\u00edder:</span>
+                            <span className="text-gray-500">Auditor Líder:</span>
                             <span className="ml-2 font-semibold text-gray-900">{typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria.auditorLider as any)?.nombre || 'No asignado'}</span>
                           </div>
                           <div>
@@ -1108,7 +1086,7 @@ function TabProgramaAnual({
                       ></div>
                     </div>
 
-                    {/* Etiquetas de vinculaci\u00f3n */}
+                    {/* Etiquetas de vinculación */}
                     <div className="flex items-center gap-2">
                       {auditoria.auditoriaOCIId && (
                         <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold flex items-center gap-1">
@@ -1141,7 +1119,7 @@ function TabProgramaAnual({
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// TAB 3: PROFESIONALES (conectado con backend de configuraci\u00f3n OCI)
+// TAB 3: PROFESIONALES (conectado con backend de configuración OCI)
 // ════════════════════════════════════════════════════════════════════════════
 
 interface TabProfesionalesProps {
@@ -1159,7 +1137,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
     cargarDatos: refetchProfesionales
   } = useConfiguracionProfesionales();
 
-  // ✅ Calcular carga REAL de cada profesional a partir de las auditor\u00edas asignadas
+  // ✅ Calcular carga REAL de cada profesional a partir de las auditorías asignadas
   const profesionalesConCarga = useMemo(() => {
     // Helper para extraer nombre de un elemento del equipo (puede ser string u objeto)
     const extraerNombre = (e: unknown): string => {
@@ -1180,10 +1158,10 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
       const identificacion = String(p.usuario.identificacion || '').trim();
 
       /**
-       * Helper para verificar si un profesional coincide con los datos de una auditor\u00eda
+       * Helper para verificar si un profesional coincide con los datos de una auditoría
        */
       const esMismoProfesional = (pId: string, pNombre: string): boolean => {
-        // 1. Coincidencia por ID (UUID de tercero, ID de configuraci\u00f3n o CC/Identificaci\u00f3n)
+        // 1. Coincidencia por ID (UUID de tercero, ID de configuración o CC/Identificación)
         if (pId) {
           const idNorm = pId.trim();
           if (idNorm === idTercero || idNorm === configId || (identificacion && idNorm === identificacion)) {
@@ -1201,7 +1179,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
             return true;
           }
 
-          // Coincidencia por tokens (ej: "Mario Bernal" coincide con "Mario Oswaldo Bernal Rodr\u00edguez")
+          // Coincidencia por tokens (ej: "Mario Bernal" coincide con "Mario Oswaldo Bernal Rodríguez")
           const tokensBusqueda = nombreBusqueda.split(/\s+/).filter(t => t.length > 2);
           const tokensNombre = nombreNorm.split(/\s+/).filter(t => t.length > 2);
           const comunes = tokensBusqueda.filter(t => tokensNombre.includes(t));
@@ -1212,7 +1190,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
         return false;
       };
 
-      // Auditor\u00edas donde este profesional es l\u00edder
+      // Auditorías donde este profesional es líder
       const comoLider = auditorias.filter(a => {
         const liderNombre = typeof a.auditorLider === 'string' ? a.auditorLider : (a.auditorLider as any)?.nombre || '';
         const liderId = typeof a.auditorLider === 'string' ? a.auditorLider : (a.auditorLider as any)?.id || (a.auditorLider as any)?.idTercero || '';
@@ -1220,7 +1198,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
         return esMismoProfesional(liderId, liderNombre);
       });
 
-      // Auditor\u00edas donde este profesional est\u00e1 en el equipo
+      // Auditorías donde este profesional está en el equipo
       const comoEquipo = auditorias.filter(a => {
         if (comoLider.some(l => l.id === a.id)) return false; // No contar doble
         
@@ -1232,7 +1210,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
         });
       });
 
-      // Auditor\u00edas donde este profesional es supervisor (Rol t\u00edpico del Jefe OCI)
+      // Auditorías donde este profesional es supervisor (Rol típico del Jefe OCI)
       const comoSupervisor = auditorias.filter(a => {
         if (comoLider.some(l => l.id === a.id) || comoEquipo.some(e => e.id === a.id)) return false;
         
@@ -1248,16 +1226,16 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
         return total + horas;
       }, 0);
 
-      // ✅ FIX: El programa es ANUAL (Vigencia), pero la configuraci\u00f3n es MENSUAL.
+      // ✅ FIX: El programa es ANUAL (Vigencia), pero la configuración es MENSUAL.
       // Debemos comparar totales anuales contra capacidad anual (mensual * 12).
       const MESES_VIGENCIA = 12;
 
-      // Porcentaje de carga: auditor\u00edas asignadas vs capacidad m\u00e1xima ANUAL
+      // Porcentaje de carga: auditorías asignadas vs capacidad máxima ANUAL
       const capacidadMensual = p.configuracion.capacidadMaximaAuditorias || 4;
       const capacidadAnual = capacidadMensual * MESES_VIGENCIA;
       const porcentajePorAuditorias = Math.round((auditoriasTotales / capacidadAnual) * 100);
 
-      // Tambi\u00e9n considerar horas: horasAsignadas vs horas ANUALES disponibles
+      // También considerar horas: horasAsignadas vs horas ANUALES disponibles
       const horasMensualesDisponibles = p.configuracion.horasMensualesDisponibles || 150;
       const horasAnualesDisponibles = horasMensualesDisponibles * MESES_VIGENCIA;
       const porcentajePorHoras = horasAnualesDisponibles > 0 ? Math.round((horasAsignadas / horasAnualesDisponibles) * 100) : 0;
@@ -1282,7 +1260,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
     });
   }, [profesionalesOCI, auditorias]);
 
-  // Calcular sem\u00e1foro de carga para cada profesional
+  // Calcular semáforo de carga para cada profesional
   const profesionalesConSemaforo = useMemo(() => {
     return profesionalesConCarga.map(p => {
       const porcentaje = p.estadisticas.porcentajeCarga;
@@ -1302,7 +1280,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
       exit={{ opacity: 0, y: -20 }}
       className="space-y-5"
     >
-      {/* Estad\u00edsticas de profesionales — compactas, alineadas con Config */}
+      {/* Estadísticas de profesionales — compactas, alineadas con Config */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-blue-200 p-4">
           <div className="flex items-center justify-between mb-1">
@@ -1417,7 +1395,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
                     <div className="flex items-center gap-3 flex-shrink-0">
                       {p.configuracion.puedeSerLider && (
                         <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-lg text-[10px] font-bold border border-blue-200">
-                          ★ L\u00edder
+                          ★ Líder
                         </span>
                       )}
                       <div className="text-right">
@@ -1438,10 +1416,10 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
                     </div>
                     <div className="flex items-center justify-between mt-1.5 text-[11px] text-gray-500">
                       <span>
-                        <strong className="text-gray-700">{p.estadisticas.auditoriasTotales}</strong> auditor\u00eda(s) • <strong className="text-gray-700">{p.estadisticas.horasAsignadas}h</strong> asignadas en la vigencia
+                        <strong className="text-gray-700">{p.estadisticas.auditoriasTotales}</strong> auditoría(s) • <strong className="text-gray-700">{p.estadisticas.horasAsignadas}h</strong> asignadas en la vigencia
                       </span>
                       <span>
-                        Meta Anual: {p.estadisticas.capacidadAnual} aud. • {p.estadisticas.horasAnualesDisponibles}h/a\u00f1o
+                        Meta Anual: {p.estadisticas.capacidadAnual} aud. • {p.estadisticas.horasAnualesDisponibles}h/año
                       </span>
                     </div>
                   </div>
@@ -1463,7 +1441,7 @@ function TabProfesionales({ auditorias, estadisticas }: TabProfesionalesProps) {
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
         <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
         <p className="text-xs text-blue-700 leading-relaxed">
-          Para editar perfiles, capacidades y roles del equipo OCI, ve a <strong>Configuraciones → Profesionales OCI</strong> (men\u00fa lateral).
+          Para editar perfiles, capacidades y roles del equipo OCI, ve a <strong>Configuraciones → Profesionales OCI</strong> (menú lateral).
         </p>
       </div>
     </motion.div>

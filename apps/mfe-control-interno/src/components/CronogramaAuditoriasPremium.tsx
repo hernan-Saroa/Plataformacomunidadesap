@@ -27,6 +27,7 @@ import {
   Calendar as CalendarIcon,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Clock,
   Activity,
   CheckCircle2,
@@ -853,6 +854,18 @@ function VistaMes({ fecha, auditorias, onSeleccionar }: VistaMesProps) {
   const diasDelMes = ultimoDia.getDate();
   const diaSemanaInicio = primerDia.getDay();
   const [diasExpandidos, setDiasExpandidos] = useState<Set<string>>(new Set());
+  const [etapasAbiertas, setEtapasAbiertas] = useState<Record<string, boolean>>({});
+  const [verMasEtapa, setVerMasEtapa] = useState<Record<string, boolean>>({});
+
+  const toggleEtapa = (diaKey: string, etapa: string) => {
+    const key = `${diaKey}-${etapa}`;
+    setEtapasAbiertas((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleVerMas = (diaKey: string, etapa: string) => {
+    const key = `${diaKey}-${etapa}`;
+    setVerMasEtapa((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const toggleDiaExpandido = (diaKey: string) => {
     setDiasExpandidos((prev) => {
@@ -906,20 +919,26 @@ function VistaMes({ fecha, auditorias, onSeleccionar }: VistaMesProps) {
           const esHoy = dia.toDateString() === new Date().toDateString();
           const diaKey = `${fecha.getFullYear()}-${fecha.getMonth()}-${dia.getDate()}`;
           const estaExpandido = diasExpandidos.has(diaKey);
-          const auditoriasAMostrar = auditoriasDelDia.slice(0, estaExpandido ? auditoriasDelDia.length : 4);
+
+          // Agrupación por etapas (Planeación, Ejecución, Comunicación)
+          const etapasInteres: ColumnaKanban[] = ['planeacion', 'ejecucion', 'comunicacion'];
+          const agrupadas = etapasInteres.map(etapa => ({
+            etapa,
+            auditorias: auditoriasDelDia.filter(aud => obtenerEtapaAutomatica(dia, aud) === etapa)
+          })).filter(g => g.auditorias.length > 0);
 
           return (
             <div
               key={idx}
-              className={`rounded-lg border-2 p-2 min-h-[120px] transition-shadow ${
+              className={`rounded-lg border-2 p-3 min-h-[160px] transition-shadow ${
                 esFestivoDia && festivoStyle
                   ? festivoStyle.cardClass
                   : 'bg-white ' + (esHoy ? 'border-[#F57C00] ring-2 ring-[#F57C00]/30' : 'border-gray-200')
               }`}
             >
-              <div className="flex items-start justify-between gap-1 mb-1.5">
+              <div className="flex items-start justify-between gap-1 mb-2">
                 <span
-                  className={`text-sm font-black tabular-nums ${
+                  className={`text-base font-black tabular-nums ${
                     esFestivoDia ? 'text-red-800' : esHoy ? 'text-[#F57C00]' : 'text-gray-900'
                   }`}
                 >
@@ -927,47 +946,101 @@ function VistaMes({ fecha, auditorias, onSeleccionar }: VistaMesProps) {
                 </span>
                 {esFestivoDia && festivoStyle && (
                   <span
-                    className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 shrink-0 ${festivoStyle.badgeClass}`}
+                    className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 shrink-0 ${festivoStyle.badgeClass}`}
                     title="Festivo nacional · sin auditorías"
                   >
-                    <festivoStyle.Icon className="w-2.5 h-2.5" aria-hidden />
+                    <festivoStyle.Icon className="w-3.5 h-3.5" aria-hidden />
                   </span>
                 )}
               </div>
 
-              <div className={`space-y-1 ${estaExpandido ? 'max-h-[200px]' : 'max-h-[70px]'} overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent transition-all`}>
+              <div className={`space-y-1.5 ${estaExpandido ? 'max-h-[500px]' : 'max-h-[220px]'} overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent transition-all`}>
                 {esFestivoDia && festivoStyle && (
-                  <p className="text-[8px] font-bold text-center leading-tight text-red-800 mb-0.5 line-clamp-2">
+                  <p className="text-[10px] font-bold text-center leading-tight text-red-800 mb-1 line-clamp-2">
                     Festivo · sin auditorías
                   </p>
                 )}
-                {auditoriasAMostrar.map((aud) => {
-                  const { colores } = obtenerEstadoVisual(aud, dia);
+                
+                {agrupadas.map(({ etapa, auditorias: audsEtapa }) => {
+                  const abierta = etapasAbiertas[`${diaKey}-${etapa}`];
+                  const verMas = verMasEtapa[`${diaKey}-${etapa}`];
+                  const colores = COLORES_POR_COLUMNA_KANBAN[etapa];
+                  const label = ETIQUETA_COLUMNA_KANBAN[etapa];
+                  
+                  const visibles = verMas ? audsEtapa : audsEtapa.slice(0, 2);
+                  const restantes = audsEtapa.length - 2;
+
                   return (
-                    <button
-                      key={aud.id}
-                      onClick={() => onSeleccionar(aud)}
-                      className="w-full p-1 rounded text-left text-[9px] font-bold transition-all hover:scale-105 leading-tight"
-                      style={{
-                        backgroundColor: colores.bg,
-                        color: colores.text,
-                        borderLeft: `2px solid ${colorBordePorTipo(aud.tipo)}`
-                      }}
-                    >
-                      <div className="truncate">{aud.nombre}</div>
-                    </button>
+                    <div key={etapa} className="mb-1.5 bg-gray-50/80 rounded-lg p-1.5 border border-gray-200 shadow-sm">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleEtapa(diaKey, etapa);
+                        }}
+                        className="w-full flex items-center justify-between py-1 transition-colors text-left group"
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {abierta ? (
+                            <ChevronDown className="w-4 h-4 shrink-0 transition-transform" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 shrink-0 transition-transform" />
+                          )}
+                          <span className="text-[11px] font-black truncate group-hover:underline" style={{ color: colores.text }}>
+                            {label} <span className="opacity-70">({audsEtapa.length})</span>
+                          </span>
+                        </div>
+                      </button>
+
+                      {abierta && (
+                        <div className="pl-4 space-y-1.5 mt-1.5 border-l-2 border-gray-200 ml-1.5">
+                          {visibles.map((aud) => (
+                            <button
+                              key={aud.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSeleccionar(aud);
+                              }}
+                              className="w-full p-2 rounded-md text-left text-[10px] font-bold transition-all hover:translate-x-1 leading-tight shadow-sm border border-black/5"
+                              style={{
+                                backgroundColor: colores.bg,
+                                color: colores.text,
+                                borderLeft: `3px solid ${colorBordePorTipo(aud.tipo)}`
+                              }}
+                            >
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-[9px] opacity-60 font-mono">#{aud.id.substring(0, 8).toUpperCase()}</span>
+                                <div className="line-clamp-2">{aud.nombre}</div>
+                              </div>
+                            </button>
+                          ))}
+                          
+                          {!verMas && restantes > 0 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleVerMas(diaKey, etapa);
+                              }}
+                              className="w-full text-[10px] font-black text-blue-600 hover:text-blue-800 py-1 text-center bg-white/80 rounded-md border border-dashed border-blue-300 mt-1 transition-colors"
+                            >
+                              + Ver {restantes} más
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
-                {auditoriasDelDia.length > 4 && (
+
+                {/* Botón para expandir la celda completa */}
+                {auditoriasDelDia.length > 5 && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleDiaExpandido(diaKey);
                     }}
-                    className="w-full text-[9px] text-center text-blue-600 hover:text-blue-800 font-bold py-0.5 hover:bg-blue-50 rounded transition-colors"
-                    title={estaExpandido ? 'Click para contraer' : 'Click para ver todas las auditorías'}
+                    className="w-full text-[10px] text-center text-gray-500 hover:text-[#003DA5] font-black py-2 mt-1 border-t border-gray-100 transition-colors"
                   >
-                    {estaExpandido ? '▲ Contraer' : `+${auditoriasDelDia.length - 4} más`}
+                    {estaExpandido ? '▲ Contraer celda' : '▼ Expandir celda...'}
                   </button>
                 )}
               </div>
