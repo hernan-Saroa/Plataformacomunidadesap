@@ -1283,11 +1283,14 @@ export function VisorPDFCertificado({
         </div>
         <p style={{
           margin: 0,
-          fontSize: '12pt',
+          fontSize: '8pt',
           color: '#0066cc',
-          fontFamily: typographyFont
+          fontFamily: typographyFont,
+          textAlign: 'center',
+          maxWidth: `${qrSize}px`,
+          lineHeight: '1.4'
         }}>
-          www.esap.edu.co
+          Escanee el código QR para verificar el certificado
         </p>
       </div>
 

@@ -984,7 +984,7 @@ export class LaborCertificatePdfService {
             </div>
             <div class="footer-right">
               ${qrTag}
-              <div>www.esap.edu.co</div>
+              <div style="font-size: 8pt; color: #0066cc; max-width: 99px; line-height: 1.4; text-align: center;">Escanee el código QR para verificar el certificado</div>
             </div>
           </div>
         </body>
