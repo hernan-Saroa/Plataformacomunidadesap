@@ -3,14 +3,11 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X,
-  Download,
-  Printer,
   CheckCircle,
   Shield,
   FileText
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Button } from '@esap-mfe/shared-ui/button';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { certificadosService } from '../../services/api/certificados.service';
@@ -102,7 +99,6 @@ export function VisorPDFCertificado({
 }: VisorPDFCertificadoProps) {
   const certificadoRef = useRef<HTMLDivElement>(null);
   const previewWrapRef = useRef<HTMLDivElement>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [plantillaConfig, setPlantillaConfig] = useState<any>(null);
   const [templatePrimaTecnica, setTemplatePrimaTecnica] = useState<string | null>(null);
   const [templateType, setTemplateType] = useState<'docente' | 'administrador'>('docente');
@@ -536,7 +532,6 @@ export function VisorPDFCertificado({
     }
 
     try {
-      setIsGenerating(true);
       if (autoAction !== 'email') {
         toast.loading('Generando PDF del certificado...', { id: 'generating-pdf' });
       }
@@ -638,8 +633,6 @@ export function VisorPDFCertificado({
       if (autoAction && autoAction !== 'email') {
         onAutoActionComplete?.('download', false);
       }
-    } finally {
-      setIsGenerating(false);
     }
   };
 
@@ -1277,34 +1270,6 @@ export function VisorPDFCertificado({
                 >
                   <X className="w-6 h-6" />
                 </button>
-              </div>
-            </div>
-
-            {/* Toolbar */}
-            <div className="border-b border-gray-200 px-4 sm:px-6 py-3 bg-gray-50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">Opciones:</span>
-              </div>
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
-                <Button
-                  onClick={handleDescargar}
-                  className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto"
-                  size="sm"
-                  disabled={isGenerating}
-                  data-action="download-pdf"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  {isGenerating ? 'Generando...' : 'Descargar PDF'}
-                </Button>
-                <Button
-                  onClick={handleImprimir}
-                  variant="outline"
-                  size="sm"
-                  className="w-full sm:w-auto"
-                >
-                  <Printer className="w-4 h-4 mr-2" />
-                  Imprimir
-                </Button>
               </div>
             </div>
 
