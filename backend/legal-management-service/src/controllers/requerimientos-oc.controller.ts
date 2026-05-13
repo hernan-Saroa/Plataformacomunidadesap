@@ -19,6 +19,30 @@ export class RequerimientosOCController {
         return this.service.findAllOrganismos();
     }
 
+    @Post('organismos')
+    async createOrganismo(@Body() data: Partial<OrganismoControlOC>): Promise<OrganismoControlOC> {
+        return this.service.createOrganismo(data);
+    }
+
+    @Patch('organismos/:id')
+    async updateOrganismo(
+        @Param('id') id: string,
+        @Body() data: Partial<OrganismoControlOC>
+    ): Promise<OrganismoControlOC> {
+        return this.service.updateOrganismo(Number(id), data);
+    }
+
+    @Delete('organismos/:id')
+    @HttpCode(HttpStatus.NO_CONTENT)
+    async deleteOrganismo(@Param('id') id: string): Promise<void> {
+        return this.service.deleteOrganismo(Number(id));
+    }
+
+    @Post('organismos/sync')
+    async syncOrganismos(@Body() organismos: Partial<OrganismoControlOC>[]): Promise<OrganismoControlOC[]> {
+        return this.service.syncOrganismos(organismos);
+    }
+
     // ============================================
     // TIPOS DE REQUERIMIENTO (Catálogo)
     // ============================================

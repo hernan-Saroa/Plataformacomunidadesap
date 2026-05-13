@@ -158,8 +158,13 @@ export class GatewayService {
       ? {
           'x-user-id': user.userId,
           'x-user-username': user.username,
+          'x-user-email': user.email,
+          'x-user-name': user.name,
           'x-user-roles': Array.isArray(user.roles)
-            ? (user.roles as any[]).join(',')
+            ? (user.roles as any[])
+                .map((r: any) => (typeof r === 'string' ? r : (r?.code ?? r?.name ?? '')))
+                .filter(Boolean)
+                .join(',')
             : user.roles,
         }
       : {};

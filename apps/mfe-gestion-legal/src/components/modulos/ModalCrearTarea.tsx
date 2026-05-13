@@ -107,7 +107,8 @@ export function ModalCrearTarea({
         vencimiento: fechaVencimiento,
         diasRestantes: diasCalc || 0,
         prioridad,
-        responsable: responsableSeleccionado, // Usar valor directo del input text
+        responsable: responsableSeleccionado,
+        responsableId: expediente.abogadoSustanciador,
         estado
       };
 

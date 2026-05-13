@@ -219,6 +219,36 @@ export const certificadosService = {
     },
 
     /**
+     * Actualizar una categoria dinamica de Prima Tecnica
+     */
+    async actualizarCategoriaPrimaTecnica(
+      category: PrimaTecnicaCategoria,
+      data: {
+        label?: string;
+        description?: string;
+        templateText?: string;
+        isActive?: boolean;
+        displayOrder?: number;
+      },
+    ): Promise<PrimaTecnicaCategoriaConfig> {
+      return apiClient.put(
+        `${SERVICE_PREFIX}/certificates/technical-bonus/categories/${encodeURIComponent(category)}`,
+        data,
+      );
+    },
+
+    /**
+     * Eliminar una categoria dinamica de Prima Tecnica
+     */
+    async eliminarCategoriaPrimaTecnica(
+      category: PrimaTecnicaCategoria,
+    ): Promise<{ category: PrimaTecnicaCategoria; deleted: boolean }> {
+      return apiClient.delete(
+        `${SERVICE_PREFIX}/certificates/technical-bonus/categories/${encodeURIComponent(category)}`,
+      );
+    },
+
+    /**
      * Listar registros de Prima Tecnica por categoria
      */
     async listarPrimaTecnica(
@@ -268,6 +298,17 @@ export const certificadosService = {
       deleted: true;
     }> {
       return apiClient.delete(`${SERVICE_PREFIX}/certificates/technical-bonus/${id}`);
+    },
+
+    /**
+     * Eliminar todos los registros de Prima Tecnica de una categoria
+     */
+    async eliminarUsuariosPrimaTecnicaPorCategoria(
+      category: PrimaTecnicaCategoria,
+    ): Promise<{ category: PrimaTecnicaCategoria; deleted_count: number }> {
+      return apiClient.delete(
+        `${SERVICE_PREFIX}/certificates/technical-bonus/categories/${encodeURIComponent(category)}/assignments`,
+      );
     },
 
     /**
