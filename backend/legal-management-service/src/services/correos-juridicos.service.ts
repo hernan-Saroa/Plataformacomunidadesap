@@ -28,7 +28,7 @@ export interface EmailClassification {
 }
 
 export interface SendEmailDto {
-    to: string;
+    to: string | string[];
     cc?: string[];
     subject: string;
     body: string;
@@ -443,6 +443,8 @@ export class CorreosJuridicosService {
      */
     async sendEmail(dto: SendEmailDto): Promise<{ success: boolean; correo?: CorreoJuridico }> {
         let finalBody = dto.body;
+        const toList = Array.isArray(dto.to) ? dto.to : [dto.to];
+        const destinatariosTo = toList.join(', ');
         const inlineAttachments: any[] = [];
         const largeAttachments: any[] = [];
         const fs = require('fs');
@@ -507,7 +509,7 @@ export class CorreosJuridicosService {
                 asunto: dto.subject || '(Sin asunto)',
                 remitenteEmail: 'oficina.juridica@esap.edu.co',
                 remitenteNombre: 'Oficina Jurídica ESAP',
-                destinatariosTo: dto.to,
+                destinatariosTo,
                 destinatarios: dto.cc ? JSON.stringify(dto.cc) : undefined,
                 fechaRecepcion: new Date(),
                 cuerpoHtml: dto.body,
@@ -524,10 +526,10 @@ export class CorreosJuridicosService {
 
             const savedCorreo = await this.correoRepo.save(newCorreo);
             // ── Trazabilidad: Registrar ENVIADO en timeline ──
-            await this.registrarAccion(savedCorreo.id, 'ENVIADO', `Correo enviado a ${dto.to}`, 'Sistema');
+            await this.registrarAccion(savedCorreo.id, 'ENVIADO', `Correo enviado a ${destinatariosTo}`, 'Sistema');
             // ── Tracking: Inyectar pixel y links trackeados ──
-            await this.injectTrackingIntoEmail(savedCorreo, dto.to as string);
-            this.logger.log(`Sent email saved to DB: ${savedCorreo.id} -> ${dto.to}`);
+            await this.injectTrackingIntoEmail(savedCorreo, destinatariosTo);
+            this.logger.log(`Sent email saved to DB: ${savedCorreo.id} -> ${destinatariosTo}`);
             return { success: true, correo: savedCorreo };
         } catch (dbError) {
             this.logger.error('Error saving sent email to DB (email was sent successfully):', dbError);
