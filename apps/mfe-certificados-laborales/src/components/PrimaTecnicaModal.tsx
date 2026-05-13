@@ -31,6 +31,7 @@ type PrimaTecnicaCandidato = {
   requestId: string;
   fullName: string;
   idNumber: string;
+  status?: string;
 };
 
 type PrimaTecnicaRegistro = {
@@ -228,12 +229,12 @@ const categoryContentMotion = {
   animate: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.22, ease: 'easeOut' },
+    transition: { duration: 0.22, ease: 'easeOut' as const },
   },
   exit: {
     opacity: 0,
     y: -10,
-    transition: { duration: 0.16, ease: 'easeIn' },
+    transition: { duration: 0.16, ease: 'easeIn' as const },
   },
 };
 
@@ -1008,6 +1009,11 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       return;
     }
 
+    if (selectedCandidate.status && selectedCandidate.status !== 'A') {
+      setSaveError('Este usuario no cuenta con contratos activos. No es posible asignarle prima técnica y/o coordinación.');
+      return;
+    }
+
     setIsSaving(true);
     setSaveError(null);
 
@@ -1425,9 +1431,17 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                         exit={{ opacity: 0, y: -8 }}
                         transition={{ duration: 0.18, ease: 'easeOut' }}
                       >
-                        <p className="text-sm sm:text-[15px] font-semibold text-slate-900">
-                          {item.fullName}
-                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm sm:text-[15px] font-semibold text-slate-900">
+                            {item.fullName}
+                          </p>
+                          {item.status && item.status !== 'A' && (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                              <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                              Sin contrato activo
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs sm:text-sm text-slate-600 mt-1">
                           CC {normalizeIdNumber(item.idNumber)}
                         </p>
@@ -1462,6 +1476,20 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                   </div>
                 </div>
 
+                {selectedCandidate.status && selectedCandidate.status !== 'A' && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-amber-800">
+                        Usuario sin contratos activos
+                      </p>
+                      <p className="text-sm text-amber-700 mt-0.5">
+                        Este usuario no cuenta con contratos activos. No es posible asignarle prima técnica y/o coordinación.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">
@@ -1485,15 +1513,15 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
 
                   <motion.button
                     onClick={handleSave}
-                    disabled={isSaving || !isValidPercentage}
+                    disabled={isSaving || !isValidPercentage || (!!selectedCandidate?.status && selectedCandidate.status !== 'A')}
                     className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-60"
                     style={{
                       background:
                         'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
                       boxShadow: '0 8px 18px rgba(30, 64, 175, 0.2)',
                     }}
-                    whileHover={isSaving || !isValidPercentage ? {} : { y: -1, scale: 1.01 }}
-                    whileTap={isSaving || !isValidPercentage ? {} : { scale: 0.985 }}
+                    whileHover={isSaving || !isValidPercentage || (!!selectedCandidate?.status && selectedCandidate.status !== 'A') ? {} : { y: -1, scale: 1.01 }}
+                    whileTap={isSaving || !isValidPercentage || (!!selectedCandidate?.status && selectedCandidate.status !== 'A') ? {} : { scale: 0.985 }}
                   >
                     {isSaving ? (
                       <>

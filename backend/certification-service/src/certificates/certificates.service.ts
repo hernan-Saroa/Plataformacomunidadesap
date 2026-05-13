@@ -53,6 +53,7 @@ type SearchTechnicalBonusCandidate = {
   requestId: string;
   fullName: string;
   idNumber: string;
+  status: string;
 };
 
 type UpsertTechnicalBonusPayload = {
@@ -1796,6 +1797,7 @@ export class CertificatesService {
         requestId: request.id,
         fullName: request.full_name,
         idNumber: this.sanitizeIdNumber(request.id_number) || request.id_number,
+        status: String(request.status || '').trim(),
       }));
   }
 
@@ -1879,6 +1881,12 @@ export class CertificatesService {
     if (!request) {
       throw new NotFoundException(
         'No se encontro la persona en la base de datos de solicitudes laborales (usuarios con contrato laboral).',
+      );
+    }
+
+    if (String(request.status || '').trim() !== 'A') {
+      throw new BadRequestException(
+        'Este usuario no cuenta con contratos activos. No es posible asignarle prima técnica y/o coordinación.',
       );
     }
 
