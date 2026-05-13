@@ -2475,6 +2475,21 @@ export class CertificatesService {
     };
   }
 
+  async deleteTechnicalBonusAssignmentsByCategory(categoryRaw: string) {
+    const category = await this.getTechnicalBonusCategoryRecord(categoryRaw, {
+      activeOnly: false,
+    });
+
+    const result = await this.technicalBonusRepo.delete({
+      category: category.category,
+    });
+
+    return {
+      category: category.category,
+      deleted_count: result.affected || 0,
+    };
+  }
+
   // ============================================
   // TECHNICAL BONUS TEMPLATES
   // ============================================
