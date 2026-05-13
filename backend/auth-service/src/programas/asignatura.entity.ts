@@ -27,6 +27,12 @@ export class Asignatura {
   @Column({ type: 'text', nullable: true })
   semestre?: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  modalidad?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  tipo?: string;
+
   @CreateDateColumn({ name: 'createdAt', type: 'timestamp with time zone' })
   createdAt: Date;
 

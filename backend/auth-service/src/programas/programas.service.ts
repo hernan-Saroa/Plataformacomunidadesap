@@ -126,4 +126,53 @@ export class ProgramasService {
       order: { semestre: 'ASC', nombre: 'ASC' }
     });
   }
+
+  async guardarAsignaturasPrograma(programaId: string, asignaturas: any[]) {
+    // Verificar que el programa existe
+    const programa = await this.programaRepo.findOne({ where: { id: programaId } });
+    if (!programa) {
+      throw new NotFoundException('Programa académico no encontrado');
+    }
+
+    const result = { created: 0, updated: 0, deleted: 0 };
+
+    // Obtener asignaturas existentes
+    const existentes = await this.asignaturaRepo.find({ where: { programaId } });
+    const existentesIds = new Set(existentes.map(a => a.id));
+
+    // IDs enviados
+    const enviadosIds = new Set(asignaturas.map(a => a.id).filter(id => id && !id.startsWith('asig-')));
+
+    // Eliminar asignaturas que no están en la lista enviada
+    for (const existente of existentes) {
+      if (!enviadosIds.has(existente.id)) {
+        await this.asignaturaRepo.remove(existente);
+        result.deleted++;
+      }
+    }
+
+    // Crear o actualizar asignaturas
+    for (const asigData of asignaturas) {
+      const { id, ...data } = asigData;
+      const asignaturaData = {
+        ...data,
+        programaId,
+        nucleoTematico: data.nucleoTematico || data.nucleo || null,
+        modalidad: data.modalidad || null,
+        tipo: data.tipo || null,
+      };
+
+      if (id && !id.startsWith('asig-')) {
+        // Actualizar existente
+        await this.asignaturaRepo.update(id, asignaturaData);
+        result.updated++;
+      } else {
+        // Crear nueva
+        await this.asignaturaRepo.save(asignaturaData);
+        result.created++;
+      }
+    }
+
+    return result;
+  }
 }
