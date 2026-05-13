@@ -268,6 +268,23 @@ export class CertificatesController {
     return await this.certificatesService.createCertificado(solicitudId);
   }
 
+  @Get('certificados/:id/pdf')
+  async getCertificadoPdf(
+    @Param('id') id: string,
+    @Query('publicBaseUrl') publicBaseUrl: string | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { buffer, filename } = await this.certificatesService.generateCertificadoPdfBufferById(
+      id,
+      { publicBaseUrl },
+    );
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${filename}"`,
+    });
+    return new StreamableFile(buffer);
+  }
+
   @Get('certificados/:id/download-docx')
   async downloadCertificadoDocx(
     @Param('id') id: string,

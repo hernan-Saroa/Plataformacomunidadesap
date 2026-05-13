@@ -1556,6 +1556,49 @@ export class CertificatesService {
     return { to: destinatario };
   }
 
+  async generateCertificadoPdfBufferById(
+    id: string,
+    options: { publicBaseUrl?: string } = {},
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const certificate = await this.certificateRepo.findOne({
+      where: { id },
+      relations: ['request'],
+    });
+
+    if (!certificate) {
+      throw new NotFoundException(`Certificado con ID ${id} no encontrado`);
+    }
+
+    await this.hydrateCertificatesRequestContext([certificate]);
+    await this.ensureTemplateSnapshotForCertificate(certificate);
+
+    const includeSalary = this.normalizeBoolean(
+      (certificate as Certificate & { include_salary?: boolean | null }).include_salary,
+      true,
+    );
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(
+          (certificate as Certificate & { include_technical_bonus?: boolean | null }).include_technical_bonus,
+          false,
+        )
+      : false;
+
+    let technicalBonusTemplate: string | undefined;
+    if (includeTechnicalBonus) {
+      const snapshotTemplate = (certificate as Certificate & { template_snapshot?: any }).template_snapshot?.technicalBonusTemplate;
+      if (snapshotTemplate) {
+        technicalBonusTemplate = snapshotTemplate;
+      }
+    }
+
+    return this.laborPdfService.generateCertificatePdf(certificate, {
+      includeSalary,
+      includeTechnicalBonus,
+      technicalBonusTemplate,
+      publicBaseUrl: options.publicBaseUrl,
+    });
+  }
+
   async reenviarCertificadoLaboral(
     id: string,
     options: SendLaborCertificateOptions = {},
