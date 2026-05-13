@@ -43,8 +43,8 @@ interface CertificadoLaboralListado {
   cod_grade?: string;
   campus?: string;
   technical_bonus?: number;
-  technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
-  technicalBonusCategory?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+  technical_bonus_category?: string | null;
+  technicalBonusCategory?: string | null;
   incluyeSalario?: boolean;
   incluyePrimaTecnica?: boolean;
   templateSnapshot?: any;
@@ -941,7 +941,7 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
                             )}
                             {configuracion.incluyeSalario && !validandoPrimaTecnica && !primaTecnicaDisponible && (
                               <p className="text-xs text-amber-700 mt-1">
-                                Este empleado no tiene prima técnica y/o coordinación registrada en Directivos o Coordinadores.
+                                Este empleado no tiene prima técnica y/o coordinación registrada en las primas configuradas.
                               </p>
                             )}
                           </div>

@@ -165,6 +165,13 @@ export class Expediente {
     @Column({ name: 'documentos_iniciales_urls', type: 'simple-array', nullable: true })
     documentosInicialesUrls: string[];
 
+    // Campos específicos para Proceso Penal (clasificación Contraloría / ANDJE)
+    @Column({ name: 'es_delito_admin_publica', default: false })
+    esDelitoAdminPublica: boolean;
+
+    @Column({ name: 'es_conducta_patrimonio_publico', default: false })
+    esConductaPatrimonioPublico: boolean;
+
     // Campos específicos para Juzgamiento Disciplinario
     @Column({ nullable: true, length: 50 })
     etapa: string;
