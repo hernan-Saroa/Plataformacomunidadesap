@@ -4,8 +4,10 @@ import { Repository, Like, FindOptionsWhere } from 'typeorm';
 import { CorreoJuridico } from '../entities/correo-juridico.entity';
 import { AdjuntoCorreo } from '../entities/adjunto-correo.entity';
 import { CorreoJuridicoHistorial } from '../entities/correo-juridico-historial.entity';
+import { CorreoTrackingToken } from '../entities/correo-tracking-token.entity';
 import { MicrosoftGraphService, GraphEmail } from './microsoft-graph.service';
 import { SmartClassificationService } from './smart-classification.service';
+import { randomUUID } from 'crypto';
 
 export interface EmailFilters {
     tipo?: string;
@@ -46,6 +48,8 @@ export class CorreosJuridicosService {
         private readonly adjuntoRepo: Repository<AdjuntoCorreo>,
         @InjectRepository(CorreoJuridicoHistorial)
         private readonly historialRepo: Repository<CorreoJuridicoHistorial>,
+        @InjectRepository(CorreoTrackingToken)
+        private readonly trackingRepo: Repository<CorreoTrackingToken>,
         private readonly graphService: MicrosoftGraphService,
         private readonly smartService: SmartClassificationService,
         private readonly actuacionService: ActuacionService,
@@ -519,6 +523,10 @@ export class CorreosJuridicosService {
             });
 
             const savedCorreo = await this.correoRepo.save(newCorreo);
+            // ── Trazabilidad: Registrar ENVIADO en timeline ──
+            await this.registrarAccion(savedCorreo.id, 'ENVIADO', `Correo enviado a ${dto.to}`, 'Sistema');
+            // ── Tracking: Inyectar pixel y links trackeados ──
+            await this.injectTrackingIntoEmail(savedCorreo, dto.to as string);
             this.logger.log(`Sent email saved to DB: ${savedCorreo.id} -> ${dto.to}`);
             return { success: true, correo: savedCorreo };
         } catch (dbError) {
@@ -569,6 +577,9 @@ export class CorreosJuridicosService {
             original.isReplied = true;
             await this.correoRepo.save(original);
             await this.registrarAccion(original.id, 'RESPONDIDO', `Respuesta enviada (${savedReply.id})`);
+            // ── Trazabilidad: Registrar ENVIADO en la respuesta ──
+            await this.registrarAccion(savedReply.id, 'ENVIADO', `Respuesta enviada a ${original.remitenteEmail}`, 'Sistema');
+            await this.injectTrackingIntoEmail(savedReply, original.remitenteEmail);
 
             this.logger.log(`Reply saved: ${savedReply.id} -> parent: ${original.id}`);
             return { success: true, correo: savedReply };
@@ -652,6 +663,9 @@ export class CorreosJuridicosService {
                 ? `Correo reenviado a ${to} (con ${additionalAttachments!.length} adjunto(s) adicional(es))`
                 : `Correo reenviado a ${to}`;
             await this.registrarAccion(original.id, 'REENVIADO', adjuntosDesc);
+            // ── Trazabilidad: Registrar ENVIADO en el reenvío ──
+            await this.registrarAccion(savedForward.id, 'ENVIADO', `Reenvío enviado a ${to}`, 'Sistema');
+            await this.injectTrackingIntoEmail(savedForward, to);
 
             this.logger.log(`Forward saved: ${savedForward.id} -> parent: ${original.id}`);
             return { success: true, correo: savedForward };
@@ -763,6 +777,15 @@ export class CorreosJuridicosService {
             this.logger.error('Could not cache attachment locally', saveError);
             // Non-blocking, return downloaded content anyway
         }
+
+        // ── Trazabilidad: Registrar DOCUMENTO_ABIERTO (tracking interno) ──
+        this.registrarAccion(
+            adjunto.correoId,
+            'DOCUMENTO_ABIERTO',
+            `Documento "${adjunto.nombre}" descargado/abierto desde la plataforma`,
+            'Usuario plataforma',
+            { adjuntoId: adjunto.id, nombreDocumento: adjunto.nombre }
+        ).catch(() => {});
 
         return attachment;
     }
@@ -1053,5 +1076,151 @@ export class CorreosJuridicosService {
 
         this.logger.log(`Reclassification complete. Processed: ${processed}, Changed: ${updated}, Unchanged: ${unchanged}`);
         return { processed, updated, unchanged };
+    }
+
+    // ===================================================================
+    //  TRACKING: Trazabilidad de apertura de correos y documentos
+    // ===================================================================
+
+    /**
+     * Inyecta pixel de tracking y convierte adjuntos a links con token en el HTML guardado.
+     * Se llama después de guardar un correo enviado/respondido/reenviado.
+     */
+    private async injectTrackingIntoEmail(correo: CorreoJuridico, destinatarioEmail: string): Promise<void> {
+        try {
+            const baseUrl = process.env.API_GATEWAY_URL || 'http://localhost:3000';
+            let htmlBody = correo.cuerpoHtml || correo.cuerpoTexto || '';
+
+            // 1. Crear token para pixel de apertura
+            const pixelToken = randomUUID();
+            const pixelTracking = this.trackingRepo.create({
+                correoId: correo.id,
+                token: pixelToken,
+                tipo: 'OPEN_PIXEL',
+                destinatarioEmail,
+            });
+            await this.trackingRepo.save(pixelTracking);
+
+            // Inyectar pixel invisible al final del HTML
+            const pixelUrl = `${baseUrl}/legal/api/v1/correos/track/open/${pixelToken}?_=${Date.now()}`;
+            const pixelHtml = `<img src="${pixelUrl}" width="1" height="1" style="display:none;opacity:0;height:0;width:0;" alt="" />`;
+
+            // 2. Crear tokens para cada adjunto del correo
+            const adjuntos = await this.adjuntoRepo.find({ where: { correoId: correo.id } });
+
+            if (adjuntos.length > 0) {
+                let linksHtml = '<br/><div style="margin-top:16px;padding:16px;border:1px solid #e2e8f0;border-radius:8px;background-color:#f8fafc;font-family:sans-serif;">';
+                linksHtml += '<h4 style="margin-top:0;color:#003DA5;font-size:14px;">📎 Documentos Adjuntos</h4>';
+                linksHtml += '<ul style="padding-left:18px;margin-bottom:0;">';
+
+                for (const adj of adjuntos) {
+                    const downloadToken = randomUUID();
+                    const dlTracking = this.trackingRepo.create({
+                        correoId: correo.id,
+                        adjuntoId: adj.id,
+                        token: downloadToken,
+                        tipo: 'DOWNLOAD_LINK',
+                        destinatarioEmail,
+                    });
+                    await this.trackingRepo.save(dlTracking);
+
+                    const downloadUrl = `${baseUrl}/legal/api/v1/correos/track/download/${downloadToken}`;
+                    const sizeMB = (adj.tamanio / (1024 * 1024)).toFixed(2);
+                    linksHtml += `<li style="margin-bottom:6px;"><a href="${downloadUrl}" target="_blank" style="color:#2563eb;text-decoration:none;font-weight:600;">${adj.nombre}</a> <span style="color:#64748b;font-size:12px;">(${sizeMB} MB)</span></li>`;
+                }
+
+                linksHtml += '</ul></div>';
+                htmlBody += linksHtml;
+            }
+
+            // Agregar pixel al final
+            htmlBody += pixelHtml;
+
+            // Guardar el HTML actualizado
+            correo.cuerpoHtml = htmlBody;
+            await this.correoRepo.save(correo);
+
+            this.logger.log(`📡 Tracking inyectado para correo ${correo.id}: pixel=${pixelToken}, adjuntos=${adjuntos.length}`);
+        } catch (error) {
+            this.logger.error(`Error inyectando tracking en correo ${correo.id}:`, error);
+            // Non-blocking
+        }
+    }
+
+    /**
+     * Procesa la apertura del pixel de tracking (llamado por GET /track/open/:token)
+     */
+    async processTrackingPixel(token: string, ip: string, userAgent: string): Promise<void> {
+        try {
+            const tracking = await this.trackingRepo.findOne({ where: { token, tipo: 'OPEN_PIXEL' } });
+            if (!tracking) return;
+
+            // Registrar solo la primera apertura como evento principal
+            const isFirstOpen = !tracking.abierto;
+
+            tracking.abierto = true;
+            tracking.fechaApertura = tracking.fechaApertura || new Date();
+            tracking.ipApertura = ip;
+            tracking.userAgent = userAgent;
+            await this.trackingRepo.save(tracking);
+
+            if (isFirstOpen) {
+                await this.registrarAccion(
+                    tracking.correoId,
+                    'CORREO_ABIERTO_EXTERNO',
+                    `El destinatario (${tracking.destinatarioEmail || 'externo'}) abrió el correo`,
+                    'Destinatario externo',
+                    { ip, userAgent: userAgent?.substring(0, 200), token }
+                );
+                this.logger.log(`📬 Tracking pixel activado para correo ${tracking.correoId} (IP: ${ip})`);
+            }
+        } catch (error) {
+            this.logger.error(`Error procesando tracking pixel ${token}:`, error);
+        }
+    }
+
+    /**
+     * Procesa la descarga trackeada de un documento (llamado por GET /track/download/:token)
+     * Retorna el archivo para que el controller lo sirva al usuario.
+     */
+    async processTrackingDownload(token: string, ip: string, userAgent: string): Promise<{
+        name: string;
+        contentType: string;
+        contentBytes: string;
+    } | null> {
+        try {
+            const tracking = await this.trackingRepo.findOne({ where: { token, tipo: 'DOWNLOAD_LINK' } });
+            if (!tracking || !tracking.adjuntoId) return null;
+
+            // Registrar apertura
+            const isFirstOpen = !tracking.abierto;
+            tracking.abierto = true;
+            tracking.fechaApertura = tracking.fechaApertura || new Date();
+            tracking.ipApertura = ip;
+            tracking.userAgent = userAgent;
+            await this.trackingRepo.save(tracking);
+
+            // Buscar el adjunto
+            const adjunto = await this.adjuntoRepo.findOne({ where: { id: tracking.adjuntoId } });
+            if (!adjunto) return null;
+
+            if (isFirstOpen) {
+                await this.registrarAccion(
+                    tracking.correoId,
+                    'DOCUMENTO_ABIERTO_EXTERNO',
+                    `El destinatario (${tracking.destinatarioEmail || 'externo'}) abrió el documento "${adjunto.nombre}"`,
+                    'Destinatario externo',
+                    { ip, adjuntoId: adjunto.id, nombreDocumento: adjunto.nombre, token }
+                );
+                this.logger.log(`📄 Tracking download activado para adjunto ${adjunto.nombre} (correo ${tracking.correoId})`);
+            }
+
+            // Descargar y servir el archivo
+            const attachment = await this.downloadAttachment(tracking.adjuntoId);
+            return attachment;
+        } catch (error) {
+            this.logger.error(`Error procesando tracking download ${token}:`, error);
+            return null;
+        }
     }
 }

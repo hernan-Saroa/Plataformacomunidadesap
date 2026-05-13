@@ -28,7 +28,7 @@
  * 12. Verificación de Títulos
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { apiClient } from '../../../services/api/apiClient';
 import { exportToCSV, exportToExcel, exportToPDF } from '../../utils/reportExport';
 import { motion, AnimatePresence } from 'motion/react';
@@ -677,6 +677,22 @@ function ReportCard({ report, onGenerate, onToggleFavorite, delay = 0 }: ReportC
 // COMPONENTE PRINCIPAL: REPORTS MODULE V2
 // ═══════════════════════════════════════════════════════════════
 
+// Mapa: módulo asignado / prefijo de permiso → categoría de reporte que desbloquea
+const PERMISSION_TO_CATEGORY: Record<string, string> = {
+  'gestion-legal': 'gestion-legal',
+  'control-interno': 'control-interno',
+  'usuarios': 'usuarios',
+  'estructura': 'estructura',
+  'programas': 'programas',
+  'roles': 'roles',
+  'auditoria': 'auditoria',
+  'aspirantes': 'aspirantes',
+  'empleo': 'empleo',
+  'certificados-laborales': 'certificados-lab',
+  'gestion-profesoral': 'profesoral',
+  'verificacion': 'verificacion',
+};
+
 export function ReportsModuleV2() {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('todos');
@@ -687,16 +703,87 @@ export function ReportsModuleV2() {
   const [customReports, setCustomReports] = useState<Report[]>([]);
   const [scheduledReports, setScheduledReports] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('reports');
+  // null = cargando, [] = sin restricción (acceso total)
+  const [allowedCategories, setAllowedCategories] = useState<string[] | null>(null);
 
   // Estados para reportes
   const [allReports, setAllReports] = useState<Report[]>([...REPORTES_PREDEFINIDOS, ...customReports]);
+
+  // Derivar categorías permitidas desde los datos del usuario compartidos por el shell
+  useEffect(() => {
+    const resolveFromUser = (user: any) => {
+      if (!user) {
+        setAllowedCategories([]); // sin datos → no restringir
+        return;
+      }
+
+      const perms: string[] = user.permissions ?? [];
+      const modules: string[] = user.modules ?? [];
+      const roles: string[] = (user.roles ?? []).map((r: any) =>
+        typeof r === 'string' ? r : r.code
+      );
+
+      // Super admins y usuarios con acceso total ven todas las categorías
+      const hasAll =
+        roles.some((r: string) => ['SUPER_ADMIN', 'ADMIN'].includes(r)) ||
+        modules.includes('all') ||
+        perms.some((p: string) => p.startsWith('reportes.'));
+
+      if (hasAll) {
+        setAllowedCategories([]);
+        return;
+      }
+
+      // Derivar categorías permitidas desde los módulos asignados y prefijos de permisos
+      const cats = new Set<string>();
+
+      // Desde módulos (más directo)
+      for (const mod of modules) {
+        const cat = PERMISSION_TO_CATEGORY[mod];
+        if (cat) cats.add(cat);
+      }
+
+      // También desde prefijos de permisos (más granular)
+      for (const perm of perms) {
+        const prefix = perm.split('.')[0].toLowerCase();
+        const cat = PERMISSION_TO_CATEGORY[prefix];
+        if (cat) cats.add(cat);
+      }
+
+      const catList = [...cats];
+      setAllowedCategories(catList);
+
+      // Si solo tiene acceso a una categoría, preseleccionarla automáticamente
+      if (catList.length === 1) {
+        setCategoryFilter(catList[0]);
+      }
+    };
+
+    // Leer del cache compartido que escribe el shell (window.__esap_auth_cache)
+    const cached = (window as any).__esap_auth_cache;
+    if (cached) {
+      resolveFromUser(cached);
+    } else {
+      // Si aún no está disponible, escuchar el evento que dispara el shell
+      const handler = (e: Event) => {
+        resolveFromUser((e as CustomEvent).detail?.user ?? null);
+      };
+      window.addEventListener('esap:auth-user-changed', handler, { once: true });
+      // Timeout de seguridad: si en 3s no llega el evento, no restringir
+      const timer = setTimeout(() => setAllowedCategories([]), 3000);
+      return () => {
+        window.removeEventListener('esap:auth-user-changed', handler);
+        clearTimeout(timer);
+      };
+    }
+  }, []);
 
   // Cargar estadísticas reales de Gestión Legal
   useEffect(() => {
     const fetchLegalStats = async () => {
       try {
         const response = await apiClient.get<any[]>('/legal/api/v1/reportes/stats');
-        const stats = response.data || response; // En caso de que axios devuelva data, y fetch no (apiClient lo unifica)
+        const stats = response.data || response;
         setAllReports(prev => prev.map(report => {
           if (report.categoria === 'gestion-legal') {
             const stat = (Array.isArray(stats) ? stats : []).find(s => s.id === report.id);
@@ -713,31 +800,27 @@ export function ReportsModuleV2() {
     fetchLegalStats();
   }, []);
 
-  // Categorías con contador (13 módulos principales + Gestión Legal)
-  const categories = [
-    { id: 'todos', label: 'Todas las Categorías', icon: Package },
-    { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-    { id: 'usuarios', label: 'Usuarios', icon: Users },
-    { id: 'estructura', label: 'Estructura', icon: Building2 },
-    { id: 'programas', label: 'Programas', icon: GraduationCap },
-    { id: 'roles', label: 'Roles', icon: Shield },
-    { id: 'auditoria', label: 'Auditoría', icon: Activity },
-    { id: 'aspirantes', label: 'Aspirantes', icon: Target },
-    { id: 'empleo', label: 'Empleo', icon: Briefcase },
-    { id: 'certificados-lab', label: 'Cert. Laborales', icon: FileCheck },
-    { id: 'profesoral', label: 'Profesoral', icon: BookOpen },
-    { id: 'control-interno', label: 'Control Interno', icon: Shield },
-    { id: 'verificacion', label: 'Verificación', icon: Award },
-    { id: 'gestion-legal', label: 'Gestión Legal', icon: Layers },
-  ];
+  // Filtrar las categorías visibles según permisos
+  const categories = useMemo(() => {
+    // null = aún cargando, mostrar todas por mientras
+    if (!allowedCategories || allowedCategories.length === 0) return ALL_CATEGORIES;
+    // Solo mostrar "todos" + las categorías que el usuario puede ver
+    return ALL_CATEGORIES.filter(
+      (c) => c.id === 'todos' || allowedCategories.includes(c.id)
+    );
+  }, [allowedCategories]);
 
-  // Filtrar reportes
+  // Filtrar reportes según permisos + búsqueda + categoría seleccionada
   const filteredReports = allReports.filter((report) => {
     const matchesSearch =
       report.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
       report.descripcion.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === 'todos' || report.categoria === categoryFilter;
-    return matchesSearch && matchesCategory;
+    // Restricción por permisos: si hay categorías permitidas, ocultar las demás
+    const matchesPermission =
+      !allowedCategories || allowedCategories.length === 0 ||
+      allowedCategories.includes(report.categoria);
+    return matchesSearch && matchesCategory && matchesPermission;
   });
 
   // Handlers

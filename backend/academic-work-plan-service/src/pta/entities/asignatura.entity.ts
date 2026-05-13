@@ -31,6 +31,12 @@ export class AsignaturaEntity {
   @Column({ type: 'text', nullable: true })
   semestre: string | null;
 
+  @Column({ type: 'varchar', nullable: true })
+  modalidad: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  tipo: string | null;
+
   @CreateDateColumn({ default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 

@@ -19,6 +19,7 @@ import {
 } from './technical-bonus-assignment.entity';
 import {
   TechnicalBonusTemplate,
+  DEFAULT_DYNAMIC_TECHNICAL_BONUS_TEMPLATE,
   DEFAULT_TECHNICAL_BONUS_TEMPLATES,
   type TechnicalBonusTemplateCategory,
 } from './technical-bonus-template.entity';
@@ -53,6 +54,7 @@ type SearchTechnicalBonusCandidate = {
   requestId: string;
   fullName: string;
   idNumber: string;
+  status: string;
 };
 
 type UpsertTechnicalBonusPayload = {
@@ -79,6 +81,20 @@ type BulkTechnicalBonusRowPayload = {
 type BulkTechnicalBonusPayload = {
   category: string;
   rows: BulkTechnicalBonusRowPayload[];
+  updatedBy?: string;
+};
+
+type TechnicalBonusCategoryPayload = {
+  code?: string;
+  category?: string;
+  label?: string;
+  description?: string;
+  templateText?: string;
+  template_text?: string;
+  isActive?: boolean;
+  is_active?: boolean;
+  displayOrder?: number;
+  display_order?: number;
   updatedBy?: string;
 };
 
@@ -571,22 +587,171 @@ export class CertificatesService {
     return result;
   }
 
-  private parseTechnicalBonusCategory(
+  private normalizeTechnicalBonusCategoryCode(
     value?: string | null,
   ): TechnicalBonusCategory {
-    const normalized = this.normalizeTemplateText(value || '').replace(
-      /\s+/g,
-      '',
-    );
-    if (normalized === 'directivos' || normalized === 'directivo') {
-      return 'DIRECTIVOS';
+    const normalized = this.normalizeTemplateText(value || '')
+      .replace(/\s+/g, '_')
+      .toUpperCase();
+
+    if (normalized === 'DIRECTIVO') return 'DIRECTIVOS';
+    if (normalized === 'COORDINADOR') return 'COORDINADORES';
+
+    if (!normalized || normalized.length < 2 || normalized.length > 80) {
+      throw new BadRequestException(
+        'El codigo de la prima debe tener entre 2 y 80 caracteres.',
+      );
     }
-    if (normalized === 'coordinadores' || normalized === 'coordinador') {
-      return 'COORDINADORES';
+
+    if (!/^[A-Z0-9_]+$/.test(normalized)) {
+      throw new BadRequestException(
+        'El codigo de la prima solo puede usar letras, numeros y guion bajo.',
+      );
     }
-    throw new BadRequestException(
-      'Categoria invalida. Usa Directivos o Coordinadores.',
+
+    return normalized;
+  }
+
+  private getTechnicalBonusDefaultTemplate(category: string): string {
+    return (
+      DEFAULT_TECHNICAL_BONUS_TEMPLATES[
+        category as keyof typeof DEFAULT_TECHNICAL_BONUS_TEMPLATES
+      ] || DEFAULT_DYNAMIC_TECHNICAL_BONUS_TEMPLATE
     );
+  }
+
+  private getTechnicalBonusDefaultLabel(category: string): string {
+    if (category === 'DIRECTIVOS') return 'Directivos';
+    if (category === 'COORDINADORES') return 'Coordinadores';
+    return category
+      .toLowerCase()
+      .split('_')
+      .filter(Boolean)
+      .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+      .join(' ');
+  }
+
+  private getTechnicalBonusDefaultDescription(category: string): string {
+    if (category === 'DIRECTIVOS') {
+      return 'Gestion de porcentajes para directivos.';
+    }
+    if (category === 'COORDINADORES') {
+      return 'Gestion de porcentajes para coordinadores.';
+    }
+    return 'Gestion de porcentajes para esta prima.';
+  }
+
+  private mapTechnicalBonusCategory(item: TechnicalBonusTemplate) {
+    const category = item.category;
+    return {
+      id: item.id,
+      category,
+      label: item.label || this.getTechnicalBonusDefaultLabel(category),
+      description:
+        item.description || this.getTechnicalBonusDefaultDescription(category),
+      template_text:
+        item.template_text || this.getTechnicalBonusDefaultTemplate(category),
+      default_template_text: this.getTechnicalBonusDefaultTemplate(category),
+      display_order: Number(item.display_order || 0),
+      is_system: Boolean(item.is_system),
+      is_active: item.is_active !== false,
+      created_at: item.created_at ?? null,
+      updated_at: item.updated_at ?? null,
+      updated_by: item.updated_by ?? null,
+    };
+  }
+
+  private async ensureDefaultTechnicalBonusCategories(): Promise<void> {
+    const defaults: Array<{
+      category: 'DIRECTIVOS' | 'COORDINADORES';
+      label: string;
+      description: string;
+      displayOrder: number;
+    }> = [
+      {
+        category: 'DIRECTIVOS',
+        label: 'Directivos',
+        description: 'Gestion de porcentajes para directivos.',
+        displayOrder: 10,
+      },
+      {
+        category: 'COORDINADORES',
+        label: 'Coordinadores',
+        description: 'Gestion de porcentajes para coordinadores.',
+        displayOrder: 20,
+      },
+    ];
+
+    for (const defaultItem of defaults) {
+      const existing = await this.technicalBonusTemplateRepo.findOne({
+        where: { category: defaultItem.category },
+      });
+
+      if (!existing) {
+        await this.technicalBonusTemplateRepo.save(
+          this.technicalBonusTemplateRepo.create({
+            category: defaultItem.category,
+            label: defaultItem.label,
+            description: defaultItem.description,
+            template_text:
+              DEFAULT_TECHNICAL_BONUS_TEMPLATES[defaultItem.category],
+            display_order: defaultItem.displayOrder,
+            is_system: true,
+            is_active: true,
+          }),
+        );
+        continue;
+      }
+
+      let changed = false;
+      if (!existing.label) {
+        existing.label = defaultItem.label;
+        changed = true;
+      }
+      if (!existing.description) {
+        existing.description = defaultItem.description;
+        changed = true;
+      }
+      if (!existing.display_order) {
+        existing.display_order = defaultItem.displayOrder;
+        changed = true;
+      }
+      if (!existing.is_system) {
+        existing.is_system = true;
+        changed = true;
+      }
+      if (existing.is_active === false) {
+        existing.is_active = true;
+        changed = true;
+      }
+      if (changed) {
+        await this.technicalBonusTemplateRepo.save(existing);
+      }
+    }
+  }
+
+  private async getTechnicalBonusCategoryRecord(
+    value?: string | null,
+    options: { activeOnly?: boolean } = {},
+  ): Promise<TechnicalBonusTemplate> {
+    const category = this.normalizeTechnicalBonusCategoryCode(value);
+    await this.ensureDefaultTechnicalBonusCategories();
+
+    const record = await this.technicalBonusTemplateRepo.findOne({
+      where: { category },
+    });
+
+    if (!record) {
+      throw new BadRequestException(
+        'La prima seleccionada no existe. Creala primero en la configuracion de prima tecnica y/o coordinacion.',
+      );
+    }
+
+    if (options.activeOnly !== false && record.is_active === false) {
+      throw new BadRequestException('La prima seleccionada esta inactiva.');
+    }
+
+    return record;
   }
 
   private mapTechnicalBonusAssignment(item: TechnicalBonusAssignment) {
@@ -1556,6 +1721,49 @@ export class CertificatesService {
     return { to: destinatario };
   }
 
+  async generateCertificadoPdfBufferById(
+    id: string,
+    options: { publicBaseUrl?: string } = {},
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const certificate = await this.certificateRepo.findOne({
+      where: { id },
+      relations: ['request'],
+    });
+
+    if (!certificate) {
+      throw new NotFoundException(`Certificado con ID ${id} no encontrado`);
+    }
+
+    await this.hydrateCertificatesRequestContext([certificate]);
+    await this.ensureTemplateSnapshotForCertificate(certificate);
+
+    const includeSalary = this.normalizeBoolean(
+      (certificate as Certificate & { include_salary?: boolean | null }).include_salary,
+      true,
+    );
+    const includeTechnicalBonus = includeSalary
+      ? this.normalizeBoolean(
+          (certificate as Certificate & { include_technical_bonus?: boolean | null }).include_technical_bonus,
+          false,
+        )
+      : false;
+
+    let technicalBonusTemplate: string | undefined;
+    if (includeTechnicalBonus) {
+      const snapshotTemplate = (certificate as Certificate & { template_snapshot?: any }).template_snapshot?.technicalBonusTemplate;
+      if (snapshotTemplate) {
+        technicalBonusTemplate = snapshotTemplate;
+      }
+    }
+
+    return this.laborPdfService.generateCertificatePdf(certificate, {
+      includeSalary,
+      includeTechnicalBonus,
+      technicalBonusTemplate,
+      publicBaseUrl: options.publicBaseUrl,
+    });
+  }
+
   async reenviarCertificadoLaboral(
     id: string,
     options: SendLaborCertificateOptions = {},
@@ -1700,6 +1908,175 @@ export class CertificatesService {
   // TECHNICAL BONUS (PRIMA TECNICA)
   // ============================================
 
+  async listTechnicalBonusCategories(options: { includeInactive?: boolean } = {}) {
+    await this.ensureDefaultTechnicalBonusCategories();
+    const records = await this.technicalBonusTemplateRepo.find({
+      order: {
+        display_order: 'ASC',
+        label: 'ASC',
+        category: 'ASC',
+      },
+    });
+
+    return records
+      .filter((item) => options.includeInactive || item.is_active !== false)
+      .map((item) => this.mapTechnicalBonusCategory(item));
+  }
+
+  async createTechnicalBonusCategory(payload: TechnicalBonusCategoryPayload) {
+    await this.ensureDefaultTechnicalBonusCategories();
+
+    const label = String(payload.label || '').replace(/\s+/g, ' ').trim();
+    if (!label || label.length < 3 || label.length > 120) {
+      throw new BadRequestException(
+        'El nombre de la prima debe tener entre 3 y 120 caracteres.',
+      );
+    }
+
+    const category = this.normalizeTechnicalBonusCategoryCode(
+      payload.code || payload.category || label,
+    );
+
+    const existing = await this.technicalBonusTemplateRepo.findOne({
+      where: { category },
+    });
+    if (existing) {
+      throw new BadRequestException('Ya existe una prima con ese nombre o codigo.');
+    }
+
+    const templateText = String(
+      payload.templateText ||
+        payload.template_text ||
+        DEFAULT_DYNAMIC_TECHNICAL_BONUS_TEMPLATE,
+    ).trim();
+    if (!templateText) {
+      throw new BadRequestException('El texto de la plantilla no puede estar vacio.');
+    }
+
+    const description =
+      String(payload.description || '').replace(/\s+/g, ' ').trim() || null;
+    const displayOrderRaw = Number(
+      payload.displayOrder ?? payload.display_order ?? 100,
+    );
+    const displayOrder = Number.isFinite(displayOrderRaw)
+      ? Math.trunc(displayOrderRaw)
+      : 100;
+    const updatedBy = String(payload.updatedBy || '').trim() || null;
+
+    const saved = await this.technicalBonusTemplateRepo.save(
+      this.technicalBonusTemplateRepo.create({
+        category,
+        label,
+        description,
+        template_text: templateText,
+        display_order: displayOrder,
+        is_system: false,
+        is_active: true,
+        updated_by: updatedBy,
+      }),
+    );
+
+    return this.mapTechnicalBonusCategory(saved);
+  }
+
+  async updateTechnicalBonusCategory(
+    categoryRaw: string,
+    payload: TechnicalBonusCategoryPayload,
+  ) {
+    const record = await this.getTechnicalBonusCategoryRecord(categoryRaw, {
+      activeOnly: false,
+    });
+
+    const label = String(payload.label ?? '').replace(/\s+/g, ' ').trim();
+    if (Object.prototype.hasOwnProperty.call(payload, 'label')) {
+      if (!label || label.length < 3 || label.length > 120) {
+        throw new BadRequestException(
+          'El nombre de la prima debe tener entre 3 y 120 caracteres.',
+        );
+      }
+      record.label = label;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, 'description')) {
+      record.description =
+        String(payload.description || '').replace(/\s+/g, ' ').trim() || null;
+    }
+
+    const templateText = String(
+      payload.templateText ?? payload.template_text ?? '',
+    ).trim();
+    if (
+      Object.prototype.hasOwnProperty.call(payload, 'templateText') ||
+      Object.prototype.hasOwnProperty.call(payload, 'template_text')
+    ) {
+      if (!templateText) {
+        throw new BadRequestException(
+          'El texto de la plantilla no puede estar vacio.',
+        );
+      }
+      record.template_text = templateText;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(payload, 'displayOrder') ||
+      Object.prototype.hasOwnProperty.call(payload, 'display_order')
+    ) {
+      const displayOrderRaw = Number(
+        payload.displayOrder ?? payload.display_order,
+      );
+      if (!Number.isFinite(displayOrderRaw)) {
+        throw new BadRequestException('El orden de visualizacion no es valido.');
+      }
+      record.display_order = Math.trunc(displayOrderRaw);
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(payload, 'isActive') ||
+      Object.prototype.hasOwnProperty.call(payload, 'is_active')
+    ) {
+      const nextActive = this.normalizeBoolean(
+        payload.isActive ?? payload.is_active,
+        record.is_active !== false,
+      );
+      if (record.is_system && !nextActive) {
+        throw new BadRequestException(
+          'Las primas base no se pueden desactivar.',
+        );
+      }
+      record.is_active = nextActive;
+    }
+
+    record.updated_by = String(payload.updatedBy || '').trim() || null;
+
+    const saved = await this.technicalBonusTemplateRepo.save(record);
+    return this.mapTechnicalBonusCategory(saved);
+  }
+
+  async deleteTechnicalBonusCategory(categoryRaw: string) {
+    const record = await this.getTechnicalBonusCategoryRecord(categoryRaw, {
+      activeOnly: false,
+    });
+
+    if (record.is_system) {
+      throw new BadRequestException('Las primas base no se pueden eliminar.');
+    }
+
+    const assignments = await this.technicalBonusRepo.count({
+      where: { category: record.category },
+    });
+    if (assignments > 0) {
+      throw new BadRequestException(
+        'No se puede eliminar una prima con usuarios asignados.',
+      );
+    }
+
+    await this.technicalBonusTemplateRepo.remove(record);
+    return {
+      category: record.category,
+      deleted: true as const,
+    };
+  }
+
   async searchTechnicalBonusCandidates(
     query: string,
     limit = 10,
@@ -1753,11 +2130,15 @@ export class CertificatesService {
         requestId: request.id,
         fullName: request.full_name,
         idNumber: this.sanitizeIdNumber(request.id_number) || request.id_number,
+        status: String(request.status || '').trim(),
       }));
   }
 
   async listTechnicalBonusAssignments(categoryRaw: string) {
-    const category = this.parseTechnicalBonusCategory(categoryRaw);
+    const categoryRecord = await this.getTechnicalBonusCategoryRecord(
+      categoryRaw,
+    );
+    const category = categoryRecord.category;
     const assignments = await this.technicalBonusRepo.find({
       where: { category },
       order: {
@@ -1770,7 +2151,10 @@ export class CertificatesService {
   }
 
   async upsertTechnicalBonusAssignment(payload: UpsertTechnicalBonusPayload) {
-    const category = this.parseTechnicalBonusCategory(payload.category);
+    const categoryRecord = await this.getTechnicalBonusCategoryRecord(
+      payload.category,
+    );
+    const category = categoryRecord.category;
     const idNumber = this.sanitizeIdNumber(payload.idNumber);
     const percentageRaw = Number(payload.percentage);
 
@@ -1798,10 +2182,12 @@ export class CertificatesService {
       existingGlobalAssignment &&
       existingGlobalAssignment.category !== category
     ) {
-      const categoryLabel =
-        existingGlobalAssignment.category === 'DIRECTIVOS'
-          ? 'Directivos'
-          : 'Coordinadores';
+      const existingCategory = await this.technicalBonusTemplateRepo.findOne({
+        where: { category: existingGlobalAssignment.category },
+      });
+      const categoryLabel = existingCategory
+        ? this.mapTechnicalBonusCategory(existingCategory).label
+        : this.getTechnicalBonusDefaultLabel(existingGlobalAssignment.category);
       throw new BadRequestException(
         `La persona ya tiene Prima Tecnica registrada en ${categoryLabel}.`,
       );
@@ -1836,6 +2222,12 @@ export class CertificatesService {
     if (!request) {
       throw new NotFoundException(
         'No se encontro la persona en la base de datos de solicitudes laborales (usuarios con contrato laboral).',
+      );
+    }
+
+    if (String(request.status || '').trim() !== 'A') {
+      throw new BadRequestException(
+        'Este usuario no cuenta con contratos activos. No es posible asignarle prima técnica y/o coordinación.',
       );
     }
 
@@ -1881,7 +2273,10 @@ export class CertificatesService {
   async bulkUpsertTechnicalBonusAssignments(
     payload: BulkTechnicalBonusPayload,
   ) {
-    const category = this.parseTechnicalBonusCategory(payload.category);
+    const categoryRecord = await this.getTechnicalBonusCategoryRecord(
+      payload.category,
+    );
+    const category = categoryRecord.category;
     const rows = Array.isArray(payload.rows) ? payload.rows : [];
     const updatedBy = String(payload.updatedBy || '').trim() || undefined;
 
@@ -2084,29 +2479,24 @@ export class CertificatesService {
   // TECHNICAL BONUS TEMPLATES
   // ============================================
 
-  private parseTechnicalBonusTemplateCategory(
-    raw: string,
-  ): TechnicalBonusTemplateCategory {
-    const normalized = String(raw || '').trim().toUpperCase();
-    if (normalized === 'DIRECTIVOS' || normalized === 'COORDINADORES') {
-      return normalized as TechnicalBonusTemplateCategory;
-    }
-    throw new BadRequestException(
-      'Categoria invalida. Debe ser DIRECTIVOS o COORDINADORES.',
-    );
-  }
-
   async getTechnicalBonusTemplate(categoryRaw: string) {
-    const category = this.parseTechnicalBonusTemplateCategory(categoryRaw);
-    const record = await this.technicalBonusTemplateRepo.findOne({
-      where: { category },
+    const record = await this.getTechnicalBonusCategoryRecord(categoryRaw, {
+      activeOnly: false,
     });
-    const templateText = record?.template_text ?? DEFAULT_TECHNICAL_BONUS_TEMPLATES[category];
+    const category = record.category as TechnicalBonusTemplateCategory;
+    const templateText =
+      record.template_text || this.getTechnicalBonusDefaultTemplate(category);
     return {
       category,
+      label: record.label || this.getTechnicalBonusDefaultLabel(category),
+      description:
+        record.description || this.getTechnicalBonusDefaultDescription(category),
       template_text: templateText,
-      updated_at: record?.updated_at ?? null,
-      updated_by: record?.updated_by ?? null,
+      default_template_text: this.getTechnicalBonusDefaultTemplate(category),
+      is_system: Boolean(record.is_system),
+      is_active: record.is_active !== false,
+      updated_at: record.updated_at ?? null,
+      updated_by: record.updated_by ?? null,
     };
   }
 
@@ -2115,31 +2505,29 @@ export class CertificatesService {
     templateText: string,
     updatedBy?: string,
   ) {
-    const category = this.parseTechnicalBonusTemplateCategory(categoryRaw);
+    const record = await this.getTechnicalBonusCategoryRecord(categoryRaw, {
+      activeOnly: false,
+    });
+    const category = record.category as TechnicalBonusTemplateCategory;
     const raw = String(templateText || '').trim();
     if (!raw) {
       throw new BadRequestException('El texto de la plantilla no puede estar vacío.');
     }
 
-    let record = await this.technicalBonusTemplateRepo.findOne({
-      where: { category },
-    });
-
-    if (!record) {
-      record = this.technicalBonusTemplateRepo.create({
-        category,
-        template_text: raw,
-        updated_by: updatedBy || null,
-      });
-    } else {
-      record.template_text = raw;
-      record.updated_by = updatedBy || null;
-    }
+    record.template_text = raw;
+    record.updated_by = updatedBy || null;
 
     const saved = await this.technicalBonusTemplateRepo.save(record);
     return {
       category: saved.category,
+      label: saved.label || this.getTechnicalBonusDefaultLabel(saved.category),
+      description:
+        saved.description ||
+        this.getTechnicalBonusDefaultDescription(saved.category),
       template_text: saved.template_text,
+      default_template_text: this.getTechnicalBonusDefaultTemplate(saved.category),
+      is_system: Boolean(saved.is_system),
+      is_active: saved.is_active !== false,
       updated_at: saved.updated_at,
       updated_by: saved.updated_by,
     };
@@ -2450,6 +2838,8 @@ export class CertificatesService {
         templateSnapshot = {
           ...(templateSnapshot || {}),
           technicalBonusTemplate: tplRecord.template_text,
+          technicalBonusCategory: tplRecord.category,
+          technicalBonusCategoryLabel: tplRecord.label,
         };
       } catch {
         // Si falla, el PDF service usa el texto hardcoded como fallback

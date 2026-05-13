@@ -22,15 +22,19 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { certificadosService } from '../../services/api/certificados.service';
+import {
+  certificadosService,
+  type PrimaTecnicaCategoriaConfig,
+} from '../../services/api/certificados.service';
 import { PaginationPremium } from '../shared/PaginationPremium';
 
-type PrimaTecnicaCategoria = 'DIRECTIVOS' | 'COORDINADORES';
+type PrimaTecnicaCategoria = string;
 
 type PrimaTecnicaCandidato = {
   requestId: string;
   fullName: string;
   idNumber: string;
+  status?: string;
 };
 
 type PrimaTecnicaRegistro = {
@@ -110,7 +114,7 @@ interface PrimaTecnicaModalProps {
   onClose: () => void;
 }
 
-const CATEGORY_META: Record<
+const OLD_CATEGORY_META_DISABLED: Record<
   PrimaTecnicaCategoria,
   { label: string; description: string; icon: typeof Building2 }
 > = {
@@ -126,10 +130,66 @@ const CATEGORY_META: Record<
   },
 };
 
-const INITIAL_CATEGORY_STATE: EstadoCategoria = {
-  DIRECTIVOS: { selected: null, percentage: '' },
-  COORDINADORES: { selected: null, percentage: '' },
+const FALLBACK_CATEGORIES: PrimaTecnicaCategoriaConfig[] = [
+  {
+    id: 'DIRECTIVOS',
+    category: 'DIRECTIVOS',
+    label: 'Directivos',
+    description: 'Gestion de porcentajes para directivos.',
+    template_text:
+      'Percibe una prima técnica en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+    default_template_text:
+      'Percibe una prima técnica en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+    display_order: 10,
+    is_system: true,
+    is_active: true,
+  },
+  {
+    id: 'COORDINADORES',
+    category: 'COORDINADORES',
+    label: 'Coordinadores',
+    description: 'Gestion de porcentajes para coordinadores.',
+    template_text:
+      'Percibe una prima de coordinación en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+    default_template_text:
+      'Percibe una prima de coordinación en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
+    display_order: 20,
+    is_system: true,
+    is_active: true,
+  },
+];
+
+const getCategoryIcon = (category: PrimaTecnicaCategoria) => {
+  if (category === 'DIRECTIVOS') return Building2;
+  if (category === 'COORDINADORES') return Users;
+  return FileText;
 };
+
+const formatCategoryLabel = (category: PrimaTecnicaCategoria) =>
+  String(category || '')
+    .toLowerCase()
+    .split('_')
+    .filter(Boolean)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ') || 'Prima';
+
+const buildCategoryState = (
+  categories: PrimaTecnicaCategoriaConfig[],
+  previous: EstadoCategoria = {},
+): EstadoCategoria =>
+  categories.reduce<EstadoCategoria>((acc, item) => {
+    acc[item.category] = previous[item.category] || { selected: null, percentage: '' };
+    return acc;
+  }, {});
+
+const buildCategoryRecordMap = <T,>(
+  categories: PrimaTecnicaCategoriaConfig[],
+  fallback: T,
+): Record<PrimaTecnicaCategoria, T> =>
+  categories.reduce<Record<PrimaTecnicaCategoria, T>>((acc, item) => {
+    acc[item.category] = fallback;
+    return acc;
+  }, {});
 
 const normalizeIdNumber = (value?: string | null) => {
   const raw = String(value || '').trim();
@@ -218,6 +278,8 @@ const DEFAULT_BONUS_TEMPLATES: Record<PrimaTecnicaCategoria, string> = {
   DIRECTIVOS: 'Percibe una prima técnica en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
   COORDINADORES: 'Percibe una prima de coordinación en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.',
 };
+const DEFAULT_DYNAMIC_BONUS_TEMPLATE =
+  'Percibe una prima en un porcentaje igual al ({porcentaje}%) sobre la asignación básica mensual de {valor_letras} (${valor_numerico}) pesos m/cte.';
 const BULK_PREVIEW_ITEMS_LIMIT = 20;
 const BULK_NAME_ALLOWED_REGEX = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s'.-]+$/;
 const BULK_ID_NUMBER_REGEX = /^\d+$/;
@@ -228,12 +290,12 @@ const categoryContentMotion = {
   animate: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.22, ease: 'easeOut' },
+    transition: { duration: 0.22, ease: 'easeOut' as const },
   },
   exit: {
     opacity: 0,
     y: -10,
-    transition: { duration: 0.16, ease: 'easeIn' },
+    transition: { duration: 0.16, ease: 'easeIn' as const },
   },
 };
 
@@ -242,7 +304,7 @@ const findExistingRecordByIdNumber = (
   idNumber: string,
 ): PrimaTecnicaRegistro | null => {
   if (!idNumber) return null;
-  const categories: PrimaTecnicaCategoria[] = ['DIRECTIVOS', 'COORDINADORES'];
+  const categories = Object.keys(recordsByCategory);
   for (const category of categories) {
     const match = (recordsByCategory[category] || []).find(
       (item) => normalizeIdNumber(item.id_number) === idNumber,
@@ -264,6 +326,9 @@ const formatBulkServerMessage = (message?: string) => {
 
 export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
   const [mounted, setMounted] = React.useState(false);
+  const [categories, setCategories] =
+    React.useState<PrimaTecnicaCategoriaConfig[]>(FALLBACK_CATEGORIES);
+  const [isLoadingCategories, setIsLoadingCategories] = React.useState(false);
   const [activeCategory, setActiveCategory] =
     React.useState<PrimaTecnicaCategoria>('DIRECTIVOS');
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -275,19 +340,13 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
   const [isLoadingRecords, setIsLoadingRecords] = React.useState(false);
   const [recordsByCategory, setRecordsByCategory] = React.useState<
     Record<PrimaTecnicaCategoria, PrimaTecnicaRegistro[]>
-  >({
-    DIRECTIVOS: [],
-    COORDINADORES: [],
-  });
+  >(buildCategoryRecordMap(FALLBACK_CATEGORIES, [] as PrimaTecnicaRegistro[]));
   const [searchPage, setSearchPage] = React.useState(1);
   const [recordsPageByCategory, setRecordsPageByCategory] = React.useState<
     Record<PrimaTecnicaCategoria, number>
-  >({
-    DIRECTIVOS: 1,
-    COORDINADORES: 1,
-  });
+  >(buildCategoryRecordMap(FALLBACK_CATEGORIES, 1));
   const [categoryState, setCategoryState] =
-    React.useState<EstadoCategoria>(INITIAL_CATEGORY_STATE);
+    React.useState<EstadoCategoria>(buildCategoryState(FALLBACK_CATEGORIES));
   const [lastSavedRecordId, setLastSavedRecordId] = React.useState<string | null>(null);
   const [isRecentSavePulse, setIsRecentSavePulse] = React.useState(false);
   const [editingRecordState, setEditingRecordState] = React.useState<{
@@ -304,9 +363,16 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
   const [bulkRows, setBulkRows] = React.useState<PrimaTecnicaBulkRow[]>([]);
   const [bulkParseError, setBulkParseError] = React.useState<string | null>(null);
   const [bulkResult, setBulkResult] = React.useState<PrimaTecnicaBulkResult | null>(null);
+  const [isCreateCategoryOpen, setIsCreateCategoryOpen] = React.useState(false);
+  const [isCreatingCategory, setIsCreatingCategory] = React.useState(false);
+  const [newCategoryDraft, setNewCategoryDraft] = React.useState({
+    label: '',
+    description: '',
+    templateText: DEFAULT_DYNAMIC_BONUS_TEMPLATE,
+  });
   const [templateTextByCategory, setTemplateTextByCategory] = React.useState<
     Record<PrimaTecnicaCategoria, string>
-  >({ DIRECTIVOS: '', COORDINADORES: '' });
+  >(buildCategoryRecordMap(FALLBACK_CATEGORIES, ''));
   const [isEditingTemplate, setIsEditingTemplate] = React.useState(false);
   const [templateDraft, setTemplateDraft] = React.useState('');
   const [isSavingTemplate, setIsSavingTemplate] = React.useState(false);
@@ -330,7 +396,60 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     };
   }, []);
 
-  const fetchRecords = React.useCallback(async (category?: PrimaTecnicaCategoria) => {
+  const fetchCategories = React.useCallback(async () => {
+    if (!isOpen) return;
+    setIsLoadingCategories(true);
+
+    try {
+      const response = await certificadosService.laborales.listarCategoriasPrimaTecnica();
+      const items = Array.isArray(response) && response.length ? response : FALLBACK_CATEGORIES;
+      const activeItems = items.filter((item) => item.is_active !== false);
+      const nextCategories = activeItems.length ? activeItems : FALLBACK_CATEGORIES;
+
+      setCategories(nextCategories);
+      setCategoryState((prev) => buildCategoryState(nextCategories, prev));
+      setRecordsByCategory((prev) => {
+        const next = buildCategoryRecordMap<PrimaTecnicaRegistro[]>(nextCategories, []);
+        for (const category of Object.keys(next)) {
+          next[category] = prev[category] || [];
+        }
+        return next;
+      });
+      setRecordsPageByCategory((prev) => {
+        const next = buildCategoryRecordMap<number>(nextCategories, 1);
+        for (const category of Object.keys(next)) {
+          next[category] = prev[category] || 1;
+        }
+        return next;
+      });
+      setTemplateTextByCategory((prev) => {
+        const next = buildCategoryRecordMap<string>(nextCategories, '');
+        for (const category of Object.keys(next)) {
+          const categoryConfig = nextCategories.find((item) => item.category === category);
+          next[category] = prev[category] || categoryConfig?.template_text || '';
+        }
+        return next;
+      });
+      setActiveCategory((prev) =>
+        nextCategories.some((item) => item.category === prev)
+          ? prev
+          : nextCategories[0]?.category || 'DIRECTIVOS',
+      );
+      return nextCategories;
+    } catch (error: any) {
+      const message = String(error?.message || 'No se pudo cargar el catalogo de primas.');
+      toast.error(message);
+      setCategories(FALLBACK_CATEGORIES);
+      return FALLBACK_CATEGORIES;
+    } finally {
+      setIsLoadingCategories(false);
+    }
+  }, [isOpen]);
+
+  const fetchRecords = React.useCallback(async (
+    category?: PrimaTecnicaCategoria,
+    categoriesOverride?: PrimaTecnicaCategoriaConfig[],
+  ) => {
     if (!isOpen) return;
     setIsLoadingRecords(true);
 
@@ -344,15 +463,25 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
         return;
       }
 
-      const [directivos, coordinadores] = await Promise.all([
-        certificadosService.laborales.listarPrimaTecnica('DIRECTIVOS'),
-        certificadosService.laborales.listarPrimaTecnica('COORDINADORES'),
-      ]);
+      const categoriesToLoad = categoriesOverride?.length
+        ? categoriesOverride
+        : FALLBACK_CATEGORIES;
+      const entries = await Promise.all(
+        categoriesToLoad.map(async (item) => {
+          const records = await certificadosService.laborales.listarPrimaTecnica(item.category);
+          return [item.category, Array.isArray(records) ? records : []] as const;
+        }),
+      );
 
-      setRecordsByCategory({
-        DIRECTIVOS: Array.isArray(directivos) ? directivos : [],
-        COORDINADORES: Array.isArray(coordinadores) ? coordinadores : [],
-      });
+      setRecordsByCategory(
+        entries.reduce<Record<PrimaTecnicaCategoria, PrimaTecnicaRegistro[]>>(
+          (acc, [categoryKey, records]) => {
+            acc[categoryKey] = records;
+            return acc;
+          },
+          {},
+        ),
+      );
     } catch (error: any) {
       const message = String(error?.message || 'No se pudo cargar la información de prima técnica y/o coordinación.');
       toast.error(message);
@@ -383,7 +512,8 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       setSearchError(null);
       setSaveError(null);
       setIsSaving(false);
-      setCategoryState(INITIAL_CATEGORY_STATE);
+      setCategories(FALLBACK_CATEGORIES);
+      setCategoryState(buildCategoryState(FALLBACK_CATEGORIES));
       setSearchPage(1);
       setLastSavedRecordId(null);
       setIsRecentSavePulse(false);
@@ -398,19 +528,28 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       setBulkRows([]);
       setBulkParseError(null);
       setBulkResult(null);
-      setRecordsPageByCategory({
-        DIRECTIVOS: 1,
-        COORDINADORES: 1,
+      setIsCreateCategoryOpen(false);
+      setIsCreatingCategory(false);
+      setNewCategoryDraft({
+        label: '',
+        description: '',
+        templateText: DEFAULT_DYNAMIC_BONUS_TEMPLATE,
       });
+      setRecordsPageByCategory(buildCategoryRecordMap(FALLBACK_CATEGORIES, 1));
       setActiveCategory('DIRECTIVOS');
-      setTemplateTextByCategory({ DIRECTIVOS: '', COORDINADORES: '' });
+      setTemplateTextByCategory(buildCategoryRecordMap(FALLBACK_CATEGORIES, ''));
       setIsEditingTemplate(false);
       setTemplateDraft('');
       return;
     }
 
-    void fetchRecords();
-  }, [isOpen, fetchRecords]);
+    void (async () => {
+      const loadedCategories = await fetchCategories();
+      if (loadedCategories?.length) {
+        await fetchRecords(undefined, loadedCategories);
+      }
+    })();
+  }, [isOpen, fetchCategories, fetchRecords]);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -461,16 +600,41 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     };
   }, [searchQuery, isOpen]);
 
-  const activeCategoryState = categoryState[activeCategory];
+  const activeCategoryState =
+    categoryState[activeCategory] || { selected: null, percentage: '' };
   const selectedCandidate = activeCategoryState.selected;
   const percentageInput = activeCategoryState.percentage;
   const parsedPercentage = Number(String(percentageInput || '').replace(',', '.'));
   const isValidPercentage =
     Number.isFinite(parsedPercentage) && parsedPercentage > 0 && parsedPercentage <= 100;
 
-  const categoryMeta = CATEGORY_META[activeCategory];
+  const categoryMeta =
+    categories.find((item) => item.category === activeCategory) ||
+    FALLBACK_CATEGORIES.find((item) => item.category === activeCategory) || {
+      id: activeCategory,
+      category: activeCategory,
+      label: formatCategoryLabel(activeCategory),
+      description: 'Gestion de porcentajes para esta prima.',
+      template_text: DEFAULT_DYNAMIC_BONUS_TEMPLATE,
+      default_template_text: DEFAULT_DYNAMIC_BONUS_TEMPLATE,
+    };
+  const getCategoryLabel = React.useCallback(
+    (category: PrimaTecnicaCategoria) =>
+      categories.find((item) => item.category === category)?.label ||
+      FALLBACK_CATEGORIES.find((item) => item.category === category)?.label ||
+      formatCategoryLabel(category),
+    [categories],
+  );
   const activeRecords = recordsByCategory[activeCategory] || [];
   const currentRecordsPage = recordsPageByCategory[activeCategory] || 1;
+  const totalAssignedRecords = React.useMemo(
+    () =>
+      Object.values(recordsByCategory).reduce(
+        (total, records) => total + (Array.isArray(records) ? records.length : 0),
+        0,
+      ),
+    [recordsByCategory],
+  );
 
   const totalSearchPages = Math.max(
     1,
@@ -605,16 +769,12 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
 
     if (existingRecord) {
       const existingCategory = existingRecord.category;
-      const categoryLabel = CATEGORY_META[existingCategory].label;
+      const categoryLabel = getCategoryLabel(existingCategory);
       toast.error(
         `${candidate.fullName} ya tiene prima técnica y/o coordinación registrada en ${categoryLabel}.`,
       );
 
-      setCategoryState((prev) => ({
-        ...prev,
-        DIRECTIVOS: { selected: null, percentage: '' },
-        COORDINADORES: { selected: null, percentage: '' },
-      }));
+      setCategoryState(buildCategoryState(categories));
       setActiveCategory(existingCategory);
       setEditingRecordState(null);
       setPendingDeleteId(null);
@@ -644,7 +804,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     setCategoryState((prev) => ({
       ...prev,
       [activeCategory]: {
-        ...prev[activeCategory],
+        ...(prev[activeCategory] || { selected: null, percentage: '' }),
         selected: {
           ...candidate,
           idNumber: normalizedCandidateId,
@@ -665,7 +825,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     setCategoryState((prev) => ({
       ...prev,
       [activeCategory]: {
-        ...prev[activeCategory],
+        ...(prev[activeCategory] || { selected: null, percentage: '' }),
         percentage: normalized,
       },
     }));
@@ -1008,6 +1168,11 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       return;
     }
 
+    if (selectedCandidate.status && selectedCandidate.status !== 'A') {
+      setSaveError('Este usuario no cuenta con contratos activos. No es posible asignarle prima técnica y/o coordinación.');
+      return;
+    }
+
     setIsSaving(true);
     setSaveError(null);
 
@@ -1078,7 +1243,10 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
   const handleResetTemplate = async () => {
     setIsSavingTemplate(true);
     try {
-      const defaultText = DEFAULT_BONUS_TEMPLATES[activeCategory];
+      const defaultText =
+        categoryMeta.default_template_text ||
+        DEFAULT_BONUS_TEMPLATES[activeCategory] ||
+        DEFAULT_DYNAMIC_BONUS_TEMPLATE;
       const result = await certificadosService.laborales.actualizarPlantillaPrimaTecnica(
         activeCategory,
         defaultText,
@@ -1091,6 +1259,63 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       toast.error(String(error?.message || 'No se pudo restablecer el párrafo.'));
     } finally {
       setIsSavingTemplate(false);
+    }
+  };
+
+  const handleCreateCategory = async () => {
+    const label = newCategoryDraft.label.replace(/\s+/g, ' ').trim();
+    const description = newCategoryDraft.description.replace(/\s+/g, ' ').trim();
+    const templateText = newCategoryDraft.templateText.trim();
+
+    if (label.length < 3) {
+      toast.error('Escribe un nombre de prima de al menos 3 caracteres.');
+      return;
+    }
+
+    if (!templateText) {
+      toast.error('El parrafo de la prima no puede estar vacio.');
+      return;
+    }
+
+    setIsCreatingCategory(true);
+    try {
+      const created = await certificadosService.laborales.crearCategoriaPrimaTecnica({
+        label,
+        description,
+        templateText,
+      });
+
+      const nextCategories = [...categories, created].sort(
+        (a, b) =>
+          Number(a.display_order || 0) - Number(b.display_order || 0) ||
+          String(a.label || '').localeCompare(String(b.label || ''), 'es'),
+      );
+      setCategories(nextCategories);
+      setCategoryState((prev) => buildCategoryState(nextCategories, prev));
+      setRecordsByCategory((prev) => ({
+        ...prev,
+        [created.category]: [],
+      }));
+      setRecordsPageByCategory((prev) => ({
+        ...prev,
+        [created.category]: 1,
+      }));
+      setTemplateTextByCategory((prev) => ({
+        ...prev,
+        [created.category]: created.template_text || templateText,
+      }));
+      setActiveCategory(created.category);
+      setIsCreateCategoryOpen(false);
+      setNewCategoryDraft({
+        label: '',
+        description: '',
+        templateText: DEFAULT_DYNAMIC_BONUS_TEMPLATE,
+      });
+      toast.success(`Prima ${created.label || label} creada correctamente.`);
+    } catch (error: any) {
+      toast.error(String(error?.message || 'No se pudo crear la prima.'));
+    } finally {
+      setIsCreatingCategory(false);
     }
   };
 
@@ -1159,14 +1384,123 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
+          <div className="flex-1 min-h-0 overflow-y-auto bg-slate-50 p-4 sm:p-6">
             <div className="flex min-h-full flex-col gap-5">
-            <section className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {(Object.keys(CATEGORY_META) as PrimaTecnicaCategoria[]).map((category) => {
-                  const meta = CATEGORY_META[category];
-                  const Icon = meta.icon;
+            <section className="rounded-xl border border-slate-300 bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+              <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900">Primas configuradas</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium">
+                      {categories.length} prima{categories.length !== 1 ? 's' : ''}
+                    </span>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium">
+                      {totalAssignedRecords} usuario{totalAssignedRecords !== 1 ? 's' : ''} asignado{totalAssignedRecords !== 1 ? 's' : ''}
+                    </span>
+                    <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700">
+                      Activa: {categoryMeta.label}
+                    </span>
+                  </div>
+                </div>
+                <motion.button
+                  type="button"
+                  onClick={() => setIsCreateCategoryOpen((prev) => !prev)}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition-all hover:bg-blue-100 sm:flex-shrink-0"
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Nueva prima</span>
+                </motion.button>
+              </div>
+
+              {isCreateCategoryOpen && (
+                <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50/40 p-3">
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-700">
+                        Nombre de la prima
+                      </label>
+                      <input
+                        value={newCategoryDraft.label}
+                        onChange={(event) =>
+                          setNewCategoryDraft((prev) => ({
+                            ...prev,
+                            label: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border-2 border-slate-200 px-3 py-2 text-sm outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                        placeholder="Ejemplo: Asesores"
+                        disabled={isCreatingCategory}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-700">
+                        Descripcion
+                      </label>
+                      <input
+                        value={newCategoryDraft.description}
+                        onChange={(event) =>
+                          setNewCategoryDraft((prev) => ({
+                            ...prev,
+                            description: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-lg border-2 border-slate-200 px-3 py-2 text-sm outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                        placeholder="Gestion de porcentajes para esta prima."
+                        disabled={isCreatingCategory}
+                      />
+                    </div>
+                    <motion.button
+                      type="button"
+                      onClick={handleCreateCategory}
+                      disabled={isCreatingCategory || newCategoryDraft.label.trim().length < 3}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      whileHover={
+                        isCreatingCategory || newCategoryDraft.label.trim().length < 3
+                          ? {}
+                          : { y: -1 }
+                      }
+                      whileTap={
+                        isCreatingCategory || newCategoryDraft.label.trim().length < 3
+                          ? {}
+                          : { scale: 0.98 }
+                      }
+                    >
+                      {isCreatingCategory ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Creando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-4 w-4" />
+                          <span>Crear</span>
+                        </>
+                      )}
+                    </motion.button>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={newCategoryDraft.templateText}
+                    onChange={(event) =>
+                      setNewCategoryDraft((prev) => ({
+                        ...prev,
+                        templateText: event.target.value,
+                      }))
+                    }
+                    className="mt-3 w-full resize-none rounded-lg border-2 border-slate-200 p-3 text-sm outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    disabled={isCreatingCategory}
+                  />
+                </div>
+              )}
+
+              <div className="mt-3 grid max-h-[260px] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
+                {categories.map((meta, index) => {
+                  const category = meta.category;
+                  const Icon = getCategoryIcon(category);
                   const active = category === activeCategory;
+                  const recordCount = recordsByCategory[category]?.length || 0;
 
                   return (
                     <motion.button
@@ -1181,38 +1515,72 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                         setEditingRecordState(null);
                         setPendingDeleteId(null);
                       }}
-                      className={`text-left rounded-lg px-3 py-3 sm:px-4 border transition-all ${
+                      className={`group relative min-h-[86px] overflow-hidden rounded-xl border px-3 py-3 text-left transition-all ${
                         active
-                          ? 'bg-white border-blue-300 shadow-sm'
-                          : 'bg-transparent border-transparent hover:bg-white/70'
+                          ? 'border-blue-400 bg-blue-50/60 shadow-[0_8px_22px_rgba(37,99,235,0.12)] ring-2 ring-blue-100'
+                          : 'border-slate-200 bg-slate-50/70 shadow-[0_1px_2px_rgba(15,23,42,0.04)] hover:border-blue-200 hover:bg-white hover:shadow-sm'
                       }`}
                       whileHover={{ y: -1 }}
                       whileTap={{ scale: 0.995 }}
                       transition={{ duration: 0.15, ease: 'easeOut' }}
                     >
-                      <div className="flex items-center gap-3">
+                      <span
+                        className={`absolute inset-y-0 left-0 w-1.5 ${
+                          active ? 'bg-blue-600' : 'bg-slate-300 group-hover:bg-blue-300'
+                        }`}
+                      />
+                      <div className="flex min-w-0 items-start gap-3 pl-1.5">
                         <motion.span
-                          className={`w-9 h-9 rounded-lg flex items-center justify-center ${
-                            active ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'
+                          className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border ${
+                            active
+                              ? 'border-blue-200 bg-white text-blue-700'
+                              : 'border-slate-200 bg-white text-slate-500'
                           }`}
                           animate={active ? { scale: [1, 1.06, 1] } : { scale: 1 }}
                           transition={{ duration: 0.22 }}
                         >
                           <Icon className="w-5 h-5" />
                         </motion.span>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-slate-900 text-sm sm:text-base">
-                            {meta.label}
-                          </p>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex min-w-0 items-start justify-between gap-2">
+                            <p className="truncate text-sm font-semibold text-slate-900 sm:text-base">
+                              {meta.label}
+                            </p>
+                            <span
+                              className={`flex-shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                active
+                                  ? 'border-blue-200 bg-white text-blue-700'
+                                  : 'border-slate-200 bg-white text-slate-600'
+                              }`}
+                            >
+                              {recordCount}
+                            </span>
+                          </div>
                           <p className="text-xs sm:text-sm text-slate-600 truncate">
-                            {meta.description}
+                            {meta.description || 'Gestion de porcentajes para esta prima.'}
                           </p>
+                          <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+                            <span className="font-medium text-slate-500">
+                              Prima {index + 1}
+                            </span>
+                            {active && (
+                              <span className="rounded-full bg-blue-600 px-2 py-0.5 font-semibold text-white">
+                                Seleccionada
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </motion.button>
                   );
                 })}
               </div>
+              {isLoadingCategories && (
+                <div className="mt-2 flex items-center gap-2 px-2 py-1 text-xs text-slate-500">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Actualizando catalogo de primas...</span>
+                </div>
+              )}
             </section>
 
             <AnimatePresence mode="wait" initial={false}>
@@ -1226,12 +1594,12 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
               >
 
             {/* ── Editor de párrafo de prima ── */}
-            <section className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 sm:p-5 space-y-3">
-              <div className="flex items-center justify-between gap-3">
+            <section className="overflow-hidden rounded-xl border border-blue-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+              <div className="flex flex-col gap-3 border-b border-blue-100 bg-blue-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4 text-blue-700" />
                   <h3 className="text-slate-900 font-semibold text-sm sm:text-base">
-                    Párrafo de {activeCategory === 'DIRECTIVOS' ? 'prima técnica' : 'prima de coordinación'}
+                    Párrafo de {categoryMeta.label}
                   </h3>
                 </div>
                 {!isEditingTemplate && (
@@ -1269,6 +1637,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                 )}
               </div>
 
+              <div className="space-y-3 p-4 sm:p-5">
               <p className="text-xs text-slate-500">
                 Usa <code className="bg-white border border-slate-200 rounded px-1 py-0.5 font-mono text-indigo-700">{'{porcentaje}'}</code>{' '}
                 para el porcentaje,{' '}
@@ -1316,7 +1685,13 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                     </motion.button>
                     <motion.button
                       type="button"
-                      onClick={() => setTemplateDraft(DEFAULT_BONUS_TEMPLATES[activeCategory])}
+                      onClick={() =>
+                        setTemplateDraft(
+                          categoryMeta.default_template_text ||
+                            DEFAULT_BONUS_TEMPLATES[activeCategory] ||
+                            DEFAULT_DYNAMIC_BONUS_TEMPLATE,
+                        )
+                      }
                       disabled={isSavingTemplate}
                       title="Rellenar con el texto original"
                       className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition-all hover:bg-slate-100 disabled:opacity-60"
@@ -1350,14 +1725,34 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                   }
                 </p>
               )}
+              </div>
             </section>
 
-            <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4">
-              <div className="flex items-center gap-2">
-                <Search className="w-4 h-4 text-blue-700" />
-                <h3 className="text-slate-900 font-semibold">
-                  Buscar en solicitudes ({categoryMeta.label})
-                </h3>
+            <section className="rounded-xl border border-slate-300 bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-5">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-700">
+                    <Search className="w-4 h-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="truncate text-sm font-semibold text-slate-900 sm:text-base">
+                      Buscar en solicitudes
+                    </h3>
+                    <p className="truncate text-xs text-slate-500">
+                      {categoryMeta.label}
+                    </p>
+                  </div>
+                </div>
+                <motion.button
+                  type="button"
+                  onClick={(event) => openBulkModal(event)}
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition-all hover:bg-blue-100 sm:flex-shrink-0"
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <Upload className="w-4 h-4" />
+                  <span>Carga masiva</span>
+                </motion.button>
               </div>
 
               <div className="flex w-full flex-col gap-3 md:flex-row md:items-stretch">
@@ -1368,36 +1763,26 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                     placeholder="Escribe nombre o número de identificación..."
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
-                    className="w-full border-2 border-slate-200 rounded-lg py-2.5 pl-10 pr-4 text-sm sm:text-[15px] outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    className="min-h-11 w-full rounded-lg border-2 border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 sm:text-[15px]"
                   />
                 </div>
-                <motion.button
-                  type="button"
-                  onClick={(event) => openBulkModal(event)}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-700 transition-all hover:bg-blue-100 md:flex-shrink-0"
-                  whileHover={{ y: -1 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>Carga masiva</span>
-                </motion.button>
               </div>
 
               {searchError && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 flex items-center gap-2">
+                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 flex items-center gap-2">
                   <AlertCircle className="w-4 h-4" />
                   <span>{searchError}</span>
                 </div>
               )}
 
               {searchQuery.trim().length > 0 && searchQuery.trim().length < 2 && (
-                <p className="text-xs sm:text-sm text-slate-500">
+                <p className="mt-2 text-xs sm:text-sm text-slate-500">
                   Ingresa al menos 2 caracteres para buscar.
                 </p>
               )}
 
               {searchLoading && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600 flex items-center gap-2">
+                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600 flex items-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Buscando coincidencias...</span>
                 </div>
@@ -1407,30 +1792,45 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                 searchQuery.trim().length >= 2 &&
                 !searchError &&
                 searchResults.length === 0 && (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                    No se encontraron coincidencias en certificate_requests.
+                  <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                    No se encontraron usuarios para la busqueda.
                   </div>
                 )}
 
               {!searchLoading && searchResults.length > 0 && (
-                <div className="space-y-3">
-                  <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
+                <div className="mt-3 space-y-3">
+                  <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
                     {paginatedSearchResults.map((item) => (
                       <motion.button
                         key={`${item.requestId}-${item.idNumber}`}
                         onClick={() => handleSelectCandidate(item)}
-                        className="w-full text-left px-3 sm:px-4 py-3 hover:bg-blue-50 transition-colors"
+                        className="w-full text-left px-3 py-3 transition-colors hover:bg-blue-50 sm:px-4"
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -8 }}
                         transition={{ duration: 0.18, ease: 'easeOut' }}
                       >
-                        <p className="text-sm sm:text-[15px] font-semibold text-slate-900">
-                          {item.fullName}
-                        </p>
-                        <p className="text-xs sm:text-sm text-slate-600 mt-1">
-                          CC {normalizeIdNumber(item.idNumber)}
-                        </p>
+                        <div className="flex items-start gap-3">
+                          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-500">
+                            <UserRound className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="truncate text-sm font-semibold text-slate-900 sm:text-[15px]">
+                                {item.fullName}
+                              </p>
+                              {item.status && item.status !== 'A' && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                  <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                                  Sin contrato activo
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1 text-xs text-slate-600 sm:text-sm">
+                              CC {normalizeIdNumber(item.idNumber)}
+                            </p>
+                          </div>
+                        </div>
                       </motion.button>
                     ))}
                   </div>
@@ -1449,20 +1849,42 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
             </section>
 
             {selectedCandidate && (
-              <section className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 sm:p-5 space-y-4">
-                <div className="flex items-start gap-3">
-                  <span className="w-10 h-10 rounded-xl bg-white border border-blue-200 flex items-center justify-center text-blue-700 flex-shrink-0">
+              <section className="rounded-xl border border-blue-300 bg-white p-4 shadow-[0_8px_22px_rgba(37,99,235,0.10)] sm:p-5">
+                <div className="mb-4 flex flex-col gap-3 border-b border-blue-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-700 flex-shrink-0">
                     <UserRound className="w-5 h-5" />
                   </span>
                   <div className="min-w-0">
-                    <p className="font-semibold text-slate-900">{selectedCandidate.fullName}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                      Usuario seleccionado
+                    </p>
+                    <p className="truncate font-semibold text-slate-900">{selectedCandidate.fullName}</p>
                     <p className="text-sm text-slate-600">
                       CC {normalizeIdNumber(selectedCandidate.idNumber)}
                     </p>
                   </div>
                 </div>
+                <span className="inline-flex w-fit items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                  {categoryMeta.label}
+                </span>
+                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+                {selectedCandidate.status && selectedCandidate.status !== 'A' && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-amber-800">
+                        Usuario sin contratos activos
+                      </p>
+                      <p className="text-sm text-amber-700 mt-0.5">
+                        Este usuario no cuenta con contratos activos. No es posible asignarle prima técnica y/o coordinación.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                       Porcentaje de prima técnica y/o coordinación
@@ -1475,7 +1897,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                         placeholder="Ejemplo: 20"
                         value={percentageInput}
                         onChange={(event) => handlePercentageChange(event.target.value)}
-                        className="w-full border-2 border-slate-200 rounded-lg py-2.5 pl-10 pr-4 text-sm sm:text-[15px] outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                        className="min-h-11 w-full border-2 border-slate-200 rounded-lg py-2.5 pl-10 pr-4 text-sm sm:text-[15px] outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                       />
                     </div>
                     <p className="text-xs text-slate-500 mt-1">
@@ -1485,15 +1907,15 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
 
                   <motion.button
                     onClick={handleSave}
-                    disabled={isSaving || !isValidPercentage}
-                    className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isSaving || !isValidPercentage || (!!selectedCandidate?.status && selectedCandidate.status !== 'A')}
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition-all disabled:cursor-not-allowed disabled:opacity-60"
                     style={{
                       background:
                         'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
                       boxShadow: '0 8px 18px rgba(30, 64, 175, 0.2)',
                     }}
-                    whileHover={isSaving || !isValidPercentage ? {} : { y: -1, scale: 1.01 }}
-                    whileTap={isSaving || !isValidPercentage ? {} : { scale: 0.985 }}
+                    whileHover={isSaving || !isValidPercentage || (!!selectedCandidate?.status && selectedCandidate.status !== 'A') ? {} : { y: -1, scale: 1.01 }}
+                    whileTap={isSaving || !isValidPercentage || (!!selectedCandidate?.status && selectedCandidate.status !== 'A') ? {} : { scale: 0.985 }}
                   >
                     {isSaving ? (
                       <>
@@ -1510,7 +1932,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                 </div>
 
                 {saveError && (
-                  <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 flex items-center gap-2">
+                  <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 flex items-center gap-2">
                     <AlertCircle className="w-4 h-4" />
                     <span>{saveError}</span>
                   </div>
@@ -1518,12 +1940,22 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
               </section>
             )}
 
-            <section className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 space-y-4 flex min-h-[280px] flex-1 flex-col">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-slate-900 font-semibold">
-                  Registros guardados ({categoryMeta.label})
-                </h3>
-                <span className="text-xs sm:text-sm text-slate-500">
+            <section className="rounded-xl border border-slate-300 bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,0.06)] sm:p-5 flex min-h-[280px] flex-1 flex-col">
+              <div className="mb-4 flex flex-col gap-3 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600">
+                    <Users className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="truncate text-sm font-semibold text-slate-900 sm:text-base">
+                      Registros guardados
+                    </h3>
+                    <p className="truncate text-xs text-slate-500">
+                      {categoryMeta.label}
+                    </p>
+                  </div>
+                </div>
+                <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 sm:text-sm">
                   {activeRecords.length} registro{activeRecords.length !== 1 ? 's' : ''}
                 </span>
               </div>
@@ -1534,8 +1966,16 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                   <span>Cargando registros...</span>
                 </div>
               ) : activeRecords.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-5 text-sm text-slate-600 flex-1">
-                  Todavía no hay registros para esta categoría.
+                <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+                  <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500">
+                    <Users className="h-5 w-5" />
+                  </span>
+                  <p className="text-sm font-semibold text-slate-800">
+                    Sin usuarios asignados
+                  </p>
+                  <p className="mt-1 max-w-md text-xs text-slate-500 sm:text-sm">
+                    Los registros apareceran aqui cuando se agreguen a {categoryMeta.label}.
+                  </p>
                 </div>
               ) : (
                 <div className="flex flex-1 min-h-0 flex-col gap-3">
@@ -1558,8 +1998,8 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                       return (
                       <motion.div
                         key={item.id}
-                        className={`rounded-lg border px-3 sm:px-4 py-3 ${
-                          isHighlighted ? 'border-emerald-300 bg-emerald-50/70' : 'border-slate-200'
+                        className={`rounded-xl border px-3 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:px-4 ${
+                          isHighlighted ? 'border-emerald-300 bg-emerald-50/70' : 'border-slate-200 bg-white hover:border-blue-200'
                         }`}
                         initial={{ opacity: 0, y: 10, scale: 0.995 }}
                         animate={{
@@ -1574,12 +2014,17 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                         transition={{ duration: 0.2, ease: 'easeOut' }}
                         layout
                       >
-                        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="font-semibold text-slate-900 truncate">{item.full_name}</p>
-                            <p className="text-xs sm:text-sm text-slate-600">
-                              CC {normalizeIdNumber(item.id_number)}
-                            </p>
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-500">
+                              <UserRound className="h-5 w-5" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate font-semibold text-slate-900">{item.full_name}</p>
+                              <p className="text-xs sm:text-sm text-slate-600">
+                                CC {normalizeIdNumber(item.id_number)}
+                              </p>
+                            </div>
                           </div>
 
                           <div className="w-full lg:w-auto lg:min-w-[320px]">
@@ -1637,10 +2082,10 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                             ) : (
                               <div className="space-y-2">
                                 <div className="sm:text-right">
-                                  <p className="text-sm font-semibold text-blue-700">
+                                  <p className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-sm font-semibold text-blue-700">
                                     {formatPercentage(Number(item.percentage || 0))}
                                   </p>
-                                  <p className="text-xs text-slate-500">
+                                  <p className="mt-1 text-xs text-slate-500">
                                     Actualizado: {formatDateTime(item.updated_at)}
                                   </p>
                                 </div>
@@ -1782,9 +2227,9 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             style={{
-              backgroundColor: 'rgba(15, 23, 42, 0.24)',
-              backdropFilter: 'none',
-              WebkitBackdropFilter: 'none',
+              backgroundColor: 'rgba(15, 23, 42, 0.36)',
+              backdropFilter: 'blur(2px)',
+              WebkitBackdropFilter: 'blur(2px)',
             }}
             onClick={() => setIsBulkModalOpen(false)}
           />
@@ -1798,20 +2243,24 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 18, scale: 0.98 }}
               transition={{ type: 'spring', damping: 24, stiffness: 260 }}
-              className="w-full max-w-none max-h-[90vh] overflow-hidden rounded-2xl bg-white shadow-[0_28px_72px_rgba(15,23,42,0.32)] flex flex-col"
+              className="flex w-full max-w-none max-h-[90vh] flex-col overflow-hidden rounded-2xl bg-white shadow-[0_28px_72px_rgba(15,23,42,0.32)]"
               style={{
-                width: 'min(94vw, 1040px)',
+                width: 'min(96vw, 1080px)',
               }}
             >
               <div
-                className="px-5 sm:px-6 py-4 border-b"
+                className="border-b px-5 py-4 sm:px-6"
                 style={{
                   borderBottomColor: 'rgba(29, 78, 216, 0.35)',
                   background: 'linear-gradient(135deg, #0B4CB6 0%, #1E40AF 52%, #2563EB 100%)',
                 }}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="mt-0.5 hidden h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/15 text-white sm:flex">
+                      <FileSpreadsheet className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
                     <h3 className="text-white text-lg sm:text-xl font-bold">
                       Carga masiva de prima técnica y/o coordinación ({categoryMeta.label})
                     </h3>
@@ -1819,6 +2268,15 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                       Carga registros desde Excel. La validación se realiza por número de
                       documento y se reporta fila por fila.
                     </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                      <span className="rounded-full border border-white/20 bg-white/15 px-2.5 py-1 font-semibold text-white">
+                        Prima: {categoryMeta.label}
+                      </span>
+                      <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 font-medium text-blue-50">
+                        Excel .xlsx / .xls
+                      </span>
+                    </div>
+                    </div>
                   </div>
                   <motion.button
                     type="button"
@@ -1833,7 +2291,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                 </div>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4 bg-slate-50">
+              <div className="flex-1 min-h-0 space-y-5 overflow-y-auto bg-slate-50 p-4 sm:p-6">
                 <input
                   ref={bulkFileInputRef}
                   type="file"
@@ -1842,12 +2300,13 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                   onChange={handleBulkFileChange}
                 />
 
-                <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                  <div className="flex items-start gap-3">
-                    <span className="w-10 h-10 rounded-lg bg-blue-100 text-blue-700 border border-blue-200 flex items-center justify-center flex-shrink-0">
+                <section className="space-y-4 rounded-xl border border-slate-300 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
+                  <div className="flex flex-col gap-3 rounded-lg border border-blue-100 bg-blue-50/70 p-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-white text-blue-700">
                       <FileSpreadsheet className="w-5 h-5" />
                     </span>
-                    <div className="text-sm text-slate-700">
+                    <div className="min-w-0 text-sm text-slate-700">
                       <p className="font-semibold text-slate-900">
                         Plantilla esperada (.xlsx)
                       </p>
@@ -1860,14 +2319,69 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                         documento se usa como identificador principal para la carga.
                       </p>
                     </div>
+                    </div>
+                    <span className="w-fit rounded-full border border-blue-200 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700">
+                      {categoryMeta.label}
+                    </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div
+                    className={`rounded-xl border px-3 py-3 ${
+                      bulkFileName
+                        ? invalidBulkRows.length > 0
+                          ? 'border-amber-200 bg-amber-50'
+                          : 'border-emerald-200 bg-emerald-50'
+                        : 'border-dashed border-slate-300 bg-slate-50'
+                    }`}
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span
+                          className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border bg-white ${
+                            bulkFileName
+                              ? invalidBulkRows.length > 0
+                                ? 'border-amber-200 text-amber-700'
+                                : 'border-emerald-200 text-emerald-700'
+                              : 'border-slate-200 text-slate-500'
+                          }`}
+                        >
+                          {bulkFileName ? (
+                            <FileSpreadsheet className="h-5 w-5" />
+                          ) : (
+                            <Upload className="h-5 w-5" />
+                          )}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-slate-900">
+                            {bulkFileName || 'Sin archivo seleccionado'}
+                          </p>
+                          <p className="text-xs text-slate-600 sm:text-sm">
+                            {bulkFileName
+                              ? `${validatedBulkRows.length} fila(s), ${validBulkRows.length} valida(s), ${invalidBulkRows.length} con error`
+                              : 'Selecciona un archivo Excel para ver la validacion antes de cargar.'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700">
+                          Total: {validatedBulkRows.length}
+                        </span>
+                        <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 font-semibold text-emerald-700">
+                          Validas: {validBulkRows.length}
+                        </span>
+                        <span className="rounded-full border border-red-200 bg-white px-2.5 py-1 font-semibold text-red-700">
+                          Errores: {invalidBulkRows.length}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
                     <motion.button
                       type="button"
                       onClick={handleDownloadBulkTemplate}
                       disabled={isBulkTemplateLoading}
-                      className="min-h-11 inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                      className="inline-flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-3 text-sm font-semibold text-blue-700 transition-all hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
                       whileHover={isBulkTemplateLoading ? {} : { y: -1 }}
                       whileTap={isBulkTemplateLoading ? {} : { scale: 0.98 }}
                     >
@@ -1887,7 +2401,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                     <motion.button
                       type="button"
                       onClick={handlePickBulkFile}
-                      className="min-h-11 inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                      className="inline-flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-slate-700 transition-all hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
                       whileHover={{ y: -1 }}
                       whileTap={{ scale: 0.98 }}
                     >
@@ -1899,7 +2413,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                       type="button"
                       onClick={handleProcessBulkUpload}
                       disabled={isBulkUploading || validBulkRows.length === 0}
-                      className="min-h-11 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                      className="inline-flex min-h-[72px] flex-col items-center justify-center gap-1 rounded-xl bg-blue-600 px-3 py-3 text-sm font-semibold text-white transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                       whileHover={isBulkUploading || validBulkRows.length === 0 ? {} : { y: -1 }}
                       whileTap={isBulkUploading || validBulkRows.length === 0 ? {} : { scale: 0.98 }}
                     >
@@ -1917,28 +2431,30 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                     </motion.button>
                   </div>
 
-                  {bulkFileName && (
-                    <p className="text-xs sm:text-sm text-slate-600 break-all">
-                      Archivo seleccionado: <span className="font-semibold">{bulkFileName}</span>{' '}
-                      ({validatedBulkRows.length} fila(s): {validBulkRows.length} valida(s),{' '}
-                      {invalidBulkRows.length} con error)
-                    </p>
-                  )}
-
                   {bulkParseError && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4" />
+                    <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">
+                      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
                       <span>{bulkParseError}</span>
                     </div>
                   )}
                 </section>
 
                 {validatedBulkRows.length > 0 && (
-                  <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <h4 className="font-semibold text-slate-900">
-                        Vista previa y validación del archivo
-                      </h4>
+                  <section className="space-y-4 rounded-xl border border-slate-300 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
+                    <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600">
+                          <FileText className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <h4 className="font-semibold text-slate-900">
+                            Vista previa y validacion del archivo
+                          </h4>
+                          <p className="truncate text-xs text-slate-500">
+                            {bulkFileName || 'Archivo cargado'}
+                          </p>
+                        </div>
+                      </div>
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 font-semibold text-emerald-700">
                           Válidas: {validBulkRows.length}
@@ -1954,8 +2470,8 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                     </div>
 
                     {invalidBulkRows.length > 0 && (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs sm:text-sm text-amber-800 flex items-start gap-2">
-                        <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 sm:text-sm">
+                        <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
                         <span>
                           Se detectaron {invalidBulkRows.length} fila(s) con errores. Esas filas no
                           se enviarán al cargar.
@@ -1963,10 +2479,10 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                       </div>
                     )}
 
-                    <div className="rounded-lg border border-slate-200 overflow-hidden">
+                    <div className="overflow-hidden rounded-xl border border-slate-200">
                       <div className="max-h-80 overflow-auto">
-                        <table className="min-w-[980px] w-full text-xs sm:text-sm">
-                          <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200 text-slate-600">
+                        <table className="w-full min-w-[980px] text-xs sm:text-sm">
+                          <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-100 text-slate-600">
                             <tr>
                               <th className="px-3 py-2 text-left font-semibold">Fila</th>
                               <th className="px-3 py-2 text-left font-semibold">Nombre</th>
@@ -1979,7 +2495,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                             {previewBulkRows.map((row) => (
                               <tr
                                 key={`bulk-preview-${row.rowNumber}-${row.idNumber || ''}`}
-                                className={row.isValid ? 'bg-white' : 'bg-red-50/40'}
+                                className={row.isValid ? 'bg-white hover:bg-slate-50' : 'bg-red-50/50'}
                               >
                                 <td className="px-3 py-2 align-top text-slate-700 font-medium">
                                   {row.rowNumber}
@@ -2016,11 +2532,42 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                 )}
 
                 {bulkResult && (
-                  <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                    <h4 className="font-semibold text-slate-900">
-                      Resultado de la carga masiva
-                    </h4>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs sm:text-sm text-slate-700 flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <section className="space-y-4 rounded-xl border border-slate-300 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
+                    <div className="flex flex-col gap-3 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span
+                          className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border ${
+                            bulkResult.summary.failed === 0
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              : 'border-amber-200 bg-amber-50 text-amber-700'
+                          }`}
+                        >
+                          {bulkResult.summary.failed === 0 ? (
+                            <CheckCircle2 className="h-4 w-4" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4" />
+                          )}
+                        </span>
+                        <div className="min-w-0">
+                          <h4 className="font-semibold text-slate-900">
+                            Resultado de la carga masiva
+                          </h4>
+                          <p className="truncate text-xs text-slate-500">
+                            {bulkFileName || 'Archivo procesado'}
+                          </p>
+                        </div>
+                      </div>
+                      <span
+                        className={`w-fit rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                          bulkResult.summary.failed === 0
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-amber-200 bg-amber-50 text-amber-700'
+                        }`}
+                      >
+                        {bulkResult.summary.failed === 0 ? 'Completada' : 'Con observaciones'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700 sm:text-sm">
                       <span>
                         Archivo: <strong>{validatedBulkRows.length}</strong> fila(s)
                       </span>
@@ -2034,56 +2581,71 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                         Procesadas por servidor: <strong>{bulkResult.summary.total}</strong>
                       </span>
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
                         <p className="text-xs text-slate-500">Procesadas</p>
                         <p className="text-sm font-semibold text-slate-800">{bulkResult.summary.total}</p>
                       </div>
-                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
                         <p className="text-xs text-emerald-600">Exitosas</p>
                         <p className="text-sm font-semibold text-emerald-700">{bulkResult.summary.success}</p>
                       </div>
-                      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5">
                         <p className="text-xs text-red-600">Fallidas</p>
                         <p className="text-sm font-semibold text-red-700">{bulkResult.summary.failed}</p>
                       </div>
-                      <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                      <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
                         <p className="text-xs text-blue-600">Creadas</p>
                         <p className="text-sm font-semibold text-blue-700">{bulkResult.summary.created}</p>
                       </div>
-                      <div className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2">
+                      <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5">
                         <p className="text-xs text-indigo-600">Actualizadas</p>
                         <p className="text-sm font-semibold text-indigo-700">{bulkResult.summary.updated}</p>
                       </div>
                     </div>
 
-                    <div className="rounded-lg border border-slate-200 max-h-72 overflow-y-auto">
+                    <div className="max-h-72 overflow-y-auto rounded-xl border border-slate-200">
                       <div className="divide-y divide-slate-100">
                         {bulkResult.results.map((item) => (
                           <div
                             key={`bulk-result-${item.rowNumber}-${item.id_number || item.message}`}
-                            className={`px-3 py-2.5 text-xs sm:text-sm ${
+                            className={`px-3 py-3 text-xs sm:text-sm ${
                               item.status === 'success'
-                                ? 'bg-emerald-50/45'
-                                : 'bg-red-50/45'
+                                ? 'bg-emerald-50/45 hover:bg-emerald-50'
+                                : 'bg-red-50/45 hover:bg-red-50'
                             }`}
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <p
-                                className={`font-semibold ${
-                                  item.status === 'success'
-                                    ? 'text-emerald-700'
-                                    : 'text-red-700'
-                                }`}
-                              >
-                                Fila {item.rowNumber} -{' '}
-                                {item.status === 'success' ? 'Procesada' : 'Error'}
-                              </p>
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span
+                                  className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full ${
+                                    item.status === 'success'
+                                      ? 'bg-emerald-100 text-emerald-700'
+                                      : 'bg-red-100 text-red-700'
+                                  }`}
+                                >
+                                  {item.status === 'success' ? (
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <AlertCircle className="h-3.5 w-3.5" />
+                                  )}
+                                </span>
+                                <p
+                                  className={`font-semibold ${
+                                    item.status === 'success'
+                                      ? 'text-emerald-700'
+                                      : 'text-red-700'
+                                  }`}
+                                >
+                                  Fila {item.rowNumber} -{' '}
+                                  {item.status === 'success' ? 'Procesada' : 'Error'}
+                                </p>
+                              </div>
                               {item.id_number && (
-                                <span className="text-slate-600">CC {item.id_number}</span>
+                                <span className="flex-shrink-0 text-slate-600">CC {item.id_number}</span>
                               )}
                             </div>
-                            <p className="text-slate-700 mt-1">
+                            <p className="mt-1 pl-8 text-slate-700">
                               {formatBulkServerMessage(item.message)}
                             </p>
                           </div>
@@ -2094,7 +2656,19 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                 )}
               </div>
 
-              <div className="border-t border-slate-200 bg-white px-4 sm:px-6 py-3 flex justify-end">
+              <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <p className="inline-flex items-center gap-2 text-xs text-slate-600 sm:text-sm">
+                  {invalidBulkRows.length > 0 ? (
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  )}
+                  <span>
+                    {validatedBulkRows.length > 0
+                      ? `${validBulkRows.length} valida(s), ${invalidBulkRows.length} con error`
+                      : 'Carga registros desde una plantilla Excel valida.'}
+                  </span>
+                </p>
                 <motion.button
                   type="button"
                   onClick={() => setIsBulkModalOpen(false)}

@@ -7,7 +7,7 @@ import { Certificate } from './certificate.entity';
 import { TemplateConfigService } from './template-config.service';
 
 type TemplateType = 'docente' | 'administrador';
-type TechnicalBonusCategory = 'DIRECTIVOS' | 'COORDINADORES';
+type TechnicalBonusCategory = string;
 
 type PdfOptions = {
   includeSalary?: boolean;
@@ -52,16 +52,14 @@ export class LaborCertificatePdfService {
     value?: string | null,
   ): TechnicalBonusCategory | null {
     const normalized = String(value || '').trim().toUpperCase();
-    if (normalized === 'DIRECTIVOS' || normalized === 'COORDINADORES') {
-      return normalized as TechnicalBonusCategory;
-    }
-    return null;
+    return normalized || null;
   }
 
   private resolveTechnicalBonusConcept(category?: string | null): string {
-    return this.normalizeTechnicalBonusCategory(category) === 'COORDINADORES'
-      ? 'prima de coordinación'
-      : 'prima técnica';
+    const normalized = this.normalizeTechnicalBonusCategory(category);
+    if (normalized === 'COORDINADORES') return 'prima de coordinación';
+    if (normalized === 'DIRECTIVOS') return 'prima técnica';
+    return 'prima técnica y/o coordinación';
   }
 
   async generateCertificatePdf(
@@ -984,7 +982,7 @@ export class LaborCertificatePdfService {
             </div>
             <div class="footer-right">
               ${qrTag}
-              <div>www.esap.edu.co</div>
+              <div style="font-size: 8pt; color: #0066cc; max-width: 99px; line-height: 1.4; text-align: center;">Escanee el código QR para verificar el certificado</div>
             </div>
           </div>
         </body>

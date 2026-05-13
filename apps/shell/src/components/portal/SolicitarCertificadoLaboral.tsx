@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, FileText, Download, CheckCircle, CheckCircle2, AlertCircle,
   Send, Loader2, User, CreditCard, Building2, Calendar,
-  Mail, Phone, MapPin, Search, ChevronDown, Printer,
+  Mail, Phone, MapPin, Search, ChevronDown,
   Shield, Clock, FileCheck, Sparkles, TrendingUp, Star, Eye, XCircle, Lock
 } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -1216,14 +1216,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     setShowPDFViewer(true);
   };
 
-  const handleImprimir = () => {
-    if (!certificadoGenerado?.certificado_completo) {
-      toast.error('No se puede imprimir el certificado. Faltan datos.');
-      return;
-    }
-    setAutoPDFAction('print');
-    setShowPDFViewer(true);
-  };
 
   const handleNuevaSolicitud = () => {
     // Reset todo
@@ -1505,6 +1497,9 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                             </SelectContent>
                           </Select>
                         )}
+                        {tipoDocumento !== '' && tipoDocumento !== 'CC'  && (
+                          <p style={{ fontSize: '12px', marginTop: '6px', marginLeft: '6px' }} className="text-red-500">Tipo de documento no válido</p>
+                        )}
                       </div>
 
                       {/* Número de Documento */}
@@ -1600,7 +1595,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                       {/* Botón Solicitar Certificado */}
                       <Button
                         onClick={handleBuscarEmpleado}
-                        disabled={buscandoEmpleado || estadoLaboral === 'inactivo'}
+                        disabled={buscandoEmpleado || estadoLaboral === 'inactivo' || tipoDocumento === '' || tipoDocumento !== 'CC'}
                         className="w-full h-12 bg-gradient-to-r from-[#003DA5] to-[#1e5da8] hover:from-[#002d7a] hover:to-[#164a8f] text-white font-bold text-base shadow-lg"
                       >
                         {buscandoEmpleado ? (
@@ -2077,14 +2072,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                     >
                       <Download className="w-5 h-5 mr-2" />
                       Descargar PDF
-                    </Button>
-                    <Button
-                      onClick={handleImprimir}
-                      variant="outline"
-                      className="flex-1 h-12 border-2 font-bold"
-                    >
-                      <Printer className="w-5 h-5 mr-2" />
-                      Imprimir
                     </Button>
                     <Button
                       onClick={handleNuevaSolicitud}

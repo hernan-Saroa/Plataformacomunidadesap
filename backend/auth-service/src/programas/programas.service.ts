@@ -126,4 +126,67 @@ export class ProgramasService {
       order: { semestre: 'ASC', nombre: 'ASC' }
     });
   }
+
+  async guardarAsignaturasPrograma(programaId: string, asignaturas: any[]) {
+    // Verificar que el programa existe
+    const programa = await this.programaRepo.findOne({ where: { id: programaId } });
+    if (!programa) {
+      throw new NotFoundException('Programa académico no encontrado');
+    }
+
+    // Obtener asignaturas existentes
+    const existentes = await this.asignaturaRepo.find({ where: { programaId } });
+    const existentesIds = new Set(existentes.map(a => a.id));
+
+    // IDs enviados
+    const enviadosIds = new Set(asignaturas.map(a => a.id).filter(id => id && !id.startsWith('asig-')));
+
+    // Eliminar asignaturas que no están en la lista enviada
+    for (const existente of existentes) {
+      if (!enviadosIds.has(existente.id)) {
+        await this.asignaturaRepo.remove(existente);
+      }
+    }
+
+    // Crear o actualizar asignaturas
+    for (const asigData of asignaturas) {
+      const { id, programa_id, ...data } = asigData; // Extraer programa_id para evitar conflictos
+
+      if (id && !id.startsWith('asig-')) {
+        // Actualizar existente
+        await this.asignaturaRepo.update(id, {
+          programaId: programaId,
+          nombre: data.nombre,
+          codigo: data.codigo || undefined,
+          creditos: data.creditos || 3,
+          horas: data.horas || 144,
+          nucleoTematico: data.nucleoTematico || data.nucleo || undefined,
+          semestre: data.semestre ? String(data.semestre) : undefined,
+          modalidad: data.modalidad || undefined,
+          tipo: data.tipo || undefined,
+        });
+      } else {
+        // Crear nueva
+        await this.asignaturaRepo.save({
+          programaId: programaId,
+          nombre: data.nombre,
+          codigo: data.codigo || undefined,
+          creditos: data.creditos || 3,
+          horas: data.horas || 144,
+          nucleoTematico: data.nucleoTematico || data.nucleo || undefined,
+          semestre: data.semestre ? String(data.semestre) : undefined,
+          modalidad: data.modalidad || undefined,
+          tipo: data.tipo || undefined,
+        } as any);
+      }
+    }
+
+    // Devolver las asignaturas actualizadas
+    const asignaturasActualizadas = await this.asignaturaRepo.find({
+      where: { programaId },
+      order: { semestre: 'ASC', nombre: 'ASC' }
+    });
+
+    return asignaturasActualizadas;
+  }
 }

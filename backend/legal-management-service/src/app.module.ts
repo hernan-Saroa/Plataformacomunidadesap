@@ -46,6 +46,7 @@ import { TipoRequerimientoOC } from './entities/tipo-requerimiento-oc.entity';
 import { OficioEnviado } from './entities/oficio-enviado.entity';
 import { TasaReferencia } from './entities/tasa-referencia.entity';
 import { PlantillaDocumento } from './entities/plantilla-documento.entity';
+import { CorreoTrackingToken } from './entities/correo-tracking-token.entity';
 
 // Controllers
 import { ExpedienteController } from './controllers/expediente.controller';
@@ -179,7 +180,9 @@ import { PlanesMejoramientoModule } from './planes-mejoramiento/planes-mejoramie
       // Tasas de Referencia
       TasaReferencia,
       // Plantillas de Documentos
-      PlantillaDocumento
+      PlantillaDocumento,
+      // Tracking de Correos (trazabilidad apertura/descarga)
+      CorreoTrackingToken
     ]),
     PeiModule,
     PlanesMejoramientoModule

@@ -255,7 +255,7 @@ export function ProgramasAcademicosModule() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3, delay: 0.1 }}
-          className="flex overflow-x-auto pb-2 -mx-4 px-4 lg:mx-0 lg:px-0 lg:grid lg:grid-cols-4 gap-3 hide-scrollbar"
+          className="flex overflow-x-auto pb-2 -mx-4 px-4 lg:mx-0 lg:px-0 lg:grid lg:grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3 hide-scrollbar"
         >
           {[
             { label: 'Programas', value: stats.totalProgramas, sub: `${stats.programasConPlan} con plan`, color: 'text-[#003DA5]', bg: 'bg-blue-50 border-blue-200', icon: GraduationCap },
@@ -676,6 +676,8 @@ export function ProgramasAcademicosModule() {
                                 <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 mt-4">
                                   <h4 className="font-black text-gray-900 text-sm mb-2">Descripción</h4>
                                   <p className="text-sm text-gray-700">{programa.descripcion}</p>
+                                  <h4 className="font-black text-gray-900 text-sm mb-2">Requisitos de Ingreso</h4>
+                                  <p className="text-sm text-gray-700">{programa.requisitosDeIngreso}</p>
                                 </div>
 
                                 {/* Plan de Estudios — Asignaturas */}
