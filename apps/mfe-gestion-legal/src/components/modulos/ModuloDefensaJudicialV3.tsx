@@ -7,7 +7,7 @@
  * ✅ CONECTADO CON CONFIGURACIONES CENTRALIZADAS
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Plus, FileText, FolderOpen, AlertTriangle, Clock, Calendar,
   User, MoreVertical, Eye, ChevronDown, Users, Settings,
@@ -620,8 +620,12 @@ export function ModuloDefensaJudicialV3() {
     expedientes: expedientesPorEtapa[estado.id] || []
   }));
 
+  const guardandoDemanda = useRef(false);
+
   // Handler para guardar nueva demanda
   const handleSaveNuevaDemanda = async (demandaData: NuevaDemandaData) => {
+    if (guardandoDemanda.current) return;
+    guardandoDemanda.current = true;
     try {
       // Mapear datos del formulario al formato del backend
       const expedienteData = {
@@ -711,6 +715,8 @@ export function ModuloDefensaJudicialV3() {
     } catch (error: any) {
       console.error('Error guardando demanda:', error);
       toast.error(error.message || 'Error al guardar la demanda');
+    } finally {
+      guardandoDemanda.current = false;
     }
   };
 

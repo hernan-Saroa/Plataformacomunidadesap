@@ -37,7 +37,46 @@ export class RequerimientosOCService {
     // ORGANISMOS (Catálogo)
     // ============================================
     async findAllOrganismos(): Promise<OrganismoControlOC[]> {
-        return this.organismoRepo.find({ where: { activo: true }, order: { nombre: 'ASC' } });
+        return this.organismoRepo.find({ order: { nombre: 'ASC' } });
+    }
+
+    async createOrganismo(data: Partial<OrganismoControlOC>): Promise<OrganismoControlOC> {
+        const organismo = this.organismoRepo.create({
+            ...data,
+            correos: data.correos ?? [],
+        });
+        return this.organismoRepo.save(organismo);
+    }
+
+    async updateOrganismo(id: number, data: Partial<OrganismoControlOC>): Promise<OrganismoControlOC> {
+        const organismo = await this.organismoRepo.findOne({ where: { id } });
+        if (!organismo) throw new NotFoundException(`Organismo ${id} no encontrado`);
+        Object.assign(organismo, data);
+        return this.organismoRepo.save(organismo);
+    }
+
+    async deleteOrganismo(id: number): Promise<void> {
+        const organismo = await this.organismoRepo.findOne({ where: { id } });
+        if (!organismo) throw new NotFoundException(`Organismo ${id} no encontrado`);
+        organismo.activo = false;
+        await this.organismoRepo.save(organismo);
+    }
+
+    async syncOrganismos(organismos: Partial<OrganismoControlOC>[]): Promise<OrganismoControlOC[]> {
+        const results: OrganismoControlOC[] = [];
+        for (const org of organismos) {
+            if (org.id) {
+                const existing = await this.organismoRepo.findOne({ where: { id: org.id } });
+                if (existing) {
+                    Object.assign(existing, { ...org, correos: org.correos ?? existing.correos });
+                    results.push(await this.organismoRepo.save(existing));
+                    continue;
+                }
+            }
+            const nuevo = this.organismoRepo.create({ ...org, correos: org.correos ?? [] });
+            results.push(await this.organismoRepo.save(nuevo));
+        }
+        return results;
     }
 
     // ============================================
@@ -302,30 +341,23 @@ export class RequerimientosOCService {
     }): Promise<{ success: boolean; message: string }> {
         const req = await this.findOne(requerimientoId);
 
-        try {
-            // Enviar correo vía Microsoft Graph
-            await this.correosService.sendEmail({
-                to: data.destinatarioEmail,
-                subject: data.asunto,
-                body: data.cuerpoMensaje,
-            });
+        // El correo ya fue enviado por el frontend con los adjuntos vía Graph.
+        // Aquí solo registramos el estado y la trazabilidad.
+        req.estado = 'ENVIADO';
+        req.fechaRespuesta = new Date();
+        await this.requerimientoRepo.save(req);
 
-            // Actualizar estado del requerimiento
-            req.estado = 'ENVIADO';
-            req.fechaRespuesta = new Date();
-            await this.requerimientoRepo.save(req);
+        await this.comentariosService.createComentario({
+            requerimientoId,
+            contenido: `Respuesta enviada a: ${data.destinatarioEmail}`,
+            tipo: 'seguimiento',
+            autorNombre: 'Sistema'
+        });
 
-            return {
-                success: true,
-                message: `Respuesta enviada exitosamente a ${data.destinatarioEmail}. El requerimiento ha cambiado a estado ENVIADO.`
-            };
-        } catch (error) {
-            console.error('Error enviando respuesta:', error);
-            return {
-                success: false,
-                message: `Error al enviar respuesta: ${error.message || 'Error desconocido'}`
-            };
-        }
+        return {
+            success: true,
+            message: `Requerimiento marcado como ENVIADO. Respuesta registrada para ${data.destinatarioEmail}.`
+        };
     }
 
     // ============================================

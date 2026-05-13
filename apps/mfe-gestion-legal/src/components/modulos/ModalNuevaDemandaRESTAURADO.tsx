@@ -590,6 +590,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           });
           return false;
         }
+        if (formData.tipoProcesoJudicial === 'Proceso Penal' && !formData.esDelitoAdminPublica && !formData.esConductaPatrimonioPublico) {
+          toast.error('⚠️ Clasificación penal requerida', {
+            description: 'Debe seleccionar al menos una clasificación: Delitos contra la Administración Pública y/o Conductas que afectan el Patrimonio Público'
+          });
+          return false;
+        }
         return true;
 
       case 2:
