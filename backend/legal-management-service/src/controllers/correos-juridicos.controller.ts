@@ -16,7 +16,7 @@ import { CorreoJuridico } from '../entities/correo-juridico.entity';
 
 // DTO as class for decorator compatibility
 export class SendEmailDto {
-    to: string;
+    to: string | string[];
     cc?: string[];
     subject: string;
     body: string;

@@ -382,6 +382,14 @@ export class AuthService {
       secret: process.env.JWT_SECRET || 'esap-super-secret-jwt-key-2024',
     });
 
+    // Permissions that, when present, also unlock an additional module in the sidebar.
+    // Key = permission code (exact), Value = extra module code to grant.
+    const CROSS_MODULE_GRANTS: Record<string, string> = {
+      'gestion-legal.reportes.manage': 'reports',
+      'control-interno.reportes.manage': 'reports',
+      'control-disciplinario.reportes.manage': 'reports',
+    };
+
     const modules: string[] = [];
     let super_admin: boolean = false;
     for (const role of user.roles) {
@@ -392,6 +400,11 @@ export class AuthService {
         const code = permission.code.split('.')[0].toLowerCase().replace(/_/g, '-');
         if (!modules.includes(code)) {
           modules.push(code);
+        }
+        // Grant extra modules for cross-module permissions
+        const extraModule = CROSS_MODULE_GRANTS[permission.code.toLowerCase()];
+        if (extraModule && !modules.includes(extraModule)) {
+          modules.push(extraModule);
         }
       }
     }
