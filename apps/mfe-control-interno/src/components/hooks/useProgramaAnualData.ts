@@ -3,7 +3,7 @@
  * HOOK: useProgramaAnualData 
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Hook para integraci\u00f3n con backend del Programa Anual de Auditor\u00edas.
+ * Hook para integración con backend del Programa Anual de Auditorías.
  * Reemplaza los datos mock AUDITORIAS_PROGRAMADAS y AUDITORES.
  * 
  * Usa: controlInternoService (src/services/api/controlInternoService.ts)
@@ -31,7 +31,7 @@ export interface AuditoriaProgramadaUI {
   id: string;
   procesoId: string;
   proceso: ProcesoAuditableUI;
-  // Tipo t\u00e9cnico (Gesti\u00f3n, Cumplimiento, etc.)
+  // Tipo técnico (Gestión, Cumplimiento, etc.)
   tipo: TipoAuditoria;
   // 🆕 Tipo operativo original (Regular / Territorial / Especial) para filtros del cronograma
   tipoOperativo?: 'regular' | 'territorial' | 'especial';
@@ -44,7 +44,7 @@ export interface AuditoriaProgramadaUI {
   auditorLider: string;
   equipo: string[];
   estado: EstadoAuditoria;
-  // ✅ Estado Kanban original del backend para filtros (Planeaci\u00f3n, Ejecuci\u00f3n, Comunicaci\u00f3n, Finalizada)
+  // ✅ Estado Kanban original del backend para filtros (Planeación, Ejecución, Comunicación, Finalizada)
   estadoKanban?: string;
   /** Fase backend (planeacion, en-curso, revision, completada) — respaldo si falta estadoKanban */
   fase?: string;
@@ -78,12 +78,12 @@ export interface Estadisticas {
   procesosMedios: number;
   procesosBajos: number;
   // Programa Anual
-  /** Total de auditor\u00edas cargadas (mismo universo que el Kanban) */
+  /** Total de auditorías cargadas (mismo universo que el Kanban) */
   totalProgramadas: number;
-  /** Auditor\u00edas en columna Kanban Finalizada */
+  /** Auditorías en columna Kanban Finalizada */
   completadas: number;
   enEjecucion: number;
-  /** Plan Anual + Planeaci\u00f3n (etapas previas a ejecuci\u00f3n) */
+  /** Plan Anual + Planeación (etapas previas a ejecución) */
   programadas: number;
   /** Desglose alineado con columnas del tablero */
   enPlanAnual: number;
@@ -94,13 +94,13 @@ export interface Estadisticas {
   coberturaAltos: number;
   horasTotales: number;
   horasEjecutadas: number;
-  // Vinculaci\u00f3n
+  // Vinculación
   vinculadasOCI: number;
   conHallazgos: number;
   conPlanesMejoramiento: number;
 }
 
-/** Columnas normalizadas (misma l\u00f3gica que `mapearFaseAEstado` en useAuditoriasKanban) */
+/** Columnas normalizadas (misma lógica que `mapearFaseAEstado` en useAuditoriasKanban) */
 export type ColumnaKanban =
   | 'plan_anual'
   | 'planeacion'
@@ -131,11 +131,11 @@ export function resolverColumnaKanban(
     ) {
       return 'plan_anual';
     }
-    if (n === 'planeaci\u00f3n' || n === 'planeacion' || n === 'planificaci\u00f3n' || n === 'planificacion') {
+    if (n === 'planeación' || n === 'planeacion' || n === 'planificación' || n === 'planificacion') {
       return 'planeacion';
     }
-    if (n === 'ejecuci\u00f3n' || n === 'ejecucion') return 'ejecucion';
-    if (n === 'comunicaci\u00f3n' || n === 'comunicacion' || n === 'informe') return 'comunicacion';
+    if (n === 'ejecución' || n === 'ejecucion') return 'ejecucion';
+    if (n === 'comunicación' || n === 'comunicacion' || n === 'informe') return 'comunicacion';
     if (n === 'seguimiento') return 'seguimiento';
     if (n === 'finalizada' || n === 'cierre' || n === 'completada') return 'finalizada';
   }
@@ -155,7 +155,7 @@ export function resolverColumnaKanban(
 // MAPPERS: Backend → Frontend
 // ════════════════════════════════════════════════════════════════════════════
 
-/** Mapea tipo de auditor\u00eda del backend al UI */
+/** Mapea tipo de auditoría del backend al UI */
 function mapTipoAuditoria(tipo: string): TipoAuditoria {
   const map: Record<string, TipoAuditoria> = {
     'gestion': 'GESTION',
@@ -168,19 +168,19 @@ function mapTipoAuditoria(tipo: string): TipoAuditoria {
 }
 
 /** 
- * Mapea estado de auditor\u00eda del backend al UI
+ * Mapea estado de auditoría del backend al UI
  * Reconoce tanto valores legacy como estadoKanban real
  * 
- * Estados Kanban reales: 'Planeaci\u00f3n', 'Ejecuci\u00f3n', 'Comunicaci\u00f3n', 'Finalizada'
+ * Estados Kanban reales: 'Planeación', 'Ejecución', 'Comunicación', 'Finalizada'
  * Estados legacy: 'planeada', 'en_curso', 'completada', 'cancelada'
  */
 function mapEstadoAuditoria(estado: string, estadoKanban?: string): EstadoAuditoria {
-  // ✅ PRIORIDAD 1: usar estadoKanban si est\u00e1 presente (valor real del backend)
+  // ✅ PRIORIDAD 1: usar estadoKanban si está presente (valor real del backend)
   if (estadoKanban) {
     const kanbanNorm = estadoKanban.toLowerCase().trim();
-    if (kanbanNorm === 'planeaci\u00f3n' || kanbanNorm === 'planeacion' || kanbanNorm === 'plan anual') return 'PROGRAMADA';
-    if (kanbanNorm === 'ejecuci\u00f3n' || kanbanNorm === 'ejecucion') return 'EN_EJECUCION';
-    if (kanbanNorm === 'comunicaci\u00f3n' || kanbanNorm === 'comunicacion') return 'COMPLETADA';
+    if (kanbanNorm === 'planeación' || kanbanNorm === 'planeacion' || kanbanNorm === 'plan anual') return 'PROGRAMADA';
+    if (kanbanNorm === 'ejecución' || kanbanNorm === 'ejecucion') return 'EN_EJECUCION';
+    if (kanbanNorm === 'comunicación' || kanbanNorm === 'comunicacion') return 'COMPLETADA';
     if (kanbanNorm === 'seguimiento') return 'COMPLETADA';
     if (kanbanNorm === 'finalizada') return 'COMPLETADA'; // Finalizadas mapean a COMPLETADA
   }
@@ -191,12 +191,12 @@ function mapEstadoAuditoria(estado: string, estadoKanban?: string): EstadoAudito
     'en_curso': 'EN_EJECUCION',
     'completada': 'COMPLETADA',
     'cancelada': 'CANCELADA',
-    // Tambi\u00e9n mapear valores directos
-    'planeaci\u00f3n': 'PROGRAMADA',
+    // También mapear valores directos
+    'planeación': 'PROGRAMADA',
     'planeacion': 'PROGRAMADA',
-    'ejecuci\u00f3n': 'EN_EJECUCION',
+    'ejecución': 'EN_EJECUCION',
     'ejecucion': 'EN_EJECUCION',
-    'comunicaci\u00f3n': 'COMPLETADA',
+    'comunicación': 'COMPLETADA',
     'comunicacion': 'COMPLETADA',
     'finalizada': 'COMPLETADA',
   };
@@ -235,7 +235,7 @@ function crearProcesoPlaceholder(
   };
 }
 
-/** Convierte una auditor\u00eda programada del backend al formato UI */
+/** Convierte una auditoría programada del backend al formato UI */
 function mapAuditoriaBackendToUI(
   auditoria: any,
   procesosMap: Map<string, ProcesoAuditableUI>
@@ -329,7 +329,7 @@ function mapAuditoriaBackendToUI(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// FUNCI\u00d3N: Calcular estad\u00edsticas desde datos reales
+// FUNCIÓN: Calcular estadísticas desde datos reales
 // ════════════════════════════════════════════════════════════════════════════
 
 export function calcularEstadisticas(
@@ -337,10 +337,10 @@ export function calcularEstadisticas(
   auditorias: AuditoriaProgramadaUI[]
 ): Estadisticas {
   const procesosAuditables = procesos.filter(p => p.auditable);
-  const criticos = procesosAuditables.filter(p => p.nivelRiesgo === 'Cr\u00edtico');
+  const criticos = procesosAuditables.filter(p => p.nivelRiesgo === 'Crítico');
   const altos = procesosAuditables.filter(p => p.nivelRiesgo === 'Alto');
 
-  const audCriticosCubiertos = auditorias.filter(a => a.proceso.nivelRiesgo === 'Cr\u00edtico').length;
+  const audCriticosCubiertos = auditorias.filter(a => a.proceso.nivelRiesgo === 'Crítico').length;
   const audAltosCubiertos = auditorias.filter(a => a.proceso.nivelRiesgo === 'Alto').length;
 
   let enPlanAnual = 0;
@@ -415,10 +415,10 @@ export function calcularEstadisticas(
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// TIPOS PARA CREAR/EDITAR AUDITOR\u00cdAS
+// TIPOS PARA CREAR/EDITAR AUDITORÍAS
 // ════════════════════════════════════════════════════════════════════════════
 
-/** Datos para crear una nueva auditor\u00eda programada */
+/** Datos para crear una nueva auditoría programada */
 export interface AuditoriaCreateData {
   tipoAuditoria: string;
   titulo: string;
@@ -439,10 +439,10 @@ export interface AuditoriaCreateData {
   responsableAreaCargo?: string;
   responsableAreaEmail?: string;
   fechaInicio: string;
-  fechaFinPlaneacion?: string; // Fin de Planeaci\u00f3n
-  fechaInicioEjecucion?: string; // Inicio de Ejecuci\u00f3n
-  fechaFinEjecucion?: string; // Fin de Ejecuci\u00f3n
-  fechaInicioComunicacion?: string; // Inicio de Comunicaci\u00f3n
+  fechaFinPlaneacion?: string; // Fin de Planeación
+  fechaInicioEjecucion?: string; // Inicio de Ejecución
+  fechaFinEjecucion?: string; // Fin de Ejecución
+  fechaInicioComunicacion?: string; // Inicio de Comunicación
   fechaFin: string;
   periodicidad?: string;
   objetivos?: string[];
@@ -458,7 +458,7 @@ export interface AuditoriaCreateData {
   hitos?: any[];
   vinculadaPlanAnual?: boolean;
   planAnualId?: string;
-  planAnualA\u00f1o?: number;
+  planAnualAño?: number;
   rolDecretoAsociado?: string;
   estadoKanban?: string; // Estado inicial para el tablero Kanban
   incluirHallazgosPreliminares?: boolean;
@@ -513,7 +513,7 @@ export function useProgramaAnualData(
   const [isOnline, setIsOnline] = useState(true);
   const fetchedRef = useRef(false);
 
-  // Crear mapa de procesos para lookup r\u00e1pido
+  // Crear mapa de procesos para lookup rápido
   const procesosMap = new Map<string, ProcesoAuditableUI>();
   procesos.forEach(p => procesosMap.set(p.id, p));
 
@@ -521,23 +521,23 @@ export function useProgramaAnualData(
   const { notificarAuditoriaCreada, notificarAccesoRestringido } = useCrearNotificacion();
 
   /**
-   * Verifica si el usuario tiene permiso para crear auditor\u00edas
+   * Verifica si el usuario tiene permiso para crear auditorías
    */
   const verificarPermisoCrear = useCallback(() => {
     if (!authService.hasPermission(Permissions.CONTROL_INTERNO_AUDITORIAS_CREATE)) {
       toast.error('Acceso restringido', {
-        description: 'No tienes los permisos necesarios para programar auditor\u00edas.'
+        description: 'No tienes los permisos necesarios para programar auditorías.'
       });
       
       // Notificar al sistema para que aparezca en la campana
-      notificarAccesoRestringido('Programar Auditor\u00eda');
+      notificarAccesoRestringido('Programar Auditoría');
       
       return false;
     }
     return true;
   }, [notificarAccesoRestringido]);
 
-  // ── Fetch auditor\u00edas programadas ──
+  // ── Fetch auditorías programadas ──
   const fetchAuditorias = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -545,7 +545,7 @@ export function useProgramaAnualData(
     try {
       let allAuditorias: AuditoriaProgramadaUI[] = [];
       
-      // ✅ 1. Cargar auditor\u00edas directamente del endpoint /auditorias
+      // ✅ 1. Cargar auditorías directamente del endpoint /auditorias
       try {
         const auditoriasDirectas = await auditoriaService.listar();
         if (Array.isArray(auditoriasDirectas) && auditoriasDirectas.length > 0) {
@@ -598,13 +598,13 @@ export function useProgramaAnualData(
             territorial: a.territorial,
           }));
           allAuditorias.push(...mapped);
-          console.log('[useProgramaAnualData] ✅ Cargadas', auditoriasDirectas.length, 'auditor\u00edas de /auditorias');
+          console.log('[useProgramaAnualData] ✅ Cargadas', auditoriasDirectas.length, 'auditorías de /auditorias');
         }
       } catch (err) {
-        console.warn('[useProgramaAnualData] No se pudieron cargar auditor\u00edas directas:', err);
+        console.warn('[useProgramaAnualData] No se pudieron cargar auditorías directas:', err);
       }
       
-      // 2. Tambi\u00e9n intentar cargar de programas anuales (si existen)
+      // 2. También intentar cargar de programas anuales (si existen)
       try {
         const yearStr = vigencia?.toString();
         const programas = await controlInternoService.getProgramasAnuales(yearStr);
@@ -621,19 +621,19 @@ export function useProgramaAnualData(
                 allAuditorias.push(...novedades);
               }
             } catch {
-              // Si falla un programa individual, continuar con los dem\u00e1s
+              // Si falla un programa individual, continuar con los demás
             }
           }
         }
       } catch {
-        // Si no hay programas anuales, continuar con las auditor\u00edas directas
+        // Si no hay programas anuales, continuar con las auditorías directas
       }
       
       setIsOnline(true);
       setAuditorias(allAuditorias);
-      console.log('[useProgramaAnualData] Total auditor\u00edas cargadas:', allAuditorias.length);
+      console.log('[useProgramaAnualData] Total auditorías cargadas:', allAuditorias.length);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error al cargar auditor\u00edas';
+      const msg = err instanceof Error ? err.message : 'Error al cargar auditorías';
       console.warn('[useProgramaAnualData] Error al conectar con backend:', msg);
       setError(msg);
       setIsOnline(false);
@@ -650,10 +650,10 @@ export function useProgramaAnualData(
     }
   }, [autoFetch, fetchAuditorias]);
 
-  // ── Calcular estad\u00edsticas ──
+  // ── Calcular estadísticas ──
   const estadisticas = calcularEstadisticas(procesos, auditorias);
 
-  // ── Agregar nueva auditor\u00eda ──
+  // ── Agregar nueva auditoría ──
   const agregarAuditoria = useCallback(async (data: AuditoriaCreateData): Promise<boolean> => {
     try {
       // ✅ Usar el servicio centralizado que mapea correctamente al DTO del backend
@@ -696,23 +696,23 @@ export function useProgramaAnualData(
         hitos: data.hitos,
         vinculadaPlanAnual: data.vinculadaPlanAnual,
         planAnualId: data.planAnualId,
-        planAnualA\u00f1o: data.planAnualA\u00f1o,
+        planAnualAño: data.planAnualAño,
         rolDecretoAsociado: data.rolDecretoAsociado,
         estadoKanban: data.estadoKanban || 'Plan Anual', // Por defecto Plan Anual
       };
 
-      console.log('[useProgramaAnualData] Creando auditor\u00eda con servicio:', formData);
+      console.log('[useProgramaAnualData] Creando auditoría con servicio:', formData);
       
       const auditoriaId = await auditoriaService.crear(formData, showToasts);
       
       if (auditoriaId) {
         // ✅ NOTIFICAR A LOS INVOLUCRADOS
         try {
-          // 1. Notificar al Auditor L\u00edder
+          // 1. Notificar al Auditor Líder
           if (data.auditorLider && data.auditorLider !== 'Por asignar') {
             await notificarAuditoriaCreada(
               auditoriaId,
-              data.titulo, // C\u00f3digo temporal o t\u00edtulo
+              data.titulo, // Código temporal o título
               data.titulo,
               data.auditorLider,
               data.fechaInicio
@@ -722,7 +722,7 @@ export function useProgramaAnualData(
           // 2. Notificar al Equipo de Auditores
           if (data.equipoAuditores && data.equipoAuditores.length > 0) {
             for (const auditorId of data.equipoAuditores) {
-              if (auditorId !== data.auditorLider) { // Evitar duplicado si el l\u00edder est\u00e1 en el equipo
+              if (auditorId !== data.auditorLider) { // Evitar duplicado si el líder está en el equipo
                 await notificarAuditoriaCreada(
                   auditoriaId,
                   data.titulo,
@@ -775,7 +775,7 @@ export function useProgramaAnualData(
             }
           } catch (errH) {
             console.error('Error creando hallazgos preliminares:', errH);
-            if (showToasts) toast.warning('Auditor\u00eda creada, pero hubo un error al guardar algunos hallazgos preliminares');
+            if (showToasts) toast.warning('Auditoría creada, pero hubo un error al guardar algunos hallazgos preliminares');
           }
         }
         // Refrescar datos
@@ -784,8 +784,8 @@ export function useProgramaAnualData(
       }
       return false;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error al crear auditor\u00eda';
-      console.error('[useProgramaAnualData] Error al crear auditor\u00eda:', msg);
+      const msg = err instanceof Error ? err.message : 'Error al crear auditoría';
+      console.error('[useProgramaAnualData] Error al crear auditoría:', msg);
       if (showToasts) {
         toast.error(`Error: ${msg}`);
       }
@@ -793,7 +793,7 @@ export function useProgramaAnualData(
     }
   }, [vigencia, showToasts, fetchAuditorias]);
 
-  // ── Editar auditor\u00eda existente ──
+  // ── Editar auditoría existente ──
   const editarAuditoria = useCallback(async (
     id: string, 
     data: Partial<AuditoriaCreateData>
@@ -811,20 +811,20 @@ export function useProgramaAnualData(
       if (data.nivelRiesgo) updates.nivelRiesgo = data.nivelRiesgo.toLowerCase();
       if (data.territorial) updates.territorial = data.territorial;
       
-      console.log('[useProgramaAnualData] Actualizando auditor\u00eda:', { id, updates });
+      console.log('[useProgramaAnualData] Actualizando auditoría:', { id, updates });
       
       const resultado = await controlInternoService.updateAuditoria(id, updates);
       
       if (resultado) {
         if (showToasts) {
-          toast.success('Auditor\u00eda actualizada');
+          toast.success('Auditoría actualizada');
         }
         await fetchAuditorias();
         return true;
       }
       return false;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error al actualizar auditor\u00eda';
+      const msg = err instanceof Error ? err.message : 'Error al actualizar auditoría';
       console.error('[useProgramaAnualData] Error al actualizar:', msg);
       if (showToasts) {
         toast.error(`Error: ${msg}`);
@@ -833,20 +833,20 @@ export function useProgramaAnualData(
     }
   }, [showToasts, fetchAuditorias]);
 
-  // ── Eliminar auditor\u00eda ──
+  // ── Eliminar auditoría ──
   const eliminarAuditoria = useCallback(async (id: string): Promise<boolean> => {
     try {
-      console.log('[useProgramaAnualData] Eliminando auditor\u00eda:', id);
+      console.log('[useProgramaAnualData] Eliminando auditoría:', id);
       
       await controlInternoService.deleteAuditoria(id);
       
       if (showToasts) {
-        toast.success('Auditor\u00eda eliminada');
+        toast.success('Auditoría eliminada');
       }
       await fetchAuditorias();
       return true;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Error al eliminar auditor\u00eda';
+      const msg = err instanceof Error ? err.message : 'Error al eliminar auditoría';
       console.error('[useProgramaAnualData] Error al eliminar:', msg);
       if (showToasts) {
         toast.error(`Error: ${msg}`);
