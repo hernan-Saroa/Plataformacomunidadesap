@@ -119,6 +119,15 @@ export class CertificatesController {
     );
   }
 
+  @Delete('technical-bonus/categories/:category/assignments')
+  async deleteTechnicalBonusAssignmentsByCategory(
+    @Param('category') category: string,
+  ) {
+    return await this.certificatesService.deleteTechnicalBonusAssignmentsByCategory(
+      category,
+    );
+  }
+
   @Delete('technical-bonus/categories/:category')
   async deleteTechnicalBonusCategory(@Param('category') category: string) {
     return await this.certificatesService.deleteTechnicalBonusCategory(category);
