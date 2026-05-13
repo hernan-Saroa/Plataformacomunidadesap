@@ -278,6 +278,72 @@ export class CorreosJuridicosController {
     async batchClassify(@Body() body: { limit?: number }): Promise<{ processed: number; updated: number }> {
         return this.correosService.batchClassifyBackfill(body.limit || 50);
     }
+
+    // ===================================================================
+    //  TRACKING ENDPOINTS (Trazabilidad de apertura de correos/documentos)
+    // ===================================================================
+
+    /**
+     * Tracking Pixel — registra apertura de correo por destinatario externo.
+     * Retorna una imagen GIF 1x1 transparente.
+     * Ruta: GET /correos/track/open/:token
+     */
+    @Get('track/open/:token')
+    async trackOpen(
+        @Param('token') token: string,
+        @Res() res: any,
+        @Query('_') _cacheBust?: string,
+    ) {
+        // Extraer IP y User-Agent para auditoría
+        const ip = res.req?.headers?.['x-forwarded-for'] || res.req?.socket?.remoteAddress || 'unknown';
+        const userAgent = res.req?.headers?.['user-agent'] || 'unknown';
+
+        // Registrar apertura (fire-and-forget, no bloquea la respuesta)
+        this.correosService.processTrackingPixel(token, ip, userAgent).catch(() => {});
+
+        // GIF 1x1 transparente (43 bytes)
+        const pixel = Buffer.from(
+            'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+            'base64',
+        );
+
+        res.setHeader('Content-Type', 'image/gif');
+        res.setHeader('Content-Length', pixel.length);
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.send(pixel);
+    }
+
+    /**
+     * Tracked Document Download — registra apertura de documento y sirve el archivo.
+     * Ruta: GET /correos/track/download/:token
+     */
+    @Get('track/download/:token')
+    async trackDownload(
+        @Param('token') token: string,
+        @Res() res: any,
+    ) {
+        const ip = res.req?.headers?.['x-forwarded-for'] || res.req?.socket?.remoteAddress || 'unknown';
+        const userAgent = res.req?.headers?.['user-agent'] || 'unknown';
+
+        try {
+            const result = await this.correosService.processTrackingDownload(token, ip, userAgent);
+
+            if (!result) {
+                return res.status(HttpStatus.NOT_FOUND).json({ message: 'Documento no encontrado o enlace expirado' });
+            }
+
+            const buffer = Buffer.from(result.contentBytes, 'base64');
+            const isViewable = result.contentType === 'application/pdf' || result.contentType?.startsWith('image/');
+            const disposition = isViewable ? 'inline' : 'attachment';
+
+            res.setHeader('Content-Type', result.contentType || 'application/octet-stream');
+            res.setHeader('Content-Disposition', `${disposition}; filename="${result.name}"`);
+            res.setHeader('Content-Length', buffer.length);
+            res.send(buffer);
+        } catch (error) {
+            return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ message: 'Error al descargar el documento' });
+        }
+    }
 }
-
-
