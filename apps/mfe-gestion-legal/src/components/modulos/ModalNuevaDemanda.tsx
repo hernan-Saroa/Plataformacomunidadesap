@@ -59,6 +59,8 @@ export interface NuevaDemandaData {
   observaciones: string;
   terminoProcesalDias?: number;
   tipoConteoTermino?: 'HABILES' | 'CALENDARIO';
+  esDelitoAdminPublica?: boolean;
+  esConductaPatrimonioPublico?: boolean;
 }
 
 function mapTipoPersona(tipo: 'Natural' | 'Juridica'): 'natural' | 'juridica' {
@@ -119,6 +121,8 @@ function mapDemandaData(data: NuevaDemandaDataRestaurado): NuevaDemandaData {
     observaciones: data.observaciones,
     terminoProcesalDias: data.termino,
     tipoConteoTermino: data.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
+    esDelitoAdminPublica: (data as any).esDelitoAdminPublica || false,
+    esConductaPatrimonioPublico: (data as any).esConductaPatrimonioPublico || false,
   };
 }
 

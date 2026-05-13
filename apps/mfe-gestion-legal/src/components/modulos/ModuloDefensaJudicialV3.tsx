@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import type { ExpedienteJudicial, EtapaDefensaJudicial } from '../core/types';
 import { ModalNuevaDemanda, NuevaDemandaData } from './ModalNuevaDemanda';
+import { generarReporteExpedientesPDF } from './generarReporteExpedientes';
 import { ModalExpediente } from './ModalExpediente';
 import { ModalComunicaciones } from './ModalComunicaciones';
 import { ModalAutos } from './ModalAutos';
@@ -401,6 +402,9 @@ export function ModuloDefensaJudicialV3() {
           demandadoDireccion: exp.demandadoDireccion,
           demandadoTelefono: exp.demandadoTelefono,
           demandadoEmail: exp.demandadoEmail,
+          // Clasificación Penal
+          esDelitoAdminPublica: exp.esDelitoAdminPublica || false,
+          esConductaPatrimonioPublico: exp.esConductaPatrimonioPublico || false,
         }
       });
       // Si el usuario tiene rol RESUELVE_GESTION_LEGAL, solo mostrar sus demandas asignadas
@@ -577,14 +581,36 @@ export function ModuloDefensaJudicialV3() {
       exp.demandado?.toLowerCase().includes(busqueda.toLowerCase()) ||
       exp.juzgado?.toLowerCase().includes(busqueda.toLowerCase());
 
-    // Filtro por Tipo de Proceso (Flexible: revisa tipo, medioControl y tipoAccion)
-    // Esto asegura que sirva tanto para "Nulidad y Restablecimiento" (Medio Control)
-    // como para "Tutela" (Tipo Acción)
+    // Filtro por Tipo de Proceso (Flexible: revisa tipo, medioControl, tipoAccion y tipoProceso)
+    // Los IDs del filtro (ej: 'reparacion-directa') no coinciden con los valores del backend
+    // (ej: 'Reparación Directa'), así que normalizamos ambos lados para comparar.
+    const normalize = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[_\s]+/g, '-').trim();
+    const filtroNorm = normalize(filtroTipo);
+    // También buscar el nombre legible del tipo seleccionado en la configuración
+    const tipoConfigSeleccionado = tiposProcesosActivos.find((t: any) => t.id === filtroTipo);
+    const filtroNombreNorm = tipoConfigSeleccionado ? normalize(tipoConfigSeleccionado.nombre) : '';
+
     const matchTipo = filtroTipo === 'TODOS' ||
+      // Comparación directa (por si coinciden exacto)
       exp.tipo === filtroTipo ||
       exp.tipoAccion === filtroTipo ||
       exp.medioControl === filtroTipo ||
-      (exp.medioControl && exp.medioControl.includes(filtroTipo)); // Parcial match por si acaso
+      (exp as any).tipoProceso === filtroTipo ||
+      // Comparación normalizada contra el ID del filtro
+      normalize(exp.tipo) === filtroNorm ||
+      normalize(exp.tipoAccion) === filtroNorm ||
+      normalize(exp.medioControl) === filtroNorm ||
+      normalize((exp as any).tipoProceso) === filtroNorm ||
+      // Comparación normalizada contra el NOMBRE del tipo de proceso seleccionado
+      (filtroNombreNorm && (
+        normalize(exp.tipo) === filtroNombreNorm ||
+        normalize(exp.tipoAccion) === filtroNombreNorm ||
+        normalize(exp.medioControl) === filtroNombreNorm ||
+        normalize((exp as any).tipoProceso) === filtroNombreNorm
+      )) ||
+      // Parcial match (por si el valor contiene el filtro o viceversa)
+      (exp.medioControl && normalize(exp.medioControl).includes(filtroNorm)) ||
+      ((exp as any).tipoProceso && normalize((exp as any).tipoProceso).includes(filtroNorm));
 
     // Filtro por Abogado (solo visible para Jefe/Secretariado)
     const matchAbogado = filtroAbogado === 'TODOS' ||
@@ -741,6 +767,10 @@ export function ModuloDefensaJudicialV3() {
         demandadoDireccion: demandaData.demandados[0]?.direccion || '',
         demandadoTelefono: demandaData.demandados[0]?.telefono || '',
         demandadoEmail: demandaData.demandados[0]?.email || '',
+
+        // Clasificación penal (Contraloría / ANDJE)
+        esDelitoAdminPublica: demandaData.esDelitoAdminPublica || false,
+        esConductaPatrimonioPublico: demandaData.esConductaPatrimonioPublico || false,
       };
 
       await legalService.crearExpediente(expedienteData);
@@ -757,15 +787,40 @@ export function ModuloDefensaJudicialV3() {
   };
 
   const addBtnsPermission = () => {
+    const btns: any[] = [];
     if (authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_CREATE)) {
-      return [{
+      btns.push({
         label: 'Nueva Demanda',
         icon: <Plus className="w-4 h-4 mr-1" />,
         onClick: () => setModalNuevaDemandaOpen(true),
         className: 'bg-orange-600 hover:bg-orange-700 text-white font-bold'
-      }]
+      });
     }
-    return []
+    btns.push({
+      label: 'Descargar Reporte',
+      icon: <Download className="w-4 h-4 mr-1" />,
+      onClick: () => {
+        const tipoConfigSeleccionado = tiposProcesosActivos.find((t: any) => t.id === filtroTipo);
+        const nombreFiltro = filtroTipo === 'TODOS' ? 'TODOS' : (tipoConfigSeleccionado?.nombre || filtroTipo);
+        if (expedientesVisibles.length === 0) {
+          toast.error('No hay expedientes para exportar', {
+            description: 'Ajusta los filtros para incluir expedientes en el reporte.'
+          });
+          return;
+        }
+        toast.loading('Generando reporte PDF...', { id: 'reporte-pdf', duration: 3000 });
+        setTimeout(() => {
+          generarReporteExpedientesPDF(expedientesVisibles as any, nombreFiltro);
+          toast.success(`Reporte generado con ${expedientesVisibles.length} expediente(s)`, {
+            id: 'reporte-pdf',
+            description: `Filtro: ${nombreFiltro}`,
+            duration: 4000
+          });
+        }, 300);
+      },
+      className: 'bg-blue-600 hover:bg-blue-700 text-white font-bold'
+    });
+    return btns;
   };
 
   const useFluidKanban = !isMobile && !isTablet;
