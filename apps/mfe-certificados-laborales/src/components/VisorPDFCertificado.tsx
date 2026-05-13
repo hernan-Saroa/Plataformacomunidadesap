@@ -24,6 +24,7 @@ interface VisorPDFCertificadoProps {
   onEmailReady?: (payload: { base64: string; fileName: string }) => void;
   onEmailError?: () => void;
   certificado: {
+    id?: string;
     consecutivo: string;
     certificateHash?: string;
     qrCode?: string;
@@ -108,6 +109,8 @@ export function VisorPDFCertificado({
     const baseWidth = window.innerWidth || CERTIFICATE_WIDTH;
     return Math.min(1, Math.max(0.25, (baseWidth - 24) / CERTIFICATE_WIDTH));
   });
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const normalizarTipografia = (value?: string | null) => {
     const raw = String(value || '').trim();
@@ -233,6 +236,31 @@ export function VisorPDFCertificado({
     (certificado as any)?.templateType,
     (certificado as any)?.template_type,
   ]);
+
+  // Cargar PDF del backend para la vista previa del modal
+  useEffect(() => {
+    if (!isOpen || !certificado.id) return;
+    let blobUrl: string | null = null;
+    let cancelled = false;
+    setPdfLoading(true);
+    setPdfBlobUrl(null);
+    certificadosService.laborales.obtenerPDFBlob(certificado.id)
+      .then((blob) => {
+        if (cancelled) return;
+        blobUrl = URL.createObjectURL(blob);
+        setPdfBlobUrl(blobUrl);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setPdfLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      setPdfLoading(false);
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      setPdfBlobUrl(null);
+    };
+  }, [isOpen, certificado.id]);
 
   const incluirSalario = certificado?.incluyeSalario !== false;
   const typographyFont = normalizarTipografia(
@@ -636,13 +664,49 @@ export function VisorPDFCertificado({
     }
   };
 
-  const handleImprimir = () => {
+  const handleImprimir = async () => {
     if (!certificadoRef.current) {
       if (autoAction === 'print') {
         onAutoActionComplete?.('print', false);
       }
       toast.error('No se pudo preparar la vista de impresión.');
       return;
+    }
+
+    // Intentar imprimir el PDF del backend (el mismo que se envía por correo)
+    if (certificado.id) {
+      try {
+        toast.loading('Preparando documento para impresión...', { id: 'print-pdf' });
+        const blob = await certificadosService.laborales.obtenerPDFBlob(certificado.id);
+        const blobUrl = URL.createObjectURL(blob);
+        toast.dismiss('print-pdf');
+
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:816px;height:1056px;border:none;';
+        document.body.appendChild(iframe);
+        iframe.src = blobUrl;
+
+        iframe.addEventListener('load', () => {
+          try {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+          } catch {
+            window.open(blobUrl, '_blank');
+          }
+          setTimeout(() => {
+            if (document.body.contains(iframe)) document.body.removeChild(iframe);
+            URL.revokeObjectURL(blobUrl);
+          }, 60000);
+          if (autoAction === 'print') {
+            onAutoActionComplete?.('print', true);
+          }
+        }, { once: true });
+
+        return;
+      } catch {
+        toast.dismiss('print-pdf');
+        // Fallback al enfoque HTML original
+      }
     }
 
     // Clonar el certificado y fijar medidas para evitar recortes en la impresión
@@ -864,7 +928,7 @@ export function VisorPDFCertificado({
       void handleDescargar();
       setAutoActionHandled(true);
     } else if (autoAction === 'print') {
-      handleImprimir();
+      void handleImprimir();
       setAutoActionHandled(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1219,11 +1283,14 @@ export function VisorPDFCertificado({
         </div>
         <p style={{
           margin: 0,
-          fontSize: '12pt',
+          fontSize: '8pt',
           color: '#0066cc',
-          fontFamily: typographyFont
+          fontFamily: typographyFont,
+          textAlign: 'center',
+          maxWidth: `${qrSize}px`,
+          lineHeight: '1.4'
         }}>
-          www.esap.edu.co
+          Escanee el código QR para verificar el certificado
         </p>
       </div>
 
@@ -1245,12 +1312,12 @@ export function VisorPDFCertificado({
         )}
 
         {/* Modal */}
-        <div className={hiddenMode ? 'fixed inset-0 p-0 m-0 opacity-0 pointer-events-none' : 'fixed inset-0 flex items-center justify-center p-2 sm:p-4 pt-16 sm:pt-4'}>
+        <div className={hiddenMode ? 'fixed inset-0 p-0 m-0 opacity-0 pointer-events-none' : 'fixed inset-0 flex items-center justify-center p-2 sm:p-4'}>
           <motion.div
             initial={hiddenMode ? { opacity: 0, scale: 1, y: 0 } : { opacity: 0, scale: 0.95, y: 20 }}
             animate={hiddenMode ? { opacity: 0, scale: 1, y: 0 } : { opacity: 1, scale: 1, y: 0 }}
             exit={hiddenMode ? { opacity: 0, scale: 1, y: 0 } : { opacity: 0, scale: 0.95, y: 20 }}
-            className="bg-white rounded-xl shadow-2xl max-w-5xl w-full max-h-[90vh] sm:max-h-[92vh] overflow-hidden flex flex-col"
+            className="bg-white rounded-xl shadow-2xl max-w-5xl w-full h-[95vh] overflow-hidden flex flex-col"
           >
             {/* Header */}
             <div className="bg-gradient-to-r from-[#003DA5] to-[#0052cc] px-6 py-4">
@@ -1274,40 +1341,59 @@ export function VisorPDFCertificado({
             </div>
 
             {/* PDF Preview */}
-            <div className="relative overflow-y-auto overflow-x-hidden flex-1 bg-gray-100 p-3 sm:p-6 md:p-8">
-              <style>
-                {`
-                  .certificate-content-block p {
-                    margin: 0 0 12pt 0;
-                    text-align: justify !important;
-                    text-align-last: left !important;
-                    text-indent: 0 !important;
-                    letter-spacing: normal !important;
-                  }
-                  .certificate-content-block span {
-                    letter-spacing: normal !important;
-                    padding: 0 !important;
-                    margin: 0 !important;
-                  }
-                `}
-              </style>
-              {!hiddenMode && (
-                <div ref={previewWrapRef} className="w-full flex justify-center">
-                  <div
-                    className="relative"
-                    style={{
-                      width: `${Math.round(CERTIFICATE_WIDTH * previewScale)}px`,
-                      height: `${Math.round(CERTIFICATE_HEIGHT * previewScale)}px`
-                    }}
-                  >
+            <div className="relative flex-1 min-h-0 bg-gray-100 overflow-hidden flex flex-col">
+              {!hiddenMode && pdfBlobUrl && (
+                <iframe
+                  key={pdfBlobUrl}
+                  src={`${pdfBlobUrl}#navpanes=0&zoom=page-width`}
+                  className="w-full border-none"
+                  style={{ flex: '1 1 0', minHeight: 0 }}
+                  title="Certificado Laboral PDF"
+                />
+              )}
+              {!hiddenMode && pdfLoading && !pdfBlobUrl && (
+                <div className="flex-1 min-h-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#003DA5] mx-auto mb-3"></div>
+                    <p className="text-gray-500 text-sm">Cargando certificado...</p>
+                  </div>
+                </div>
+              )}
+              {!hiddenMode && !pdfBlobUrl && !pdfLoading && (
+                <div className="overflow-y-auto overflow-x-hidden flex-1 min-h-0 p-3 sm:p-6 md:p-8">
+                  <style>
+                    {`
+                      .certificate-content-block p {
+                        margin: 0 0 12pt 0;
+                        text-align: justify !important;
+                        text-align-last: left !important;
+                        text-indent: 0 !important;
+                        letter-spacing: normal !important;
+                      }
+                      .certificate-content-block span {
+                        letter-spacing: normal !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                      }
+                    `}
+                  </style>
+                  <div ref={previewWrapRef} className="w-full flex justify-center">
                     <div
-                      className="absolute left-0 top-0"
+                      className="relative"
                       style={{
-                        transform: `scale(${previewScale})`,
-                        transformOrigin: 'top left'
+                        width: `${Math.round(CERTIFICATE_WIDTH * previewScale)}px`,
+                        height: `${Math.round(CERTIFICATE_HEIGHT * previewScale)}px`
                       }}
                     >
-                      {renderCertificate()}
+                      <div
+                        className="absolute left-0 top-0"
+                        style={{
+                          transform: `scale(${previewScale})`,
+                          transformOrigin: 'top left'
+                        }}
+                      >
+                        {renderCertificate()}
+                      </div>
                     </div>
                   </div>
                 </div>

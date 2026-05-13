@@ -143,6 +143,14 @@ export const certificadosService = {
       );
     },
 
+    async obtenerPDFBlob(id: string): Promise<Blob> {
+      return apiClient.getBlob(
+        `${SERVICE_PREFIX}/certificates/certificados/${id}/pdf`,
+        undefined,
+        { skipErrorToast: true },
+      );
+    },
+
     /**
      * Buscar personas en certificate_requests para asignar Prima Tecnica
      */

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, FileText, Download, CheckCircle, CheckCircle2, AlertCircle,
   Send, Loader2, User, CreditCard, Building2, Calendar,
-  Mail, Phone, MapPin, Search, ChevronDown, Printer,
+  Mail, Phone, MapPin, Search, ChevronDown,
   Shield, Clock, FileCheck, Sparkles, TrendingUp, Star, Eye, XCircle, Lock
 } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -1216,14 +1216,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     setShowPDFViewer(true);
   };
 
-  const handleImprimir = () => {
-    if (!certificadoGenerado?.certificado_completo) {
-      toast.error('No se puede imprimir el certificado. Faltan datos.');
-      return;
-    }
-    setAutoPDFAction('print');
-    setShowPDFViewer(true);
-  };
 
   const handleNuevaSolicitud = () => {
     // Reset todo
@@ -2077,14 +2069,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                     >
                       <Download className="w-5 h-5 mr-2" />
                       Descargar PDF
-                    </Button>
-                    <Button
-                      onClick={handleImprimir}
-                      variant="outline"
-                      className="flex-1 h-12 border-2 font-bold"
-                    >
-                      <Printer className="w-5 h-5 mr-2" />
-                      Imprimir
                     </Button>
                     <Button
                       onClick={handleNuevaSolicitud}
