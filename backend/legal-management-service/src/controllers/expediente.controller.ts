@@ -79,8 +79,8 @@ export class ExpedienteController {
         const userRole = body.userRole;
 
         if (userId && userRole) {
-            if (userRole === 'ABOGADO') {
-                // Abogados solo pueden asignarse a sí mismos (o el sistema lo hace por defecto)
+            if (userRole === 'RESUELVE_GESTION_LEGAL' || userRole === 'ABOGADO') {
+                // Usuarios Resuelve solo pueden asignarse a sí mismos
                 data.abogadoSustanciador = userId;
             } else if (userRole === 'JEFE_OFICINA' || userRole === 'ADMIN') {
                 // Jefes pueden asignar a cualquiera. Si viene en el body, se respeta.
