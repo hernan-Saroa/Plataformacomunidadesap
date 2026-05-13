@@ -231,7 +231,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       console.log('programaId', programaId);
       const response = await apiClient.get(`/auth/api/v1/programas-academicos/${programaId}/asignaturas`);
       console.log('response', response);
-      const asignaturasData = (response || []).map(a => ({ ...a, nucleo: a.nucleoTematico || 'General' }));
+      const asignaturasData = (response || []).map(a => ({ ...a, nucleoTematico: a.nucleoTematico || a.nucleo || 'General' }));
       setAsignaturas(asignaturasData);
       console.log('asignaturas', asignaturas);
 

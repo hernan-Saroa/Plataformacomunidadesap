@@ -1497,6 +1497,9 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                             </SelectContent>
                           </Select>
                         )}
+                        {tipoDocumento !== '' && tipoDocumento !== 'CC'  && (
+                          <p style={{ fontSize: '12px', marginTop: '6px', marginLeft: '6px' }} className="text-red-500">Tipo de documento no válido</p>
+                        )}
                       </div>
 
                       {/* Número de Documento */}
@@ -1592,7 +1595,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                       {/* Botón Solicitar Certificado */}
                       <Button
                         onClick={handleBuscarEmpleado}
-                        disabled={buscandoEmpleado || estadoLaboral === 'inactivo'}
+                        disabled={buscandoEmpleado || estadoLaboral === 'inactivo' || tipoDocumento === '' || tipoDocumento !== 'CC'}
                         className="w-full h-12 bg-gradient-to-r from-[#003DA5] to-[#1e5da8] hover:from-[#002d7a] hover:to-[#164a8f] text-white font-bold text-base shadow-lg"
                       >
                         {buscandoEmpleado ? (
