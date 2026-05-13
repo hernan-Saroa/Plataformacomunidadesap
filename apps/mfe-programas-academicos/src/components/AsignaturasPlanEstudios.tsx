@@ -26,7 +26,7 @@ interface Asignatura {
   id: string;
   nombre: string;
   codigo?: string;
-  nucleo?: string;
+  nucleoTematico?: string;
   semestre: number;
   creditos: number;
   horas: number;
@@ -75,7 +75,7 @@ const getNucleoColor = (nucleo?: string) => {
 };
 
 const EMPTY_ASIGNATURA: Omit<Asignatura, 'id' | 'programa_id'> = {
-  nombre: '', codigo: '', nucleo: 'General', semestre: 1,
+  nombre: '', codigo: '', nucleoTematico: 'General', semestre: 1,
   creditos: 3, horas: 144, modalidad: 'Presencial', tipo: 'Teorica', prerequisitos: '',
 };
 
@@ -92,7 +92,7 @@ function exportToCSV(asignaturas: Asignatura[], programaNombre: string) {
       a.semestre,
       a.creditos,
       a.horas,
-      `"${a.nucleo}"`,
+      `"${a.nucleoTematico}"`,
       a.modalidad,
       a.tipo || 'Teorica',
     ]);
@@ -172,7 +172,7 @@ function exportToPDF(asignaturas: Asignatura[], programaNombre: string, totalCre
             ${asigs.map((a, i) => `<tr>
               <td>${i + 1}</td><td>${a.codigo || '-'}</td><td><strong>${a.nombre}</strong></td>
               <td>${a.creditos}</td><td>${a.horas}</td>
-              <td><span class="nucleo">${a.nucleo}</span></td><td>${a.modalidad}</td>
+              <td><span class="nucleo">${a.nucleoTematico}</span></td><td>${a.modalidad}</td>
             </tr>`).join('')}
             <tr class="totals"><td colspan="3">Subtotal Semestre ${sem}</td><td>${semCr}</td><td>${asigs.reduce((s, a) => s + (a.horas || 0), 0)}</td><td colspan="2"></td></tr>
           </tbody>
@@ -231,7 +231,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
       console.log('programaId', programaId);
       const response = await apiClient.get(`/auth/api/v1/programas-academicos/${programaId}/asignaturas`);
       console.log('response', response);
-      const asignaturasData = (response || []).map(a => ({ ...a, nucleo: a.nucleo || 'General' }));
+      const asignaturasData = (response || []).map(a => ({ ...a, nucleo: a.nucleoTematico || 'General' }));
       setAsignaturas(asignaturasData);
       console.log('asignaturas', asignaturas);
 
@@ -351,7 +351,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
 
   // Dynamic nucleos from data
   const nucleosUnicos = useMemo(() => {
-    const set = new Set(asignaturas.map(a => a.nucleo).filter(Boolean));
+    const set = new Set(asignaturas.map(a => a.nucleoTematico).filter(Boolean));
     return Array.from(set).sort();
   }, [asignaturas]);
 
@@ -369,7 +369,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
   const nucleoStats = useMemo(() => {
     const map = new Map<string, { count: number; creditos: number }>();
     asignaturas.forEach(a => {
-      const n = a.nucleo || 'Sin nucleo';
+      const n = a.nucleoTematico || 'Sin nucleo';
       const existing = map.get(n) || { count: 0, creditos: 0 };
       map.set(n, { count: existing.count + 1, creditos: existing.creditos + (a.creditos || 0) });
     });
@@ -379,12 +379,12 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
   // Sort & filter
   const sorted = useMemo(() => [...asignaturas]
     .filter(a => filterSemestre === 'all' || a.semestre === filterSemestre)
-    .filter(a => filterNucleo === 'all' || a.nucleo === filterNucleo)
+    .filter(a => filterNucleo === 'all' || a.nucleoTematico === filterNucleo)
     .filter(a => !searchTerm || a.nombre.toLowerCase().includes(searchTerm.toLowerCase()) || (a.codigo || '').toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => {
       if (sortBy === 'semestre') return (a.semestre || 1) - (b.semestre || 1) || a.nombre.localeCompare(b.nombre);
       if (sortBy === 'nombre') return a.nombre.localeCompare(b.nombre);
-      return (a.nucleo || '').localeCompare(b.nucleo || '') || a.nombre.localeCompare(b.nombre);
+      return (a.nucleoTematico || '').localeCompare(b.nucleoTematico || '') || a.nombre.localeCompare(b.nombre);
     }), [asignaturas, filterSemestre, filterNucleo, searchTerm, sortBy]);
 
   if (loading) {
@@ -697,16 +697,12 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Nucleo</label>
-                  <select
-                    value={newAsig.nucleo}
-                    onChange={e => setNewAsig({ ...newAsig, nucleo: e.target.value })}
+                  <input
+                    value={newAsig.nucleoTematico}
+                    onChange={e => setNewAsig({ ...newAsig, nucleoTematico: e.target.value })}
+                    placeholder="Ej: Fundamentación Cuantitativa"
                     className="w-full h-11 px-3 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#003DA5]"
-                  >
-                    {nucleosUnicos.length > 0 ? nucleosUnicos.map(n => <option key={n} value={n}>{n}</option>) : (
-                      Object.keys(NUCLEO_COLORS).map(n => <option key={n} value={n}>{n}</option>)
-                    )}
-                    <option value="General">General</option>
-                  </select>
+                  />
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Modalidad</label>
@@ -807,10 +803,10 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                           </div>
                         )}
                         {semAsigs
-                          .filter(a => filterNucleo === 'all' || a.nucleo === filterNucleo)
+                          .filter(a => filterNucleo === 'all' || a.nucleoTematico === filterNucleo)
                           .filter(a => !searchTerm || a.nombre.toLowerCase().includes(searchTerm.toLowerCase()))
                           .map(asig => {
-                            const color = getNucleoColor(asig.nucleo);
+                            const color = getNucleoColor(asig.nucleoTematico);
                             const isDragging = dragState.draggingId === asig.id;
                             return (
                               <div
@@ -827,7 +823,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                                   <div className="flex-1 min-w-0">
                                     <p className={`text-[11px] font-semibold ${color.text} leading-tight`}>{asig.nombre}</p>
                                     <div className="flex items-center justify-between mt-1">
-                                      <span className="text-[9px] text-gray-500 truncate">{asig.nucleo}</span>
+                                      <span className="text-[9px] text-gray-500 truncate">{asig.nucleoTematico}</span>
                                       <span className={`text-[9px] font-bold ${color.text} flex-shrink-0 ml-1`}>{asig.creditos} cr.</span>
                                     </div>
                                   </div>
@@ -869,7 +865,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
               <tbody>
                 <AnimatePresence>
                   {sorted.map((asig, idx) => {
-                    const color = getNucleoColor(asig.nucleo);
+                    const color = getNucleoColor(asig.nucleoTematico);
                     const isEditing = editingId === asig.id;
                     return (
                       <motion.tr
@@ -935,13 +931,14 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                         </td>
                         <td className="px-3 py-1.5">
                           {isEditing ? (
-                            <select value={asig.nucleo} onChange={e => handleUpdate(asig.id, 'nucleo', e.target.value)}
-                              className="w-full h-7 px-1 border border-[#003DA5] rounded text-[10px] outline-none bg-blue-50">
-                              {nucleosUnicos.map(n => <option key={n} value={n}>{n}</option>)}
-                              {Object.keys(NUCLEO_COLORS).filter(n => !nucleosUnicos.includes(n)).map(n => <option key={n} value={n}>{n}</option>)}
-                            </select>
+                            <input
+                              value={asig.nucleoTematico || ''}
+                              onChange={e => handleUpdate(asig.id, 'nucleoTematico', e.target.value)}
+                              placeholder="Ej: Fundamentación Cuantitativa"
+                              className="w-full h-7 px-2 border border-[#003DA5] rounded text-[10px] outline-none bg-blue-50"
+                            />
                           ) : (
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${color.bg} ${color.text} font-medium`}>{asig.nucleo}</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full ${color.bg} ${color.text} font-medium`}>{asig.nucleoTematico}</span>
                           )}
                         </td>
                         <td className="px-3 py-1.5 text-center">
@@ -1005,7 +1002,7 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
           <div className="sm:hidden divide-y divide-gray-100">
             <AnimatePresence>
               {sorted.map((asig, idx) => {
-                const color = getNucleoColor(asig.nucleo);
+                const color = getNucleoColor(asig.nucleoTematico);
                 const isEditing = editingId === asig.id;
                 return (
                   <motion.div
@@ -1085,13 +1082,14 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
                       </span>
                       {/* Núcleo */}
                       {isEditing ? (
-                        <select value={asig.nucleo} onChange={e => handleUpdate(asig.id, 'nucleo', e.target.value)}
-                          className={`h-6 px-1.5 rounded-full text-[10px] border-0 outline-none font-medium ${color.bg} ${color.text}`}>
-                          {nucleosUnicos.map(n => <option key={n} value={n}>{n}</option>)}
-                          {Object.keys(NUCLEO_COLORS).filter(n => !nucleosUnicos.includes(n)).map(n => <option key={n} value={n}>{n}</option>)}
-                        </select>
+                        <input
+                          value={asig.nucleoTematico || ''}
+                          onChange={e => handleUpdate(asig.id, 'nucleoTematico', e.target.value)}
+                          placeholder="Núcleo"
+                          className={`h-6 px-1.5 rounded-full text-[10px] border border-gray-300 outline-none font-medium ${color.bg} ${color.text} bg-white`}
+                        />
                       ) : (
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${color.bg} ${color.text}`}>{asig.nucleo}</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${color.bg} ${color.text}`}>{asig.nucleoTematico}</span>
                       )}
                       {/* Modalidad */}
                       {isEditing ? (
