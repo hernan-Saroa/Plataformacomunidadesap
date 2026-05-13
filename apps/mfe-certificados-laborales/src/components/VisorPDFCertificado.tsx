@@ -31,8 +31,8 @@ interface VisorPDFCertificadoProps {
     incluyeSalario?: boolean;
     incluyePrimaTecnica?: boolean;
     technical_bonus?: number;
-    technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
-    technicalBonusCategory?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+    technical_bonus_category?: string | null;
+    technicalBonusCategory?: string | null;
     templateSnapshot?: any;
     templateType?: 'docente' | 'administrador';
     template_snapshot?: any;
@@ -76,17 +76,19 @@ interface VisorPDFCertificadoProps {
 const CERTIFICATE_WIDTH = 816;
 const CERTIFICATE_HEIGHT = 1056;
 const DEFAULT_CERTIFICATE_FONT = 'Arial Narrow, Arial, sans-serif';
-type PrimaTecnicaCategoria = 'DIRECTIVOS' | 'COORDINADORES';
+type PrimaTecnicaCategoria = string;
 
 const normalizarCategoriaPrimaTecnica = (value: unknown): PrimaTecnicaCategoria | null => {
   const normalized = String(value || '').trim().toUpperCase();
-  return normalized === 'DIRECTIVOS' || normalized === 'COORDINADORES'
-    ? (normalized as PrimaTecnicaCategoria)
-    : null;
+  return normalized || null;
 };
 
 const obtenerConceptoPrimaTecnica = (categoria: PrimaTecnicaCategoria | null): string =>
-  categoria === 'COORDINADORES' ? 'prima de coordinación' : 'prima técnica';
+  categoria === 'COORDINADORES'
+    ? 'prima de coordinación'
+    : categoria === 'DIRECTIVOS'
+      ? 'prima técnica'
+      : 'prima técnica y/o coordinación';
 
 export function VisorPDFCertificado({
   isOpen,

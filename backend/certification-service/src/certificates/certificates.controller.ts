@@ -62,6 +62,68 @@ export class CertificatesController {
     return await this.certificatesService.searchTechnicalBonusCandidates(query || '', parsedLimit);
   }
 
+  @Get('technical-bonus/categories')
+  async getTechnicalBonusCategories(
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    return await this.certificatesService.listTechnicalBonusCategories({
+      includeInactive: ['true', '1', 'si', 'yes'].includes(
+        String(includeInactive || '').trim().toLowerCase(),
+      ),
+    });
+  }
+
+  @Post('technical-bonus/categories')
+  async createTechnicalBonusCategory(
+    @Body()
+    body: {
+      code?: string;
+      category?: string;
+      label?: string;
+      description?: string;
+      templateText?: string;
+      template_text?: string;
+      updatedBy?: string;
+    },
+    @Req() req: any,
+  ) {
+    return await this.certificatesService.createTechnicalBonusCategory({
+      ...body,
+      updatedBy: body.updatedBy || this.resolveRequestUsername(req),
+    });
+  }
+
+  @Put('technical-bonus/categories/:category')
+  async updateTechnicalBonusCategory(
+    @Param('category') category: string,
+    @Body()
+    body: {
+      label?: string;
+      description?: string;
+      templateText?: string;
+      template_text?: string;
+      isActive?: boolean;
+      is_active?: boolean;
+      displayOrder?: number;
+      display_order?: number;
+      updatedBy?: string;
+    },
+    @Req() req: any,
+  ) {
+    return await this.certificatesService.updateTechnicalBonusCategory(
+      category,
+      {
+        ...body,
+        updatedBy: body.updatedBy || this.resolveRequestUsername(req),
+      },
+    );
+  }
+
+  @Delete('technical-bonus/categories/:category')
+  async deleteTechnicalBonusCategory(@Param('category') category: string) {
+    return await this.certificatesService.deleteTechnicalBonusCategory(category);
+  }
+
   @Get('technical-bonus')
   async getTechnicalBonusAssignments(@Query('category') category?: string) {
     return await this.certificatesService.listTechnicalBonusAssignments(category || '');
