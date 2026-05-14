@@ -694,6 +694,23 @@ const PERMISSION_TO_CATEGORY: Record<string, string> = {
   'verificacion': 'verificacion',
 };
 
+const ALL_CATEGORIES: { id: string; label: string }[] = [
+  { id: 'todos', label: 'Todos' },
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'usuarios', label: 'Usuarios' },
+  { id: 'estructura', label: 'Estructura' },
+  { id: 'programas', label: 'Programas' },
+  { id: 'roles', label: 'Roles' },
+  { id: 'auditoria', label: 'Auditoría' },
+  { id: 'aspirantes', label: 'Aspirantes' },
+  { id: 'empleo', label: 'Empleo' },
+  { id: 'certificados-lab', label: 'Cert. Laborales' },
+  { id: 'profesoral', label: 'Profesoral' },
+  { id: 'control-interno', label: 'Control Interno' },
+  { id: 'verificacion', label: 'Verificación' },
+  { id: 'gestion-legal', label: 'Gestión Legal' },
+];
+
 export function ReportsModuleV2() {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('todos');
