@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Toaster } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { PTAProvider } from '../../contexts/PTAContext';
 import { VisualizadorPTAAjustes } from './VisualizadorPTAAjustes';
 import { WizardCrearPTA } from './WizardCrearPTA';

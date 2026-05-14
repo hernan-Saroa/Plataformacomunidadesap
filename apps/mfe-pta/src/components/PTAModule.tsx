@@ -8,6 +8,7 @@ import '../styles/pta-world-class.css';
 import { PtaBackofficeModule } from './pta/PtaBackofficeModule';
 import { NotificationsProvider } from './esap/NotificationsContext';
 import { AuthProvider } from '../contexts/AuthContext';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
 export type PTAModuleProps = {
   userPersonId?: string;
@@ -46,22 +47,25 @@ export function PTAModule({
       sessionRol={userRoles?.[0]}
     >
       <NotificationsProvider>
-        <div className="min-h-screen">
-          {!embedded && (
-            <div className="sticky top-0 z-10 bg-white border-b">
-              <div className="mx-auto max-w-[1400px] px-4 py-3 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm text-gray-500">PTA</div>
-                  <div className="text-base font-semibold text-gray-900">{title}</div>
+        <>
+          <Toaster position="top-right" richColors />
+          <div className="min-h-screen">
+            {!embedded && (
+              <div className="sticky top-0 z-10 bg-white border-b">
+                <div className="mx-auto max-w-[1400px] px-4 py-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm text-gray-500">PTA</div>
+                    <div className="text-base font-semibold text-gray-900">{title}</div>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className={embedded ? undefined : 'mx-auto max-w-[1400px]'}>
-            <PtaBackofficeModule initialView={initialView} />
+            <div className={embedded ? undefined : 'mx-auto max-w-[1400px]'}>
+              <PtaBackofficeModule initialView={initialView} />
+            </div>
           </div>
-        </div>
+        </>
       </NotificationsProvider>
     </AuthProvider>
   );
