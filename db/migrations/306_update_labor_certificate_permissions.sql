@@ -19,11 +19,15 @@ SET
   name = CASE
     WHEN p.code = 'certificados-laborales.certificate.deliver'
       THEN 'Reenviar Certificado'
+    WHEN p.code = 'certificados-laborales.config.edit'
+      THEN 'Editar Prima'
     ELSE p.name
   END,
   description = CASE
     WHEN p.code = 'certificados-laborales.certificate.deliver'
       THEN 'Reenviar certificado al correo del solicitante'
+    WHEN p.code = 'certificados-laborales.config.edit'
+      THEN 'Modificar primas'
     ELSE p.description
   END,
   is_active = true,

@@ -351,7 +351,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'cl.stats.view', name: 'Ver Estadísticas', description: 'Consultar métricas', module: 'certificados_laborales', criticidad: 'baja' },
       { id: 'cl.notification.send', name: 'Enviar Notificaciones', description: 'Notificar al solicitante', module: 'certificados_laborales', criticidad: 'media' },
       { id: 'cl.history.view', name: 'Ver Histórico', description: 'Consultar histórico de validaciones', module: 'certificados_laborales', criticidad: 'baja' },
-      { id: 'cl.config.edit', name: 'Editar Configuraciones', description: 'Modificar parámetros', module: 'certificados_laborales', criticidad: 'alta' },
+      { id: 'cl.config.edit', name: 'Editar Prima', description: 'Modificar primas', module: 'certificados_laborales', criticidad: 'alta' },
     ]
   },
 

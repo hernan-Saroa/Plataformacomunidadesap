@@ -409,16 +409,14 @@ export class RolesService {
       throw new NotFoundException('Rol no encontrado');
     }
 
-    const permissions = await this.permissionRepo
-      .createQueryBuilder('permission')
-      .innerJoin(
-        'auth.role_permissions',
-        'rp',
-        'rp.id_permission = permission.id_permission',
-      )
-      .where('rp.id_rol = :roleId', { roleId: role.id })
-      .andWhere('COALESCE(rp.is_active, true) = true')
-      .getMany();
+    const permissions: Permission[] = await this.permissionRepo.query(
+      `SELECT p.*
+       FROM auth.permission p
+       INNER JOIN auth.role_permissions rp ON rp.id_permission = p.id_permission
+       WHERE rp.id_rol = $1
+         AND COALESCE(rp.is_active, true) = true`,
+      [role.id],
+    );
 
     return permissions.filter((permission) => this.isAssignablePermission(permission));
   }
