@@ -22,12 +22,14 @@ export interface PermissionDto {
   code: string;
   name: string;
   description: string;
+  is_active: boolean;
 }
 
 export interface ModulesFilters {
   category?: 'backoffice' | 'portal';
   is_active?: boolean;
   search?: string;
+  include_inactive_permissions?: boolean;
 }
 
 @Injectable()
@@ -77,12 +79,13 @@ export class ModulesService {
       category: module.category,
       is_active: module.is_active,
       permissions: (module.permissions || [])
-        .filter(p => p.is_active)
+        .filter(p => filters.include_inactive_permissions || p.is_active)
         .map(p => ({
           id: p.id_permission,
           code: p.code,
           name: p.name,
           description: p.description || '',
+          is_active: p.is_active,
         })),
     }));
   }
@@ -115,6 +118,7 @@ export class ModulesService {
         code: p.code,
         name: p.name,
         description: p.description || '',
+        is_active: p.is_active,
       })),
     };
   }
@@ -140,6 +144,7 @@ export class ModulesService {
       code: p.code,
       name: p.name,
       description: p.description || '',
+      is_active: p.is_active,
       module_code: p.module?.code || '',
       module_name: p.module?.name || '',
     })) as any;

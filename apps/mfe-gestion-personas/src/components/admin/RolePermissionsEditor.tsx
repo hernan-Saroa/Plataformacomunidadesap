@@ -64,7 +64,7 @@ interface RolePermissionsEditorProps {
   onSaved?: () => void;
 }
 
-type PermissionWithCode = Permission & { code?: string };
+type PermissionWithCode = Permission & { code?: string; is_active?: boolean };
 type PermissionModuleWithCodes = Omit<PermissionModule, 'permissions' | 'permissionGroups'> & {
   permissions: PermissionWithCode[];
   permissionGroups?: { group: string; permissions: PermissionWithCode[] }[];
@@ -160,6 +160,37 @@ const ACADEMIC_PROFILES: AcademicProfile[] = [
 ];
 
 const getPermissionCode = (permission: PermissionWithCode) => permission.code || permission.id;
+
+const LABOR_CERTIFICATE_ASSIGNABLE_PERMISSION_CODES = new Set([
+  'certificados-laborales.certificate.deliver',
+  'certificados-laborales.certificate.sign',
+  'certificados-laborales.certificate.verify',
+  'certificados-laborales.config.edit',
+  'certificados-laborales.export.report',
+  'certificados-laborales.template.manage',
+  'cl.certificate.deliver',
+  'cl.certificate.sign',
+  'cl.certificate.verify',
+  'cl.config.edit',
+  'cl.export.report',
+  'cl.template.manage',
+]);
+
+const isLaborCertificatePermissionCode = (code: string) =>
+  code.startsWith('certificados-laborales.') || code.startsWith('cl.');
+
+const isReadOnlyPermission = (permission: PermissionWithCode) => {
+  const code = getPermissionCode(permission);
+
+  if (permission.is_active === false) {
+    return true;
+  }
+
+  return (
+    isLaborCertificatePermissionCode(code) &&
+    !LABOR_CERTIFICATE_ASSIGNABLE_PERMISSION_CODES.has(code)
+  );
+};
 
 const MOJIBAKE_PATTERN = /[ÃÂâ�]/;
 
@@ -491,8 +522,28 @@ const normalizePermissionModulesText = (
     };
   });
 
+const shouldShowPermissionInEditor = (permission: PermissionWithCode) =>
+  permission.is_active !== false ||
+  isLaborCertificatePermissionCode(getPermissionCode(permission));
+
+const keepVisiblePermissionModules = (
+  modules: PermissionModuleWithCodes[],
+): PermissionModuleWithCodes[] =>
+  modules.map((module) => ({
+    ...module,
+    permissions: module.permissions.filter(shouldShowPermissionInEditor),
+    permissionGroups: module.permissionGroups
+      ?.map((permissionGroup) => ({
+        ...permissionGroup,
+        permissions: permissionGroup.permissions.filter(shouldShowPermissionInEditor),
+      }))
+      .filter((permissionGroup) => permissionGroup.permissions.length > 0),
+  }));
+
 const getFallbackPermissionModules = () =>
-  normalizePermissionModulesText(PERMISSION_MODULES as PermissionModuleWithCodes[]);
+  keepVisiblePermissionModules(
+    normalizePermissionModulesText(PERMISSION_MODULES as PermissionModuleWithCodes[]),
+  );
 
 const GROUP_LABELS: Record<string, string> = {
   plan: 'Plan Anual',
@@ -583,7 +634,13 @@ const selectAllPermissions = (
 ): { permissions: Set<string>; academicProfile: AcademicProfileId } => {
   const headProfile = ACADEMIC_PROFILES.find((p) => p.id === 'head')!;
   const { codeToId } = getPermissionMaps(modules);
-  const allIds = new Set(modules.flatMap((m) => m.permissions.map((p) => p.id)));
+  const allIds = new Set(
+    modules.flatMap((m) =>
+      m.permissions
+        .filter((permission) => !isReadOnlyPermission(permission))
+        .map((permission) => permission.id),
+    ),
+  );
   headProfile.required.forEach((code) => {
     const id = codeToId.get(code);
     if (id) allIds.add(id);
@@ -665,13 +722,18 @@ export function RolePermissionsEditor({
       setPermissionsLoading(true);
       try {
         const [modules, rolePermissions] = await Promise.all([
-          modulesService.getModulesWithPermissions({ is_active: true }),
+          modulesService.getModulesWithPermissions({
+            is_active: true,
+            include_inactive_permissions: true,
+          }),
           rolesService.getRolePermissions(role.id),
         ]);
 
         if (cancelled) return;
-        const mappedModules = normalizePermissionModulesText(
-          modulesService.mapToPermissionModules(modules) as PermissionModuleWithCodes[],
+        const mappedModules = keepVisiblePermissionModules(
+          normalizePermissionModulesText(
+            modulesService.mapToPermissionModules(modules) as PermissionModuleWithCodes[],
+          ),
         );
 
         if (isSuperAdmin) {
@@ -682,7 +744,18 @@ export function RolePermissionsEditor({
           setActiveAcademicProfileId(academicProfile);
           setHasChanges(true);
         } else {
-          const loadedPermissions = new Set(rolePermissions.map((permission) => permission.id));
+          const editablePermissionIds = new Set(
+            mappedModules.flatMap((module) =>
+              module.permissions
+                .filter((permission) => !isReadOnlyPermission(permission))
+                .map((permission) => permission.id),
+            ),
+          );
+          const loadedPermissions = new Set(
+            rolePermissions
+              .map((permission) => permission.id)
+              .filter((permissionId) => editablePermissionIds.has(permissionId)),
+          );
           const loadedAcademicProfile = getActiveAcademicProfile(loadedPermissions, mappedModules);
           setPermissionModules(mappedModules);
           setSelectedPermissions(loadedPermissions);
@@ -733,6 +806,13 @@ export function RolePermissionsEditor({
 
   // Toggle permission
   const togglePermission = (permission: PermissionWithCode) => {
+    if (isReadOnlyPermission(permission)) {
+      toast.info('Permiso inhabilitado', {
+        description: 'Este permiso no esta disponible para el modulo de Certificados Laborales.',
+      });
+      return;
+    }
+
     const code = getPermissionCode(permission);
     const isAcademicPermission = ACADEMIC_PERMISSION_CODES.has(code);
 
@@ -778,24 +858,35 @@ export function RolePermissionsEditor({
 
   // Toggle all permissions in module
   const toggleModulePermissions = (modulePermissions: PermissionWithCode[]) => {
+    const editableModulePermissions = modulePermissions.filter(
+      (permission) => !isReadOnlyPermission(permission),
+    );
+
+    if (editableModulePermissions.length === 0) {
+      toast.info('Permisos inhabilitados', {
+        description: 'Este modulo no tiene permisos disponibles para modificar.',
+      });
+      return;
+    }
+
     const isAcademicPermission = (permission: PermissionWithCode) =>
       ACADEMIC_PERMISSION_CODES.has(getPermissionCode(permission));
-    const academicPermissions = modulePermissions.filter(isAcademicPermission);
+    const academicPermissions = editableModulePermissions.filter(isAcademicPermission);
     const selectedAcademicPermissions = academicPermissions.filter((permission) =>
       selectedPermissions.has(permission.id),
     );
     const toggleablePermissions =
       activeAcademicProfile
-        ? modulePermissions.filter((permission) => {
+        ? editableModulePermissions.filter((permission) => {
             const code = getPermissionCode(permission);
             return (
               !ACADEMIC_PERMISSION_CODES.has(code) ||
               activeAcademicProfile.allowed.includes(code)
             );
           })
-        : modulePermissions.filter((permission) => !isAcademicPermission(permission));
+        : editableModulePermissions.filter((permission) => !isAcademicPermission(permission));
     const blockedAcademicCount = activeAcademicProfile
-      ? modulePermissions.length - toggleablePermissions.length
+      ? editableModulePermissions.length - toggleablePermissions.length
       : academicPermissions.length;
 
     if (!activeAcademicProfile && academicPermissions.length > 0 && toggleablePermissions.length === 0) {
@@ -894,14 +985,25 @@ export function RolePermissionsEditor({
     setSelectedPermissions(allIds);
     setActiveAcademicProfileId(academicProfile);
     setHasChanges(true);
-    toast.success('Todos los permisos marcados', {
-      description: 'Se seleccionaron todos los permisos. Perfil "Jefe" aplicado para Registro Académico.',
+    toast.success('Permisos disponibles marcados', {
+      description: 'Se seleccionaron los permisos modificables. Perfil "Jefe" aplicado para Registro Académico.',
     });
   };
 
   // Save permissions
   const handleSave = async () => {
-    if (selectedPermissions.size === 0) {
+    const editablePermissionIds = new Set(
+      permissionModules.flatMap((module) =>
+        module.permissions
+          .filter((permission) => !isReadOnlyPermission(permission))
+          .map((permission) => permission.id),
+      ),
+    );
+    const permissionsToSave = Array.from(selectedPermissions).filter((permissionId) =>
+      editablePermissionIds.has(permissionId),
+    );
+
+    if (permissionsToSave.length === 0) {
       toast.warning('Sin permisos asignados', {
         description: 'Debes asignar al menos un permiso al rol antes de guardar.',
       });
@@ -909,10 +1011,11 @@ export function RolePermissionsEditor({
     }
     try {
       setIsSaving(true);
-      await rolesService.updateRolePermissions(role.id, Array.from(selectedPermissions));
+      await rolesService.updateRolePermissions(role.id, permissionsToSave);
       toast.success('Permisos Guardados', {
-        description: `Se actualizaron ${selectedPermissions.size} permisos para el rol "${role.name}"`
+        description: `Se actualizaron ${permissionsToSave.length} permisos para el rol "${role.name}"`
       });
+      setSelectedPermissions(new Set(permissionsToSave));
       setHasChanges(false);
       onSaved?.();
       onOpenChange(false);
@@ -1074,10 +1177,17 @@ export function RolePermissionsEditor({
               const Icon = resolveIcon(module.icon);
               const modulePermissions = module.permissions;
               const modulePermissionsGroups = module.permissionGroups || [];  
+              const editableModulePermissions = modulePermissions.filter(
+                (permission) => !isReadOnlyPermission(permission),
+              );
               const enabledCount = modulePermissions.filter(p => 
-                selectedPermissions.has(p.id)
+                !isReadOnlyPermission(p) && selectedPermissions.has(p.id)
               ).length;
-              const allSelected = enabledCount === modulePermissions.length;
+              const allSelected =
+                editableModulePermissions.length > 0 &&
+                editableModulePermissions.every((permission) =>
+                  selectedPermissions.has(permission.id),
+                );
               const someSelected = enabledCount > 0 && enabledCount < modulePermissions.length;
 
               return (
@@ -1103,14 +1213,23 @@ export function RolePermissionsEditor({
                     </div>
                     <button
                       onClick={() => toggleModulePermissions(modulePermissions)}
+                      disabled={editableModulePermissions.length === 0}
                       className={`p-2 rounded-lg transition-all ${
-                        allSelected
+                        editableModulePermissions.length === 0
+                          ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                          : allSelected
                           ? 'bg-green-500 text-white hover:bg-green-600'
                           : someSelected
                           ? 'bg-amber-500 text-white hover:bg-amber-600'
                           : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                       }`}
-                      title={allSelected ? 'Desmarcar todo' : 'Marcar todo'}
+                      title={
+                        editableModulePermissions.length === 0
+                          ? 'Sin permisos modificables'
+                          : allSelected
+                            ? 'Desmarcar permisos disponibles'
+                            : 'Marcar permisos disponibles'
+                      }
                     >
                       {allSelected ? (
                         <CheckCircle className="w-5 h-5" strokeWidth={2} />
@@ -1133,12 +1252,15 @@ export function RolePermissionsEditor({
                           <hr></hr>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 px-3">
                             {permissionGroup.permissions.map((permission) => {
-                              const isEnabled = selectedPermissions.has(permission.id);
+                              const isReadOnly = isReadOnlyPermission(permission);
+                              const isEnabled = !isReadOnly && selectedPermissions.has(permission.id);
                               const academicState = getPermissionAcademicState(permission);
                               const isBlockedByProfile =
                                 (academicState === 'outside' || academicState === 'profile-required') && !isEnabled;
                               const inactiveClass =
-                                academicState === 'optional'
+                                isReadOnly
+                                  ? 'bg-gray-50 border-gray-200 opacity-70 cursor-not-allowed'
+                                  : academicState === 'optional'
                                   ? 'bg-slate-50 border-slate-300 hover:border-slate-400 hover:bg-slate-100'
                                   : academicState === 'outside'
                                     ? 'bg-amber-50 border-amber-200 opacity-75 cursor-not-allowed'
@@ -1149,9 +1271,11 @@ export function RolePermissionsEditor({
                                 <button
                                   key={permission.id}
                                   type="button"
-                                  disabled={isBlockedByProfile}
+                                  disabled={isReadOnly || isBlockedByProfile}
                                   title={
-                                    academicState === 'profile-required'
+                                    isReadOnly
+                                      ? 'Permiso inhabilitado temporalmente para Certificados Laborales'
+                                      : academicState === 'profile-required'
                                       ? 'Selecciona Jefe, Aprobador o Revisor para habilitar permisos de Registro Académico'
                                       : academicState === 'outside'
                                         ? `Permiso fuera del máximo de ${activeAcademicProfile?.label}`
@@ -1208,12 +1332,15 @@ export function RolePermissionsEditor({
                   <>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {modulePermissions.map((permission) => {
-                      const isEnabled = selectedPermissions.has(permission.id);
+                      const isReadOnly = isReadOnlyPermission(permission);
+                      const isEnabled = !isReadOnly && selectedPermissions.has(permission.id);
                       const academicState = getPermissionAcademicState(permission);
                       const isBlockedByProfile =
                         (academicState === 'outside' || academicState === 'profile-required') && !isEnabled;
                       const inactiveClass =
-                        academicState === 'optional'
+                        isReadOnly
+                          ? 'bg-gray-50 border-gray-200 opacity-70 cursor-not-allowed'
+                          : academicState === 'optional'
                           ? 'bg-slate-50 border-slate-300 hover:border-slate-400 hover:bg-slate-100'
                           : academicState === 'outside'
                             ? 'bg-amber-50 border-amber-200 opacity-75 cursor-not-allowed'
@@ -1225,9 +1352,11 @@ export function RolePermissionsEditor({
                         <button
                           key={permission.id}
                           type="button"
-                          disabled={isBlockedByProfile}
+                          disabled={isReadOnly || isBlockedByProfile}
                           title={
-                            academicState === 'profile-required'
+                            isReadOnly
+                              ? 'Permiso inhabilitado temporalmente para Certificados Laborales'
+                              : academicState === 'profile-required'
                               ? 'Selecciona Jefe, Aprobador o Revisor para habilitar permisos de Registro Académico'
                               : academicState === 'outside'
                                 ? `Permiso fuera del máximo de ${activeAcademicProfile?.label}`

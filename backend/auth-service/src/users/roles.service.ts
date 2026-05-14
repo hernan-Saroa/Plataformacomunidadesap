@@ -55,6 +55,18 @@ export interface RoleStats {
 const POSTGRES_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const LABOR_CERTIFICATE_ASSIGNABLE_PERMISSION_CODES = new Set([
+  'certificados-laborales.certificate.deliver',
+  'certificados-laborales.certificate.sign',
+  'certificados-laborales.certificate.verify',
+  'certificados-laborales.config.edit',
+  'certificados-laborales.export.report',
+  'certificados-laborales.template.manage',
+]);
+
+const isLaborCertificatePermission = (code?: string | null) =>
+  typeof code === 'string' && code.startsWith('certificados-laborales.');
+
 @Injectable()
 export class RolesService {
   constructor(
@@ -68,6 +80,18 @@ export class RolesService {
 
   private isPostgresUuid(value?: string | null): value is string {
     return typeof value === 'string' && POSTGRES_UUID_PATTERN.test(value.trim());
+  }
+
+  private isAssignablePermission(permission: Permission): boolean {
+    if (!permission.is_active) {
+      return false;
+    }
+
+    if (isLaborCertificatePermission(permission.code)) {
+      return LABOR_CERTIFICATE_ASSIGNABLE_PERMISSION_CODES.has(permission.code);
+    }
+
+    return true;
   }
 
   private async findPermissionsByIdsOrCodes(permissionIds: string[]): Promise<Permission[]> {
@@ -86,9 +110,11 @@ export class RolesService {
       return [];
     }
 
-    return this.permissionRepo.find({
+    const permissions = await this.permissionRepo.find({
       where: whereConditions,
     });
+
+    return permissions.filter((permission) => this.isAssignablePermission(permission));
   }
 
   async findAll(filters: RoleFilters = {}): Promise<{ roles: Role[], total: number }> {
@@ -124,7 +150,14 @@ export class RolesService {
         'usuarios_count',
       )
       .addSelect(
-        `(SELECT COUNT(*) FROM auth.role_permissions rp WHERE rp.id_rol = role.id)`,
+        `(
+          SELECT COUNT(*)
+          FROM auth.role_permissions rp
+          INNER JOIN auth.permission p ON p.id_permission = rp.id_permission
+          WHERE rp.id_rol = role.id
+            AND COALESCE(rp.is_active, true) = true
+            AND p.is_active = true
+        )`,
         'permisos_count',
       );
 
@@ -165,7 +198,14 @@ export class RolesService {
         'usuarios_count',
       )
       .addSelect(
-        `(SELECT COUNT(*) FROM auth.role_permissions rp WHERE rp.id_rol = role.id)`,
+        `(
+          SELECT COUNT(*)
+          FROM auth.role_permissions rp
+          INNER JOIN auth.permission p ON p.id_permission = rp.id_permission
+          WHERE rp.id_rol = role.id
+            AND COALESCE(rp.is_active, true) = true
+            AND p.is_active = true
+        )`,
         'permisos_count',
       )
       .where('role.id = :id', { id })
@@ -363,14 +403,24 @@ export class RolesService {
     
     const role = await this.roleRepo.findOne({
       where: whereCondition,
-      relations: ['permissions'],
     });
 
     if (!role) {
       throw new NotFoundException('Rol no encontrado');
     }
 
-    return role.permissions || [];
+    const permissions = await this.permissionRepo
+      .createQueryBuilder('permission')
+      .innerJoin(
+        'auth.role_permissions',
+        'rp',
+        'rp.id_permission = permission.id_permission',
+      )
+      .where('rp.id_rol = :roleId', { roleId: role.id })
+      .andWhere('COALESCE(rp.is_active, true) = true')
+      .getMany();
+
+    return permissions.filter((permission) => this.isAssignablePermission(permission));
   }
 
   async updatePermissions(roleId: string, permissionIds: string[], updatedBy?: string): Promise<Role> {

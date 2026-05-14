@@ -343,7 +343,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'cl.certificate.generate', name: 'Generar Certificado', description: 'Emitir certificado laboral', module: 'certificados_laborales', criticidad: 'alta' },
       { id: 'cl.certificate.approve', name: 'Aprobar Certificado', description: 'Aprobar certificado para entrega', module: 'certificados_laborales', criticidad: 'alta' },
       { id: 'cl.certificate.sign', name: 'Firmar Certificado', description: 'Firmar digitalmente certificado', module: 'certificados_laborales', criticidad: 'critica' },
-      { id: 'cl.certificate.deliver', name: 'Entregar Certificado', description: 'Marcar como entregado', module: 'certificados_laborales', criticidad: 'media' },
+      { id: 'cl.certificate.deliver', name: 'Reenviar Certificado', description: 'Reenviar certificado al correo del solicitante', module: 'certificados_laborales', criticidad: 'media' },
       { id: 'cl.certificate.verify', name: 'Verificar Certificado', description: 'Validar autenticidad mediante QR', module: 'certificados_laborales', criticidad: 'media' },
       { id: 'cl.certificate.revoke', name: 'Revocar Certificado', description: 'Anular certificado emitido', module: 'certificados_laborales', criticidad: 'critica' },
       { id: 'cl.template.manage', name: 'Gestionar Plantillas', description: 'Administrar plantillas de certificados', module: 'certificados_laborales', criticidad: 'alta' },
