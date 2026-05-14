@@ -82,8 +82,9 @@ const cspNonceBootstrapSource = `(() => {
 
   const applyNonce = (node) => {
     if (!node || node.nodeType !== 1) return node;
-    if (String(node.tagName).toLowerCase() === 'style' && !node.getAttribute('nonce')) {
+    if (String(node.tagName).toLowerCase() === 'style' && (node.nonce || node.getAttribute('nonce')) !== nonce) {
       node.setAttribute('nonce', nonce);
+      node.nonce = nonce;
     }
     return node;
   };
@@ -91,7 +92,7 @@ const cspNonceBootstrapSource = `(() => {
   const applyNonceTree = (node) => {
     applyNonce(node);
     if (node && typeof node.querySelectorAll === 'function') {
-      node.querySelectorAll('style:not([nonce])').forEach(applyNonce);
+      node.querySelectorAll('style').forEach(applyNonce);
     }
     return node;
   };
@@ -137,9 +138,7 @@ const cspNonceBootstrapSource = `(() => {
     };
   }
 
-  document.querySelectorAll('style:not([nonce])').forEach((styleElement) => {
-    styleElement.setAttribute('nonce', nonce);
-  });
+  document.querySelectorAll('style').forEach(applyNonce);
 })();
 `;
 

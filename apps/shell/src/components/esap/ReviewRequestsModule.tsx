@@ -26,7 +26,8 @@ import {
   X,
   MoreVertical,
   Copy,
-  Shield
+  Shield,
+  ClipboardCheck
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback } from '../ui/avatar';
@@ -55,9 +56,19 @@ type ApprovalForm = {
   numLibro: string;
 };
 
-export function ReviewRequestsModule() {
+type ReviewRequestsScope = 'all' | 'mine';
+type MyReviewView = 'pending' | 'reviewed';
+
+interface ReviewRequestsModuleProps {
+  scope?: ReviewRequestsScope;
+}
+
+export function ReviewRequestsModule({
+  scope = 'all',
+}: ReviewRequestsModuleProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [myReviewView, setMyReviewView] = useState<MyReviewView>('pending');
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -147,9 +158,29 @@ export function ReviewRequestsModule() {
     const personEmail = typeof user?.person?.email === 'string' ? user.person.email.trim() : '';
     return personEmail || undefined;
   };
+  const normalizeIdentityValue = (value?: string | null) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
   const reviewerName = resolveReviewerName(currentUser);
   const reviewerId = resolveReviewerId(currentUser);
   const reviewerEmail = resolveReviewerEmail(currentUser);
+  const currentReviewerIdentity = useMemo(
+    () => ({
+      ids: new Set(
+        [reviewerId].map(normalizeIdentityValue).filter(Boolean),
+      ),
+      emails: new Set(
+        [reviewerEmail].map(normalizeIdentityValue).filter(Boolean),
+      ),
+      names: new Set(
+        [reviewerName].map(normalizeIdentityValue).filter(Boolean),
+      ),
+    }),
+    [reviewerEmail, reviewerId, reviewerName],
+  );
   const canManageApprovalConcepts = authService.hasPermission(
     Permissions.GRADUATES_SOLICITUDE_APROBAR,
   );
@@ -169,6 +200,7 @@ export function ReviewRequestsModule() {
     !isReviewWorkLocked(request) &&
     (request.approvalStatus !== 'HEAD_OBSERVATION' ||
       canManageApprovalConcepts);
+  const isMyReviewsScope = scope === 'mine';
   const PROGRAMAS_ESAP = [
     'ADMINISTRACIÓN PÚBLICA',
     'ADMINISTRACIÓN PÚBLICA TERRITORIAL',
@@ -682,6 +714,7 @@ export function ReviewRequestsModule() {
       reviewRecommendationReason: request.reviewRecommendationReason,
       reviewPayload: request.reviewPayload,
       reviewSubmittedAt: request.reviewSubmittedAt,
+      reviewSubmittedBy: request.reviewSubmittedBy,
       reviewSubmittedByName: request.reviewSubmittedByName,
       approverDecision: request.approverDecision,
       approverNotes: request.approverNotes,
@@ -936,10 +969,145 @@ export function ReviewRequestsModule() {
     [requests],
   );
 
+  const isReviewTimelineEvent = (
+    event: NonNullable<ReviewRequest['reviewTimeline']>[number],
+  ) =>
+    event.type === 'review_started' ||
+    event.type === 'review_decision_submitted' ||
+    event.type === 'review_files_uploaded' ||
+    event.type.startsWith('review_');
+
+  const hasCurrentReviewerIdentity =
+    currentReviewerIdentity.ids.size > 0 ||
+    currentReviewerIdentity.emails.size > 0 ||
+    currentReviewerIdentity.names.size > 0;
+
+  const requestBelongsToCurrentReviewer = (request: ReviewRequest) => {
+    if (!hasCurrentReviewerIdentity) {
+      return false;
+    }
+
+    const reviewEvents = (request.reviewTimeline || []).filter(isReviewTimelineEvent);
+    const matchesAny = (
+      values: Array<string | null | undefined>,
+      identitySet: Set<string>,
+    ) =>
+      values
+        .map(normalizeIdentityValue)
+        .filter(Boolean)
+        .some((value) => identitySet.has(value));
+
+    if (
+      matchesAny(
+        [
+          request.reviewedBy,
+          request.reviewSubmittedBy,
+          ...reviewEvents.map((event) => event.actorId),
+        ],
+        currentReviewerIdentity.ids,
+      )
+    ) {
+      return true;
+    }
+
+    if (
+      matchesAny(
+        reviewEvents.map((event) => event.actorEmail),
+        currentReviewerIdentity.emails,
+      )
+    ) {
+      return true;
+    }
+
+    return matchesAny(
+      [
+        request.reviewerName,
+        request.reviewSubmittedByName,
+        ...reviewEvents.map((event) => event.actorName),
+      ],
+      currentReviewerIdentity.names,
+    );
+  };
+
+  const requestNeedsReviewerWork = (request: ReviewRequest) =>
+    requestBelongsToCurrentReviewer(request) &&
+    request.status === 'under_review' &&
+    !isReviewWorkLocked(request) &&
+    request.approvalStatus !== 'HEAD_OBSERVATION';
+
+  const myRequests = useMemo(
+    () => orderedRequests.filter(requestBelongsToCurrentReviewer),
+    [orderedRequests, currentReviewerIdentity],
+  );
+
+  const myPendingRequests = useMemo(
+    () => myRequests.filter(requestNeedsReviewerWork),
+    [myRequests, currentReviewerIdentity],
+  );
+
+  const myReviewedRequests = useMemo(
+    () => myRequests.filter((request) => !requestNeedsReviewerWork(request)),
+    [myRequests, currentReviewerIdentity],
+  );
+
+  const scopedRequests = useMemo(
+    () =>
+      isMyReviewsScope
+        ? myReviewView === 'pending'
+          ? myPendingRequests
+          : myReviewedRequests
+        : orderedRequests,
+    [
+      isMyReviewsScope,
+      myPendingRequests,
+      myReviewView,
+      myReviewedRequests,
+      orderedRequests,
+    ],
+  );
+
+  const displayStats = useMemo(
+    () => (isMyReviewsScope ? calculateStats(myRequests) : stats),
+    [isMyReviewsScope, myRequests, stats],
+  );
+
+  const myReturnedCount = useMemo(
+    () =>
+      myPendingRequests.filter(
+        (request) => request.approvalStatus === 'OBSERVATION',
+      ).length,
+    [myPendingRequests],
+  );
+
+  const mySubmittedCount = useMemo(
+    () =>
+      myReviewedRequests.filter((request) =>
+        [
+          'PENDING_APPROVAL',
+          'PENDING_HEAD_APPROVAL',
+          'HEAD_OBSERVATION',
+        ].includes(request.approvalStatus || ''),
+      ).length,
+    [myReviewedRequests],
+  );
+
+  const myClosedCount = useMemo(
+    () =>
+      myReviewedRequests.filter(
+        (request) =>
+          ['APPROVED_FINAL', 'REJECTED_FINAL'].includes(
+            request.approvalStatus || '',
+          ) ||
+          request.status === 'approved' ||
+          request.status === 'rejected',
+      ).length,
+    [myReviewedRequests],
+  );
+
   // Filtros
   const filteredRequests = useMemo(
     () =>
-      orderedRequests.filter((request) => {
+      scopedRequests.filter((request) => {
         const matchesSearch =
           request.requestNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
           request.graduateDocumentNumber.includes(searchQuery) ||
@@ -953,12 +1121,12 @@ export function ReviewRequestsModule() {
 
         return matchesSearch && matchesStatus;
       }),
-    [orderedRequests, searchQuery, statusFilter],
+    [scopedRequests, searchQuery, statusFilter],
   );
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, statusFilter]);
+  }, [myReviewView, scope, searchQuery, statusFilter]);
 
   // Paginación
   const totalPages = Math.ceil(filteredRequests.length / itemsPerPage);
@@ -1510,10 +1678,10 @@ export function ReviewRequestsModule() {
                   Total
                 </p>
                 <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {stats.total}
+                  {displayStats.total}
                 </p>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  Solicitudes
+                  {isMyReviewsScope ? 'Mis revisiones' : 'Solicitudes'}
                 </p>
               </div>
               <div
@@ -1532,13 +1700,13 @@ export function ReviewRequestsModule() {
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Pendientes
+                  {isMyReviewsScope ? 'Por revisar' : 'Pendientes'}
                 </p>
                 <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {stats.pending}
+                  {isMyReviewsScope ? myPendingRequests.length : displayStats.pending}
                 </p>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  Sin revisar
+                  {isMyReviewsScope ? 'Pendientes y devueltas' : 'Sin revisar'}
                 </p>
               </div>
               <div
@@ -1557,18 +1725,22 @@ export function ReviewRequestsModule() {
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  En Revisión
+                  {isMyReviewsScope ? 'Devueltas' : 'En Revisión'}
                 </p>
                 <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {stats.underReview}
+                  {isMyReviewsScope ? myReturnedCount : displayStats.underReview}
                 </p>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  En proceso
+                  {isMyReviewsScope ? 'Con observacion' : 'En proceso'}
                 </p>
               </div>
               <div
                 className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%)' }}
+                style={{
+                  background: isMyReviewsScope
+                    ? 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)'
+                    : 'linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%)',
+                }}
               >
                 <RefreshCw className="w-7 h-7 text-white" />
               </div>
@@ -1582,13 +1754,13 @@ export function ReviewRequestsModule() {
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Aprobadas
+                  {isMyReviewsScope ? 'Enviadas' : 'Aprobadas'}
                 </p>
                 <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {stats.approved}
+                  {isMyReviewsScope ? mySubmittedCount : displayStats.approved}
                 </p>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  Resueltas
+                  {isMyReviewsScope ? 'Esperando validacion' : 'Resueltas'}
                 </p>
               </div>
               <div
@@ -1607,26 +1779,115 @@ export function ReviewRequestsModule() {
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <p className="text-sm font-medium" style={{ color: '#6B7280' }}>
-                  Rechazadas
+                  {isMyReviewsScope ? 'Cerradas' : 'Rechazadas'}
                 </p>
                 <p className="text-3xl font-bold mt-2" style={{ color: '#1F2937' }}>
-                  {stats.rejected}
+                  {isMyReviewsScope ? myClosedCount : displayStats.rejected}
                 </p>
                 <p className="text-xs mt-2" style={{ color: '#6B7280' }}>
-                  No aprobadas
+                  {isMyReviewsScope ? 'Finalizadas' : 'No aprobadas'}
                 </p>
               </div>
               <div
                 className="w-14 h-14 rounded-xl flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)' }}
+                style={{
+                  background: isMyReviewsScope
+                    ? 'linear-gradient(135deg, #64748B 0%, #334155 100%)'
+                    : 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)',
+                }}
               >
-                <XCircle className="w-7 h-7 text-white" />
+                {isMyReviewsScope ? (
+                  <ClipboardCheck className="w-7 h-7 text-white" />
+                ) : (
+                  <XCircle className="w-7 h-7 text-white" />
+                )}
               </div>
             </div>
           </div>
         </Card>
 
       </motion.div>
+
+      {isMyReviewsScope && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.05 }}
+          className="bg-white rounded-xl border-2 p-2"
+          style={{ borderColor: '#E5E7EB' }}
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {[
+              {
+                id: 'pending' as const,
+                label: 'Por revisar',
+                subtitle: 'Pendientes y devueltas',
+                count: myPendingRequests.length,
+                color: '#F59E0B',
+                Icon: RefreshCw,
+              },
+              {
+                id: 'reviewed' as const,
+                label: 'Revisadas',
+                subtitle: 'Enviadas o finalizadas',
+                count: myReviewedRequests.length,
+                color: '#10B981',
+                Icon: ClipboardCheck,
+              },
+            ].map((view) => {
+              const isActive = myReviewView === view.id;
+              const Icon = view.Icon;
+              return (
+                <button
+                  key={view.id}
+                  type="button"
+                  onClick={() => setMyReviewView(view.id)}
+                  className="rounded-lg border-2 px-4 py-3 text-left transition-all"
+                  style={{
+                    borderColor: isActive ? view.color : '#E5E7EB',
+                    background: isActive ? `${view.color}0F` : '#FFFFFF',
+                    boxShadow: isActive ? `0 0 0 3px ${view.color}1F` : 'none',
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg"
+                      style={{ background: isActive ? view.color : '#F3F4F6' }}
+                    >
+                      <Icon
+                        className="h-5 w-5"
+                        style={{ color: isActive ? '#FFFFFF' : '#6B7280' }}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p
+                          className="text-sm font-semibold"
+                          style={{ color: isActive ? view.color : '#1F2937' }}
+                        >
+                          {view.label}
+                        </p>
+                        <span
+                          className="inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold"
+                          style={{
+                            background: isActive ? view.color : '#E5E7EB',
+                            color: isActive ? '#FFFFFF' : '#374151',
+                          }}
+                        >
+                          {view.count}
+                        </span>
+                      </div>
+                      <p className="text-xs" style={{ color: '#6B7280' }}>
+                        {view.subtitle}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </motion.div>
+      )}
 
       {/* Filtros y Búsqueda */}
       <motion.div
@@ -1763,12 +2024,20 @@ export function ReviewRequestsModule() {
           <div className="bg-white rounded-xl border border-[#E5E7EB] p-12 text-center">
             <AlertCircle className="w-16 h-16 mx-auto mb-4" style={{ color: '#D1D5DB' }} />
             <h3 className="text-lg font-semibold text-[#1F2937] mb-2">
-              No se encontraron solicitudes
+              {isMyReviewsScope
+                ? myReviewView === 'pending'
+                  ? 'No tienes revisiones pendientes'
+                  : 'No tienes revisiones revisadas'
+                : 'No se encontraron solicitudes'}
             </h3>
             <p className="text-sm text-[#6B7280] mb-6">
               {hasActiveFilters
                 ? 'Intenta ajustar los filtros de búsqueda'
-                : 'No hay solicitudes en este momento'}
+                : isMyReviewsScope
+                  ? myReviewView === 'pending'
+                    ? 'No hay solicitudes propias por revisar o corregir en este momento'
+                    : 'Todavia no tienes solicitudes propias enviadas o cerradas'
+                  : 'No hay solicitudes en este momento'}
             </p>
             {hasActiveFilters && (
               <button
