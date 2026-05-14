@@ -62,6 +62,7 @@ import { SeccionListasChequeoExpediente } from './SeccionListasChequeoExpediente
 
 // Servicio API
 import { controlInternoService } from '../../../services/api/controlInternoService';
+import { configuracionesProfesionalesOCIApi } from './services/api';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 import { exportarPDFInformeEjecutivo } from './services/exportarPDFInformeCierreEjecutivo';
 import { dibujarEncabezadoInstitucional, dibujarPieInstitucional, type ConfiguracionDocumento } from './services/pdfESAPHeader';
@@ -142,7 +143,7 @@ interface Auditoria {
     modificadoPor: string;
     version: number;
   };
-  
+
   // Estado de actividades del proceso (checklist)
   checklistCompletados?: Record<string, boolean>;
 }
@@ -232,7 +233,7 @@ const AUDITORIA_EJEMPLO: Auditoria = {
     modificadoPor: 'Carlos Rodríguez',
     version: 1
   },
-  
+
   // Checklist de actividades (vacío por defecto)
   checklistCompletados: {}
 };
@@ -354,18 +355,18 @@ export function ExpedienteAuditoriaCompleto({
   const [loading, setLoading] = useState(!!auditoriaId);
   const [error, setError] = useState<string | null>(null);
   const [recargarTrigger, setRecargarTrigger] = useState(0);
-  
+
   // ✅ Cargar datos del backend cuando se abre el modal
   useEffect(() => {
     const cargarAuditoria = async () => {
       if (!isOpen || !auditoriaId) return;
-      
+
       setLoading(true);
       setError(null);
-      
+
       try {
         const data = await controlInternoService.getAuditoriaById(auditoriaId);
-        
+
         // Mapear datos del backend a la estructura del frontend
         const progresoFases = calcularProgresoPorFases(data.fase, data.progreso);
 
@@ -374,14 +375,14 @@ export function ExpedienteAuditoriaCompleto({
           codigo: data.codigo,
           nombre: data.nombre,
           territorial: data.territorial || data.sede || undefined,
-          tipo: (data.tipo === 'Regular' || data.tipo === 'Sede') ? 'Sede' : 
-                data.tipo === 'Territorial' ? 'Territorial' : 'Especial' as TipoAuditoria,
+          tipo: (data.tipo === 'Regular' || data.tipo === 'Sede') ? 'Sede' :
+            data.tipo === 'Territorial' ? 'Territorial' : 'Especial' as TipoAuditoria,
           // Priorizar estadoKanban (Seguimiento vs Finalizada) sobre fase (ambos son COMPLETADA)
           estado: mapearEstado(data.estadoKanban || data.fase),
           areaAuditable: data.areaObjetivo || data.territorial || 'Sin área definida',
           procesoNombre: data.procesoAuditado || data.nombre,
           nivelRiesgo: (data.riesgoKanban || 'Medio') as NivelRiesgo,
-          
+
           responsableArea: {
             id: String(data.auditorLiderId || '1'),
             nombre: data.responsableAreaNombre || data.responsable || 'Sin responsable',
@@ -389,24 +390,24 @@ export function ExpedienteAuditoriaCompleto({
             email: `responsable@esap.edu.co`,
             telefono: undefined,
           },
-          
+
           auditorLider: {
             id: String(data.auditorLiderId || '1'),
-            nombre: data.auditorLider?.nombre || 'Sin auditor líder',
-            email: 'auditor@esap.edu.co',
+            nombre: data.auditorLider?.nombre || data.auditorLider || 'Sin auditor líder',
+            email: data.auditorLider?.email || data.auditorLiderEmail || data.emailAuditorLider || 'auditor@esap.edu.co',
             foto: undefined,
           },
-          
-          equipoAuditores: Array.isArray(data.equipoAuditores) 
+
+          equipoAuditores: Array.isArray(data.equipoAuditores)
             ? data.equipoAuditores.map((eq: any) => ({
-                id: eq.id || String(eq.personaId),
-                nombre: eq.nombreCompleto || eq.nombre || 'Auditor',
-                rol: eq.rol || 'Auditor',
-                email: 'auditor@esap.edu.co',
-                foto: undefined,
-              }))
+              id: eq.id || String(eq.personaId || eq.idTercero || '1'),
+              nombre: eq.nombreCompleto || eq.nombre || (typeof eq === 'string' ? eq : 'Auditor'),
+              rol: eq.rol || 'Auditor',
+              email: eq.email || eq.correo || 'auditor@esap.edu.co',
+              foto: undefined,
+            }))
             : [],
-          
+
           cronograma: {
             fechaCreacion: new Date(data.createdAt || data.fechaInicio),
             fechaInicio: new Date(data.fechaInicio),
@@ -415,9 +416,9 @@ export function ExpedienteAuditoriaCompleto({
             duracionDias: calcularDiasDuracion(data.fechaInicio, data.fechaFin),
             diasTranscurridos: calcularDiasTranscurridos(data.fechaInicio),
           },
-          
+
           progreso: progresoFases,
-          
+
           estadisticas: {
             totalHallazgos: data.hallazgos || 0,
             hallazgosCriticos: 0,
@@ -426,7 +427,7 @@ export function ExpedienteAuditoriaCompleto({
             documentosCargados: data.totalDocumentos || 0,
             notificacionesEnviadas: 0,
           },
-          
+
           fechasClave: {
             planeacionInicio: new Date(data.fechaInicio),
             planeacionFin: undefined,
@@ -437,7 +438,7 @@ export function ExpedienteAuditoriaCompleto({
             informePreliminar: undefined,
             informeFinal: undefined,
           },
-          
+
           metadata: {
             creadoPor: 'Sistema',
             fechaCreacion: new Date(data.createdAt || data.fechaInicio),
@@ -445,13 +446,13 @@ export function ExpedienteAuditoriaCompleto({
             modificadoPor: 'Sistema',
             version: 1,
           },
-          
+
           // Checklist de actividades del proceso
           checklistCompletados: data.checklistCompletados || {},
         };
-        
+
         setAuditoria(auditoriaBackend);
-        
+
         // ✅ Cargar documentos de la auditoría desde el backend
         const documentosFinales: DocumentoExpediente[] = [];
 
@@ -465,7 +466,7 @@ export function ExpedienteAuditoriaCompleto({
 
         // ✅ Si existe documento de cierre, agregarlo SIEMPRE al inicio
         // PRIORIDAD: auditoriaDataInicial (del Kanban, siempre actualizado) > data (de getAuditoriaById)
-        const documentoCierre = 
+        const documentoCierre =
           auditoriaDataInicial?.documentoCierre ||
           data.documentoCierre ||
           data.documento_cierre;
@@ -499,7 +500,50 @@ export function ExpedienteAuditoriaCompleto({
 
         setDocumentos(documentosFinales);
         console.log(`[Expediente] ✅ Cargados ${documentosFinales.length} documentos (cierre: ${!!documentoCierre})`);
-        
+
+        // ✅ ENRIQUECIMIENTO DE EMAILS (Búsqueda en configuración de profesionales)
+        try {
+          const profsRes = await configuracionesProfesionalesOCIApi.getAll(true);
+          const profs = Array.isArray(profsRes.data) ? profsRes.data : (Array.isArray(profsRes) ? profsRes : []);
+          
+          if (profs.length > 0) {
+            setAuditoria(prev => {
+              if (!prev) return null;
+              
+              const matchProf = (pId: string, pNombre: string) => {
+                const n = (pNombre || '').toLowerCase().trim();
+                return profs.find(p => {
+                  if (pId && pId !== '1' && (p.idTercero == pId || p.id == pId || p.identificacion == pId)) return true;
+                  const pName = (p.nombre || p.persona?.nombre || p.nom_largo || p.nombreCompleto || '').toLowerCase().trim();
+                  if (!pName || !n) return false;
+                  if (pName === n || pName.includes(n) || n.includes(pName)) return true;
+                  const tP = pName.split(/\s+/).filter(t => t.length > 2);
+                  const tN = n.split(/\s+/).filter(t => t.length > 2);
+                  return tP.filter(t => tN.includes(t)).length >= 2;
+                });
+              };
+
+              // Enriquecer Líder
+              const foundLider = matchProf(prev.auditorLider.id, prev.auditorLider.nombre);
+              const emailLider = foundLider?.email || foundLider?.persona?.email || prev.auditorLider.email;
+
+              // Enriquecer Equipo
+              const equipoEnriquecido = prev.equipoAuditores.map(aud => {
+                const found = matchProf(aud.id, aud.nombre);
+                return { ...aud, email: found?.email || found?.persona?.email || aud.email };
+              });
+
+              return {
+                ...prev,
+                auditorLider: { ...prev.auditorLider, email: emailLider },
+                equipoAuditores: equipoEnriquecido
+              };
+            });
+          }
+        } catch (err) {
+          console.error('Error enriqueciendo correos de profesionales:', err);
+        }
+
         // ✅ Cargar historial de la auditoría desde el backend
         try {
           const historialData = await controlInternoService.getHistorialAuditoria(auditoriaId);
@@ -518,10 +562,10 @@ export function ExpedienteAuditoriaCompleto({
         setLoading(false);
       }
     };
-    
+
     cargarAuditoria();
   }, [isOpen, auditoriaId, recargarTrigger]);
-  
+
   // ✅ Función para mapear historial del backend al formato del frontend
   function mapearHistorialBackend(data: any[]): EventoHistorial[] {
     const iconosPorTipo: Record<string, React.ReactNode> = {
@@ -538,7 +582,7 @@ export function ExpedienteAuditoriaCompleto({
       'archivo': <Archive className="w-5 h-5" />,
       'ampliacion_plazo': <Clock className="w-5 h-5" />,
     };
-    
+
     const coloresPorTipo: Record<string, string> = {
       'creacion': '#10b981',
       'cambio_estado': '#3b82f6',
@@ -553,7 +597,7 @@ export function ExpedienteAuditoriaCompleto({
       'archivo': '#64748b',
       'ampliacion_plazo': '#f97316',
     };
-    
+
     return data.map((evento: any) => ({
       id: evento.id,
       tipo: mapearTipoEvento(evento.tipo),
@@ -565,7 +609,7 @@ export function ExpedienteAuditoriaCompleto({
       color: coloresPorTipo[evento.tipo] || '#6b7280',
     }));
   }
-  
+
   function mapearTipoEvento(tipo: string): EventoHistorial['tipo'] {
     const mapeo: Record<string, EventoHistorial['tipo']> = {
       'creacion': 'accion',
@@ -583,12 +627,12 @@ export function ExpedienteAuditoriaCompleto({
     };
     return mapeo[tipo] || 'accion';
   }
-  
+
   // ✅ Función para mapear documentos del backend al formato del frontend
   function mapearDocumentosBackend(data: any[]): DocumentoExpediente[] {
     // Construir base URL para documentos
     const baseUrl = getDocumentosBaseUrl();
-    
+
     return (data || []).map((doc: any) => ({
       id: doc.id,
       nombre: doc.nombre || doc.nombreArchivo || 'Sin nombre',
@@ -604,15 +648,15 @@ export function ExpedienteAuditoriaCompleto({
       descripcion: doc.descripcion,
     }));
   }
-  
+
   // ✅ Obtener URL base del servicio de documentos
   function getDocumentosBaseUrl(): string {
     const serviceUrl = getServiceUrl('control-institucional');
-    return API_MODE === 'gateway' 
+    return API_MODE === 'gateway'
       ? `${serviceUrl}/control-institucional/api/v1`
       : serviceUrl;
   }
-  
+
   function mapearTipoDocumento(tipo: string): DocumentoExpediente['tipo'] {
     const mapeo: Record<string, DocumentoExpediente['tipo']> = {
       'oficio': 'Oficio',
@@ -633,7 +677,7 @@ export function ExpedienteAuditoriaCompleto({
     };
     return mapeo[tipo] || 'Otro';
   }
-  
+
   function mapearFaseDocumento(fase: string): DocumentoExpediente['fase'] {
     const mapeo: Record<string, DocumentoExpediente['fase']> = {
       'planeacion': 'planeacion',
@@ -645,7 +689,7 @@ export function ExpedienteAuditoriaCompleto({
     };
     return mapeo[fase] || 'planeacion';
   }
-  
+
   function formatFileSize(bytes: number): string {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -653,15 +697,15 @@ export function ExpedienteAuditoriaCompleto({
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   }
-  
+
   // ✅ Función para recargar documentos desde el backend
   const recargarDocumentos = async () => {
     if (!auditoriaId) return;
-    
+
     // Validar UUID
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(auditoriaId)) return;
-    
+
     setLoadingDocumentos(true);
     try {
       const documentosData = await controlInternoService.getDocumentosByAuditoria(auditoriaId);
@@ -677,14 +721,14 @@ export function ExpedienteAuditoriaCompleto({
       setLoadingDocumentos(false);
     }
   };
-  
+
   // ✅ Función para subir un documento al backend
   const subirDocumento = async (
     file: File,
     metadata: { nombre: string; descripcion?: string; tipoDocumento: string; etapa: string }
   ): Promise<boolean> => {
     if (!auditoriaId) return false;
-    
+
     try {
       await controlInternoService.createDocumento(file, {
         nombre: metadata.nombre,
@@ -693,12 +737,12 @@ export function ExpedienteAuditoriaCompleto({
         etapa: metadata.etapa,
         auditoriaId: auditoriaId,
       });
-      
+
       // 🚀 DISPARAR EVENTO AL BACKEND
       try {
         await notificationsService.triggerEvent('EVT-DOC-001', {
           auditoriaId: auditoriaId,
-          auditoriaCodigo: auditoria?.codigo || `AUD-${auditoriaId.substring(0,4)}`,
+          auditoriaCodigo: auditoria?.codigo || `AUD-${auditoriaId.substring(0, 4)}`,
           tituloCustom: 'Nuevo Documento Cargado',
           mensajeCustom: `Se ha cargado el documento ${metadata.nombre} en el expediente ${auditoria?.codigo || ''}.`,
           url_accion: '/control-interno/auditorias-oci',
@@ -706,7 +750,7 @@ export function ExpedienteAuditoriaCompleto({
       } catch (e) {
         console.error('Error disparando notificación:', e);
       }
-      
+
       // Recargar documentos después de subir
       await recargarDocumentos();
       return true;
@@ -715,12 +759,12 @@ export function ExpedienteAuditoriaCompleto({
       return false;
     }
   };
-  
+
   // ✅ Función para actualizar checklist de actividades en el backend
   const handleToggleChecklist = async (itemId: string, completado: boolean) => {
     // ✅ Guardia: no ejecutar si no hay auditoría cargada
     if (!auditoria) return;
-    
+
     // Actualizar estado local inmediatamente (optimistic update)
     const nuevoChecklist = {
       ...auditoria.checklistCompletados,
@@ -730,7 +774,7 @@ export function ExpedienteAuditoriaCompleto({
       ...prev,
       checklistCompletados: nuevoChecklist,
     }) : null);
-    
+
     // Si es un UUID válido (auditoría real), guardar en backend
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if (uuidRegex.test(auditoria.id)) {
@@ -743,7 +787,7 @@ export function ExpedienteAuditoriaCompleto({
       }
     }
   };
-  
+
   // Funciones auxiliares para mapeo
   function mapearEstado(fase: string): EstadoAuditoria {
     const mapeo: Record<string, EstadoAuditoria> = {
@@ -760,19 +804,19 @@ export function ExpedienteAuditoriaCompleto({
     };
     return mapeo[fase] || 'planeacion';
   }
-  
+
   function calcularDiasDuracion(fechaInicio: string, fechaFin: string): number {
     const inicio = new Date(fechaInicio);
     const fin = new Date(fechaFin);
     return Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24));
   }
-  
+
   function calcularDiasTranscurridos(fechaInicio: string): number {
     const inicio = new Date(fechaInicio);
     const hoy = new Date();
     return Math.max(0, Math.ceil((hoy.getTime() - inicio.getTime()) / (1000 * 60 * 60 * 24)));
   }
-  
+
   // ✅ AUTO-DETECCIÓN: Si no se especifica tab, detectar según el estado de la auditoría
   const getTabAutomatico = () => {
     if (tabInicial !== 'general') return tabInicial as TabActiva;
@@ -786,7 +830,7 @@ export function ExpedienteAuditoriaCompleto({
     if (estadoLower === 'finalizada') return 'finalizada';
     return 'general';
   };
-  
+
   const [activeTab, setActiveTab] = useState<TabActiva>(getTabAutomatico());
   const [filtroDocumentos, setFiltroDocumentos] = useState<string>('todos');
   const wasOpenRef = useRef(false);
@@ -900,16 +944,16 @@ export function ExpedienteAuditoriaCompleto({
 
       // Crear libro de Excel
       const wb = XLSX.utils.book_new();
-      
+
       const ws1 = XLSX.utils.aoa_to_sheet(infoGeneral);
       XLSX.utils.book_append_sheet(wb, ws1, 'Información General');
-      
+
       const ws2 = XLSX.utils.aoa_to_sheet(equipoData);
       XLSX.utils.book_append_sheet(wb, ws2, 'Equipo Auditor');
-      
+
       const ws3 = XLSX.utils.aoa_to_sheet(progresoData);
       XLSX.utils.book_append_sheet(wb, ws3, 'Progreso');
-      
+
       const ws4 = XLSX.utils.aoa_to_sheet(hallazgosData);
       XLSX.utils.book_append_sheet(wb, ws4, 'Hallazgos');
 
@@ -956,15 +1000,15 @@ export function ExpedienteAuditoriaCompleto({
       const dia = String(fecha.getDate()).padStart(2, '0');
       const consecutivo = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
       const nomenclatura = `ESAP-DN-OCI-IF-${consecutivo}-${año}`;
-      
+
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(100, 100, 100);
       doc.text(`Código: ${nomenclatura}`, pageWidth / 2, yPos, { align: 'center' });
       doc.text(`Fecha: ${dia}/${mes}/${año}`, pageWidth / 2, yPos + 5, { align: 'center' });
-      
+
       yPos += 15;
-      
+
       // Sección 1: Información General
       doc.setFillColor(0, 61, 165);
       doc.rect(14, yPos, pageWidth - 28, 7, 'F');
@@ -972,11 +1016,11 @@ export function ExpedienteAuditoriaCompleto({
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
       doc.text('1. INFORMACIÓN GENERAL', 16, yPos + 5);
-      
+
       yPos += 12;
       doc.setTextColor(0, 0, 0);
       doc.setFontSize(9);
-      
+
       const infoGeneral = [
         ['Código:', auditoria.codigo],
         ['Nombre:', auditoria.nombre],
@@ -986,7 +1030,7 @@ export function ExpedienteAuditoriaCompleto({
         ['Proceso:', auditoria.procesoNombre],
         ['Riesgo:', auditoria.nivelRiesgo]
       ];
-      
+
       autoTable(doc, {
         startY: yPos,
         body: infoGeneral,
@@ -998,23 +1042,23 @@ export function ExpedienteAuditoriaCompleto({
         },
         margin: { left: 14, right: 14 }
       });
-      
+
       yPos = (doc as any).lastAutoTable.finalY + 10;
-      
+
       // Sección 2: Equipo Auditor
       doc.setFillColor(0, 61, 165);
       doc.rect(14, yPos, pageWidth - 28, 7, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
       doc.text('2. EQUIPO AUDITOR', 16, yPos + 5);
-      
+
       yPos += 12;
-      
+
       const equipoData = [
         ['Auditor Líder', auditoria.auditorLider.nombre, auditoria.auditorLider.email],
         ...auditoria.equipoAuditores.map(a => [a.rol, a.nombre, a.email])
       ];
-      
+
       autoTable(doc, {
         startY: yPos,
         head: [['Rol', 'Nombre', 'Email']],
@@ -1024,30 +1068,30 @@ export function ExpedienteAuditoriaCompleto({
         bodyStyles: { fontSize: 9 },
         margin: { left: 14, right: 14 }
       });
-      
+
       yPos = (doc as any).lastAutoTable.finalY + 10;
-      
+
       // Sección 3: Progreso
       if (yPos > pageHeight - 80) {
         doc.addPage();
         yPos = 20;
       }
-      
+
       doc.setFillColor(0, 61, 165);
       doc.rect(14, yPos, pageWidth - 28, 7, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
       doc.text('3. PROGRESO POR FASES', 16, yPos + 5);
-      
+
       yPos += 12;
-      
+
       const progresoData = [
         ['Planeación', `${auditoria.progreso.planeacion}%`, auditoria.progreso.planeacion === 100 ? 'Completada' : 'En progreso'],
         ['Ejecución', `${auditoria.progreso.ejecucion}%`, auditoria.progreso.ejecucion === 100 ? 'Completada' : 'En progreso'],
         ['Comunicación', `${auditoria.progreso.comunicacion}%`, auditoria.progreso.comunicacion > 0 ? 'En progreso' : 'Pendiente'],
         ['GENERAL', `${auditoria.progreso.general}%`, '']
       ];
-      
+
       autoTable(doc, {
         startY: yPos,
         head: [['Fase', 'Avance', 'Estado']],
@@ -1060,7 +1104,7 @@ export function ExpedienteAuditoriaCompleto({
           1: { cellWidth: 40, halign: 'center', fontStyle: 'bold' },
           2: { cellWidth: 80 }
         },
-        didParseCell: function(data: any) {
+        didParseCell: function (data: any) {
           if (data.row.index === 3 && data.section === 'body') {
             data.cell.styles.fillColor = [0, 61, 165];
             data.cell.styles.textColor = 255;
@@ -1069,25 +1113,25 @@ export function ExpedienteAuditoriaCompleto({
         },
         margin: { left: 14, right: 14 }
       });
-      
+
       yPos = (doc as any).lastAutoTable.finalY + 10;
-      
+
       // Sección 4: Hallazgos
       doc.setFillColor(0, 61, 165);
       doc.rect(14, yPos, pageWidth - 28, 7, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
       doc.text('4. HALLAZGOS', 16, yPos + 5);
-      
+
       yPos += 12;
-      
+
       const hallazgosData = [
         ['Críticos', auditoria.estadisticas.hallazgosCriticos.toString()],
         ['Mayores', auditoria.estadisticas.hallazgosMayores.toString()],
         ['Menores', auditoria.estadisticas.hallazgosMenores.toString()],
         ['TOTAL', auditoria.estadisticas.totalHallazgos.toString()]
       ];
-      
+
       autoTable(doc, {
         startY: yPos,
         head: [['Tipo', 'Cantidad']],
@@ -1099,7 +1143,7 @@ export function ExpedienteAuditoriaCompleto({
           0: { cellWidth: 100 },
           1: { cellWidth: 80, halign: 'center', fontStyle: 'bold', fontSize: 11 }
         },
-        didParseCell: function(data: any) {
+        didParseCell: function (data: any) {
           if (data.row.index === 3 && data.section === 'body') {
             data.cell.styles.fillColor = [239, 68, 68];
             data.cell.styles.textColor = 255;
@@ -1107,23 +1151,23 @@ export function ExpedienteAuditoriaCompleto({
         },
         margin: { left: 14, right: 14 }
       });
-      
+
       yPos = (doc as any).lastAutoTable.finalY + 15;
-      
+
       // Pie de página institucional
       const totalPages = (doc as any).internal.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
         dibujarPieInstitucional(doc, i, true);
       }
-      
+
       doc.save(`Informe_Avance_${auditoria.codigo}_${año}${mes}${dia}.pdf`);
-      
+
       toast.success('✅ Informe generado exitosamente', {
         description: `PDF descargado: Informe_Avance_${auditoria.codigo}_${año}${mes}${dia}.pdf`,
         duration: 4000
       });
-      
+
     } catch (error) {
       console.error('Error al generar PDF:', error);
       toast.error('⚠️ Error al generar informe', {
@@ -1137,7 +1181,7 @@ export function ExpedienteAuditoriaCompleto({
   if (loading || !auditoria) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent 
+        <DialogContent
           hideCloseButton
           className="w-[92vw] max-w-[1073px] lg:max-w-6xl h-[95vh] flex flex-col p-0 items-center justify-center"
         >
@@ -1155,7 +1199,7 @@ export function ExpedienteAuditoriaCompleto({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent 
+      <DialogContent
         hideCloseButton
         className="w-[92vw] max-w-[1073px] lg:max-w-6xl h-[95vh] flex flex-col p-0"
       >
@@ -1188,7 +1232,7 @@ export function ExpedienteAuditoriaCompleto({
                   </p>
                 </div>
               </div>
-              
+
               {/* BADGES INFORMATIVOS - SEGÚN ESTÁNDAR: Mínimo 2-3 badges */}
               <div className="flex flex-wrap items-center gap-2">
                 <Badge className="bg-white/20 text-white font-bold border border-white/30">
@@ -1212,7 +1256,7 @@ export function ExpedienteAuditoriaCompleto({
             </div>
 
             {/* BOTÓN CERRAR - SEGÚN ESTÁNDAR: variant="ghost" hover:bg-white/20 */}
-            <Button 
+            <Button
               onClick={onClose}
               variant="ghost"
               size="sm"
@@ -1231,15 +1275,15 @@ export function ExpedienteAuditoriaCompleto({
             {(PESTANAS_BASE.filter((p) => p.id !== 'finalizada' || auditoria?.estado === 'finalizada')).map((pestana) => {
               const Icon = pestana.icon;
               const isActive = activeTab === pestana.id;
-              
+
               return (
                 <button
                   key={pestana.id}
                   onClick={() => setActiveTab(pestana.id)}
                   className={`
                     flex items-center gap-2 px-4 py-3 border-b-2 transition-all whitespace-nowrap
-                    ${isActive 
-                      ? 'border-blue-600 text-blue-700 font-bold' 
+                    ${isActive
+                      ? 'border-blue-600 text-blue-700 font-bold'
                       : 'border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900'
                     }
                   `}
@@ -1271,15 +1315,15 @@ export function ExpedienteAuditoriaCompleto({
             >
               {activeTab === 'general' && <TabGeneral auditoria={auditoria} readOnly={auditoria.estado === 'finalizada'} />}
               {activeTab === 'planeacion' && (
-                <TabPlaneacion 
-                  auditoria={auditoria} 
+                <TabPlaneacion
+                  auditoria={auditoria}
                   checklistCompletados={auditoria.checklistCompletados}
                   onToggleChecklist={auditoria.estado === 'finalizada' ? undefined : handleToggleChecklist}
                   readOnly={auditoria.estado === 'finalizada'}
                 />
               )}
               {activeTab === 'ejecucion' && (
-                <TabEjecucion 
+                <TabEjecucion
                   auditoria={auditoria}
                   checklistCompletados={auditoria.checklistCompletados}
                   onToggleChecklist={auditoria.estado === 'finalizada' ? undefined : handleToggleChecklist}
@@ -1287,14 +1331,15 @@ export function ExpedienteAuditoriaCompleto({
                 />
               )}
               {activeTab === 'comunicacion' && (
-                <TabComunicacion 
+                <TabComunicacion
                   auditoria={auditoria}
                   checklistCompletados={auditoria.checklistCompletados}
                   onToggleChecklist={auditoria.estado === 'finalizada' ? undefined : handleToggleChecklist}
                   onComunicacionCompletada={() => {
-                setRecargarTrigger(t => t + 1);
-                onComunicacionCompletadaProp?.();
-              }}
+                    setRecargarTrigger(t => t + 1);
+                    setActiveTab('seguimiento');
+                    onComunicacionCompletadaProp?.();
+                  }}
                   readOnly={auditoria.estado === 'finalizada'}
                 />
               )}
@@ -1343,31 +1388,18 @@ export function ExpedienteAuditoriaCompleto({
             {/* ACCIONES PRIMARIAS - SEGÚN ESTÁNDAR */}
             <div className="flex items-center gap-3">
 
-              
+
               {/* MÉTRICAS EN DESKTOP - SEGÚN ESTÁNDAR: hidden md:block */}
               <div className="text-xs text-gray-600 hidden md:block">
                 <strong className="font-black" style={{ color: '#003DA5' }}>
                   {(PESTANAS_BASE.find(p => p.id === activeTab) || PESTANAS_BASE[0])?.label}
-                </strong> · 
-                <strong className="text-green-600"> {auditoria.progreso.general}% completado</strong> · 
+                </strong> ·
+                <strong className="text-green-600"> {auditoria.progreso.general}% completado</strong> ·
                 <strong className="text-orange-600"> {diasRestantes} días restantes</strong>
                 {auditoria.estadisticas.totalHallazgos > 0 && (
                   <> · <strong className="text-red-600"> {auditoria.estadisticas.totalHallazgos} hallazgos</strong></>
                 )}
               </div>
-            </div>
-
-            {/* ACCIONES SECUNDARIAS - SEGÚN ESTÁNDAR */}
-            <div className="flex items-center gap-2">
-              <Button 
-                size="sm"
-                style={{ background: '#003DA5', color: '#FFFFFF' }}
-                className="font-bold text-xs"
-                onClick={generarInformePDF}
-              >
-                <FileText className="w-3.5 h-3.5 mr-1" />
-                Generar Informe
-              </Button>
             </div>
           </div>
         </div>
@@ -1444,7 +1476,7 @@ function TabGeneral({ auditoria, readOnly }: { auditoria: Auditoria; readOnly?: 
       {/* Cronograma */}
       <Card className="p-4 border-l-4 border-l-purple-600">
         <h3 className="text-sm font-bold text-gray-900 mb-3">Cronograma y Plazos</h3>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
           <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
             <div className="flex items-center gap-1 mb-1">
@@ -1630,9 +1662,9 @@ function TabPlaneacion({ auditoria, readOnly }: TabFaseProps) {
           </div>
         </div>
       </Card>
-      <SeccionListasChequeoExpediente 
-        auditoriaId={auditoria.id} 
-        etapaActual="Planeación" 
+      <SeccionListasChequeoExpediente
+        auditoriaId={auditoria.id}
+        etapaActual="Planeación"
         readOnly={readOnly}
       />
     </div>
@@ -1715,9 +1747,9 @@ function TabEjecucion({ auditoria, checklistCompletados, onToggleChecklist, read
       </div>
 
       {/* 2. LISTAS DE CHEQUEO DE EJECUCIÓN */}
-      <SeccionListasChequeoExpediente 
-        auditoriaId={auditoria.id} 
-        etapaActual="Ejecución" 
+      <SeccionListasChequeoExpediente
+        auditoriaId={auditoria.id}
+        etapaActual="Ejecución"
         readOnly={readOnly}
       />
 
@@ -1800,11 +1832,11 @@ function TabComunicacion({ auditoria, onComunicacionCompletada, readOnly }: TabF
           </div>
         </div>
       </Card>
-      
+
       {/* LISTAS DE CHEQUEO DE COMUNICACIÓN */}
-      <SeccionListasChequeoExpediente 
-        auditoriaId={auditoria.id} 
-        etapaActual="Comunicación" 
+      <SeccionListasChequeoExpediente
+        auditoriaId={auditoria.id}
+        etapaActual="Comunicación"
         readOnly={readOnly}
       />
 
@@ -1812,7 +1844,7 @@ function TabComunicacion({ auditoria, onComunicacionCompletada, readOnly }: TabF
       <div className="bg-white border-2 border-green-200 rounded-lg p-4">
         <ComunicacionAuditoriaModule
           auditoriaId={auditoria.id}
-          auditoriaInfo={{ codigo: auditoria.codigo, nombre: auditoria.nombre }}
+          auditoriaInfo={auditoria}
           estadoAuditoria={auditoria.estado}
           embedded
           onComunicacionCompletada={onComunicacionCompletada}
@@ -1851,7 +1883,7 @@ function TabSeguimiento({
       <div className="bg-white border-2 border-indigo-200 rounded-lg p-4">
         <ComunicacionAuditoriaModule
           auditoriaId={auditoria.id}
-          auditoriaInfo={{ codigo: auditoria.codigo, nombre: auditoria.nombre }}
+          auditoriaInfo={auditoria}
           estadoAuditoria="Seguimiento"
           soloSeguimiento
           embedded
@@ -1971,7 +2003,7 @@ function TabDocumentacion({
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-gray-500" />
-            <select 
+            <select
               value={filtro}
               onChange={(e) => onFiltroChange(e.target.value)}
               className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white font-semibold"
@@ -1982,8 +2014,8 @@ function TabDocumentacion({
               <option value="comunicacion">Comunicación</option>
             </select>
             {/* Botón refrescar */}
-            <Button 
-              size="sm" 
+            <Button
+              size="sm"
               variant="outline"
               onClick={onRecargar}
               disabled={loading}
@@ -1994,8 +2026,8 @@ function TabDocumentacion({
             </Button>
           </div>
           {!readOnly && (
-            <Button 
-              size="sm" 
+            <Button
+              size="sm"
               style={{ background: '#003DA5', color: '#FFFFFF' }}
               className="font-bold"
               onClick={() => setModalCargar(true)}
@@ -2046,9 +2078,9 @@ function TabDocumentacion({
                   <div className="flex gap-1">
                     {/* Botón Ver - solo para PDFs e imágenes */}
                     {doc.tipoMime && (doc.tipoMime.startsWith('application/pdf') || doc.tipoMime.startsWith('image/')) && (
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
+                      <Button
+                        size="sm"
+                        variant="ghost"
                         className="h-7 w-7 p-0"
                         onClick={() => handleVerDoc(doc)}
                         title="Ver documento"
@@ -2057,9 +2089,9 @@ function TabDocumentacion({
                       </Button>
                     )}
                     {/* Botón Descargar - siempre disponible */}
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
+                    <Button
+                      size="sm"
+                      variant="ghost"
                       className="h-7 w-7 p-0"
                       onClick={() => handleDescargarDoc(doc)}
                       title="Descargar"
@@ -2284,13 +2316,13 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
         modificadoPor: auditoria.metadata?.modificadoPor,
       },
       objetivo: (auditoria as any).objetivo || (auditoria as any).objetivoGeneral || (auditoria as any).objetivo_general || '',
-      objetivos: ((auditoria as any).objetivos?.length > 0) 
-                 ? (auditoria as any).objetivos.map((o: any) => o.descripcion || o.nombre || o)
-                 : ((auditoria as any).objetivoGeneral || (auditoria as any).objetivo_general || (auditoria as any).proposito || (window as any).planIndividualActual?.objetivos?.map((o: any) => o.descripcion || o.nombre) || []),
+      objetivos: ((auditoria as any).objetivos?.length > 0)
+        ? (auditoria as any).objetivos.map((o: any) => o.descripcion || o.nombre || o)
+        : ((auditoria as any).objetivoGeneral || (auditoria as any).objetivo_general || (auditoria as any).proposito || (window as any).planIndividualActual?.objetivos?.map((o: any) => o.descripcion || o.nombre) || []),
       alcance: auditoria.alcance || (auditoria as any).alcanceAuditoria || (auditoria as any).alcance_auditoria || (auditoria as any).cobertura || (window as any).planIndividualActual?.alcance || '',
       criterios: ((auditoria as any).criterios?.length > 0)
-                 ? (auditoria as any).criterios.map((c: any) => c.descripcion || c.nombre || c)
-                 : ((auditoria as any).criteriosAuditoria?.map((c: any) => c.nombre || c.descripcion) || (auditoria as any).normatividad || (window as any).planIndividualActual?.criterios?.map((c: any) => c.descripcion || c.nombre) || []),
+        ? (auditoria as any).criterios.map((c: any) => c.descripcion || c.nombre || c)
+        : ((auditoria as any).criteriosAuditoria?.map((c: any) => c.nombre || c.descripcion) || (auditoria as any).normatividad || (window as any).planIndividualActual?.criterios?.map((c: any) => c.descripcion || c.nombre) || []),
     };
   };
 
@@ -2301,7 +2333,7 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
         controlInternoService.getAuditoriaById(auditoriaId),
         controlInternoService.getPlanIndividualByAuditoria(auditoriaId).catch(() => null)
       ]);
-      
+
       if (planFrescos) {
         (window as any).planIndividualActual = planFrescos;
       }
@@ -2311,7 +2343,7 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
       // Usando inicio/fin que son los campos reales
       const fInicio = auditoriaCompleta.cronograma?.inicio || auditoriaCompleta.cronograma?.fechaInicio || (auditoriaCompleta as any).fechaInicio;
       const fFin = auditoriaCompleta.cronograma?.fin || auditoriaCompleta.cronograma?.fechaFin || (auditoriaCompleta as any).fechaFin;
-      
+
       const formatearFechaLarga = (fecha: any) => {
         if (!fecha) return '—';
         const d = new Date(fecha);
@@ -2320,20 +2352,58 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
         return `${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
       };
 
-      const rangoFechas = (fInicio && fFin) 
+      const rangoFechas = (fInicio && fFin)
         ? `${formatearFechaLarga(fInicio)} – ${formatearFechaLarga(fFin)}`
         : (fInicio ? formatearFechaLarga(fInicio) : '—');
 
       const periodoInicio = resumen?.fechaInicio || (auditoriaCompleta as any).fechaInicio;
       const periodoFin = resumen?.fechaFin || (auditoriaCompleta as any).fechaFin;
-      const periodoAuditoria = (periodoInicio && periodoFin) 
+      const periodoAuditoria = (periodoInicio && periodoFin)
         ? `${formatearFechaLarga(periodoInicio)} – ${formatearFechaLarga(periodoFin)}`
         : (periodoInicio ? formatearFechaLarga(periodoInicio) : rangoFechas);
 
       const equipoAuditores = (auditoriaCompleta.equipoAuditores || []).map((a: any) => ({
         nombre: a.nombre || a.nombreCompleto || 'Auditor',
-        rol: a.rol || a.cargo || 'Equipo Auditor'
+        rol: a.rol || a.cargo || 'Equipo Auditor',
+        email: a.email || a.correo || '—'
       }));
+
+      // ✅ ENRIQUECIMIENTO DE EMAILS PARA EL PDF
+      try {
+        const profsRes = await configuracionesProfesionalesOCIApi.getAll(true);
+        const profs = Array.isArray(profsRes.data) ? profsRes.data : (Array.isArray(profsRes) ? profsRes : []);
+        
+        if (profs.length > 0) {
+          const matchProf = (nombre: string) => {
+            const n = (nombre || '').toLowerCase().trim();
+            return profs.find(p => {
+              const pName = (p.nombre || p.persona?.nombre || p.nom_largo || p.nombreCompleto || '').toLowerCase().trim();
+              if (!pName || !n) return false;
+              if (pName === n || pName.includes(n) || n.includes(pName)) return true;
+              const tP = pName.split(/\s+/).filter(t => t.length > 2);
+              const tN = n.split(/\s+/).filter(t => t.length > 2);
+              return tP.filter(t => tN.includes(t)).length >= 2;
+            });
+          };
+
+          // Líder
+          const lNombre = auditoriaCompleta.auditorLider?.nombre || auditoriaCompleta.auditorLider || '';
+          const foundL = matchProf(lNombre);
+          if (foundL) {
+            (auditoriaCompleta as any).auditorLiderEmail = foundL.email || foundL.persona?.email;
+          }
+
+          // Equipo
+          equipoAuditores.forEach((aud: any) => {
+            if (!aud.email || aud.email === '—') {
+              const found = matchProf(aud.nombre);
+              if (found) aud.email = found.email || found.persona?.email;
+            }
+          });
+        }
+      } catch (err) {
+        console.error('Error enriqueciendo PDF:', err);
+      }
 
       // Formatear criterios para evitar [object Object]
       const criteriosFormateados = ((auditoriaCompleta as any).criterios?.length > 0)
@@ -2342,15 +2412,16 @@ function TabFinalizada({ auditoriaId, auditoria, documentos }: TabFinalizadaProp
 
       const auditoriaParaPdf = {
         ...auditoriaCompleta,
+        auditorLiderEmail: (auditoriaCompleta as any).auditorLiderEmail || auditoria.auditorLider?.email,
         territorial: territorial,
         rangoFechas: rangoFechas,
         periodoAuditoria: periodoAuditoria,
         equipoAuditores: equipoAuditores,
         criterios: criteriosFormateados,
         objetivo: auditoriaCompleta.objetivo || auditoriaCompleta.objetivoGeneral || (auditoriaCompleta as any).objetivo_general || '',
-        objetivos: (auditoriaCompleta.objetivos?.length > 0) 
-                   ? auditoriaCompleta.objetivos.map((o: any) => o.descripcion || o.nombre || o)
-                   : (auditoriaCompleta.objetivoGeneral || (auditoriaCompleta as any).objetivo_general || planFrescos?.objetivos?.map((o: any) => o.descripcion || o.nombre) || []),
+        objetivos: (auditoriaCompleta.objetivos?.length > 0)
+          ? auditoriaCompleta.objetivos.map((o: any) => o.descripcion || o.nombre || o)
+          : (auditoriaCompleta.objetivoGeneral || (auditoriaCompleta as any).objetivo_general || planFrescos?.objetivos?.map((o: any) => o.descripcion || o.nombre) || []),
         alcance: auditoriaCompleta.alcance || auditoriaCompleta.alcanceAuditoria || (auditoriaCompleta as any).alcance_auditoria || planFrescos?.alcance || '',
       };
 
