@@ -105,6 +105,28 @@ const getPersonNameValidationError = (value: string, fieldName: string) => {
  * Este servicio consulta directamente el módulo de "Gestión de Graduados" del backoffice
  */
 
+const CERTIFICATE_NOT_AVAILABLE_MESSAGE =
+  "El certificado de grado aún no se encuentra disponible para expedición.";
+
+const isCertificateNotAvailableError = (error: any) =>
+  error?.status === 422 &&
+  String(error?.message || "")
+    .toLowerCase()
+    .includes("certificado de grado");
+
+const showRequestErrorToast = (error: any, title: string) => {
+  if (isCertificateNotAvailableError(error)) {
+    toast.info("Certificado no disponible", {
+      description: error?.message || CERTIFICATE_NOT_AVAILABLE_MESSAGE,
+    });
+    return;
+  }
+
+  toast.error(title, {
+    description: error?.message || "Por favor intenta nuevamente",
+  });
+};
+
 export function PublicTitleVerification({
   onBack,
   onLoginClick,
@@ -452,9 +474,7 @@ export function PublicTitleVerification({
       await handleManualReviewCreation();
     } catch (error: any) {
       console.error("Error al crear la solicitud de revisión:", error);
-      toast.error("Error al crear la solicitud de revisión", {
-        description: error?.message || "Por favor intenta nuevamente",
-      });
+      showRequestErrorToast(error, "Error al crear la solicitud de revisión");
     } finally {
       setIsGenerating(false);
     }
@@ -480,9 +500,7 @@ export function PublicTitleVerification({
       }
 
       console.error("Error al crear la solicitud de revisión:", error);
-      toast.error("Error al crear la solicitud de revisión", {
-        description: error?.message || "Por favor intenta nuevamente",
-      });
+      showRequestErrorToast(error, "Error al crear la solicitud de revisión");
     } finally {
       setIsGenerating(false);
     }
@@ -526,9 +544,7 @@ export function PublicTitleVerification({
       });
     } catch (error: any) {
       console.error("Error al buscar coincidencias:", error);
-      toast.error("Error al verificar los datos", {
-        description: error?.message || "Por favor intenta nuevamente",
-      });
+      showRequestErrorToast(error, "Error al verificar los datos");
     } finally {
       setIsGenerating(false);
     }
@@ -597,9 +613,7 @@ export function PublicTitleVerification({
       toast.success("Certificado generado exitosamente");
     } catch (error: any) {
       console.error("Error al confirmar la coincidencia:", error);
-      toast.error("Error al generar el certificado", {
-        description: error?.message || "Por favor intenta nuevamente",
-      });
+      showRequestErrorToast(error, "Error al generar el certificado");
     } finally {
       setIsConfirmingSelection(false);
     }

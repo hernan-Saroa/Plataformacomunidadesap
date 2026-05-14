@@ -48,7 +48,7 @@ const buildDiskStorage = (folder: string, prefix: string) =>
  * - Gateway: /pta/api/v1/pta/...  -> service: http://localhost:3003/pta/...
  */
 @Public()
-@Controller('pta')
+@Controller('api/v1')
 export class PtaController {
   constructor(private readonly ptaService: PtaService) {}
 
