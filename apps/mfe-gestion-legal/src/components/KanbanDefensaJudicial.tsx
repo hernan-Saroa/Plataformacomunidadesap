@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { FormularioExpedienteJudicial } from './defensa-judicial/FormularioExpedienteJudicial';
 import { ModuloDefensaJudicial } from './ModuloDefensaJudicial';
 import { legalService } from '../../../services/api/legal.service';
+import { authService } from '../../../services/api/authService';
 
 type Jurisdiccion = 'CONSTITUCIONAL' | 'CONTENCIOSO' | 'LABORAL' | 'ORDINARIA';
 type Etapa = 'ADMISION' | 'CONTESTACION' | 'PRUEBAS' | 'ALEGATOS' | 'SENTENCIA' | 'CERRADO';
@@ -126,7 +127,10 @@ function DetalleExpedienteModal({ expediente, isOpen, onClose }: { expediente: E
         tipoActuacion: nuevaActuacion.tipoActuacion,
         descripcion: nuevaActuacion.descripcion,
         fechaActuacion: nuevaActuacion.fechaActuacion || new Date().toISOString(),
-        usuarioResponsable: 'Usuario Actual' // TODO: Get from auth context
+        usuarioResponsable: (() => {
+          const u = authService.getCurrentUser() as any;
+          return u?.fullName ?? u?.full_name ?? u?.name ?? u?.nombre ?? (u?.person?.first_name ? `${u.person.first_name} ${u.person.last_name ?? ''}`.trim() : null) ?? u?.email ?? u?.person?.email ?? 'Usuario';
+        })()
       };
 
       await legalService.registrarActuacion(expediente.id, data);
@@ -450,7 +454,7 @@ function ComentariosModal({ expediente, isOpen, onClose }: { expediente: Expedie
     if (!expediente) return;
     setLoading(true);
     try {
-      const data = await legalService.getComentarios(expediente.id);
+      const data = await legalService.getComentariosExpediente(expediente.id);
       setComentarios(data || []);
     } catch (error) {
       console.error('Error fetching comentarios:', error);
@@ -465,9 +469,12 @@ function ComentariosModal({ expediente, isOpen, onClose }: { expediente: Expedie
 
     setSaving(true);
     try {
-      await legalService.createComentario(expediente.id, {
+      const u = authService.getCurrentUser() as any;
+      const usuarioNombre = u?.fullName ?? u?.full_name ?? u?.name ?? u?.nombre ?? (u?.person?.first_name ? `${u.person.first_name} ${u.person.last_name ?? ''}`.trim() : null) ?? u?.email ?? u?.person?.email ?? 'Usuario';
+
+      await legalService.createComentarioExpediente(expediente.id, {
         contenido: nuevoComentario.trim(),
-        usuarioNombre: 'Usuario Actual'
+        usuarioNombre: usuarioNombre
       });
       toast.success('Comentario agregado');
       setNuevoComentario('');

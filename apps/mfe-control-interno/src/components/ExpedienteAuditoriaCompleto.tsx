@@ -336,8 +336,11 @@ export function ExpedienteAuditoriaCompleto({
     if (fase === 'en-curso') {
       return { general: progreso, planeacion: 100, ejecucion: progreso, comunicacion: 0 };
     }
-    if (fase === 'revision' || fase === 'completada') {
+    if (fase === 'revision') {
       return { general: progreso, planeacion: 100, ejecucion: 100, comunicacion: progreso };
+    }
+    if (fase === 'completada') {
+      return { general: 100, planeacion: 100, ejecucion: 100, comunicacion: 100 };
     }
 
     return { general: progreso, planeacion: progreso, ejecucion: 0, comunicacion: 0 };
@@ -500,6 +503,33 @@ export function ExpedienteAuditoriaCompleto({
 
         setDocumentos(documentosFinales);
         console.log(`[Expediente] ✅ Cargados ${documentosFinales.length} documentos (cierre: ${!!documentoCierre})`);
+
+        // ✅ Cargar hallazgos para estadísticas reales
+        try {
+          const hallazgosData = await controlInternoService.getHallazgosByAuditoria(auditoriaId);
+          if (Array.isArray(hallazgosData)) {
+            const criticos = hallazgosData.filter(h => 
+              (h as any).gravedad?.toLowerCase() === 'crítico' || 
+              (h as any).gravedad?.toLowerCase() === 'critico' ||
+              h.categoria === 'critico'
+            ).length;
+            const mayores = hallazgosData.filter(h => (h as any).gravedad?.toLowerCase() === 'mayor').length;
+            const menores = hallazgosData.filter(h => (h as any).gravedad?.toLowerCase() === 'menor' || !((h as any).gravedad)).length;
+            
+            setAuditoria(prev => prev ? ({
+              ...prev,
+              estadisticas: {
+                ...prev.estadisticas,
+                totalHallazgos: hallazgosData.length,
+                hallazgosCriticos: criticos,
+                hallazgosMayores: mayores,
+                hallazgosMenores: menores
+              }
+            }) : null);
+          }
+        } catch (hErr) {
+          console.error('Error cargando hallazgos para estadísticas:', hErr);
+        }
 
         // ✅ ENRIQUECIMIENTO DE EMAILS (Búsqueda en configuración de profesionales)
         try {
@@ -1086,9 +1116,9 @@ export function ExpedienteAuditoriaCompleto({
       yPos += 12;
 
       const progresoData = [
-        ['Planeación', `${auditoria.progreso.planeacion}%`, auditoria.progreso.planeacion === 100 ? 'Completada' : 'En progreso'],
-        ['Ejecución', `${auditoria.progreso.ejecucion}%`, auditoria.progreso.ejecucion === 100 ? 'Completada' : 'En progreso'],
-        ['Comunicación', `${auditoria.progreso.comunicacion}%`, auditoria.progreso.comunicacion > 0 ? 'En progreso' : 'Pendiente'],
+        ['Planeación', `${auditoria.progreso.planeacion}%`, (auditoria.progreso.planeacion === 100 || auditoria.estado === 'finalizada') ? 'Completada' : 'En progreso'],
+        ['Ejecución', `${auditoria.progreso.ejecucion}%`, (auditoria.progreso.ejecucion === 100 || auditoria.estado === 'finalizada') ? 'Completada' : 'En progreso'],
+        ['Comunicación', `${auditoria.progreso.comunicacion}%`, (auditoria.progreso.comunicacion === 100 || auditoria.estado === 'finalizada') ? 'Completada' : auditoria.progreso.comunicacion > 0 ? 'En progreso' : 'Pendiente'],
         ['GENERAL', `${auditoria.progreso.general}%`, '']
       ];
 
@@ -1385,12 +1415,9 @@ export function ExpedienteAuditoriaCompleto({
             ═════════════════════════════════════════════════════════════════ */}
         <div className="shrink-0 bg-linear-to-r from-gray-50 to-white border-t-2 border-gray-200 px-6 py-4">
           <div className="flex items-center justify-between">
-            {/* ACCIONES PRIMARIAS - SEGÚN ESTÁNDAR */}
+            {/* IZQUIERDA: MÉTRICAS */}
             <div className="flex items-center gap-3">
-
-
-              {/* MÉTRICAS EN DESKTOP - SEGÚN ESTÁNDAR: hidden md:block */}
-              <div className="text-xs text-gray-600 hidden md:block">
+              <div className="text-xs text-gray-600">
                 <strong className="font-black" style={{ color: '#003DA5' }}>
                   {(PESTANAS_BASE.find(p => p.id === activeTab) || PESTANAS_BASE[0])?.label}
                 </strong> ·
@@ -1401,6 +1428,17 @@ export function ExpedienteAuditoriaCompleto({
                 )}
               </div>
             </div>
+
+            {/* DERECHA: ACCIÓN PRINCIPAL */}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={generarInformePDF}
+              className="font-bold border-blue-600 text-blue-700 hover:bg-blue-50"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Generar Informe
+            </Button>
           </div>
         </div>
       </DialogContent>

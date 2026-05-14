@@ -15,8 +15,8 @@
  * 9. ConfiguracionService ✅
  */
 
-import { apiClient } from './apiClient';
-import { getServiceUrl, API_MODE, MICROSERVICE_URLS } from '../../config/environment';
+import { getServiceUrl, API_MODE, MICROSERVICE_URLS, getDefaultHeaders, getUserContextHeaders } from '../../config/environment';
+import { getAccessToken } from './authTokenStore';
 
 // Base URL del servicio de Control Interno usando variables de entorno
 // En modo gateway: http://localhost:3000 o http://4.156.71.181/services
@@ -327,6 +327,19 @@ export interface UpdateTareaAuditoriaDto {
 // CLIENTE API ESPECÍFICO PARA CONTROL INTERNO
 // ============================================================================
 
+/** Headers para descargas Blob fuera del método request() del cliente. */
+function controlInternoDownloadHeaders(): HeadersInit {
+  const h: Record<string, string> = {
+    ...(getDefaultHeaders(true) as Record<string, string>),
+    ...(getUserContextHeaders() as Record<string, string>),
+  };
+  const token = getAccessToken();
+  if (token) {
+    h.Authorization = `Bearer ${token}`;
+  }
+  return h;
+}
+
 class ControlInternoAPIClient {
   private baseURL: string;
   private servicePrefix: string;
@@ -336,6 +349,21 @@ class ControlInternoAPIClient {
     this.servicePrefix = SERVICE_PREFIX;
   }
 
+  private buildRequestHeaders(extra?: HeadersInit): Record<string, string> {
+    const headers: Record<string, string> = {
+      ...(getDefaultHeaders(true) as Record<string, string>),
+      ...(getUserContextHeaders() as Record<string, string>),
+    };
+    if (extra && typeof extra === 'object' && !(extra instanceof Headers)) {
+      Object.assign(headers, extra as Record<string, string>);
+    }
+    const token = getAccessToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+    return headers;
+  }
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
@@ -343,18 +371,11 @@ class ControlInternoAPIClient {
     // En modo gateway: http://4.156.71.181/services/control-institucional/api/v1/plan-anual-5-roles
     // En modo direct: http://localhost:3007/plan-anual-5-roles (sin prefijo /api/v1)
     const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
-    
-    const defaultHeaders: HeadersInit = {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Accept': 'application/json; charset=utf-8',
-    };
+
     const response = await fetch(url, {
       ...options,
       credentials: 'include',
-      headers: {
-        ...defaultHeaders,
-        ...options.headers,
-      },
+      headers: this.buildRequestHeaders(options.headers as HeadersInit),
     });
 
     if (!response.ok) {
@@ -413,8 +434,7 @@ class ControlInternoAPIClient {
     onProgress?: (progress: number) => void
   ): Promise<T> {
     const url = `${this.baseURL}${this.servicePrefix}${endpoint}`;
-    const headers: HeadersInit = {};
-    // NO establecer Content-Type para FormData - el navegador lo hará automáticamente con el boundary
+    const headers: Record<string, string> = this.buildRequestHeaders();
 
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -434,8 +454,8 @@ class ControlInternoAPIClient {
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
-            const response = xhr.responseText 
-              ? JSON.parse(xhr.responseText) 
+            const response = xhr.responseText
+              ? JSON.parse(xhr.responseText)
               : {};
             resolve(response as T);
           } catch (error) {
@@ -443,8 +463,8 @@ class ControlInternoAPIClient {
           }
         } else {
           try {
-            const error = xhr.responseText 
-              ? JSON.parse(xhr.responseText) 
+            const error = xhr.responseText
+              ? JSON.parse(xhr.responseText)
               : { message: `HTTP ${xhr.status}` };
             reject(new Error(error.message || `HTTP ${xhr.status}`));
           } catch {
@@ -464,10 +484,16 @@ class ControlInternoAPIClient {
 
       // Abrir y enviar
       xhr.open('POST', url);
-      
-      // Establecer headers
-      Object.keys(headers).forEach(key => {
-        xhr.setRequestHeader(key, headers[key]);
+
+      // Establecer headers (Authorization + contexto usuario)
+      // IMPORTANTE: NO incluir Content-Type ni Accept — para FormData el navegador
+      // debe asignar automáticamente el Content-Type: multipart/form-data; boundary=...
+      // Si se fuerza Content-Type: application/json el backend rechaza con 400.
+      const uploadHeaders = { ...headers };
+      delete uploadHeaders['Content-Type'];
+      delete uploadHeaders['Accept'];
+      Object.keys(uploadHeaders).forEach((key) => {
+        xhr.setRequestHeader(key, uploadHeaders[key]);
       });
 
       xhr.send(formData);
@@ -482,11 +508,11 @@ const client = new ControlInternoAPIClient();
 // ============================================================================
 
 class ControlInternoService {
-  
+
   // ==========================================================================
   // UNIVERSO DE AUDITORÍAS
   // ==========================================================================
-  
+
   /**
    * Obtiene procesos auditables. Por defecto solo activos (para catálogo parametrizado).
    */
@@ -494,21 +520,21 @@ class ControlInternoService {
     const q = soloActivos ? '' : '?soloActivos=false';
     return client.get<ProcesoAuditable[]>(`/universo-auditorias/procesos${q}`);
   }
-  
+
   /**
    * Obtiene un proceso auditable por ID
    */
   async getProcesoById(id: string): Promise<ProcesoAuditable> {
     return client.get<ProcesoAuditable>(`/universo-auditorias/procesos/${id}`);
   }
-  
+
   /**
    * Crea un nuevo proceso auditable
    */
   async createProceso(data: Partial<ProcesoAuditable>): Promise<ProcesoAuditable> {
     return client.post<ProcesoAuditable>('/universo-auditorias/procesos', data);
   }
-  
+
   /**
    * Actualiza un proceso auditable
    */
@@ -622,7 +648,7 @@ class ControlInternoService {
   // ==========================================================================
   // PROGRAMA ANUAL
   // ==========================================================================
-  
+
   /**
    * Obtiene todos los programas anuales
    */
@@ -693,11 +719,11 @@ class ControlInternoService {
   async generarDocumentoOficial(programaId: string): Promise<any> {
     return client.get(`/programa-anual/${programaId}/documento-oficial`);
   }
-  
+
   // ==========================================================================
   // HALLAZGOS
   // ==========================================================================
-  
+
   /**
    * Obtiene todos los hallazgos
    */
@@ -706,7 +732,7 @@ class ControlInternoService {
     if (params?.categoria) queryParams.append('categoria', params.categoria);
     if (params?.estado) queryParams.append('estado', params.estado);
     if (params?.area) queryParams.append('area', params.area);
-    
+
     const query = queryParams.toString();
     return client.get<Hallazgo[]>(`/hallazgos${query ? `?${query}` : ''}`);
   }
@@ -717,21 +743,21 @@ class ControlInternoService {
   async getHallazgoById(id: string): Promise<Hallazgo> {
     return client.get<Hallazgo>(`/hallazgos/${id}`);
   }
-  
+
   /**
    * Crea un nuevo hallazgo
    */
   async createHallazgo(data: any): Promise<Hallazgo> {
     return client.post<Hallazgo>('/hallazgos', data);
   }
-  
+
   /**
    * Actualiza un hallazgo
    */
   async updateHallazgo(id: string, data: any): Promise<Hallazgo> {
     return client.put<Hallazgo>(`/hallazgos/${id}`, data);
   }
-  
+
   /**
    * Elimina un hallazgo
    */
@@ -827,17 +853,17 @@ class ControlInternoService {
   async generarInformeEjecutivo(auditoriaId: string) {
     return client.post<any>(`/auditorias/${auditoriaId}/informe-ejecutivo/generar`, {});
   }
-  
+
   // ==========================================================================
   // TAREAS DE AUDITORÍA
   // ==========================================================================
-  
+
   /**
    * Obtiene todas las tareas con filtros opcionales
    */
-  async getTareasAuditoria(params?: { 
-    auditoriaId?: string; 
-    estado?: string; 
+  async getTareasAuditoria(params?: {
+    auditoriaId?: string;
+    estado?: string;
     prioridad?: string;
     fase?: string;
     responsableId?: string;
@@ -848,7 +874,7 @@ class ControlInternoService {
     if (params?.prioridad) queryParams.append('prioridad', params.prioridad);
     if (params?.fase) queryParams.append('fase', params.fase);
     if (params?.responsableId) queryParams.append('responsableId', params.responsableId);
-    
+
     const query = queryParams.toString();
     return client.get<TareaAuditoria[]>(`/tareas-auditoria${query ? `?${query}` : ''}`);
   }
@@ -908,11 +934,11 @@ class ControlInternoService {
   }> {
     return client.get(`/tareas-auditoria/auditoria/${auditoriaId}/estadisticas`);
   }
-  
+
   // ==========================================================================
   // LISTAS DE CHEQUEO
   // ==========================================================================
-  
+
   /**
    * Obtiene todas las listas de chequeo
    */
@@ -920,11 +946,11 @@ class ControlInternoService {
     const queryParams = new URLSearchParams();
     if (params?.tipo) queryParams.append('tipo', params.tipo);
     if (params?.categoria) queryParams.append('categoria', params.categoria);
-    
+
     const query = queryParams.toString();
     return client.get<ListaChequeo[]>(`/listas-chequeo${query ? `?${query}` : ''}`);
   }
-  
+
   /**
    * Obtiene una lista de chequeo por ID
    */
@@ -1025,11 +1051,11 @@ class ControlInternoService {
     }
     return client.get(`/listas-chequeo/auditoria/${auditoriaId}/resultados`);
   }
-  
+
   // ==========================================================================
   // PLAN INDIVIDUAL
   // ==========================================================================
-  
+
   /**
    * Obtiene el plan individual de una auditoría
    */
@@ -1061,7 +1087,7 @@ class ControlInternoService {
   // ==========================================================================
   // PLAN ANUAL
   // ==========================================================================
-  
+
   /**
    * Obtiene todos los planes anuales
    */
@@ -1255,7 +1281,7 @@ class ControlInternoService {
   // ==========================================================================
   // PLANES DE MEJORAMIENTO
   // ==========================================================================
-  
+
   /**
    * Obtiene todos los planes de mejoramiento
    */
@@ -1458,12 +1484,13 @@ class ControlInternoService {
     const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/planes-mejoramiento/${planId}/documentos/${documentoId}/descargar`;
     const response = await fetch(url, {
       credentials: 'include',
+      headers: controlInternoDownloadHeaders(),
     });
-    
+
     if (!response.ok) {
       throw new Error(`Error al descargar documento: ${response.status}`);
     }
-    
+
     return response.blob();
   }
 
@@ -1513,7 +1540,7 @@ class ControlInternoService {
   // ==========================================================================
   // APROBACIONES
   // ==========================================================================
-  
+
   /**
    * Obtiene todas las aprobaciones
    */
@@ -1583,7 +1610,7 @@ class ControlInternoService {
   // ==========================================================================
   // INFORMES LEY
   // ==========================================================================
-  
+
   /**
    * Obtiene todos los informes
    */
@@ -1618,7 +1645,7 @@ class ControlInternoService {
   // ==========================================================================
   // DOCUMENTOS
   // ==========================================================================
-  
+
   /**
    * Obtiene todos los documentos
    */
@@ -1688,17 +1715,17 @@ class ControlInternoService {
     console.log('🔍 [API SERVICE] metadata recibido:', metadata);
     console.log('🔍 [API SERVICE] etapaKanbanId:', metadata.etapaKanbanId, 'tipo:', typeof metadata.etapaKanbanId);
     console.log('🔍 [API SERVICE] etapaNombreKanban:', metadata.etapaNombreKanban, 'tipo:', typeof metadata.etapaNombreKanban);
-    
+
     const formData = new FormData();
     formData.append('file', file);
     formData.append('nombre', metadata.nombre);
     if (metadata.descripcion) formData.append('descripcion', metadata.descripcion);
     formData.append('tipoDocumento', metadata.tipoDocumento);
     if (metadata.etapa) formData.append('etapa', metadata.etapa);
-    
+
     console.log('🔍 [API SERVICE] Añadiendo etapaKanbanId?', !!metadata.etapaKanbanId);
     if (metadata.etapaKanbanId) formData.append('etapaKanbanId', metadata.etapaKanbanId);
-    
+
     console.log('🔍 [API SERVICE] Añadiendo etapaNombreKanban?', !!metadata.etapaNombreKanban);
     if (metadata.etapaNombreKanban) formData.append('etapaNombreKanban', metadata.etapaNombreKanban);
     if (metadata.auditoriaId) formData.append('auditoriaId', metadata.auditoriaId);
@@ -1816,6 +1843,7 @@ class ControlInternoService {
     const url = `${CONTROL_INTERNO_BASE_URL}${SERVICE_PREFIX}/evidencias/${id}/download`;
     const response = await fetch(url, {
       credentials: 'include',
+      headers: controlInternoDownloadHeaders(),
     });
 
     if (!response.ok) {
@@ -1849,7 +1877,7 @@ class ControlInternoService {
   // ==========================================================================
   // ETAPAS DE AUDITORÍA
   // ==========================================================================
-  
+
   /**
    * Obtiene las etapas de una auditoría
    */
@@ -2041,13 +2069,184 @@ class ControlInternoService {
     );
   }
 
+  /**
+   * Planes de mejoramiento vinculados a una de mis auditorías.
+   * Backend: GET /auditorias/auditado/:id/planes-mejoramiento
+   */
+  async getPlanesMejoramientoAuditado(auditoriaId: string): Promise<any[]> {
+    return client.get<any[]>(`/auditorias/auditado/${auditoriaId}/planes-mejoramiento`);
+  }
+
+  /**
+   * El auditado actualiza avance u observaciones de una acción (sin rol OCI).
+   * Backend: PATCH /auditorias/auditado/:id/planes/:planId/acciones/:accionId
+   */
+  async updateAccionPlanAuditado(
+    auditoriaId: string,
+    planId: string,
+    accionId: string,
+    body: { observaciones?: string; porcentajeAvance?: number; estado?: string },
+  ): Promise<any> {
+    return client.patch<any>(
+      `/auditorias/auditado/${auditoriaId}/planes/${planId}/acciones/${accionId}`,
+      body,
+    );
+  }
+
+  /**
+   * El auditado crea una nueva acción correctiva en el plan de mejoramiento.
+   * Backend: POST /auditorias/auditado/:id/planes/:planId/acciones
+   */
+  async crearAccionPlanAuditado(
+    auditoriaId: string,
+    planId: string,
+    body: {
+      descripcion: string;
+      responsable?: string;
+      fechaInicio?: string;
+      fechaFin?: string;
+      indicador?: string;
+      metaIndicador?: string;
+      hallazgoId?: string;
+    },
+  ): Promise<any> {
+    return client.post<any>(
+      `/auditorias/auditado/${auditoriaId}/planes/${planId}/acciones`,
+      body,
+    );
+  }
+
+  /**
+   * El auditado envía el plan a revisión (borrador → revision).
+   * Backend: PATCH /auditorias/auditado/:id/planes/:planId/enviar-revision
+   */
+  async enviarPlanRevision(auditoriaId: string, planId: string): Promise<any> {
+    return client.patch<any>(
+      `/auditorias/auditado/${auditoriaId}/planes/${planId}/enviar-revision`,
+      {},
+    );
+  }
+
+  /**
+   * El auditado edita campos de formulación de una acción existente (solo en borrador/revision).
+   * Backend: PUT /auditorias/auditado/:id/planes/:planId/acciones/:accionId
+   */
+  async editarAccionPlanAuditado(
+    auditoriaId: string,
+    planId: string,
+    accionId: string,
+    body: {
+      descripcion?: string;
+      responsable?: string;
+      fechaInicio?: string;
+      fechaFin?: string;
+      indicador?: string;
+      metaIndicador?: string;
+      hallazgoId?: string;
+    },
+  ): Promise<any> {
+    return client.put<any>(
+      `/auditorias/auditado/${auditoriaId}/planes/${planId}/acciones/${accionId}`,
+      body,
+    );
+  }
+
+  /**
+   * El auditado elimina una acción de su plan (solo en borrador/revision).
+   * Backend: DELETE /auditorias/auditado/:id/planes/:planId/acciones/:accionId
+   */
+  async eliminarAccionPlanAuditado(
+    auditoriaId: string,
+    planId: string,
+    accionId: string,
+  ): Promise<any> {
+    return client.delete<any>(
+      `/auditorias/auditado/${auditoriaId}/planes/${planId}/acciones/${accionId}`,
+    );
+  }
+
+  /**
+   * Lista las evidencias de una acción del plan del auditado.
+   * Usa la ruta del portal del auditado (solo JwtAuthGuard, sin permisos OCI).
+   * Backend: GET /auditorias/auditado/:id/planes/:planId/acciones/:accionId/evidencias
+   */
+  async getEvidenciasAccionAuditado(
+    auditoriaId: string,
+    planId: string,
+    accionId: string,
+  ): Promise<any[]> {
+    return client.get<any[]>(
+      `/auditorias/auditado/${auditoriaId}/planes/${planId}/acciones/${accionId}/evidencias`,
+    );
+  }
+
+  /**
+   * El auditado sube una evidencia vinculada a una acción de su plan.
+   * Usa la ruta del portal del auditado (solo JwtAuthGuard, sin permisos OCI).
+   * Backend: POST /auditorias/auditado/:id/planes/:planId/acciones/:accionId/evidencias
+   */
+  async uploadEvidenciaAccionAuditado(
+    auditoriaId: string,
+    planId: string,
+    accionId: string,
+    file: File,
+    metadata?: { nombre?: string; descripcion?: string; tipoDocumento?: string },
+    onProgress?: (progress: number) => void,
+  ): Promise<any> {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (metadata?.nombre) formData.append('nombre', metadata.nombre);
+    if (metadata?.descripcion) formData.append('descripcion', metadata.descripcion);
+    if (metadata?.tipoDocumento) formData.append('tipoDocumento', metadata.tipoDocumento);
+    return client.upload<any>(
+      `/auditorias/auditado/${auditoriaId}/planes/${planId}/acciones/${accionId}/evidencias`,
+      formData,
+      onProgress,
+    );
+  }
+
   // ==========================================================================
   // AUDITORÍAS (Gestión de Auditorías)
   // ==========================================================================
-  
+  // USUARIOS (auth-service: GET /users)
+  // ==========================================================================
+
   /**
-   * Obtiene todas las auditorías con filtros opcionales
+   * Obtiene la lista de usuarios activos del sistema para el selector de responsable.
+   * Consulta directamente al auth-service en /users?status=active&limit=100.
+   * El JWT del usuario actual se inyecta automáticamente.
    */
+  async getUsuariosActivos(): Promise<Array<{ id: string; nombre: string; email: string }>> {
+    // Usa el endpoint del control-interno-service (mismo que usa el formulario de auditorías)
+    // El client ya incluye el JWT automáticamente
+    try {
+      const resp = await client.get<any>('/auditorias/personas/disponibles');
+      const lista = Array.isArray(resp) ? resp : (resp?.data ?? resp?.personas ?? []);
+      return lista.map((p: any) => ({
+        id: String(p.idPersona ?? p.id_persona ?? p.id ?? ''),
+        nombre: p.nombre ?? p.full_name ?? p.email ?? '',
+        email: p.email ?? '',
+      })).filter((p: any) => p.nombre);
+    } catch {
+      // Fallback: búsqueda vacía para traer todos
+      try {
+        const resp2 = await client.get<any>('/auditorias/personas/search?q=');
+        const lista2 = Array.isArray(resp2) ? resp2 : (resp2?.data ?? []);
+        return lista2.map((p: any) => ({
+          id: String(p.idPersona ?? p.id ?? ''),
+          nombre: p.nombre ?? p.full_name ?? p.email ?? '',
+          email: p.email ?? '',
+        })).filter((p: any) => p.nombre);
+      } catch {
+        return [];
+      }
+    }
+  }
+
+  // ==========================================================================
+  // AUDITORÍAS (Gestión de Auditorías)
+  // ==========================================================================
+
   async getAuditorias(filters?: {
     tipo?: string;
     fase?: string;
@@ -2065,7 +2264,7 @@ class ControlInternoService {
     if (filters?.search) queryParams.append('search', filters.search);
     if (filters?.fechaDesde) queryParams.append('fechaDesde', filters.fechaDesde);
     if (filters?.fechaHasta) queryParams.append('fechaHasta', filters.fechaHasta);
-    
+
     const query = queryParams.toString();
     return client.get<any[]>(`/auditorias${query ? `?${query}` : ''}`);
   }
@@ -2257,8 +2456,8 @@ class ControlInternoService {
    * Finaliza una auditoría con documento de cierre
    */
   async finalizarAuditoria(
-    id: string, 
-    archivo: File, 
+    id: string,
+    archivo: File,
     observaciones: string,
     finalizadaPor: string,
     finalizadaPorId: number
@@ -2285,7 +2484,7 @@ class ControlInternoService {
   // ==========================================================================
   // DASHBOARD
   // ==========================================================================
-  
+
   /**
    * Obtiene datos del dashboard
    * Nota: Este endpoint puede no existir aún, usar datos consolidados
@@ -2336,7 +2535,7 @@ class ControlInternoService {
     if (filtros?.tipo) params.append('tipo', filtros.tipo);
     if (filtros?.leida !== undefined) params.append('leida', String(filtros.leida));
     if (filtros?.prioridad) params.append('prioridad', filtros.prioridad);
-    
+
     const queryString = params.toString();
     return client.get(`/notificaciones/usuario/${usuarioId}${queryString ? `?${queryString}` : ''}`);
   }
@@ -2391,7 +2590,7 @@ class ControlInternoService {
     if (filtros?.tipo) params.append('tipo', filtros.tipo);
     if (filtros?.leida !== undefined) params.append('leida', String(filtros.leida));
     if (filtros?.prioridad) params.append('prioridad', filtros.prioridad);
-    
+
     const queryString = params.toString();
     return client.get(`/notificaciones/todas${queryString ? `?${queryString}` : ''}`);
   }

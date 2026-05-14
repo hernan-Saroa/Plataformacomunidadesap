@@ -20,6 +20,7 @@ export interface PermissionDto {
   code: string;
   name: string;
   description: string;
+  is_active?: boolean;
 }
 
 export interface ModuleWithPermissions {
@@ -39,6 +40,7 @@ export interface ModulesFilters {
   category?: 'backoffice' | 'portal';
   is_active?: boolean;
   search?: string;
+  include_inactive_permissions?: boolean;
 }
 
 export interface ModulesStats {
@@ -65,6 +67,9 @@ export const modulesService = {
     if (filters.category) params.category = filters.category;
     if (filters.is_active !== undefined) params.is_active = filters.is_active;
     if (filters.search) params.search = filters.search;
+    if (filters.include_inactive_permissions !== undefined) {
+      params.include_inactive_permissions = filters.include_inactive_permissions;
+    }
 
     const response = await apiClient.get<ModuleWithPermissions[]>(`${SERVICE_PREFIX}/modules`, params);
     return response;
@@ -103,6 +108,7 @@ export const modulesService = {
         description: permission.description,
         module: module.code,
         code: permission.code,
+        is_active: permission.is_active !== false,
       }));
 
       const permissionsByGroup = flatPermissions.reduce<Record<string, typeof flatPermissions>>((acc, permission) => {

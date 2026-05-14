@@ -44,15 +44,22 @@ interface MenuOption {
 interface CertificadosLaboralesRouterProps {
   userRoles?: string[];
   userEmail?: string;
+  userPermissions?: string[];
 }
 
-export function CertificadosLaboralesRouter({ userRoles = [], userEmail }: CertificadosLaboralesRouterProps) {
+export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPermissions = [] }: CertificadosLaboralesRouterProps) {
   const [vistaActual, setVistaActual] = useState<Vista>('dashboard');
 
-  const canManageTemplate = useMemo(() => {
-    const emailLower = (userEmail || '').toLowerCase();
-    return userRoles.includes('Coordinador de Certificados Laborales') || emailLower === 'cerlaboral@esap.edu.co';
-  }, [userEmail, userRoles]);
+  const hasCertPerm = useMemo(() => (suffix: string) =>
+    userPermissions.includes(`certificados-laborales.${suffix}`) ||
+    userPermissions.includes(`cl.${suffix}`),
+  [userPermissions]);
+
+  const canManageTemplate = useMemo(() => hasCertPerm('template.manage'), [hasCertPerm]);
+  const canEditPrima = useMemo(() => hasCertPerm('config.edit'), [hasCertPerm]);
+  const canExportReport = useMemo(() => hasCertPerm('export.report'), [hasCertPerm]);
+  const canDeliver = useMemo(() => hasCertPerm('certificate.deliver'), [hasCertPerm]);
+  const canVerify = useMemo(() => hasCertPerm('certificate.verify'), [hasCertPerm]);
 
   const handleNavigate = (vista: Vista) => {
     setVistaActual(vista);
@@ -180,6 +187,10 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail }: Certi
     <CertificadosLaboralesDashboard
       onNavigate={handleNavigate}
       canManageTemplates={canManageTemplate}
+      canEditPrima={canEditPrima}
+      canExportReport={canExportReport}
+      canDeliver={canDeliver}
+      canVerify={canVerify}
     />
     </>
   );

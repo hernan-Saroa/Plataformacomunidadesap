@@ -2,11 +2,15 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
+  Put,
   Req,
   UploadedFile,
   UseGuards,
@@ -21,6 +25,12 @@ import { AuditoriasService } from './auditorias.service';
 import { HallazgosService } from '../hallazgos/hallazgos.service';
 import { DocumentosService } from '../documentos/documentos.service';
 import { CreateDocumentoDto } from '../documentos/dto/create-documento.dto';
+import { PlanesMejoramientoService } from '../planes-mejoramiento/planes-mejoramiento.service';
+import { UpdateAccionDto } from '../planes-mejoramiento/dto/update-accion.dto';
+import { EvidenciasService } from '../evidencias/evidencias.service';
+import { CreateEvidenciaDto } from '../evidencias/dto/create-evidencia.dto';
+import { CreateAccionDto } from '../planes-mejoramiento/dto/create-accion.dto';
+import { PlanMejoramientoEstado } from '../planes-mejoramiento/entities/plan-mejoramiento.entity';
 
 interface MulterFile {
   fieldname: string;
@@ -52,6 +62,8 @@ export class AuditadoController {
     private readonly auditoriasService: AuditoriasService,
     private readonly hallazgosService: HallazgosService,
     private readonly documentosService: DocumentosService,
+    private readonly planesMejoramientoService: PlanesMejoramientoService,
+    private readonly evidenciasService: EvidenciasService,
   ) {}
 
   private getUsuarioFromReq(req: any): { email?: string; username?: string } {
@@ -74,6 +86,258 @@ export class AuditadoController {
       email,
       username,
     });
+  }
+
+  /**
+   * GET /auditorias/auditado/:id/planes-mejoramiento
+   * Planes de mejoramiento vinculados a la auditoría (solo si el JWT es el responsable del área).
+   */
+  @Get(':id/planes-mejoramiento')
+  async findMisPlanesMejoramiento(@Param('id') auditoriaId: string, @Req() req: any) {
+    const usuario = this.getUsuarioFromReq(req);
+    await this.auditoriasService.assertAuditadoOwnership(auditoriaId, usuario);
+    return this.planesMejoramientoService.findByAuditoriaId(auditoriaId);
+  }
+
+  /**
+   * POST /auditorias/auditado/:id/planes/:planId/acciones
+   * El auditado (líder del proceso) propone/formula sus propias acciones correctivas.
+   * Solo permitido si el plan está en BORRADOR o REVISION (no APROBADO).
+   * Según Ley 87/1993 + EM-PT-002: el auditado tiene 5 días hábiles para formular.
+   */
+  @Post(':id/planes/:planId/acciones')
+  @HttpCode(HttpStatus.CREATED)
+  async crearMiAccionPlan(
+    @Param('id') auditoriaId: string,
+    @Param('planId') planId: string,
+    @Body() body: CreateAccionDto,
+    @Req() req: any,
+  ) {
+    const usuario = this.getUsuarioFromReq(req);
+    await this.auditoriasService.assertAuditadoOwnership(auditoriaId, usuario);
+
+    const plan = await this.planesMejoramientoService.findOne(planId);
+    if (plan.auditoriaId !== auditoriaId) {
+      throw new ForbiddenException('El plan de mejoramiento no pertenece a esta auditoría');
+    }
+
+    // Bloquear si el plan ya fue aprobado — el auditado no puede agregar acciones post-aprobación
+    const estadosEditables: string[] = [
+      PlanMejoramientoEstado.BORRADOR,
+      PlanMejoramientoEstado.REVISION,
+    ];
+    if (!estadosEditables.includes(plan.estado)) {
+      throw new ForbiddenException(
+        `No se pueden agregar acciones: el plan está en estado "${plan.estado}". ` +
+        `Solo se permite en estado BORRADOR o REVISION (formulación).`,
+      );
+    }
+
+    // Asignar el responsable como el usuario autenticado si no se especifica
+    const dto: CreateAccionDto = {
+      ...body,
+      responsable: body.responsable || usuario.username || usuario.email || 'Auditado',
+    };
+
+    return this.planesMejoramientoService.createAccion(planId, dto);
+  }
+
+  /**
+   * PATCH /auditorias/auditado/:id/planes/:planId/enviar-revision
+   * El auditado envía el plan a revisión por parte de la OCI.
+   * Solo permitido si el plan está en BORRADOR.
+   */
+  @Patch(':id/planes/:planId/enviar-revision')
+  @HttpCode(HttpStatus.OK)
+  async enviarPlanRevision(
+    @Param('id') auditoriaId: string,
+    @Param('planId') planId: string,
+    @Req() req: any,
+  ) {
+    const usuario = this.getUsuarioFromReq(req);
+    await this.auditoriasService.assertAuditadoOwnership(auditoriaId, usuario);
+    const plan = await this.planesMejoramientoService.findOne(planId);
+    if (plan.auditoriaId !== auditoriaId) {
+      throw new ForbiddenException('El plan de mejoramiento no pertenece a esta auditoría');
+    }
+    if (plan.estado !== PlanMejoramientoEstado.BORRADOR) {
+      throw new BadRequestException(
+        `Solo se puede enviar a revisión un plan en estado BORRADOR. Estado actual: "${plan.estado}".`,
+      );
+    }
+    return this.planesMejoramientoService.update(planId, { estado: PlanMejoramientoEstado.REVISION });
+  }
+
+  /**
+   * PUT /auditorias/auditado/:id/planes/:planId/acciones/:accionId
+   * Editar campos de formulación de una acción (descripción, responsable, fechas, indicador).
+   * Solo permitido si el plan está en BORRADOR o REVISION (no aprobado).
+   */
+  @Put(':id/planes/:planId/acciones/:accionId')
+  async editarMiAccionPlan(
+    @Param('id') auditoriaId: string,
+    @Param('planId') planId: string,
+    @Param('accionId') accionId: string,
+    @Body() body: Pick<UpdateAccionDto, 'descripcion' | 'responsable' | 'fechaInicio' | 'fechaFin' | 'indicador' | 'metaIndicador' | 'hallazgoId'>,
+    @Req() req: any,
+  ) {
+    const usuario = this.getUsuarioFromReq(req);
+    await this.auditoriasService.assertAuditadoOwnership(auditoriaId, usuario);
+    const plan = await this.planesMejoramientoService.findOne(planId);
+    if (plan.auditoriaId !== auditoriaId) {
+      throw new ForbiddenException('El plan no pertenece a esta auditoría');
+    }
+    const estadosEditables: string[] = [
+      PlanMejoramientoEstado.BORRADOR,
+      PlanMejoramientoEstado.REVISION,
+    ];
+    if (!estadosEditables.includes(plan.estado)) {
+      throw new ForbiddenException(
+        `No se puede editar: el plan está en estado "${plan.estado}". Solo se permite en BORRADOR o REVISION.`,
+      );
+    }
+    return this.planesMejoramientoService.updateAccion(planId, accionId, body as UpdateAccionDto);
+  }
+
+  /**
+   * DELETE /auditorias/auditado/:id/planes/:planId/acciones/:accionId
+   * Eliminar una acción del plan. Solo permitido en BORRADOR o REVISION.
+   */
+  @Delete(':id/planes/:planId/acciones/:accionId')
+  @HttpCode(HttpStatus.OK)
+  async eliminarMiAccionPlan(
+    @Param('id') auditoriaId: string,
+    @Param('planId') planId: string,
+    @Param('accionId') accionId: string,
+    @Req() req: any,
+  ) {
+    const usuario = this.getUsuarioFromReq(req);
+    await this.auditoriasService.assertAuditadoOwnership(auditoriaId, usuario);
+    const plan = await this.planesMejoramientoService.findOne(planId);
+    if (plan.auditoriaId !== auditoriaId) {
+      throw new ForbiddenException('El plan no pertenece a esta auditoría');
+    }
+    const estadosEditables: string[] = [
+      PlanMejoramientoEstado.BORRADOR,
+      PlanMejoramientoEstado.REVISION,
+    ];
+    if (!estadosEditables.includes(plan.estado)) {
+      throw new ForbiddenException(
+        `No se puede eliminar: el plan está en estado "${plan.estado}".`,
+      );
+    }
+    return this.planesMejoramientoService.deleteAccion(planId, accionId);
+  }
+
+  /**
+   * PATCH /auditorias/auditado/:id/planes/:planId/acciones/:accionId
+   * El auditado actualiza avance u observaciones de una acción de SU plan (sin permisos OCI).
+   */
+  @Patch(':id/planes/:planId/acciones/:accionId')
+  async updateMiAccionPlan(
+    @Param('id') auditoriaId: string,
+    @Param('planId') planId: string,
+    @Param('accionId') accionId: string,
+    @Body() body: Pick<UpdateAccionDto, 'observaciones' | 'porcentajeAvance' | 'estado'>,
+    @Req() req: any,
+  ) {
+    const usuario = this.getUsuarioFromReq(req);
+    await this.auditoriasService.assertAuditadoOwnership(auditoriaId, usuario);
+    const plan = await this.planesMejoramientoService.findOne(planId);
+    if (plan.auditoriaId !== auditoriaId) {
+      throw new ForbiddenException('El plan de mejoramiento no pertenece a esta auditoría');
+    }
+    const dto: UpdateAccionDto = {
+      observaciones: body.observaciones,
+      porcentajeAvance: body.porcentajeAvance,
+      estado: body.estado,
+    };
+    return this.planesMejoramientoService.updateAccion(planId, accionId, dto);
+  }
+
+  /**
+   * GET /auditorias/auditado/:id/planes/:planId/acciones/:accionId/evidencias
+   * Lista las evidencias subidas para una acción correctiva del plan del auditado.
+   */
+  @Get(':id/planes/:planId/acciones/:accionId/evidencias')
+  async listEvidenciasAccion(
+    @Param('id') auditoriaId: string,
+    @Param('planId') planId: string,
+    @Param('accionId') accionId: string,
+    @Req() req: any,
+  ) {
+    const usuario = this.getUsuarioFromReq(req);
+    await this.auditoriasService.assertAuditadoOwnership(auditoriaId, usuario);
+    const plan = await this.planesMejoramientoService.findOne(planId);
+    if (plan.auditoriaId !== auditoriaId) {
+      throw new ForbiddenException('El plan de mejoramiento no pertenece a esta auditoría');
+    }
+    return this.evidenciasService.findByAccion(accionId);
+  }
+
+  /**
+   * POST /auditorias/auditado/:id/planes/:planId/acciones/:accionId/evidencias
+   * El auditado sube una evidencia vinculada a una acción de su plan de mejoramiento.
+   * Solo requiere JwtAuthGuard (NO permisos OCI); la autorización es por ownership.
+   */
+  @Post(':id/planes/:planId/acciones/:accionId/evidencias')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const uploadPath = process.env.UPLOAD_PATH
+            ? `${process.env.UPLOAD_PATH}/evidencias/temp`
+            : './uploads/evidencias/temp';
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (_req, file, cb) => {
+          const randomName = Array(32)
+            .fill(null)
+            .map(() => Math.round(Math.random() * 16).toString(16))
+            .join('');
+          cb(null, `${randomName}${extname(file.originalname)}`);
+        },
+      }),
+      limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
+    }),
+  )
+  @HttpCode(HttpStatus.CREATED)
+  async uploadEvidenciaAccion(
+    @Param('id') auditoriaId: string,
+    @Param('planId') planId: string,
+    @Param('accionId') accionId: string,
+    @UploadedFile() file: MulterFile,
+    @Body() body: any,
+    @Req() req: any,
+  ) {
+    const usuario = this.getUsuarioFromReq(req);
+
+    // 1. Ownership: el JWT debe ser el responsable del área auditada
+    await this.auditoriasService.assertAuditadoOwnership(auditoriaId, usuario);
+
+    // 2. El plan debe pertenecer a esta auditoría
+    const plan = await this.planesMejoramientoService.findOne(planId);
+    if (plan.auditoriaId !== auditoriaId) {
+      throw new ForbiddenException('El plan de mejoramiento no pertenece a esta auditoría');
+    }
+
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo');
+    }
+
+    const createDto: CreateEvidenciaDto = {
+      nombre: body.nombre || file.originalname,
+      descripcion: body.descripcion,
+      tipoDocumento: body.tipoDocumento,
+      accionCorrectivaId: accionId,
+      // Las demás vinculaciones se omiten intencionalmente (solo una permitida)
+    };
+
+    const subidoPor = usuario.username || usuario.email || 'Auditado';
+    return this.evidenciasService.create(file, createDto, subidoPor);
   }
 
   /**

@@ -266,6 +266,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
     fecha: '', controversiasResueltas: 0, hallazgosAjustados: 0, plazosPlanMejora: '30', observacionesFinales: '', generado: false,
   });
   const [planCreado, setPlanCreado] = useState<boolean>(false);
+  const [planEstado, setPlanEstado] = useState<string | null>(null); // Estado del PM: borrador | revision | aprobado | en_ejecucion | completado
   const [planEstadisticas, setPlanEstadisticas] = useState<{
     totalAcciones: number;
     accionesCompletadas: number;
@@ -288,6 +289,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
   const [loadingInformeCierre, setLoadingInformeCierre] = useState(false);
   const [informeCierreAprobado, setInformeCierreAprobado] = useState(false);
   const enSeguimiento = soloSeguimiento || pasamosASeguimiento || (estadoAuditoriaProp && String(estadoAuditoriaProp).toLowerCase().includes('seguimiento'));
+  const planCompleto = planCreado && (planEstadisticas?.porcentajeAvance ?? 0) >= 100;
 
   const { agregarAuditoriaConHallazgos, seleccionarAuditoria, navegarAVerPlan } = useIntegracionAuditoriaPlanes();
 
@@ -442,6 +444,12 @@ export const ComunicacionAuditoriaModule: React.FC<{
         setPlanesParaVerificacion(planesDeEstaAuditoria);
         setPlanCreado(planesDeEstaAuditoria.length > 0);
         if (planesDeEstaAuditoria.length > 0) {
+          // ✅ Guardar el estado del plan más relevante (el último no rechazado)
+          const planActivo = planesDeEstaAuditoria.find(
+            (p: any) => !['rechazado', 'vencido'].includes(String(p.estado || '').toLowerCase())
+          ) || planesDeEstaAuditoria[0];
+          setPlanEstado(String(planActivo?.estado || 'borrador').toLowerCase());
+
           let totalAcciones = 0;
           let accionesCompletadas = 0;
           const esCompletada = (estado: string) => {
@@ -454,7 +462,6 @@ export const ComunicacionAuditoriaModule: React.FC<{
               totalAcciones += acciones.length;
               accionesCompletadas += acciones.filter((a: any) => esCompletada(a.estado)).length;
             } else {
-              // Fallback: usar totalAcciones/accionesCompletadas del plan si el listado no incluye acciones
               const t = plan.totalAcciones ?? plan.total_acciones ?? 0;
               const c = plan.accionesCompletadas ?? plan.acciones_completadas ?? 0;
               totalAcciones += t;
@@ -466,6 +473,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
             : 0;
           setPlanEstadisticas({ totalAcciones, accionesCompletadas, porcentajeAvance });
         } else {
+          setPlanEstado(null);
           setPlanEstadisticas(null);
         }
       } catch {
@@ -671,26 +679,38 @@ export const ComunicacionAuditoriaModule: React.FC<{
     }
   }, [soloSeguimiento]);
 
-  const planCompleto = useMemo(() => {
-    if (!planCreado || !planEstadisticas) return false;
-    return planEstadisticas.totalAcciones >= 1 && planEstadisticas.accionesCompletadas >= 1;
-  }, [planCreado, planEstadisticas]);
+  // ✅ El plan está "listo para avanzar" SOLO cuando fue aprobado por el Jefe OCI
+  // Estados válidos: aprobado | en_ejecucion | completado
+  // Estados que BLOQUEAN: borrador | revision | rechazado | vencido | null
+  const ESTADOS_PLAN_APROBADOS = ['aprobado', 'en_ejecucion', 'completado'];
+  const planAprobado = planCreado && planEstado !== null && ESTADOS_PLAN_APROBADOS.includes(planEstado);
 
   const progreso = useMemo(() => {
     let c = 0;
     if (estadoComunicacion?.informePreliminarGenerado) c++;
     if (!estadoComunicacion?.hayControversiasPendientes) c++;
     if (informeFinal.generado) c++;
-    if (planCompleto) c++;
+    if (planAprobado) c++;  // ← ahora exige aprobación
     return Math.round((c / 4) * 100);
-  }, [estadoComunicacion, informeFinal.generado, planCompleto]);
+  }, [estadoComunicacion, informeFinal.generado, planAprobado]);
 
   const puedeAvanzar = useMemo(() => {
     return (estadoComunicacion?.informePreliminarGenerado ?? false) &&
            !estadoComunicacion?.hayControversiasPendientes &&
            informeFinal.generado &&
-           planCompleto;
-  }, [estadoComunicacion, informeFinal.generado, planCompleto]);
+           planAprobado;  // ← bloquea si el plan está en borrador/revisión
+  }, [estadoComunicacion, informeFinal.generado, planAprobado]);
+
+  // Texto de estado del plan para mostrar en UI
+  const planEstadoTexto: Record<string, { label: string; color: string; descripcion: string }> = {
+    borrador:     { label: 'Borrador',      color: 'text-gray-500',  descripcion: 'El plan aún no ha sido enviado a revisión.' },
+    revision:     { label: 'En Revisión',   color: 'text-amber-600', descripcion: 'El Jefe OCI está revisando el plan. Espere la aprobación.' },
+    aprobado:     { label: 'Aprobado',      color: 'text-green-600', descripcion: 'El plan fue aprobado. Puede avanzar a Seguimiento.' },
+    en_ejecucion: { label: 'En Ejecución',  color: 'text-blue-600',  descripcion: 'El plan está en ejecución.' },
+    completado:   { label: 'Completado',    color: 'text-green-700', descripcion: 'El plan fue completado.' },
+    rechazado:    { label: 'Rechazado',     color: 'text-red-600',   descripcion: 'El plan fue rechazado. Debe ser corregido y reenviado.' },
+    vencido:      { label: 'Vencido',       color: 'text-red-700',   descripcion: 'El plan ha vencido.' },
+  };
 
   const todasAccionesVerificadas = useMemo(() => {
     let total = 0;
@@ -1087,8 +1107,9 @@ export const ComunicacionAuditoriaModule: React.FC<{
               <SeccionPlanMejoramiento
                 auditoria={auditoria}
                 planCreado={planCreado}
+                planEstado={planEstado}
                 planEstadisticas={planEstadisticas}
-                planCompleto={planCompleto}
+                planAprobado={planAprobado}
                 onCrearPlanMejoramiento={handleCrearPlanMejoramiento}
                 hallazgosCount={hallazgos.filter(h => h.estado !== 'retirado').length}
                 onIrAPlan={handleIrAVerPlan}
@@ -1951,37 +1972,90 @@ const SeccionInformeFinal: React.FC<{
 const SeccionPlanMejoramiento: React.FC<{
   auditoria: Auditoria;
   planCreado: boolean;
+  planEstado: string | null;
   planEstadisticas: { totalAcciones: number; accionesCompletadas: number; porcentajeAvance: number } | null;
-  planCompleto: boolean;
+  planAprobado: boolean;
   onCrearPlanMejoramiento: () => void;
   hallazgosCount: number;
   onIrAPlan: () => void;
-}> = ({ planCreado, planEstadisticas, planCompleto, onCrearPlanMejoramiento, hallazgosCount, onIrAPlan }) => {
+}> = ({ planCreado, planEstado, planEstadisticas, planAprobado, onCrearPlanMejoramiento, hallazgosCount, onIrAPlan }) => {
+
+  // Badge de estado del plan
+  const estadoBadge: Record<string, { label: string; bg: string; text: string; icon: string }> = {
+    borrador:     { label: 'Borrador',      bg: 'bg-gray-100',   text: 'text-gray-700',  icon: '📝' },
+    revision:     { label: 'En Revisión',   bg: 'bg-amber-100',  text: 'text-amber-800', icon: '🔍' },
+    aprobado:     { label: 'Aprobado',      bg: 'bg-green-100',  text: 'text-green-800', icon: '✅' },
+    en_ejecucion: { label: 'En Ejecución',  bg: 'bg-blue-100',   text: 'text-blue-800',  icon: '⚙️' },
+    completado:   { label: 'Completado',    bg: 'bg-green-200',  text: 'text-green-900', icon: '🏁' },
+    rechazado:    { label: 'Rechazado',     bg: 'bg-red-100',    text: 'text-red-800',   icon: '❌' },
+    vencido:      { label: 'Vencido',       bg: 'bg-red-100',    text: 'text-red-800',   icon: '⏰' },
+  };
+  const badge = planEstado ? (estadoBadge[planEstado] ?? estadoBadge.borrador) : null;
+
+  // Mensaje de bloqueo según estado
+  const mensajeBloqueo: Partial<Record<string, string>> = {
+    borrador:  'El plan aún está en Borrador. El Auditado debe enviarlo a revisión antes de que pueda avanzar a Seguimiento.',
+    revision:  'El plan está En Revisión. Espere a que el Jefe OCI lo apruebe para poder avanzar a Seguimiento.',
+    rechazado: 'El plan fue Rechazado. El Auditado debe corregirlo y reenviarlo a revisión.',
+    vencido:   'El plan ha Vencido. Regularice la situación antes de avanzar.',
+  };
+
   return (
     <div className="space-y-6">
       {planCreado ? (
-        <div className={`p-6 rounded-lg flex items-center gap-4 border-2 ${planCompleto ? 'bg-green-50 border-green-300' : 'bg-amber-50 border-amber-300'}`}>
-          <div className="relative w-20 h-20 flex-shrink-0 flex items-center justify-center rounded-full bg-white border-2 border-gray-200">
-            <span className={`text-xl font-bold ${planCompleto ? 'text-green-600' : 'text-amber-600'}`}>
-              {planEstadisticas?.porcentajeAvance ?? 0}%
-            </span>
-          </div>
-          <div className="flex-1">
-            <p className={`font-bold text-lg ${planCompleto ? 'text-green-900' : 'text-amber-900'}`}>
-              Plan de Mejoramiento creado
-            </p>
-            <p className="text-sm text-gray-700 mt-1">
-              {planEstadisticas
-                ? `${planEstadisticas.accionesCompletadas}/${planEstadisticas.totalAcciones} acciones completadas. `
-                : ''}
-              {planCompleto
-                ? 'El plan cumple los requisitos. Puede finalizar la comunicación y pasar a Seguimiento.'
-                : 'Complete al menos una acción correctiva en el módulo de Planes de Mejoramiento para poder finalizar.'}
-            </p>
-            <Button variant="outline" size="sm" onClick={onIrAPlan} className="mt-3">
-              <ChevronRight className="w-4 h-4 mr-2" />
-              Ir a ver plan
-            </Button>
+        <div className={`p-6 rounded-lg border-2 ${
+          planAprobado ? 'bg-green-50 border-green-300' : 'bg-amber-50 border-amber-300'
+        }`}>
+          <div className="flex items-start gap-4">
+            {/* Porcentaje */}
+            <div className="relative w-20 h-20 flex-shrink-0 flex items-center justify-center rounded-full bg-white border-2 border-gray-200">
+              <span className={`text-xl font-bold ${
+                planAprobado ? 'text-green-600' : 'text-amber-600'
+              }`}>
+                {planEstadisticas?.porcentajeAvance ?? 0}%
+              </span>
+            </div>
+
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-1">
+                <p className={`font-bold text-lg ${
+                  planAprobado ? 'text-green-900' : 'text-amber-900'
+                }`}>
+                  Plan de Mejoramiento creado
+                </p>
+                {/* Badge de estado del plan */}
+                {badge && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${badge.bg} ${badge.text}`}>
+                    {badge.icon} {badge.label}
+                  </span>
+                )}
+              </div>
+
+              <p className="text-sm text-gray-700 mt-1">
+                {planEstadisticas
+                  ? `${planEstadisticas.accionesCompletadas}/${planEstadisticas.totalAcciones} acciones completadas. `
+                  : ''}
+              </p>
+
+              {/* Mensaje de estado */}
+              {planAprobado ? (
+                <p className="text-sm text-green-700 mt-1 font-medium">
+                  ✅ El plan fue aprobado. Puede finalizar la comunicación y pasar a Seguimiento.
+                </p>
+              ) : planEstado && mensajeBloqueo[planEstado] ? (
+                <div className="mt-2 flex items-start gap-2 bg-amber-100 border border-amber-300 rounded-md p-3">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-amber-800">
+                    <strong>Bloqueado:</strong> {mensajeBloqueo[planEstado]}
+                  </p>
+                </div>
+              ) : null}
+
+              <Button variant="outline" size="sm" onClick={onIrAPlan} className="mt-3">
+                <ChevronRight className="w-4 h-4 mr-2" />
+                Ir a ver plan
+              </Button>
+            </div>
           </div>
         </div>
       ) : (

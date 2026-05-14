@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import federation from '@originjs/vite-plugin-federation';
 import path from 'path';
-import { getBuildOutDir, getRemoteDefinitions, shellApp, stripBundleComments } from '../../scripts/mfe.config.mjs';
+import { cspNonceBootstrap, getBuildOutDir, getRemoteDefinitions, shellApp, stripBundleComments } from '../../scripts/mfe.config.mjs';
 
 const devExternalRedirects: Record<string, string> = {
   '/externos/correo-institucional': 'https://outlook.office.com',
@@ -33,6 +33,7 @@ export default defineConfig(({ command }) => ({
   root: __dirname,
   plugins: [
     react(),
+    cspNonceBootstrap(shellApp.appDir),
     stripBundleComments(),
     externalRedirectPlugin(),
     federation({
