@@ -11,7 +11,8 @@ import {
   GraduationCap, RefreshCw, AlertTriangle
 } from 'lucide-react';
 import { Card, Button, Badge, Input } from '@esap-mfe/shared-ui';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { estructuraService } from '../../services/estructuraService';
 import { CreateSeccionalSedeModal } from './CreateSeccionalSedeModal';
 import { AsignarUsuariosModal } from './AsignarUsuariosModal';
