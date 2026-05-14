@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react-swc';
 import federation from '@originjs/vite-plugin-federation';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
-import { getBuildBase, getBuildOutDir, stripBundleComments } from '../../scripts/mfe.config.mjs';
+import { cspNonceBootstrap, getBuildBase, getBuildOutDir, stripBundleComments } from '../../scripts/mfe.config.mjs';
 
 const appDir = 'mfe-pta';
 
@@ -12,6 +12,7 @@ export default defineConfig({
   root: __dirname,
   plugins: [
     react(),
+    cspNonceBootstrap(appDir),
     tailwindcss(),
     stripBundleComments(),
     federation({

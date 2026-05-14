@@ -5,16 +5,6 @@ import { toast } from '@esap-mfe/shared-ui'
 import { setToastCallback } from '../utils/toast'
 import './index.css'
 
-const _cspNonce = document.querySelector<HTMLMetaElement>('meta[name="csp-nonce"]')?.content ?? '';
-if (_cspNonce) {
-  const _origCreate = document.createElement.bind(document);
-  document.createElement = function(tag: string, opts?: ElementCreationOptions) {
-    const el = _origCreate(tag as 'div', opts);
-    if (tag.toLowerCase() === 'style') el.setAttribute('nonce', _cspNonce);
-    return el;
-  } as typeof document.createElement;
-}
-
 // Configurar el callback para que la utilidad de toast use sonner
 setToastCallback(({ type, message, description }) => {
   switch (type) {
