@@ -34,7 +34,8 @@ import {
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@esap-mfe/shared-ui/dropdown-menu';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CreateUserManualModal } from './CreateUserManualModal';

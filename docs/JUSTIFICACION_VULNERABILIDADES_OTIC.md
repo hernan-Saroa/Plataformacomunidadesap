@@ -68,13 +68,13 @@ Existen usos de `localStorage` para preferencias, cache local o configuraciones 
 Se agrego una politica CSP en Nginx para el frontend. La politica restringe origenes por defecto a `'self'`, define `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'self'`, `object-src 'none'`, y declara listas explicitas para imagenes, conexiones, frames, workers y media.
 
 **Como se mitigo el riesgo:**  
-La CSP reduce la posibilidad de ejecutar scripts, cargar recursos o embeber contenido desde origenes no autorizados. Tambien protege contra clickjacking con `frame-ancestors 'self'`. Para compatibilidad con estilos generados por la aplicacion, se usa un nonce dinamico (`'nonce-$request_id'`) en lugar de permitir `unsafe-inline`.
+La CSP reduce la posibilidad de ejecutar scripts, cargar recursos o embeber contenido desde origenes no autorizados. Tambien protege contra clickjacking con `frame-ancestors 'self'`. Para compatibilidad con estilos generados por la aplicacion, los elementos `<style>` se autorizan con nonce dinamico (`style-src-elem 'nonce-$request_id'`) y los atributos `style=""` necesarios para mediciones/animaciones de React se limitan a `style-src-attr 'unsafe-inline'`.
 
 **Evidencia principal:**
 
 - `nginx.frontend.gateway.conf`: variable `$esap_csp`.
 - `nginx.frontend.gateway.conf`: `add_header Content-Security-Policy $esap_csp always`.
-- `apps/shell/src/main.tsx`: inserta nonce en tags `style` creados dinamicamente.
+- `scripts/mfe.config.mjs`: inyecta `csp-nonce.js` antes del bundle principal para aplicar nonce a tags `style` creados dinamicamente.
 - Archivos `index.html` de shell/MFEs: incluyen `meta name="csp-nonce"`.
 
 **Riesgo residual:**  
