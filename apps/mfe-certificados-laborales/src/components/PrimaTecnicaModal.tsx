@@ -368,13 +368,11 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
   const [newCategoryDraft, setNewCategoryDraft] = React.useState({
     label: '',
     description: '',
-    templateText: DEFAULT_DYNAMIC_BONUS_TEMPLATE,
   });
   const [editingCategoryDraft, setEditingCategoryDraft] = React.useState<{
     category: PrimaTecnicaCategoria;
     label: string;
     description: string;
-    templateText: string;
   } | null>(null);
   const [isUpdatingCategory, setIsUpdatingCategory] = React.useState(false);
   const [pendingDeleteCategory, setPendingDeleteCategory] =
@@ -554,7 +552,6 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       setNewCategoryDraft({
         label: '',
         description: '',
-        templateText: DEFAULT_DYNAMIC_BONUS_TEMPLATE,
       });
       setRecordsPageByCategory(buildCategoryRecordMap(FALLBACK_CATEGORIES, 1));
       setActiveCategory('DIRECTIVOS');
@@ -1341,15 +1338,9 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
   const handleCreateCategory = async () => {
     const label = newCategoryDraft.label.replace(/\s+/g, ' ').trim();
     const description = newCategoryDraft.description.replace(/\s+/g, ' ').trim();
-    const templateText = newCategoryDraft.templateText.trim();
 
     if (label.length < 3) {
       toast.error('Escribe un nombre de prima de al menos 3 caracteres.');
-      return;
-    }
-
-    if (!templateText) {
-      toast.error('El parrafo de la prima no puede estar vacio.');
       return;
     }
 
@@ -1358,7 +1349,6 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       const created = await certificadosService.laborales.crearCategoriaPrimaTecnica({
         label,
         description,
-        templateText,
       });
 
       const nextCategories = [...categories, created].sort(
@@ -1378,7 +1368,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       }));
       setTemplateTextByCategory((prev) => ({
         ...prev,
-        [created.category]: created.template_text || templateText,
+        [created.category]: created.template_text || DEFAULT_DYNAMIC_BONUS_TEMPLATE,
       }));
       setActiveCategory(created.category);
       setIsCreateCategoryOpen(false);
@@ -1387,7 +1377,6 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       setNewCategoryDraft({
         label: '',
         description: '',
-        templateText: DEFAULT_DYNAMIC_BONUS_TEMPLATE,
       });
       toast.success(`Prima ${created.label || label} creada correctamente.`);
     } catch (error: any) {
@@ -1402,11 +1391,6 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       category: meta.category,
       label: meta.label || formatCategoryLabel(meta.category),
       description: meta.description || '',
-      templateText:
-        templateTextByCategory[meta.category] ||
-        meta.template_text ||
-        meta.default_template_text ||
-        DEFAULT_DYNAMIC_BONUS_TEMPLATE,
     });
     setIsCreateCategoryOpen(false);
     setPendingDeleteCategory(null);
@@ -1418,15 +1402,9 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
 
     const label = editingCategoryDraft.label.replace(/\s+/g, ' ').trim();
     const description = editingCategoryDraft.description.replace(/\s+/g, ' ').trim();
-    const templateText = editingCategoryDraft.templateText.trim();
 
     if (label.length < 3) {
       toast.error('Escribe un nombre de prima de al menos 3 caracteres.');
-      return;
-    }
-
-    if (!templateText) {
-      toast.error('El parrafo de la prima no puede estar vacio.');
       return;
     }
 
@@ -1437,7 +1415,6 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
         {
           label,
           description,
-          templateText,
         },
       );
 
@@ -1452,7 +1429,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       setCategories(nextCategories);
       setTemplateTextByCategory((prev) => ({
         ...prev,
-        [updated.category]: updated.template_text || templateText,
+        [updated.category]: updated.template_text || prev[updated.category] || DEFAULT_DYNAMIC_BONUS_TEMPLATE,
       }));
       setEditingCategoryDraft(null);
       toast.success(`Prima ${updated.label || label} actualizada correctamente.`);
@@ -1686,18 +1663,6 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                       )}
                     </motion.button>
                   </div>
-                  <textarea
-                    rows={2}
-                    value={newCategoryDraft.templateText}
-                    onChange={(event) =>
-                      setNewCategoryDraft((prev) => ({
-                        ...prev,
-                        templateText: event.target.value,
-                      }))
-                    }
-                    className="mt-3 w-full resize-none rounded-lg border-2 border-slate-200 p-3 text-sm outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                    disabled={isCreatingCategory}
-                  />
                 </div>
               )}
 
@@ -1750,42 +1715,24 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                     </div>
                   </div>
 
-                  <label className="mt-3 mb-1 block text-xs font-semibold text-slate-700">
-                    Parrafo de la prima
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={editingCategoryDraft.templateText}
-                    onChange={(event) =>
-                      setEditingCategoryDraft((prev) =>
-                        prev ? { ...prev, templateText: event.target.value } : prev,
-                      )
-                    }
-                    className="w-full resize-none rounded-lg border-2 border-slate-200 p-3 text-sm outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                    disabled={isUpdatingCategory}
-                  />
-
                   <div className="mt-3 flex flex-wrap justify-end gap-2">
                     <motion.button
                       type="button"
                       onClick={handleUpdateCategory}
                       disabled={
                         isUpdatingCategory ||
-                        editingCategoryDraft.label.trim().length < 3 ||
-                        !editingCategoryDraft.templateText.trim()
+                        editingCategoryDraft.label.trim().length < 3
                       }
                       className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                       whileHover={
                         isUpdatingCategory ||
-                        editingCategoryDraft.label.trim().length < 3 ||
-                        !editingCategoryDraft.templateText.trim()
+                        editingCategoryDraft.label.trim().length < 3
                           ? {}
                           : { y: -1 }
                       }
                       whileTap={
                         isUpdatingCategory ||
-                        editingCategoryDraft.label.trim().length < 3 ||
-                        !editingCategoryDraft.templateText.trim()
+                        editingCategoryDraft.label.trim().length < 3
                           ? {}
                           : { scale: 0.98 }
                       }
