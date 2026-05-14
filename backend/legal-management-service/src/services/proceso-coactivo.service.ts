@@ -63,11 +63,18 @@ export class ProcesoCoactivoService {
         private readonly legalNotifications: LegalNotificationsService,
     ) { }
 
-    async findAll(): Promise<ProcesoCoactivo[]> {
-        return this.procesoCoactivoRepository.find({
-            where: { estadoArchivo: 'ACTIVO' },
-            order: { fechaCreacion: 'DESC' }
-        });
+    async findAll(filtros: { asignadoKeys?: string[] } = {}): Promise<ProcesoCoactivo[]> {
+        const query = this.procesoCoactivoRepository
+            .createQueryBuilder('proceso')
+            .where("proceso.estadoArchivo = 'ACTIVO'")
+            .orderBy('proceso.fechaCreacion', 'DESC');
+
+        if (filtros.asignadoKeys?.length) {
+            const nameKeys = filtros.asignadoKeys.map(k => k.toLowerCase());
+            query.andWhere('LOWER(proceso.responsable) IN (:...nameKeys)', { nameKeys });
+        }
+
+        return query.getMany();
     }
 
     async findAllArchivados(): Promise<ProcesoCoactivo[]> {

@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Req } from '@nestjs/common';
 import { RequerimientosOCService } from '../services/requerimientos-oc.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
 import type { EstadoRequerimiento } from '../entities/requerimiento-oc.entity';
 import { OrganismoControlOC } from '../entities/organismo-control-legal.entity';
@@ -55,8 +56,11 @@ export class RequerimientosOCController {
     // REQUERIMIENTOS
     // ============================================
     @Get()
-    async findAll(): Promise<RequerimientoOC[]> {
-        return this.service.findAll();
+    async findAll(@Req() req?: any): Promise<RequerimientoOC[]> {
+        const access = getLegalAccessFromRequest(req);
+        return this.service.findAll({
+            asignadoKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Get(':id')

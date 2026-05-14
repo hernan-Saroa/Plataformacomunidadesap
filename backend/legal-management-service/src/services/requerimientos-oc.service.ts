@@ -89,8 +89,8 @@ export class RequerimientosOCService {
     // ============================================
     // REQUERIMIENTOS
     // ============================================
-    async findAll(): Promise<RequerimientoOC[]> {
-        const reqs = await this.requerimientoRepo.createQueryBuilder('req')
+    async findAll(filtros: { asignadoKeys?: string[] } = {}): Promise<RequerimientoOC[]> {
+        const query = this.requerimientoRepo.createQueryBuilder('req')
             // .leftJoinAndSelect('req.organismo', 'organismo') // Relación eliminada para soportar IDs string locales
             .leftJoinAndSelect('req.abogadoAsignado', 'abogado') // Map to 'abogado' alias matching property name if possible, or use property name
             .loadRelationCountAndMap('req.documentosCount', 'req.documentos')
@@ -107,9 +107,34 @@ export class RequerimientosOCService {
                 qb.where("docInt.tipoDocumento NOT IN ('oficio', 'respuesta', 'acuse', 'anexo', 'evidencia', 'informe')")
             )
             .where("(req.estadoArchivo IS NULL OR req.estadoArchivo = 'ACTIVO')")
-            .orderBy('req.fechaVencimiento', 'ASC')
-            .getMany();
+            .orderBy('req.fechaVencimiento', 'ASC');
 
+        if (filtros.asignadoKeys?.length) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const uuidKey = filtros.asignadoKeys.find(k => uuidRegex.test(k));
+            const normalizedKeys = filtros.asignadoKeys.map(k => k.toLowerCase());
+            if (uuidKey) {
+                query.andWhere(
+                    `(req.abogadoAsignadoId::text = :userId
+                      OR LOWER(req.funcionarioResponsable) IN (:...normalizedKeys)
+                      OR LOWER(req.funcionarioResponsable) = (
+                          SELECT LOWER(p.nom_largo)
+                          FROM auth."user" u
+                          LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                          WHERE u.id_user::text = :userId
+                          LIMIT 1
+                      ))`,
+                    { userId: uuidKey, normalizedKeys },
+                );
+            } else {
+                query.andWhere(
+                    'LOWER(req.funcionarioResponsable) IN (:...normalizedKeys)',
+                    { normalizedKeys },
+                );
+            }
+        }
+
+        const reqs = await query.getMany();
         return reqs.map(r => this.calcularDiasRestantes(r));
     }
 
