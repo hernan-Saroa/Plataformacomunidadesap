@@ -211,6 +211,7 @@ export class NotificacionesService {
     auditoriaCodigo?: string;
     planId?: string;
     usuarioId?: string; // Destinatario explícito si aplica
+    responsableAreaEmail?: string; // Email del responsable del área auditada (para AUDITADO)
     tituloCustom?: string;
     mensajeCustom?: string;
     metadata?: any;
@@ -377,9 +378,64 @@ export class NotificacionesService {
         
       case 'AUDITADO':
       case 'JEFE_DEPENDENCIA':
-        // Por ahora se envía al Jefe OCI como contingencia para dependencias externas
-        const jefesDep = await this.obtenerJefesControlInterno();
-        jefesDep.forEach(j => ids.push(j));
+      case 'RESPONSABLE_AREA_AUDITADA':
+        // Buscar el id_user del responsable del área auditada por su email
+        // El email está guardado en auditoria.responsable_area_email
+        if (context.auditoriaId) {
+          try {
+            // Intentar por responsable_area_email guardado en la auditoría
+            const emailResult = await this.dataSource.query(
+              `SELECT a.responsable_area_email
+               FROM control_interno.auditoria a
+               WHERE a.id = $1`,
+              [context.auditoriaId]
+            );
+            const emailResponsable = emailResult[0]?.responsable_area_email;
+            if (emailResponsable) {
+              // Buscar el id_user en auth.user por email
+              const userResult = await this.dataSource.query(
+                `SELECT u.id_user
+                 FROM auth."user" u
+                 LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                 WHERE LOWER(TRIM(u.email)) = LOWER(TRIM($1))
+                    OR LOWER(TRIM(p.dir_email)) = LOWER(TRIM($1))
+                 AND u.is_active = true
+                 LIMIT 1`,
+                [emailResponsable]
+              );
+              if (userResult[0]?.id_user) {
+                ids.push(userResult[0].id_user);
+                console.log(`[Notificaciones] ✅ Auditado resuelto: ${emailResponsable} → ${userResult[0].id_user}`);
+              } else {
+                console.warn(`[Notificaciones] ⚠️ No se encontró usuario activo para el email del auditado: ${emailResponsable}`);
+              }
+            } else {
+              console.warn(`[Notificaciones] ⚠️ La auditoría ${context.auditoriaId} no tiene responsable_area_email registrado`);
+            }
+          } catch (err) {
+            console.error('[Notificaciones] ❌ Error resolviendo AUDITADO:', err.message);
+          }
+        } else if (context.responsableAreaEmail) {
+          // Fallback: si el email viene directo en el contexto
+          try {
+            const userResult = await this.dataSource.query(
+              `SELECT u.id_user
+               FROM auth."user" u
+               LEFT JOIN auth.personas p ON p.id_person = u.id_person
+               WHERE LOWER(TRIM(u.email)) = LOWER(TRIM($1))
+                  OR LOWER(TRIM(p.dir_email)) = LOWER(TRIM($1))
+               AND u.is_active = true
+               LIMIT 1`,
+              [context.responsableAreaEmail]
+            );
+            if (userResult[0]?.id_user) {
+              ids.push(userResult[0].id_user);
+              console.log(`[Notificaciones] ✅ Auditado resuelto por contexto: ${context.responsableAreaEmail} → ${userResult[0].id_user}`);
+            }
+          } catch (err) {
+            console.error('[Notificaciones] ❌ Error resolviendo AUDITADO por email de contexto:', err.message);
+          }
+        }
         break;
 
       case 'RESPONSABLE_PLAN_MEJORAMIENTO':
