@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@esap-mfe/shared-ui": ["../../packages/shared-ui/src/index.ts"],
+      "@esap-mfe/shared-ui/*": ["../../packages/shared-ui/src/*"],
+      "@esap-mfe/shared-types": ["../../packages/shared-types/src/index.ts"],
+      "@esap-mfe/shared-types/*": ["../../packages/shared-types/src/*"]
+    }
+  },
+  "include": ["src/**/*", "services/**/*", "config/**/*", "hooks/**/*", "utils/**/*", "test/**/*", "vite.config.ts"]
+}

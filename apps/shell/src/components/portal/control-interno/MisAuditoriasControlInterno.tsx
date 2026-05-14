@@ -47,7 +47,7 @@
  * API real están marcados con `// API:` en cada handler.
  */
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
@@ -59,12 +59,15 @@ import {
   CheckCircle2,
   Upload,
   Send,
+  SendHorizontal,
   FileText,
   ChevronRight,
   Paperclip,
   Eye,
   Calendar,
+  CalendarDays,
   User,
+  User2,
   AlertTriangle,
   Info,
   ClipboardList,
@@ -72,6 +75,16 @@ import {
   Scale,
   XCircle,
   Gavel,
+  Target,
+  Pencil,
+  Trash2,
+  Clock,
+  Link2,
+  BarChart3,
+  FileEdit,
+  Rocket,
+  Trophy,
+  Download,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { colors } from '../../esap/shared/designTokens';
@@ -1032,7 +1045,1046 @@ function AuditoriaRow({
 // VISTA DETALLE
 // ════════════════════════════════════════════════════════════════════════════
 
-type DetalleTab = 'info' | 'hallazgos' | 'documentos';
+type DetalleTab = 'info' | 'hallazgos' | 'documentos' | 'plan';
+
+const ESTADOS_ACCION_AUDITADO = [
+  { value: 'programada',   label: 'Programada' },
+  { value: 'en-progreso',  label: 'En progreso' },
+  { value: 'implementada', label: 'Implementada' },
+  { value: 'vencida',      label: 'Vencida' },
+  { value: 'completada',   label: 'Completada' },
+] as const;
+
+/** Metadatos premium para badge de estado de acción correctiva */
+const ACCION_BADGE_META: Record<string, { bg: string; color: string; border: string; label: string }> = {
+  programada:   { label: 'Programada',   bg: '#F5F3FF', color: '#6D28D9', border: '#DDD6FE' },
+  'en-progreso':{ label: 'En progreso',  bg: '#EFF6FF', color: '#1D4ED8', border: '#BFDBFE' },
+  implementada: { label: 'Implementada', bg: '#FFF7ED', color: '#C2410C', border: '#FED7AA' },
+  vencida:      { label: 'Vencida',      bg: '#FEF2F2', color: '#B91C1C', border: '#FECACA' },
+  completada:   { label: 'Completada',   bg: '#ECFDF5', color: '#047857', border: '#A7F3D0' },
+};
+const ACCION_BADGE_ICON: Record<string, React.ReactNode> = {
+  programada:    <Clock style={{ width: 11, height: 11 }} />,
+  'en-progreso': <Loader2 style={{ width: 11, height: 11 }} />,
+  implementada:  <CheckCircle2 style={{ width: 11, height: 11 }} />,
+  vencida:       <AlertTriangle style={{ width: 11, height: 11 }} />,
+  completada:    <CheckCircle2 style={{ width: 11, height: 11 }} />,
+};
+const getAccionBadge = (estado: string) => {
+  const meta = ACCION_BADGE_META[estado] ?? { label: estado || 'Programada', bg: '#F3F4F6', color: '#374151', border: '#E5E7EB' };
+  const icon = ACCION_BADGE_ICON[estado] ?? <ClipboardList style={{ width: 11, height: 11 }} />;
+  return { ...meta, icon };
+};
+
+/** Planes y acciones del auditado (GET/PATCH bajo /auditorias/auditado/...). */
+function TabPlanMejoramientoAuditado({
+  auditoriaId,
+  readOnly,
+  hallazgos,
+}: {
+  auditoriaId: string;
+  readOnly: boolean;
+  /** Lista de hallazgos de la auditoría, para vincular cada acción a un hallazgo. */
+  hallazgos: Array<{ id: string; codigo: string; titulo: string; estado: string }>;
+}) {
+  const [planes, setPlanes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<
+    Record<string, { porcentaje: number; obs: string; estado: string }>
+  >({});
+
+  // ── Evidencias por acción ────────────────────────────────────────────────
+  // archivosEvidencia: archivos pendientes de subir
+  // evidenciasSubidas: objetos completos ya persistidos en el backend
+  // subiendoEvidencia / eliminandoEvidencia: IDs de evidencia en operación
+  const [archivosEvidencia, setArchivosEvidencia] = useState<Record<string, File[]>>({});
+  const [evidenciasSubidas, setEvidenciasSubidas] = useState<Record<string, any[]>>({});
+  const [subiendoEvidencia, setSubiendoEvidencia] = useState<string | null>(null);
+  const [eliminandoEvidencia, setEliminandoEvidencia] = useState<string | null>(null);
+
+  // Estado del formulario para crear nueva acción
+  const [showNewAccion, setShowNewAccion] = useState<Record<string, boolean>>({});
+  const [newAccionDraft, setNewAccionDraft] = useState<Record<string, {
+    descripcion: string;
+    responsable: string;
+    fechaInicio: string;
+    fechaFin: string;
+    indicador: string;
+    metaIndicador: string;
+    hallazgoId: string;
+  }>>({});
+  const [savingNew, setSavingNew] = useState<string | null>(null);
+
+  // Usuarios del sistema para el select de responsable — cargados del auth-service
+  const [usuarios, setUsuarios] = useState<Array<{ id: string; nombre: string; email: string }>>([]);
+  const [busquedaResponsable, setBusquedaResponsable] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    controlInternoService.getUsuariosActivos()
+      .then(setUsuarios)
+      .catch(() => {
+        console.warn('[TabPlanMejoramiento] No se pudieron cargar usuarios del auth-service');
+      });
+  }, []);
+
+
+  // Estado edición de acciones existentes en fase de formulación (borrador/revision)
+  const [editAccion, setEditAccion] = useState<Record<string, {
+    descripcion: string; responsable: string; fechaInicio: string; fechaFin: string; indicador: string;
+  } | null>>({});
+  const [savingEdit, setSavingEdit] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await controlInternoService.getPlanesMejoramientoAuditado(auditoriaId);
+      const list = Array.isArray(data) ? data : [];
+      setPlanes(list);
+      const d: Record<string, { porcentaje: number; obs: string; estado: string }> = {};
+      for (const p of list) {
+        for (const a of p.acciones || []) {
+          d[a.id] = {
+            porcentaje: typeof a.porcentajeAvance === 'number' ? a.porcentajeAvance : 0,
+            obs: (a.observaciones as string) ?? '',
+            estado: String(a.estado ?? 'programada'),
+          };
+        }
+      }
+      setDrafts(d);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'No se pudieron cargar los planes';
+      setError(msg);
+      setPlanes([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [auditoriaId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Carga en paralelo los conteos de evidencias cada vez que los planes cambian.
+  // Se hace en un effect separado para no bloquear la carga de planes ni perder
+  // el contador local si alguna llamada al backend falla.
+  useEffect(() => {
+    if (!planes.length) return;
+
+    // Construir lista de tareas: { planId, accionId }
+    const tareas: { planId: string; accionId: string }[] = [];
+    for (const p of planes) {
+      for (const a of p.acciones || []) {
+        tareas.push({ planId: p.id, accionId: a.id });
+      }
+    }
+    if (!tareas.length) return;
+
+    // Lanzar todas las peticiones en paralelo
+    Promise.allSettled(
+      tareas.map(({ planId, accionId }) =>
+        controlInternoService
+          .getEvidenciasAccionAuditado(auditoriaId, planId, accionId)
+          .then((evs) => ({ accionId, items: Array.isArray(evs) ? evs : [] }))
+      )
+    ).then((results) => {
+      setEvidenciasSubidas((prev) => {
+        const next = { ...prev };
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            next[r.value.accionId] = r.value.items;
+          }
+        }
+        return next;
+      });
+    });
+  }, [planes, auditoriaId]);
+
+  /** Calcula el estado automático de una acción según sus fechas y si está completada. */
+  const calcEstadoAuto = (accion: any, completada: boolean): string => {
+    if (completada) return 'completada';
+    const hoy = new Date();
+    const fin = accion.fechaFin ? new Date(accion.fechaFin) : null;
+    const inicio = accion.fechaInicio ? new Date(accion.fechaInicio) : null;
+    if (fin && hoy > fin) return 'vencida';
+    if (inicio && hoy >= inicio) return 'en-progreso';
+    return 'programada';
+  };
+
+  /** Elimina una evidencia del backend y la quita del estado local. */
+  const eliminarEvidencia = async (accionId: string, evidenciaId: string) => {
+    if (!window.confirm('¿Eliminar esta evidencia?')) return;
+    setEliminandoEvidencia(evidenciaId);
+    try {
+      await controlInternoService.deleteEvidencia(evidenciaId);
+      setEvidenciasSubidas((prev) => ({
+        ...prev,
+        [accionId]: (prev[accionId] ?? []).filter((e: any) => e.id !== evidenciaId),
+      }));
+      toast.success('Evidencia eliminada');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo eliminar');
+    } finally {
+      setEliminandoEvidencia(null);
+    }
+  };
+
+  const setDraft = (accionId: string, patch: Partial<{ porcentaje: number; obs: string; estado: string }>) => {
+    setDrafts((prev) => ({
+      ...prev,
+      [accionId]: { ...prev[accionId], ...patch },
+    }));
+  };
+
+  /** Sube todos los archivos pendientes de una acción y devuelve cuántos se subieron. */
+  const subirEvidenciasPendientes = async (planId: string, accionId: string): Promise<number> => {
+    const archivos = archivosEvidencia[accionId] ?? [];
+    if (!archivos.length) return 0;
+    let subidos = 0;
+    setSubiendoEvidencia(accionId);
+    for (const archivo of archivos) {
+      try {
+        // Usa la ruta del portal auditado: POST /auditorias/auditado/:id/planes/:planId/acciones/:accionId/evidencias
+        // Solo requiere JWT (no permisos OCI). El backend valida ownership.
+        await controlInternoService.uploadEvidenciaAccionAuditado(
+          auditoriaId,
+          planId,
+          accionId,
+          archivo,
+          { nombre: archivo.name, tipoDocumento: 'evidencia_accion' },
+        );
+        subidos++;
+      } catch (err) {
+        console.warn('[subirEvidencia] error en archivo:', archivo.name, err);
+      }
+    }
+    setSubiendoEvidencia(null);
+    // Limpiar pendientes y recargar lista completa desde el backend
+    setArchivosEvidencia((prev) => ({ ...prev, [accionId]: [] }));
+    try {
+      const evs = await controlInternoService.getEvidenciasAccionAuditado(auditoriaId, planId, accionId);
+      setEvidenciasSubidas((prev) => ({ ...prev, [accionId]: Array.isArray(evs) ? evs : [] }));
+    } catch { /* mantiene el estado previo */ }
+    return subidos;
+  };
+
+  const guardarAccion = async (planId: string, accionId: string) => {
+    const d = drafts[accionId];
+    if (!d) return;
+
+    // Validar: si intenta marcar como completada, debe haber evidencia
+    const totalEvidencias = (evidenciasSubidas[accionId]?.length ?? 0) + (archivosEvidencia[accionId]?.length ?? 0);
+    if (d.estado === 'completada' && totalEvidencias === 0) {
+      toast.error('Debes subir al menos una evidencia para marcar esta acción como completada');
+      return;
+    }
+
+    setSavingId(accionId);
+    try {
+      // 1. Subir archivos pendientes primero
+      const subidos = await subirEvidenciasPendientes(planId, accionId);
+      if (subidos > 0) {
+        toast.success(`${subidos} evidencia${subidos > 1 ? 's' : ''} subida${subidos > 1 ? 's' : ''} correctamente`);
+      }
+
+      // 2. Guardar el avance
+      await controlInternoService.updateAccionPlanAuditado(auditoriaId, planId, accionId, {
+        porcentajeAvance: Math.min(100, Math.max(0, Math.round(d.porcentaje))),
+        observaciones: d.obs,
+        estado: d.estado,
+      });
+      toast.success('Avance guardado correctamente');
+      await load();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'No se pudo guardar';
+      toast.error(msg);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+
+  const crearNuevaAccion = async (planId: string) => {
+    const d = newAccionDraft[planId];
+    if (!d?.descripcion?.trim()) {
+      toast.error('La descripción de la acción es obligatoria');
+      return;
+    }
+    if (!d.responsable?.trim()) {
+      toast.error('El responsable de la acción es obligatorio');
+      return;
+    }
+    if (!d.fechaInicio || !d.fechaFin) {
+      toast.error('Las fechas de inicio y fin son obligatorias');
+      return;
+    }
+    if (d.fechaFin < d.fechaInicio) {
+      toast.error('La fecha fin no puede ser anterior a la fecha inicio');
+      return;
+    }
+    setSavingNew(planId);
+    try {
+      await controlInternoService.crearAccionPlanAuditado(auditoriaId, planId, {
+        descripcion: d.descripcion.trim(),
+        responsable: d.responsable.trim(),
+        fechaInicio: d.fechaInicio,
+        fechaFin: d.fechaFin,
+        indicador: d.indicador.trim() || undefined,
+        metaIndicador: d.metaIndicador?.trim() || undefined,
+        hallazgoId: d.hallazgoId || undefined,
+      });
+      toast.success('Acción creada exitosamente');
+      setShowNewAccion((prev) => ({ ...prev, [planId]: false }));
+      setNewAccionDraft((prev) => ({ ...prev, [planId]: { descripcion: '', responsable: '', fechaInicio: '', fechaFin: '', indicador: '', metaIndicador: '', hallazgoId: '' } }));
+      await load();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'No se pudo crear la acción';
+      toast.error(msg);
+    } finally {
+      setSavingNew(null);
+    }
+  };
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [sendingRevision, setSendingRevision] = useState<string | null>(null);
+
+  const guardarEdicionAccion = async (planId: string, accionId: string) => {
+    const d = editAccion[accionId];
+    if (!d) return;
+    if (!d.descripcion?.trim()) { toast.error('La descripción es obligatoria'); return; }
+    if (!d.responsable?.trim()) { toast.error('El responsable es obligatorio'); return; }
+    if (!d.fechaInicio || !d.fechaFin) { toast.error('Las fechas son obligatorias'); return; }
+    setSavingEdit(accionId);
+    try {
+      await controlInternoService.editarAccionPlanAuditado(auditoriaId, planId, accionId, d);
+      toast.success('Acción actualizada');
+      setEditAccion((prev) => ({ ...prev, [accionId]: null }));
+      await load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo actualizar');
+    } finally {
+      setSavingEdit(null);
+    }
+  };
+
+  const eliminarAccion = async (planId: string, accionId: string) => {
+    if (!confirm('¿Eliminar esta acción correctiva? Esta acción no se puede deshacer.')) return;
+    setDeletingId(accionId);
+    try {
+      await controlInternoService.eliminarAccionPlanAuditado(auditoriaId, planId, accionId);
+      toast.success('Acción eliminada');
+      await load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo eliminar');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const enviarARevision = async (planId: string) => {
+    if (!confirm('¿Enviar el plan a revisión por parte de la OCI? Una vez enviado, no podrás agregar más acciones hasta que sea aprobado o devuelto.')) return;
+    setSendingRevision(planId);
+    try {
+      await controlInternoService.enviarPlanRevision(auditoriaId, planId);
+      toast.success('Plan enviado a revisión', { description: 'La OCI revisará tu plan y lo aprobará o devolverá con observaciones.' });
+      await load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo enviar a revisión');
+    } finally {
+      setSendingRevision(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ padding: '40px 0', textAlign: 'center', color: '#6B7280' }}>
+        <Loader2 style={{ width: 22, height: 22, color: colors.brand, animation: 'spin 1s linear infinite' }} />
+        <div style={{ fontSize: 13, marginTop: 10 }}>Cargando planes de mejoramiento...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ background: 'white', borderRadius: 14, padding: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+        <div style={{ color: '#B91C1C', fontSize: 14, marginBottom: 12 }}>{error}</div>
+        <button
+          type="button"
+          onClick={() => void load()}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 8,
+            border: '1px solid #E5E7EB',
+            background: 'white',
+            cursor: 'pointer',
+            fontSize: 13,
+          }}
+        >
+          Reintentar
+        </button>
+      </div>
+    );
+  }
+
+  if (!planes.length) {
+    return (
+      <div style={{ background: 'white', borderRadius: 14, padding: 28, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', textAlign: 'center' }}>
+        <ClipboardList style={{ width: 36, height: 36, color: '#9CA3AF', margin: '0 auto 12px' }} />
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#374151' }}>Sin plan de mejoramiento aún</div>
+        <div style={{ fontSize: 13, color: '#6B7280', marginTop: 8, lineHeight: 1.55 }}>
+          Cuando el área de Control Interno registre el plan vinculado a esta auditoría, aparecerá aquí
+          con las acciones correctivas. Mientras tanto puedes seguir el plazo de formulación en la pestaña Información.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {planes.map((plan) => {
+        const estadoPlan = String(plan.estado || '').toLowerCase();
+        const enFormulacion = estadoPlan === 'borrador';
+        const enRevision = estadoPlan === 'revision';
+        const enEjecucion = ['aprobado', 'en_ejecucion', 'en-ejecucion'].includes(estadoPlan);
+        const planCerrado = ['completado', 'vencido', 'rechazado'].includes(estadoPlan);
+
+        // Colores según estado del plan
+        const estadoColor = (enFormulacion || enRevision)
+          ? { bg: '#FFFBEB', border: '#FDE68A', color: '#B45309', label: enRevision ? 'En revisión OCI' : 'En formulación' }
+          : enEjecucion
+          ? { bg: '#ECFDF5', border: '#A7F3D0', color: '#047857', label: estadoPlan === 'aprobado' ? 'Aprobado — En ejecución' : 'En ejecución' }
+          : planCerrado && estadoPlan === 'rechazado'
+          ? { bg: '#FEF2F2', border: '#FECACA', color: '#B91C1C', label: 'Rechazado' }
+          : { bg: '#ECFDF5', border: '#A7F3D0', color: '#047857', label: 'Completado' };
+
+        return (
+          <div
+            key={plan.id}
+            style={{
+              background: 'white', borderRadius: 14, padding: 20,
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+              border: `1px solid ${estadoColor.border}`,
+            }}
+          >
+            {/* Header del plan */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#6B7280', letterSpacing: 0.4 }}>PLAN</span>
+              <span style={{ fontSize: 15, fontWeight: 800, color: '#111827' }}>{plan.codigo || plan.titulo || plan.id}</span>
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: '3px 12px', borderRadius: 20,
+                background: estadoColor.bg, color: estadoColor.color, border: `1px solid ${estadoColor.border}`,
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+              }}>
+                {estadoPlan === 'borrador' && <FileEdit style={{ width: 13, height: 13 }} />}
+                {estadoPlan === 'revision' && <Eye style={{ width: 13, height: 13 }} />}
+                {(estadoPlan === 'aprobado' || estadoPlan === 'en_ejecucion' || estadoPlan === 'en-ejecucion') && <CheckCircle2 style={{ width: 13, height: 13 }} />}
+                {estadoPlan === 'rechazado' && <XCircle style={{ width: 13, height: 13 }} />}
+                {estadoPlan === 'completado' && <Trophy style={{ width: 13, height: 13 }} />}
+                {' '}{estadoColor.label}
+              </span>
+              {(plan.acciones?.length > 0) && (
+                <span style={{ fontSize: 12, color: '#6B7280', marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ fontWeight: 700, color: '#047857' }}>
+                    {plan.acciones.filter((a: any) => a.estado === 'completada').length}
+                  </span>/{plan.acciones.length} completadas
+                </span>
+              )}
+            </div>
+
+            {/* ── Banners de fase ─────────────────────────────────── */}
+            {estadoPlan === 'rechazado' && (
+              <div style={{
+                background: 'linear-gradient(135deg, #FEF2F2 0%, #FFF5F5 100%)',
+                border: '1.5px solid #F87171', borderRadius: 12, padding: '14px 16px', marginBottom: 14,
+                display: 'flex', gap: 14, alignItems: 'flex-start',
+              }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#FEE2E2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><XCircle style={{ width: 20, height: 20, color: '#DC2626' }} /></div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#7F1D1D', marginBottom: 4 }}>Plan rechazado por la OCI</div>
+                  {plan.motivoRechazo || plan.observaciones ? (
+                    <div style={{ fontSize: 12, color: '#991B1B', lineHeight: 1.6 }}>
+                      <strong>Motivo:</strong> {plan.motivoRechazo || plan.observaciones}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: '#991B1B' }}>Consulta con tu área de Control Interno para obtener más información.</div>
+                  )}
+                  <div style={{ marginTop: 8, fontSize: 11, color: '#B91C1C', fontWeight: 600 }}>
+                    ↩️ Puedes crear un nuevo plan corrigiendo los puntos observados.
+                  </div>
+                </div>
+              </div>
+            )}
+            {enFormulacion && (
+              <div style={{
+                background: 'linear-gradient(135deg, #FFFBEB 0%, #FEFCE8 100%)',
+                border: '1.5px solid #FDE68A', borderRadius: 12, padding: '14px 16px', marginBottom: 14,
+                display: 'flex', gap: 14, alignItems: 'flex-start',
+              }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><FileEdit style={{ width: 18, height: 18, color: '#B45309' }} /></div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#78350F', marginBottom: 3 }}>Fase de formulación — Borrador</div>
+                  <div style={{ fontSize: 12, color: '#92400E', lineHeight: 1.6 }}>
+                    Agrega las acciones correctivas para subsanar cada hallazgo. Cuando termines, <strong>envía el plan a revisión</strong> con el botón de abajo.
+                  </div>
+                </div>
+              </div>
+            )}
+            {enRevision && (
+              <div style={{
+                background: 'linear-gradient(135deg, #EFF6FF 0%, #F0F9FF 100%)',
+                border: '1.5px solid #93C5FD', borderRadius: 12, padding: '14px 16px', marginBottom: 14,
+                display: 'flex', gap: 14, alignItems: 'flex-start',
+              }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#DBEAFE', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Eye style={{ width: 18, height: 18, color: '#1D4ED8' }} /></div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#1E40AF', marginBottom: 3 }}>En revisión — OCI evaluando el plan</div>
+                  <div style={{ fontSize: 12, color: '#1E3A8A', lineHeight: 1.6 }}>
+                    La Oficina de Control Interno está revisando tu plan de mejoramiento. Recibirás una notificación cuando sea <strong>aprobado</strong> o te pidan ajustes.
+                  </div>
+                </div>
+              </div>
+            )}
+            {enEjecucion && (
+              <div style={{
+                background: 'linear-gradient(135deg, #ECFDF5 0%, #F0FDF4 100%)',
+                border: '1.5px solid #6EE7B7', borderRadius: 12, padding: '14px 16px', marginBottom: 14,
+                display: 'flex', gap: 14, alignItems: 'flex-start',
+              }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Rocket style={{ width: 18, height: 18, color: '#047857' }} /></div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#065F46', marginBottom: 3 }}>Plan aprobado — En ejecución</div>
+                  <div style={{ fontSize: 12, color: '#047857', lineHeight: 1.6 }}>
+                    Tu plan fue aprobado por la OCI. Actualiza el avance de cada acción y sube las evidencias cuando estén listas.
+                  </div>
+                  {plan.aprobadoPor && (
+                    <div style={{ fontSize: 11, color: '#065F46', marginTop: 6, fontWeight: 600 }}>
+                      ✅ Aprobado por: {plan.aprobadoPor} {plan.fechaAprobacion ? `· ${plan.fechaAprobacion}` : ''}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {estadoPlan === 'completado' && (
+              <div style={{
+                background: 'linear-gradient(135deg, #F0FDF4 0%, #ECFDF5 100%)',
+                border: '1.5px solid #34D399', borderRadius: 12, padding: '14px 16px', marginBottom: 14,
+                display: 'flex', gap: 14, alignItems: 'center',
+              }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Trophy style={{ width: 20, height: 20, color: '#047857' }} /></div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#065F46' }}>Plan completado</div>
+                  <div style={{ fontSize: 12, color: '#047857' }}>Todas las acciones fueron implementadas exitosamente.</div>
+                </div>
+              </div>
+            )}
+
+            {/* Lista de acciones */}
+            {!(plan.acciones && plan.acciones.length) ? (
+              <div style={{ fontSize: 13, color: '#6B7280', padding: '12px 0' }}>
+                {enFormulacion ? 'Aún no hay acciones — usa el botón de abajo para agregar la primera.' : 'Este plan no tiene acciones registradas.'}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {plan.acciones.map((accion: any) => {
+                  const dr = drafts[accion.id] ?? {
+                    porcentaje: accion.porcentajeAvance ?? 0,
+                    obs: accion.observaciones ?? '',
+                    estado: String(accion.estado ?? 'programada'),
+                  };
+                  const saving = savingId === accion.id;
+                  // Solo permite editar avance si el plan está aprobado/en ejecución
+                  const puedeEditarAvance = !readOnly && enEjecucion;
+
+                  // Nombre del hallazgo vinculado
+                  const hallazgoVinculado = accion.hallazgoId
+                    ? hallazgos.find((h) => h.id === accion.hallazgoId)
+                    : null;
+
+                  return (
+                    <div
+                      key={accion.id}
+                      style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 14, background: '#FAFAFA' }}
+                    >
+                      {/* Cabecera acción */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2937', lineHeight: 1.4, flex: 1 }}>
+                          {accion.descripcion || 'Acción correctiva'}
+                        </div>
+                        {(() => {
+                          const badge = getAccionBadge(accion.estado || 'programada');
+                          return (
+                            <span style={{
+                              fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20,
+                              marginLeft: 10, flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4,
+                              background: badge.bg, color: badge.color, border: `1px solid ${badge.border}`,
+                            }}>
+                              {badge.icon} {badge.label}
+                            </span>
+                          );
+                        })()}
+                      </div>
+
+                      {/* Meta info: responsable, fechas, hallazgo */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10, fontSize: 11, color: '#6B7280' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><User2 style={{ width: 11, height: 11 }} /> <strong>{accion.responsable}</strong></span>
+                        {accion.fechaInicio && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><CalendarDays style={{ width: 11, height: 11 }} /> {accion.fechaInicio} → {accion.fechaFin}</span>}
+                        {hallazgoVinculado && (
+                          <span style={{ background: '#FEF3C7', color: '#92400E', padding: '1px 6px', borderRadius: 4, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            <Link2 style={{ width: 11, height: 11 }} /> {hallazgoVinculado.codigo}: {hallazgoVinculado.titulo?.substring(0, 40)}{hallazgoVinculado.titulo?.length > 40 ? '…' : ''}
+                          </span>
+                        )}
+                        {accion.indicador && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><BarChart3 style={{ width: 11, height: 11 }} /> {accion.indicador}</span>}
+                      </div>
+
+                      {/* Barra de progreso visual */}
+                      <div style={{ marginBottom: 10 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6B7280', marginBottom: 4 }}>
+                          <span>Avance</span><span>{dr.porcentaje}%</span>
+                        </div>
+                        <div style={{ height: 6, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${dr.porcentaje}%`, background: dr.porcentaje === 100 ? '#10B981' : colors.brand, borderRadius: 3, transition: 'width 0.3s' }} />
+                        </div>
+                      </div>
+
+                      {/* Botones Editar / Eliminar — solo en formulación */}
+                      {!readOnly && enFormulacion && !editAccion[accion.id] && (
+                        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                          <button type="button"
+                            onClick={() => setEditAccion((prev) => ({ ...prev, [accion.id]: {
+                              descripcion: accion.descripcion || '',
+                              responsable: accion.responsable || '',
+                              fechaInicio: accion.fechaInicio || '',
+                              fechaFin: accion.fechaFin || '',
+                              indicador: accion.indicador || '',
+                            }}))} style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #D1D5DB', background: 'white', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#374151', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <Pencil style={{ width: 12, height: 12 }} /> Editar
+                          </button>
+                          <button type="button"
+                            disabled={deletingId === accion.id}
+                            onClick={() => void eliminarAccion(plan.id, accion.id)}
+                            style={{ padding: '5px 12px', borderRadius: 6, border: '1px solid #FCA5A5', background: '#FEF2F2', fontSize: 11, fontWeight: 600, cursor: deletingId === accion.id ? 'wait' : 'pointer', color: '#DC2626', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            {deletingId === accion.id ? <Loader2 style={{ width: 12, height: 12, animation: 'spin 1s linear infinite' }} /> : <Trash2 style={{ width: 12, height: 12 }} />} {deletingId === accion.id ? '...' : 'Eliminar'}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Formulario de edición inline */}
+                      {!readOnly && enFormulacion && editAccion[accion.id] && (() => {
+                        const ed = editAccion[accion.id]!;
+                        const saving = savingEdit === accion.id;
+                        return (
+                          <div style={{ marginTop: 10, background: '#F8FAFF', border: `1.5px solid ${colors.brand}30`, borderRadius: 10, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#1D4ED8', marginBottom: 2 }}>Editando acción</div>
+                            <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                              Descripción *
+                              <textarea rows={2} value={ed.descripcion}
+                                onChange={(e) => setEditAccion((prev) => ({ ...prev, [accion.id]: { ...prev[accion.id]!, descripcion: e.target.value } }))}
+                                style={{ borderRadius: 7, border: '1px solid #D1D5DB', padding: 7, fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
+                            </label>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                              <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                Responsable *
+                                <input type="text" value={ed.responsable}
+                                  onChange={(e) => setEditAccion((prev) => ({ ...prev, [accion.id]: { ...prev[accion.id]!, responsable: e.target.value } }))}
+                                  style={{ height: 32, borderRadius: 7, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13 }} />
+                              </label>
+                              <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                Indicador
+                                <input type="text" value={ed.indicador}
+                                  onChange={(e) => setEditAccion((prev) => ({ ...prev, [accion.id]: { ...prev[accion.id]!, indicador: e.target.value } }))}
+                                  style={{ height: 32, borderRadius: 7, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13 }} />
+                              </label>
+                              <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                Fecha inicio *
+                                <input type="date" value={ed.fechaInicio}
+                                  onChange={(e) => setEditAccion((prev) => ({ ...prev, [accion.id]: { ...prev[accion.id]!, fechaInicio: e.target.value } }))}
+                                  style={{ height: 32, borderRadius: 7, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13 }} />
+                              </label>
+                              <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                Fecha fin *
+                                <input type="date" value={ed.fechaFin}
+                                  onChange={(e) => setEditAccion((prev) => ({ ...prev, [accion.id]: { ...prev[accion.id]!, fechaFin: e.target.value } }))}
+                                  style={{ height: 32, borderRadius: 7, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13 }} />
+                              </label>
+                            </div>
+                            <div style={{ display: 'flex', gap: 7, marginTop: 2 }}>
+                              <button type="button" disabled={saving}
+                                onClick={() => void guardarEdicionAccion(plan.id, accion.id)}
+                                style={{ padding: '7px 16px', borderRadius: 7, border: 'none', background: colors.brand, color: 'white', fontSize: 12, fontWeight: 600, cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1 }}>
+                                {saving ? 'Guardando…' : 'Guardar cambios'}
+                              </button>
+                              <button type="button"
+                                onClick={() => setEditAccion((prev) => ({ ...prev, [accion.id]: null }))}
+                                style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid #E5E7EB', background: 'white', fontSize: 12, cursor: 'pointer', color: '#6B7280' }}>
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Controles de edición — solo en ejecución */}
+                      {puedeEditarAvance && (() => {
+                        const evSubidas: any[] = evidenciasSubidas[accion.id] ?? [];
+                        const archivosActuales = archivosEvidencia[accion.id] ?? [];
+                        const totalEvidencias = evSubidas.length + archivosActuales.length;
+                        const subiendoEste = subiendoEvidencia === accion.id;
+                        const guardandoEste = savingId === accion.id;
+                        const ocupado = saving || subiendoEste || guardandoEste;
+                        const esCompletada = dr.estado === 'completada';
+                        return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+
+                          {/* Fila: % Avance + Observaciones en horizontal */}
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                            <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+                              % Avance
+                              <input type="number" min={0} max={100} disabled={ocupado}
+                                value={dr.porcentaje}
+                                onChange={(e) => setDraft(accion.id, { porcentaje: Number(e.target.value) })}
+                                style={{ height: 28, width: 68, borderRadius: 6, border: '1px solid #D1D5DB', padding: '0 6px', fontSize: 12 }} />
+                            </label>
+                            <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                              Observaciones
+                              <textarea disabled={ocupado} value={dr.obs}
+                                onChange={(e) => setDraft(accion.id, { obs: e.target.value })}
+                                rows={2}
+                                style={{ borderRadius: 6, border: '1px solid #D1D5DB', padding: '4px 7px', fontSize: 12, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.4 }} />
+                            </label>
+                          </div>
+
+                          {/* Evidencias */}
+                          <div style={{ border: '1px solid #E5E7EB', borderRadius: 7, background: '#F9FAFB', overflow: 'hidden' }}>
+                            {/* Cabecera */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderBottom: (evSubidas.length + archivosActuales.length) > 0 ? '1px solid #E5E7EB' : 'none' }}>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <Paperclip style={{ width: 11, height: 11 }} />
+                                Evidencias
+                                {evSubidas.length > 0 && (
+                                  <span style={{ background: '#D1FAE5', color: '#065F46', borderRadius: 10, padding: '1px 6px', fontSize: 10, fontWeight: 700 }}>
+                                    {evSubidas.length}
+                                  </span>
+                                )}
+                              </span>
+                              <label htmlFor={`ev-input-${accion.id}`} style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 3,
+                                padding: '3px 8px', borderRadius: 5,
+                                border: `1px solid ${colors.brand}`,
+                                background: 'white', color: colors.brand,
+                                fontSize: 10, fontWeight: 600,
+                                cursor: ocupado ? 'not-allowed' : 'pointer',
+                                opacity: ocupado ? 0.6 : 1,
+                              }}>
+                                <Upload style={{ width: 10, height: 10 }} />
+                                Agregar
+                              </label>
+                              <input id={`ev-input-${accion.id}`} type="file" multiple disabled={ocupado} style={{ display: 'none' }}
+                                onChange={(e) => {
+                                  const nuevos = Array.from(e.target.files ?? []);
+                                  if (!nuevos.length) return;
+                                  setArchivosEvidencia((prev) => ({ ...prev, [accion.id]: [...(prev[accion.id] ?? []), ...nuevos] }));
+                                  e.target.value = '';
+                                }} />
+                            </div>
+
+                            {/* Sin evidencias */}
+                            {evSubidas.length === 0 && archivosActuales.length === 0 && (
+                              <div style={{ padding: '6px 10px', fontSize: 10, color: '#9CA3AF', fontStyle: 'italic' }}>
+                                Sin evidencias — necesitas al menos una para marcar como Completada.
+                              </div>
+                            )}
+
+                            {/* Ya subidas */}
+                            {evSubidas.map((ev: any) => (
+                              <div key={ev.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderBottom: '1px solid #F3F4F6', fontSize: 11 }}>
+                                <FileText style={{ width: 11, height: 11, color: '#047857', flexShrink: 0 }} />
+                                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#065F46' }}>
+                                  {ev.nombre || ev.nombreArchivoOriginal || 'Evidencia'}
+                                </span>
+                                <span style={{ color: '#9CA3AF', fontSize: 10, flexShrink: 0 }}>
+                                  {ev.tamanioBytes ? `${(Number(ev.tamanioBytes) / 1024).toFixed(0)} KB` : ''}
+                                </span>
+                                <button type="button" title="Descargar"
+                                  onClick={() => window.open(`http://localhost:3007/evidencias/${ev.id}/download`, '_blank')}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#047857', padding: '0 2px', display: 'flex', alignItems: 'center' }}>
+                                  <Download style={{ width: 12, height: 12 }} />
+                                </button>
+                                <button type="button" title="Eliminar"
+                                  disabled={eliminandoEvidencia === ev.id || ocupado}
+                                  onClick={() => void eliminarEvidencia(accion.id, ev.id)}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', padding: '0 2px', display: 'flex', alignItems: 'center', opacity: eliminandoEvidencia === ev.id ? 0.4 : 1 }}>
+                                  <Trash2 style={{ width: 11, height: 11 }} />
+                                </button>
+                              </div>
+                            ))}
+
+                            {/* Pendientes de subir */}
+                            {archivosActuales.map((f, idx) => (
+                              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderBottom: '1px solid #F3F4F6', fontSize: 11, background: '#EFF6FF' }}>
+                                <span style={{ color: '#1D4ED8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📎 {f.name}</span>
+                                <span style={{ color: '#6B7280', fontSize: 10, flexShrink: 0 }}>{(f.size / 1024).toFixed(0)} KB · pendiente</span>
+                                <button type="button" disabled={ocupado}
+                                  onClick={() => setArchivosEvidencia((prev) => ({ ...prev, [accion.id]: (prev[accion.id] ?? []).filter((_, i) => i !== idx) }))}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', fontSize: 13, lineHeight: 1 }}>×</button>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Toggle Completada + Guardar en la misma fila */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                            {/* Toggle */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: totalEvidencias === 0 ? 'not-allowed' : 'pointer', opacity: totalEvidencias === 0 ? 0.45 : 1 }}
+                              title={totalEvidencias === 0 ? 'Sube al menos una evidencia' : ''}
+                              onClick={() => {
+                                if (totalEvidencias === 0 || ocupado) return;
+                                const next = esCompletada ? calcEstadoAuto(accion, false) : 'completada';
+                                setDraft(accion.id, { estado: next, porcentaje: next === 'completada' ? 100 : dr.porcentaje });
+                              }}>
+                              <div style={{ width: 36, height: 20, borderRadius: 10, background: esCompletada ? '#10B981' : '#D1D5DB', position: 'relative', transition: 'background .2s', flexShrink: 0 }}>
+                                <div style={{ position: 'absolute', top: 2, left: esCompletada ? 18 : 2, width: 16, height: 16, borderRadius: '50%', background: 'white', transition: 'left .2s', boxShadow: '0 1px 2px rgba(0,0,0,.2)' }} />
+                              </div>
+                              <span style={{ fontSize: 11, fontWeight: 600, color: esCompletada ? '#047857' : '#374151', whiteSpace: 'nowrap' }}>
+                                {esCompletada ? '✓ Completada' : 'Marcar como Completada'}
+                              </span>
+                            </div>
+
+                            {/* Botón guardar */}
+                            <button type="button" disabled={ocupado}
+                              onClick={() => void guardarAccion(plan.id, accion.id)}
+                              style={{ padding: '5px 14px', borderRadius: 6, border: 'none', background: colors.brand, color: 'white', fontSize: 11, fontWeight: 600, cursor: ocupado ? 'wait' : 'pointer', opacity: ocupado ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
+                              {subiendoEste ? <><Loader2 style={{ width: 11, height: 11, animation: 'spin 1s linear infinite' }} /> Subiendo…</> :
+                               guardandoEste ? <><Loader2 style={{ width: 11, height: 11, animation: 'spin 1s linear infinite' }} /> Guardando…</> :
+                               'Guardar avance'}
+                            </button>
+                          </div>
+
+                        </div>
+                        );
+                      })()}
+
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Botón + Formulario: solo en planes en formulación */}
+            {!readOnly && enFormulacion && (
+              <div style={{ marginTop: 16, borderTop: '1px dashed #E5E7EB', paddingTop: 14 }}>
+                {!showNewAccion[plan.id] ? (
+                  <button type="button"
+                    onClick={() => setShowNewAccion((prev) => ({ ...prev, [plan.id]: true }))}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '8px 14px', borderRadius: 8,
+                      border: `1.5px dashed ${colors.brand}`,
+                      background: 'transparent', color: colors.brand,
+                      fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    }}>
+                    <span style={{ fontSize: 18, lineHeight: 1 }}>＋</span> Agregar acción correctiva
+                  </button>
+                ) : (
+                  <div style={{ background: '#F8FAFF', borderRadius: 12, border: `1.5px solid ${colors.brand}30`, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2937', marginBottom: 4 }}>Nueva acción correctiva</div>
+
+                    {/* Vincular a hallazgo */}
+                    {hallazgos.length > 0 && (
+                      <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        Hallazgo que subsana (opcional)
+                        <select value={newAccionDraft[plan.id]?.hallazgoId ?? ''}
+                          onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], hallazgoId: e.target.value } }))}
+                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13 }}>
+                          <option value="">— Sin vincular a hallazgo —</option>
+                          {hallazgos.map((h) => (
+                            <option key={h.id} value={h.id}>{h.codigo}: {h.titulo?.substring(0, 60)}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+
+                    <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span>Descripción <span style={{ color: '#DC2626' }}>*</span></span>
+                      <textarea rows={2} placeholder="Describe la acción que se ejecutará para subsanar el hallazgo..."
+                        value={newAccionDraft[plan.id]?.descripcion ?? ''}
+                        onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], descripcion: e.target.value } }))}
+                        style={{ borderRadius: 8, border: '1px solid #D1D5DB', padding: 8, fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
+                    </label>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'start' }}>
+                      {/* Responsable — combobox con filtro en tiempo real */}
+                      <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span>Responsable <span style={{ color: '#DC2626' }}>*</span></span>
+                        {newAccionDraft[plan.id]?.responsable ? (
+                          /* Persona seleccionada — mostrar chip con nombre + botón Cambiar */
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 8, background: '#F9FAFB', minHeight: 34 }}>
+                            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#DBEAFE', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                              {(newAccionDraft[plan.id]?.responsable || '').split(' ').slice(0,2).map(s=>s[0]).join('').toUpperCase() || 'R'}
+                            </div>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: '#111827', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {newAccionDraft[plan.id]?.responsable}
+                            </span>
+                            <button type="button"
+                              onClick={() => {
+                                setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], responsable: '' } }));
+                                setBusquedaResponsable((prev) => ({ ...prev, [plan.id]: '' }));
+                              }}
+                              style={{ fontSize: 11, color: '#2563EB', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', flexShrink: 0 }}>
+                              Cambiar
+                            </button>
+                          </div>
+                        ) : (
+                          /* Sin persona — input con dropdown filtrable */
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="text"
+                              placeholder="Escribe 3 letras para buscar..."
+                              value={busquedaResponsable[plan.id] ?? ''}
+                              autoComplete="off"
+                              onChange={(e) => setBusquedaResponsable((prev) => ({ ...prev, [plan.id]: e.target.value }))}
+                              onFocus={() => setBusquedaResponsable((prev) => ({ ...prev, [plan.id]: prev[plan.id] ?? '' }))}
+                              onBlur={() => setTimeout(() => setBusquedaResponsable((prev) => {
+                                const { [plan.id]: _, ...rest } = prev;
+                                return rest;
+                              }), 200)}
+                              style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
+                            {/* Dropdown — solo con 3+ caracteres */}
+                            {busquedaResponsable[plan.id] !== undefined && (() => {
+                              const q = (busquedaResponsable[plan.id] || '').trim();
+                              // Hint cuando escribe pero aún no llega a 3 letras
+                              if (q.length > 0 && q.length < 3) {
+                                return (
+                                  <div style={{ position: 'absolute', top: 36, left: 0, right: 0, background: 'white', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 60, padding: '10px 12px', fontSize: 12, color: '#9CA3AF', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span style={{ fontSize: 14 }}>🔍</span>
+                                    Escribe {3 - q.length} letra{3 - q.length !== 1 ? 's' : ''} más para buscar...
+                                  </div>
+                                );
+                              }
+                              // Con 3+ letras → filtrar y mostrar
+                              if (q.length < 3) return null;
+                              const qL = q.toLowerCase();
+                              const lista = usuarios.filter(u =>
+                                u.nombre.toLowerCase().includes(qL) || u.email.toLowerCase().includes(qL)
+                              );
+                              return (
+                                <div style={{ position: 'absolute', top: 36, left: 0, right: 0, background: 'white', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 6px 16px rgba(0,0,0,0.12)', zIndex: 60, maxHeight: 220, overflowY: 'auto' }}>
+                                  {/* Header */}
+                                  <div style={{ padding: '6px 10px', background: '#F9FAFB', borderBottom: '1px solid #F3F4F6', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    {lista.length} resultado{lista.length !== 1 ? 's' : ''}
+                                  </div>
+                                  {lista.length === 0 && (
+                                    <div style={{ padding: '12px 10px', textAlign: 'center', fontSize: 12, color: '#9CA3AF' }}>
+                                      Sin resultados para "<strong>{q}</strong>"
+                                    </div>
+                                  )}
+                                  {lista.map((u) => (
+                                    <button key={u.id} type="button"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], responsable: u.nombre } }));
+                                        setBusquedaResponsable((prev) => { const { [plan.id]: _, ...rest } = prev; return rest; });
+                                      }}
+                                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', borderBottom: '1px solid #F3F4F6', background: 'transparent', cursor: 'pointer', transition: 'background 0.15s' }}
+                                      onMouseEnter={e => (e.currentTarget.style.background = '#EFF6FF')}
+                                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#DBEAFE', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                                        {u.nombre.split(' ').slice(0,2).map(s=>s[0]).join('').toUpperCase() || '?'}
+                                      </div>
+                                      <div style={{ minWidth: 0 }}>
+                                        <div style={{ fontSize: 12, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.nombre}</div>
+                                        {u.email && <div style={{ fontSize: 11, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div>}
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </label>
+
+                      {/* Indicador */}
+                      <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        Indicador de cumplimiento
+                        <input type="text" placeholder="Ej: % de documentos foliados"
+                          value={newAccionDraft[plan.id]?.indicador ?? ''}
+                          onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], indicador: e.target.value } }))}
+                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
+                      </label>
+
+                      {/* Fecha inicio */}
+                      <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span>Fecha inicio <span style={{ color: '#DC2626' }}>*</span></span>
+                        <input type="date" value={newAccionDraft[plan.id]?.fechaInicio ?? ''}
+                          onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], fechaInicio: e.target.value } }))}
+                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
+                      </label>
+
+                      {/* Fecha fin */}
+                      <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span>Fecha fin (compromiso) <span style={{ color: '#DC2626' }}>*</span></span>
+                        <input type="date" value={newAccionDraft[plan.id]?.fechaFin ?? ''}
+                          onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], fechaFin: e.target.value } }))}
+                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
+                      </label>
+
+                      {/* Meta del indicador — full width */}
+                      <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4, gridColumn: '1 / -1' }}>
+                        Meta del indicador
+                        <input type="text" placeholder="Ej: Lograr el 100% de documentos foliados al 30/06/2026"
+                          value={newAccionDraft[plan.id]?.metaIndicador ?? ''}
+                          onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], metaIndicador: e.target.value } }))}
+                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
+                      </label>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                      <button type="button" disabled={savingNew === plan.id}
+                        onClick={() => void crearNuevaAccion(plan.id)}
+                        style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: colors.brand, color: 'white', fontSize: 13, fontWeight: 600, cursor: savingNew === plan.id ? 'wait' : 'pointer', opacity: savingNew === plan.id ? 0.7 : 1 }}>
+                        {savingNew === plan.id ? 'Guardando…' : 'Guardar acción'}
+                      </button>
+                      <button type="button"
+                        onClick={() => setShowNewAccion((prev) => ({ ...prev, [plan.id]: false }))}
+                        style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #E5E7EB', background: 'white', fontSize: 13, cursor: 'pointer', color: '#6B7280' }}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {/* Botón Enviar a revisión: solo en BORRADOR (no en revision, ya fue enviado) */}
+            {!readOnly && estadoPlan === 'borrador' && (
+              <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #E5E7EB', display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="button"
+                  disabled={sendingRevision === plan.id}
+                  onClick={() => void enviarARevision(plan.id)}
+                  style={{
+                    padding: '9px 20px', borderRadius: 9, border: 'none',
+                    background: sendingRevision === plan.id ? '#9CA3AF' : '#1D4ED8',
+                    color: 'white', fontSize: 13, fontWeight: 700,
+                    cursor: sendingRevision === plan.id ? 'wait' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 7,
+                  }}>
+                  {sendingRevision === plan.id
+                    ? <><Clock style={{ width: 14, height: 14 }} /> Enviando...</>
+                    : <><SendHorizontal style={{ width: 14, height: 14 }} /> Enviar a revisión OCI</>}
+                </button>
+              </div>
+            )}
+            {!readOnly && estadoPlan === 'revision' && (
+              <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: '#EFF6FF', border: '1px solid #BFDBFE', fontSize: 12, color: '#1E3A8A', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Clock style={{ width: 14, height: 14, flexShrink: 0 }} /> <span><strong>Plan en revisión.</strong> La OCI está evaluando tu plan. Recibirás una notificación cuando sea aprobado o devuelto con observaciones.</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 
 function DetalleAuditoria({
   auditoria: auditoriaInicial, userName, onBack,
@@ -1041,6 +2093,7 @@ function DetalleAuditoria({
   const [auditoria, setAuditoria] = useState<AuditoriaItem>(auditoriaInicial);
   const [hallazgos, setHallazgos] = useState<HallazgoItem[]>([]);
   const [documentos, setDocumentos] = useState<DocumentoItem[]>([]);
+  const [planesData, setPlanesData] = useState<any[]>([]);
   const [loadingDetalle, setLoadingDetalle] = useState(true);
 
   // Carga inicial de hallazgos + documentos + estado de comunicación.
@@ -1052,6 +2105,8 @@ function DetalleAuditoria({
     const tasks: Promise<any>[] = [
       loadHallazgosAuditoria(auditoriaInicial.id),
       loadDocumentosAuditoria(auditoriaInicial.id),
+      // Cargar planes para mostrar acciones en la pestaña Hallazgos
+      controlInternoService.getPlanesMejoramientoAuditado(auditoriaInicial.id).catch(() => []),
     ];
     if (USE_API_ESTADO) {
       tasks.push(
@@ -1068,11 +2123,11 @@ function DetalleAuditoria({
     Promise.all(tasks)
       .then((results) => {
         if (cancelado) return;
-        const hh = results[0] as HallazgoItem[];
-        const dd = results[1] as DocumentoItem[];
-        const estadoCom = results[2] as any;
+        const [hh, dd, planes] = results as [HallazgoItem[], DocumentoItem[], any[]];
         setHallazgos(hh);
         setDocumentos(dd);
+        setPlanesData(Array.isArray(planes) ? planes : []);
+        const estadoCom = results[3] as any;
         if (estadoCom?.informeFinalGenerado) {
           setAuditoria((a) => ({
             ...a,
@@ -1278,6 +2333,7 @@ function DetalleAuditoria({
         <TabButton active={tab === 'info'}       onClick={() => setTab('info')}       label="Información" icon={<Info style={{ width: 14, height: 14 }} />} />
         <TabButton active={tab === 'hallazgos'}  onClick={() => setTab('hallazgos')}  label={`Hallazgos${hallazgosNotificados ? ` (${hallazgosNotificados})` : ''}`} icon={<AlertTriangle style={{ width: 14, height: 14 }} />} />
         <TabButton active={tab === 'documentos'} onClick={() => setTab('documentos')} label={`Documentos${docsPorSubir ? ` (${docsPorSubir})` : ''}`}                  icon={<FileText style={{ width: 14, height: 14 }} />} />
+        <TabButton active={tab === 'plan'} onClick={() => setTab('plan')} label="Plan de mejoramiento" icon={<Target style={{ width: 14, height: 14 }} />} />
       </div>
 
       <AnimatePresence mode="wait">
@@ -1298,6 +2354,7 @@ function DetalleAuditoria({
               hallazgos={hallazgos}
               readOnly={isReadOnly}
               plazoVencido={!!calcularPlazoActivo(auditoria)?.vencido && (auditoria.estado === 'Notificada' || auditoria.estado === 'En Respuesta')}
+              planes={planesData}
               onAceptar={handleAceptar}
               onSubirDocumentoControversia={handleSubirDocumentoControversia}
               onPresentarControversia={handlePresentarControversia}
@@ -1343,6 +2400,17 @@ function DetalleAuditoria({
                 toast.success('Documento adicional cargado', { description: file.name });
               }}
             />
+          </motion.div>
+        )}
+        {tab === 'plan' && (
+          <motion.div
+            key="plan"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+          >
+            <TabPlanMejoramientoAuditado auditoriaId={auditoria.id} readOnly={isReadOnly} hallazgos={hallazgos} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -1471,8 +2539,8 @@ function BannerEtapaActual({ auditoria }: { auditoria: AuditoriaItem }) {
             )}
           </div>
           <div style={{ fontSize: 11, color: '#6B7280', marginTop: 6, lineHeight: 1.5 }}>
-            La formulación del plan se realiza desde el módulo de Control Interno (backoffice).
-            Aquí podrás consultar el avance una vez sea aprobado por el Jefe OCI.
+            La creación formal del plan sigue coordinándose desde Control Interno (OCI). En la pestaña
+            <strong> Plan de mejoramiento</strong> puedes ver el plan vinculado a esta auditoría y registrar el avance de tus acciones.
           </div>
         </div>
       </div>
@@ -1544,15 +2612,33 @@ function BannerEtapaActual({ auditoria }: { auditoria: AuditoriaItem }) {
 // ════════════════════════════════════════════════════════════════════════════
 
 function TabHallazgos({
-  hallazgos, readOnly, plazoVencido, onAceptar, onSubirDocumentoControversia, onPresentarControversia,
+  hallazgos, readOnly, plazoVencido, planes, onAceptar, onSubirDocumentoControversia, onPresentarControversia,
 }: {
   hallazgos: HallazgoItem[];
   readOnly: boolean;
   plazoVencido: boolean;
+  /** Planes cargados para mostrar acciones vinculadas a cada hallazgo */
+  planes: any[];
   onAceptar: (id: string) => Promise<void>;
   onSubirDocumentoControversia: (file: File, hallazgoId: string) => Promise<{ documentoId: string; nombre: string }>;
   onPresentarControversia: (id: string, argumentos: string, documentoId: string, documentoNombre: string) => Promise<void>;
 }) {
+  // Construye mapa rápido hallazgoId -> {plan, acciones[]}
+  const accionesPorHallazgo = useMemo(() => {
+    const map = new Map<string, { plan: any; acciones: any[] }>();
+    planes.forEach((plan) => {
+      (plan.acciones || []).forEach((accion: any) => {
+        if (accion.hallazgoId) {
+          if (!map.has(accion.hallazgoId)) {
+            map.set(accion.hallazgoId, { plan, acciones: [] });
+          }
+          map.get(accion.hallazgoId)!.acciones.push(accion);
+        }
+      });
+    });
+    return map;
+  }, [planes]);
+
   if (hallazgos.length === 0) {
     return (
       <div style={{ background: 'white', borderRadius: 14, padding: 48, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
@@ -1578,16 +2664,47 @@ function TabHallazgos({
           </div>
         </div>
       )}
-      {hallazgos.map((h) => (
-        <HallazgoCard
-          key={h.id}
-          hallazgo={h}
-          readOnly={readOnly || plazoVencido}
-          onAceptar={onAceptar}
-          onSubirDocumentoControversia={onSubirDocumentoControversia}
-          onPresentarControversia={onPresentarControversia}
-        />
-      ))}
+      {hallazgos.map((h) => {
+        const vinculado = accionesPorHallazgo.get(h.id);
+        return (
+          <div key={h.id}>
+            <HallazgoCard
+              hallazgo={h}
+              readOnly={readOnly || plazoVencido}
+              onAceptar={onAceptar}
+              onSubirDocumentoControversia={onSubirDocumentoControversia}
+              onPresentarControversia={onPresentarControversia}
+            />
+            {/* Acciones del plan de mejoramiento vinculadas a este hallazgo */}
+            {vinculado && vinculado.acciones.length > 0 && (
+              <div style={{ margin: '4px 0 0 16px', borderLeft: '3px solid #E5E7EB', paddingLeft: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', marginBottom: 6, letterSpacing: 0.3 }}>
+                  PLAN {vinculado.plan.codigo} — {vinculado.acciones.length} acción(es) correctiva(s)
+                </div>
+                {vinculado.acciones.map((accion: any) => (
+                  <div key={accion.id} style={{ background: '#F8FAFF', border: '1px solid #E0E7FF', borderRadius: 8, padding: '8px 12px', marginBottom: 6, fontSize: 12 }}>
+                    <div style={{ fontWeight: 600, color: '#1F2937', marginBottom: 3 }}>{accion.descripcion}</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, color: '#6B7280', fontSize: 11 }}>
+                      <span>👤 {accion.responsable}</span>
+                      {accion.fechaInicio && <span>📅 {accion.fechaInicio} → {accion.fechaFin}</span>}
+                      <span style={{
+                        padding: '1px 7px', borderRadius: 4, fontWeight: 600, fontSize: 10,
+                        background: accion.estado === 'completada' ? '#ECFDF5' : accion.estado === 'en-progreso' ? '#EFF6FF' : '#F3F4F6',
+                        color: accion.estado === 'completada' ? '#047857' : accion.estado === 'en-progreso' ? '#1D4ED8' : '#4B5563',
+                      }}>
+                        {accion.estado || 'programada'}
+                      </span>
+                      {accion.porcentajeAvance != null && (
+                        <span style={{ color: '#374151' }}>▶ {accion.porcentajeAvance}% avance</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
