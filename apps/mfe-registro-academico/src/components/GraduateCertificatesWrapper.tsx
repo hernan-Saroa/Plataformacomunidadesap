@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { FileSearch, Award, AlertCircle, ShieldCheck } from 'lucide-react';
+import { FileSearch, Award, AlertCircle, ShieldCheck, ClipboardCheck } from 'lucide-react';
 import { ReviewRequestsModule } from './ReviewRequestsModule';
 import { ApprovalRequestsModule } from './ApprovalRequestsModule';
 import { VerificationCertificatesModule } from './VerificationCertificatesModule';
@@ -19,7 +19,7 @@ interface GraduateCertificatesWrapperProps {
   onPendingCountChange?: (count: number) => void;
 }
 
-type VerificationTab = 'review' | 'approvals' | 'certificates';
+type VerificationTab = 'review' | 'my-reviews' | 'approvals' | 'certificates';
 
 const HEAD_ACADEMIC_REGISTRATION_PERMISSIONS = [
   Permissions.GRADUATES_EDIT,
@@ -42,9 +42,13 @@ export function GraduateCertificatesWrapper({
   const canViewReviewRequests = authService.hasPermission(
     Permissions.GRADUATES_SOLICITUDE_VIEW,
   ) || authService.hasPermission(Permissions.GRADUATES_SOLICITUDE_REVIEW);
+  const canWorkReviewRequests = authService.hasPermission(
+    Permissions.GRADUATES_SOLICITUDE_REVIEW,
+  );
   const canApproveRequests = authService.hasPermission(
     Permissions.GRADUATES_SOLICITUDE_APROBAR,
   );
+  const canViewMyReviewRequests = canWorkReviewRequests && !canApproveRequests;
   const isHeadRole = authService.hasAllPermissions(
     HEAD_ACADEMIC_REGISTRATION_PERMISSIONS,
   );
@@ -103,6 +107,14 @@ export function GraduateCertificatesWrapper({
       icon: AlertCircle,
       color: '#F59E0B',
       hasPermission: canViewReviewRequests,
+    },
+    {
+      id: 'my-reviews' as const,
+      label: 'Mis Revisiones',
+      subtitle: 'Pendientes y devueltas',
+      icon: ClipboardCheck,
+      color: '#2563EB',
+      hasPermission: canViewMyReviewRequests,
     },
     {
       id: 'approvals' as const,
@@ -206,6 +218,7 @@ export function GraduateCertificatesWrapper({
         transition={{ duration: 0.3 }}
       >
         {activeTab === 'review' && <ReviewRequestsModule />}
+        {activeTab === 'my-reviews' && <ReviewRequestsModule scope="mine" />}
         {activeTab === 'approvals' && (
           <ApprovalRequestsModule
             mode={approvalStage}
