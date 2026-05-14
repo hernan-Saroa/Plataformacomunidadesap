@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, Query, Res, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, Query, Res, HttpStatus, Req } from '@nestjs/common';
 import type { Response } from 'express';
 import { RiesgosService } from '../services/riesgos.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 import { Riesgo } from '../entities/riesgo.entity';
 import type { EtapaRiesgo, ZonaRiesgo } from '../entities/riesgo.entity';
 
@@ -12,8 +13,11 @@ export class RiesgosController {
     // CRUD
     // ============================================
     @Get()
-    async findAll(): Promise<Riesgo[]> {
-        return this.riesgosService.findAll();
+    async findAll(@Req() req?: any): Promise<Riesgo[]> {
+        const access = getLegalAccessFromRequest(req);
+        return this.riesgosService.findAll({
+            asignadoKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Get('estadisticas')

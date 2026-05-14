@@ -56,6 +56,24 @@ export class CorreosJuridicosService {
     ) { }
 
     /**
+     * Obtiene la URL base para tracking (pixel + links de descarga).
+     * - En producción: API_GATEWAY_URL (ej: https://plataforma.esap.edu.co)
+     *   las rutas son /legal/api/v1/correos/track/...
+     * - En desarrollo: directamente al puerto del legal-management-service
+     *   las rutas son /correos/track/...
+     */
+    private getTrackingBaseUrl(): { baseUrl: string; pathPrefix: string } {
+        const gatewayUrl = process.env.API_GATEWAY_URL;
+        if (gatewayUrl && !gatewayUrl.includes('localhost:3000')) {
+            // Producción/QA/Dev server: usa el gateway (nginx proxy pasa /legal/api/v1/* -> :3008/*)
+            return { baseUrl: gatewayUrl, pathPrefix: '/legal/api/v1' };
+        }
+        // Local dev: acceso directo al puerto del servicio (sin proxy Vite)
+        const port = process.env.PORT || '3008';
+        return { baseUrl: `http://localhost:${port}`, pathPrefix: '' };
+    }
+
+    /**
      * Registra una acción en el historial del correo
      */
     async registrarAccion(correoId: string, tipoEvento: string, descripcion: string, usuario: string = 'Sistema', detalleJson: any = null): Promise<void> {
@@ -390,6 +408,11 @@ export class CorreosJuridicosService {
             throw new NotFoundException(`Correo ${id} not found`);
         }
 
+        // Ya está leído — idempotencia, no registrar duplicados
+        if (correo.leido) {
+            return correo;
+        }
+
         // Update in Graph (best-effort, may fail if Mail.ReadWrite permission is missing)
         if (correo.graphMessageId) {
             try {
@@ -402,7 +425,16 @@ export class CorreosJuridicosService {
         // Update in DB (always succeeds regardless of Graph)
         correo.leido = true;
         const saved = await this.correoRepo.save(correo);
-        await this.registrarAccion(correo.id, 'LEIDO', 'Correo marcado como leído');
+
+        // Solo registrar LEIDO en timeline si es un correo ENTRANTE (no enviado por nosotros)
+        if (correo.direccion !== 'ENVIADO') {
+            await this.registrarAccion(correo.id, 'LEIDO', 'Correo marcado como leído');
+
+            // ── Propagar LEIDO al correo ENVIADO del remitente ──
+            // Para que quien envió el correo vea en SU timeline que fue leído
+            await this.propagarEventoAEnviado(correo, 'LEIDO',
+                `Correo leído por destinatario desde la plataforma`);
+        }
         return saved;
     }
 
@@ -439,102 +471,134 @@ export class CorreosJuridicosService {
     }
 
     /**
-     * Send an email via Graph API and save record in DB
+     * Send an email via Graph API and save record in DB.
+     * ALL attachments are converted to tracked download links (no inline attachments).
+     * A tracking pixel is injected to detect when the recipient opens the email.
      */
     async sendEmail(dto: SendEmailDto): Promise<{ success: boolean; correo?: CorreoJuridico }> {
-        let finalBody = dto.body;
-        const toList = Array.isArray(dto.to) ? dto.to : [dto.to];
-        const destinatariosTo = toList.join(', ');
-        const inlineAttachments: any[] = [];
-        const largeAttachments: any[] = [];
         const fs = require('fs');
         const path = require('path');
+        const { baseUrl, pathPrefix } = this.getTrackingBaseUrl();
+        const toList = Array.isArray(dto.to) ? dto.to : [dto.to];
+        const destinatariosTo = toList.join(', ');
 
-        // Extract and sort attachments by size
+        // 1. Save correo record in DB first (need ID for tracking tokens)
+        const newCorreo = this.correoRepo.create({
+            graphMessageId: `sent-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            asunto: dto.subject || '(Sin asunto)',
+            remitenteEmail: 'oficina.juridica@esap.edu.co',
+            remitenteNombre: 'Oficina Jurídica ESAP',
+            destinatariosTo,
+            destinatarios: dto.cc ? JSON.stringify(dto.cc) : undefined,
+            fechaRecepcion: new Date(),
+            cuerpoHtml: dto.body,
+            cuerpoTexto: dto.body?.replace(/<[^>]*>/g, '') || '',
+            tieneAdjuntos: !!(dto.attachments && dto.attachments.length > 0),
+            leido: true,
+            archivado: false,
+            urgente: false,
+            tipo: 'CORREO',
+            direccion: 'ENVIADO',
+            categoria: 'ENVIADO',
+            expedienteId: undefined,
+        });
+        const savedCorreo = await this.correoRepo.save(newCorreo);
+
+        // 2. Save ALL attachments locally and create adjunto records
+        const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
         if (dto.attachments && dto.attachments.length > 0) {
-            for (const att of dto.attachments) {
-                const buffer = Buffer.from(att.contentBytes, 'base64');
-                // 2.5MB limit for inline Graph API attachments (to avoid 413 Payload Too Large)
-                if (buffer.length > 2.5 * 1024 * 1024) {
-                    largeAttachments.push({ att, buffer });
-                } else {
-                    inlineAttachments.push(att);
-                }
-            }
-        }
-
-        // Handle large attachments by saving locally and appending links
-        if (largeAttachments.length > 0) {
-            finalBody += '<br><br><div style="margin-top:20px; padding:15px; border:1px solid #e2e8f0; border-radius:8px; background-color:#f8fafc;">';
-            finalBody += '<h4 style="margin-top:0; color:#0f172a; font-family:sans-serif;">Archivos Adjuntos Pesados</h4>';
-            finalBody += '<ul style="font-family:sans-serif; color:#334155; margin-bottom:0;">';
-
-            const uploadsDir = path.join(process.cwd(), 'uploads', 'adjuntos');
             if (!fs.existsSync(uploadsDir)) {
                 fs.mkdirSync(uploadsDir, { recursive: true });
             }
+        }
 
-            for (const { att, buffer } of largeAttachments) {
+        const savedAdjuntos: any[] = [];
+        if (dto.attachments && dto.attachments.length > 0) {
+            for (const att of dto.attachments) {
+                const buffer = Buffer.from(att.contentBytes, 'base64');
                 const safeName = att.name.replace(/[^a-zA-Z0-9.-]/g, '_');
                 const uniqueFilename = `sent_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${safeName}`;
                 const filepath = path.join(uploadsDir, uniqueFilename);
                 fs.writeFileSync(filepath, buffer);
 
-                // Construct the download link using the API Gateway URL 
-                // Ensure this points to the external reachable API if available, else fallback to localhost
-                const baseUrl = process.env.API_GATEWAY_URL || 'http://localhost:3000';
-                const downloadLink = `${baseUrl}/legal/api/v1/correos/adjuntos/local/${uniqueFilename}/download`;
+                const adjunto = this.adjuntoRepo.create({
+                    correoId: savedCorreo.id,
+                    graphMessageId: savedCorreo.graphMessageId,
+                    graphAttachmentId: `local-${uniqueFilename}`,
+                    nombre: att.name,
+                    contentType: att.contentType,
+                    tamanio: buffer.length,
+                    descargado: true,
+                    archivoLocalUrl: filepath,
+                });
+                const savedAdj = await this.adjuntoRepo.save(adjunto);
+                savedAdjuntos.push(savedAdj);
+            }
+        }
 
-                finalBody += `<li><a href="${downloadLink}" target="_blank" style="color:#2563eb; text-decoration:none;">Descargar ${att.name}</a> (${(buffer.length / (1024 * 1024)).toFixed(2)} MB)</li>`;
+        // 3. Build HTML body with tracking pixel + tracked download links
+        let finalBody = dto.body;
+
+        // Pixel de tracking (apertura del correo)
+        const pixelToken = randomUUID();
+        await this.trackingRepo.save(this.trackingRepo.create({
+            correoId: savedCorreo.id,
+            token: pixelToken,
+            tipo: 'OPEN_PIXEL',
+            destinatarioEmail: destinatariosTo,
+        }));
+
+        // Links trackeados para cada adjunto
+        if (savedAdjuntos.length > 0) {
+            finalBody += '<br/><div style="margin-top:16px;padding:16px;border:1px solid #e2e8f0;border-radius:8px;background-color:#f8fafc;font-family:sans-serif;">';
+            finalBody += '<h4 style="margin-top:0;color:#003DA5;font-size:14px;">📎 Documentos Adjuntos</h4>';
+            finalBody += '<ul style="padding-left:18px;margin-bottom:0;">';
+
+            for (const adj of savedAdjuntos) {
+                const dlToken = randomUUID();
+                await this.trackingRepo.save(this.trackingRepo.create({
+                    correoId: savedCorreo.id,
+                    adjuntoId: adj.id,
+                    token: dlToken,
+                    tipo: 'DOWNLOAD_LINK',
+                    destinatarioEmail: destinatariosTo,
+                }));
+                const downloadUrl = `${baseUrl}${pathPrefix}/correos/track/download/${dlToken}`;
+                const sizeMB = (adj.tamanio / (1024 * 1024)).toFixed(2);
+                finalBody += `<li style="margin-bottom:6px;"><a href="${downloadUrl}" target="_blank" style="color:#2563eb;text-decoration:none;font-weight:600;">${adj.nombre}</a> <span style="color:#64748b;font-size:12px;">(${sizeMB} MB)</span></li>`;
             }
             finalBody += '</ul></div>';
         }
 
+        // Pixel invisible al final
+        const pixelUrl = `${baseUrl}${pathPrefix}/correos/track/open/${pixelToken}?_=${Date.now()}`;
+        finalBody += `<img src="${pixelUrl}" width="1" height="1" style="display:none;opacity:0;height:0;width:0;" alt="" />`;
+
+        // 4. Send via Graph with modified HTML and NO inline file attachments
         const sent = await this.graphService.sendEmail(
             dto.to,
             dto.subject,
             finalBody,
             dto.cc,
-            inlineAttachments
+            []  // No inline attachments — everything goes as tracked links
         );
 
         if (!sent) {
+            // Cleanup DB on failure
+            await this.adjuntoRepo.delete({ correoId: savedCorreo.id });
+            await this.trackingRepo.delete({ correoId: savedCorreo.id });
+            await this.correoRepo.delete(savedCorreo.id);
             return { success: false };
         }
 
-        // Save sent email record in DB
-        try {
-            const newCorreo = this.correoRepo.create({
-                graphMessageId: `sent-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                asunto: dto.subject || '(Sin asunto)',
-                remitenteEmail: 'oficina.juridica@esap.edu.co',
-                remitenteNombre: 'Oficina Jurídica ESAP',
-                destinatariosTo,
-                destinatarios: dto.cc ? JSON.stringify(dto.cc) : undefined,
-                fechaRecepcion: new Date(),
-                cuerpoHtml: dto.body,
-                cuerpoTexto: dto.body?.replace(/<[^>]*>/g, '') || '',
-                tieneAdjuntos: !!(dto.attachments && dto.attachments.length > 0),
-                leido: true,
-                archivado: false,
-                urgente: false,
-                tipo: 'CORREO',
-                direccion: 'ENVIADO',
-                categoria: 'ENVIADO',
-                expedienteId: undefined,
-            });
+        // 5. Update HTML in DB with the tracked version
+        savedCorreo.cuerpoHtml = finalBody;
+        await this.correoRepo.save(savedCorreo);
 
-            const savedCorreo = await this.correoRepo.save(newCorreo);
-            // ── Trazabilidad: Registrar ENVIADO en timeline ──
-            await this.registrarAccion(savedCorreo.id, 'ENVIADO', `Correo enviado a ${destinatariosTo}`, 'Sistema');
-            // ── Tracking: Inyectar pixel y links trackeados ──
-            await this.injectTrackingIntoEmail(savedCorreo, destinatariosTo);
-            this.logger.log(`Sent email saved to DB: ${savedCorreo.id} -> ${destinatariosTo}`);
-            return { success: true, correo: savedCorreo };
-        } catch (dbError) {
-            this.logger.error('Error saving sent email to DB (email was sent successfully):', dbError);
-            return { success: true };
-        }
+        // 6. Register ENVIADO event
+        await this.registrarAccion(savedCorreo.id, 'ENVIADO', `Correo enviado a ${destinatariosTo}`, 'Sistema');
+        this.logger.log(`Sent email with tracking: ${savedCorreo.id} -> ${destinatariosTo} (${savedAdjuntos.length} tracked attachments)`);
+        return { success: true, correo: savedCorreo };
     }
 
     /**
@@ -788,6 +852,14 @@ export class CorreosJuridicosService {
             'Usuario plataforma',
             { adjuntoId: adjunto.id, nombreDocumento: adjunto.nombre }
         ).catch(() => {});
+
+        // ── Propagar DOCUMENTO_ABIERTO al correo ENVIADO (si este es ENTRANTE) ──
+        const parentCorreo = await this.correoRepo.findOne({ where: { id: adjunto.correoId } });
+        if (parentCorreo && parentCorreo.direccion !== 'ENVIADO') {
+            this.propagarEventoAEnviado(parentCorreo, 'DOCUMENTO_ABIERTO',
+                `Documento "${adjunto.nombre}" abierto por destinatario desde la plataforma`
+            ).catch(() => {});
+        }
 
         return attachment;
     }
@@ -1223,6 +1295,53 @@ export class CorreosJuridicosService {
         } catch (error) {
             this.logger.error(`Error procesando tracking download ${token}:`, error);
             return null;
+        }
+    }
+
+    /**
+     * Propaga un evento (LEIDO, DOCUMENTO_ABIERTO) de un correo ENTRANTE
+     * al correo ENVIADO correspondiente del remitente.
+     * Busca por threadId primero, luego por asunto.
+     */
+    private async propagarEventoAEnviado(
+        correoEntrante: CorreoJuridico,
+        tipoEvento: string,
+        descripcion: string,
+    ): Promise<void> {
+        try {
+            let sentEmail: CorreoJuridico | null = null;
+
+            // 1. Buscar por threadId (más preciso)
+            if (correoEntrante.threadId) {
+                sentEmail = await this.correoRepo.findOne({
+                    where: { threadId: correoEntrante.threadId, direccion: 'ENVIADO' },
+                    order: { fechaRecepcion: 'DESC' },
+                });
+            }
+
+            // 2. Fallback: buscar por asunto exacto (sin prefijos RE:/RV:/FW:)
+            if (!sentEmail) {
+                const cleanSubject = correoEntrante.asunto
+                    ?.replace(/^(RE:|RV:|FW:|FWD:)\s*/gi, '')
+                    .trim();
+                if (cleanSubject) {
+                    sentEmail = await this.correoRepo.findOne({
+                        where: [
+                            { asunto: cleanSubject, direccion: 'ENVIADO' },
+                            { asunto: `RE: ${cleanSubject}`, direccion: 'ENVIADO' },
+                            { asunto: `RV: ${cleanSubject}`, direccion: 'ENVIADO' },
+                        ],
+                        order: { fechaRecepcion: 'DESC' },
+                    });
+                }
+            }
+
+            if (sentEmail) {
+                await this.registrarAccion(sentEmail.id, tipoEvento, descripcion, 'Sistema');
+                this.logger.log(`📨 Evento ${tipoEvento} propagado al correo ENVIADO ${sentEmail.id}`);
+            }
+        } catch (error) {
+            this.logger.error(`Error propagando evento ${tipoEvento} a ENVIADO:`, error);
         }
     }
 }

@@ -204,11 +204,27 @@ export class ExpedienteService {
         }
 
         if (filtros.abogadoSustanciadorKeys?.length) {
-            const normalizedKeys = filtros.abogadoSustanciadorKeys.map((key) => key.toLowerCase());
-            queryBuilder.andWhere(
-                '(expediente.abogadoSustanciador IN (:...abogadoSustanciadorKeys) OR LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys))',
-                { abogadoSustanciadorKeys: filtros.abogadoSustanciadorKeys, normalizedKeys },
-            );
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const uuidKey = filtros.abogadoSustanciadorKeys.find(k => uuidRegex.test(k));
+            const normalizedKeys = filtros.abogadoSustanciadorKeys.map(k => k.toLowerCase());
+            if (uuidKey) {
+                queryBuilder.andWhere(
+                    `(LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys)
+                      OR LOWER(expediente.abogadoSustanciador) = (
+                          SELECT LOWER(p.nom_largo)
+                          FROM auth."user" u
+                          LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                          WHERE u.id_user::text = :userId
+                          LIMIT 1
+                      ))`,
+                    { normalizedKeys, userId: uuidKey },
+                );
+            } else {
+                queryBuilder.andWhere(
+                    'LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys)',
+                    { normalizedKeys },
+                );
+            }
         }
 
         const { entities, raw } = await queryBuilder.orderBy('expediente.createdAt', 'DESC').getRawAndEntities();

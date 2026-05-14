@@ -1,18 +1,22 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, HttpStatus, HttpException, UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator, Res, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, HttpStatus, HttpException, UseInterceptors, UploadedFile, ParseFilePipe, MaxFileSizeValidator, Res, NotFoundException, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ProcesoCoactivoService } from '../services/proceso-coactivo.service';
 import type { CreateProcesoCoactivoDto, UpdateProcesoCoactivoDto, CreatePagoCoactivoDto } from '../services/proceso-coactivo.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('procesos-coactivos')
 export class ProcesoCoactivoController {
     constructor(private readonly procesoCoactivoService: ProcesoCoactivoService) { }
 
     @Get()
-    async findAll() {
+    async findAll(@Req() req?: any) {
         try {
-            const procesos = await this.procesoCoactivoService.findAll();
+            const access = getLegalAccessFromRequest(req);
+            const procesos = await this.procesoCoactivoService.findAll({
+                asignadoKeys: access.esResuelveSolo ? access.userKeys : undefined,
+            });
             return procesos;
         } catch (error) {
             console.error('Error en findAll procesos coactivos:', error);
