@@ -152,22 +152,26 @@ export class ProgramasService {
     for (const asigData of asignaturas) {
       const { id, programa_id, ...data } = asigData; // Extraer programa_id para evitar conflictos
 
+      const asignaturaData = {
+        programaId: programaId, // Usar el programaId del parámetro
+        nombre: data.nombre,
+        codigo: data.codigo || undefined,
+        creditos: data.creditos || 3,
+        horas: data.horas || 144,
+        nucleoTematico: data.nucleoTematico || data.nucleo || undefined,
+        semestre: data.semestre ? String(data.semestre) : undefined,
+        modalidad: data.modalidad || undefined,
+        tipo: data.tipo || undefined,
+        createdAt: data.createdAt || new Date(),
+        updatedAt: new Date(),
+      };
+
       if (id && !id.startsWith('asig-')) {
         // Actualizar existente
-        await this.asignaturaRepo.update(id, {
-          programaId: programaId,
-          nombre: data.nombre,
-          codigo: data.codigo || undefined,
-          creditos: data.creditos || 3,
-          horas: data.horas || 144,
-          nucleoTematico: data.nucleoTematico || data.nucleo || undefined,
-          semestre: data.semestre ? String(data.semestre) : undefined,
-          modalidad: data.modalidad || undefined,
-          tipo: data.tipo || undefined,
-        });
+        await this.asignaturaRepo.update(id, asignaturaData);
       } else {
-        // Crear nueva
-        await this.asignaturaRepo.save({
+        // Crear nueva - usar create() para aplicar decoradores de fecha
+        const nuevaAsignatura = this.asignaturaRepo.create({
           programaId: programaId,
           nombre: data.nombre,
           codigo: data.codigo || undefined,
@@ -177,7 +181,10 @@ export class ProgramasService {
           semestre: data.semestre ? String(data.semestre) : undefined,
           modalidad: data.modalidad || undefined,
           tipo: data.tipo || undefined,
-        } as any);
+          createdAt: data.createdAt || new Date(),
+          updatedAt: new Date(),
+        });
+        await this.asignaturaRepo.save(nuevaAsignatura);
       }
     }
 
