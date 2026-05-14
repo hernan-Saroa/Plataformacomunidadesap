@@ -1,4 +1,4 @@
-                                          /**
+﻿                                          /**
                                            * ═══════════════════════════════════════════════════════════════════════════
                                            * MODAL DETALLE PLAN DE MEJORAMIENTO - VERSIÓN PREMIUM
                                            * ═══════════════════════════════════════════════════════════════════════════
@@ -117,6 +117,7 @@
                                             timeline: EventoTimeline[];
                                             seguimientos: SeguimientoTrimestral[];
                                             auditoria: string;
+                                            auditoriaId?: string;
                                             observaciones?: string;
                                           }
 
@@ -399,15 +400,17 @@
                                             planId: string;
                                             onClose: () => void;
                                             onPlanActualizado?: () => void;
+                                            modoPortal?: boolean;
                                           }
 
-                                          export function ModalDetallePlanMejoramiento({ planId, onClose, onPlanActualizado }: ModalDetallePlanProps) {
+                                          export function ModalDetallePlanMejoramiento({ planId, onClose, onPlanActualizado, modoPortal = false }: ModalDetallePlanProps) {
                                             const [tabActiva, setTabActiva] = useState<TabActiva>('resumen');
                                             const [modalActualizacion, setModalActualizacion] = useState(false);
                                             const [modalCrearAccion, setModalCrearAccion] = useState(false);
 
                                             // Aprobación / Rechazo del plan (usa endpoints existentes del backend)
                                             const [procesandoAprobacion, setProcesandoAprobacion] = useState(false);
+                                            const [procesandoRevision, setProcesandoRevision] = useState(false);
                                             const [modalRechazoAbierto, setModalRechazoAbierto] = useState(false);
                                             const [motivoRechazo, setMotivoRechazo] = useState('');
                                             const [observacionesAprobacion, setObservacionesAprobacion] = useState('');
@@ -424,6 +427,30 @@
                                               actualizarAccion,
                                               eliminarAccion
                                             } = usePlanMejoramientoDetalle(planId);
+
+                                            const handleEnviarRevision = useCallback(async () => {
+                                              if (!plan) return;
+                                              const audId = (plan as any).auditoriaId;
+                                              if (!audId) {
+                                                toast.error('No se pudo determinar la auditor�a del plan');
+                                                return;
+                                              }
+                                              setProcesandoRevision(true);
+                                              try {
+                                                await controlInternoService.enviarPlanRevision(audId, plan.id);
+                                                toast.success('Plan enviado a revisi�n', {
+                                                  description: 'La OCI revisar� el plan y lo aprobar� o rechazar�.',
+                                                });
+                                                await refetch();
+                                                onPlanActualizado?.();
+                                              } catch (err: any) {
+                                                toast.error('Error al enviar a revisi�n', {
+                                                  description: err?.message || 'Intenta de nuevo en unos segundos.',
+                                                });
+                                              } finally {
+                                                setProcesandoRevision(false);
+                                              }
+                                            }, [plan, refetch, onPlanActualizado]);
 
                                             const handleAprobarPlan = useCallback(async () => {
                                               if (!plan) return;
@@ -990,7 +1017,21 @@
                                                       </div>
 
                                                       <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                                                        {(plan.estado === 'BORRADOR' || plan.estado === 'REVISION' || plan.estado === 'FORMULACION') && (
+                                                        {/* Boton Enviar a Revision: solo en modo portal (auditado), estado BORRADOR o FORMULACION */}
+{modoPortal && (plan.estado === 'BORRADOR' || plan.estado === 'FORMULACION') && (
+  <button
+    onClick={handleEnviarRevision}
+    disabled={procesandoRevision}
+    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+    title="Enviar el plan a revision de la OCI"
+  >
+    {procesandoRevision ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+    <span className="hidden sm:inline">Enviar a Revision</span>
+  </button>
+)}
+
+{/* Botones Aprobar/Rechazar: solo en backoffice (OCI), estado REVISION */}
+{!modoPortal && (plan.estado === 'revision' || plan.estado === 'REVISION') && (
                                                           <>
                                                             <button
                                                               onClick={() => setModalAprobacionAbierto(true)}
@@ -1517,7 +1558,39 @@
                                           function TabResumen({ plan, estadisticas }: { plan: PlanMejoramientoDetalle; estadisticas: any }) {
                                             return (
                                               <div className="space-y-6">
-                                                {/* Información General */}
+                                                {/* -- Banner de estado -- */}
+                                              {(plan.estado === 'REVISION' || plan.estado === 'FORMULACION') && (
+                                                <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-300">
+                                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-amber-200 text-amber-800">Revision</span>
+                                                  <div>
+                                                    <div className="font-semibold text-amber-900 text-sm">Plan en revision &mdash; Accion requerida</div>
+                                                    <div className="text-amber-800 text-xs mt-1 leading-relaxed">
+                                                      El responsable del area ha enviado el plan para tu revision. Usa los botones <strong>Aprobar Plan</strong> o <strong>Rechazar</strong> en la parte superior para emitir tu decision.
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              {plan.estado === 'RECHAZADO' && (
+                                                <div className="flex items-start gap-3 p-4 rounded-xl bg-red-50 border border-red-300">
+                                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-200 text-red-800 shrink-0">X</span>
+                                                  <div>
+                                                    <div className="font-semibold text-red-900 text-sm">Plan rechazado</div>
+                                                    {plan.observaciones && (
+                                                      <div className="text-red-800 text-xs mt-1 leading-relaxed"><strong>Motivo:</strong> {plan.observaciones}</div>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              )}
+                                              {(plan.estado === 'EN_EJECUCION' || plan.estado === 'EN_SEGUIMIENTO') && (
+                                                <div className="flex items-start gap-3 p-4 rounded-xl bg-emerald-50 border border-emerald-300">
+                                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-200 text-emerald-800 shrink-0">OK</span>
+                                                  <div>
+                                                    <div className="font-semibold text-emerald-900 text-sm">Plan aprobado - En ejecucion</div>
+                                                    <div className="text-emerald-800 text-xs mt-1">El responsable esta ejecutando las acciones.</div>
+                                                  </div>
+                                                </div>
+                                              )}
+                                              {/* Información General */}
                                                 <div className="bg-white rounded-lg border border-gray-200 p-6">
                                                   <h3 className="text-base font-medium text-gray-900 mb-4">Información General</h3>
                                                   <div className="grid grid-cols-2 gap-4">
@@ -1863,15 +1936,15 @@
                                                         {hallazgosFiltrados.length} hallazgo(s) · {accionesFiltradas.length} acción(es)
                                                       </p>
                                                     </div>
-
-                                                    <button
-                                                      onClick={() => setModalCrearAccion(true)}
-                                                      className="px-4 py-2 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded-lg hover:shadow-lg transition-all flex items-center gap-2 text-sm font-medium"
-                                                    >
-                                                      <Plus className="w-4 h-4" />
-                                                      Nueva Acción
-                                                    </button>
                                                   </div>
+
+                                                  {/* Nota OCI: las acciones las crea el auditado */}
+                                                  {(plan.estado === 'BORRADOR' || plan.estado === 'REVISION' || plan.estado === 'FORMULACION') && (
+                                                    <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs">
+                                                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                                                      <span><strong>Fase de formulación:</strong> El responsable del área auditada está formulando las acciones. Una vez envíe el plan podrás revisarlas aquí y Aprobar o Rechazar.</span>
+                                                    </div>
+                                                  )}
 
                                                   <div className="flex flex-wrap gap-2 items-center">
                                                     <FiltroButton
@@ -1906,12 +1979,12 @@
                                                     <p className="font-medium">
                                                       {filtroHallazgo !== 'TODOS'
                                                         ? 'No hay hallazgos en este avance'
-                                                        : 'Sin hallazgos en el plan'}
+                                                        : 'Sin acciones en el plan a�n'}
                                                     </p>
                                                     <p className="text-sm mt-1">
                                                       {filtroHallazgo !== 'TODOS'
                                                         ? 'Prueba otro filtro o revisa el tab Hallazgos.'
-                                                        : 'Haz clic en "Nueva Acción" para crear una acción correctiva'}
+                                                        : 'El responsable del �rea debe formular las acciones en el portal del Auditado.'}
                                                     </p>
                                                   </div>
                                                 ) : (
@@ -1989,6 +2062,7 @@
                                             onActualizarAccion: (accionId: string, data: any) => Promise<boolean>;
                                             onEliminarAccion: (accionId: string) => Promise<boolean>;
                                             onRefresh: () => void;
+                                            modoPortal?: boolean;
                                           }
 
                                           interface EvidenciaAccion {
@@ -2000,10 +2074,13 @@
                                             fechaSubida: string;
                                           }
 
-                                          function CardAccion({ accion, plan, onActualizarAccion, onEliminarAccion, onRefresh }: CardAccionProps) {
+                                          function CardAccion({ accion, plan, onActualizarAccion, onEliminarAccion, onRefresh, modoPortal = false }: CardAccionProps) {
                                             const [modalEditar, setModalEditar] = useState(false);
                                             const [modalEvidencia, setModalEvidencia] = useState(false);
                                             const [evidenciasLista, setEvidenciasLista] = useState<EvidenciaAccion[]>([]);
+                                            // Estado local: lista de evidencias (se carga desde backend)�n/evidencias desde backoffice
+                                             // const [modalEditar, setModalEditar] = useState(false);
+                                             // const [modalEvidencia, setModalEvidencia] = useState(false);
                                             const [cargandoEvidencias, setCargandoEvidencias] = useState(true);
                                             
                                             // Cargar lista de evidencias desde el backend
@@ -2073,30 +2150,22 @@
                                             const Icon = config.icon;
                                             const hallazgo = plan.hallazgos.find(h => h.id === accion.hallazgoId);
 
-                                            const handleEditar = () => {
-                                              setModalEditar(true);
-                                            };
-
-                                            const handleCargarEvidencia = () => {
-                                              console.log('🟢 handleCargarEvidencia llamado - abriendo modal');
-                                              setModalEvidencia(true);
-                                            };
-
+ const handleEditar = () => { setModalEditar(true); };
+                                            const handleCargarEvidencia = () => { setModalEvidencia(true); };
                                             const handleMarcarCompletada = async () => {
-                                              // Validar que no esté ya completada (usar estadoEfectivo para coherencia con badge)
-                                              if (estadoEfectivo === 'COMPLETADA') {
-                                                toast.warning('Acción ya completada', {
-                                                  description: 'Esta acción ya se encuentra en estado completado',
-                                                });
-                                                return;
-                                              }
-
-                                              // ✅ LLAMADA AL BACKEND
-                                              await onActualizarAccion(accion.id, {
-                                                estado: 'COMPLETADA',
-                                                progreso: 100
-                                              });
+                                              if (estadoEfectivo === 'COMPLETADA') return;
+                                              await onActualizarAccion(accion.id, { estado: 'COMPLETADA', progreso: 100 });
                                             };
+
+
+
+
+
+
+
+
+
+
 
                                             return (
                                               <div className="bg-white rounded-lg border border-gray-200 p-5">
@@ -2144,7 +2213,7 @@
                                                       </div>
                                                     </div>
 
-                                                    {/* Información */}
+                                              {/* Información */}
                                                     <div className="grid grid-cols-4 gap-4 text-xs text-gray-600 mb-3">
                                                       <div>
                                                         <div className="flex items-center gap-1 mb-1">
@@ -2218,62 +2287,105 @@
                                                       </div>
                                                     )}
 
-                                                    {/* Acciones */}
-                                                    <div className="flex gap-2">
-                                                      <button 
-                                                        onClick={handleEditar}
-                                                        className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded text-sm hover:bg-gray-50 transition-colors flex items-center gap-1.5"
-                                                      >
-                                                        <Edit2 className="w-3.5 h-3.5" />
-                                                        Editar
-                                                      </button>
-                                                      <button 
-                                                        onClick={handleCargarEvidencia}
-                                                        className="px-3 py-1.5 bg-white border border-gray-300 text-gray-700 rounded text-sm hover:bg-gray-50 transition-colors flex items-center gap-1.5"
-                                                      >
-                                                        <Upload className="w-3.5 h-3.5" />
-                                                        Cargar Evidencia
-                                                      </button>
-                                                      {estadoEfectivo !== 'COMPLETADA' && (
-                                                        <button 
-                                                          onClick={handleMarcarCompletada}
-                                                          className="px-3 py-1.5 bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] text-white rounded text-sm hover:shadow transition-all flex items-center gap-1.5"
+
+                                                    
+                                                    {/* Botones de accion: solo visibles en modo portal (auditado) */}
+                                                    {modoPortal && (
+                                                      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-200">
+                                                        <button
+                                                          onClick={handleEditar}
+                                                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium transition-colors"
                                                         >
-                                                          <CheckCircle2 className="w-3.5 h-3.5" />
-                                                          Marcar Completada
+                                                          <Edit2 className="w-3.5 h-3.5" />
+                                                          Editar
                                                         </button>
-                                                      )}
-                                                    </div>
+                                                        <button
+                                                          onClick={handleCargarEvidencia}
+                                                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-50 font-medium transition-colors"
+                                                        >
+                                                          <Upload className="w-3.5 h-3.5" />
+                                                          Subir Evidencia
+                                                        </button>
+                                                        {estadoEfectivo !== 'COMPLETADA' && (
+                                                          <button
+                                                            onClick={handleMarcarCompletada}
+                                                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-medium transition-colors"
+                                                          >
+                                                            <CheckCircle2 className="w-3.5 h-3.5" />
+                                                            Marcar Completada
+                                                          </button>
+                                                        )}
+                                                      </div>
+                                                    )}
+
+                                                    {/* Modal Editar Accion (portal) */}
+                                                    {modalEditar && (
+                                                      <ModalEditarAccion
+                                                        accion={accion}
+                                                        onClose={() => setModalEditar(false)}
+                                                        onGuardar={async (data) => {
+                                                          const ok = await onActualizarAccion(accion.id, data);
+                                                          if (ok) { setModalEditar(false); onRefresh(); }
+                                                        }}
+                                                      />
+                                                    )}
+
+                                                    {/* Modal Cargar Evidencia (portal) */}
+                                                    {modalEvidencia && (
+                                                      <ModalCargarEvidencia
+                                                        accion={accion}
+                                                        planId={plan.id}
+                                                        onClose={() => setModalEvidencia(false)}
+                                                        onEvidenciasCargadas={async () => {
+                                                          const evidencias = await controlInternoService.getEvidenciasByAccion(accion.id);
+                                                          setEvidenciasLista(Array.isArray(evidencias) ? evidencias : []);
+                                                          setModalEvidencia(false);
+                                                        }}
+                                                      />
+                                                    )}
+
+
+
+
+
+
+
+
+
+
+
+
+
                                                   </div>
                                                 </div>
 
-                                                {/* Modal Editar Acción */}
+                                                {/* TODO: Modal Editar Acci�n � habilitar cuando OCI pueda editar acciones
                                                 {modalEditar && (
-                                                  <ModalEditarAccion 
-                                                    accion={accion} 
+                                                  <ModalEditarAccion
+                                                    accion={accion}
                                                     onClose={() => setModalEditar(false)}
                                                     onGuardar={onActualizarAccion}
                                                   />
                                                 )}
+                                                 */}
 
-                                                {/* Modal Cargar Evidencia */}
+                                                {/* TODO: Modal Cargar Evidencia � habilitar cuando OCI gestione evidencias
                                                 {modalEvidencia && (
-                                                  <ModalCargarEvidencia 
+                                                  <ModalCargarEvidencia
                                                     accion={accion}
                                                     planId={plan.id}
                                                     onClose={() => setModalEvidencia(false)}
                                                     onEvidenciasCargadas={async () => {
-                                                      // Recargar lista de evidencias
                                                       try {
                                                         const evidencias = await controlInternoService.getEvidenciasByAccion(accion.id);
                                                         setEvidenciasLista(Array.isArray(evidencias) ? evidencias : []);
-                                                      } catch (e) {
-                                                        // fallback
-                                                      }
+                                                      } catch (e) {}
                                                       onRefresh();
                                                     }}
                                                   />
                                                 )}
+                                                 */}
+
                                               </div>
                                             );
                                           }
@@ -3846,7 +3958,7 @@
                                                   {/* Contenido */}
                                                   <div className="flex-1 overflow-auto px-6 py-6">
                                                     <div className="space-y-4">
-                                                      {/* Información de la Acción */}
+                                              {/* Información de la Acción */}
                                                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                                                         <div className="text-sm font-medium text-blue-900 mb-1">Acción Correctiva</div>
                                                         <div className="text-sm text-blue-700">{accion.descripcion}</div>
