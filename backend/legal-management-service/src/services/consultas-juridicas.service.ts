@@ -59,9 +59,9 @@ export class ConsultasJuridicasService implements OnModuleInit {
             const normalizedKeys = filtros.asignadoKeys.map(k => k.toLowerCase());
             if (uuidKey) {
                 query.andWhere(
-                    `(consulta.abogadoAsignadoId::text = :userId
-                      OR LOWER(consulta.abogadoAsignadoNombre) IN (:...normalizedKeys)
-                      OR LOWER(consulta.abogadoAsignadoNombre) = (
+                    `(consulta.abogado_asignado_id::text = :userId
+                      OR LOWER(consulta.abogado_asignado_nombre) IN (:...normalizedKeys)
+                      OR LOWER(consulta.abogado_asignado_nombre) = (
                           SELECT LOWER(p.nom_largo)
                           FROM auth."user" u
                           LEFT JOIN auth.personas p ON p.id_person = u.id_person
@@ -566,7 +566,7 @@ export class ConsultasJuridicasService implements OnModuleInit {
         if (filtros.asignadoKeys?.length) {
             const normalizedKeys = filtros.asignadoKeys.map((key) => key.toLowerCase());
             query.andWhere(
-                '(consulta.abogadoAsignadoId IN (:...asignadoKeys) OR LOWER(consulta.abogadoAsignadoNombre) IN (:...normalizedKeys))',
+                '(consulta.abogado_asignado_id::text IN (:...asignadoKeys) OR LOWER(consulta.abogadoAsignadoNombre) IN (:...normalizedKeys))',
                 { asignadoKeys: filtros.asignadoKeys, normalizedKeys },
             );
         }

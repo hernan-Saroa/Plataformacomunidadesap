@@ -211,6 +211,12 @@ export class ExpedienteService {
                 queryBuilder.andWhere(
                     `(LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys)
                       OR LOWER(expediente.abogadoSustanciador) = (
+                          SELECT LOWER(u.public_id::text)
+                          FROM auth."user" u
+                          WHERE u.id_user::text = :userId
+                          LIMIT 1
+                      )
+                      OR LOWER(expediente.abogadoSustanciador) = (
                           SELECT LOWER(p.nom_largo)
                           FROM auth."user" u
                           LEFT JOIN auth.personas p ON p.id_person = u.id_person

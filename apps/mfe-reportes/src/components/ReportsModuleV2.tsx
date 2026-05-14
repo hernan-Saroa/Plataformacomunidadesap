@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { Card, Badge, Progress, Tooltip, TooltipContent, TooltipTrigger, Tabs, TabsContent, TabsList, TabsTrigger, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
 import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { EmptyStatePremium } from './EmptyStatesPremium';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { ReportBuilderModal } from './ReportBuilderModal';
@@ -458,27 +459,26 @@ interface ReportCardProps {
   delay?: number;
 }
 
+const CATEGORY_CONFIG: Record<ReportCategory, { icon: any; color: string; bgColor: string; label: string }> = {
+  dashboard: { icon: BarChart3, color: '#003DA5', bgColor: '#EFF6FF', label: 'Dashboard' },
+  usuarios: { icon: Users, color: '#3b82f6', bgColor: '#eff6ff', label: 'Usuarios' },
+  estructura: { icon: Building2, color: '#06b6d4', bgColor: '#ecfeff', label: 'Estructura' },
+  programas: { icon: GraduationCap, color: '#10b981', bgColor: '#f0fdf4', label: 'Programas' },
+  roles: { icon: Shield, color: '#8b5cf6', bgColor: '#f5f3ff', label: 'Roles' },
+  auditoria: { icon: Activity, color: '#ef4444', bgColor: '#fef2f2', label: 'Auditoría' },
+  aspirantes: { icon: Target, color: '#f59e0b', bgColor: '#fffbeb', label: 'Aspirantes' },
+  empleo: { icon: Briefcase, color: '#059669', bgColor: '#d1fae5', label: 'Empleo' },
+  'certificados-lab': { icon: FileCheck, color: '#8b5cf6', bgColor: '#f5f3ff', label: 'Cert. Laborales' },
+  profesoral: { icon: BookOpen, color: '#0891b2', bgColor: '#cffafe', label: 'Profesoral' },
+  'control-interno': { icon: Shield, color: '#dc2626', bgColor: '#fee2e2', label: 'Control Interno' },
+  verificacion: { icon: Award, color: '#7c3aed', bgColor: '#ede9fe', label: 'Verificación' },
+  'gestion-legal': { icon: Layers, color: '#003DA5', bgColor: '#EFF6FF', label: 'Gestión Legal' },
+};
+
 function ReportCard({ report, onGenerate, onToggleFavorite, delay = 0 }: ReportCardProps) {
   const [showFormats, setShowFormats] = useState(false);
 
-  const getCategoryConfig = (categoria: ReportCategory) => {
-    const configs: Record<ReportCategory, { icon: any; color: string; bgColor: string; label: string }> = {
-      dashboard: { icon: BarChart3, color: '#003DA5', bgColor: '#EFF6FF', label: 'Dashboard' },
-      usuarios: { icon: Users, color: '#3b82f6', bgColor: '#eff6ff', label: 'Usuarios' },
-      estructura: { icon: Building2, color: '#06b6d4', bgColor: '#ecfeff', label: 'Estructura' },
-      programas: { icon: GraduationCap, color: '#10b981', bgColor: '#f0fdf4', label: 'Programas' },
-      roles: { icon: Shield, color: '#8b5cf6', bgColor: '#f5f3ff', label: 'Roles' },
-      auditoria: { icon: Activity, color: '#ef4444', bgColor: '#fef2f2', label: 'Auditoría' },
-      aspirantes: { icon: Target, color: '#f59e0b', bgColor: '#fffbeb', label: 'Aspirantes' },
-      empleo: { icon: Briefcase, color: '#059669', bgColor: '#d1fae5', label: 'Empleo' },
-      'certificados-lab': { icon: FileCheck, color: '#8b5cf6', bgColor: '#f5f3ff', label: 'Cert. Laborales' },
-      profesoral: { icon: BookOpen, color: '#0891b2', bgColor: '#cffafe', label: 'Profesoral' },
-      'control-interno': { icon: Shield, color: '#dc2626', bgColor: '#fee2e2', label: 'Control Interno' },
-      verificacion: { icon: Award, color: '#7c3aed', bgColor: '#ede9fe', label: 'Verificación' },
-      'gestion-legal': { icon: Layers, color: '#003DA5', bgColor: '#EFF6FF', label: 'Gestión Legal' },
-    };
-    return configs[categoria];
-  };
+  const getCategoryConfig = (categoria: ReportCategory) => CATEGORY_CONFIG[categoria];
 
   const config = getCategoryConfig(report.categoria);
   const CategoryIcon = config.icon;
@@ -693,6 +693,13 @@ const PERMISSION_TO_CATEGORY: Record<string, string> = {
   'verificacion': 'verificacion',
 };
 
+const ALL_CATEGORIES: { id: string; label: string }[] = [
+  { id: 'todos', label: 'Todos' },
+  ...(Object.entries(CATEGORY_CONFIG) as [ReportCategory, { label: string }][]).map(
+    ([id, { label }]) => ({ id, label })
+  ),
+];
+
 export function ReportsModuleV2() {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('todos');
@@ -889,7 +896,9 @@ export function ReportsModuleV2() {
   };
 
   return (
-    <Container4K className="space-y-6">
+    <>
+      <Toaster position="top-right" richColors />
+      <Container4K className="space-y-6">
       {/* Header - DÍA 5: ResponsiveHeader */}
       <ResponsiveHeader
         title="Motor de Reportes V2"
@@ -1091,6 +1100,7 @@ export function ReportsModuleV2() {
           onScheduleCreated={handleScheduleReport}
         />
       )}
-    </Container4K>
+      </Container4K>
+    </>
   );
 }
