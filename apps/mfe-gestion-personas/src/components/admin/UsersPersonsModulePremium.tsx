@@ -46,7 +46,8 @@ import {
   QrCode
 } from 'lucide-react';
 import { Card, Badge, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, Avatar, AvatarFallback, AvatarImage, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CreatePersonModal } from './CreatePersonModal';
 import { AssignAccessModal } from './AssignAccessModal';  
@@ -66,6 +67,9 @@ import React, { useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks';
 import { ModalCambiarContrasena } from "./ModalCambiarContrasena"; 
 import { estructuraService } from '../../services/estructuraService';
+import { PasswordHistoryModal } from './PasswordHistoryModal';
+import { useTableColumns, ColumnSelector } from '../../hooks/useTableColumns';
+import type { ColumnDefinition } from '../../hooks/useTableColumns';
 
 const ICON_MAP: Record<string, any> = {
   Shield,
@@ -89,6 +93,15 @@ const getIconComponent = (iconName: string) => {
 
 // ✅ DÍA 4: Container4K para padding adaptativo
 // ✅ DÍA 5: ResponsiveHeader para headers adaptativos
+
+const PERSONAS_COLUMNS: ColumnDefinition[] = [
+  { key: 'roles', label: 'Roles', default: true },
+  { key: 'territorial', label: 'Territorial', default: true },
+  { key: 'cetap', label: 'CETAP', default: true },
+  { key: 'carpeta', label: 'Carpeta Digital', default: false },
+  { key: 'estado', label: 'Estado', default: true },
+  { key: 'actividad', label: 'Última Actividad', default: false },
+];
 
 export function UsersPersonsModulePremium() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -126,11 +139,15 @@ export function UsersPersonsModulePremium() {
   const [rolesSaving, setRolesSaving] = useState(false);
   const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false); // ✅ MODAL CAMBIAR CONTRASEÑA
+  const [showPasswordHistoryModal, setShowPasswordHistoryModal] = useState(false);
+  const [passwordHistory, setPasswordHistory] = useState<any[]>([]);
+  const [isLoadingPasswordHistory, setIsLoadingPasswordHistory] = useState(false);
   const itemsPerPage = 10;
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
   const isMountedRef = useRef(true);
   const latestLoadUsersRequestRef = useRef(0);
+  const { visibleCols, setVisibleCols } = useTableColumns('personas', PERSONAS_COLUMNS);
 
   // ✅ FUNCIÓN PARA CARGAR USUARIOS DESDE EL BACKEND
   const loadUsers = async () => {
@@ -815,10 +832,10 @@ export function UsersPersonsModulePremium() {
   };
 
   const handleViewPasswordHistory = (user: any) => {
-    toast.info("Historial de Contraseñas", {
-      description: `Mostrando historial de ${user.firstName} ${user.lastName}`,
-    });
-    // En producción: abrir modal con historial de cambios
+    setSelectedUser(user);
+    setPasswordHistory([]);
+    setIsLoadingPasswordHistory(false);
+    setShowPasswordHistoryModal(true);
   };
 
   const clearAllFilters = () => {
@@ -1259,9 +1276,16 @@ export function UsersPersonsModulePremium() {
                   {loading ? 'Cargando usuarios...' : `Mostrando ${displayUsers.length} de ${totalUsers} usuarios`}
                 </p>
               </div>
-              <Badge variant="outline" className="font-semibold">
-                Total: {totalUsers}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="font-semibold">
+                  Total: {totalUsers}
+                </Badge>
+                <ColumnSelector
+                  columns={PERSONAS_COLUMNS}
+                  visibleCols={visibleCols}
+                  setVisibleCols={setVisibleCols}
+                />
+              </div>
             </div>
           </div>
 
@@ -1304,6 +1328,7 @@ export function UsersPersonsModulePremium() {
                   >
                     Usuario
                   </th>
+                  {visibleCols.has('roles') && (
                   <th
                     className="text-left font-semibold uppercase"
                     style={{
@@ -1317,6 +1342,8 @@ export function UsersPersonsModulePremium() {
                   >
                     Roles
                   </th>
+                  )}
+                  {visibleCols.has('territorial') && (
                   <th
                     className="text-left font-semibold uppercase"
                     style={{
@@ -1330,6 +1357,8 @@ export function UsersPersonsModulePremium() {
                   >
                     Territorial
                   </th>
+                  )}
+                  {visibleCols.has('cetap') && (
                   <th
                     className="text-left font-semibold uppercase"
                     style={{
@@ -1343,6 +1372,8 @@ export function UsersPersonsModulePremium() {
                   >
                     CETAP
                   </th>
+                  )}
+                  {visibleCols.has('carpeta') && (
                   <th
                     className="text-center font-semibold uppercase"
                     style={{
@@ -1356,6 +1387,8 @@ export function UsersPersonsModulePremium() {
                   >
                     Carpeta Digital
                   </th>
+                  )}
+                  {visibleCols.has('estado') && (
                   <th
                     className="text-left font-semibold uppercase"
                     style={{
@@ -1369,6 +1402,8 @@ export function UsersPersonsModulePremium() {
                   >
                     Estado
                   </th>
+                  )}
+                  {visibleCols.has('actividad') && (
                   <th
                     className="text-left font-semibold uppercase"
                     style={{
@@ -1382,6 +1417,7 @@ export function UsersPersonsModulePremium() {
                   >
                     Última Actividad
                   </th>
+                  )}
                   <th
                     className="text-right font-semibold uppercase"
                     style={{
@@ -1470,6 +1506,7 @@ export function UsersPersonsModulePremium() {
                         </td>
 
                         {/* Celda Roles - Mostrar todos los roles simultáneos */}
+                        {visibleCols.has('roles') && (
                         <td
                           style={{
                             padding: "16px",
@@ -1487,8 +1524,10 @@ export function UsersPersonsModulePremium() {
                             ))}
                           </div>
                         </td>
+                        )}
 
                         {/* ✅ Celda Territorial */}
+                        {visibleCols.has('territorial') && (
                         <td
                           style={{
                             padding: "16px",
@@ -1519,8 +1558,10 @@ export function UsersPersonsModulePremium() {
                             </span>
                           )}
                         </td>
+                        )}
 
                         {/* ✅ Celda CETAP */}
+                        {visibleCols.has('cetap') && (
                         <td
                           style={{
                             padding: "16px",
@@ -1560,8 +1601,10 @@ export function UsersPersonsModulePremium() {
                             </span>
                           )}
                         </td>
+                        )}
 
                         {/* ✅ Celda Carpeta Digital */}
+                        {visibleCols.has('carpeta') && (
                         <td
                           style={{
                             padding: "16px",
@@ -1597,8 +1640,10 @@ export function UsersPersonsModulePremium() {
                             </button>
                           </div>
                         </td>
+                        )}
 
                         {/* Celda Estado */}
+                        {visibleCols.has('estado') && (
                         <td
                           style={{
                             padding: "16px",
@@ -1627,8 +1672,10 @@ export function UsersPersonsModulePremium() {
                             })()}
                           </div>
                         </td>
+                        )}
 
                         {/* Celda Última Actividad */}
+                        {visibleCols.has('actividad') && (
                         <td
                           style={{
                             padding: "16px",
@@ -1653,6 +1700,7 @@ export function UsersPersonsModulePremium() {
                             </span>
                           </div>
                         </td>
+                        )}
 
                         {/* Celda Acciones */}
                         <td
@@ -2224,6 +2272,20 @@ export function UsersPersonsModulePremium() {
           }}
           user={selectedUser}
           mode="admin-reset"
+        />
+      )}
+
+      {/* ✅ Modal Historial de Contraseñas */}
+      {showPasswordHistoryModal && selectedUser && (
+        <PasswordHistoryModal
+          isOpen={showPasswordHistoryModal}
+          onClose={() => {
+            setShowPasswordHistoryModal(false);
+            setSelectedUser(null);
+          }}
+          user={selectedUser}
+          history={passwordHistory}
+          isLoading={isLoadingPasswordHistory}
         />
       )}
     </Container4K>

@@ -11,7 +11,8 @@ import {
   ChevronLeft,
   Settings
 } from 'lucide-react';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { CertificadosLaboralesDashboard } from './CertificadosLaboralesDashboard';
 import { ValidarCertificadoQR } from './ValidarCertificadoQR';
 import { AnalyticsDashboard } from './AnalyticsDashboard';

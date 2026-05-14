@@ -6,7 +6,7 @@
 
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { toast } from 'sonner';
-import { legalService } from '../../../../services/api/legal.service';
+import { legalService, ocService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 
 // ============ TIPOS ============
@@ -109,6 +109,7 @@ export interface OrganismoControl {
   id: string;
   nombre: string;
   descripcion: string;
+  correos: string[];
   activo: boolean;
 }
 
@@ -411,30 +412,35 @@ const organismosControlIniciales: OrganismoControl[] = [
     id: 'CONTRALORIA',
     nombre: 'Contraloría General de la República',
     descripcion: 'Máximo órgano de control fiscal del Estado',
+    correos: [],
     activo: true
   },
   {
     id: 'PROCURADURIA',
     nombre: 'Procuraduría General de la Nación',
     descripcion: 'Entidad encargada de investigar, sancionar, intervenir y prevenir las irregularidades cometidas por los gobernantes, los funcionarios públicos, los particulares que ejercen funciones públicas y las agencias del Estado',
+    correos: [],
     activo: true
   },
   {
     id: 'FISCALIA',
     nombre: 'Fiscalía General de la Nación',
     descripcion: 'Entidad de la rama judicial del poder público con plena autonomía administrativa y presupuestal',
+    correos: [],
     activo: true
   },
   {
     id: 'PERSONERIA',
     nombre: 'Personería Distrital',
     descripcion: 'Órgano de control del Distrito Capital',
+    correos: [],
     activo: true
   },
   {
     id: 'DEFENSORIA',
     nombre: 'Defensoría del Pueblo',
     descripcion: 'Institución del Estado encargada de velar por la promoción, el ejercicio y la divulgación de los derechos humanos',
+    correos: [],
     activo: true
   }
 ];
@@ -525,7 +531,18 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
             // Buscar si existe configuración cargada para este módulo
             const cargada = configsCargadas.find(c => c && c.id === inicial.id);
             if (cargada) {
-              return { ...inicial, ...cargada };
+              // Para tiposProcesos: merge por id para no perder tipos del default que el backend no tenga (ej: Proceso Penal)
+              // Para todo lo demás (estados, mediosControl, etc.): el backend manda, comportamiento original
+              const mergeTiposProcesos = (base: TipoProcesoJudicial[] = [], override: TipoProcesoJudicial[] = []): TipoProcesoJudicial[] => {
+                const map = new Map(base.map(item => [item.id, item]));
+                override.forEach(item => map.set(item.id, item));
+                return Array.from(map.values());
+              };
+              return {
+                ...inicial,
+                ...cargada,
+                tiposProcesos: mergeTiposProcesos(inicial.tiposProcesos, cargada.tiposProcesos),
+              };
             }
             return inicial;
           });
@@ -719,6 +736,18 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
           legalService.saveConfiguration(config.id, config)
         )
       );
+
+      // Sincronizar organismos de control al backend
+      try {
+        await ocService.syncOrganismosControl(
+          organismosControl.map(o => ({
+            ...o,
+            correos: o.correos ?? [],
+          }))
+        );
+      } catch (err) {
+        console.warn('⚠️ No se pudo sincronizar organismos al backend:', err);
+      }
 
       // Guardar en localStorage como backup
       localStorage.setItem('sigl-configuraciones', JSON.stringify(configuraciones));

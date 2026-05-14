@@ -1,7 +1,6 @@
 /**
- * generarReporteExpedientesPDF - Genera un PDF con los expedientes filtrados
- * Usa window.print() con una ventana emergente para máxima compatibilidad
- * Cada expediente se muestra en una página separada con toda su información
+ * generarReporteExpedientesPDF - Genera y descarga un PDF con los expedientes filtrados
+ * Usa html2canvas + jsPDF para descargar directamente sin diálogo de impresión
  */
 
 interface ExpedienteReporte {
@@ -360,20 +359,71 @@ export function generarReporteExpedientesPDF(expedientes: ExpedienteReporte[], f
 </body>
 </html>`;
 
-  // Abrir ventana de impresión
-  const ventana = window.open('', '_blank', 'width=900,height=700');
-  if (!ventana) {
-    alert('Por favor permite las ventanas emergentes para descargar el reporte.');
+  // Renderizar en iframe oculto y descargar como PDF
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:900px;height:700px;visibility:hidden;';
+  document.body.appendChild(iframe);
+
+  const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+  if (!iframeDoc) {
+    document.body.removeChild(iframe);
     return;
   }
 
-  ventana.document.write(htmlCompleto);
-  ventana.document.close();
+  iframeDoc.open();
+  iframeDoc.write(htmlCompleto);
+  iframeDoc.close();
 
-  // Esperar a que cargue y lanzar impresión
-  ventana.onload = () => {
-    setTimeout(() => {
-      ventana.print();
-    }, 500);
+  // Dar tiempo al iframe para renderizar imágenes y fuentes
+  const descargar = async () => {
+    await new Promise(r => setTimeout(r, 800));
+    try {
+      const { default: html2canvas } = await import('html2canvas');
+      const { jsPDF } = await import('jspdf');
+
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const A4_W = 210;
+      const A4_H = 297;
+
+      const paginas = iframeDoc.querySelectorAll<HTMLElement>('.page');
+      const targets = paginas.length > 0 ? Array.from(paginas) : [iframeDoc.body];
+
+      for (let i = 0; i < targets.length; i++) {
+        const canvas = await html2canvas(targets[i], {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          windowWidth: 900,
+        });
+        const imgData = canvas.toDataURL('image/jpeg', 0.92);
+        const imgW = A4_W;
+        const imgH = (canvas.height * A4_W) / canvas.width;
+
+        if (i > 0) pdf.addPage();
+
+        // Si la imagen es más alta que A4, dividir en sub-páginas
+        if (imgH <= A4_H) {
+          pdf.addImage(imgData, 'JPEG', 0, 0, imgW, imgH);
+        } else {
+          let yOffset = 0;
+          while (yOffset < imgH) {
+            if (yOffset > 0) pdf.addPage();
+            pdf.addImage(imgData, 'JPEG', 0, -yOffset, imgW, imgH);
+            yOffset += A4_H;
+          }
+        }
+      }
+
+      const fecha = new Date().toISOString().slice(0, 10);
+      pdf.save(`Reporte_Expedientes_${tituloFiltro.replace(/\s+/g, '_')}_${fecha}.pdf`);
+    } finally {
+      document.body.removeChild(iframe);
+    }
   };
+
+  // onload puede no disparar con document.write, usar setTimeout como fallback
+  let disparado = false;
+  const lanzar = () => { if (!disparado) { disparado = true; descargar(); } };
+  iframe.onload = lanzar;
+  setTimeout(lanzar, 300);
 }

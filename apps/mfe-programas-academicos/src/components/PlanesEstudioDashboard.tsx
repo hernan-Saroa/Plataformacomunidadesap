@@ -17,7 +17,7 @@ import {
   ArrowUpRight, ArrowDownRight, Minus, Hash, Grid3X3,
 } from 'lucide-react';
 import { apiClient } from '../../services/api';
-import { Card } from '@esap-mfe/shared-ui';
+import './PlanesEstudioDashboard.css';
 
 interface ProgramData {
   id: string;
@@ -30,6 +30,14 @@ interface ProgramData {
   creditosPlan: number;
   ptaCatalogId?: string;
   asignaturas?: any[];
+}
+
+interface AsignaturaDashboard {
+  id?: string;
+  nucleo?: string;
+  nucleoTematico?: string;
+  semestre?: number | string;
+  creditos?: number | string;
 }
 
 const NIVEL_COLORS: Record<string, string> = {
@@ -46,11 +54,24 @@ const NUCLEO_CHART_COLORS = [
   '#8B5CF6', '#0284C7', '#E11D48', '#64748B',
 ];
 
+const toNumber = (value: unknown, fallback = 0) => {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : fallback;
+};
+
+const normalizePrograma = (programa: any): ProgramData => ({
+  ...programa,
+  creditos: toNumber(programa.creditos),
+  duracionSemestres: toNumber(programa.duracionSemestres ?? programa.duracion),
+  totalAsignaturas: toNumber(programa.totalAsignaturas ?? programa.total_asignaturas),
+  creditosPlan: toNumber(programa.creditosPlan ?? programa.creditos_plan),
+});
+
 export function PlanesEstudioDashboard() {
   const [programas, setProgramas] = useState<ProgramData[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPrograma, setSelectedPrograma] = useState<string | null>(null);
-  const [detailAsignaturas, setDetailAsignaturas] = useState<any[]>([]);
+  const [detailAsignaturas, setDetailAsignaturas] = useState<AsignaturaDashboard[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [viewTab, setViewTab] = useState<'cobertura' | 'nucleos' | 'comparativo'>('cobertura');
 
@@ -61,8 +82,12 @@ export function PlanesEstudioDashboard() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const response = await apiClient.get('/auth/api/v1/programas-academicos');
-      setProgramas((response.data || []).filter((p: any) => (p.totalAsignaturas || 0) > 0));
+      const response: any = await apiClient.get('/auth/api/v1/programas-academicos', {
+        params: { page: 1, limit: 500 },
+        requiresAuth: false,
+      });
+      const programasData = Array.isArray(response) ? response : response?.data || [];
+      setProgramas(programasData.map(normalizePrograma).filter((p: ProgramData) => p.totalAsignaturas > 0));
     } catch (err) {
       console.error('Error loading dashboard data:', err);
     }
@@ -78,8 +103,11 @@ export function PlanesEstudioDashboard() {
     setSelectedPrograma(progId);
     setLoadingDetail(true);
     try {
-      const response = await apiClient.get(`/auth/api/v1/programas-academicos/${progId}/asignaturas`);
-      setDetailAsignaturas(response.data || []);
+      const response: any = await apiClient.get(`/auth/api/v1/programas-academicos/${progId}/asignaturas`, {
+        requiresAuth: false,
+      });
+      const asignaturasData = Array.isArray(response) ? response : response?.data || [];
+      setDetailAsignaturas(asignaturasData);
     } catch (_e) { /* silent */ }
     setLoadingDetail(false);
   };
@@ -137,9 +165,9 @@ export function PlanesEstudioDashboard() {
     if (!detailAsignaturas.length) return [];
     const map = new Map<string, { count: number; creditos: number }>();
     detailAsignaturas.forEach(a => {
-      const n = a.nucleo || 'Sin nucleo';
+      const n = a.nucleoTematico || a.nucleo || 'Sin nucleo';
       const ex = map.get(n) || { count: 0, creditos: 0 };
-      map.set(n, { count: ex.count + 1, creditos: ex.creditos + (a.creditos || 0) });
+      map.set(n, { count: ex.count + 1, creditos: ex.creditos + toNumber(a.creditos) });
     });
     return Array.from(map.entries())
       .map(([name, data], i) => ({ name, ...data, color: NUCLEO_CHART_COLORS[i % NUCLEO_CHART_COLORS.length] }))
@@ -151,9 +179,9 @@ export function PlanesEstudioDashboard() {
     if (!detailAsignaturas.length) return [];
     const map = new Map<number, { count: number; creditos: number }>();
     detailAsignaturas.forEach(a => {
-      const sem = a.semestre || 1;
+      const sem = toNumber(a.semestre, 1);
       const ex = map.get(sem) || { count: 0, creditos: 0 };
-      map.set(sem, { count: ex.count + 1, creditos: ex.creditos + (a.creditos || 0) });
+      map.set(sem, { count: ex.count + 1, creditos: ex.creditos + toNumber(a.creditos) });
     });
     return Array.from(map.entries())
       .sort((a, b) => a[0] - b[0])
@@ -193,7 +221,7 @@ export function PlanesEstudioDashboard() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="planes-estudio-dashboard space-y-6">
       {/* Global KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
@@ -394,12 +422,11 @@ export function PlanesEstudioDashboard() {
                 <AnimatePresence>
                   {isSelected && (
                     <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      className="overflow-hidden"
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -4 }}
                     >
-                      <div className="px-4 pb-4 border-t border-gray-100 pt-3">
+                      <div className="px-4 pb-4 border-t border-gray-100 pt-4">
                         {loadingDetail ? (
                           <div className="flex items-center justify-center py-6">
                             <Loader2 className="w-5 h-5 animate-spin text-[#003DA5]" />
@@ -408,18 +435,21 @@ export function PlanesEstudioDashboard() {
                           <div className="grid md:grid-cols-2 gap-4">
                             {/* Nucleo Pie */}
                             {detailNucleoData.length > 0 && (
-                              <div>
-                                <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-wider mb-2">Distribucion por Nucleo</h4>
-                                <div style={{ height: 220 }}>
-                                  <ResponsiveContainer width="100%" height="100%">
-                                    <PieChart>
+                              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                                <h4 className="text-xs font-black text-gray-600 uppercase tracking-wider mb-3">Distribucion por Nucleo</h4>
+                                <div className="h-[320px] w-full min-w-0">
+                                  <ResponsiveContainer key={`${prog.id}-nucleos`} width="100%" height={320}>
+                                    <PieChart margin={{ top: 12, right: 28, bottom: 12, left: 28 }}>
                                       <Pie
                                         data={detailNucleoData}
                                         cx="50%"
                                         cy="50%"
-                                        outerRadius={80}
+                                        innerRadius={48}
+                                        outerRadius={112}
+                                        paddingAngle={2}
                                         dataKey="creditos"
-                                        label={({ name, creditos }) => `${name.slice(0, 12)}${name.length > 12 ? '..' : ''} (${creditos})`}
+                                        labelLine={false}
+                                        label={({ name, creditos }) => `${name.slice(0, 16)}${name.length > 16 ? '..' : ''} (${creditos})`}
                                       >
                                         {detailNucleoData.map((entry, i) => (
                                           <Cell key={i} fill={entry.color} />
@@ -434,17 +464,18 @@ export function PlanesEstudioDashboard() {
 
                             {/* Semestre Bar */}
                             {detailSemestreData.length > 0 && (
-                              <div>
-                                <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-wider mb-2">Carga por Semestre</h4>
-                                <div style={{ height: 220 }}>
-                                  <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={detailSemestreData}>
+                              <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+                                <h4 className="text-xs font-black text-gray-600 uppercase tracking-wider mb-3">Carga por Semestre</h4>
+                                <div className="h-[320px] w-full min-w-0">
+                                  <ResponsiveContainer key={`${prog.id}-semestres`} width="100%" height={320}>
+                                    <BarChart data={detailSemestreData} margin={{ top: 16, right: 20, bottom: 8, left: 0 }}>
                                       <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                                      <XAxis dataKey="semestre" tick={{ fontSize: 9 }} />
-                                      <YAxis tick={{ fontSize: 9 }} />
+                                      <XAxis dataKey="semestre" tick={{ fontSize: 11 }} />
+                                      <YAxis tick={{ fontSize: 11 }} />
                                       <Tooltip />
-                                      <Bar dataKey="creditos" name="Creditos" fill="#003DA5" radius={[4, 4, 0, 0]} />
-                                      <Bar dataKey="count" name="Asignaturas" fill="#059669" radius={[4, 4, 0, 0]} />
+                                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                                      <Bar dataKey="creditos" name="Creditos" fill="#003DA5" radius={[6, 6, 0, 0]} maxBarSize={54} />
+                                      <Bar dataKey="count" name="Asignaturas" fill="#059669" radius={[6, 6, 0, 0]} maxBarSize={54} />
                                     </BarChart>
                                   </ResponsiveContainer>
                                 </div>

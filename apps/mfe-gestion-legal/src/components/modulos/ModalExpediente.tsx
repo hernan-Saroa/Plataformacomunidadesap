@@ -768,9 +768,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         descripcion: data.descripcion,
         fechaVencimiento: data.vencimiento,
         prioridad: data.prioridad.toLowerCase(),
-        // Enviamos nombre por ahora ya que los IDs del modal son mocks ('1', '2'...)
-        // El backend guardará esto en responsable_nombre
-        responsableNombre: data.responsable
+        responsableNombre: data.responsable,
+        responsableId: data.responsableId ?? null
       });
 
       toast.success('✅ Tarea creada');

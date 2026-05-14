@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   Send, X, FileText, CheckCircle, AlertCircle, Upload, Eye,
   Mail, Calendar, User, Building2, Clock, Save, Download, Loader2,
-  Trash2, FileSpreadsheet, Image as ImageIcon, Paperclip, FileCheck, FolderOpen
+  Trash2, FileSpreadsheet, Image as ImageIcon, Paperclip, FileCheck, FolderOpen, Plus, AtSign
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ocService, correosJuridicosService } from '../../../../services/api/legal.service';
@@ -92,7 +92,8 @@ export function ModalRespuestaOrgano({
   const [radicado, setRadicado] = useState(requerimientoId);
   const [contenidoRespuesta, setContenidoRespuesta] = useState('');
   const [destinatario, setDestinatario] = useState('');
-  const [email, setEmail] = useState(emailPredeterminado || '');
+  const [emails, setEmails] = useState<string[]>(emailPredeterminado ? [emailPredeterminado] : []);
+  const [emailInput, setEmailInput] = useState('');
   const [cargo, setCargo] = useState('');
   const [checklistItems, setChecklistItems] = useState({
     completitud: false,
@@ -137,7 +138,9 @@ export function ModalRespuestaOrgano({
         if (borrador) {
           setContenidoRespuesta(borrador.contenido || '');
           setDestinatario(borrador.destinatarioNombre || '');
-          setEmail(borrador.destinatarioEmail || emailPredeterminado || '');
+          const emailsGuardados = (borrador.destinatarioEmail || emailPredeterminado || '')
+            .split(',').map((e: string) => e.trim()).filter(Boolean);
+          setEmails(emailsGuardados);
           setCargo(borrador.destinatarioCargo || '');
           if (borrador.tipoRespuesta) setTipoRespuesta(borrador.tipoRespuesta);
 
@@ -152,7 +155,7 @@ export function ModalRespuestaOrgano({
             }
             setDocumentosBorrador(Array.isArray(adjuntos) ? adjuntos : []);
           }
-          toast.info('Borrador recuperado', { description: 'Se han cargado los datos guardados previamente.' });
+          // borrador cargado silenciosamente
         }
 
       } catch (error) {
@@ -222,7 +225,7 @@ Escuela Superior de Administración Pública - ESAP`;
         requerimientoId,
         contenido: contenidoRespuesta,
         destinatarioNombre: destinatario,
-        destinatarioEmail: email,
+        destinatarioEmail: emails.join(','),
         destinatarioCargo: cargo,
         tipoRespuesta,
         // CORRECCIÓN: Enviar array directo, el backend maneja jsonb
@@ -248,9 +251,9 @@ Escuela Superior de Administración Pública - ESAP`;
       return;
     }
 
-    if (!email.trim()) {
+    if (emails.length === 0) {
       toast.error('Destinatario requerido', {
-        description: 'Debe ingresar el email del destinatario',
+        description: 'Debe ingresar al menos un correo destinatario',
         icon: <AlertCircle className="w-4 h-4" />
       });
       return;
@@ -258,7 +261,6 @@ Escuela Superior de Administración Pública - ESAP`;
 
     try {
       setEnviando(true);
-      toast.info('Enviando respuesta...', { description: 'Procesando documentos y contactando servicio de correo.' });
 
       // 1. Subir los archivos seleccionados al módulo de documentos (Directo a la zona de documentos)
       const nuevosArchivosUrls: { nombre: string; url: string }[] = [];
@@ -287,27 +289,24 @@ Escuela Superior de Administración Pública - ESAP`;
         });
       }
 
-      // 2. Enviar el correo a través de Microsoft Graph
+      // 2. Enviar el correo a través de Microsoft Graph (primer correo en to, resto en cc)
       await correosJuridicosService.sendEmail({
-        to: email,
+        to: emails[0],
+        cc: emails.slice(1),
         subject: `Respuesta a Requerimiento ${radicado} - ${organismoNombre}`,
         body: contenidoRespuesta,
         attachments: attachmentsForEmail
       });
 
-      // Registrar la actuación en el sistema (importante para mantener trazabilidad)
-      try {
-        await ocService.enviarRespuesta(requerimientoId, {
-          destinatarioEmail: email,
-          asunto: `Respuesta a Requerimiento ${radicado} - ${organismoNombre}`,
-          cuerpoMensaje: contenidoRespuesta,
-          tipoRespuesta: tipoRespuesta,
-          destinatarioNombre: '', // Ya no se captura
-          destinatarioCargo: ''   // Ya no se captura
-        });
-      } catch (e) {
-        console.warn('Correo enviado pero falló registro local:', e);
-      }
+      // Registrar estado ENVIADO en el backend (el correo ya fue enviado arriba)
+      await ocService.enviarRespuesta(requerimientoId, {
+        destinatarioEmail: emails.join(','),
+        asunto: `Respuesta a Requerimiento ${radicado} - ${organismoNombre}`,
+        cuerpoMensaje: contenidoRespuesta,
+        tipoRespuesta: tipoRespuesta,
+        destinatarioNombre: '',
+        destinatarioCargo: ''
+      });
 
       toast.success('Respuesta enviada', {
         description: 'La respuesta ha sido enviada oficialmente.',
@@ -456,19 +455,92 @@ Escuela Superior de Administración Pública - ESAP`;
           </div> */}
 
           {/* DATOS DEL DESTINATARIO */}
-          <div className="grid grid-cols-1 gap-4">
-            <div className="space-y-2">
-              <label className="text-sm font-bold text-gray-900 flex items-center gap-1">
-                <Mail className="w-4 h-4 text-gray-600" />
-                Email
-              </label>
-              <Input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="correo@ejemplo.com"
-                disabled={isReadOnly}
-              />
-            </div>
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-gray-900 flex items-center gap-1">
+              <Mail className="w-4 h-4 text-gray-600" />
+              Correos destinatarios
+            </label>
+
+            {/* Chips de correos agregados */}
+            {emails.length > 0 && (
+              <div className="flex flex-wrap gap-2 p-2 bg-gray-50 border border-gray-200 rounded-lg">
+                {emails.map((correo, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-full"
+                  >
+                    <AtSign className="w-3 h-3 flex-shrink-0" />
+                    {correo}
+                    {idx === 0 && (
+                      <span className="ml-1 px-1 py-0.5 bg-blue-200 text-blue-700 text-[10px] rounded font-semibold">Principal</span>
+                    )}
+                    {!isReadOnly && (
+                      <button
+                        type="button"
+                        onClick={() => setEmails(prev => prev.filter((_, i) => i !== idx))}
+                        className="ml-0.5 text-blue-400 hover:text-red-500 transition-colors"
+                        title="Quitar correo"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Input para agregar nuevo correo */}
+            {!isReadOnly && (
+              <div className="flex gap-2">
+                <Input
+                  type="email"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                      e.preventDefault();
+                      const val = emailInput.trim();
+                      if (!val) return;
+                      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+                        toast.error('Correo electrónico inválido');
+                        return;
+                      }
+                      if (emails.includes(val)) {
+                        toast.error('Este correo ya está en la lista');
+                        return;
+                      }
+                      setEmails(prev => [...prev, val]);
+                      setEmailInput('');
+                    }
+                  }}
+                  placeholder={emails.length === 0 ? 'correo@entidad.gov.co (Enter para agregar)' : 'Agregar otro correo...'}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    const val = emailInput.trim();
+                    if (!val) return;
+                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+                      toast.error('Correo electrónico inválido');
+                      return;
+                    }
+                    if (emails.includes(val)) {
+                      toast.error('Este correo ya está en la lista');
+                      return;
+                    }
+                    setEmails(prev => [...prev, val]);
+                    setEmailInput('');
+                  }}
+                  className="flex-shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
+            {emails.length > 1 && (
+              <p className="text-xs text-gray-500">El primer correo es el destinatario principal, el resto van en copia (CC).</p>
+            )}
           </div>
 
           {/* BOTÓN PARA APLICAR TEMPLATE - REMOVED */}
