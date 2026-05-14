@@ -312,6 +312,19 @@ export class AuditoriasController {
   }
 
   /**
+   * GET /esap/auditorias/personas/all
+   * Retorna todas las personas de auth.personas (máx 50, orden alfabético).
+   * Pensado para precargar el selector «Responsable del Área Auditada» al abrir el formulario.
+   */
+  @Get('personas/all')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async getAllPersonas(@Query('limit') limit?: string) {
+    const parsedLimit = limit ? parseInt(limit, 10) : 50;
+    return this.auditoriasService.getAllPersonas(parsedLimit > 0 ? parsedLimit : 50);
+  }
+
+  /**
    * GET /esap/auditorias/personas/buscar
    * Busca una persona por número de identificación
    * Retorna el ID_TERCERO que se usa como FK

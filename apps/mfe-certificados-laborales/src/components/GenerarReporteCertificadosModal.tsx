@@ -74,7 +74,7 @@ interface CertificadoReporte {
 
 const ITEMS_PER_PAGE = 6;
 const EXPORT_PAGE_LIMIT = 500;
-const MAX_EXPORT_PAGES = 200;
+const MAX_EXPORT_PAGES = 1000;
 
 const normalizarTexto = (value?: string | null): string => {
   const cleaned = (value || '').replace(/\u00a0/g, ' ').trim();
@@ -236,6 +236,7 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportProgressMessage, setExportProgressMessage] = useState('');
   const requestSequenceRef = useRef(0);
   const lastFiltersKeyRef = useRef('');
 
@@ -428,8 +429,13 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
     };
   };
 
-  const buildParams = (page: number, limit: number): Record<string, any> => {
+  const buildParams = (
+    page: number,
+    limit: number,
+    options: { forExport?: boolean } = {},
+  ): Record<string, any> => {
     const params: Record<string, any> = { page, limit };
+    if (options.forExport) params.forExport = 'true';
     if (fechaDesde) params.fechaDesde = fechaDesde;
     if (fechaHasta) params.fechaHasta = fechaHasta;
     if (mode === 'persona' && selectedPerson?.documento) {
@@ -446,12 +452,16 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
     return items.filter((item) => item.empleado.documento.replace(/\D+/g, '') === documento);
   };
 
-  const fetchCertificadosPage = async (page: number, limit: number): Promise<{
+  const fetchCertificadosPage = async (
+    page: number,
+    limit: number,
+    options: { forExport?: boolean } = {},
+  ): Promise<{
     items: CertificadoReporte[];
     total: number;
     rawCount: number;
   }> => {
-    const response = await certificadosService.laborales.listar(buildParams(page, limit));
+    const response = await certificadosService.laborales.listar(buildParams(page, limit, options));
     const rawItems = getResponseItems(response);
     const total = getResponseTotal(response, rawItems.length);
     const transformed = rawItems.map(transformCertificado);
@@ -486,7 +496,11 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
     try {
       const pageToFetch = mode === 'persona' && !selectedPerson ? 1 : previewPage;
       const limitToFetch = mode === 'persona' && !selectedPerson ? EXPORT_PAGE_LIMIT : ITEMS_PER_PAGE;
-      const { items, total } = await fetchCertificadosPage(pageToFetch, limitToFetch);
+      const { items, total } = await fetchCertificadosPage(
+        pageToFetch,
+        limitToFetch,
+        mode === 'persona' && !selectedPerson ? { forExport: true } : {},
+      );
       if (requestId !== requestSequenceRef.current) return;
       const sorted = [...items].sort((a, b) => getSortTime(b) - getSortTime(a));
       setPreviewItems(sorted);
@@ -539,6 +553,7 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
       setPreviewPage(1);
       setPreviewError(null);
       setIsExporting(false);
+      setExportProgressMessage('');
       lastFiltersKeyRef.current = '';
       requestSequenceRef.current += 1;
     }
@@ -570,15 +585,29 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
     const all: CertificadoReporte[] = [];
     let page = 1;
     let total = 0;
+    setExportProgressMessage('Consultando registros para el reporte...');
 
     while (page <= MAX_EXPORT_PAGES) {
-      const { items, total: responseTotal, rawCount } = await fetchCertificadosPage(page, EXPORT_PAGE_LIMIT);
+      const { items, total: responseTotal, rawCount } = await fetchCertificadosPage(
+        page,
+        EXPORT_PAGE_LIMIT,
+        { forExport: true },
+      );
       total = responseTotal || total;
       all.push(...items);
+      setExportProgressMessage(
+        total > 0
+          ? `Consultando registros ${Math.min(all.length, total)} de ${total}...`
+          : `Consultando registros ${all.length}...`,
+      );
 
       const reachedTotal = total > 0 && page * EXPORT_PAGE_LIMIT >= total;
       if (rawCount < EXPORT_PAGE_LIMIT || reachedTotal) break;
       page += 1;
+    }
+
+    if (page > MAX_EXPORT_PAGES) {
+      throw new Error('El reporte es demasiado grande. Ajusta los filtros e intenta nuevamente.');
     }
 
     const unique = new Map<string, CertificadoReporte>();
@@ -656,6 +685,7 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
     }
 
     setIsExporting(true);
+    setExportProgressMessage('Preparando la exportacion...');
     toast.loading('Generando reporte...', {
       description: 'Estamos consultando el histórico de certificados laborales.',
       id: 'exportar-certificados-laborales',
@@ -671,6 +701,7 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
         return;
       }
 
+      setExportProgressMessage('Construyendo archivo Excel...');
       const XLSX = await import('xlsx');
       const { headers, rows } = buildExcelRows(items);
       const generatedAt = new Date().toLocaleString('es-CO');
@@ -733,6 +764,7 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
       };
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Histórico');
 
+      setExportProgressMessage('Descargando archivo Excel...');
       const scopePart =
         mode === 'persona' && selectedPerson
           ? sanitizeFilePart(`${selectedPerson.nombre}_${selectedPerson.documento}`)
@@ -752,6 +784,7 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
       });
     } finally {
       setIsExporting(false);
+      setExportProgressMessage('');
     }
   };
 
@@ -759,7 +792,12 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
 
   const modalContent = (
     <div className="fixed inset-0 z-[9999] overflow-hidden">
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity" onClick={onClose} />
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
+        onClick={() => {
+          if (!isExporting) onClose();
+        }}
+      />
 
       <div className="fixed inset-0 flex items-end justify-center p-0 sm:items-center sm:p-4">
         <motion.div
@@ -767,7 +805,8 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: '100%', opacity: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="flex max-h-[95vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:max-h-[90vh] sm:max-w-4xl sm:rounded-2xl"
+          className="relative flex max-h-[95vh] w-full flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:max-h-[90vh] sm:max-w-4xl sm:rounded-2xl"
+          aria-busy={isExporting}
         >
           <div className="flex-shrink-0 bg-[#003DA5] px-4 py-3 sm:px-6 sm:py-4">
             <div className="flex items-center justify-between gap-3">
@@ -784,7 +823,8 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
               </div>
               <button
                 onClick={onClose}
-                className="-mr-2 flex-shrink-0 p-2 text-white/80 transition-colors hover:text-white"
+                disabled={isExporting}
+                className="-mr-2 flex-shrink-0 p-2 text-white/80 transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label="Cerrar modal"
               >
                 <X className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -796,12 +836,13 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
             <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <button
                 type="button"
+                disabled={isExporting}
                 onClick={() => {
                   setMode('todos');
                   setSelectedPerson(null);
                   setSearchTerm('');
                 }}
-                className={`rounded-xl border p-4 text-left transition-all ${
+                className={`rounded-xl border p-4 text-left transition-all disabled:cursor-not-allowed disabled:opacity-70 ${
                   mode === 'todos'
                     ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100'
                     : 'border-gray-200 bg-white hover:border-blue-200 hover:bg-blue-50/40'
@@ -820,8 +861,9 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
 
               <button
                 type="button"
+                disabled={isExporting}
                 onClick={() => setMode('persona')}
-                className={`rounded-xl border p-4 text-left transition-all ${
+                className={`rounded-xl border p-4 text-left transition-all disabled:cursor-not-allowed disabled:opacity-70 ${
                   mode === 'persona'
                     ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100'
                     : 'border-gray-200 bg-white hover:border-blue-200 hover:bg-blue-50/40'
@@ -854,6 +896,7 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
                     value={fechaDesde}
                     onChange={(event) => setFechaDesde(event.target.value)}
                     max={fechaHasta || undefined}
+                    disabled={isExporting}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -864,6 +907,7 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
                     value={fechaHasta}
                     onChange={(event) => setFechaHasta(event.target.value)}
                     min={fechaDesde || undefined}
+                    disabled={isExporting}
                   />
                 </div>
               </div>
@@ -878,11 +922,12 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
               {(fechaDesde || fechaHasta) && (
                 <button
                   type="button"
+                  disabled={isExporting}
                   onClick={() => {
                     setFechaDesde('');
                     setFechaHasta('');
                   }}
-                  className="mt-3 text-sm font-medium text-[#003DA5] hover:text-[#002873]"
+                  className="mt-3 text-sm font-medium text-[#003DA5] hover:text-[#002873] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Limpiar rango de fechas
                 </button>
@@ -906,6 +951,7 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
                       setSelectedPerson(null);
                     }}
                     className="pl-10"
+                    disabled={isExporting}
                   />
                 </div>
 
@@ -917,11 +963,12 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
                     </div>
                     <button
                       type="button"
+                      disabled={isExporting}
                       onClick={() => {
                         setSelectedPerson(null);
                         setSearchTerm('');
                       }}
-                      className="text-left text-sm font-semibold text-emerald-800 hover:text-emerald-950 sm:text-right"
+                      className="text-left text-sm font-semibold text-emerald-800 hover:text-emerald-950 disabled:cursor-not-allowed disabled:opacity-60 sm:text-right"
                     >
                       Cambiar persona
                     </button>
@@ -964,8 +1011,9 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
                     <motion.button
                       key={person.documento}
                       type="button"
+                      disabled={isExporting}
                       onClick={() => handleSelectPerson(person)}
-                      className="w-full rounded-xl border border-gray-200 bg-white p-4 text-left transition-all hover:border-[#003DA5] hover:bg-blue-50/30 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-blue-100"
+                      className="w-full rounded-xl border border-gray-200 bg-white p-4 text-left transition-all hover:border-[#003DA5] hover:bg-blue-50/30 hover:shadow-md focus:outline-none focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-70"
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.18, delay: index * 0.025 }}
@@ -1111,6 +1159,21 @@ export function GenerarReporteCertificadosModal({ isOpen, onClose }: GenerarRepo
               </Button>
             </div>
           </div>
+
+          {isExporting && (
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-white/80 px-6 backdrop-blur-sm">
+              <div className="w-full max-w-sm rounded-xl border border-blue-100 bg-white p-5 text-center shadow-xl">
+                <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-[#003DA5]" />
+                <p className="text-sm font-semibold text-gray-900">Generando reporte Excel</p>
+                <p className="mt-1 text-sm text-gray-600">
+                  {exportProgressMessage || 'Consultando el historico completo...'}
+                </p>
+                <p className="mt-3 text-xs text-gray-500">
+                  Espera a que termine la descarga antes de realizar otra accion.
+                </p>
+              </div>
+            </div>
+          )}
         </motion.div>
       </div>
     </div>

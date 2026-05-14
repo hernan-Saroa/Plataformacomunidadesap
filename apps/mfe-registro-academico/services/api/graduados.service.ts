@@ -526,9 +526,12 @@ const graduadosService = {
       return response;
     },
 
-    contarAprobacionPendiente: async (): Promise<{ count: number }> => {
+    contarAprobacionPendiente: async (
+      stage?: "approver" | "head",
+    ): Promise<{ count: number }> => {
+      const query = stage ? `?stage=${encodeURIComponent(stage)}` : "";
       const response = await apiClient.get(
-        `${SERVICE_PREFIX}/certificates/solicitudes/aprobacion/pendientes-count`,
+        `${SERVICE_PREFIX}/certificates/solicitudes/aprobacion/pendientes-count${query}`,
       );
       return response;
     },

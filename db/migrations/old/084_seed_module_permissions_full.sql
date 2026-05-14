@@ -137,7 +137,7 @@ FROM (VALUES
   ('certificados-laborales.certificate.generate', 'Generar Certificado', 'Emitir certificado laboral', 'certificados-laborales'),
   ('certificados-laborales.certificate.approve', 'Aprobar Certificado', 'Aprobar certificado para entrega', 'certificados-laborales'),
   ('certificados-laborales.certificate.sign', 'Firmar Certificado', 'Firmar digitalmente certificado', 'certificados-laborales'),
-  ('certificados-laborales.certificate.deliver', 'Entregar Certificado', 'Marcar como entregado', 'certificados-laborales'),
+  ('certificados-laborales.certificate.deliver', 'Reenviar Certificado', 'Reenviar certificado al correo del solicitante', 'certificados-laborales'),
   ('certificados-laborales.certificate.verify', 'Verificar Certificado', 'Validar autenticidad mediante QR', 'certificados-laborales'),
   ('certificados-laborales.certificate.revoke', 'Revocar Certificado', 'Anular certificado emitido', 'certificados-laborales'),
   ('certificados-laborales.template.manage', 'Gestionar Plantillas', 'Administrar plantillas de certificados', 'certificados-laborales'),
@@ -352,3 +352,15 @@ FROM (VALUES
   ('audit.config.edit', 'Editar Configuraciones', 'Modificar parámetros de auditoría', 'audit')
 ) AS p(code,name,description,module_code)
 JOIN auth.module m ON m.code = p.module_code;
+
+UPDATE auth.permission
+SET is_active = false
+WHERE code LIKE 'certificados-laborales.%'
+  AND code NOT IN (
+    'certificados-laborales.certificate.deliver',
+    'certificados-laborales.certificate.sign',
+    'certificados-laborales.certificate.verify',
+    'certificados-laborales.config.edit',
+    'certificados-laborales.export.report',
+    'certificados-laborales.template.manage'
+  );

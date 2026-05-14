@@ -68,7 +68,7 @@ const Card = ({ className = '', children, ...props }: React.HTMLAttributes<HTMLD
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
-type EstadoPlan = 'FORMULACION' | 'APROBADO' | 'EN_EJECUCION' | 'CON_RETRASO' | 'COMPLETADO' | 'SUSPENDIDO';
+type EstadoPlan = 'FORMULACION' | 'borrador' | 'revision' | 'APROBADO' | 'aprobado' | 'EN_EJECUCION' | 'en_ejecucion' | 'CON_RETRASO' | 'COMPLETADO' | 'completado' | 'SUSPENDIDO' | 'rechazado' | 'RECHAZADO';
 type SemaforoPlan = 'verde' | 'amarillo' | 'rojo';
 
 interface PlanMejoramiento {
@@ -766,7 +766,17 @@ function SeguimientoView({ planes, onAbrirCrearPlan, auditoriasDisponibles, onCo
     let resultado = planes;
     
     if (filtroEstado !== 'TODOS') {
-      resultado = resultado.filter(p => p.estado === filtroEstado);
+      // Agrupar estados del backend a filtros Kanban
+      const estadosDelFiltro: Record<string, string[]> = {
+        FORMULACION: ['FORMULACION', 'borrador', 'revision'],
+        APROBADO: ['APROBADO', 'aprobado'],
+        EN_EJECUCION: ['EN_EJECUCION', 'en_ejecucion'],
+        CON_RETRASO: ['CON_RETRASO'],
+        COMPLETADO: ['COMPLETADO', 'completado'],
+        SUSPENDIDO: ['SUSPENDIDO', 'rechazado', 'RECHAZADO'],
+      };
+      const permitidos = estadosDelFiltro[filtroEstado] ?? [filtroEstado];
+      resultado = resultado.filter(p => permitidos.includes(p.estado));
     }
     
     if (busqueda) {
@@ -784,11 +794,11 @@ function SeguimientoView({ planes, onAbrirCrearPlan, auditoriasDisponibles, onCo
 
   const estadisticas = useMemo(() => {
     const total = planes.length;
-    const formulacion = planes.filter(p => p.estado === 'FORMULACION').length;
-    const aprobados = planes.filter(p => p.estado === 'APROBADO').length;
-    const enEjecucion = planes.filter(p => p.estado === 'EN_EJECUCION').length;
+    const formulacion = planes.filter(p => p.estado === 'FORMULACION' || p.estado === 'borrador' || p.estado === 'revision').length;
+    const aprobados = planes.filter(p => p.estado === 'APROBADO' || p.estado === 'aprobado').length;
+    const enEjecucion = planes.filter(p => p.estado === 'EN_EJECUCION' || p.estado === 'en_ejecucion').length;
     const conRetraso = planes.filter(p => p.estado === 'CON_RETRASO').length;
-    const completados = planes.filter(p => p.estado === 'COMPLETADO').length;
+    const completados = planes.filter(p => p.estado === 'COMPLETADO' || p.estado === 'completado').length;
     const suspendidos = planes.filter(p => p.estado === 'SUSPENDIDO').length;
     
     // Semáforos
@@ -1109,7 +1119,23 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
         }}
       >
         {COLUMNAS_KANBAN.map((columna) => {
-        const planesColumna = planes.filter(p => p.estado === columna.id);
+        // Normalizar estados del backend (minúsculas) a columnas Kanban (MAYÚSCULAS)
+        const estadoToColumna: Record<string, string> = {
+          borrador: 'FORMULACION',
+          revision: 'FORMULACION',
+          FORMULACION: 'FORMULACION',
+          aprobado: 'APROBADO',
+          APROBADO: 'APROBADO',
+          en_ejecucion: 'EN_EJECUCION',
+          EN_EJECUCION: 'EN_EJECUCION',
+          CON_RETRASO: 'CON_RETRASO',
+          completado: 'COMPLETADO',
+          COMPLETADO: 'COMPLETADO',
+          rechazado: 'SUSPENDIDO',
+          RECHAZADO: 'SUSPENDIDO',
+          SUSPENDIDO: 'SUSPENDIDO',
+        };
+        const planesColumna = planes.filter(p => (estadoToColumna[p.estado] ?? p.estado) === columna.id);
         const colapsada = columnasColapsadas.has(columna.id);
         
         return (
@@ -1766,16 +1792,25 @@ function FilterButton({ active, onClick, label, count, color = 'gray' }: FilterB
 }
 
 function EstadoBadge({ estado }: { estado: EstadoPlan }) {
-  const config = {
-    FORMULACION: { label: 'Formulación', bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
-    APROBADO: { label: 'Aprobado', bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
-    EN_EJECUCION: { label: 'En Ejecución', bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300' },
-    CON_RETRASO: { label: 'Con Retraso', bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300' },
-    COMPLETADO: { label: 'Completado', bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
-    SUSPENDIDO: { label: 'Suspendido', bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-300' }
+  // Mapa unificado: backend (minusculas) + legacy (MAYUSCULAS)
+  const configMap: Record<string, { label: string; bg: string; text: string; border: string }> = {
+    borrador:     { label: 'Borrador',      bg: 'bg-gray-100',    text: 'text-gray-700',    border: 'border-gray-300' },
+    revision:     { label: 'En Revision',   bg: 'bg-amber-100',   text: 'text-amber-700',   border: 'border-amber-300' },
+    aprobado:     { label: 'Aprobado',      bg: 'bg-blue-100',    text: 'text-blue-700',    border: 'border-blue-300' },
+    en_ejecucion: { label: 'En Ejecucion',  bg: 'bg-green-100',   text: 'text-green-700',   border: 'border-green-300' },
+    completado:   { label: 'Completado',    bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
+    rechazado:    { label: 'Rechazado',     bg: 'bg-red-100',     text: 'text-red-700',     border: 'border-red-300' },
+    FORMULACION:  { label: 'Formulacion',  bg: 'bg-purple-100',  text: 'text-purple-700',  border: 'border-purple-300' },
+    APROBADO:     { label: 'Aprobado',     bg: 'bg-blue-100',    text: 'text-blue-700',    border: 'border-blue-300' },
+    EN_EJECUCION: { label: 'En Ejecucion', bg: 'bg-green-100',   text: 'text-green-700',   border: 'border-green-300' },
+    CON_RETRASO:  { label: 'Con Retraso',  bg: 'bg-orange-100',  text: 'text-orange-700',  border: 'border-orange-300' },
+    COMPLETADO:   { label: 'Completado',   bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
+    SUSPENDIDO:   { label: 'Suspendido',   bg: 'bg-gray-100',    text: 'text-gray-700',    border: 'border-gray-300' },
+    RECHAZADO:    { label: 'Rechazado',    bg: 'bg-red-100',     text: 'text-red-700',     border: 'border-red-300' },
   };
+  const config = configMap[estado] ?? { label: estado, bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
 
-  const { label, bg, text, border } = config[estado];
+  const { label, bg, text, border } = config;
 
   return (
     <span className={`px-3 py-1 rounded-lg text-xs font-medium border ${bg} ${text} ${border}`}>

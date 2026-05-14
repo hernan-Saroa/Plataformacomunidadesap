@@ -96,9 +96,13 @@ interface Stats {
 interface CertificadosLaboralesDashboardProps {
   onNavigate?: (vista: string) => void;
   canManageTemplates?: boolean;
+  canEditPrima?: boolean;
+  canExportReport?: boolean;
+  canDeliver?: boolean;
+  canVerify?: boolean;
 }
 
-export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false }: CertificadosLaboralesDashboardProps) {
+export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates = false, canEditPrima = false, canExportReport = false, canDeliver = false, canVerify = false }: CertificadosLaboralesDashboardProps) {
   const resolverTemplateType = (value?: string) => {
     const base = String(value || '').toLowerCase();
     const normalizado = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
@@ -738,6 +742,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
         {/* Botones de acción - Mobile First */}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+            {canVerify && (
             <button
               onClick={() => onNavigate?.('validar-qr')}
               className="inline-flex items-center justify-center gap-2 transition-all font-semibold shadow-sm hover:shadow-md"
@@ -764,6 +769,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
               <QrCode className="w-5 h-5" strokeWidth={2.5} />
               <span>Validar Certificado</span>
             </button>
+            )}
 
             <button
               onClick={() => onNavigate?.('configuracion-plantilla')}
@@ -840,6 +846,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
               <span>{isRefreshing ? 'Actualizando...' : 'Actualizar'}</span>
             </button>
 
+            {canEditPrima && (
             <button
               onClick={() => setIsPrimaTecnicaOpen(true)}
               className="inline-flex max-w-full items-center justify-center gap-2 transition-all whitespace-normal text-center sm:w-auto sm:whitespace-nowrap sm:flex-shrink-0"
@@ -870,7 +877,9 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
               </span>
               <span className="leading-tight">Prima técnica y/o coordinación</span>
             </button>
+            )}
 
+            {canExportReport && (
             <button
               onClick={() => setIsReporteOpen(true)}
               className="inline-flex items-center justify-center gap-2 transition-all whitespace-nowrap flex-shrink-0 sm:w-32"
@@ -896,6 +905,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
               <Download className="w-5 h-5" strokeWidth={2} />
               <span>Exportar</span>
             </button>
+            )}
 
             <button
               onClick={() => setIsHistorialOpen(true)}
@@ -1373,6 +1383,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                                   <Download className="w-4 h-4 mr-2" />
                                   Descargar certificado
                                 </DropdownMenuItem>
+                                {canDeliver && (
                                 <DropdownMenuItem
                                   onClick={(e) => { e.stopPropagation(); handleReenviarEmail(cert); }}
                                   disabled={processingIds.has(cert.id)}
@@ -1380,6 +1391,7 @@ export function CertificadosLaboralesDashboard({ onNavigate, canManageTemplates 
                                   <Mail className="w-4 h-4 mr-2" />
                                   Reenviar certificado
                                 </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>

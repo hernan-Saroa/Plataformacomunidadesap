@@ -3380,6 +3380,39 @@ export class AuditoriasService {
   }
 
   /**
+   * Obtiene todas las personas de auth.personas (máx 50) para precargar selectores.
+   * Usada por el formulario de auditoría para mostrar la lista completa
+   * al hacer focus en el campo "Responsable del Área Auditada" sin escribir.
+   */
+  async getAllPersonas(limit = 50): Promise<any[]> {
+    try {
+      const rows = await this.auditoriaRepository.query(
+        `
+        SELECT id_person, nom_largo, nom_tercero, pri_apellido,
+               num_identificacion, tip_identificacion, dir_email
+          FROM auth.personas
+         WHERE nom_largo IS NOT NULL AND nom_largo != ''
+         ORDER BY nom_largo ASC
+         LIMIT $1
+        `,
+        [limit],
+      );
+      return rows.map((p: any) => ({
+        idPersona: p.id_person,
+        id: p.id_person,
+        nombre: p.nom_largo || `${p.nom_tercero || ''} ${p.pri_apellido || ''}`.trim(),
+        email: p.dir_email || '',
+        numeroIdentificacion: p.num_identificacion || '',
+        tipoIdentificacion: p.tip_identificacion || 'CC',
+        iniciales: this.getIniciales(p.nom_largo || ''),
+      }));
+    } catch (err) {
+      console.error('[getAllPersonas] error:', err);
+      return [];
+    }
+  }
+
+  /**
    * Obtiene personas configuradas como profesionales OCIG que pueden ser auditores
    * Los profesionales se configuran desde el módulo de Configuración OCIG
    */
@@ -3434,6 +3467,7 @@ export class AuditoriasService {
   private async crearNotificacionesAuditoriaCreada(auditoria: Auditoria): Promise<void> {
     console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] 🚀 Disparando evento de creación para ${auditoria.codigo}`);
     
+    // 1. Notificar al equipo OCI (Jefe, Líder, Supervisor, Admins)
     try {
       await this.notificacionesService.dispararEvento('EVT-AUD-CREATED', {
         auditoriaId: auditoria.id,
@@ -3449,7 +3483,72 @@ export class AuditoriasService {
         url_accion: `/control-interno/auditorias/${auditoria.id}`,
       });
     } catch (error) {
-      console.error(`[AuditoriasService.crearNotificacionesAuditoriaCreada] ❌ Error:`, error.message);
+      console.error(`[AuditoriasService.crearNotificacionesAuditoriaCreada] ❌ Error notificando equipo OCI:`, error.message);
+    }
+
+    // 2. Notificar directamente al Responsable del Área Auditada (AUDITADO)
+    // Tablas usadas: auth.user + auth.personas → id_user para notificar
+    // Se escribe en: control_interno.notificacion (vía notificacionesService)
+    //               + notifications.notificacion (campanita global del Shell)
+    if (auditoria.responsableAreaEmail) {
+      try {
+        console.log(`[AuditoriasService] 📧 Buscando usuario auditado por email: ${auditoria.responsableAreaEmail}`);
+
+        // Buscar id_user del responsable por su email en auth.user y auth.personas
+        const userResult = await this.auditoriaRepository.query(
+          `SELECT u.id_user
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+           WHERE (
+             LOWER(TRIM(u.email)) = LOWER(TRIM($1))
+             OR LOWER(TRIM(p.dir_email)) = LOWER(TRIM($1))
+           )
+           AND u.is_active = true
+           LIMIT 1`,
+          [auditoria.responsableAreaEmail]
+        );
+
+        if (userResult && userResult[0]?.id_user) {
+          const auditadoUserId = String(userResult[0].id_user);
+          console.log(`[AuditoriasService] ✅ Auditado encontrado: ${auditoria.responsableAreaEmail} → ${auditadoUserId}`);
+
+          // Disparar la notificación personalizada para el auditado
+          await this.notificacionesService.dispararEvento('EVT-AUD-CREATED', {
+            auditoriaId: auditoria.id,
+            auditoriaCodigo: auditoria.codigo,
+            usuarioId: auditadoUserId, // Destinatario explícito
+            responsableAreaEmail: auditoria.responsableAreaEmail,
+            tituloCustom: `🔔 Su área ha sido seleccionada para auditoría: ${auditoria.codigo}`,
+            mensajeCustom:
+              `Estimado/a ${auditoria.responsableAreaNombre || 'Responsable'}, ` +
+              `el Área de Control Interno (OCI) ha iniciado la auditoría "${auditoria.nombre}" ` +
+              `(${auditoria.codigo}) sobre su dependencia. ` +
+              `Por favor acceda al Portal del Auditado para ver los detalles y responder los hallazgos en los plazos establecidos.`,
+            metadata: {
+              auditoriaId: auditoria.id,
+              codigoAuditoria: auditoria.codigo,
+              nombreAuditoria: auditoria.nombre,
+              responsable: auditoria.responsableAreaNombre,
+              esNotificacionAuditado: true,
+            },
+            url_accion: `/portal-auditado`,
+          });
+          console.log(`[AuditoriasService] ✅ Notificación al auditado enviada: ${auditadoUserId}`);
+        } else {
+          console.warn(
+            `[AuditoriasService] ⚠️ No se encontró usuario activo con email "${auditoria.responsableAreaEmail}" ` +
+            `(el responsable puede no tener cuenta en el sistema todavía).`
+          );
+        }
+      } catch (error) {
+        // No fallar la creación de la auditoría si la notificación al auditado falla
+        console.error(`[AuditoriasService] ❌ Error al notificar al auditado:`, error.message);
+      }
+    } else {
+      console.warn(
+        `[AuditoriasService] ⚠️ La auditoría ${auditoria.codigo} no tiene "Responsable del Área Auditada" configurado. ` +
+        `No se enviará notificación al auditado.`
+      );
     }
   }
 

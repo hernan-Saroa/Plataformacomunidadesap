@@ -90,7 +90,7 @@ function hasDisciplinaryAccess(userRoles: Set<string>): boolean {
       return true;
     }
 
-    return role.includes('DISCIPLINARIO') || role.includes('OCID');
+    return role.includes('DISCIPLINARIO') || role.includes('OCID') || role.includes('SECRETARIA') || role.includes('RADICADOR') || role.includes('PROFESIONAL');
   });
 }
 

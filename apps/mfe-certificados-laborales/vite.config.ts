@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import federation from '@originjs/vite-plugin-federation';
 import path from 'path';
-import { getBuildBase, getBuildOutDir, stripBundleComments } from '../../scripts/mfe.config.mjs';
+import { cspNonceBootstrap, getBuildBase, getBuildOutDir, stripBundleComments } from '../../scripts/mfe.config.mjs';
 
 const appDir = 'mfe-certificados-laborales';
 
@@ -11,6 +11,7 @@ export default defineConfig({
   root: __dirname,
   plugins: [
     react(),
+    cspNonceBootstrap(appDir),
     stripBundleComments(),
     federation({
       name: 'certificados_laborales',

@@ -811,6 +811,13 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       toast.error('Por favor selecciona el tipo de documento');
       return;
     }
+    if (tipoDocumento !== 'CC') {
+      toast.error('Tipo de documento no válido', {
+        description: 'Por ahora solo puedes solicitar certificados laborales con Cédula de Ciudadanía (CC).',
+        duration: 6000,
+      });
+      return;
+    }
     if (!documentoIngresado) {
       toast.error('Por favor ingresa tu número de documento');
       return;
@@ -1497,9 +1504,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                             </SelectContent>
                           </Select>
                         )}
-                        {tipoDocumento !== '' && tipoDocumento !== 'CC'  && (
-                          <p style={{ fontSize: '12px', marginTop: '6px', marginLeft: '6px' }} className="text-red-500">Tipo de documento no válido</p>
-                        )}
                       </div>
 
                       {/* Número de Documento */}
@@ -1595,7 +1599,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                       {/* Botón Solicitar Certificado */}
                       <Button
                         onClick={handleBuscarEmpleado}
-                        disabled={buscandoEmpleado || estadoLaboral === 'inactivo' || tipoDocumento === '' || tipoDocumento !== 'CC'}
+                        disabled={buscandoEmpleado || estadoLaboral === 'inactivo' || tipoDocumento === ''}
                         className="w-full h-12 bg-gradient-to-r from-[#003DA5] to-[#1e5da8] hover:from-[#002d7a] hover:to-[#164a8f] text-white font-bold text-base shadow-lg"
                       >
                         {buscandoEmpleado ? (
