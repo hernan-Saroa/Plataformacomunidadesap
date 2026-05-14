@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Toaster } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import {
   Shield,
   LayoutDashboard,

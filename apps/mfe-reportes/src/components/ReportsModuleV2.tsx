@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { Card, Badge, Progress, Tooltip, TooltipContent, TooltipTrigger, Tabs, TabsContent, TabsList, TabsTrigger, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
 import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { EmptyStatePremium } from './EmptyStatesPremium';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { ReportBuilderModal } from './ReportBuilderModal';
@@ -889,7 +890,9 @@ export function ReportsModuleV2() {
   };
 
   return (
-    <Container4K className="space-y-6">
+    <>
+      <Toaster position="top-right" richColors />
+      <Container4K className="space-y-6">
       {/* Header - DÍA 5: ResponsiveHeader */}
       <ResponsiveHeader
         title="Motor de Reportes V2"
@@ -1091,6 +1094,7 @@ export function ReportsModuleV2() {
           onScheduleCreated={handleScheduleReport}
         />
       )}
-    </Container4K>
+      </Container4K>
+    </>
   );
 }
