@@ -63,10 +63,11 @@ export class CorreosJuridicosService {
      *   las rutas son /correos/track/...
      */
     private getTrackingBaseUrl(): { baseUrl: string; pathPrefix: string } {
-        const gatewayUrl = process.env.API_GATEWAY_URL;
-        if (gatewayUrl && !gatewayUrl.includes('localhost:3000')) {
+        const publicUrl = process.env.TRACKING_PUBLIC_URL || process.env.CORS_ORIGIN;
+        if (publicUrl) {
             // Producción/QA/Dev server: usa el gateway (nginx proxy pasa /legal/api/v1/* -> :3008/*)
-            return { baseUrl: gatewayUrl, pathPrefix: '/legal/api/v1' };
+            const firstUrl = publicUrl.split(',')[0].trim();
+            return { baseUrl: firstUrl, pathPrefix: '/legal/api/v1' };
         }
         // Local dev: acceso directo al puerto del servicio (sin proxy Vite)
         const port = process.env.PORT || '3008';

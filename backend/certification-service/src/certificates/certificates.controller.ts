@@ -231,11 +231,15 @@ export class CertificatesController {
     @Query('tipoVinculacion') tipoVinculacion?: string,
     @Query('fechaDesde') fechaDesde?: string,
     @Query('fechaHasta') fechaHasta?: string,
+    @Query('forExport') forExport?: string,
   ) {
     const parsedPage = page ? Number.parseInt(page, 10) : undefined;
     const parsedLimit = limit ? Number.parseInt(limit, 10) : undefined;
+    const isExportRequest = ['true', '1', 'si', 'yes', 'y'].includes(
+      String(forExport || '').trim().toLowerCase(),
+    );
     const hasFilters = Boolean(search || status || cargo || tipoVinculacion || fechaDesde || fechaHasta);
-    const hasPagination = Number.isFinite(parsedPage) || Number.isFinite(parsedLimit) || hasFilters;
+    const hasPagination = Number.isFinite(parsedPage) || Number.isFinite(parsedLimit) || hasFilters || isExportRequest;
 
     if (hasPagination) {
       return await this.certificatesService.findCertificadosPaginados({
@@ -247,6 +251,7 @@ export class CertificatesController {
         tipoVinculacion,
         fechaDesde,
         fechaHasta,
+        forExport: isExportRequest,
       });
     }
 

@@ -147,6 +147,30 @@ export class CertificatesService {
     return fallback;
   }
 
+  private async getValidationCountsByCertificateIds(
+    certificateIds: string[],
+  ): Promise<Map<string, number>> {
+    const uniqueIds = Array.from(new Set(certificateIds.filter(Boolean)));
+    if (!uniqueIds.length) return new Map();
+
+    const validationRows = await this.validationRepo
+      .createQueryBuilder('validation')
+      .select('validation.certificate_id', 'certificate_id')
+      .addSelect('COUNT(validation.id)', 'count')
+      .where('validation.certificate_id IN (:...certificateIds)', {
+        certificateIds: uniqueIds,
+      })
+      .groupBy('validation.certificate_id')
+      .getRawMany<{ certificate_id: string; count: string }>();
+
+    return new Map(
+      validationRows.map((row) => [
+        row.certificate_id,
+        Number.parseInt(row.count, 10) || 0,
+      ]),
+    );
+  }
+
   private sanitizeIdNumber(value?: string | null): string {
     const raw = String(value || '').trim();
     if (!raw) return '';
@@ -2562,24 +2586,23 @@ export class CertificatesService {
     await this.ensureTemplateSnapshots(certificates);
 
     // Agregar el conteo de validaciones para cada certificado
-    const certificatesWithCount = await Promise.all(
-      certificates.map(async (cert) => {
-        const employmentStatus = this.resolveEmploymentStatus(
-          cert.request?.hiring_date || cert.hiring_date,
-          cert.request?.request_date,
-          cert.request?.status,
-        );
-        const validationCount = await this.validationRepo.count({
-          where: { certificate_id: cert.id },
-        });
-        return {
-          ...cert,
-          email: cert.request?.email,
-          validation_count: validationCount,
-          employment_status: employmentStatus,
-        };
-      }),
+    const validationCounts = await this.getValidationCountsByCertificateIds(
+      certificates.map((cert) => cert.id),
     );
+
+    const certificatesWithCount = certificates.map((cert) => {
+      const employmentStatus = this.resolveEmploymentStatus(
+        cert.request?.hiring_date || cert.hiring_date,
+        cert.request?.request_date,
+        cert.request?.status,
+      );
+      return {
+        ...cert,
+        email: cert.request?.email,
+        validation_count: validationCounts.get(cert.id) || 0,
+        employment_status: employmentStatus,
+      };
+    });
 
     return certificatesWithCount;
   }
@@ -2593,9 +2616,12 @@ export class CertificatesService {
     tipoVinculacion?: string;
     fechaDesde?: string;
     fechaHasta?: string;
+    forExport?: boolean;
   }) {
     const safePage = Math.max(params.page || 1, 1);
-    const safeLimit = Math.min(Math.max(params.limit || 10, 1), 10);
+    const maxLimit = params.forExport ? 1000 : 10;
+    const defaultLimit = params.forExport ? maxLimit : 10;
+    const safeLimit = Math.min(Math.max(params.limit || defaultLimit, 1), maxLimit);
     const skip = (safePage - 1) * safeLimit;
 
     const qb = this.certificateRepo.createQueryBuilder('cert');
@@ -2681,24 +2707,23 @@ export class CertificatesService {
     await this.hydrateCertificatesRequestContext(certificates);
     await this.ensureTemplateSnapshots(certificates);
 
-    const certificatesWithCount = await Promise.all(
-      certificates.map(async (cert) => {
-        const employmentStatus = this.resolveEmploymentStatus(
-          cert.request?.hiring_date || cert.hiring_date,
-          cert.request?.request_date,
-          cert.request?.status,
-        );
-        const validationCount = await this.validationRepo.count({
-          where: { certificate_id: cert.id },
-        });
-        return {
-          ...cert,
-          email: cert.request?.email,
-          validation_count: validationCount,
-          employment_status: employmentStatus,
-        };
-      }),
+    const validationCounts = await this.getValidationCountsByCertificateIds(
+      certificates.map((cert) => cert.id),
     );
+
+    const certificatesWithCount = certificates.map((cert) => {
+      const employmentStatus = this.resolveEmploymentStatus(
+        cert.request?.hiring_date || cert.hiring_date,
+        cert.request?.request_date,
+        cert.request?.status,
+      );
+      return {
+        ...cert,
+        email: cert.request?.email,
+        validation_count: validationCounts.get(cert.id) || 0,
+        employment_status: employmentStatus,
+      };
+    });
 
     const [totalEmitidos, activos, revocados, expirados, escaneosQR] =
       await Promise.all([

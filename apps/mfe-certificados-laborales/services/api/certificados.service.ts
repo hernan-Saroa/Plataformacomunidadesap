@@ -123,6 +123,7 @@ export const certificadosService = {
       fechaHasta?: string;
       page?: number;
       limit?: number;
+      forExport?: boolean | string;
     }): Promise<any> {
       return apiClient.get(`${SERVICE_PREFIX}/certificates/certificados`, params);
     },
