@@ -59,7 +59,8 @@ export class ExpedienteController {
     }))
     async crear(
         @Body() body: any, // Cuando se usa FormData, el body llega como objeto plano (strings), validamos manualmente
-        @UploadedFiles() files: Array<any>
+        @UploadedFiles() files: Array<any>,
+        @Req() req?: any,
     ): Promise<Expediente> {
         // Parsear datos si vienen como strings (común en FormData)
         // Nota: NestJS con Express suele parsear el body automáticamente, pero los números pueden venir como strings.
@@ -80,30 +81,15 @@ export class ExpedienteController {
         if (data.cuantia) data.cuantia = Number(data.cuantia);
         if (data.terminoProcesalDias) data.terminoProcesalDias = Number(data.terminoProcesalDias);
 
-        // Asignación Automática based on User Role
-        // TODO: Validate these against a real Auth Token/Service in the future
-        const userId = body.userId;
-        const userRole = body.userRole;
+        const access = getLegalAccessFromRequest(req);
 
-        if (userId && userRole) {
-            if (userRole === 'RESUELVE_GESTION_LEGAL' || userRole === 'ABOGADO') {
-                // Usuarios Resuelve solo pueden asignarse a sí mismos
-                data.abogadoSustanciador = userId;
-            } else if (userRole === 'JEFE_OFICINA' || userRole === 'ADMIN') {
-                // Jefes pueden asignar a cualquiera. Si viene en el body, se respeta.
-                // Si no viene, queda sin asignar.
-                if (body.abogadoId) {
-                    data.abogadoSustanciador = body.abogadoId;
-                }
-            }
-        } else {
-            // Fallback legacy behavior: use abogadoId if provided directly
-            if (body.abogadoId) {
-                data.abogadoSustanciador = body.abogadoId;
-            }
+        if (access.esResuelveSolo && access.userId) {
+            data.abogadoSustanciador = access.userId;
+        } else if (body.abogadoId) {
+            data.abogadoSustanciador = body.abogadoId;
         }
 
-        const creadoPor = body.creadoPor || body.usuario || body.userName || body.userId || 'Sistema';
+        const creadoPor = body.creadoPor || body.usuario || access.userName || access.userId || 'Sistema';
         return this.expedienteService.crearExpediente(data, creadoPor);
     }
 
@@ -115,8 +101,11 @@ export class ExpedienteController {
     // ==================== ENDPOINTS DE ARCHIVO/ELIMINADO ====================
 
     @Get('estado/archivados')
-    async listarArchivados(): Promise<Expediente[]> {
-        return this.expedienteService.getExpedientesArchivados();
+    async listarArchivados(@Req() req?: any): Promise<Expediente[]> {
+        const access = getLegalAccessFromRequest(req);
+        return this.expedienteService.getExpedientesArchivados({
+            abogadoSustanciadorKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Post(':id/archivar')

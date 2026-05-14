@@ -163,8 +163,11 @@ export class RequerimientosOCController {
     // SISTEMA DE ARCHIVO
     // ============================================
     @Get('archivados/list')
-    async findAllArchivados(): Promise<RequerimientoOC[]> {
-        return this.service.findAllArchivados();
+    async findAllArchivados(@Req() req?: any): Promise<RequerimientoOC[]> {
+        const access = getLegalAccessFromRequest(req);
+        return this.service.findAllArchivados({
+            asignadoKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Patch(':id/archivar')

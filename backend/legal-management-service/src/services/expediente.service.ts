@@ -442,15 +442,23 @@ export class ExpedienteService {
     /**
      * Obtener expedientes archivados y eliminados
      */
-    async getExpedientesArchivados(): Promise<Expediente[]> {
-        return this.expedienteRepository.find({
-            where: [
-                { estadoArchivo: 'ARCHIVADO' },
-                { estadoArchivo: 'ELIMINADO' }
-            ],
-            order: { fechaArchivo: 'DESC' },
-            relations: ['actors']
-        });
+    async getExpedientesArchivados(filtros: { abogadoSustanciadorKeys?: string[] } = {}): Promise<Expediente[]> {
+        const query = this.expedienteRepository
+            .createQueryBuilder('expediente')
+            .leftJoinAndSelect('expediente.actors', 'actors')
+            .where('expediente.estadoArchivo IN (:...estadosArchivo)', {
+                estadosArchivo: ['ARCHIVADO', 'ELIMINADO'],
+            });
+
+        if (filtros.abogadoSustanciadorKeys?.length) {
+            const normalizedKeys = filtros.abogadoSustanciadorKeys.map((key) => key.toLowerCase());
+            query.andWhere(
+                '(expediente.abogadoSustanciador IN (:...abogadoSustanciadorKeys) OR LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys))',
+                { abogadoSustanciadorKeys: filtros.abogadoSustanciadorKeys, normalizedKeys },
+            );
+        }
+
+        return query.orderBy('expediente.fechaArchivo', 'DESC').getMany();
     }
 
     /**

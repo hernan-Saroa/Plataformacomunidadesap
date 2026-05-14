@@ -15,7 +15,7 @@ export class ProcesoCoactivoController {
         try {
             const access = getLegalAccessFromRequest(req);
             const procesos = await this.procesoCoactivoService.findAll({
-                asignadoKeys: access.esResuelveSolo ? access.userKeys : undefined,
+                responsableKeys: access.esResuelveSolo ? access.userKeys : undefined,
             });
             return procesos;
         } catch (error) {
@@ -38,9 +38,12 @@ export class ProcesoCoactivoController {
     // ============ SISTEMA DE ARCHIVO ============
 
     @Get('archivados/all')
-    async findAllArchivados() {
+    async findAllArchivados(@Req() req?: any) {
         try {
-            return await this.procesoCoactivoService.findAllArchivados();
+            const access = getLegalAccessFromRequest(req);
+            return await this.procesoCoactivoService.findAllArchivados({
+                responsableKeys: access.esResuelveSolo ? access.userKeys : undefined,
+            });
         } catch (error) {
             console.error('Error obteniendo archivados:', error);
             throw new HttpException('Error al obtener procesos archivados', HttpStatus.INTERNAL_SERVER_ERROR);
