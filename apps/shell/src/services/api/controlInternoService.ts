@@ -2217,20 +2217,30 @@ class ControlInternoService {
    * El JWT del usuario actual se inyecta automáticamente.
    */
   async getUsuariosActivos(): Promise<Array<{ id: string; nombre: string; email: string }>> {
-    const AUTH_URL = getServiceUrl('auth');
-    const token = getAccessToken();
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
-    const resp = await fetch(`${AUTH_URL}/users?status=active&limit=100`, { headers });
-    if (!resp.ok) throw new Error(`Error al cargar usuarios: ${resp.status}`);
-    const json = await resp.json() as { data: Array<{ id: string; full_name: string; email: string; user?: { id_user: string } }> };
-    return (json.data || []).map((u) => ({
-      id: u.user?.id_user ?? u.id,
-      nombre: u.full_name || u.email,
-      email: u.email,
-    }));
+    // Usa el endpoint del control-interno-service (mismo que usa el formulario de auditorías)
+    // El client ya incluye el JWT automáticamente
+    try {
+      const resp = await client.get<any>('/auditorias/personas/disponibles');
+      const lista = Array.isArray(resp) ? resp : (resp?.data ?? resp?.personas ?? []);
+      return lista.map((p: any) => ({
+        id: String(p.idPersona ?? p.id_persona ?? p.id ?? ''),
+        nombre: p.nombre ?? p.full_name ?? p.email ?? '',
+        email: p.email ?? '',
+      })).filter((p: any) => p.nombre);
+    } catch {
+      // Fallback: búsqueda vacía para traer todos
+      try {
+        const resp2 = await client.get<any>('/auditorias/personas/search?q=');
+        const lista2 = Array.isArray(resp2) ? resp2 : (resp2?.data ?? []);
+        return lista2.map((p: any) => ({
+          id: String(p.idPersona ?? p.id ?? ''),
+          nombre: p.nombre ?? p.full_name ?? p.email ?? '',
+          email: p.email ?? '',
+        })).filter((p: any) => p.nombre);
+      } catch {
+        return [];
+      }
+    }
   }
 
   // ==========================================================================

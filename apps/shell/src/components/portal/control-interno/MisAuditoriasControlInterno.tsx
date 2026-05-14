@@ -1905,75 +1905,137 @@ function TabPlanMejoramientoAuditado({
                     )}
 
                     <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      Descripción <span style={{ color: '#DC2626' }}>*</span>
+                      <span>Descripción <span style={{ color: '#DC2626' }}>*</span></span>
                       <textarea rows={2} placeholder="Describe la acción que se ejecutará para subsanar el hallazgo..."
                         value={newAccionDraft[plan.id]?.descripcion ?? ''}
                         onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], descripcion: e.target.value } }))}
                         style={{ borderRadius: 8, border: '1px solid #D1D5DB', padding: 8, fontSize: 13, resize: 'vertical', fontFamily: 'inherit' }} />
                     </label>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, alignItems: 'start' }}>
+                      {/* Responsable — combobox con filtro en tiempo real */}
                       <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        Responsable <span style={{ color: '#DC2626' }}>*</span>
-                        <div style={{ position: 'relative' }}>
-                          <input type="text"
-                            placeholder={usuarios.length ? 'Buscar persona del sistema...' : 'Nombre del responsable'}
-                            value={busquedaResponsable[plan.id] ?? newAccionDraft[plan.id]?.responsable ?? ''}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setBusquedaResponsable((prev) => ({ ...prev, [plan.id]: v }));
-                              setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], responsable: v } }));
-                            }}
-                            style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
-                          {/* Dropdown de sugerencias */}
-                          {usuarios.length > 0 && (busquedaResponsable[plan.id] || '').length >= 1 && (() => {
-                            const q = (busquedaResponsable[plan.id] || '').toLowerCase();
-                            const sugs = usuarios.filter((u) => u.nombre.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)).slice(0, 6);
-                            if (!sugs.length) return null;
-                            return (
-                              <div style={{ position: 'absolute', top: 36, left: 0, right: 0, background: 'white', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 50, maxHeight: 180, overflowY: 'auto' }}>
-                                {sugs.map((u) => (
-                                  <button key={u.id} type="button"
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], responsable: u.nombre } }));
-                                      setBusquedaResponsable((prev) => ({ ...prev, [plan.id]: u.nombre }));
-                                    }}
-                                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid #F3F4F6' }}>
-                                    <strong>{u.nombre}</strong>
-                                    <span style={{ color: '#9CA3AF', marginLeft: 6 }}>{u.email}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </div>
+                        <span>Responsable <span style={{ color: '#DC2626' }}>*</span></span>
+                        {newAccionDraft[plan.id]?.responsable ? (
+                          /* Persona seleccionada — mostrar chip con nombre + botón Cambiar */
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 8, background: '#F9FAFB', minHeight: 34 }}>
+                            <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#DBEAFE', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                              {(newAccionDraft[plan.id]?.responsable || '').split(' ').slice(0,2).map(s=>s[0]).join('').toUpperCase() || 'R'}
+                            </div>
+                            <span style={{ fontSize: 12, fontWeight: 600, color: '#111827', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {newAccionDraft[plan.id]?.responsable}
+                            </span>
+                            <button type="button"
+                              onClick={() => {
+                                setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], responsable: '' } }));
+                                setBusquedaResponsable((prev) => ({ ...prev, [plan.id]: '' }));
+                              }}
+                              style={{ fontSize: 11, color: '#2563EB', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', flexShrink: 0 }}>
+                              Cambiar
+                            </button>
+                          </div>
+                        ) : (
+                          /* Sin persona — input con dropdown filtrable */
+                          <div style={{ position: 'relative' }}>
+                            <input
+                              type="text"
+                              placeholder="Escribe 3 letras para buscar..."
+                              value={busquedaResponsable[plan.id] ?? ''}
+                              autoComplete="off"
+                              onChange={(e) => setBusquedaResponsable((prev) => ({ ...prev, [plan.id]: e.target.value }))}
+                              onFocus={() => setBusquedaResponsable((prev) => ({ ...prev, [plan.id]: prev[plan.id] ?? '' }))}
+                              onBlur={() => setTimeout(() => setBusquedaResponsable((prev) => {
+                                const { [plan.id]: _, ...rest } = prev;
+                                return rest;
+                              }), 200)}
+                              style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
+                            {/* Dropdown — solo con 3+ caracteres */}
+                            {busquedaResponsable[plan.id] !== undefined && (() => {
+                              const q = (busquedaResponsable[plan.id] || '').trim();
+                              // Hint cuando escribe pero aún no llega a 3 letras
+                              if (q.length > 0 && q.length < 3) {
+                                return (
+                                  <div style={{ position: 'absolute', top: 36, left: 0, right: 0, background: 'white', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 60, padding: '10px 12px', fontSize: 12, color: '#9CA3AF', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span style={{ fontSize: 14 }}>🔍</span>
+                                    Escribe {3 - q.length} letra{3 - q.length !== 1 ? 's' : ''} más para buscar...
+                                  </div>
+                                );
+                              }
+                              // Con 3+ letras → filtrar y mostrar
+                              if (q.length < 3) return null;
+                              const qL = q.toLowerCase();
+                              const lista = usuarios.filter(u =>
+                                u.nombre.toLowerCase().includes(qL) || u.email.toLowerCase().includes(qL)
+                              );
+                              return (
+                                <div style={{ position: 'absolute', top: 36, left: 0, right: 0, background: 'white', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 6px 16px rgba(0,0,0,0.12)', zIndex: 60, maxHeight: 220, overflowY: 'auto' }}>
+                                  {/* Header */}
+                                  <div style={{ padding: '6px 10px', background: '#F9FAFB', borderBottom: '1px solid #F3F4F6', fontSize: 10, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    {lista.length} resultado{lista.length !== 1 ? 's' : ''}
+                                  </div>
+                                  {lista.length === 0 && (
+                                    <div style={{ padding: '12px 10px', textAlign: 'center', fontSize: 12, color: '#9CA3AF' }}>
+                                      Sin resultados para "<strong>{q}</strong>"
+                                    </div>
+                                  )}
+                                  {lista.map((u) => (
+                                    <button key={u.id} type="button"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], responsable: u.nombre } }));
+                                        setBusquedaResponsable((prev) => { const { [plan.id]: _, ...rest } = prev; return rest; });
+                                      }}
+                                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', padding: '8px 10px', border: 'none', borderBottom: '1px solid #F3F4F6', background: 'transparent', cursor: 'pointer', transition: 'background 0.15s' }}
+                                      onMouseEnter={e => (e.currentTarget.style.background = '#EFF6FF')}
+                                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#DBEAFE', color: '#1D4ED8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, flexShrink: 0 }}>
+                                        {u.nombre.split(' ').slice(0,2).map(s=>s[0]).join('').toUpperCase() || '?'}
+                                      </div>
+                                      <div style={{ minWidth: 0 }}>
+                                        <div style={{ fontSize: 12, fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.nombre}</div>
+                                        {u.email && <div style={{ fontSize: 11, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div>}
+                                      </div>
+                                    </button>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
                       </label>
+
+                      {/* Indicador */}
                       <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
                         Indicador de cumplimiento
                         <input type="text" placeholder="Ej: % de documentos foliados"
                           value={newAccionDraft[plan.id]?.indicador ?? ''}
                           onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], indicador: e.target.value } }))}
-                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13 }} />
+                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
                       </label>
+
+                      {/* Fecha inicio */}
                       <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        Fecha inicio <span style={{ color: '#DC2626' }}>*</span>
+                        <span>Fecha inicio <span style={{ color: '#DC2626' }}>*</span></span>
                         <input type="date" value={newAccionDraft[plan.id]?.fechaInicio ?? ''}
                           onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], fechaInicio: e.target.value } }))}
-                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13 }} />
+                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
                       </label>
+
+                      {/* Fecha fin */}
                       <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        Fecha fin (compromiso) <span style={{ color: '#DC2626' }}>*</span>
+                        <span>Fecha fin (compromiso) <span style={{ color: '#DC2626' }}>*</span></span>
                         <input type="date" value={newAccionDraft[plan.id]?.fechaFin ?? ''}
                           onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], fechaFin: e.target.value } }))}
-                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13 }} />
+                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
                       </label>
+
+                      {/* Meta del indicador — full width */}
                       <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 4, gridColumn: '1 / -1' }}>
                         Meta del indicador
                         <input type="text" placeholder="Ej: Lograr el 100% de documentos foliados al 30/06/2026"
                           value={newAccionDraft[plan.id]?.metaIndicador ?? ''}
                           onChange={(e) => setNewAccionDraft((prev) => ({ ...prev, [plan.id]: { ...prev[plan.id], metaIndicador: e.target.value } }))}
-                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13 }} />
+                          style={{ height: 34, borderRadius: 8, border: '1px solid #D1D5DB', padding: '0 8px', fontSize: 13, width: '100%', boxSizing: 'border-box' }} />
                       </label>
                     </div>
                     <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>

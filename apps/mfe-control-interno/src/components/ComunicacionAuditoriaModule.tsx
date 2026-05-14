@@ -288,6 +288,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
   const [loadingInformeCierre, setLoadingInformeCierre] = useState(false);
   const [informeCierreAprobado, setInformeCierreAprobado] = useState(false);
   const enSeguimiento = soloSeguimiento || pasamosASeguimiento || (estadoAuditoriaProp && String(estadoAuditoriaProp).toLowerCase().includes('seguimiento'));
+  const planCompleto = planCreado && (planEstadisticas?.porcentajeAvance ?? 0) >= 100;
 
   const { agregarAuditoriaConHallazgos, seleccionarAuditoria, navegarAVerPlan } = useIntegracionAuditoriaPlanes();
 
