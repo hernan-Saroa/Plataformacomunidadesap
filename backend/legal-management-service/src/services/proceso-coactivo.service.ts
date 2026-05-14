@@ -69,11 +69,35 @@ export class ProcesoCoactivoService {
             .where('proceso.estadoArchivo = :estadoArchivo', { estadoArchivo: 'ACTIVO' });
 
         if (filtros.responsableKeys?.length) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const uuidKey = filtros.responsableKeys.find(k => uuidRegex.test(k));
             const normalizedKeys = filtros.responsableKeys.map((key) => key.toLowerCase());
-            query.andWhere(
-                '(proceso.responsable IN (:...responsableKeys) OR LOWER(proceso.responsable) IN (:...normalizedKeys))',
-                { responsableKeys: filtros.responsableKeys, normalizedKeys },
-            );
+            
+            if (uuidKey) {
+                query.andWhere(
+                    `(proceso.responsable IN (:...responsableKeys) 
+                      OR LOWER(proceso.responsable) IN (:...normalizedKeys)
+                      OR LOWER(proceso.responsable) = (
+                          SELECT LOWER(u.public_id::text)
+                          FROM auth."user" u
+                          WHERE u.id_user::text = :userId
+                          LIMIT 1
+                      )
+                      OR LOWER(proceso.responsable) = (
+                          SELECT LOWER(p.nom_largo)
+                          FROM auth."user" u
+                          LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                          WHERE u.id_user::text = :userId
+                          LIMIT 1
+                      ))`,
+                    { responsableKeys: filtros.responsableKeys, normalizedKeys, userId: uuidKey },
+                );
+            } else {
+                query.andWhere(
+                    '(proceso.responsable IN (:...responsableKeys) OR LOWER(proceso.responsable) IN (:...normalizedKeys))',
+                    { responsableKeys: filtros.responsableKeys, normalizedKeys },
+                );
+            }
         }
 
         return query.orderBy('proceso.fechaCreacion', 'DESC').getMany();
@@ -87,11 +111,35 @@ export class ProcesoCoactivoService {
             });
 
         if (filtros.responsableKeys?.length) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const uuidKey = filtros.responsableKeys.find(k => uuidRegex.test(k));
             const normalizedKeys = filtros.responsableKeys.map((key) => key.toLowerCase());
-            query.andWhere(
-                '(proceso.responsable IN (:...responsableKeys) OR LOWER(proceso.responsable) IN (:...normalizedKeys))',
-                { responsableKeys: filtros.responsableKeys, normalizedKeys },
-            );
+            
+            if (uuidKey) {
+                query.andWhere(
+                    `(proceso.responsable IN (:...responsableKeys) 
+                      OR LOWER(proceso.responsable) IN (:...normalizedKeys)
+                      OR LOWER(proceso.responsable) = (
+                          SELECT LOWER(u.public_id::text)
+                          FROM auth."user" u
+                          WHERE u.id_user::text = :userId
+                          LIMIT 1
+                      )
+                      OR LOWER(proceso.responsable) = (
+                          SELECT LOWER(p.nom_largo)
+                          FROM auth."user" u
+                          LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                          WHERE u.id_user::text = :userId
+                          LIMIT 1
+                      ))`,
+                    { responsableKeys: filtros.responsableKeys, normalizedKeys, userId: uuidKey },
+                );
+            } else {
+                query.andWhere(
+                    '(proceso.responsable IN (:...responsableKeys) OR LOWER(proceso.responsable) IN (:...normalizedKeys))',
+                    { responsableKeys: filtros.responsableKeys, normalizedKeys },
+                );
+            }
         }
 
         return query.orderBy('proceso.fechaArchivo', 'DESC').getMany();

@@ -112,7 +112,12 @@ export class RequerimientosOCService {
 
             if (uuidKeys.length) {
                 query.andWhere(
-                    `(req.abogadoAsignadoId::text IN (:...uuidKeys)
+                    `(req.abogado_asignado_id::text IN (:...uuidKeys)
+                      OR req.abogado_asignado_id::text IN (
+                          SELECT u.public_id::text
+                          FROM auth."user" u
+                          WHERE u.id_user::text IN (:...uuidKeys)
+                      )
                       OR LOWER(req.funcionarioResponsable) IN (:...normalizedKeys)
                       OR LOWER(req.funcionarioResponsable) IN (
                           SELECT LOWER(p.nom_largo)
@@ -141,7 +146,7 @@ export class RequerimientosOCService {
         if (filtros.asignadoKeys?.length) {
             const normalizedKeys = filtros.asignadoKeys.map((key) => key.toLowerCase());
             query.andWhere(
-                '(req.abogadoAsignadoId IN (:...asignadoKeys) OR LOWER(req.funcionarioResponsable) IN (:...normalizedKeys))',
+                '(req.abogado_asignado_id::text IN (:...asignadoKeys) OR LOWER(req.funcionarioResponsable) IN (:...normalizedKeys))',
                 { asignadoKeys: filtros.asignadoKeys, normalizedKeys },
             );
         }

@@ -61,7 +61,7 @@ export class RiesgosService {
             const normalizedKeys = filtros.asignadoKeys.map(k => k.toLowerCase());
             if (uuidKey) {
                 query.andWhere(
-                    `(riesgo.responsableId::text = :userId
+                    `(riesgo.responsable_id::text = :userId
                       OR LOWER(riesgo.responsable) IN (:...normalizedKeys)
                       OR LOWER(riesgo.responsable) = (
                           SELECT LOWER(p.nom_largo)
