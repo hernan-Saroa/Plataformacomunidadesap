@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Req } from '@nestjs/common';
 import { RequerimientosOCService } from '../services/requerimientos-oc.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
 import type { EstadoRequerimiento } from '../entities/requerimiento-oc.entity';
 import { OrganismoControlOC } from '../entities/organismo-control-legal.entity';
@@ -19,6 +20,30 @@ export class RequerimientosOCController {
         return this.service.findAllOrganismos();
     }
 
+    @Post('organismos')
+    async createOrganismo(@Body() data: Partial<OrganismoControlOC>): Promise<OrganismoControlOC> {
+        return this.service.createOrganismo(data);
+    }
+
+    @Patch('organismos/:id')
+    async updateOrganismo(
+        @Param('id') id: string,
+        @Body() data: Partial<OrganismoControlOC>
+    ): Promise<OrganismoControlOC> {
+        return this.service.updateOrganismo(Number(id), data);
+    }
+
+    @Delete('organismos/:id')
+    @HttpCode(HttpStatus.NO_CONTENT)
+    async deleteOrganismo(@Param('id') id: string): Promise<void> {
+        return this.service.deleteOrganismo(Number(id));
+    }
+
+    @Post('organismos/sync')
+    async syncOrganismos(@Body() organismos: Partial<OrganismoControlOC>[]): Promise<OrganismoControlOC[]> {
+        return this.service.syncOrganismos(organismos);
+    }
+
     // ============================================
     // TIPOS DE REQUERIMIENTO (Catálogo)
     // ============================================
@@ -31,8 +56,11 @@ export class RequerimientosOCController {
     // REQUERIMIENTOS
     // ============================================
     @Get()
-    async findAll(): Promise<RequerimientoOC[]> {
-        return this.service.findAll();
+    async findAll(@Req() req?: any): Promise<RequerimientoOC[]> {
+        const access = getLegalAccessFromRequest(req);
+        return this.service.findAll({
+            asignadoKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Get(':id')
@@ -135,8 +163,11 @@ export class RequerimientosOCController {
     // SISTEMA DE ARCHIVO
     // ============================================
     @Get('archivados/list')
-    async findAllArchivados(): Promise<RequerimientoOC[]> {
-        return this.service.findAllArchivados();
+    async findAllArchivados(@Req() req?: any): Promise<RequerimientoOC[]> {
+        const access = getLegalAccessFromRequest(req);
+        return this.service.findAllArchivados({
+            asignadoKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Patch(':id/archivar')

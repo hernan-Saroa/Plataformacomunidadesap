@@ -63,21 +63,38 @@ export class ProcesoCoactivoService {
         private readonly legalNotifications: LegalNotificationsService,
     ) { }
 
-    async findAll(): Promise<ProcesoCoactivo[]> {
-        return this.procesoCoactivoRepository.find({
-            where: { estadoArchivo: 'ACTIVO' },
-            order: { fechaCreacion: 'DESC' }
-        });
+    async findAll(filtros: { responsableKeys?: string[] } = {}): Promise<ProcesoCoactivo[]> {
+        const query = this.procesoCoactivoRepository
+            .createQueryBuilder('proceso')
+            .where('proceso.estadoArchivo = :estadoArchivo', { estadoArchivo: 'ACTIVO' });
+
+        if (filtros.responsableKeys?.length) {
+            const normalizedKeys = filtros.responsableKeys.map((key) => key.toLowerCase());
+            query.andWhere(
+                '(proceso.responsable IN (:...responsableKeys) OR LOWER(proceso.responsable) IN (:...normalizedKeys))',
+                { responsableKeys: filtros.responsableKeys, normalizedKeys },
+            );
+        }
+
+        return query.orderBy('proceso.fechaCreacion', 'DESC').getMany();
     }
 
-    async findAllArchivados(): Promise<ProcesoCoactivo[]> {
-        return this.procesoCoactivoRepository.find({
-            where: [
-                { estadoArchivo: 'ARCHIVADO' },
-                { estadoArchivo: 'ELIMINADO' }
-            ],
-            order: { fechaArchivo: 'DESC' }
-        });
+    async findAllArchivados(filtros: { responsableKeys?: string[] } = {}): Promise<ProcesoCoactivo[]> {
+        const query = this.procesoCoactivoRepository
+            .createQueryBuilder('proceso')
+            .where('proceso.estadoArchivo IN (:...estadosArchivo)', {
+                estadosArchivo: ['ARCHIVADO', 'ELIMINADO'],
+            });
+
+        if (filtros.responsableKeys?.length) {
+            const normalizedKeys = filtros.responsableKeys.map((key) => key.toLowerCase());
+            query.andWhere(
+                '(proceso.responsable IN (:...responsableKeys) OR LOWER(proceso.responsable) IN (:...normalizedKeys))',
+                { responsableKeys: filtros.responsableKeys, normalizedKeys },
+            );
+        }
+
+        return query.orderBy('proceso.fechaArchivo', 'DESC').getMany();
     }
 
     async findOne(id: string): Promise<ProcesoCoactivo> {

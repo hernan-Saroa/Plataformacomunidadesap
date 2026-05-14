@@ -6,7 +6,6 @@ import { OrganismoControlOC } from '../entities/organismo-control-legal.entity';
 import { SolicitudInsumo, EstadoInsumo } from '../entities/solicitud-insumo.entity';
 import { CorreosJuridicosService } from './correos-juridicos.service';
 import { ComentariosDocumentosOCService } from './comentarios-documentos-oc.service';
-import { Abogado } from '../entities/abogado.entity';
 import { RespuestaBorradorOC } from '../entities/respuesta-borrador-oc.entity';
 import { TipoRequerimientoOC } from '../entities/tipo-requerimiento-oc.entity';
 import { DiasHabilesService } from './dias-habiles.service';
@@ -21,8 +20,6 @@ export class RequerimientosOCService {
         private readonly organismoRepo: Repository<OrganismoControlOC>,
         @InjectRepository(SolicitudInsumo)
         private readonly insumoRepo: Repository<SolicitudInsumo>,
-        @InjectRepository(Abogado)
-        private readonly abogadoRepo: Repository<Abogado>,
         @InjectRepository(RespuestaBorradorOC)
         private readonly borradorRepo: Repository<RespuestaBorradorOC>,
         @InjectRepository(TipoRequerimientoOC)
@@ -37,7 +34,46 @@ export class RequerimientosOCService {
     // ORGANISMOS (Catálogo)
     // ============================================
     async findAllOrganismos(): Promise<OrganismoControlOC[]> {
-        return this.organismoRepo.find({ where: { activo: true }, order: { nombre: 'ASC' } });
+        return this.organismoRepo.find({ order: { nombre: 'ASC' } });
+    }
+
+    async createOrganismo(data: Partial<OrganismoControlOC>): Promise<OrganismoControlOC> {
+        const organismo = this.organismoRepo.create({
+            ...data,
+            correos: data.correos ?? [],
+        });
+        return this.organismoRepo.save(organismo);
+    }
+
+    async updateOrganismo(id: number, data: Partial<OrganismoControlOC>): Promise<OrganismoControlOC> {
+        const organismo = await this.organismoRepo.findOne({ where: { id } });
+        if (!organismo) throw new NotFoundException(`Organismo ${id} no encontrado`);
+        Object.assign(organismo, data);
+        return this.organismoRepo.save(organismo);
+    }
+
+    async deleteOrganismo(id: number): Promise<void> {
+        const organismo = await this.organismoRepo.findOne({ where: { id } });
+        if (!organismo) throw new NotFoundException(`Organismo ${id} no encontrado`);
+        organismo.activo = false;
+        await this.organismoRepo.save(organismo);
+    }
+
+    async syncOrganismos(organismos: Partial<OrganismoControlOC>[]): Promise<OrganismoControlOC[]> {
+        const results: OrganismoControlOC[] = [];
+        for (const org of organismos) {
+            if (org.id) {
+                const existing = await this.organismoRepo.findOne({ where: { id: org.id } });
+                if (existing) {
+                    Object.assign(existing, { ...org, correos: org.correos ?? existing.correos });
+                    results.push(await this.organismoRepo.save(existing));
+                    continue;
+                }
+            }
+            const nuevo = this.organismoRepo.create({ ...org, correos: org.correos ?? [] });
+            results.push(await this.organismoRepo.save(nuevo));
+        }
+        return results;
     }
 
     // ============================================
@@ -50,10 +86,9 @@ export class RequerimientosOCService {
     // ============================================
     // REQUERIMIENTOS
     // ============================================
-    async findAll(): Promise<RequerimientoOC[]> {
-        const reqs = await this.requerimientoRepo.createQueryBuilder('req')
+    async findAll(filtros: { asignadoKeys?: string[] } = {}): Promise<RequerimientoOC[]> {
+        const query = this.requerimientoRepo.createQueryBuilder('req')
             // .leftJoinAndSelect('req.organismo', 'organismo') // Relación eliminada para soportar IDs string locales
-            .leftJoinAndSelect('req.abogadoAsignado', 'abogado') // Map to 'abogado' alias matching property name if possible, or use property name
             .loadRelationCountAndMap('req.documentosCount', 'req.documentos')
             .loadRelationCountAndMap('req.docRequerimientos', 'req.documentos', 'docReq', qb =>
                 qb.where("docReq.tipoDocumento = 'oficio'")
@@ -68,27 +103,56 @@ export class RequerimientosOCService {
                 qb.where("docInt.tipoDocumento NOT IN ('oficio', 'respuesta', 'acuse', 'anexo', 'evidencia', 'informe')")
             )
             .where("(req.estadoArchivo IS NULL OR req.estadoArchivo = 'ACTIVO')")
-            .orderBy('req.fechaVencimiento', 'ASC')
-            .getMany();
+            .orderBy('req.fechaVencimiento', 'ASC');
 
+        if (filtros.asignadoKeys?.length) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const uuidKeys = filtros.asignadoKeys.filter((key) => uuidRegex.test(key));
+            const normalizedKeys = filtros.asignadoKeys.map((key) => key.toLowerCase());
+
+            if (uuidKeys.length) {
+                query.andWhere(
+                    `(req.abogadoAsignadoId::text IN (:...uuidKeys)
+                      OR LOWER(req.funcionarioResponsable) IN (:...normalizedKeys)
+                      OR LOWER(req.funcionarioResponsable) IN (
+                          SELECT LOWER(p.nom_largo)
+                          FROM auth."user" u
+                          LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                          WHERE u.id_user::text IN (:...uuidKeys)
+                      ))`,
+                    { uuidKeys, normalizedKeys },
+                );
+            } else {
+                query.andWhere(
+                    'LOWER(req.funcionarioResponsable) IN (:...normalizedKeys)',
+                    { normalizedKeys },
+                );
+            }
+        }
+
+        const reqs = await query.getMany();
         return reqs.map(r => this.calcularDiasRestantes(r));
     }
 
-    async findAllArchivados(): Promise<RequerimientoOC[]> {
-        const reqs = await this.requerimientoRepo.createQueryBuilder('req')
-            .leftJoinAndSelect('req.abogadoAsignado', 'abogado')
-            .where("req.estadoArchivo = 'ARCHIVADO' OR req.estadoArchivo = 'ELIMINADO'")
-            .orderBy('req.fechaArchivo', 'DESC')
-            .getMany();
+    async findAllArchivados(filtros: { asignadoKeys?: string[] } = {}): Promise<RequerimientoOC[]> {
+        const query = this.requerimientoRepo.createQueryBuilder('req')
+            .where("req.estadoArchivo = 'ARCHIVADO' OR req.estadoArchivo = 'ELIMINADO'");
+        
+        if (filtros.asignadoKeys?.length) {
+            const normalizedKeys = filtros.asignadoKeys.map((key) => key.toLowerCase());
+            query.andWhere(
+                '(req.abogadoAsignadoId IN (:...asignadoKeys) OR LOWER(req.funcionarioResponsable) IN (:...normalizedKeys))',
+                { asignadoKeys: filtros.asignadoKeys, normalizedKeys },
+            );
+        }
+
+        const reqs = await query.orderBy('req.fechaArchivo', 'DESC').getMany();
 
         return reqs;
     }
 
     async findOne(id: string): Promise<RequerimientoOC> {
-        const req = await this.requerimientoRepo.findOne({
-            where: { id },
-            relations: ['abogadoAsignado']
-        });
+        const req = await this.requerimientoRepo.findOne({ where: { id } });
         if (!req) throw new NotFoundException(`Requerimiento ${id} no encontrado`);
         return this.calcularDiasRestantes(req);
     }
@@ -204,15 +268,11 @@ export class RequerimientosOCService {
     async reasignar(id: string, nuevoAbogadoId: string, nuevoAbogadoNombre?: string): Promise<RequerimientoOC> {
         // 1. Get current requerimiento
         const req = await this.findOne(id);
-        const responsableAnterior = req.funcionarioResponsable || req.abogadoAsignado?.nombreCompleto || 'Sin asignar';
+        const responsableAnterior = req.funcionarioResponsable || req.abogadoAsignadoId || 'Sin asignar';
 
-        // 2. Resolve lawyer name — prefer the name passed from frontend (auth-service users),
-        //    fall back to local abogados table for backward compatibility.
-        let nuevoResponsable = nuevoAbogadoNombre || '';
-        if (!nuevoResponsable) {
-            const abogado = await this.abogadoRepo.findOne({ where: { id: nuevoAbogadoId } });
-            nuevoResponsable = abogado?.nombreCompleto || nuevoAbogadoId;
-        }
+        // 2. Resolve lawyer name from auth-service data sent by the frontend.
+        //    Assignments are auth user ids, not records from legal_management.abogados.
+        const nuevoResponsable = nuevoAbogadoNombre || nuevoAbogadoId;
 
         // 3. Update the requerimiento with new lawyer ID AND name
         await this.requerimientoRepo.update(id, {
@@ -302,30 +362,23 @@ export class RequerimientosOCService {
     }): Promise<{ success: boolean; message: string }> {
         const req = await this.findOne(requerimientoId);
 
-        try {
-            // Enviar correo vía Microsoft Graph
-            await this.correosService.sendEmail({
-                to: data.destinatarioEmail,
-                subject: data.asunto,
-                body: data.cuerpoMensaje,
-            });
+        // El correo ya fue enviado por el frontend con los adjuntos vía Graph.
+        // Aquí solo registramos el estado y la trazabilidad.
+        req.estado = 'ENVIADO';
+        req.fechaRespuesta = new Date();
+        await this.requerimientoRepo.save(req);
 
-            // Actualizar estado del requerimiento
-            req.estado = 'ENVIADO';
-            req.fechaRespuesta = new Date();
-            await this.requerimientoRepo.save(req);
+        await this.comentariosService.createComentario({
+            requerimientoId,
+            contenido: `Respuesta enviada a: ${data.destinatarioEmail}`,
+            tipo: 'seguimiento',
+            autorNombre: 'Sistema'
+        });
 
-            return {
-                success: true,
-                message: `Respuesta enviada exitosamente a ${data.destinatarioEmail}. El requerimiento ha cambiado a estado ENVIADO.`
-            };
-        } catch (error) {
-            console.error('Error enviando respuesta:', error);
-            return {
-                success: false,
-                message: `Error al enviar respuesta: ${error.message || 'Error desconocido'}`
-            };
-        }
+        return {
+            success: true,
+            message: `Requerimiento marcado como ENVIADO. Respuesta registrada para ${data.destinatarioEmail}.`
+        };
     }
 
     // ============================================

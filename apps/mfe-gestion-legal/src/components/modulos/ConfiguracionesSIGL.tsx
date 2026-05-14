@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark } from 'lucide-react';
+import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign } from 'lucide-react';
 import { legalService, procesosCoactivosService } from '../../../../services/api/legal.service';
 import disciplinaryService from '../../../../services/api/disciplinary.service';
 import { toast } from 'sonner';
@@ -114,6 +114,7 @@ export function ConfiguracionesSIGL() {
   const [showModalAgregarOrganismo, setShowModalAgregarOrganismo] = useState(false);
   const [showModalEliminarOrganismo, setShowModalEliminarOrganismo] = useState(false);
   const [organismoAEliminar, setOrganismoAEliminar] = useState<OrganismoControl | null>(null);
+  const [correosInput, setCorreosInput] = useState<Record<string, string>>({});
   // Estados para Tipos de Actuaciones
   const [showModalAgregarActuacion, setShowModalAgregarActuacion] = useState(false);
   const [showModalEliminarActuacion, setShowModalEliminarActuacion] = useState(false);
@@ -1268,6 +1269,7 @@ export function ConfiguracionesSIGL() {
                           id: `org-${Date.now()}`,
                           nombre: 'Nuevo Organismo',
                           descripcion: 'Descripción del organismo de control',
+                          correos: [],
                           activo: true
                         };
                         actualizarOrganismosControl([...organismosControl, nuevo]);
@@ -1352,6 +1354,107 @@ export function ConfiguracionesSIGL() {
                           placeholder="Descripción o función de la entidad..."
                           rows={2}
                         />
+
+                        {/* Correos electrónicos */}
+                        <div className="mt-3 space-y-2">
+                          <p className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                            <Mail className="w-3 h-3 text-blue-600" />
+                            Correos electrónicos
+                          </p>
+
+                          {/* Lista de correos existentes */}
+                          {(organismo.correos ?? []).length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                              {(organismo.correos ?? []).map((correo, ci) => (
+                                <span
+                                  key={ci}
+                                  className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-50 border border-blue-200 text-blue-800 text-xs rounded-full"
+                                >
+                                  <AtSign className="w-3 h-3 flex-shrink-0" />
+                                  {correo}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const nuevos = organismosControl.map(item =>
+                                        item.id === organismo.id
+                                          ? { ...item, correos: (item.correos ?? []).filter((_, i) => i !== ci) }
+                                          : item
+                                      );
+                                      actualizarOrganismosControl(nuevos);
+                                    }}
+                                    className="ml-0.5 text-blue-500 hover:text-red-500 transition-colors"
+                                    title="Eliminar correo"
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Input para agregar nuevo correo */}
+                          <div className="flex gap-2">
+                            <input
+                              type="email"
+                              value={correosInput[organismo.id] ?? ''}
+                              onChange={(e) =>
+                                setCorreosInput(prev => ({ ...prev, [organismo.id]: e.target.value }))
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  const val = (correosInput[organismo.id] ?? '').trim();
+                                  if (!val) return;
+                                  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+                                    toast.error('Correo electrónico inválido');
+                                    return;
+                                  }
+                                  if ((organismo.correos ?? []).includes(val)) {
+                                    toast.error('Este correo ya está registrado');
+                                    return;
+                                  }
+                                  const nuevos = organismosControl.map(item =>
+                                    item.id === organismo.id
+                                      ? { ...item, correos: [...(item.correos ?? []), val] }
+                                      : item
+                                  );
+                                  actualizarOrganismosControl(nuevos);
+                                  setCorreosInput(prev => ({ ...prev, [organismo.id]: '' }));
+                                }
+                              }}
+                              placeholder="correo@entidad.gov.co y presiona Enter..."
+                              className="flex-1 px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const val = (correosInput[organismo.id] ?? '').trim();
+                                if (!val) return;
+                                if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) {
+                                  toast.error('Correo electrónico inválido');
+                                  return;
+                                }
+                                if ((organismo.correos ?? []).includes(val)) {
+                                  toast.error('Este correo ya está registrado');
+                                  return;
+                                }
+                                const nuevos = organismosControl.map(item =>
+                                  item.id === organismo.id
+                                    ? { ...item, correos: [...(item.correos ?? []), val] }
+                                    : item
+                                );
+                                actualizarOrganismosControl(nuevos);
+                                setCorreosInput(prev => ({ ...prev, [organismo.id]: '' }));
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg text-white text-xs font-semibold flex items-center gap-1 transition-all hover:opacity-90"
+                              style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)' }}
+                              title="Agregar correo"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Agregar
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ))}
 

@@ -370,6 +370,21 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     description: '',
     templateText: DEFAULT_DYNAMIC_BONUS_TEMPLATE,
   });
+  const [editingCategoryDraft, setEditingCategoryDraft] = React.useState<{
+    category: PrimaTecnicaCategoria;
+    label: string;
+    description: string;
+    templateText: string;
+  } | null>(null);
+  const [isUpdatingCategory, setIsUpdatingCategory] = React.useState(false);
+  const [pendingDeleteCategory, setPendingDeleteCategory] =
+    React.useState<PrimaTecnicaCategoria | null>(null);
+  const [deletingCategory, setDeletingCategory] =
+    React.useState<PrimaTecnicaCategoria | null>(null);
+  const [pendingClearCategory, setPendingClearCategory] =
+    React.useState<PrimaTecnicaCategoria | null>(null);
+  const [clearingCategory, setClearingCategory] =
+    React.useState<PrimaTecnicaCategoria | null>(null);
   const [templateTextByCategory, setTemplateTextByCategory] = React.useState<
     Record<PrimaTecnicaCategoria, string>
   >(buildCategoryRecordMap(FALLBACK_CATEGORIES, ''));
@@ -530,6 +545,12 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       setBulkResult(null);
       setIsCreateCategoryOpen(false);
       setIsCreatingCategory(false);
+      setEditingCategoryDraft(null);
+      setIsUpdatingCategory(false);
+      setPendingDeleteCategory(null);
+      setDeletingCategory(null);
+      setPendingClearCategory(null);
+      setClearingCategory(null);
       setNewCategoryDraft({
         label: '',
         description: '',
@@ -760,6 +781,18 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     }
   }, [activeRecords, editingRecordState]);
 
+  const handleSelectCategory = React.useCallback((category: PrimaTecnicaCategoria) => {
+    setActiveCategory(category);
+    setSearchQuery('');
+    setSearchResults([]);
+    setSearchPage(1);
+    setSearchError(null);
+    setSaveError(null);
+    setEditingRecordState(null);
+    setPendingDeleteId(null);
+    setPendingClearCategory(null);
+  }, []);
+
   const handleSelectCandidate = (candidate: PrimaTecnicaCandidato) => {
     const normalizedCandidateId = normalizeIdNumber(candidate.idNumber);
     const existingRecord = findExistingRecordByIdNumber(
@@ -938,6 +971,49 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       toast.error(message);
     } finally {
       setDeletingRecordId(null);
+    }
+  };
+
+  const handleClearCategoryAssignments = async () => {
+    if (!activeRecords.length) {
+      toast.info('Esta prima no tiene usuarios asignados.');
+      setPendingClearCategory(null);
+      return;
+    }
+
+    setClearingCategory(activeCategory);
+    setSaveError(null);
+    try {
+      const response =
+        await certificadosService.laborales.eliminarUsuariosPrimaTecnicaPorCategoria(
+          activeCategory,
+        );
+      const deletedCount = Number(response?.deleted_count || activeRecords.length || 0);
+
+      setRecordsByCategory((prev) => ({
+        ...prev,
+        [activeCategory]: [],
+      }));
+      setRecordsPageByCategory((prev) => ({
+        ...prev,
+        [activeCategory]: 1,
+      }));
+      setPendingDeleteId(null);
+      setEditingRecordState(null);
+      setLastSavedRecordId(null);
+      setPendingClearCategory(null);
+      await fetchRecords(activeCategory);
+      toast.success(
+        `${deletedCount} usuario${deletedCount !== 1 ? 's' : ''} eliminado${deletedCount !== 1 ? 's' : ''} de ${categoryMeta.label}.`,
+      );
+    } catch (error: any) {
+      const message = String(
+        error?.message || 'No se pudieron eliminar los usuarios de esta prima.',
+      );
+      setSaveError(message);
+      toast.error(message);
+    } finally {
+      setClearingCategory(null);
     }
   };
 
@@ -1306,6 +1382,8 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       }));
       setActiveCategory(created.category);
       setIsCreateCategoryOpen(false);
+      setEditingCategoryDraft(null);
+      setPendingDeleteCategory(null);
       setNewCategoryDraft({
         label: '',
         description: '',
@@ -1319,7 +1397,131 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     }
   };
 
-  const hasRecordMutationInProgress = Boolean(updatingRecordId || deletingRecordId);
+  const handleStartEditCategory = (meta: PrimaTecnicaCategoriaConfig) => {
+    setEditingCategoryDraft({
+      category: meta.category,
+      label: meta.label || formatCategoryLabel(meta.category),
+      description: meta.description || '',
+      templateText:
+        templateTextByCategory[meta.category] ||
+        meta.template_text ||
+        meta.default_template_text ||
+        DEFAULT_DYNAMIC_BONUS_TEMPLATE,
+    });
+    setIsCreateCategoryOpen(false);
+    setPendingDeleteCategory(null);
+    handleSelectCategory(meta.category);
+  };
+
+  const handleUpdateCategory = async () => {
+    if (!editingCategoryDraft) return;
+
+    const label = editingCategoryDraft.label.replace(/\s+/g, ' ').trim();
+    const description = editingCategoryDraft.description.replace(/\s+/g, ' ').trim();
+    const templateText = editingCategoryDraft.templateText.trim();
+
+    if (label.length < 3) {
+      toast.error('Escribe un nombre de prima de al menos 3 caracteres.');
+      return;
+    }
+
+    if (!templateText) {
+      toast.error('El parrafo de la prima no puede estar vacio.');
+      return;
+    }
+
+    setIsUpdatingCategory(true);
+    try {
+      const updated = await certificadosService.laborales.actualizarCategoriaPrimaTecnica(
+        editingCategoryDraft.category,
+        {
+          label,
+          description,
+          templateText,
+        },
+      );
+
+      const nextCategories = categories
+        .map((item) => (item.category === updated.category ? updated : item))
+        .sort(
+          (a, b) =>
+            Number(a.display_order || 0) - Number(b.display_order || 0) ||
+            String(a.label || '').localeCompare(String(b.label || ''), 'es'),
+        );
+
+      setCategories(nextCategories);
+      setTemplateTextByCategory((prev) => ({
+        ...prev,
+        [updated.category]: updated.template_text || templateText,
+      }));
+      setEditingCategoryDraft(null);
+      toast.success(`Prima ${updated.label || label} actualizada correctamente.`);
+    } catch (error: any) {
+      toast.error(String(error?.message || 'No se pudo actualizar la prima.'));
+    } finally {
+      setIsUpdatingCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async (meta: PrimaTecnicaCategoriaConfig) => {
+    const recordCount = recordsByCategory[meta.category]?.length || 0;
+
+    if (meta.is_system) {
+      toast.error('Las primas base no se pueden eliminar.');
+      return;
+    }
+
+    if (recordCount > 0) {
+      toast.error('Primero elimina los usuarios asignados a esta prima.');
+      return;
+    }
+
+    setDeletingCategory(meta.category);
+    try {
+      await certificadosService.laborales.eliminarCategoriaPrimaTecnica(meta.category);
+      const nextCategories = categories.filter((item) => item.category !== meta.category);
+      const nextActiveCategory =
+        activeCategory === meta.category
+          ? nextCategories[0]?.category || 'DIRECTIVOS'
+          : activeCategory;
+
+      setCategories(nextCategories);
+      setCategoryState((prev) => {
+        const next = { ...prev };
+        delete next[meta.category];
+        return next;
+      });
+      setRecordsByCategory((prev) => {
+        const next = { ...prev };
+        delete next[meta.category];
+        return next;
+      });
+      setRecordsPageByCategory((prev) => {
+        const next = { ...prev };
+        delete next[meta.category];
+        return next;
+      });
+      setTemplateTextByCategory((prev) => {
+        const next = { ...prev };
+        delete next[meta.category];
+        return next;
+      });
+      setPendingDeleteCategory(null);
+      setEditingCategoryDraft((prev) =>
+        prev?.category === meta.category ? null : prev,
+      );
+      setActiveCategory(nextActiveCategory);
+      toast.success(`Prima ${meta.label || formatCategoryLabel(meta.category)} eliminada correctamente.`);
+    } catch (error: any) {
+      toast.error(String(error?.message || 'No se pudo eliminar la prima.'));
+    } finally {
+      setDeletingCategory(null);
+    }
+  };
+
+  const hasRecordMutationInProgress = Boolean(
+    updatingRecordId || deletingRecordId || clearingCategory,
+  );
 
   if (!mounted) return null;
 
@@ -1404,7 +1606,11 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                 </div>
                 <motion.button
                   type="button"
-                  onClick={() => setIsCreateCategoryOpen((prev) => !prev)}
+                  onClick={() => {
+                    setIsCreateCategoryOpen((prev) => !prev);
+                    setEditingCategoryDraft(null);
+                    setPendingDeleteCategory(null);
+                  }}
                   className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition-all hover:bg-blue-100 sm:flex-shrink-0"
                   whileHover={{ y: -1 }}
                   whileTap={{ scale: 0.98 }}
@@ -1495,25 +1701,142 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                 </div>
               )}
 
+              {editingCategoryDraft && (
+                <div className="mt-3 rounded-xl border border-slate-300 bg-white p-3 shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+                  <div className="mb-3 flex flex-col gap-2 border-b border-slate-200 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900">
+                        Editar prima
+                      </p>
+                      <p className="truncate text-xs text-slate-500">
+                        {editingCategoryDraft.category}
+                      </p>
+                    </div>
+                    <span className="w-fit rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                      {getCategoryLabel(editingCategoryDraft.category)}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-700">
+                        Nombre visible
+                      </label>
+                      <input
+                        value={editingCategoryDraft.label}
+                        onChange={(event) =>
+                          setEditingCategoryDraft((prev) =>
+                            prev ? { ...prev, label: event.target.value } : prev,
+                          )
+                        }
+                        className="w-full rounded-lg border-2 border-slate-200 px-3 py-2 text-sm outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                        disabled={isUpdatingCategory}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-700">
+                        Descripcion
+                      </label>
+                      <input
+                        value={editingCategoryDraft.description}
+                        onChange={(event) =>
+                          setEditingCategoryDraft((prev) =>
+                            prev ? { ...prev, description: event.target.value } : prev,
+                          )
+                        }
+                        className="w-full rounded-lg border-2 border-slate-200 px-3 py-2 text-sm outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                        disabled={isUpdatingCategory}
+                      />
+                    </div>
+                  </div>
+
+                  <label className="mt-3 mb-1 block text-xs font-semibold text-slate-700">
+                    Parrafo de la prima
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={editingCategoryDraft.templateText}
+                    onChange={(event) =>
+                      setEditingCategoryDraft((prev) =>
+                        prev ? { ...prev, templateText: event.target.value } : prev,
+                      )
+                    }
+                    className="w-full resize-none rounded-lg border-2 border-slate-200 p-3 text-sm outline-none transition-all focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    disabled={isUpdatingCategory}
+                  />
+
+                  <div className="mt-3 flex flex-wrap justify-end gap-2">
+                    <motion.button
+                      type="button"
+                      onClick={handleUpdateCategory}
+                      disabled={
+                        isUpdatingCategory ||
+                        editingCategoryDraft.label.trim().length < 3 ||
+                        !editingCategoryDraft.templateText.trim()
+                      }
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      whileHover={
+                        isUpdatingCategory ||
+                        editingCategoryDraft.label.trim().length < 3 ||
+                        !editingCategoryDraft.templateText.trim()
+                          ? {}
+                          : { y: -1 }
+                      }
+                      whileTap={
+                        isUpdatingCategory ||
+                        editingCategoryDraft.label.trim().length < 3 ||
+                        !editingCategoryDraft.templateText.trim()
+                          ? {}
+                          : { scale: 0.98 }
+                      }
+                    >
+                      {isUpdatingCategory ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Guardando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4" />
+                          <span>Guardar cambios</span>
+                        </>
+                      )}
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      onClick={() => setEditingCategoryDraft(null)}
+                      disabled={isUpdatingCategory}
+                      className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      whileHover={isUpdatingCategory ? {} : { y: -1 }}
+                      whileTap={isUpdatingCategory ? {} : { scale: 0.98 }}
+                    >
+                      <X className="h-4 w-4" />
+                      <span>Cancelar</span>
+                    </motion.button>
+                  </div>
+                </div>
+              )}
+
               <div className="mt-3 grid max-h-[260px] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
                 {categories.map((meta, index) => {
                   const category = meta.category;
                   const Icon = getCategoryIcon(category);
                   const active = category === activeCategory;
                   const recordCount = recordsByCategory[category]?.length || 0;
+                  const isDeletingThisCategory = deletingCategory === category;
+                  const canDeleteCategory = !meta.is_system && recordCount === 0;
 
                   return (
-                    <motion.button
+                    <motion.div
                       key={category}
-                      onClick={() => {
-                        setActiveCategory(category);
-                        setSearchQuery('');
-                        setSearchResults([]);
-                        setSearchPage(1);
-                        setSearchError(null);
-                        setSaveError(null);
-                        setEditingRecordState(null);
-                        setPendingDeleteId(null);
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleSelectCategory(category)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleSelectCategory(category);
+                        }
                       }}
                       className={`group relative min-h-[86px] overflow-hidden rounded-xl border px-3 py-3 text-left transition-all ${
                         active
@@ -1563,15 +1886,116 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                             <span className="font-medium text-slate-500">
                               Prima {index + 1}
                             </span>
-                            {active && (
-                              <span className="rounded-full bg-blue-600 px-2 py-0.5 font-semibold text-white">
-                                Seleccionada
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1.5">
+                              {meta.is_system && (
+                                <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-semibold text-slate-600">
+                                  Base
+                                </span>
+                              )}
+                              {active && (
+                                <span className="rounded-full bg-blue-600 px-2 py-0.5 font-semibold text-white">
+                                  Seleccionada
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  handleStartEditCategory(meta);
+                                }}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-blue-200 bg-white text-blue-700 transition-colors hover:bg-blue-50"
+                                title="Editar prima"
+                              >
+                                <PencilLine className="h-3.5 w-3.5" />
+                              </button>
+                              {!meta.is_system && (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    if (!canDeleteCategory) {
+                                      toast.error('Primero elimina los usuarios asignados a esta prima.');
+                                      return;
+                                    }
+                                    setEditingCategoryDraft(null);
+                                    setIsCreateCategoryOpen(false);
+                                    setPendingDeleteCategory((prev) =>
+                                      prev === category ? null : category,
+                                    );
+                                  }}
+                                  disabled={isDeletingThisCategory}
+                                  className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                                    canDeleteCategory
+                                      ? 'border-red-200 bg-white text-red-700 hover:bg-red-50'
+                                      : 'border-slate-200 bg-white text-slate-400'
+                                  }`}
+                                  title={
+                                    canDeleteCategory
+                                      ? 'Eliminar prima'
+                                      : 'No se puede eliminar con usuarios asignados'
+                                  }
+                                >
+                                  {isDeletingThisCategory ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                              )}
+                            </div>
                           </div>
+                          <AnimatePresence initial={false}>
+                            {pendingDeleteCategory === category && (
+                              <motion.div
+                                className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2"
+                                initial={{ opacity: 0, height: 0, y: -4 }}
+                                animate={{ opacity: 1, height: 'auto', y: 0 }}
+                                exit={{ opacity: 0, height: 0, y: -4 }}
+                                transition={{ duration: 0.18, ease: 'easeOut' }}
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <p className="text-xs font-medium text-red-800">
+                                  Eliminar esta prima del catalogo.
+                                </p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      void handleDeleteCategory(meta);
+                                    }}
+                                    disabled={isDeletingThisCategory}
+                                    className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    {isDeletingThisCategory ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    )}
+                                    <span>Confirmar</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      setPendingDeleteCategory(null);
+                                    }}
+                                    disabled={isDeletingThisCategory}
+                                    className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                  >
+                                    Cancelar
+                                  </button>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
                       </div>
-                    </motion.button>
+                    </motion.div>
                   );
                 })}
               </div>
@@ -1955,10 +2379,115 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                     </p>
                   </div>
                 </div>
-                <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 sm:text-sm">
-                  {activeRecords.length} registro{activeRecords.length !== 1 ? 's' : ''}
-                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 sm:text-sm">
+                    {activeRecords.length} registro{activeRecords.length !== 1 ? 's' : ''}
+                  </span>
+                  {activeRecords.length > 0 && (
+                    <motion.button
+                      type="button"
+                      onClick={() =>
+                        setPendingClearCategory((prev) =>
+                          prev === activeCategory ? null : activeCategory,
+                        )
+                      }
+                      disabled={
+                        isLoadingRecords ||
+                        isSaving ||
+                        hasRecordMutationInProgress ||
+                        clearingCategory === activeCategory
+                      }
+                      className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition-all hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      whileHover={
+                        isLoadingRecords ||
+                        isSaving ||
+                        hasRecordMutationInProgress ||
+                        clearingCategory === activeCategory
+                          ? {}
+                          : { y: -1 }
+                      }
+                      whileTap={
+                        isLoadingRecords ||
+                        isSaving ||
+                        hasRecordMutationInProgress ||
+                        clearingCategory === activeCategory
+                          ? {}
+                          : { scale: 0.98 }
+                      }
+                    >
+                      {clearingCategory === activeCategory ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                      <span>Vaciar prima</span>
+                    </motion.button>
+                  )}
+                </div>
               </div>
+
+              <AnimatePresence initial={false}>
+                {pendingClearCategory === activeCategory && activeRecords.length > 0 && (
+                  <motion.div
+                    className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3"
+                    initial={{ opacity: 0, height: 0, y: -4 }}
+                    animate={{ opacity: 1, height: 'auto', y: 0 }}
+                    exit={{ opacity: 0, height: 0, y: -4 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-red-200 bg-white text-red-700">
+                          <Trash2 className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-red-900">
+                            Eliminar usuarios de {categoryMeta.label}
+                          </p>
+                          <p className="text-xs text-red-700 sm:text-sm">
+                            Se quitaran {activeRecords.length} usuario{activeRecords.length !== 1 ? 's' : ''} asignado{activeRecords.length !== 1 ? 's' : ''}. La prima y su parrafo se conservaran.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 sm:flex-shrink-0">
+                        <motion.button
+                          type="button"
+                          onClick={handleClearCategoryAssignments}
+                          disabled={clearingCategory === activeCategory}
+                          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition-all hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          whileHover={
+                            clearingCategory === activeCategory ? {} : { y: -1 }
+                          }
+                          whileTap={
+                            clearingCategory === activeCategory ? {} : { scale: 0.98 }
+                          }
+                        >
+                          {clearingCategory === activeCategory ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                          <span>Confirmar</span>
+                        </motion.button>
+                        <motion.button
+                          type="button"
+                          onClick={() => setPendingClearCategory(null)}
+                          disabled={clearingCategory === activeCategory}
+                          className="inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          whileHover={
+                            clearingCategory === activeCategory ? {} : { y: -1 }
+                          }
+                          whileTap={
+                            clearingCategory === activeCategory ? {} : { scale: 0.98 }
+                          }
+                        >
+                          Cancelar
+                        </motion.button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {isLoadingRecords ? (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-600 flex items-center gap-2 flex-1">

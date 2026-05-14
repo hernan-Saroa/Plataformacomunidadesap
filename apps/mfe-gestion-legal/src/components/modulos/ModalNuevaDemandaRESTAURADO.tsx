@@ -357,7 +357,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           fechaVencimiento: expedienteEdit.fechaVencimientoTerminos ?
             (typeof expedienteEdit.fechaVencimientoTerminos === 'string' ? new Date(expedienteEdit.fechaVencimientoTerminos).toISOString().slice(0, 16) :
               toLocalISO(expedienteEdit.fechaVencimientoTerminos)) : '',
-          abogadoResponsable: expedienteEdit.abogadoAsignado || '',
+          abogadoResponsable: expedienteEdit.abogadoSustanciador || expedienteEdit.abogadoAsignado || '',
           pretensiones: expedienteEdit.pretensiones || '',
           hechos: expedienteEdit.hechos || '',
           observaciones: '',
@@ -587,6 +587,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         if (formData.numeroRadicado.length !== 23) {
           toast.error('⚠️ Radicado inválido', {
             description: 'El número de radicado debe tener exactamente 23 dígitos'
+          });
+          return false;
+        }
+        if (formData.tipoProcesoJudicial === 'Proceso Penal' && !formData.esDelitoAdminPublica && !formData.esConductaPatrimonioPublico) {
+          toast.error('⚠️ Clasificación penal requerida', {
+            description: 'Debe seleccionar al menos una clasificación: Delitos contra la Administración Pública y/o Conductas que afectan el Patrimonio Público'
           });
           return false;
         }
@@ -1891,7 +1897,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         <SelectContent className="z-[100000]">
                           <SelectItem value="Sin asignar (Temporal)" className="text-gray-500 italic">Sin asignar (Temporal)</SelectItem>
                           {abogadosAPI.map(abog => (
-                            <SelectItem key={abog.id} value={abog.nombre}>{abog.nombre}</SelectItem>
+                            <SelectItem key={abog.id} value={abog.id}>{abog.nombre}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>

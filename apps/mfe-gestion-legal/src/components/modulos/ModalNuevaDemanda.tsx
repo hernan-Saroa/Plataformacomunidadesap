@@ -121,8 +121,8 @@ function mapDemandaData(data: NuevaDemandaDataRestaurado): NuevaDemandaData {
     observaciones: data.observaciones,
     terminoProcesalDias: data.termino,
     tipoConteoTermino: data.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
-    esDelitoAdminPublica: (data as any).esDelitoAdminPublica || false,
-    esConductaPatrimonioPublico: (data as any).esConductaPatrimonioPublico || false,
+    esDelitoAdminPublica: data.esDelitoAdminPublica || false,
+    esConductaPatrimonioPublico: data.esConductaPatrimonioPublico || false,
   };
 }
 
