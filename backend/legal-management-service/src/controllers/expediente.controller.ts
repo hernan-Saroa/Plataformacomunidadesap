@@ -22,6 +22,13 @@ export class ExpedienteController {
         @Req() req?: any,
     ): Promise<Expediente[]> {
         const access = getLegalAccessFromRequest(req);
+        console.log('[LEGAL-ACCESS] expedientes listar →', JSON.stringify({
+            roles: access.roles,
+            esResuelve: access.esResuelve,
+            tieneVistaGlobal: access.tieneVistaGlobal,
+            esResuelveSolo: access.esResuelveSolo,
+            userKeys: access.userKeys,
+        }));
         return this.expedienteService.listarExpedientes({
             estado,
             jurisdiccion,

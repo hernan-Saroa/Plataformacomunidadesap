@@ -102,18 +102,35 @@ export class RequerimientosOCService {
             .loadRelationCountAndMap('req.docInternos', 'req.documentos', 'docInt', qb =>
                 qb.where("docInt.tipoDocumento NOT IN ('oficio', 'respuesta', 'acuse', 'anexo', 'evidencia', 'informe')")
             )
-            .where("(req.estadoArchivo IS NULL OR req.estadoArchivo = 'ACTIVO')");
+            .where("(req.estadoArchivo IS NULL OR req.estadoArchivo = 'ACTIVO')")
+            .orderBy('req.fechaVencimiento', 'ASC');
 
         if (filtros.asignadoKeys?.length) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const uuidKeys = filtros.asignadoKeys.filter((key) => uuidRegex.test(key));
             const normalizedKeys = filtros.asignadoKeys.map((key) => key.toLowerCase());
-            query.andWhere(
-                '(req.abogadoAsignadoId IN (:...asignadoKeys) OR LOWER(req.funcionarioResponsable) IN (:...normalizedKeys))',
-                { asignadoKeys: filtros.asignadoKeys, normalizedKeys },
-            );
+
+            if (uuidKeys.length) {
+                query.andWhere(
+                    `(req.abogadoAsignadoId::text IN (:...uuidKeys)
+                      OR LOWER(req.funcionarioResponsable) IN (:...normalizedKeys)
+                      OR LOWER(req.funcionarioResponsable) IN (
+                          SELECT LOWER(p.nom_largo)
+                          FROM auth."user" u
+                          LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                          WHERE u.id_user::text IN (:...uuidKeys)
+                      ))`,
+                    { uuidKeys, normalizedKeys },
+                );
+            } else {
+                query.andWhere(
+                    'LOWER(req.funcionarioResponsable) IN (:...normalizedKeys)',
+                    { normalizedKeys },
+                );
+            }
         }
 
-        const reqs = await query.orderBy('req.fechaVencimiento', 'ASC').getMany();
-
+        const reqs = await query.getMany();
         return reqs.map(r => this.calcularDiasRestantes(r));
     }
 

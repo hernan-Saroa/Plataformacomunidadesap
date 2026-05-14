@@ -641,7 +641,7 @@ export function ModuloDefensaJudicialV3() {
         provisionContable: demandaData.provisionContable || 0,
         fechaEstimacionProvision: demandaData.fechaEstimacionProvision ? new Date(demandaData.fechaEstimacionProvision).toISOString() : undefined,
         observacionProvision: demandaData.observacionesProvision,
-        abogadoSustanciador: demandaData.abogadoAsignado,
+        abogadoSustanciador: (demandaData as any).abogadoResponsable || demandaData.abogadoAsignado,
         medioControl: demandaData.medioControl,
         juzgadoConocimiento: `${demandaData.juzgado} - ${demandaData.ciudad}, ${demandaData.departamento}`,
         ubicacionFisica: demandaData.ciudad,

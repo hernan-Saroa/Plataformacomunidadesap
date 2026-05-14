@@ -49,11 +49,35 @@ export class RiesgosService {
     // ============================================
     // CRUD BÁSICO
     // ============================================
-    async findAll(): Promise<Riesgo[]> {
-        return this.riesgoRepo.find({
-            where: { estado: 'ACTIVO' as EstadoRiesgo },
-            order: { createdAt: 'DESC' }
-        });
+    async findAll(filtros: { asignadoKeys?: string[] } = {}): Promise<Riesgo[]> {
+        const query = this.riesgoRepo
+            .createQueryBuilder('riesgo')
+            .where("riesgo.estado = 'ACTIVO'")
+            .orderBy('riesgo.createdAt', 'DESC');
+
+        if (filtros.asignadoKeys?.length) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const uuidKey = filtros.asignadoKeys.find(k => uuidRegex.test(k));
+            const normalizedKeys = filtros.asignadoKeys.map(k => k.toLowerCase());
+            if (uuidKey) {
+                query.andWhere(
+                    `(riesgo.responsableId::text = :userId
+                      OR LOWER(riesgo.responsable) IN (:...normalizedKeys)
+                      OR LOWER(riesgo.responsable) = (
+                          SELECT LOWER(p.nom_largo)
+                          FROM auth."user" u
+                          LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                          WHERE u.id_user::text = :userId
+                          LIMIT 1
+                      ))`,
+                    { userId: uuidKey, normalizedKeys },
+                );
+            } else {
+                query.andWhere('LOWER(riesgo.responsable) IN (:...normalizedKeys)', { normalizedKeys });
+            }
+        }
+
+        return query.getMany();
     }
 
     async findOne(id: string): Promise<Riesgo> {

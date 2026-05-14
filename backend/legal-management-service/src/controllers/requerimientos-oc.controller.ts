@@ -1,12 +1,12 @@
 import { Controller, Get, Post, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Req } from '@nestjs/common';
 import { RequerimientosOCService } from '../services/requerimientos-oc.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
 import type { EstadoRequerimiento } from '../entities/requerimiento-oc.entity';
 import { OrganismoControlOC } from '../entities/organismo-control-legal.entity';
 import { SolicitudInsumo } from '../entities/solicitud-insumo.entity';
 import { RespuestaBorradorOC } from '../entities/respuesta-borrador-oc.entity';
 import { TipoRequerimientoOC } from '../entities/tipo-requerimiento-oc.entity';
-import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('requerimientos-oc')
 export class RequerimientosOCController {

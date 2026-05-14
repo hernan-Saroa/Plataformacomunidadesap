@@ -54,11 +54,28 @@ export class ConsultasJuridicasService implements OnModuleInit {
             .where('consulta.estadoArchivo = :estadoArchivo', { estadoArchivo: 'ACTIVO' });
 
         if (filtros.asignadoKeys?.length) {
-            const normalizedKeys = filtros.asignadoKeys.map((key) => key.toLowerCase());
-            query.andWhere(
-                '(consulta.abogadoAsignadoId IN (:...asignadoKeys) OR LOWER(consulta.abogadoAsignadoNombre) IN (:...normalizedKeys))',
-                { asignadoKeys: filtros.asignadoKeys, normalizedKeys },
-            );
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const uuidKey = filtros.asignadoKeys.find(k => uuidRegex.test(k));
+            const normalizedKeys = filtros.asignadoKeys.map(k => k.toLowerCase());
+            if (uuidKey) {
+                query.andWhere(
+                    `(consulta.abogadoAsignadoId::text = :userId
+                      OR LOWER(consulta.abogadoAsignadoNombre) IN (:...normalizedKeys)
+                      OR LOWER(consulta.abogadoAsignadoNombre) = (
+                          SELECT LOWER(p.nom_largo)
+                          FROM auth."user" u
+                          LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                          WHERE u.id_user::text = :userId
+                          LIMIT 1
+                      ))`,
+                    { userId: uuidKey, normalizedKeys },
+                );
+            } else {
+                query.andWhere(
+                    'LOWER(consulta.abogadoAsignadoNombre) IN (:...normalizedKeys)',
+                    { normalizedKeys },
+                );
+            }
         }
 
         const consultas = await query.orderBy('consulta.fechaRecepcion', 'DESC').getMany();
