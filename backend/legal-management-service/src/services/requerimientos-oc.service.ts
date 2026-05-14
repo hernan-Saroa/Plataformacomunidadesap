@@ -6,7 +6,6 @@ import { OrganismoControlOC } from '../entities/organismo-control-legal.entity';
 import { SolicitudInsumo, EstadoInsumo } from '../entities/solicitud-insumo.entity';
 import { CorreosJuridicosService } from './correos-juridicos.service';
 import { ComentariosDocumentosOCService } from './comentarios-documentos-oc.service';
-import { Abogado } from '../entities/abogado.entity';
 import { RespuestaBorradorOC } from '../entities/respuesta-borrador-oc.entity';
 import { TipoRequerimientoOC } from '../entities/tipo-requerimiento-oc.entity';
 import { DiasHabilesService } from './dias-habiles.service';
@@ -21,8 +20,6 @@ export class RequerimientosOCService {
         private readonly organismoRepo: Repository<OrganismoControlOC>,
         @InjectRepository(SolicitudInsumo)
         private readonly insumoRepo: Repository<SolicitudInsumo>,
-        @InjectRepository(Abogado)
-        private readonly abogadoRepo: Repository<Abogado>,
         @InjectRepository(RespuestaBorradorOC)
         private readonly borradorRepo: Repository<RespuestaBorradorOC>,
         @InjectRepository(TipoRequerimientoOC)
@@ -89,10 +86,9 @@ export class RequerimientosOCService {
     // ============================================
     // REQUERIMIENTOS
     // ============================================
-    async findAll(): Promise<RequerimientoOC[]> {
-        const reqs = await this.requerimientoRepo.createQueryBuilder('req')
+    async findAll(filtros: { asignadoKeys?: string[] } = {}): Promise<RequerimientoOC[]> {
+        const query = this.requerimientoRepo.createQueryBuilder('req')
             // .leftJoinAndSelect('req.organismo', 'organismo') // Relación eliminada para soportar IDs string locales
-            .leftJoinAndSelect('req.abogadoAsignado', 'abogado') // Map to 'abogado' alias matching property name if possible, or use property name
             .loadRelationCountAndMap('req.documentosCount', 'req.documentos')
             .loadRelationCountAndMap('req.docRequerimientos', 'req.documentos', 'docReq', qb =>
                 qb.where("docReq.tipoDocumento = 'oficio'")
@@ -106,28 +102,40 @@ export class RequerimientosOCService {
             .loadRelationCountAndMap('req.docInternos', 'req.documentos', 'docInt', qb =>
                 qb.where("docInt.tipoDocumento NOT IN ('oficio', 'respuesta', 'acuse', 'anexo', 'evidencia', 'informe')")
             )
-            .where("(req.estadoArchivo IS NULL OR req.estadoArchivo = 'ACTIVO')")
-            .orderBy('req.fechaVencimiento', 'ASC')
-            .getMany();
+            .where("(req.estadoArchivo IS NULL OR req.estadoArchivo = 'ACTIVO')");
+
+        if (filtros.asignadoKeys?.length) {
+            const normalizedKeys = filtros.asignadoKeys.map((key) => key.toLowerCase());
+            query.andWhere(
+                '(req.abogadoAsignadoId IN (:...asignadoKeys) OR LOWER(req.funcionarioResponsable) IN (:...normalizedKeys))',
+                { asignadoKeys: filtros.asignadoKeys, normalizedKeys },
+            );
+        }
+
+        const reqs = await query.orderBy('req.fechaVencimiento', 'ASC').getMany();
 
         return reqs.map(r => this.calcularDiasRestantes(r));
     }
 
-    async findAllArchivados(): Promise<RequerimientoOC[]> {
-        const reqs = await this.requerimientoRepo.createQueryBuilder('req')
-            .leftJoinAndSelect('req.abogadoAsignado', 'abogado')
-            .where("req.estadoArchivo = 'ARCHIVADO' OR req.estadoArchivo = 'ELIMINADO'")
-            .orderBy('req.fechaArchivo', 'DESC')
-            .getMany();
+    async findAllArchivados(filtros: { asignadoKeys?: string[] } = {}): Promise<RequerimientoOC[]> {
+        const query = this.requerimientoRepo.createQueryBuilder('req')
+            .where("req.estadoArchivo = 'ARCHIVADO' OR req.estadoArchivo = 'ELIMINADO'");
+        
+        if (filtros.asignadoKeys?.length) {
+            const normalizedKeys = filtros.asignadoKeys.map((key) => key.toLowerCase());
+            query.andWhere(
+                '(req.abogadoAsignadoId IN (:...asignadoKeys) OR LOWER(req.funcionarioResponsable) IN (:...normalizedKeys))',
+                { asignadoKeys: filtros.asignadoKeys, normalizedKeys },
+            );
+        }
+
+        const reqs = await query.orderBy('req.fechaArchivo', 'DESC').getMany();
 
         return reqs;
     }
 
     async findOne(id: string): Promise<RequerimientoOC> {
-        const req = await this.requerimientoRepo.findOne({
-            where: { id },
-            relations: ['abogadoAsignado']
-        });
+        const req = await this.requerimientoRepo.findOne({ where: { id } });
         if (!req) throw new NotFoundException(`Requerimiento ${id} no encontrado`);
         return this.calcularDiasRestantes(req);
     }
@@ -243,15 +251,11 @@ export class RequerimientosOCService {
     async reasignar(id: string, nuevoAbogadoId: string, nuevoAbogadoNombre?: string): Promise<RequerimientoOC> {
         // 1. Get current requerimiento
         const req = await this.findOne(id);
-        const responsableAnterior = req.funcionarioResponsable || req.abogadoAsignado?.nombreCompleto || 'Sin asignar';
+        const responsableAnterior = req.funcionarioResponsable || req.abogadoAsignadoId || 'Sin asignar';
 
-        // 2. Resolve lawyer name — prefer the name passed from frontend (auth-service users),
-        //    fall back to local abogados table for backward compatibility.
-        let nuevoResponsable = nuevoAbogadoNombre || '';
-        if (!nuevoResponsable) {
-            const abogado = await this.abogadoRepo.findOne({ where: { id: nuevoAbogadoId } });
-            nuevoResponsable = abogado?.nombreCompleto || nuevoAbogadoId;
-        }
+        // 2. Resolve lawyer name from auth-service data sent by the frontend.
+        //    Assignments are auth user ids, not records from legal_management.abogados.
+        const nuevoResponsable = nuevoAbogadoNombre || nuevoAbogadoId;
 
         // 3. Update the requerimiento with new lawyer ID AND name
         await this.requerimientoRepo.update(id, {

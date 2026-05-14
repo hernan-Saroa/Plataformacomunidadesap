@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Req } from '@nestjs/common';
 import { RequerimientosOCService } from '../services/requerimientos-oc.service';
 import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
 import type { EstadoRequerimiento } from '../entities/requerimiento-oc.entity';
@@ -6,6 +6,7 @@ import { OrganismoControlOC } from '../entities/organismo-control-legal.entity';
 import { SolicitudInsumo } from '../entities/solicitud-insumo.entity';
 import { RespuestaBorradorOC } from '../entities/respuesta-borrador-oc.entity';
 import { TipoRequerimientoOC } from '../entities/tipo-requerimiento-oc.entity';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('requerimientos-oc')
 export class RequerimientosOCController {
@@ -55,8 +56,11 @@ export class RequerimientosOCController {
     // REQUERIMIENTOS
     // ============================================
     @Get()
-    async findAll(): Promise<RequerimientoOC[]> {
-        return this.service.findAll();
+    async findAll(@Req() req?: any): Promise<RequerimientoOC[]> {
+        const access = getLegalAccessFromRequest(req);
+        return this.service.findAll({
+            asignadoKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Get(':id')
@@ -159,8 +163,11 @@ export class RequerimientosOCController {
     // SISTEMA DE ARCHIVO
     // ============================================
     @Get('archivados/list')
-    async findAllArchivados(): Promise<RequerimientoOC[]> {
-        return this.service.findAllArchivados();
+    async findAllArchivados(@Req() req?: any): Promise<RequerimientoOC[]> {
+        const access = getLegalAccessFromRequest(req);
+        return this.service.findAllArchivados({
+            asignadoKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Patch(':id/archivar')

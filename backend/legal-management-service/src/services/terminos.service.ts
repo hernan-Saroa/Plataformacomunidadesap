@@ -431,8 +431,7 @@ export class TerminosService {
 
         if (termino.origenModulo === 'ASESORIA' && termino.referenciaId) {
             const consulta = await this.consultaRepository.findOne({
-                where: { id: termino.referenciaId },
-                relations: ['abogadoAsignado']
+                where: { id: termino.referenciaId }
             });
             if (consulta && consulta.documentoRespuestaUrl) {
                 docs.push({
@@ -667,10 +666,10 @@ export class TerminosService {
         }
 
         // 2. Asesoria Jurídica
-        const consultas = await this.consultaRepository.find({ relations: ['abogadoAsignado'] });
+        const consultas = await this.consultaRepository.find();
         for (const cons of consultas) {
             const responsableUUID = cons.abogadoAsignadoId || undefined;
-            const responsableNombre = cons.abogadoAsignado?.nombreCompleto || 'Sin asignar';
+            const responsableNombre = cons.abogadoAsignadoNombre || cons.abogadoAsignadoId || 'Sin asignar';
             const descripcion = cons.descripcion || cons.materiaJuridica || 'Consulta Jurídica sin descripción';
 
             const hasFecha = !!cons.fechaMaximaRespuesta;
@@ -709,14 +708,13 @@ export class TerminosService {
         }
 
         // 3. Órganos de Control
-        const requerimientosOC = await this.requerimientoOCRepository.find({ relations: ['abogadoAsignado'] });
+        const requerimientosOC = await this.requerimientoOCRepository.find();
 
         this.logger.log(`[ORGANOS_CONTROL] Encontrados ${requerimientosOC.length} requerimientos para procesar.`);
 
         for (const req of requerimientosOC) {
             const responsableUUID = req.abogadoAsignadoId || undefined;
-            // Use assigned lawyer name OR "funcionario_responsable" text field
-            const responsableNombre = req.abogadoAsignado?.nombreCompleto || req.funcionarioResponsable || 'Sin asignar';
+            const responsableNombre = req.funcionarioResponsable || req.abogadoAsignadoId || 'Sin asignar';
             const descripcion = req.descripcion || 'Requerimiento Ente de Control';
 
             // Additional logging to debug specific Skipping reasons
