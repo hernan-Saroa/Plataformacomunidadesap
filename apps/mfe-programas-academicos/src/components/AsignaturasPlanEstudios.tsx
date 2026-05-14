@@ -226,17 +226,17 @@ export function AsignaturasPlanEstudios({ programaId, programaNombre, totalCredi
 
   // Load
   const loadAsignaturas = useCallback(async () => {
+    if (!programaId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      console.log('programaId', programaId);
       const response = await apiClient.get(`/auth/api/v1/programas-academicos/${programaId}/asignaturas`);
-      console.log('response', response);
       const asignaturasData = (response || []).map(a => ({ ...a, nucleoTematico: a.nucleoTematico || a.nucleo || 'General' }));
       setAsignaturas(asignaturasData);
-      console.log('asignaturas', asignaturas);
-
-    } catch (err) {
-      console.error('Error cargando asignaturas:', err);
+    } catch (err: any) {
+      toast.error('Error al cargar asignaturas', { description: 'No se pudieron cargar las asignaturas del programa' });
     }
     setLoading(false);
   }, [programaId]);

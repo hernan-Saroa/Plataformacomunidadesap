@@ -153,8 +153,11 @@ export class ConsultasJuridicasController {
     // --- Endpoints de Archivo ---
 
     @Get('archivadas/lista')
-    async getArchivadas() {
-        return this.consultasService.getArchivadas();
+    async getArchivadas(@Req() req?: any) {
+        const access = getLegalAccessFromRequest(req);
+        return this.consultasService.getArchivadas({
+            asignadoKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Post(':id/archivar')

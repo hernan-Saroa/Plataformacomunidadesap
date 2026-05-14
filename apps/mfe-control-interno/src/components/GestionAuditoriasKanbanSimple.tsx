@@ -4089,8 +4089,8 @@ export function GestionAuditoriasKanbanSimple() {
               if (e.includes('planeacion') || e.includes('planeación')) return 'planeacion';
               if (e.includes('ejecucion') || e.includes('ejecución')) return 'ejecucion';
               if (e.includes('comunicacion') || e.includes('comunicación')) return 'comunicacion';
-              if (e.includes('seguimiento')) return 'documentacion';
-              if (e.includes('finalizada')) return 'historial';
+              if (e.includes('seguimiento')) return 'seguimiento';
+              if (e.includes('finalizada')) return 'finalizada';
               return 'general';
             })()}
             onClose={() => {
