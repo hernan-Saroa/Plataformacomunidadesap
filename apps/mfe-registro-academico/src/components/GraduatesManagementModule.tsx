@@ -45,6 +45,7 @@ import {
   Database
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@esap-mfe/shared-ui/avatar';
@@ -1433,7 +1434,9 @@ export function GraduatesManagementModule() {
     : undefined;
 
   return (
-    <Container4K className="space-y-6">
+    <>
+      <Toaster position="top-right" richColors />
+      <Container4K className="space-y-6">
       {/* ✅ Modal de Validador de Certificados */}
       <ValidarCertificadoGrado 
         isOpen={mostrarValidador} 
@@ -3201,6 +3204,7 @@ export function GraduatesManagementModule() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Container4K>
+      </Container4K>
+    </>
   );
 }

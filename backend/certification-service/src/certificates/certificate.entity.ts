@@ -44,7 +44,7 @@ export class Certificate {
   @Column({ type: 'decimal', precision: 12, scale: 2, default: 0 })
   technical_bonus: number;
 
-  @Column({ type: 'varchar', length: 20, nullable: true })
+  @Column({ type: 'varchar', length: 80, nullable: true })
   technical_bonus_category: TechnicalBonusCategory | null;
 
   @Column({ type: 'boolean', default: true })

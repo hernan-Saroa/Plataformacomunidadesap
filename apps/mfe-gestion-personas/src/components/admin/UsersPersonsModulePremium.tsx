@@ -46,7 +46,8 @@ import {
   QrCode
 } from 'lucide-react';
 import { Card, Badge, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, Avatar, AvatarFallback, AvatarImage, Container4K, ResponsiveHeader } from '@esap-mfe/shared-ui';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { CreatePersonModal } from './CreatePersonModal';
 import { AssignAccessModal } from './AssignAccessModal';  

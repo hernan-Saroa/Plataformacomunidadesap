@@ -927,9 +927,24 @@ export interface DocumentoOC {
 
 class OCService {
     // Organismos de Control
-    // Catálogo de organismos
     async getOrganismosControl(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
+    }
+
+    async createOrganismoControl(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`, data);
+    }
+
+    async updateOrganismoControl(id: number, data: any): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/organismos/${id}`, data);
+    }
+
+    async deleteOrganismoControl(id: number): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/organismos/${id}`);
+    }
+
+    async syncOrganismosControl(organismos: any[]): Promise<any[]> {
+        return apiClient.post<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos/sync`, organismos);
     }
 
     // Catálogo de tipos de requerimiento

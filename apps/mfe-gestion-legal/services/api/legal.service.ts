@@ -1253,7 +1253,7 @@ export interface CorreoFilters {
 }
 
 export interface SendCorreoDto {
-    to: string;
+    to: string | string[];
     cc?: string[];
     subject: string;
     body: string;

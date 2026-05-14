@@ -15,7 +15,8 @@ import {
   ChevronLeft, ChevronsLeft, ChevronsRight
 } from 'lucide-react';
 import { useState } from 'react';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
 import { VisorDocumentoFirmaOTP } from './VisorDocumentoFirmaOTP';
 import { ModalCompartirFirma } from './ModalCompartirFirma';

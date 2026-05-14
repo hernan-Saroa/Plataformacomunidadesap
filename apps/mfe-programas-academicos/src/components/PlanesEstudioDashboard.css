@@ -1,0 +1,14 @@
+.planes-estudio-dashboard .recharts-wrapper {
+  max-height: none !important;
+}
+
+.planes-estudio-dashboard .recharts-wrapper svg,
+.planes-estudio-dashboard .recharts-surface {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+}
+
+.planes-estudio-dashboard .recharts-responsive-container {
+  min-width: 0 !important;
+}

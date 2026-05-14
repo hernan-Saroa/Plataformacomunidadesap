@@ -38,7 +38,7 @@ export interface FormularioDafpData {
   planRotacion: string;
   diasRotacion: number;
   decisionRotacion: string;
-  decisionFinal: 'INCLUIR PLAN ANUAL' | 'AUDITORÍA POSTERIOR';
+  decisionFinal: 'INCLUIR_PLAN_ANUAL' | 'INCLUIR_AUDITORIA_POSTERIOR';
   motivoDecision: string;
   prioridadRegla: number;
 
@@ -239,7 +239,7 @@ function buildInitialData(
     planRotacion: procesoInicial?.planRotacion || '',
     diasRotacion: procesoInicial?.diasRotacion ?? 0,
     decisionRotacion: procesoInicial?.decisionRotacion || '',
-    decisionFinal: procesoInicial?.decisionFinal || 'AUDITORÍA POSTERIOR',
+    decisionFinal: procesoInicial?.decisionFinal || 'INCLUIR_AUDITORIA_POSTERIOR',
     motivoDecision: procesoInicial?.motivoDecision || '',
     prioridadRegla: procesoInicial?.prioridadRegla ?? 5,
     criticidad: procesoInicial?.criticidad ?? 0,
@@ -468,7 +468,7 @@ export function FormularioProcesoDafpVisual({
     [cicloRotacionDafp]
   );
   const nombreProcesoPriorizado = formData.nombre.trim() || 'Proceso no seleccionado';
-  const decisionFinal = priorizacionAnos.includes(1) ? 'INCLUIR PLAN ANUAL' : 'AUDITORÍA POSTERIOR';
+  const decisionFinal = priorizacionAnos.includes(1) ? 'INCLUIR_PLAN_ANUAL' : 'INCLUIR_AUDITORIA_POSTERIOR';
   const motivoDecision = useMemo(() => {
     if (!criteriosCompletos) return '';
     const base = `Ponderación DAFP ${ponderacionFinalDafp.toFixed(2)}. Nivel ${nivelCriticidadDafp}. Ciclo ${cicloRotacionDafp}.`;
@@ -478,7 +478,7 @@ export function FormularioProcesoDafpVisual({
     if (procesoEspecialActivo) {
       return `[ESPECIAL:ponderacion] ${base} Proceso especial evaluado según la ponderación DAFP.`;
     }
-    if (decisionFinal === 'INCLUIR PLAN ANUAL') {
+    if (decisionFinal === 'INCLUIR_PLAN_ANUAL') {
       return `${base} El proceso queda incluido en el año 1 del plan.`;
     }
     return `${base} El proceso se programa para años posteriores según la rotación definida.`;
@@ -603,7 +603,7 @@ export function FormularioProcesoDafpVisual({
           ? 'Moderado'
           : 'Bajo',
       scoreRiesgo: ponderacionFinalDafp,
-      auditable: decisionFinal === 'INCLUIR PLAN ANUAL',
+      auditable: priorizacionAnos.length > 0,
       horasEstimadas: calcHorasEstimadas(nivelCriticidadDafp, cicloRotacionDafp),
       procesoEspecial: procesoEspecialActivo,
       modoProcesoEspecial: modoEspecialActivo,
@@ -1098,8 +1098,8 @@ export function FormularioProcesoDafpVisual({
                   </div>
                   <div className="rounded-xl border-2 border-green-200 bg-white p-4">
                     <div className="text-xs font-bold text-gray-500">Decisión</div>
-                    <div className={`mt-1 text-sm font-black ${decisionFinal === 'INCLUIR PLAN ANUAL' ? 'text-emerald-700' : 'text-orange-700'}`}>
-                      {criteriosCompletos ? decisionFinal : 'Pendiente'}
+                    <div className={`mt-1 text-sm font-black ${decisionFinal === 'INCLUIR_PLAN_ANUAL' ? 'text-emerald-700' : 'text-orange-700'}`}>
+                      {criteriosCompletos ? (decisionFinal === 'INCLUIR_PLAN_ANUAL' ? 'INCLUIR EN PLAN ANUAL' : 'AUDITORÍA POSTERIOR') : 'Pendiente'}
                     </div>
                   </div>
                 </div>

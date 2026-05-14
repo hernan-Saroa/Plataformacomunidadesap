@@ -240,15 +240,16 @@ export class MicrosoftGraphService {
      * Note: Microsoft/Exchange may add organizational signature after the content
      */
     async sendEmail(
-        to: string,
+        to: string | string[],
         subject: string,
         body: string,
         cc?: string[],
         attachments?: { name: string; contentBytes: string; contentType: string }[]
     ): Promise<boolean> {
+        const toList = Array.isArray(to) ? to : [to];
         // MOCK FOR DEV: Si no hay credenciales configuradas, simular envío exitoso
         if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
-            this.logger.warn(`[DEV MOCK] Email simulación enviado a: ${to} | Asunto: ${subject}`);
+            this.logger.warn(`[DEV MOCK] Email simulación enviado a: ${toList.join(', ')} | Asunto: ${subject}`);
             this.logger.debug(`[DEV MOCK] Cuerpo: ${body.substring(0, 100)}...`);
             return true;
         }
@@ -287,13 +288,9 @@ export class MicrosoftGraphService {
                         contentType: 'HTML',
                         content: htmlBody,
                     },
-                    toRecipients: [
-                        {
-                            emailAddress: {
-                                address: to,
-                            },
-                        },
-                    ],
+                    toRecipients: toList.map(addr => ({
+                        emailAddress: { address: addr.trim() },
+                    })),
                     ...(ccRecipients.length > 0 && { ccRecipients }),
                     ...(graphAttachments.length > 0 && { attachments: graphAttachments }),
                     from: {

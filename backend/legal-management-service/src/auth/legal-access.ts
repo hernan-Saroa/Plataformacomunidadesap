@@ -63,12 +63,44 @@ function headerValue(value: unknown): string | undefined {
 }
 
 export function getLegalAccessFromRequest(req: any): LegalAccess {
-  const headerRoles = headerValue(req?.headers?.['x-user-roles']);
+  let headerRoles = headerValue(req?.headers?.['x-user-roles']);
+  let userId = headerValue(req?.headers?.['x-user-id']);
+  let email = headerValue(req?.headers?.['x-user-email']);
+  let name = headerValue(req?.headers?.['x-user-name']);
+  let username = headerValue(req?.headers?.['x-user-username']);
+
+  // Fallback: Si el frontend en modo local (direct) no envió los headers por una condición de carrera,
+  // rescatamos la información directamente del token de sesión (cookie) que el navegador siempre envía.
+  if (!headerRoles && !userId && req?.headers?.cookie) {
+    const match = req.headers.cookie.match(/esap_access_token=([^;]+)/);
+    if (match && match[1]) {
+      try {
+        const token = match[1];
+        const payloadBase64 = token.split('.')[1];
+        if (payloadBase64) {
+          const payloadStr = Buffer.from(payloadBase64, 'base64').toString('utf-8');
+          const payload = JSON.parse(payloadStr);
+          
+          userId = payload.sub || payload.id_user || payload.userId;
+          email = payload.email || email;
+          name = payload.name || payload.fullName || payload.full_name || name;
+          username = payload.username || username;
+          
+          if (payload.roles && Array.isArray(payload.roles)) {
+            headerRoles = payload.roles.map((r: any) => typeof r === 'string' ? r : r.code || r.name).filter(Boolean).join(',');
+          }
+        }
+      } catch (e) {
+        console.error('[DEBUG] Error decodificando token local en legal-access:', e.message);
+      }
+    }
+  }
+
   const userFromHeaders = {
-    userId: headerValue(req?.headers?.['x-user-id']),
-    email: headerValue(req?.headers?.['x-user-email']),
-    name: headerValue(req?.headers?.['x-user-name']),
-    username: headerValue(req?.headers?.['x-user-username']),
+    userId,
+    email,
+    name,
+    username,
     roles: headerRoles
       ? headerRoles
           .split(',')
@@ -77,8 +109,12 @@ export function getLegalAccessFromRequest(req: any): LegalAccess {
       : undefined,
   };
 
-  return getLegalAccess({
+  const finalUser = {
     ...userFromHeaders,
     ...(req?.user || {}),
-  });
+  };
+
+  const access = getLegalAccess(finalUser);
+
+  return access;
 }

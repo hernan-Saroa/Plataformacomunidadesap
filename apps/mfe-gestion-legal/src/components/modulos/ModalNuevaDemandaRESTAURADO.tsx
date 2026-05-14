@@ -119,6 +119,8 @@ export interface NuevaDemandaData {
   pretensiones: string;
   hechos: string;
   observaciones: string;
+  esDelitoAdminPublica: boolean;
+  esConductaPatrimonioPublico: boolean;
 }
 
 interface ModalNuevaDemandaRESTAURADOProps {
@@ -274,7 +276,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     abogadoResponsable: '',
     pretensiones: '',
     hechos: '',
-    observaciones: ''
+    observaciones: '',
+    esDelitoAdminPublica: false,
+    esConductaPatrimonioPublico: false
   });
 
   const [ciudadesDisponibles, setCiudadesDisponibles] = useState<string[]>([]);
@@ -353,10 +357,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           fechaVencimiento: expedienteEdit.fechaVencimientoTerminos ?
             (typeof expedienteEdit.fechaVencimientoTerminos === 'string' ? new Date(expedienteEdit.fechaVencimientoTerminos).toISOString().slice(0, 16) :
               toLocalISO(expedienteEdit.fechaVencimientoTerminos)) : '',
-          abogadoResponsable: expedienteEdit.abogadoAsignado || '',
+          abogadoResponsable: expedienteEdit.abogadoSustanciador || expedienteEdit.abogadoAsignado || '',
           pretensiones: expedienteEdit.pretensiones || '',
           hechos: expedienteEdit.hechos || '',
-          observaciones: ''
+          observaciones: '',
+          esDelitoAdminPublica: (expedienteEdit as any).esDelitoAdminPublica || false,
+          esConductaPatrimonioPublico: (expedienteEdit as any).esConductaPatrimonioPublico || false
         });
         setCiudadesDisponibles([]);
       } else {
@@ -384,7 +390,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           abogadoResponsable: '',
           pretensiones: '',
           hechos: '',
-          observaciones: ''
+          observaciones: '',
+          esDelitoAdminPublica: false,
+          esConductaPatrimonioPublico: false
         });
         setCiudadesDisponibles([]);
       }
@@ -582,6 +590,12 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           });
           return false;
         }
+        if (formData.tipoProcesoJudicial === 'Proceso Penal' && !formData.esDelitoAdminPublica && !formData.esConductaPatrimonioPublico) {
+          toast.error('⚠️ Clasificación penal requerida', {
+            description: 'Debe seleccionar al menos una clasificación: Delitos contra la Administración Pública y/o Conductas que afectan el Patrimonio Público'
+          });
+          return false;
+        }
         return true;
 
       case 2:
@@ -768,6 +782,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           hechos: formData.hechos || undefined,
           tipoConteoTermino: formData.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
           terminoProcesalDias: formData.termino || undefined,
+          // Clasificación penal
+          esDelitoAdminPublica: formData.esDelitoAdminPublica || false,
+          esConductaPatrimonioPublico: formData.esConductaPatrimonioPublico || false,
           // Demandantes, Demandados, and Otros Actores arrays are NOT saved sequentially by updateExpediente
         };
       } else {
@@ -969,6 +986,47 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           </SelectContent>
                         </Select>
                       </div>
+
+                      {/* Campos condicionales para Proceso Penal */}
+                      {formData.tipoProcesoJudicial === 'Proceso Penal' && (
+                        <div className="md:col-span-2">
+                          <Card className="p-4 bg-red-50 border-red-200">
+                            <div className="flex items-start gap-3 mb-3">
+                              <Shield className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <h4 className="text-sm font-bold text-red-900">Clasificación Penal</h4>
+                                <p className="text-xs text-red-700">Requerido para informes de Contraloría General y ANDJE</p>
+                              </div>
+                            </div>
+                            <div className="space-y-3 ml-8">
+                              <label className="flex items-start gap-3 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={(formData as any).esDelitoAdminPublica || false}
+                                  onChange={(e) => setFormData({ ...formData, esDelitoAdminPublica: e.target.checked } as any)}
+                                  className="mt-0.5 w-4 h-4 rounded border-red-300 text-red-600 focus:ring-red-500"
+                                />
+                                <div>
+                                  <span className="text-sm font-semibold text-gray-800 group-hover:text-red-800">Delitos contra la Administración Pública</span>
+                                  <p className="text-xs text-gray-500">El asunto corresponde a delitos tipificados en el Título XV del Código Penal colombiano</p>
+                                </div>
+                              </label>
+                              <label className="flex items-start gap-3 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={(formData as any).esConductaPatrimonioPublico || false}
+                                  onChange={(e) => setFormData({ ...formData, esConductaPatrimonioPublico: e.target.checked } as any)}
+                                  className="mt-0.5 w-4 h-4 rounded border-red-300 text-red-600 focus:ring-red-500"
+                                />
+                                <div>
+                                  <span className="text-sm font-semibold text-gray-800 group-hover:text-red-800">Conductas que afectan el Patrimonio Público</span>
+                                  <p className="text-xs text-gray-500">El asunto involucra conductas que comprometen recursos o bienes del Estado</p>
+                                </div>
+                              </label>
+                            </div>
+                          </Card>
+                        </div>
+                      )}
 
                       <div className="space-y-2">
                         <Label htmlFor="etapaProcesal" className="text-sm font-bold text-gray-700">
@@ -1839,7 +1897,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         <SelectContent className="z-[100000]">
                           <SelectItem value="Sin asignar (Temporal)" className="text-gray-500 italic">Sin asignar (Temporal)</SelectItem>
                           {abogadosAPI.map(abog => (
-                            <SelectItem key={abog.id} value={abog.nombre}>{abog.nombre}</SelectItem>
+                            <SelectItem key={abog.id} value={abog.id}>{abog.nombre}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>

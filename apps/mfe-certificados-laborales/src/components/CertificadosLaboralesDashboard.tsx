@@ -54,8 +54,8 @@ interface CertificadoLaboral {
   cod_grade?: string;
   campus?: string;
   technical_bonus?: number;
-  technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
-  technicalBonusCategory?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+  technical_bonus_category?: string | null;
+  technicalBonusCategory?: string | null;
   incluyeSalario?: boolean;
   incluyePrimaTecnica?: boolean;
   templateSnapshot?: any;

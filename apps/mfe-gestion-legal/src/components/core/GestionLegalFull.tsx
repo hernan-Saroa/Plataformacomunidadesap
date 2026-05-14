@@ -54,7 +54,7 @@ import { useNotifications } from '../../../esap/NotificationsContext';
 import { legalService } from '../../services/api/legal.service';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
-import { Toaster } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
 type VistaDisponible =
   | 'defensa-judicial'
