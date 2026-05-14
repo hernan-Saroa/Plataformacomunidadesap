@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  UnprocessableEntityException,
   Logger,
   InternalServerErrorException,
 } from '@nestjs/common';
@@ -121,6 +122,8 @@ export class GraduationCertificatesService {
 
   private readonly logger = new Logger(GraduationCertificatesService.name);
   private readonly manualReviewExpirationBusinessDays = 15;
+  private readonly certificateNotAvailableMessage =
+    'El certificado de grado aún no se encuentra disponible para expedición.';
   private mailTransporter: nodemailer.Transporter | null = null;
 
   private resolveNotificationsBaseUrl() {
@@ -807,6 +810,8 @@ export class GraduationCertificatesService {
     }
 
     // Generar código de 6 dígitos
+    this.ensureGraduationCertificateCanBeIssued(graduate.graduationDate);
+
     const validationCode = Math.floor(
       100000 + Math.random() * 900000,
     ).toString();
@@ -902,15 +907,25 @@ export class GraduationCertificatesService {
       };
     }
 
+    const availableGraduates = graduates.filter((graduate) =>
+      this.canIssueGraduationCertificate(graduate.graduationDate),
+    );
+
+    if (!availableGraduates.length) {
+      throw new UnprocessableEntityException(
+        this.certificateNotAvailableMessage,
+      );
+    }
+
     const suggestions = this.buildGraduateSuggestions(
-      graduates,
+      availableGraduates,
       lastName,
       gradDate,
     ).slice(0, 3);
 
     return {
       hasMatches: suggestions.length > 0,
-      totalMatches: graduates.length,
+      totalMatches: availableGraduates.length,
       suggestions,
       fuente,
       mysqlSync,
@@ -1012,6 +1027,10 @@ export class GraduationCertificatesService {
       });
     }
 
+    if (graduate) {
+      this.ensureGraduationCertificateCanBeIssued(graduate.graduationDate);
+    }
+
     if (!graduate) {
       this.logger.warn(
         `Graduado no encontrado para idNumber=${dto.idNumber?.trim()} idIssueDate=${issueDate || 'N/A'}`,
@@ -1079,6 +1098,10 @@ export class GraduationCertificatesService {
     }
 
     request.graduate = graduate;
+    this.ensureGraduationCertificateCanBeIssued(
+      request.graduationDate || request.graduate?.graduationDate,
+    );
+
     request.isValidated = true;
     request.validationDate = new Date();
     request.validationExpiresAt = new Date();
@@ -1252,6 +1275,10 @@ export class GraduationCertificatesService {
       throw new BadRequestException('El código de validación ha expirado');
     }
 
+    this.ensureGraduationCertificateCanBeIssued(
+      request.graduationDate || request.graduate?.graduationDate,
+    );
+
     // Marcar como validado
     request.isValidated = true;
     request.validationDate = new Date();
@@ -1292,6 +1319,8 @@ export class GraduationCertificatesService {
         'La fecha de grado es obligatoria para generar el certificado.',
       );
     }
+
+    this.ensureGraduationCertificateCanBeIssued(graduationDate);
 
     // Obtener firmante principal
     const signer = await this.signerRepository.findOne({
@@ -2814,6 +2843,54 @@ export class GraduationCertificatesService {
     return parsed;
   }
 
+  private getBusinessTodayDateString(): string {
+    const timeZone =
+      process.env.CERTIFICATE_BUSINESS_TIME_ZONE || 'America/Bogota';
+
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date());
+      const dateParts = Object.fromEntries(
+        parts.map(({ type, value }) => [type, value]),
+      ) as Record<string, string>;
+
+      if (dateParts.year && dateParts.month && dateParts.day) {
+        return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+      }
+    } catch (_) {
+      // Fallback conservador si la zona horaria no esta disponible en runtime.
+    }
+
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  private canIssueGraduationCertificate(
+    graduationDate?: string | Date | null,
+  ): boolean {
+    const normalizedGraduationDate = this.normalizeDateString(
+      graduationDate || undefined,
+    );
+
+    return (
+      !normalizedGraduationDate ||
+      normalizedGraduationDate <= this.getBusinessTodayDateString()
+    );
+  }
+
+  private ensureGraduationCertificateCanBeIssued(
+    graduationDate?: string | Date | null,
+  ): void {
+    if (!this.canIssueGraduationCertificate(graduationDate)) {
+      throw new UnprocessableEntityException(
+        this.certificateNotAvailableMessage,
+      );
+    }
+  }
+
   private isBusinessDay(date: Date): boolean {
     const day = date.getDay();
     return day !== 0 && day !== 6;
@@ -4120,11 +4197,16 @@ export class GraduationCertificatesService {
       return await this.requestRepository.save(rejected);
     }
 
+    const approvePayload = this.buildApprovePayloadFromReview(request, reason);
+    this.ensureGraduationCertificateCanBeIssued(
+      approvePayload.graduationDate || request.graduationDate,
+    );
+
     await this.requestRepository.save(request);
 
     const approved = await this.aprobarSolicitud(
       id,
-      this.buildApprovePayloadFromReview(request, reason),
+      approvePayload,
       frontendBaseUrl,
     );
     approved.request.approvalStatus = 'APPROVED_FINAL';
@@ -4330,6 +4412,12 @@ export class GraduationCertificatesService {
         graduateUpdate.seccionalName = payload.seccionalName.trim();
       }
 
+      this.ensureGraduationCertificateCanBeIssued(
+        graduateUpdate.graduationDate ||
+          request.graduationDate ||
+          graduate.graduationDate,
+      );
+
       if (Object.keys(graduateUpdate).length > 0) {
         Object.assign(graduate, graduateUpdate);
         await this.graduateRepository.save(graduate);
@@ -4360,6 +4448,8 @@ export class GraduationCertificatesService {
           'La fecha de grado es obligatoria para aprobar una solicitud de revisión manual.',
         );
       }
+      this.ensureGraduationCertificateCanBeIssued(graduationDate);
+
       const campus =
         payload?.campus || (request as { campus?: string }).campus || undefined;
       const seccionalName =
@@ -4407,6 +4497,8 @@ export class GraduationCertificatesService {
         'La fecha de grado es obligatoria para aprobar una solicitud de revisión manual.',
       );
     }
+
+    this.ensureGraduationCertificateCanBeIssued(request.graduationDate);
 
     request.isValidated = true;
     request.validationDate = new Date();

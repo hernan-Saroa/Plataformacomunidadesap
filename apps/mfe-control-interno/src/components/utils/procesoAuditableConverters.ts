@@ -126,7 +126,7 @@ export function convertirProcesoAFormularioDafp(
       planRotacion: ev.planRotacion || '1 año',
       diasRotacion: ev.diasRotacion ?? 360,
       decisionRotacion: (ev.decisionRotacion as FormularioDafpData['decisionRotacion']) || 'Incluir',
-      decisionFinal: (ev.decisionFinal as FormularioDafpData['decisionFinal']) || 'AUDITORÍA POSTERIOR',
+      decisionFinal: (ev.decisionFinal as FormularioDafpData['decisionFinal']) || 'INCLUIR_AUDITORIA_POSTERIOR',
       motivoDecision: ev.motivoDecision || '',
       prioridadRegla: ev.prioridadRegla ?? 5,
       criticidad: c,
@@ -216,7 +216,7 @@ export function convertirProcesoAFormularioDafp(
     diasRotacion: evaluacionRiesgo?.diasRotacion ?? 360,
     decisionRotacion: (evaluacionRiesgo?.decisionRotacion as FormularioDafpData['decisionRotacion']) || 'Incluir',
     decisionFinal:
-      (evaluacionRiesgo?.decisionFinal as FormularioDafpData['decisionFinal']) || 'AUDITORÍA POSTERIOR',
+      (evaluacionRiesgo?.decisionFinal as FormularioDafpData['decisionFinal']) || 'INCLUIR_AUDITORIA_POSTERIOR',
     motivoDecision: evaluacionRiesgo?.motivoDecision || '',
     prioridadRegla: evaluacionRiesgo?.prioridadRegla ?? calcularPrioridadRegla(proceso.nivelRiesgo),
 

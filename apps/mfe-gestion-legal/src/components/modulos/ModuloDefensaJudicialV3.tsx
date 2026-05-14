@@ -7,7 +7,7 @@
  * ✅ CONECTADO CON CONFIGURACIONES CENTRALIZADAS
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Plus, FileText, FolderOpen, AlertTriangle, Clock, Calendar,
   User, MoreVertical, Eye, ChevronDown, Users, Settings,
@@ -26,6 +26,7 @@ import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
 import type { ExpedienteJudicial, EtapaDefensaJudicial } from '../core/types';
 import { ModalNuevaDemanda, NuevaDemandaData } from './ModalNuevaDemanda';
+import { generarReporteExpedientesPDF } from './generarReporteExpedientes';
 import { ModalExpediente } from './ModalExpediente';
 import { ModalComunicaciones } from './ModalComunicaciones';
 import { ModalAutos } from './ModalAutos';
@@ -401,84 +402,15 @@ export function ModuloDefensaJudicialV3() {
           demandadoDireccion: exp.demandadoDireccion,
           demandadoTelefono: exp.demandadoTelefono,
           demandadoEmail: exp.demandadoEmail,
+          // Clasificación Penal
+          esDelitoAdminPublica: exp.esDelitoAdminPublica || false,
+          esConductaPatrimonioPublico: exp.esConductaPatrimonioPublico || false,
         }
       });
-      // Si el usuario tiene rol RESUELVE_GESTION_LEGAL, solo mostrar sus demandas asignadas
-      const currentUser = authService.getCurrentUser() as any;
-      const isResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
-      let expedientesFiltrados = mapped;
-      if (isResuelve && currentUser) {
-        // El objeto guardado en localStorage puede ser ProfesionalUser (person.email, person.first_name)
-        // o AuthUser (email, fullName). Intentamos ambos formatos.
-        const cuEmail: string = (
-          currentUser.email ??
-          currentUser.person?.email ??
-          currentUser.mail ??
-          ''
-        ).toLowerCase();
-        const cuName: string = (
-          currentUser.fullName ??
-          currentUser.full_name ??
-          currentUser.name ??
-          (currentUser.firstName || currentUser.first_name
-            ? `${currentUser.firstName ?? currentUser.first_name ?? ''} ${currentUser.lastName ?? currentUser.last_name ?? ''}`.trim()
-            : null) ??
-          (currentUser.person?.first_name
-            ? `${currentUser.person.first_name ?? ''} ${currentUser.person.last_name ?? ''}`.trim()
-            : null) ??
-          ''
-        ).toLowerCase();
-        // Todos los posibles IDs del usuario actual
-        const cuIds = new Set<string>(
-          [
-            currentUser.id,
-            currentUser.id_user,
-            currentUser.user?.id,
-            currentUser.user?.id_user,
-            currentUser.person?.id,
-          ].filter(Boolean)
-        );
-
-        console.log('[DEBUG RESUELVE] currentUser raw:', JSON.stringify(currentUser));
-        console.log('[DEBUG RESUELVE] email detectado:', cuEmail, '| nombre detectado:', cuName, '| ids:', [...cuIds]);
-        console.log('[DEBUG RESUELVE] abogadosData:', JSON.stringify(abogadosData));
-        console.log('[DEBUG RESUELVE] abogadoSustanciador en expedientes:', mapped.map(e => e.abogadoSustanciador));
-
-        const myAbogado = Array.isArray(abogadosData)
-          ? abogadosData.find((a: any) => {
-              // Por ID (cualquier variante)
-              if (a.id && cuIds.has(a.id)) return true;
-              if ((a as any).rawId && cuIds.has((a as any).rawId)) return true;
-              if ((a as any).authId && cuIds.has((a as any).authId)) return true;
-              // Por email
-              if (cuEmail && a.email && (a.email as string).toLowerCase() === cuEmail) return true;
-              // Por nombre
-              const aNombre = (a.nombre ?? a.nombreCompleto ?? '').toLowerCase();
-              if (cuName && aNombre && aNombre === cuName) return true;
-              return false;
-            })
-          : null;
-
-        console.log('[DEBUG RESUELVE] myAbogado encontrado:', myAbogado ? JSON.stringify(myAbogado) : 'NINGUNO');
-
-        if (myAbogado) {
-          expedientesFiltrados = mapped.filter(exp => {
-            if (myAbogado.id && exp.abogadoSustanciador === myAbogado.id) return true;
-            if ((myAbogado as any).rawId && exp.abogadoSustanciador === (myAbogado as any).rawId) return true;
-            if ((myAbogado as any).authId && exp.abogadoSustanciador === (myAbogado as any).authId) return true;
-            if (myAbogado.nombre && exp.abogadoAsignado === myAbogado.nombre) return true;
-            if (myAbogado.nombreCompleto && exp.abogadoAsignado === myAbogado.nombreCompleto) return true;
-            return false;
-          });
-        } else {
-          // myAbogado no encontrado: el usuario podría no estar en la lista de abogados.
-          // Intentar filtrar directamente por sus IDs contra abogadoSustanciador
-          expedientesFiltrados = mapped.filter(exp =>
-            cuIds.has(exp.abogadoSustanciador as string)
-          );
-        }
-        console.log('[DEBUG RESUELVE] expedientes filtrados:', expedientesFiltrados.length, 'de', mapped.length);
-      }
+      // El backend ya filtra por abogadoSustanciador cuando el usuario tiene rol RESUELVE_GESTION_LEGAL
+      // (ver ExpedienteController.listar → esResuelveSolo → abogadoSustanciadorKeys).
+      // No aplicar filtro adicional en el frontend para evitar falsos negativos por discrepancia de IDs.
+      const expedientesFiltrados = mapped;
 
       setExpedientes(expedientesFiltrados);
       console.log('🗂️ [DEBUG] Mapped expedientes:', expedientesFiltrados.map(e => ({ id: e.id, etapa: e.etapa, radicado: e.radicado })));
@@ -577,14 +509,36 @@ export function ModuloDefensaJudicialV3() {
       exp.demandado?.toLowerCase().includes(busqueda.toLowerCase()) ||
       exp.juzgado?.toLowerCase().includes(busqueda.toLowerCase());
 
-    // Filtro por Tipo de Proceso (Flexible: revisa tipo, medioControl y tipoAccion)
-    // Esto asegura que sirva tanto para "Nulidad y Restablecimiento" (Medio Control)
-    // como para "Tutela" (Tipo Acción)
+    // Filtro por Tipo de Proceso (Flexible: revisa tipo, medioControl, tipoAccion y tipoProceso)
+    // Los IDs del filtro (ej: 'reparacion-directa') no coinciden con los valores del backend
+    // (ej: 'Reparación Directa'), así que normalizamos ambos lados para comparar.
+    const normalize = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[_\s]+/g, '-').trim();
+    const filtroNorm = normalize(filtroTipo);
+    // También buscar el nombre legible del tipo seleccionado en la configuración
+    const tipoConfigSeleccionado = tiposProcesosActivos.find((t: any) => t.id === filtroTipo);
+    const filtroNombreNorm = tipoConfigSeleccionado ? normalize(tipoConfigSeleccionado.nombre) : '';
+
     const matchTipo = filtroTipo === 'TODOS' ||
+      // Comparación directa (por si coinciden exacto)
       exp.tipo === filtroTipo ||
       exp.tipoAccion === filtroTipo ||
       exp.medioControl === filtroTipo ||
-      (exp.medioControl && exp.medioControl.includes(filtroTipo)); // Parcial match por si acaso
+      (exp as any).tipoProceso === filtroTipo ||
+      // Comparación normalizada contra el ID del filtro
+      normalize(exp.tipo) === filtroNorm ||
+      normalize(exp.tipoAccion) === filtroNorm ||
+      normalize(exp.medioControl) === filtroNorm ||
+      normalize((exp as any).tipoProceso) === filtroNorm ||
+      // Comparación normalizada contra el NOMBRE del tipo de proceso seleccionado
+      (filtroNombreNorm && (
+        normalize(exp.tipo) === filtroNombreNorm ||
+        normalize(exp.tipoAccion) === filtroNombreNorm ||
+        normalize(exp.medioControl) === filtroNombreNorm ||
+        normalize((exp as any).tipoProceso) === filtroNombreNorm
+      )) ||
+      // Parcial match (por si el valor contiene el filtro o viceversa)
+      (exp.medioControl && normalize(exp.medioControl).includes(filtroNorm)) ||
+      ((exp as any).tipoProceso && normalize((exp as any).tipoProceso).includes(filtroNorm));
 
     // Filtro por Abogado (solo visible para Jefe/Secretariado)
     const matchAbogado = filtroAbogado === 'TODOS' ||
@@ -666,8 +620,12 @@ export function ModuloDefensaJudicialV3() {
     expedientes: expedientesPorEtapa[estado.id] || []
   }));
 
+  const guardandoDemanda = useRef(false);
+
   // Handler para guardar nueva demanda
   const handleSaveNuevaDemanda = async (demandaData: NuevaDemandaData) => {
+    if (guardandoDemanda.current) return;
+    guardandoDemanda.current = true;
     try {
       // Mapear datos del formulario al formato del backend
       const expedienteData = {
@@ -683,7 +641,7 @@ export function ModuloDefensaJudicialV3() {
         provisionContable: demandaData.provisionContable || 0,
         fechaEstimacionProvision: demandaData.fechaEstimacionProvision ? new Date(demandaData.fechaEstimacionProvision).toISOString() : undefined,
         observacionProvision: demandaData.observacionesProvision,
-        abogadoSustanciador: demandaData.abogadoAsignado,
+        abogadoSustanciador: (demandaData as any).abogadoResponsable || demandaData.abogadoAsignado,
         medioControl: demandaData.medioControl,
         juzgadoConocimiento: `${demandaData.juzgado} - ${demandaData.ciudad}, ${demandaData.departamento}`,
         ubicacionFisica: demandaData.ciudad,
@@ -741,6 +699,10 @@ export function ModuloDefensaJudicialV3() {
         demandadoDireccion: demandaData.demandados[0]?.direccion || '',
         demandadoTelefono: demandaData.demandados[0]?.telefono || '',
         demandadoEmail: demandaData.demandados[0]?.email || '',
+
+        // Clasificación penal (Contraloría / ANDJE)
+        esDelitoAdminPublica: demandaData.esDelitoAdminPublica || false,
+        esConductaPatrimonioPublico: demandaData.esConductaPatrimonioPublico || false,
       };
 
       await legalService.crearExpediente(expedienteData);
@@ -753,19 +715,46 @@ export function ModuloDefensaJudicialV3() {
     } catch (error: any) {
       console.error('Error guardando demanda:', error);
       toast.error(error.message || 'Error al guardar la demanda');
+    } finally {
+      guardandoDemanda.current = false;
     }
   };
 
   const addBtnsPermission = () => {
+    const btns: any[] = [];
     if (authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_CREATE)) {
-      return [{
+      btns.push({
         label: 'Nueva Demanda',
         icon: <Plus className="w-4 h-4 mr-1" />,
         onClick: () => setModalNuevaDemandaOpen(true),
         className: 'bg-orange-600 hover:bg-orange-700 text-white font-bold'
-      }]
+      });
     }
-    return []
+    btns.push({
+      label: 'Descargar Reporte',
+      icon: <Download className="w-4 h-4 mr-1" />,
+      onClick: () => {
+        const tipoConfigSeleccionado = tiposProcesosActivos.find((t: any) => t.id === filtroTipo);
+        const nombreFiltro = filtroTipo === 'TODOS' ? 'TODOS' : (tipoConfigSeleccionado?.nombre || filtroTipo);
+        if (expedientesVisibles.length === 0) {
+          toast.error('No hay expedientes para exportar', {
+            description: 'Ajusta los filtros para incluir expedientes en el reporte.'
+          });
+          return;
+        }
+        toast.loading('Generando reporte PDF...', { id: 'reporte-pdf', duration: 3000 });
+        setTimeout(() => {
+          generarReporteExpedientesPDF(expedientesVisibles as any, nombreFiltro);
+          toast.success(`Reporte generado con ${expedientesVisibles.length} expediente(s)`, {
+            id: 'reporte-pdf',
+            description: `Filtro: ${nombreFiltro}`,
+            duration: 4000
+          });
+        }, 300);
+      },
+      className: 'bg-blue-600 hover:bg-blue-700 text-white font-bold'
+    });
+    return btns;
   };
 
   const useFluidKanban = !isMobile && !isTablet;

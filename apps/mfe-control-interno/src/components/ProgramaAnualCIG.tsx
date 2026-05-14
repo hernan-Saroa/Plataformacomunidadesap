@@ -50,7 +50,8 @@ import { FormularioNuevaAuditoria } from './FormularioNuevaAuditoria';
 
 // ============ SERVICIO BACKEND ============
 import { controlInternoService } from '@/services/api/controlInternoService';
-import { notificationsService } from '@/services/api/notificationsService';
+// import { notificationsService } from '@/services/api/notificationsService';
+import { notificationsService } from '../../services/api/notificationsService';
 
 // ============ INTEGRACIÓN CONTEXT ============
 import { useIntegracionAuditoriaPlanes, type AuditoriaProgramada } from './IntegracionAuditoriasPlanesContext';

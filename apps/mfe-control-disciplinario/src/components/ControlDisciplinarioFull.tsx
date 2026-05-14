@@ -12,7 +12,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { LayoutDashboard, CheckCircle, Archive, Clock, Users, Settings, Scale } from 'lucide-react';
 import { ModuleLayout, type MenuItem } from '../shared/ModuleLayout';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
 // ✅ Importar todos los módulos especializados
 import { GestionProfesionalesWorldClass } from './GestionProfesionalesWorldClass'; // ✅ RF007 WORLD CLASS - Diseño actualizado

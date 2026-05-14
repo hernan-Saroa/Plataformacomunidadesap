@@ -3,7 +3,7 @@
  * HOOK: useUniversoAuditableData
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Hook principal para integraci\u00f3n con backend del m\u00f3dulo Programa de Auditor\u00eda.
+ * Hook principal para integración con backend del módulo Programa de Auditoría.
  * Reemplaza TODOS los datos mock con llamadas reales al API.
  * 
  * Usa: controlInternoService (src/services/api/controlInternoService.ts)
@@ -22,8 +22,8 @@ import type { ProcesoAuditable as BackendProcesoAuditable } from '@/services/api
 // TIPOS FRONTEND (usados por el componente UniversoAuditableUnificado)
 // ════════════════════════════════════════════════════════════════════════════
 
-export type NivelRiesgo = 'Cr\u00edtico' | 'Alto' | 'Medio' | 'Bajo';
-export type TipoProceso = 'Estrat\u00e9gico' | 'Misional' | 'Apoyo' | 'Evaluaci\u00f3n';
+export type NivelRiesgo = 'Crítico' | 'Alto' | 'Medio' | 'Bajo';
+export type TipoProceso = 'Estratégico' | 'Misional' | 'Apoyo' | 'Evaluación';
 
 export interface ProcesoAuditableUI {
   id: string;
@@ -65,10 +65,10 @@ export interface ProcesoAuditableUI {
 /** Mapea tipo del backend (lowercase) al tipo UI (capitalizado) */
 function mapTipoProceso(tipo: string): TipoProceso {
   const map: Record<string, TipoProceso> = {
-    'estrategico': 'Estrat\u00e9gico',
+    'estrategico': 'Estratégico',
     'misional': 'Misional',
     'apoyo': 'Apoyo',
-    'evaluacion': 'Evaluaci\u00f3n',
+    'evaluacion': 'Evaluación',
   };
   return map[tipo?.toLowerCase()] || 'Apoyo';
 }
@@ -76,10 +76,10 @@ function mapTipoProceso(tipo: string): TipoProceso {
 /** Mapea tipo UI al tipo backend */
 function mapTipoProcesoToBackend(tipo: TipoProceso): string {
   const map: Record<TipoProceso, string> = {
-    'Estrat\u00e9gico': 'estrategico',
+    'Estratégico': 'estrategico',
     'Misional': 'misional',
     'Apoyo': 'apoyo',
-    'Evaluaci\u00f3n': 'evaluacion',
+    'Evaluación': 'evaluacion',
   };
   return map[tipo] || 'apoyo';
 }
@@ -90,8 +90,8 @@ function mapNivelRiesgo(evaluacionRiesgo: BackendProcesoAuditable['evaluacionRie
   
   const { nivelRiesgo, riesgoInherente } = evaluacionRiesgo;
   
-  // Si el riesgo inherente es >= 8 (de max 9), se considera Cr\u00edtico
-  if (riesgoInherente >= 8) return 'Cr\u00edtico';
+  // Si el riesgo inherente es >= 8 (de max 9), se considera Crítico
+  if (riesgoInherente >= 8) return 'Crítico';
   
   const map: Record<string, NivelRiesgo> = {
     'alto': 'Alto',
@@ -102,10 +102,10 @@ function mapNivelRiesgo(evaluacionRiesgo: BackendProcesoAuditable['evaluacionRie
 }
 
 /**
- * Calcula el score de prioridad (0-100) desde la evaluaci\u00f3n del backend.
- * F\u00f3rmula: riesgoResidual = (Probabilidad × Impacto) ÷ Nivel de Control
+ * Calcula el score de prioridad (0-100) desde la evaluación del backend.
+ * Fórmula: riesgoResidual = (Probabilidad × Impacto) ÷ Nivel de Control
  *          score = (riesgoResidual / 9) × 100
- * - Rojo (90-100): prioridad alta, auditor\u00eda urgente
+ * - Rojo (90-100): prioridad alta, auditoría urgente
  * - Amarillo (50-89): prioridad media
  * - Verde (0-49): prioridad baja, puede postergarse
  */
@@ -118,16 +118,16 @@ function calcularPuntajeRiesgo(evaluacionRiesgo: BackendProcesoAuditable['evalua
   return Math.round((riesgoResidual / maxRiesgoResidual) * 100);
 }
 
-/** Calcula calificaci\u00f3n DAFP (1-5) en base al nivel de control */
+/** Calcula calificación DAFP (1-5) en base al nivel de control */
 function calcularCalificacionDafp(evaluacionRiesgo: BackendProcesoAuditable['evaluacionRiesgo']): number {
   if (!evaluacionRiesgo) return 3;
-  // nivelControl alto (3) = mejor calificaci\u00f3n, bajo (1) = peor
+  // nivelControl alto (3) = mejor calificación, bajo (1) = peor
   const nivelControl = evaluacionRiesgo.nivelControl || 2;
   // Escalar de 1-3 a 1-5: (nivelControl / 3) * 4 + 1
   return Math.round((nivelControl / 3) * 4 * 10) / 10 + 1;
 }
 
-/** Mapea frecuencia de auditor\u00eda al tipo esperado */
+/** Mapea frecuencia de auditoría al tipo esperado */
 function mapFrecuenciaAuditoria(frecuencia: string): 'Anual' | 'Semestral' | 'Bienal' | 'Trienal' {
   const f = frecuencia?.toLowerCase();
   if (f?.includes('semestral')) return 'Semestral';
@@ -178,10 +178,10 @@ export function mapBackendToUI(proceso: BackendProcesoAuditable): ProcesoAuditab
   };
 }
 
-/** Calcula horas estimadas seg\u00fan nivel de riesgo */
+/** Calcula horas estimadas según nivel de riesgo */
 function calcularHorasEstimadas(nivelRiesgo: NivelRiesgo): number {
   const horasMap: Record<NivelRiesgo, number> = {
-    'Cr\u00edtico': 120,
+    'Crítico': 120,
     'Alto': 80,
     'Medio': 40,
     'Bajo': 20,
@@ -196,7 +196,7 @@ export function mapUIToBackend(proceso: ProcesoAuditableUI): Partial<BackendProc
     'Bajo': 'bajo',
     'Medio': 'medio',
     'Alto': 'alto',
-    'Cr\u00edtico': 'alto', // No existe 'critico' en backend, usar 'alto'
+    'Crítico': 'alto', // No existe 'critico' en backend, usar 'alto'
   };
 
   const probabilidad = proceso.puntajeRiesgo >= 80 ? 3 : proceso.puntajeRiesgo >= 50 ? 2 : 1;
@@ -231,7 +231,7 @@ export function mapUIToBackend(proceso: ProcesoAuditableUI): Partial<BackendProc
 
 /** 
  * Convierte datos del formulario DAFP al formato del backend
- * Esta funci\u00f3n maneja el nuevo formato del cuestionario visual
+ * Esta función maneja el nuevo formato del cuestionario visual
  */
 export function mapFormularioDafpToBackend(formData: any): Partial<BackendProcesoAuditable> {
   // Calcular probabilidad e impacto desde los riesgos
@@ -240,7 +240,7 @@ export function mapFormularioDafpToBackend(formData: any): Partial<BackendProces
   const altos = formData.riesgosAltos || 0;
   const moderados = formData.riesgosModerados || 0;
   
-  // Calcular porcentajes seg\u00fan metodolog\u00eda DAFP
+  // Calcular porcentajes según metodología DAFP
   const porcExtremos = total > 0 ? (extremos / total) * 100 : 0;
   const porcExtremosAltos = total > 0 ? ((extremos + altos) / total) * 100 : 0;
   const porcExtremosAltosMod = total > 0 ? ((extremos + altos + moderados) / total) * 100 : 0;
@@ -260,10 +260,10 @@ export function mapFormularioDafpToBackend(formData: any): Partial<BackendProces
   else if (nivelRiesgoCalculado === 'MODERADO') probabilidad = 2;
   else probabilidad = 1;
   
-  // Impacto basado en total de riesgos Y distribuci\u00f3n
+  // Impacto basado en total de riesgos Y distribución
   let impacto: number;
-  if (extremos > 0) impacto = 3;  // Si hay alg\u00fan riesgo extremo, impacto alto
-  else if (altos > 0) impacto = 2;  // Si hay alg\u00fan riesgo alto, impacto medio
+  if (extremos > 0) impacto = 3;  // Si hay algún riesgo extremo, impacto alto
+  else if (altos > 0) impacto = 2;  // Si hay algún riesgo alto, impacto medio
   else impacto = 1;
   
   // Nivel de control inverso al riesgo
@@ -282,26 +282,26 @@ export function mapFormularioDafpToBackend(formData: any): Partial<BackendProces
   
   // Mapear tipo de proceso
   const tipoMap: Record<string, string> = {
-    'Estrat\u00e9gico': 'estrategico',
+    'Estratégico': 'estrategico',
     'Misional': 'misional',
     'Apoyo': 'apoyo',
-    'Evaluaci\u00f3n': 'evaluacion',
+    'Evaluación': 'evaluacion',
   };
   const tipo = tipoMap[formData.tipoProceso] || formData.tipoProceso?.toLowerCase() || 'apoyo';
   
-  // Frecuencia de auditor\u00eda desde planRotacion
+  // Frecuencia de auditoría desde planRotacion
   const frecuenciaMap: Record<string, string> = {
-    '1 a\u00f1o': 'anual',
-    '2 a\u00f1os': 'bienal',
-    '3 a\u00f1os': 'trienal',
-    '4 a\u00f1os': 'cuatrienal',
+    '1 año': 'anual',
+    '2 años': 'bienal',
+    '3 años': 'trienal',
+    '4 años': 'cuatrienal',
   };
   const frecuenciaAuditoria = frecuenciaMap[formData.planRotacion] || formData.frecuenciaSugerida || 'anual';
   
   return {
     codigo: formData.codigo || `PROC-${Date.now()}`,
     nombre: formData.nombre,
-    descripcion: formData.nombre, // Usar nombre como descripci\u00f3n si no hay
+    descripcion: formData.nombre, // Usar nombre como descripción si no hay
     tipo: tipo as any,
     macroproceso: formData.macroproceso || 'General',
     responsable: formData.dependenciaResponsable || 'Sin asignar',
@@ -330,11 +330,11 @@ export function mapFormularioDafpToBackend(formData: any): Partial<BackendProces
       // Campos DAFP calculados — se persisten en el JSONB del backend
       ponderacionFinalDafp: formData.ponderacionFinalDafp ?? 0,
       nivelCriticidadDafp: formData.nivelCriticidadDafp || nivelRiesgoCalculado,
-      cicloRotacionDafp: formData.cicloRotacionDafp || formData.planRotacion || '1 a\u00f1o',
+      cicloRotacionDafp: formData.cicloRotacionDafp || formData.planRotacion || '1 año',
       horasEstimadas: formData.horasEstimadas ?? (nivelRiesgo === 'alto' ? 120 : nivelRiesgo === 'medio' ? 80 : 40),
       auditable: formData.auditable ?? (nivelRiesgo !== 'bajo'),
       decisionFinal: formData.decisionFinal || 'POR EVALUAR',
-      a\u00f1osProgramados: formData.priorizacionAnos || [],
+      añosProgramados: formData.priorizacionAnos || [],
     },
     frecuenciaAuditoria,
     ultimaAuditoria: formData.fechaUltimaAuditoria || undefined,
@@ -397,7 +397,7 @@ export function useUniversoAuditableData(
         setProcesos(mapped);
         setIsOnline(true);
       } else if (Array.isArray(backendProcesos)) {
-        // Array vac\u00edo — backend est\u00e1 disponible pero sin datos
+        // Array vacío — backend está disponible pero sin datos
         setProcesos([]);
         setIsOnline(true);
       } else {
@@ -432,7 +432,7 @@ export function useUniversoAuditableData(
       
       let backendData;
       if (isFromDafpForm) {
-        // Usar mapper espec\u00edfico para formulario DAFP
+        // Usar mapper específico para formulario DAFP
         backendData = mapFormularioDafpToBackend(procesoData);
       } else {
         // Formato ProcesoAuditableUI tradicional
@@ -453,7 +453,7 @@ export function useUniversoAuditableData(
         return true;
       }
       
-      throw new Error('Respuesta inv\u00e1lida del servidor');
+      throw new Error('Respuesta inválida del servidor');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error al agregar proceso';
       console.error('[useUniversoAuditableData] Error al agregar:', msg);
@@ -471,7 +471,7 @@ export function useUniversoAuditableData(
       
       let backendData;
       if (isFromDafpForm) {
-        // Usar mapper espec\u00edfico para formulario DAFP
+        // Usar mapper específico para formulario DAFP
         backendData = mapFormularioDafpToBackend(procesoData);
       } else {
         // Formato ProcesoAuditableUI tradicional
@@ -488,7 +488,7 @@ export function useUniversoAuditableData(
         return true;
       }
       
-      throw new Error('Respuesta inv\u00e1lida del servidor');
+      throw new Error('Respuesta inválida del servidor');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error al actualizar proceso';
       console.error('[useUniversoAuditableData] Error al editar:', msg);

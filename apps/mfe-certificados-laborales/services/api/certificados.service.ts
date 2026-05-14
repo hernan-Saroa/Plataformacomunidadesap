@@ -20,6 +20,36 @@ import { API_MODE, MICROSERVICE_URLS, getServiceUrl } from '../../config/environ
 // Nueva estructura: /{service}/api/v{version}/{path}
 const SERVICE_PREFIX = '/certificados/api/v1';
 
+export type PrimaTecnicaCategoria = string;
+
+export type PrimaTecnicaCategoriaConfig = {
+  id: string;
+  category: PrimaTecnicaCategoria;
+  label: string;
+  description?: string | null;
+  template_text: string;
+  default_template_text?: string;
+  display_order?: number;
+  is_system?: boolean;
+  is_active?: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+  updated_by?: string | null;
+};
+
+export type PrimaTecnicaRegistroApi = {
+  id: string;
+  category: PrimaTecnicaCategoria;
+  request_id: string | null;
+  full_name: string;
+  id_number: string;
+  percentage: number;
+  created_by?: string | null;
+  updated_by?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export const certificadosService = {
   /**
    * CERTIFICADOS DE GRADUADOS
@@ -93,6 +123,7 @@ export const certificadosService = {
       fechaHasta?: string;
       page?: number;
       limit?: number;
+      forExport?: boolean | string;
     }): Promise<any> {
       return apiClient.get(`${SERVICE_PREFIX}/certificates/certificados`, params);
     },
@@ -143,6 +174,14 @@ export const certificadosService = {
       );
     },
 
+    async obtenerPDFBlob(id: string): Promise<Blob> {
+      return apiClient.getBlob(
+        `${SERVICE_PREFIX}/certificates/certificados/${id}/pdf`,
+        undefined,
+        { skipErrorToast: true },
+      );
+    },
+
     /**
      * Buscar personas en certificate_requests para asignar Prima Tecnica
      */
@@ -157,24 +196,65 @@ export const certificadosService = {
     },
 
     /**
+     * Listar categorias dinamicas de Prima Tecnica
+     */
+    async listarCategoriasPrimaTecnica(): Promise<PrimaTecnicaCategoriaConfig[]> {
+      return apiClient.get(
+        `${SERVICE_PREFIX}/certificates/technical-bonus/categories`,
+      );
+    },
+
+    /**
+     * Crear una categoria dinamica de Prima Tecnica
+     */
+    async crearCategoriaPrimaTecnica(data: {
+      label: string;
+      description?: string;
+      templateText?: string;
+      code?: string;
+    }): Promise<PrimaTecnicaCategoriaConfig> {
+      return apiClient.post(
+        `${SERVICE_PREFIX}/certificates/technical-bonus/categories`,
+        data,
+      );
+    },
+
+    /**
+     * Actualizar una categoria dinamica de Prima Tecnica
+     */
+    async actualizarCategoriaPrimaTecnica(
+      category: PrimaTecnicaCategoria,
+      data: {
+        label?: string;
+        description?: string;
+        templateText?: string;
+        isActive?: boolean;
+        displayOrder?: number;
+      },
+    ): Promise<PrimaTecnicaCategoriaConfig> {
+      return apiClient.put(
+        `${SERVICE_PREFIX}/certificates/technical-bonus/categories/${encodeURIComponent(category)}`,
+        data,
+      );
+    },
+
+    /**
+     * Eliminar una categoria dinamica de Prima Tecnica
+     */
+    async eliminarCategoriaPrimaTecnica(
+      category: PrimaTecnicaCategoria,
+    ): Promise<{ category: PrimaTecnicaCategoria; deleted: boolean }> {
+      return apiClient.delete(
+        `${SERVICE_PREFIX}/certificates/technical-bonus/categories/${encodeURIComponent(category)}`,
+      );
+    },
+
+    /**
      * Listar registros de Prima Tecnica por categoria
      */
     async listarPrimaTecnica(
-      category: 'DIRECTIVOS' | 'COORDINADORES',
-    ): Promise<
-      Array<{
-        id: string;
-        category: 'DIRECTIVOS' | 'COORDINADORES';
-        request_id: string | null;
-        full_name: string;
-        id_number: string;
-        percentage: number;
-        created_by?: string | null;
-        updated_by?: string | null;
-        created_at: string;
-        updated_at: string;
-      }>
-    > {
+      category: PrimaTecnicaCategoria,
+    ): Promise<PrimaTecnicaRegistroApi[]> {
       return apiClient.get(
         `${SERVICE_PREFIX}/certificates/technical-bonus`,
         { category },
@@ -185,25 +265,13 @@ export const certificadosService = {
      * Crear o actualizar un registro de Prima Tecnica
      */
     async guardarPrimaTecnica(data: {
-      category: 'DIRECTIVOS' | 'COORDINADORES';
+      category: PrimaTecnicaCategoria;
       idNumber: string;
       fullName?: string;
       requestId?: string;
       percentage: number;
       updatedBy?: string;
-    }): Promise<{
-      id: string;
-      category: 'DIRECTIVOS' | 'COORDINADORES';
-      request_id: string | null;
-      full_name: string;
-      id_number: string;
-      percentage: number;
-      created_by?: string | null;
-      updated_by?: string | null;
-      created_at: string;
-      updated_at: string;
-      action: 'created' | 'updated';
-    }> {
+    }): Promise<PrimaTecnicaRegistroApi & { action: 'created' | 'updated' }> {
       return apiClient.post(`${SERVICE_PREFIX}/certificates/technical-bonus`, data);
     },
 
@@ -216,19 +284,7 @@ export const certificadosService = {
         percentage: number;
         updatedBy?: string;
       },
-    ): Promise<{
-      id: string;
-      category: 'DIRECTIVOS' | 'COORDINADORES';
-      request_id: string | null;
-      full_name: string;
-      id_number: string;
-      percentage: number;
-      created_by?: string | null;
-      updated_by?: string | null;
-      created_at: string;
-      updated_at: string;
-      action: 'updated';
-    }> {
+    ): Promise<PrimaTecnicaRegistroApi & { action: 'updated' }> {
       return apiClient.put(`${SERVICE_PREFIX}/certificates/technical-bonus/${id}`, data);
     },
 
@@ -237,7 +293,7 @@ export const certificadosService = {
      */
     async eliminarPrimaTecnica(id: string): Promise<{
       id: string;
-      category: 'DIRECTIVOS' | 'COORDINADORES';
+      category: PrimaTecnicaCategoria;
       full_name: string;
       id_number: string;
       deleted: true;
@@ -246,16 +302,22 @@ export const certificadosService = {
     },
 
     /**
+     * Eliminar todos los registros de Prima Tecnica de una categoria
+     */
+    async eliminarUsuariosPrimaTecnicaPorCategoria(
+      category: PrimaTecnicaCategoria,
+    ): Promise<{ category: PrimaTecnicaCategoria; deleted_count: number }> {
+      return apiClient.delete(
+        `${SERVICE_PREFIX}/certificates/technical-bonus/categories/${encodeURIComponent(category)}/assignments`,
+      );
+    },
+
+    /**
      * Obtener plantilla de parrafo de Prima Tecnica por categoria
      */
     async obtenerPlantillaPrimaTecnica(
-      category: 'DIRECTIVOS' | 'COORDINADORES',
-    ): Promise<{
-      category: 'DIRECTIVOS' | 'COORDINADORES';
-      template_text: string;
-      updated_at: string | null;
-      updated_by: string | null;
-    }> {
+      category: PrimaTecnicaCategoria,
+    ): Promise<PrimaTecnicaCategoriaConfig> {
       return apiClient.get(
         `${SERVICE_PREFIX}/certificates/technical-bonus/template/${category}`,
       );
@@ -265,14 +327,9 @@ export const certificadosService = {
      * Actualizar plantilla de parrafo de Prima Tecnica por categoria
      */
     async actualizarPlantillaPrimaTecnica(
-      category: 'DIRECTIVOS' | 'COORDINADORES',
+      category: PrimaTecnicaCategoria,
       templateText: string,
-    ): Promise<{
-      category: 'DIRECTIVOS' | 'COORDINADORES';
-      template_text: string;
-      updated_at: string | null;
-      updated_by: string | null;
-    }> {
+    ): Promise<PrimaTecnicaCategoriaConfig> {
       return apiClient.put(
         `${SERVICE_PREFIX}/certificates/technical-bonus/template/${category}`,
         { template_text: templateText },
@@ -283,7 +340,7 @@ export const certificadosService = {
      * Carga masiva de Prima Tecnica con reporte por fila
      */
     async cargarPrimaTecnicaMasiva(data: {
-      category: 'DIRECTIVOS' | 'COORDINADORES';
+      category: PrimaTecnicaCategoria;
       rows: Array<{
         rowNumber?: number;
         fullName?: string;
@@ -292,7 +349,7 @@ export const certificadosService = {
       }>;
       updatedBy?: string;
     }): Promise<{
-      category: 'DIRECTIVOS' | 'COORDINADORES';
+      category: PrimaTecnicaCategoria;
       summary: {
         total: number;
         success: number;
@@ -310,7 +367,7 @@ export const certificadosService = {
         message: string;
         record?: {
           id: string;
-          category: 'DIRECTIVOS' | 'COORDINADORES';
+          category: PrimaTecnicaCategoria;
           request_id: string | null;
           full_name: string;
           id_number: string;
@@ -400,7 +457,7 @@ export const certificadosService = {
       technical_bonus_available?: boolean;
       technical_bonus_percentage?: number;
       technical_bonus_value?: number;
-      technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+      technical_bonus_category?: PrimaTecnicaCategoria | null;
       solicitud?: {
         full_name?: string;
         id_number?: string;
@@ -421,7 +478,7 @@ export const certificadosService = {
         technical_bonus_available?: boolean;
         technical_bonus_percentage?: number;
         technical_bonus_value?: number;
-        technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+        technical_bonus_category?: PrimaTecnicaCategoria | null;
         [key: string]: any;
       };
       certificado?: any;
@@ -458,7 +515,7 @@ export const certificadosService = {
         technical_bonus_available?: boolean;
         technical_bonus_percentage?: number;
         technical_bonus_value?: number;
-        technical_bonus_category?: 'DIRECTIVOS' | 'COORDINADORES' | null;
+        technical_bonus_category?: PrimaTecnicaCategoria | null;
         [key: string]: any;
       };
     }> {

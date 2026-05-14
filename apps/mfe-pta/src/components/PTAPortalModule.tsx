@@ -8,6 +8,7 @@ import '../styles/pta-world-class.css';
 import { NotificationsProvider } from './esap/NotificationsContext';
 import { AuthProvider } from '../contexts/AuthContext';
 import { PortalDocentePTA } from './portal/pta/PortalDocentePTA';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
 export type PTAPortalModuleProps = {
   onBack: () => void;
@@ -48,24 +49,26 @@ export function PTAPortalModule({
       sessionRol={userRoles?.[0]}
     >
       <NotificationsProvider>
-        <div className="min-h-screen">
-          {!embedded && (
-            <div className="sticky top-0 z-10 bg-white border-b">
-              <div className="mx-auto max-w-[1400px] px-4 py-3">
-                <div className="text-sm text-gray-500">PTA</div>
-                <div className="text-base font-semibold text-gray-900">{title}</div>
+        <>
+          <Toaster position="top-right" richColors />
+          <div className="min-h-screen">
+            {!embedded && (
+              <div className="sticky top-0 z-10 bg-white border-b">
+                <div className="mx-auto max-w-[1400px] px-4 py-3">
+                  <div className="text-sm text-gray-500">PTA</div>
+                  <div className="text-base font-semibold text-gray-900">{title}</div>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className={embedded ? undefined : 'mx-auto max-w-[1400px]'}>
-            <PortalDocentePTA onBack={onBack} userPersonId={userPersonId} userName={userName} />
+            <div className={embedded ? undefined : 'mx-auto max-w-[1400px]'}>
+              <PortalDocentePTA onBack={onBack} userPersonId={userPersonId} userName={userName} />
+            </div>
           </div>
-        </div>
+        </>
       </NotificationsProvider>
     </AuthProvider>
   );
 }
 
 export default PTAPortalModule;
-

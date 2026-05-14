@@ -68,6 +68,69 @@ export function getFrontendApp(appDir) {
   return frontendApps.find((app) => app.appDir === appDir);
 }
 
+const cspNonceBootstrapSource = `(() => {
+  const meta = document.querySelector('meta[name="csp-nonce"]');
+  const nonce = meta && meta.content && meta.content.trim();
+
+  if (!nonce || nonce === '__ESAP_CSP_NONCE__') return;
+
+  globalThis.__webpack_nonce__ = nonce;
+
+  if (globalThis.__ESAP_CSP_NONCE_PATCHED__) return;
+  globalThis.__ESAP_CSP_NONCE_PATCHED__ = true;
+
+  const originalCreateElement = document.createElement.bind(document);
+
+  document.createElement = function createElementWithCspNonce(tagName, options) {
+    const element = originalCreateElement(tagName, options);
+    if (String(tagName).toLowerCase() === 'style') {
+      element.setAttribute('nonce', nonce);
+    }
+    return element;
+  };
+
+  document.querySelectorAll('style:not([nonce])').forEach((styleElement) => {
+    styleElement.setAttribute('nonce', nonce);
+  });
+})();
+`;
+
+export function cspNonceBootstrap(appDir) {
+  const scriptPath = `${getBuildBase(appDir)}csp-nonce.js`;
+
+  return {
+    name: 'esap-csp-nonce-bootstrap',
+    transformIndexHtml(html) {
+      if (html.includes('csp-nonce.js')) return html;
+
+      return html.replace(
+        /(<meta\s+name=["']csp-nonce["'][^>]*>)/i,
+        `$1\n      <script src="${scriptPath}"></script>`,
+      );
+    },
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'csp-nonce.js',
+        source: cspNonceBootstrapSource,
+      });
+    },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const requestPath = req.url ? req.url.split('?')[0] : '';
+        if (requestPath !== scriptPath) {
+          next();
+          return;
+        }
+
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        res.end(cspNonceBootstrapSource);
+      });
+    },
+  };
+}
+
 export function stripBundleComments() {
   return {
     name: 'strip-bundle-comments',

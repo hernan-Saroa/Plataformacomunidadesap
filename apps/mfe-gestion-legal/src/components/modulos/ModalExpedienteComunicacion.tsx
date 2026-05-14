@@ -194,6 +194,7 @@ export function ModalExpedienteComunicacion({
   const mappedTimeline = historial.length > 0 ? historial.map((h, i) => {
     // Determine color and icon by event type
     let color = '#71717A'; // default gray
+    if (h.tipoEvento === 'ENVIADO') color = '#003DA5'; // corporate blue (ESAP)
     if (h.tipoEvento === 'RECIBIDO') color = '#2563EB'; // blue
     if (h.tipoEvento === 'LEIDO') color = '#10B981'; // green
     if (h.tipoEvento === 'ARCHIVADO') color = '#8B5CF6'; // purple
@@ -201,6 +202,10 @@ export function ModalExpedienteComunicacion({
     if (h.tipoEvento === 'ASOCIADO_PROCESO') color = '#E11D48'; // rose
     if (h.tipoEvento === 'RESPONDIDO') color = '#0284C7'; // sky
     if (h.tipoEvento === 'REENVIADO') color = '#F97316'; // orange
+    if (h.tipoEvento === 'DOCUMENTO_ABIERTO') color = '#7C3AED'; // violet
+    if (h.tipoEvento === 'CORREO_ABIERTO_EXTERNO') color = '#059669'; // emerald
+    if (h.tipoEvento === 'DOCUMENTO_ABIERTO_EXTERNO') color = '#D946EF'; // fuchsia
+    if (h.tipoEvento === 'CLASIFICADO_MANUAL') color = '#6366F1'; // indigo
 
     return {
       id: h.id || `historial-${i}`,

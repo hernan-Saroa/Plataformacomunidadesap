@@ -14,9 +14,11 @@ import {
   CheckCircle, X, Trash2
 } from 'lucide-react';
 import type { ExpedienteJudicial } from '../core/types';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { DialogoConfirmacion } from './DialogoConfirmacion';
+import { legalService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
 
 interface ModalComunicacionesProps {
   isOpen: boolean;
@@ -41,10 +43,34 @@ const comunicacionesMock = [
 export function ModalComunicaciones({ isOpen, onClose, expediente, readOnly = false }: ModalComunicacionesProps) {
   const [nuevoMensaje, setNuevoMensaje] = useState('');
   const [comunicaciones, setComunicaciones] = useState<any[]>([]);
-  const [responderA, setResponderA] = useState<number | null>(null);
-  const [idAEliminar, setIdAEliminar] = useState<number | null>(null);
+  const [responderA, setResponderA] = useState<string | null>(null);
+  const [idAEliminar, setIdAEliminar] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleEnviarMensaje = () => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const expedienteId = expediente.uuid || expediente.id;
+    legalService.getComentariosExpediente(expedienteId)
+      .then((data: any[]) => {
+        const mapped = data.map((c: any) => ({
+          id: c.id,
+          usuario: c.usuarioNombre || 'Usuario',
+          rol: 'Miembro del equipo',
+          mensaje: c.contenido,
+          fecha: c.createdAt
+            ? new Date(c.createdAt).toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+            : '',
+          avatar: (c.usuarioNombre || 'U').split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase(),
+          tipo: 'message',
+        }));
+        setComunicaciones(mapped);
+      })
+      .catch(() => {
+        setComunicaciones([]);
+      });
+  }, [isOpen, expediente.uuid, expediente.id]);
+
+  const handleEnviarMensaje = async () => {
     if (readOnly) return;
 
     if (!nuevoMensaje.trim()) {
@@ -52,32 +78,45 @@ export function ModalComunicaciones({ isOpen, onClose, expediente, readOnly = fa
       return;
     }
 
-    const nuevaComunicacion = {
-      id: Date.now(),
-      usuario: expediente.abogadoAsignado,
-      rol: 'Abogado Defensor',
-      mensaje: responderA
-        ? `↩️ Respondiendo a ${comunicaciones.find(c => c.id === responderA)?.usuario}: ${nuevoMensaje}`
-        : nuevoMensaje,
-      fecha: new Date().toLocaleString('es-CO', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      }),
-      avatar: expediente.abogadoAsignado.split(' ').map(n => n[0]).join('').substring(0, 2),
-      tipo: 'message',
-      respuestaA: responderA
-    };
+    const currentUser = authService.getCurrentUser();
+    const expedienteId = expediente.uuid || expediente.id;
+    const contenido = responderA
+      ? `↩️ Respondiendo a ${comunicaciones.find(c => c.id === responderA)?.usuario}: ${nuevoMensaje}`
+      : nuevoMensaje;
 
-    setComunicaciones([nuevaComunicacion, ...comunicaciones]);
-    setNuevoMensaje('');
-    setResponderA(null);
-    toast.success('Mensaje enviado exitosamente');
+    setIsLoading(true);
+    try {
+      const saved = await legalService.createComentarioExpediente(expedienteId, {
+        contenido,
+        usuarioId: currentUser?.id,
+        usuarioNombre: currentUser?.fullName || expediente.abogadoAsignado || 'Usuario',
+      } as any);
+
+      const nuevaComunicacion = {
+        id: saved.id,
+        usuario: saved.usuarioNombre || currentUser?.fullName || 'Usuario',
+        rol: 'Miembro del equipo',
+        mensaje: saved.contenido,
+        fecha: new Date(saved.createdAt).toLocaleString('es-CO', {
+          day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+        }),
+        avatar: (saved.usuarioNombre || 'U').split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase(),
+        tipo: 'message',
+        respuestaA: responderA,
+      };
+
+      setComunicaciones(prev => [nuevaComunicacion, ...prev]);
+      setNuevoMensaje('');
+      setResponderA(null);
+      toast.success('Mensaje enviado exitosamente');
+    } catch {
+      toast.error('Error al enviar el mensaje. Por favor intenta de nuevo.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleResponder = (idMensaje: number, nombreUsuario: string) => {
+  const handleResponder = (idMensaje: string, nombreUsuario: string) => {
     if (readOnly) return;
 
     const mensaje = comunicaciones.find(c => c.id === idMensaje);
@@ -108,7 +147,7 @@ export function ModalComunicaciones({ isOpen, onClose, expediente, readOnly = fa
     }, 800);
   };
 
-  const handleReaccionar = (idMensaje: number) => {
+  const handleReaccionar = (idMensaje: string) => {
     if (readOnly) return;
 
     const reaccionesDisponibles = [
@@ -141,19 +180,24 @@ export function ModalComunicaciones({ isOpen, onClose, expediente, readOnly = fa
     }, 1000);
   };
 
-  const handleEliminarComentario = (idMensaje: number) => {
+  const handleEliminarComentario = (idMensaje: string) => {
     if (readOnly) return;
 
     setIdAEliminar(idMensaje);
   };
 
-  const confirmarEliminar = () => {
-    if (readOnly) return;
+  const confirmarEliminar = async () => {
+    if (readOnly || idAEliminar === null) return;
 
-    if (idAEliminar === null) return;
-    setComunicaciones(prev => prev.filter(c => c.id !== idAEliminar));
-    toast.success('Comentario eliminado');
-    setIdAEliminar(null);
+    try {
+      await legalService.deleteComentarioExpediente(idAEliminar);
+      setComunicaciones(prev => prev.filter(c => c.id !== idAEliminar));
+      toast.success('Comentario eliminado');
+    } catch {
+      toast.error('Error al eliminar el comentario.');
+    } finally {
+      setIdAEliminar(null);
+    }
   };
 
   const handleAdjuntar = () => {
@@ -517,15 +561,15 @@ export function ModalComunicaciones({ isOpen, onClose, expediente, readOnly = fa
 
             <Button
               onClick={handleEnviarMensaje}
-              disabled={!nuevoMensaje.trim()}
+              disabled={!nuevoMensaje.trim() || isLoading}
               className="h-[60px] px-6 font-bold"
               style={{
-                background: nuevoMensaje.trim() ? '#003DA5' : '#E5E7EB',
-                color: nuevoMensaje.trim() ? '#FFFFFF' : '#9CA3AF'
+                background: nuevoMensaje.trim() && !isLoading ? '#003DA5' : '#E5E7EB',
+                color: nuevoMensaje.trim() && !isLoading ? '#FFFFFF' : '#9CA3AF'
               }}
             >
               <Send className="w-4 h-4 mr-2" />
-              Enviar
+              {isLoading ? 'Enviando...' : 'Enviar'}
             </Button>
           </div>
 

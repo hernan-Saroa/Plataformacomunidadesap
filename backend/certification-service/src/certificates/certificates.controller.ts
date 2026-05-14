@@ -62,6 +62,77 @@ export class CertificatesController {
     return await this.certificatesService.searchTechnicalBonusCandidates(query || '', parsedLimit);
   }
 
+  @Get('technical-bonus/categories')
+  async getTechnicalBonusCategories(
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    return await this.certificatesService.listTechnicalBonusCategories({
+      includeInactive: ['true', '1', 'si', 'yes'].includes(
+        String(includeInactive || '').trim().toLowerCase(),
+      ),
+    });
+  }
+
+  @Post('technical-bonus/categories')
+  async createTechnicalBonusCategory(
+    @Body()
+    body: {
+      code?: string;
+      category?: string;
+      label?: string;
+      description?: string;
+      templateText?: string;
+      template_text?: string;
+      updatedBy?: string;
+    },
+    @Req() req: any,
+  ) {
+    return await this.certificatesService.createTechnicalBonusCategory({
+      ...body,
+      updatedBy: body.updatedBy || this.resolveRequestUsername(req),
+    });
+  }
+
+  @Put('technical-bonus/categories/:category')
+  async updateTechnicalBonusCategory(
+    @Param('category') category: string,
+    @Body()
+    body: {
+      label?: string;
+      description?: string;
+      templateText?: string;
+      template_text?: string;
+      isActive?: boolean;
+      is_active?: boolean;
+      displayOrder?: number;
+      display_order?: number;
+      updatedBy?: string;
+    },
+    @Req() req: any,
+  ) {
+    return await this.certificatesService.updateTechnicalBonusCategory(
+      category,
+      {
+        ...body,
+        updatedBy: body.updatedBy || this.resolveRequestUsername(req),
+      },
+    );
+  }
+
+  @Delete('technical-bonus/categories/:category/assignments')
+  async deleteTechnicalBonusAssignmentsByCategory(
+    @Param('category') category: string,
+  ) {
+    return await this.certificatesService.deleteTechnicalBonusAssignmentsByCategory(
+      category,
+    );
+  }
+
+  @Delete('technical-bonus/categories/:category')
+  async deleteTechnicalBonusCategory(@Param('category') category: string) {
+    return await this.certificatesService.deleteTechnicalBonusCategory(category);
+  }
+
   @Get('technical-bonus')
   async getTechnicalBonusAssignments(@Query('category') category?: string) {
     return await this.certificatesService.listTechnicalBonusAssignments(category || '');
@@ -160,11 +231,15 @@ export class CertificatesController {
     @Query('tipoVinculacion') tipoVinculacion?: string,
     @Query('fechaDesde') fechaDesde?: string,
     @Query('fechaHasta') fechaHasta?: string,
+    @Query('forExport') forExport?: string,
   ) {
     const parsedPage = page ? Number.parseInt(page, 10) : undefined;
     const parsedLimit = limit ? Number.parseInt(limit, 10) : undefined;
+    const isExportRequest = ['true', '1', 'si', 'yes', 'y'].includes(
+      String(forExport || '').trim().toLowerCase(),
+    );
     const hasFilters = Boolean(search || status || cargo || tipoVinculacion || fechaDesde || fechaHasta);
-    const hasPagination = Number.isFinite(parsedPage) || Number.isFinite(parsedLimit) || hasFilters;
+    const hasPagination = Number.isFinite(parsedPage) || Number.isFinite(parsedLimit) || hasFilters || isExportRequest;
 
     if (hasPagination) {
       return await this.certificatesService.findCertificadosPaginados({
@@ -176,6 +251,7 @@ export class CertificatesController {
         tipoVinculacion,
         fechaDesde,
         fechaHasta,
+        forExport: isExportRequest,
       });
     }
 
@@ -266,6 +342,23 @@ export class CertificatesController {
   @HttpCode(HttpStatus.CREATED)
   async generateCertificado(@Param('solicitudId') solicitudId: string) {
     return await this.certificatesService.createCertificado(solicitudId);
+  }
+
+  @Get('certificados/:id/pdf')
+  async getCertificadoPdf(
+    @Param('id') id: string,
+    @Query('publicBaseUrl') publicBaseUrl: string | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { buffer, filename } = await this.certificatesService.generateCertificadoPdfBufferById(
+      id,
+      { publicBaseUrl },
+    );
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${filename}"`,
+    });
+    return new StreamableFile(buffer);
   }
 
   @Get('certificados/:id/download-docx')

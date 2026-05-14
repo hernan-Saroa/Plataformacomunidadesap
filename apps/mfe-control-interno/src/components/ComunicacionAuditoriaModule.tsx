@@ -110,7 +110,7 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
   const jefeOCIDefault = 'MARIO OSWALDO BERNAL RODRÍGUEZ';
   const auditorLiderNombre = typeof auditoria.auditorLider === 'string'
     ? auditoria.auditorLider
-    : (auditoria as any).auditorLider?.nombre || 'No asignado';
+    : (auditoria as any).auditorLider?.nombre || (auditoria as any).auditorLiderNombre || 'No asignado';
 
   // Extraer fechas de reuniones si existen
   const reuniones = (auditoria as any).reuniones || [];
@@ -126,13 +126,13 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
     fechaOficio: informe?.fecha,
     destinatarioNombre: (auditoria as any).responsable || (auditoria as any).responsableUnidad || (auditoria as any).responsableArea?.nombre,
     destinatarioCargo: (auditoria as any).cargo || (auditoria as any).responsableAreaCargo || (auditoria as any).responsableArea?.cargo || 'Director(a) Territorial',
-    unidadAuditable: (auditoria as any).territorial || (auditoria as any).areaResponsable || (auditoria as any).areaAuditable || auditoria.nombre,
+    unidadAuditable: (auditoria as any).areaAuditable || (auditoria as any).areaResponsable || (auditoria as any).areaAuditada || (auditoria as any).territorial || auditoria.nombre,
     fechaLimitePronunciamiento: (auditoria as any).fechaLimitePronunciamiento,
     jefeOCI: (auditoria as any).jefeOCI || (auditoria as any).reviso || jefeOCIDefault,
     // Elaboró: líder + resto del equipo
     elaboro: [
       auditorLiderNombre,
-      ...((auditoria as any).equipoAuditores?.slice?.(1) || []).map((a: any) => typeof a === 'string' ? a : a?.nombre).filter(Boolean),
+      ...((auditoria as any).equipoAuditores?.slice?.(1) || []).map((a: any) => typeof a === 'string' ? a : a?.nombreCompleto || a?.nombre || a?.persona?.nombre || a?.name).filter(Boolean),
     ].filter(Boolean).join(' / '),
     tituloAuditoria: auditoria.nombre,
     responsableUnidadAuditada: (auditoria as any).responsable || (auditoria as any).responsableUnidad || (auditoria as any).responsableArea?.nombre,
@@ -157,8 +157,9 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
           ? new Date(auditoria.fechaInicio).getFullYear()
           : new Date().getFullYear()),
     equipoAuditor: (auditoria as any).equipoAuditores?.map((a: any) => ({ 
-      nombre: a.nombre || a, 
-      rol: a.rol || (a === auditoria.auditorLider || a.nombre === auditorLiderNombre ? 'Auditor Líder' : 'Auditor Integrante')
+      nombre: a.nombreCompleto || a.nombre || a.persona?.nombre || a.name || a, 
+      rol: a.rol || a.cargo || a.persona?.cargo || 'Auditor',
+      email: a.email || a.correo || a.persona?.email || '—'
     })),
     // Campos opcionales del API
     objetivo: (auditoria as any).objetivo,
@@ -374,6 +375,13 @@ export const ComunicacionAuditoriaModule: React.FC<{
     return fechaLimite.toLocaleDateString('es-CO');
   };
 
+  // Sincronizar con info del padre (Expediente)
+  useEffect(() => {
+    if (auditoriaInfo && Object.keys(auditoriaInfo).length > 2) {
+      setAuditoria(prev => ({ ...prev, ...auditoriaInfo }));
+    }
+  }, [auditoriaInfo]);
+
   const cargarDatos = useCallback(async () => {
     if (!useAPI) return;
     try {
@@ -433,6 +441,7 @@ export const ComunicacionAuditoriaModule: React.FC<{
               (p.auditoriaId || p.auditoria_id || p.auditoria?.id || p.hallazgo?.auditoriaId || p.hallazgo?.auditoriaEntity?.id) === id
             )
           : [];
+        setPlanesParaVerificacion(planesDeEstaAuditoria);
         setPlanCreado(planesDeEstaAuditoria.length > 0);
         if (planesDeEstaAuditoria.length > 0) {
           // ✅ Guardar el estado del plan más relevante (el último no rechazado)
@@ -471,6 +480,16 @@ export const ComunicacionAuditoriaModule: React.FC<{
         setPlanCreado(false);
         setPlanEstadisticas(null);
       }
+      // Cargar documentos para contar si no vienen por prop
+      try {
+        const docs = await controlInternoService.getDocumentosByAuditoria(id);
+        if (Array.isArray(docs)) {
+          setAuditoria(prev => prev ? { ...prev, totalDocumentos: docs.length, documentosCargados: docs.length } : null);
+        }
+      } catch (err) {
+        console.warn('Error al cargar documentos para conteo:', err);
+      }
+
       if (audData) {
         const objTexto = (arr: { descripcion?: string; objetivo?: string }[] | undefined) =>
           Array.isArray(arr) && arr.length > 0
@@ -494,21 +513,31 @@ export const ComunicacionAuditoriaModule: React.FC<{
           codigo: audData.codigo || prev.codigo,
           nombre: audData.nombre || audData.titulo || prev.nombre,
           proceso: audData.procesoAuditado || audData.proceso || prev.proceso,
-          auditorLider: typeof audData.auditorLider === 'string' ? audData.auditorLider : (audData.auditorLider?.nombre || prev.auditorLider),
+          auditorLider: typeof audData.auditorLider === 'object' && audData.auditorLider?.nombre 
+            ? audData.auditorLider.nombre 
+            : (typeof audData.auditorLider === 'string' ? audData.auditorLider : (prev.auditorLider?.nombre || prev.auditorLider || '—')),
           fechaInicio: audData.fechaInicio || prev.fechaInicio,
           fechaFin: audData.fechaFin || prev.fechaFin,
           hallazgos: h,
           ...(audData.tipo && { tipo: audData.tipo }),
           ...((audData.estadoKanban || audData.fase) && { estado: audData.estadoKanban || audData.fase }),
           ...((audData.nivelRiesgo || audData.riesgoKanban || audData.calificacionRiesgo) && { nivelRiesgo: audData.nivelRiesgo || audData.riesgoKanban || audData.calificacionRiesgo }),
-          ...(audData.auditorLider?.email && { auditorLiderEmail: audData.auditorLider.email }),
+          auditorLiderEmail: audData.auditorLider?.email || audData.auditorLider?.correo || audData.auditorLider?.persona?.email || audData.auditorLiderEmail || audData.emailAuditorLider || (typeof prev.auditorLider === 'object' ? prev.auditorLider.email : prev.auditorLiderEmail) || '—',
           // Variables para PDF e informe (procedentes de BD)
           ...(audData.territorial && { territorial: audData.territorial }),
           ...(audData.alcance && { alcance: audData.alcance }),
           ...(objTexto(audData.objetivos) && { objetivo: objTexto(audData.objetivos) }),
-          ...(audData.equipoAuditores && audData.equipoAuditores.length > 0 && {
-            equipoAuditores: audData.equipoAuditores.map((a: any) => ({ nombre: a.nombre || a.nom_largo || 'Auditor', rol: a.cargo || a.rol })),
-          }),
+          equipoAuditores: Array.isArray(audData.equipoAuditores) && audData.equipoAuditores.length > 0 
+            ? audData.equipoAuditores.map((a: any) => {
+                const existing = (prev.equipoAuditores || []).find((ea: any) => (ea.nombre === a || ea.nombre === a.nombre || ea.nombre === a.persona?.nombre));
+                if (typeof a === 'string') return { nombre: a, rol: 'Auditor', email: existing?.email || '—' };
+                return { 
+                  nombre: a.nombreCompleto || a.nombre || a.persona?.nombre || a.nom_largo || a.name || 'Auditor', 
+                  rol: a.rol || a.cargo || a.persona?.cargo || 'Auditor',
+                  email: a.email || a.correo || a.persona?.email || existing?.email || '—'
+                };
+              })
+            : prev.equipoAuditores,
           ...(audData.responsable && { responsable: audData.responsable }),
           ...(audData.responsableAreaNombre && { 
             responsableUnidadAuditada: audData.responsableAreaNombre,
@@ -530,6 +559,75 @@ export const ComunicacionAuditoriaModule: React.FC<{
           ...(audData.fechaReunionCierre && { fechaReunionCierre: audData.fechaReunionCierre }),
           reuniones: reunionesArr,
         }));
+
+        // Búsqueda de emails de profesionales por nombre si faltan
+        try {
+          const profsRes = await configuracionesProfesionalesOCIApi.getAll(true);
+          console.log('🔍 Buscando emails para el equipo:', { leader: prev.auditorLider, team: prev.equipoAuditores?.length });
+          const profs = Array.isArray(profsRes.data) ? profsRes.data : (Array.isArray(profsRes) ? profsRes : []);
+          
+          if (profs.length > 0) {
+            setAuditoria(prev => {
+              if (!prev) return null;
+              
+              // Email del líder
+              let leaderEmail = prev.auditorLiderEmail;
+              const leaderName = (prev.auditorLider || '').trim().toLowerCase();
+              const leaderId = audData?.auditorLiderId || audData?.auditor_lider_id;
+
+              if (!leaderEmail || leaderEmail === '—') {
+                const found = profs.find(p => {
+                  if (leaderId && (p.idTercero == leaderId || p.id == leaderId)) return true;
+                  const pName = (p.nombre || p.persona?.nombre || p.nom_largo || p.nombreCompleto || '').trim().toLowerCase();
+                  if (!pName || !leaderName) return false;
+                  if (pName === leaderName || pName.includes(leaderName) || leaderName.includes(pName)) return true;
+                  
+                  // Token-based matching (at least 2 matching words of 3+ chars)
+                  const tokensP = pName.split(/\s+/).filter(t => t.length > 2);
+                  const tokensL = leaderName.split(/\s+/).filter(t => t.length > 2);
+                  const comunes = tokensP.filter(t => tokensL.includes(t));
+                  return comunes.length >= 2;
+                });
+                if (found) {
+                  leaderEmail = found.email || (found as any).correo || found.persona?.email || found.persona?.correo;
+                }
+              }
+
+              // Emails del equipo
+              const equipoModificado = (prev.equipoAuditores || []).map(aud => {
+                if (!aud.email || aud.email === '—') {
+                  const audName = (aud.nombre || '').trim().toLowerCase();
+                  const found = profs.find(p => {
+                    const pName = (p.nombre || p.persona?.nombre || p.nom_largo || p.nombreCompleto || '').trim().toLowerCase();
+                    if (!pName || !audName) return false;
+                    if (pName === audName || pName.includes(audName) || audName.includes(pName)) return true;
+                    
+                    const tokensP = pName.split(/\s+/).filter(t => t.length > 2);
+                    const tokensA = audName.split(/\s+/).filter(t => t.length > 2);
+                    const comunes = tokensP.filter(t => tokensA.includes(t));
+                    return comunes.length >= 2;
+                  });
+                  if (found) {
+                    const e = found.email || (found as any).correo || found.persona?.email || found.persona?.correo;
+                    if (e) return { ...aud, email: e };
+                  }
+                }
+                return aud;
+              });
+
+              return {
+                ...prev,
+                auditorLiderEmail: leaderEmail || prev.auditorLiderEmail || '—',
+                equipoAuditores: equipoModificado
+              };
+            });
+            console.log('✅ Búsqueda de emails finalizada');
+          } else {
+            console.warn('⚠️ No se encontraron profesionales en la configuración para extraer emails');
+          }
+        } catch (err) {
+          console.warn('Error al buscar emails de profesionales:', err);
+        }
       }
     } catch (err: any) {
       toast.error(err?.message || 'Error al cargar datos');
@@ -574,9 +672,11 @@ export const ComunicacionAuditoriaModule: React.FC<{
     if (enSeguimiento && seccionActual === 6) cargarResumenCierre();
   }, [enSeguimiento, seccionActual, cargarResumenCierre]);
 
-  // Si soloSeguimiento (tab Seguimiento del expediente), mostrar sección 6 por defecto (Verificación)
+  // Si soloSeguimiento (tab Seguimiento del expediente), mostrar sección 5 por defecto (Informe Ejecutivo)
   useEffect(() => {
-    if (soloSeguimiento && seccionActual < 6) setSeccionActual(6);
+    if (soloSeguimiento && (seccionActual < 5 || seccionActual > 7)) {
+      setSeccionActual(5);
+    }
   }, [soloSeguimiento]);
 
   // ✅ El plan está "listo para avanzar" SOLO cuando fue aprobado por el Jefe OCI
@@ -746,7 +846,6 @@ export const ComunicacionAuditoriaModule: React.FC<{
         await controlInternoService.updateEstadoKanbanAuditoria(id, 'Seguimiento');
         toast.success('Fase de Comunicación completada. Continúe con Verificación de Cumplimiento e Informe de Cierre.');
         setPasamosASeguimiento(true);
-        setTabPrincipal('seguimiento');
         setSeccionActual(5);
         onComunicacionCompletada?.();
       } catch (err: any) {
@@ -755,7 +854,6 @@ export const ComunicacionAuditoriaModule: React.FC<{
     } else {
       toast.success('Fase de Comunicación completada. Continúe con Verificación e Informe de Cierre.');
       setPasamosASeguimiento(true);
-      setTabPrincipal('seguimiento');
       setSeccionActual(5);
       onComunicacionCompletada?.();
     }
@@ -1074,12 +1172,12 @@ export const ComunicacionAuditoriaModule: React.FC<{
                         nombre: auditoria.nombre,
                         tipo: (auditoria as any).tipo || (auditoria as any).tipoAuditoria,
                         estado: (auditoria as any).estado || estadoAuditoriaProp,
-                        areaAuditable: (auditoria as any).areaAuditable || (auditoria as any).areaResponsable || (auditoria as any).areaObjetivo,
-                        procesoNombre: auditoria.proceso,
-                        nivelRiesgo: (auditoria as any).nivelRiesgo || (auditoria as any).riesgoKanban || (auditoria as any).calificacionRiesgo,
-                        auditorLider: typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre || '—',
-                        auditorLiderEmail: (auditoria as any).auditorLiderEmail || (auditoria as any).auditorLider?.email,
-                        territorial: (auditoria as any).territorial,
+                        areaAuditable: (auditoria as any).areaAuditable || (auditoria as any).areaResponsable || (auditoria as any).areaObjetivo || (auditoria as any).areaAuditada || (auditoria as any).territorial || auditoria.nombre,
+                        procesoNombre: auditoria.proceso || (auditoria as any).procesoAuditado,
+                        nivelRiesgo: (auditoria as any).nivelRiesgo || (auditoria as any).riesgoKanban || (auditoria as any).calificacionRiesgo || (auditoria as any).nivelRiesgoKanban,
+                        auditorLider: typeof auditoria.auditorLider === 'string' ? auditoria.auditorLider : (auditoria as any).auditorLider?.nombre || (auditoria as any).auditorLiderNombre || '—',
+                        auditorLiderEmail: (auditoria as any).auditorLiderEmail || (auditoria as any).auditorLider?.email || (auditoria as any).auditorLider?.correo || (auditoria as any).auditorLider?.persona?.email || (auditoria as any).emailAuditorLider || '—',
+                        territorial: (auditoria as any).territorial || (auditoria as any).sede,
                         responsableArea: {
                           nombre: (auditoria as any).responsableArea?.nombre || (auditoria as any).responsableUnidad || (auditoria as any).responsable,
                           cargo: (auditoria as any).responsableArea?.cargo || (auditoria as any).cargo,
@@ -1088,17 +1186,22 @@ export const ComunicacionAuditoriaModule: React.FC<{
                         },
                         equipoAuditores: (auditoria as any).equipoAuditores,
                         cronograma: { fechaInicio: auditoria.fechaInicio, fechaFin: auditoria.fechaFin },
-                        progreso: { general: (auditoria as any).progresoGeneral },
+                        progreso: { general: progreso },
                         estadisticas: {
-                          totalHallazgos,
-                          hallazgosCriticos,
-                          hallazgosMayores,
-                          hallazgosMenores,
-                          documentosCargados: (auditoria as any).documentosCargados || (auditoria as any).totalDocumentos,
+                          ...auditoria.estadisticas,
+                          hallazgosCriticos: (auditoria as any).hallazgosCriticos,
+                          hallazgosMayores: (auditoria as any).hallazgosMayores,
+                          hallazgosMenores: (auditoria as any).hallazgosMenores,
+                          documentosCargados: documentos?.length || (auditoria as any).documentosCargados || (auditoria as any).totalDocumentos || 0,
                           notificacionesEnviadas: (auditoria as any).notificacionesEnviadas,
                         },
                       },
-                      resumen: resumenCierre ? { ...resumenCierre, leccionesAprendidas, recomendacionesFuturasAuditorias: recomendacionesFuturas } : null,
+                      resumen: resumenCierre ? { 
+                        ...resumenCierre, 
+                        leccionesAprendidas, 
+                        recomendacionesFuturasAuditorias: recomendacionesFuturas,
+                        planVinculado: resumenCierre.planVinculado || resumenCierre.planCodigo || (planesParaVerificacion.length > 0 ? (planesParaVerificacion[0].codigo || planesParaVerificacion[0].id) : undefined)
+                      } : null,
                       planes: planesParaVerificacion || [],
                       hallazgos: (auditoria.hallazgos || []).map((h: Hallazgo) => ({
                         id: h.id,
