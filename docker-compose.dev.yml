@@ -392,6 +392,7 @@ services:
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://4.156.71.181}
     ports:
       - "3008:3008"
     depends_on:
