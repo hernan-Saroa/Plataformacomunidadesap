@@ -290,15 +290,15 @@ export function ScopeConfigModal({ isOpen, onClose, role, onSave }: ScopeConfigM
               <div className="grid grid-cols-2 gap-4 mb-8">
                 <div
                   onClick={() => setTipoAlcance('Global')}
-                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all ${tipoAlcance === 'Global' ? 'border-[#4ADE80] bg-[#4ADE80]/5' : 'border-gray-200 hover:border-gray-300'}`}
+                  className={`cursor-pointer rounded-2xl border-2 p-5 transition-all ${tipoAlcance === 'Global' ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}
                 >
                   <div className="flex items-center gap-3 mb-2">
-                    <div className={`w-5 h-5 rounded-full flex items-center justify-center border-2 ${tipoAlcance === 'Global' ? 'border-[#4ADE80] bg-[#4ADE80]' : 'border-gray-300'}`}>
+                    <div className={`w-5 h-5 rounded-full border-2 ${tipoAlcance === 'Global' ? 'border-green-400 bg-green-400' : 'border-gray-300'}`}>
                       {tipoAlcance === 'Global' && <Check size={12} className="text-white" />}
                     </div>
                     <span className="font-bold text-gray-900">Global</span>
                   </div>
-                  <p className="text-[13px] text-gray-500 font-medium ml-8">El usuario podrá ver la información de todo el sistema sin filtros jerárquicos.</p>
+                  <p className={`text-[13px] font-medium ml-8 ${tipoAlcance === 'Global' ? 'text-green-600' : 'text-gray-500'}`}>El usuario podrá ver la información de todo el sistema sin filtros jerárquicos.</p>
                 </div>
 
                 <div
