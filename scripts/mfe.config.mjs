@@ -70,28 +70,75 @@ export function getFrontendApp(appDir) {
 
 const cspNonceBootstrapSource = `(() => {
   const meta = document.querySelector('meta[name="csp-nonce"]');
-  const nonce = meta && meta.content && meta.content.trim();
+  const currentScript = document.currentScript;
+  const scriptNonce = currentScript && (currentScript.nonce || currentScript.getAttribute('nonce'));
+  const metaNonce = meta && meta.content && meta.content.trim();
+  const nonce = (scriptNonce || metaNonce || '').trim();
 
   if (!nonce || nonce === '__ESAP_CSP_NONCE__') return;
 
   globalThis.__webpack_nonce__ = nonce;
+  globalThis.__esapCspNonce = nonce;
 
-  if (globalThis.__ESAP_CSP_NONCE_PATCHED__) return;
-  globalThis.__ESAP_CSP_NONCE_PATCHED__ = true;
-
-  const originalCreateElement = document.createElement.bind(document);
-
-  document.createElement = function createElementWithCspNonce(tagName, options) {
-    const element = originalCreateElement(tagName, options);
-    if (String(tagName).toLowerCase() === 'style') {
-      element.setAttribute('nonce', nonce);
+  const applyNonce = (node) => {
+    if (!node || node.nodeType !== 1) return node;
+    if (String(node.tagName).toLowerCase() === 'style' && (node.nonce || node.getAttribute('nonce')) !== nonce) {
+      node.setAttribute('nonce', nonce);
+      node.nonce = nonce;
     }
-    return element;
+    return node;
   };
 
-  document.querySelectorAll('style:not([nonce])').forEach((styleElement) => {
-    styleElement.setAttribute('nonce', nonce);
-  });
+  const applyNonceTree = (node) => {
+    applyNonce(node);
+    if (node && typeof node.querySelectorAll === 'function') {
+      node.querySelectorAll('style').forEach(applyNonce);
+    }
+    return node;
+  };
+
+  if (!globalThis.__ESAP_CSP_NONCE_PATCHED__) {
+    globalThis.__ESAP_CSP_NONCE_PATCHED__ = true;
+
+    const originalCreateElement = document.createElement.bind(document);
+    document.createElement = function createElementWithCspNonce(tagName, options) {
+      return applyNonce(originalCreateElement(tagName, options));
+    };
+
+    const originalAppendChild = Node.prototype.appendChild;
+    Node.prototype.appendChild = function appendChildWithCspNonce(child) {
+      return originalAppendChild.call(this, applyNonceTree(child));
+    };
+
+    const originalInsertBefore = Node.prototype.insertBefore;
+    Node.prototype.insertBefore = function insertBeforeWithCspNonce(newNode, referenceNode) {
+      return originalInsertBefore.call(this, applyNonceTree(newNode), referenceNode);
+    };
+
+    const originalReplaceChild = Node.prototype.replaceChild;
+    Node.prototype.replaceChild = function replaceChildWithCspNonce(newChild, oldChild) {
+      return originalReplaceChild.call(this, applyNonceTree(newChild), oldChild);
+    };
+
+    const originalAppend = Element.prototype.append;
+    Element.prototype.append = function appendWithCspNonce(...nodes) {
+      nodes.forEach(applyNonceTree);
+      return originalAppend.apply(this, nodes);
+    };
+
+    const originalPrepend = Element.prototype.prepend;
+    Element.prototype.prepend = function prependWithCspNonce(...nodes) {
+      nodes.forEach(applyNonceTree);
+      return originalPrepend.apply(this, nodes);
+    };
+
+    const originalInsertAdjacentElement = Element.prototype.insertAdjacentElement;
+    Element.prototype.insertAdjacentElement = function insertAdjacentElementWithCspNonce(position, element) {
+      return originalInsertAdjacentElement.call(this, position, applyNonceTree(element));
+    };
+  }
+
+  document.querySelectorAll('style').forEach(applyNonce);
 })();
 `;
 
@@ -105,7 +152,7 @@ export function cspNonceBootstrap(appDir) {
 
       return html.replace(
         /(<meta\s+name=["']csp-nonce["'][^>]*>)/i,
-        `$1\n      <script src="${scriptPath}"></script>`,
+        `$1\n      <script nonce="__ESAP_CSP_NONCE__" src="${scriptPath}"></script>`,
       );
     },
     generateBundle() {

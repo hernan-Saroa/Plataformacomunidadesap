@@ -374,12 +374,38 @@ export function FormularioAuditoriaUnificado({
   const [resultadosResponsable, setResultadosResponsable] = useState<ResponsableArea[]>([]);
   const [buscandoResponsable, setBuscandoResponsable] = useState(false);
   const [mostrarSugerenciasResponsable, setMostrarSugerenciasResponsable] = useState(false);
+  // Lista completa de personas precargadas (para mostrar sin escribir al hacer focus)
+  const [personasPrecargadas, setPersonasPrecargadas] = useState<ResponsableArea[]>([]);
   
   // Estado para evaluaciones completas (incluye datos de riesgo)
   const [evaluacionesDisponibles, setEvaluacionesDisponibles] = useState<EvaluacionProceso[]>([]);
 
   const TOTAL_PASOS = 9;
   
+  // Precargar todas las personas disponibles al abrir el formulario
+  useEffect(() => {
+    const precargarPersonas = async () => {
+      if (!open) return;
+      try {
+        const resp = await auditoriasApi.getPersonasDisponibles();
+        if (resp.success && Array.isArray(resp.data) && resp.data.length > 0) {
+          setPersonasPrecargadas(
+            resp.data.map((p: any) => ({
+              idPersona: String(p.idPersona ?? p.id ?? ''),
+              nombre: p.nombre ?? '',
+              email: p.email ?? '',
+              cargo: p.cargo,
+              numeroIdentificacion: p.numeroIdentificacion,
+            }))
+          );
+        }
+      } catch (err) {
+        console.warn('[FormularioAuditoriaUnificado] No se pudieron precargar personas:', err);
+      }
+    };
+    precargarPersonas();
+  }, [open]);
+
   // Cargar profesionales OCI configurados del backend
   useEffect(() => {
     const cargarAuditores = async () => {
@@ -536,21 +562,38 @@ export function FormularioAuditoriaUnificado({
   }, [formData.titulo, formData.procesoAuditado, busquedaProceso]);
 
   // ========== AUTOCOMPLETADO DEL RESPONSABLE DEL ÁREA AUDITADA (Paso 2) ==========
-  // Tras 350ms sin cambios en la consulta, llama a `auditoriasApi.searchPersonas(q)`
-  // contra el endpoint protegido `GET /auditorias/personas/search?q=...`.
+  // Cuando el campo está vacío, muestra todas las personas precargadas.
+  // Al escribir (≥1 char), filtra primero sobre las precargadas y además llama al backend.
   useEffect(() => {
     const q = busquedaResponsable.trim();
-    if (q.length < 2) {
-      setResultadosResponsable([]);
+
+    // Sin búsqueda: mostrar lista precargada (sin hacer fetch)
+    if (q.length === 0) {
+      setResultadosResponsable(personasPrecargadas);
+      setBuscandoResponsable(false);
       return;
     }
+
+    // Filtrado local inmediato sobre la lista precargada
+    const qLower = q.toLowerCase();
+    const filtradosLocal = personasPrecargadas.filter(
+      (p) =>
+        p.nombre.toLowerCase().includes(qLower) ||
+        p.email.toLowerCase().includes(qLower) ||
+        (p.numeroIdentificacion ?? '').includes(q)
+    );
+    setResultadosResponsable(filtradosLocal);
+
+    // También llama al backend para búsqueda más amplia (≥2 chars)
+    if (q.length < 2) return;
+
     let cancelado = false;
     setBuscandoResponsable(true);
     const timer = setTimeout(async () => {
       try {
         const resp = await auditoriasApi.searchPersonas(q);
         if (cancelado) return;
-        if (resp.success && Array.isArray(resp.data)) {
+        if (resp.success && Array.isArray(resp.data) && resp.data.length > 0) {
           setResultadosResponsable(
             resp.data.map((p: any) => ({
               idPersona: String(p.idPersona ?? p.id ?? ''),
@@ -558,15 +601,13 @@ export function FormularioAuditoriaUnificado({
               email: p.email ?? '',
               cargo: p.cargo,
               numeroIdentificacion: p.numeroIdentificacion,
-            })),
+            }))
           );
-        } else {
-          setResultadosResponsable([]);
         }
+        // Si backend no retorna nada, quedamos con el filtrado local
       } catch (err) {
         if (!cancelado) {
           console.warn('[FormularioAuditoriaUnificado] Error buscando personas:', err);
-          setResultadosResponsable([]);
         }
       } finally {
         if (!cancelado) setBuscandoResponsable(false);
@@ -576,7 +617,7 @@ export function FormularioAuditoriaUnificado({
       cancelado = true;
       clearTimeout(timer);
     };
-  }, [busquedaResponsable]);
+  }, [busquedaResponsable, personasPrecargadas]);
 
   // Handlers
   const handleChange = (field: keyof AuditoriaUnificadaFormData, value: any) => {
@@ -1794,29 +1835,55 @@ function Paso2ClasificacionAlcance({
               </div>
             ) : (
               <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Ej. Carlos Pérez, jose.perez@esap.edu.co o 1.234.567.890"
-                  value={busquedaResponsable}
-                  onChange={(e) => {
-                    setBusquedaResponsable(e.target.value);
-                    setMostrarSugerenciasResponsable(true);
-                  }}
-                  onFocus={() => setMostrarSugerenciasResponsable(true)}
-                  onBlur={() => setTimeout(() => setMostrarSugerenciasResponsable(false), 150)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Filtrar por nombre, correo o cédula..."
+                    value={busquedaResponsable}
+                    onChange={(e) => {
+                      setBusquedaResponsable(e.target.value);
+                      setMostrarSugerenciasResponsable(true);
+                    }}
+                    onFocus={() => {
+                      setMostrarSugerenciasResponsable(true);
+                    }}
+                    onBlur={() => setTimeout(() => setMostrarSugerenciasResponsable(false), 200)}
+                    className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    autoComplete="off"
+                  />
+                  {buscandoResponsable && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                        className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full"
+                      />
+                    </div>
+                  )}
+                </div>
 
-                {mostrarSugerenciasResponsable && busquedaResponsable.trim().length >= 2 && (
-                  <div className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-                    {buscandoResponsable && (
-                      <div className="px-3 py-2 text-xs text-gray-500">Buscando…</div>
-                    )}
+                {mostrarSugerenciasResponsable && (
+                  <div className="absolute z-30 mt-1 w-full max-h-72 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl">
+                    {/* Header de la lista */}
+                    <div className="px-3 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                        {busquedaResponsable.trim()
+                          ? `${resultadosResponsable.length} resultado(s)`
+                          : `— Seleccione una persona (${resultadosResponsable.length}) —`}
+                      </span>
+                    </div>
+
                     {!buscandoResponsable && resultadosResponsable.length === 0 && (
-                      <div className="px-3 py-2 text-xs text-gray-500">
-                        No se encontraron personas. Verifica el nombre, correo o identificación.
+                      <div className="px-3 py-4 text-center">
+                        <User className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                        <p className="text-sm text-gray-500">
+                          {busquedaResponsable.trim()
+                            ? 'No se encontraron personas con ese criterio.'
+                            : 'No hay personas disponibles.'}
+                        </p>
                       </div>
                     )}
+
                     {resultadosResponsable.map((p) => (
                       <button
                         key={p.idPersona}
@@ -1827,10 +1894,10 @@ function Paso2ClasificacionAlcance({
                           setBusquedaResponsable('');
                           setMostrarSugerenciasResponsable(false);
                         }}
-                        className="w-full text-left px-3 py-2 hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                        className="w-full text-left px-3 py-2.5 hover:bg-blue-50 border-b border-gray-100 last:border-0 transition-colors"
                       >
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 shrink-0 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-[10px] font-bold">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 shrink-0 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[11px] font-bold">
                             {(p.nombre || '')
                               .split(' ')
                               .filter(Boolean)
@@ -1840,12 +1907,14 @@ function Paso2ClasificacionAlcance({
                               .toUpperCase() || 'P'}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm text-gray-900 truncate">{p.nombre}</p>
+                            <p className="text-sm font-medium text-gray-900 truncate">{p.nombre}</p>
                             <p className="text-xs text-gray-500 truncate">
                               {p.email}
+                              {p.cargo ? ` · ${p.cargo}` : ''}
                               {p.numeroIdentificacion ? ` · CC ${p.numeroIdentificacion}` : ''}
                             </p>
                           </div>
+                          <User className="w-4 h-4 text-gray-300 shrink-0" />
                         </div>
                       </button>
                     ))}

@@ -884,10 +884,12 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                     </h3>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="flex flex-col gap-2">
+                    {/* Fila de acciones iguales */}
+                    <div className="flex gap-2">
                     <button
                       onClick={handleVerPDF}
-                      className="flex flex-col items-center justify-center gap-1.5 px-2 py-3 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-xs font-medium"
+                      className="flex-1 flex flex-col items-center justify-center gap-1.5 px-2 py-3 min-h-[64px] bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-xs font-medium"
                     >
                       <Eye className="w-4 h-4 shrink-0" />
                       Ver PDF
@@ -896,7 +898,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       onClick={handleDescargar}
                       disabled={isDownloading}
                       aria-busy={isDownloading}
-                      className={`flex flex-col items-center justify-center gap-1.5 px-2 py-3 bg-green-50 text-green-700 rounded-lg transition-colors text-xs font-medium ${
+                      className={`flex-1 flex flex-col items-center justify-center gap-1.5 px-2 py-3 min-h-[64px] bg-green-50 text-green-700 rounded-lg transition-colors text-xs font-medium ${
                         isDownloading ? 'opacity-80 cursor-not-allowed' : 'hover:bg-green-100'
                       }`}
                     >
@@ -926,7 +928,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       onClick={handleEnviarEmail}
                       disabled={isSendingEmail}
                       aria-busy={isSendingEmail}
-                      className={`flex flex-col items-center justify-center gap-1.5 px-2 py-3 bg-purple-50 text-purple-700 rounded-lg transition-colors text-xs font-medium ${
+                      className={`flex-1 flex flex-col items-center justify-center gap-1.5 px-2 py-3 min-h-[64px] bg-purple-50 text-purple-700 rounded-lg transition-colors text-xs font-medium ${
                         isSendingEmail ? 'opacity-80 cursor-not-allowed' : 'hover:bg-purple-100'
                       }`}
                     >
@@ -952,23 +954,24 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         'Reenviar'
                       )}
                     </button>
+                    </div>
                     <button
                       onClick={handleVerQR}
-                      className="col-span-3 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] text-white rounded-lg hover:bg-[#002873] transition-colors text-sm font-medium"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] text-white rounded-lg hover:bg-[#002873] transition-colors text-sm font-medium"
                     >
                       <QrCode className="w-4 h-4" />
                       Ver Código QR
                     </button>
                     <button
                       onClick={handleToggleHistorial}
-                      className="col-span-3 flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition-colors text-sm font-medium"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition-colors text-sm font-medium"
                     >
                       <Activity className="w-4 h-4" />
                       {showHistorialVerificaciones ? 'Ocultar' : 'Ver'} Historial de Verificaciones
                     </button>
                     {(isDownloading || isSendingEmail || emailFeedback.type) && (
                       <div
-                        className={`col-span-3 rounded-lg border px-3 py-2 text-xs flex items-center gap-2 ${
+                        className={`w-full rounded-lg border px-3 py-2 text-xs flex items-center gap-2 ${
                           isDownloading || isSendingEmail
                             ? 'bg-blue-50 border-blue-200 text-blue-700'
                             : emailFeedback.type === 'success'

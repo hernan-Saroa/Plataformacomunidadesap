@@ -188,6 +188,14 @@ export const auditoriasApi = {
   },
 
   /**
+   * Obtiene todas las personas de auth.personas (máx N, por defecto 50).
+   * Usada para precargar el selector de responsable del área auditada sin escribir.
+   */
+  getAllPersonas: async (limit = 50): Promise<ApiResponse<any[]>> => {
+    return apiRequest<any[]>(`/auditorias/personas/all?limit=${limit}`);
+  },
+
+  /**
    * Obtener notas de una auditoría
    */
   getNotas: async (auditoriaId: string): Promise<ApiResponse<any[]>> => {

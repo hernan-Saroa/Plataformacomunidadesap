@@ -16,6 +16,7 @@ import { ProgramaAcademico } from './programas/programa.entity';
 import { Asignatura } from './programas/asignatura.entity';
 import { ProgramasModule } from './programas/programas.module';
 import { AsignaturasModule } from './asignaturas/asignaturas.module';
+import { PortalModule } from './portal/portal.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 
 @NestModule({
@@ -46,7 +47,11 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     UsersModule,
     AuthModule,
     ProgramasModule,
+<<<<<<< HEAD
     AsignaturasModule,
+=======
+    PortalModule,
+>>>>>>> 2f5f51ecb51054edccd6c84402b905e6ad763dd4
   ],
   providers: [
     {
