@@ -15,6 +15,7 @@ import { Seccional } from './users/seccional.entity';
 import { ProgramaAcademico } from './programas/programa.entity';
 import { Asignatura } from './programas/asignatura.entity';
 import { ProgramasModule } from './programas/programas.module';
+import { AsignaturasModule } from './asignaturas/asignaturas.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 
 @NestModule({
@@ -45,6 +46,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     UsersModule,
     AuthModule,
     ProgramasModule,
+    AsignaturasModule,
   ],
   providers: [
     {

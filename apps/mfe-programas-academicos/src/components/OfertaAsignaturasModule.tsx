@@ -21,6 +21,7 @@ import { PaginationPremium } from './shared/PaginationPremium';
 import { apiClient } from '../../services/api';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
+import './OfertaAsignaturasModule.css';
 
 interface OfertaAsignaturasModuleProps {
   onBack: () => void;
@@ -335,7 +336,7 @@ export function OfertaAsignaturasModule({ onBack }: OfertaAsignaturasModuleProps
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 oferta-asignaturas-module">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -600,8 +601,8 @@ export function OfertaAsignaturasModule({ onBack }: OfertaAsignaturasModuleProps
               Distribución por Programa Académico
             </h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div>
-                <ResponsiveContainer width="100%" height={300}>
+              <div style={{ height: 300 }}>
+                <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={stats.porPrograma}
@@ -643,16 +644,18 @@ export function OfertaAsignaturasModule({ onBack }: OfertaAsignaturasModuleProps
               <Layers className="w-5 h-5 text-purple-600" />
               Distribución por Núcleo Temático
             </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stats.porNucleo}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="nucleo" angle={-45} textAnchor="end" height={100} />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="asignaturas" fill="#7C3AED" name="Asignaturas" />
-                <Bar dataKey="creditos" fill="#10B981" name="Créditos" />
-              </BarChart>
-            </ResponsiveContainer>
+            <div style={{ height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.porNucleo}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="nucleo" angle={-45} textAnchor="end" height={100} />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="asignaturas" fill="#7C3AED" name="Asignaturas" />
+                  <Bar dataKey="creditos" fill="#10B981" name="Créditos" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </Card>
 
           {/* Distribución por semestre */}
@@ -661,15 +664,17 @@ export function OfertaAsignaturasModule({ onBack }: OfertaAsignaturasModuleProps
               <Award className="w-5 h-5 text-amber-600" />
               Distribución por Semestre
             </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={stats.porSemestre}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="semestre" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="asignaturas" fill="#F59E0B" name="Asignaturas" />
-              </BarChart>
-            </ResponsiveContainer>
+            <div style={{ height: 300 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={stats.porSemestre}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="semestre" />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="asignaturas" fill="#F59E0B" name="Asignaturas" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </Card>
         </div>
       )}
