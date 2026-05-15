@@ -3099,6 +3099,12 @@ export function DashboardKanbanOperativo({
   const currentUser = authService.getCurrentUser();
   const currentUserId = currentUser?.id;
 
+  // ✅ DETERMINAR ROL
+  const canManageProcesos = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_MANAGE);
+  const canManageAprobacion = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_MANAGE);
+  const isProfesional = canManageProcesos && !canManageAprobacion;
+  const filtroId = filtroProfesionalId || (isProfesional ? currentUser?.id : null);
+
   // ✅ BÚSQUEDA GLOBAL COLAPSABLE — ícono → campo expandido
   const [busquedaGlobal, setBusquedaGlobal] = useState('');
   const [showBusquedaGlobal, setShowBusquedaGlobal] = useState(false);
@@ -5583,10 +5589,12 @@ export function DashboardKanbanOperativo({
   // Filtrar por profesional si está activo el filtro
   const normalizedGlobalQuery = normalizeText(busquedaGlobal.trim());
 
-  const itemsFiltrados = (filtroProfesionalId
+  const filtroIdActual = filtroProfesionalId || (isProfesional ? currentUser?.id : null);
+
+  const itemsFiltrados = (filtroIdActual
     ? items.filter(item => {
       if (item.tipo === 'proceso') {
-        return (item as Proceso).profesionalAsignadoId === filtroProfesionalId;
+        return (item as Proceso).profesionalAsignadoId === filtroIdActual;
       }
       return false; // No mostrar noticias cuando hay filtro de profesional
     })
