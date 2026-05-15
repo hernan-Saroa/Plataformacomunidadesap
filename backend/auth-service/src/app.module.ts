@@ -47,11 +47,8 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     UsersModule,
     AuthModule,
     ProgramasModule,
-<<<<<<< HEAD
     AsignaturasModule,
-=======
     PortalModule,
->>>>>>> 2f5f51ecb51054edccd6c84402b905e6ad763dd4
   ],
   providers: [
     {
