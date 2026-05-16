@@ -2816,6 +2816,8 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
         return 'archivada';
       case 'REMITIDA':
         return 'remitida';
+      case 'RADICADA':
+          return 'radicada';
       default:
         return 'pendiente';
     }
@@ -3099,11 +3101,7 @@ export function DashboardKanbanOperativo({
   const currentUser = authService.getCurrentUser();
   const currentUserId = currentUser?.id;
 
-  // ✅ DETERMINAR ROL
-  const canManageProcesos = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_MANAGE);
-  const canManageAprobacion = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_MANAGE);
-  const isProfesional = canManageProcesos && !canManageAprobacion;
-  const filtroId = filtroProfesionalId || (isProfesional ? currentUser?.id : null);
+
 
   // ✅ BÚSQUEDA GLOBAL COLAPSABLE — ícono → campo expandido
   const [busquedaGlobal, setBusquedaGlobal] = useState('');
@@ -3346,13 +3344,19 @@ export function DashboardKanbanOperativo({
       const procesosData = getDataArray<ApiProceso>(procesosRaw);
 
       
-
+ 
       const user = authService.getCurrentUser?.();
-      let noticiasFiltradas = noticiasData;
-      if (hasNoticiaViewMine) {
-        noticiasFiltradas = noticiasData.filter(n => (n as any).idUsuario === user?.sub);
+      let noticiasFiltradas = noticiasData.filter(n => (n as any).activo !== false);
+      if (hasNoticiaViewMine && !hasNoticiaView && !esJefe) {
+      
+        const userInfo = filtroProfesionalId || currentUserId;
+        
+        
+        
+        noticiasFiltradas = noticiasData.filter(n => parseInt((n as any).radicadorId) === parseInt(userInfo));
+        
       }
-      noticiasFiltradas = noticiasFiltradas.filter(n => (n as any).activo !== false);
+
       const procesosFiltrados = procesosData.filter(p => (p as any).activo !== false);
 
       
@@ -3462,6 +3466,10 @@ export function DashboardKanbanOperativo({
         return 'archivada';
       case 'REMITIDA':
         return 'remitida';
+      case 'ASOCIADA':
+        return 'asociada';
+      case 'RADICADA':
+        return 'radicada';
       default:
         return 'pendiente';
     }
@@ -5598,12 +5606,11 @@ export function DashboardKanbanOperativo({
   // Filtrar por profesional si está activo el filtro
   const normalizedGlobalQuery = normalizeText(busquedaGlobal.trim());
 
-  const filtroIdActual = filtroProfesionalId || (isProfesional ? currentUser?.id : null);
 
-  const itemsFiltrados = (filtroIdActual
+  const itemsFiltrados = (filtroProfesionalId
     ? items.filter(item => {
       if (item.tipo === 'proceso') {
-        return (item as Proceso).profesionalAsignadoId === filtroIdActual;
+        return (item as Proceso).profesionalAsignadoId === filtroProfesionalId;
       }
       return false; // No mostrar noticias cuando hay filtro de profesional
     })
