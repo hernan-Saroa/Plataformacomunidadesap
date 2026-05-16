@@ -110,57 +110,58 @@ export function ControlDisciplinarioFull() {
   const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_INICIALES);
   const [revisionLog, setRevisionLog] = useState<ResultadoRevision[]>([]);
 
+  const cargarAutosEnRevision = useCallback(async () => {
+    try {
+      const todos = await disciplinaryService.getAllAutos();
+      const enRevision = todos.filter((a: any) => a.estado === 'REVISION_JEFE');
+      const pliegosAprobados = todos.filter((a: any) =>
+        a.estado === 'APROBADO' &&
+        (a.tipo === 'PLIEGO_CARGOS' || a.tipo === 'AUTO_FORMULACION_PLIEGO')
+      );
+      const autosAMostrar = [...enRevision, ...pliegosAprobados];
+      if (autosAMostrar.length > 0) {
+        const borradoresReales: BorradorPendiente[] = autosAMostrar.map((auto: any) => ({
+          id: `auto-${auto.id}`,
+          autoId: auto.id,
+          procesoId: auto.processId || auto.process?.id,
+          numeroProceso: auto.process?.radicadoProceso || auto.processId,
+          titulo: (auto.tipo || '').replace(/_/g, ' '),
+          plantilla: auto.tipo || '',
+          version: auto.currentVersion || 1,
+          fechaEnvio: auto.createdAt,
+          profesional: {
+            nombre: auto.process?.abogadoAsignadoNombre || 'Profesional',
+            email: '',
+          },
+          observacionesProfesional: auto.comentarios || '',
+          contenido: auto.contenido || '',
+          denunciado: auto.process?.news?.disciplinable?.nombre || 'Sin información',
+          etapa: (auto.process?.etapaActual || '').replace(/_/g, ' '),
+          prioridad: 'media' as const,
+          estado: auto.estado === 'APROBADO' ? 'aprobado' as const : 'en_revision' as const,
+          historial: [{
+            id: `h-${auto.id}`,
+            tipo: auto.estado === 'APROBADO' ? 'aprobado' as const : 'revision_iniciada' as const,
+            usuario: auto.process?.abogadoAsignadoNombre || 'Profesional',
+            fecha: auto.createdAt,
+            descripcion: auto.estado === 'APROBADO'
+              ? 'Auto aprobado por Jefe OCID — pendiente envío a Jurídica'
+              : 'Auto enviado a revisión del Jefe OCID',
+          }],
+          tiempoEspera: '',
+        }));
+        setBorradores(borradoresReales);
+        console.log("borradoresReales", borradoresReales)
+      }
+    } catch {
+      // Si falla la carga, conservar los datos de demostración
+    }
+  }, []);
+
   // Cargar autos reales con estado REVISION_JEFE desde el backend
   useEffect(() => {
-    const cargarAutosEnRevision = async () => {
-      try {
-        const todos = await disciplinaryService.getAllAutos();
-        const enRevision = todos.filter((a: any) => a.estado === 'REVISION_JEFE');
-        const pliegosAprobados = todos.filter((a: any) =>
-          a.estado === 'APROBADO' &&
-          (a.tipo === 'PLIEGO_CARGOS' || a.tipo === 'AUTO_FORMULACION_PLIEGO')
-        );
-        const autosAMostrar = [...enRevision, ...pliegosAprobados];
-        if (autosAMostrar.length > 0) {
-          const borradoresReales: BorradorPendiente[] = autosAMostrar.map((auto: any) => ({
-            id: `auto-${auto.id}`,
-            autoId: auto.id,
-            procesoId: auto.processId || auto.process?.id,
-            numeroProceso: auto.process?.radicadoProceso || auto.processId,
-            titulo: (auto.tipo || '').replace(/_/g, ' '),
-            plantilla: auto.tipo || '',
-            version: auto.currentVersion || 1,
-            fechaEnvio: auto.createdAt,
-            profesional: {
-              nombre: auto.process?.abogadoAsignadoNombre || 'Profesional',
-              email: '',
-            },
-            observacionesProfesional: auto.comentarios || '',
-            contenido: auto.contenido || '',
-            denunciado: auto.process?.news?.disciplinable?.nombre || 'Sin información',
-            etapa: (auto.process?.etapaActual || '').replace(/_/g, ' '),
-            prioridad: 'media' as const,
-            estado: auto.estado === 'APROBADO' ? 'aprobado' as const : 'en_revision' as const,
-            historial: [{
-              id: `h-${auto.id}`,
-              tipo: auto.estado === 'APROBADO' ? 'aprobado' as const : 'revision_iniciada' as const,
-              usuario: auto.process?.abogadoAsignadoNombre || 'Profesional',
-              fecha: auto.createdAt,
-              descripcion: auto.estado === 'APROBADO'
-                ? 'Auto aprobado por Jefe OCID — pendiente envío a Jurídica'
-                : 'Auto enviado a revisión del Jefe OCID',
-            }],
-            tiempoEspera: '',
-          }));
-          setBorradores(borradoresReales);
-          console.log("borradoresReales", borradoresReales)
-        }
-      } catch {
-        // Si falla la carga, conservar los datos de demostración
-      }
-    };
     cargarAutosEnRevision();
-  }, []);
+  }, [cargarAutosEnRevision]);
   
   // ✅ NUEVO: Estado para solicitudes de reasignación
   const [solicitudesReasignacion, setSolicitudesReasignacion] = useState<any[]>([]);
@@ -543,6 +544,7 @@ export function ControlDisciplinarioFull() {
           solicitudesReasignacion={solicitudesReasignacion}
           onAprobar={handleAprobarBorrador}
           onDevolver={handleDevolverBorrador}
+          onRefresh={cargarAutosEnRevision}
           onSendJuridica={handleSendJuridica}
           onAprobarReasignacion={handleAprobarReasignacion}
           onRechazarReasignacion={handleRechazarReasignacion}

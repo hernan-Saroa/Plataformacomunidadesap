@@ -950,7 +950,14 @@ class DisciplinaryService {
         const formData = new FormData();
         formData.append('file', file);
         if (comentario) formData.append('comentario', comentario);
-        return apiClient.post<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
+        
+        // Agregar userId si está disponible para la trazabilidad en el backend
+        const currentUser = authService.getCurrentUser();
+        if (currentUser?.id) {
+            formData.append('userId', currentUser.id);
+        }
+        
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
     }
 
     // --- TÉRMINOS PROCESALES ---

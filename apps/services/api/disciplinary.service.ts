@@ -7,6 +7,7 @@
  */
 
 import { apiClient, type UploadRequestOptions } from './apiClient';
+import { authService } from './authService';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl, getServiceUrl } from '../../config/environment';
 
 // Prefijo del servicio en el API Gateway
@@ -1022,6 +1023,13 @@ class DisciplinaryService {
         const formData = new FormData();
         formData.append('file', file);
         if (comentario) formData.append('comentario', comentario);
+        
+        // Agregar userId si está disponible para la trazabilidad en el backend
+        const currentUser = authService.getCurrentUser();
+        if (currentUser?.id) {
+            formData.append('userId', currentUser.id);
+        }
+        
         return apiClient.post<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
     }
 
