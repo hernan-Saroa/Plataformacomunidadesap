@@ -732,6 +732,7 @@ export default function App() {
     // Limpiar la cookie HttpOnly en el backend (OTIC-001)
     authService.logout().catch(() => {/* el servidor puede estar caído; la cookie expira sola */});
     delete (window as any).__esap_auth_cache;
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user: null } }));
     localStorage.clear();
     AUTH_TOKEN_STORAGE_KEYS.forEach((key) => sessionStorage.removeItem(key));
     clearSensitiveSessionState();
