@@ -115,18 +115,17 @@ export function ControlDisciplinarioFull() {
     const cargarAutosEnRevision = async () => {
       try {
         const todos = await disciplinaryService.getAllAutos();
-        console.log("todos",todos)
         const enRevision = todos.filter((a: any) => a.estado === 'REVISION_JEFE');
         const pliegosAprobados = todos.filter((a: any) =>
           a.estado === 'APROBADO' &&
           (a.tipo === 'PLIEGO_CARGOS' || a.tipo === 'AUTO_FORMULACION_PLIEGO')
         );
         const autosAMostrar = [...enRevision, ...pliegosAprobados];
-        console.log("autosAMostrar",autosAMostrar)
         if (autosAMostrar.length > 0) {
           const borradoresReales: BorradorPendiente[] = autosAMostrar.map((auto: any) => ({
             id: `auto-${auto.id}`,
             autoId: auto.id,
+            procesoId: auto.processId || auto.process?.id,
             numeroProceso: auto.process?.radicadoProceso || auto.processId,
             titulo: (auto.tipo || '').replace(/_/g, ' '),
             plantilla: auto.tipo || '',

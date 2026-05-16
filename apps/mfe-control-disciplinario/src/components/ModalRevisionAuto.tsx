@@ -45,6 +45,7 @@ export interface BorradorPendiente {
   estado: 'pendiente_revision' | 'en_revision' | 'aprobado' | 'devuelto';
   historial: AccionRevision[];
   tiempoEspera?: string;
+  procesoId?: string;
   // Campos de prórroga (solo para AUTO_PRORROGA)
   tipo?: string;
   prorrogaMeses?: number;

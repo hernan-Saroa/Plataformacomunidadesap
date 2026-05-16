@@ -210,10 +210,12 @@ interface Noticia {
   radicadorId?: string;
   radicadorEmail?: string;
   fechaRegistro?: string;
+  originalNewsId?: string;
 }
 
 interface Proceso {
   id: string;
+  originalNewsId?: string;
   numeroProceso: string;
   noticiaOrigen: string;
   cedula: string;
@@ -2816,6 +2818,8 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
         return 'archivada';
       case 'REMITIDA':
         return 'remitida';
+      case 'RADICADA':
+          return 'radicada';
       default:
         return 'pendiente';
     }
@@ -2960,6 +2964,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
 
     return {
       id: proceso.id,
+      originalNewsId: proceso.news?.id,
       numeroProceso: proceso.radicadoProceso,
       noticiaOrigen: proceso.news?.radicado || 'N/A',
       
@@ -3098,6 +3103,8 @@ export function DashboardKanbanOperativo({
   // ✅ USUARIO ACTUAL
   const currentUser = authService.getCurrentUser();
   const currentUserId = currentUser?.id;
+
+
 
   // ✅ BÚSQUEDA GLOBAL COLAPSABLE — ícono → campo expandido
   const [busquedaGlobal, setBusquedaGlobal] = useState('');
@@ -3282,7 +3289,7 @@ export function DashboardKanbanOperativo({
     setEtapasLoading(true);
     try {
       const etapas = await disciplinaryService.getStageConfiguration();
-      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW)
+      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW) || authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_MINE)
       console.log('[DashboardKanban] Etapas cargadas desde backend:', etapas);
       // Si no tienen orden, asignar orden por defecto basado en índice
       const etapasOrdenadas = (getDataArray<any>(etapas) || []).map((etapa, idx) => ({
@@ -3309,38 +3316,53 @@ export function DashboardKanbanOperativo({
     try {
       const canViewAll = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL);
       const canViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE);
-      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW);
-      
-      console.log('hasPermissionNoticia', hasPermissionNoticia);
-      console.log('canViewAll', canViewAll);
-      console.log('canViewMine', canViewMine);
-      
+      const hasNoticiaView = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW);
+      const hasNoticiaViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_MINE);
       const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
 
       console.log('esJefe', esJefe);
+      console.log('hasNoticiaView', hasNoticiaView);
+      console.log('hasNoticiaViewMine', hasNoticiaViewMine);
+      console.log('canViewAll', canViewAll);
+      console.log('canViewMine', canViewMine);
 
       // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo o permiso restringido)
       // Para superadmin o jefe ocid, mostrar todas las noticias y procesos sin filtrar
       const [noticiasRaw, procesosRaw] = await Promise.all([
-        hasPermissionNoticia ?
-          (esJefe ? disciplinaryService.getAllNoticias() : disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId))
+        // esJefe || hasNoticiaView
+        //   ? disciplinaryService.getAllNoticias() 
+        //   : hasNoticiaViewMine ? disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId)
+        //   : [],
+
+        esJefe || hasNoticiaView || hasNoticiaViewMine
+          ? disciplinaryService.getAllNoticias() 
           : [],
-        esJefe ?
-          disciplinaryService.getAllProcesos()
-          : (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
-          ? disciplinaryService.getMisProcesos(filtroProfesionalId || currentUserId)
-          : disciplinaryService.getAllProcesos()
+        esJefe || canViewAll
+          ? disciplinaryService.getAllProcesos()
+          : canViewMine ? disciplinaryService.getMisProcesos(filtroProfesionalId || currentUserId)
+          : []
       ]);
 
       const noticiasData = getDataArray<ApiNoticia>(noticiasRaw);
       const procesosData = getDataArray<ApiProceso>(procesosRaw);
 
       
+ 
+      const user = authService.getCurrentUser?.();
+      let noticiasFiltradas = noticiasData.filter(n => (n as any).activo !== false);
+      if (hasNoticiaViewMine && !hasNoticiaView && !esJefe) {
+      
+        const userInfo = filtroProfesionalId || currentUserId;
+        
+        
+        
+        noticiasFiltradas = noticiasData.filter(n => parseInt((n as any).radicadorId) === parseInt(userInfo));
+        
+      }
 
-      // Filtrar solo items activos
-      const noticiasFiltradas = noticiasData.filter(n => (n as any).activo !== false);
       const procesosFiltrados = procesosData.filter(p => (p as any).activo !== false);
 
+      
       // Separar noticias archivadas de las activas. Excluir ASIGNADA porque ya tienen proceso asociado
       const noticiasActivas = noticiasFiltradas.filter(n => {
         const estado = (n as any).estado;
@@ -3370,17 +3392,17 @@ export function DashboardKanbanOperativo({
 
       // Separar procesos archivados (en etapa 'Archivo') de los activos
       const procesosActivos = procesosTransformados.filter(p =>
-        p.etapaActual !== 'Archivo' && p.estadoActual !== 'ARCHIVADO'
+        p.etapaActual !== 'Archivo' && p.estadoActual !== 'ARCHIVADO' && p.estadoActual !== 'CERRADO'
       );
       const procesosArchivados = procesosTransformados.filter(p =>
-        p.etapaActual === 'Archivo' || p.estadoActual === 'ARCHIVADO'
+        p.etapaActual === 'Archivo' || p.estadoActual === 'ARCHIVADO' || p.estadoActual === 'CERRADO'
       );
 
       // Transformar procesos archivados al formato de archivados
       const procesosArchivadosTransformados = procesosArchivados.map(p => ({
         ...p,
         fechaArchivo: (p as any).fechaCreacion || new Date().toISOString(),
-        motivoArchivo: 'Completado - Archivo'
+        motivoArchivo: p.estadoActual === 'CERRADO' ? 'Cerrado - Enviado a Jurídica' : 'Completado - Archivo'
       }));
 
       // Combinar noticias y procesos activos
@@ -3447,6 +3469,10 @@ export function DashboardKanbanOperativo({
         return 'archivada';
       case 'REMITIDA':
         return 'remitida';
+      case 'ASOCIADA':
+        return 'asociada';
+      case 'RADICADA':
+        return 'radicada';
       default:
         return 'pendiente';
     }
@@ -3668,6 +3694,7 @@ export function DashboardKanbanOperativo({
 
     return {
       id: proceso.id,
+      originalNewsId: proceso.news?.id,
       numeroProceso: proceso.radicadoProceso,
       noticiaOrigen: proceso.news?.radicado || 'N/A',
       
@@ -4156,28 +4183,61 @@ export function DashboardKanbanOperativo({
       cargo: d.cargo,
       entidad: d.entidad,
       tipo: d.tipo,
-      apoderado: d.apoderado
+      apoderado: d.apoderado // RESTORED: Backend seems to allow it in some cases, following "hazlo asi"
     }));
     const denunciadosPayload = denunciadosEdit.map((d: any) => ({
       nombre: d.nombre,
       cedula: d.identificacion || d.cedula,
       cargo: d.cargo,
       dependencia: d.lugarHechos || d.dependencia,
-      apoderado: d.apoderado
+      apoderado: d.apoderado // RESTORED: Backend seems to allow it in some cases, following "hazlo asi"
     }));
+
+    // ✅ Lógica 1 o N: objeto si es uno, array si son varios (para campos singulares)
+    const denuncianteSingular = denunciantesPayload.length === 1 ? denunciantesPayload[0] : (denunciantesPayload.length > 0 ? denunciantesPayload : null);
+    const disciplinableSingular = denunciadosPayload.length === 1 ? denunciadosPayload[0] : (denunciadosPayload.length > 0 ? denunciadosPayload : null);
 
     const toastId = toast.loading(esProceso ? 'Actualizando proceso...' : 'Actualizando noticia...');
 
     try {
       if (esProceso) {
+        // ✅ 1. Actualizar la noticia asociada primero
+        const newsId = (noticiaAEditar as any).originalNewsId || (itemOriginal as any).originalNewsId;
+        
+        if (newsId) {
+          console.log('🔄 Actualizando noticia asociada ID:', newsId);
+          const origenMap: Record<string, string> = {
+            'AnÃ³nimo': 'ANONIMO',
+            'Anonimo': 'ANONIMO',
+            'Quejoso': 'QUE_JOSO',
+            'De oficio': 'OFICIO',
+            'Oficio': 'OFICIO',
+            'RemisiÃ³n': 'REMISION',
+            'Remision': 'REMISION',
+            'Por determinar': 'POR_DETERMINAR'
+          };
+
+          await disciplinaryService.updateNoticia(newsId, {
+            origen: origenMap[data.origen] || data.origen || 'POR_DETERMINAR',
+            territorial: data.territorial,
+            dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
+            hechos: hechosEdit,
+            conducta: conductaEdit,
+            conductas: conductaEdit ? [conductaEdit] : [],
+            denunciante: denuncianteSingular,
+            denunciantes: denunciantesPayload, // ✅ Enviar plural tambiÃ©n
+            disciplinable: disciplinableSingular,
+            disciplinables: denunciadosPayload, // ✅ Enviar plural tambiÃ©n
+            fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : null,
+            fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined
+          });
+        }
+
+        // ✅ 2. Actualizar el proceso (solo campos permitidos)
+        // Usamos solo el primer disciplinable como objeto si hay varios para evitar "must be an object"
         await disciplinaryService.updateProcess(noticiaAEditar.id, {
-          territorial: data.territorial,
-          fechaHechos: data.fechaHechos || null,
           hechos: hechosEdit,
-          conducta: conductaEdit,
-          conductas: conductaEdit ? [conductaEdit] : [],
-          denunciante: denunciantesPayload,
-          disciplinable: denunciadosPayload
+          disciplinable: Array.isArray(disciplinableSingular) ? disciplinableSingular[0] : disciplinableSingular
         } as any);
       } else {
         const origenMap: Record<string, string> = {
@@ -4200,8 +4260,10 @@ export function DashboardKanbanOperativo({
           hechos: hechosEdit,
           conducta: conductaEdit,
           conductas: conductaEdit ? [conductaEdit] : [],
-          denunciante: denunciantesPayload,
-          disciplinable: denunciadosPayload,
+          denunciante: denuncianteSingular,
+          denunciantes: denunciantesPayload,
+          disciplinable: disciplinableSingular,
+          disciplinables: denunciadosPayload,
           fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : null,
           fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined
         });
@@ -4228,11 +4290,13 @@ export function DashboardKanbanOperativo({
           hechos: hechosEdit,
           hechosSeparados: data.hechosSeparados,
           conductasSeleccionadas: conductaEdit ? [conductaEdit] : [],
+          conductaSeleccionada: conductaEdit, // ✅ Actualizado para UI
           conducta: conductaEdit,
           cargo: primerDenunciadoEdit?.cargo,
           dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos,
           territorial: data.territorial,
-          fechaHechos: data.fechaHechos
+          fechaHechos: data.fechaHechos,
+          origenNoticia: data.origen // ✅ Actualizado para UI
         };
       }
       if (item.tipo === 'noticia' && item.id === noticiaAEditar.id) {
@@ -4248,7 +4312,7 @@ export function DashboardKanbanOperativo({
           denunciantes: denunciantesEdit,
           hechos: hechosEdit,
           hechosSeparados: data.hechosSeparados,
-          conductaSeleccionada: conductaEdit,
+          conductaSeleccionada: conductaEdit, // ✅ Actualizado para UI
           conducta: conductaEdit,
           cargo: primerDenunciadoEdit?.cargo,
           dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos
@@ -4271,9 +4335,10 @@ export function DashboardKanbanOperativo({
     // Convertir el proceso a formato de noticia para el wizard
     const noticiaDesdeProceso: Noticia = {
       id: proceso.id,
+      originalNewsId: proceso.originalNewsId,
       numero: proceso.numeroProceso,
       fechaRecepcion: proceso.fechaCreacion,
-      origen: 'Proceso Disciplinario',
+      origen: proceso.origenNoticia || 'OFICIO', // ✅ Usar origen real
       denunciante: proceso.denunciante,
       denunciado: proceso.denunciado,
       hechos: proceso.hechos || '',
@@ -4286,7 +4351,8 @@ export function DashboardKanbanOperativo({
       dependencia: proceso.dependencia,
       territorial: proceso.territorial,
       hechosSeparados: proceso.hechosSeparados,
-      conductasSeleccionadas: proceso.conductasSeleccionadas
+      conductaSeleccionada: proceso.conductaSeleccionada || proceso.conducta, // ✅ Asegurar que se pase
+      conducta: proceso.conducta,
     };
 
     setNoticiaAEditar(noticiaDesdeProceso);
@@ -4446,7 +4512,7 @@ export function DashboardKanbanOperativo({
   };
 
   const handleDevolverNoticia = (noticia: Noticia) => {
-    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_DEVOLVER)) {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER)) {
       toast.error('No tiene permisos para devolver noticias');
       return;
     }
@@ -5583,6 +5649,7 @@ export function DashboardKanbanOperativo({
   // Filtrar por profesional si está activo el filtro
   const normalizedGlobalQuery = normalizeText(busquedaGlobal.trim());
 
+
   const itemsFiltrados = (filtroProfesionalId
     ? items.filter(item => {
       if (item.tipo === 'proceso') {
@@ -5807,7 +5874,7 @@ export function DashboardKanbanOperativo({
                 onChange={(id) => setTipoVista(id as any)}
               />
 
-              {authService.hasPermission(Permissions.NOTICIAS_DISCIPLINARIAS_CREATE || Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE) && (
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT || Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE) && (
                 <KanbanToolbarCTA
                   onClick={() => setModalActivo('crear-noticia')}
                   icon={<Plus style={{ width: 16, height: 16 }} />}
@@ -5871,6 +5938,8 @@ export function DashboardKanbanOperativo({
           </div>
         )}
 
+        
+
         {!loading && tipoVista === 'kanban' && itemsFiltrados.length === 0 && (
           <div className="flex flex-col items-center justify-center py-24 px-4">
             <div className="text-center max-w-md">
@@ -5883,7 +5952,7 @@ export function DashboardKanbanOperativo({
               <p className="text-sm mb-6" style={{ color: '#6B7280' }}>
                 Actualmente no existen noticias ni procesos disciplinarios en el sistema. Puede crear una nueva noticia haciendo clic en el botón "Nueva".
               </p>
-              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE) && (
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) && (
                 <Button
                   onClick={() => setModalActivo('crear-noticia')}
                   className="px-6 py-2.5 text-white font-semibold rounded-xl shadow-md"
