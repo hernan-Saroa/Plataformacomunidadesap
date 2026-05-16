@@ -210,10 +210,12 @@ interface Noticia {
   radicadorId?: string;
   radicadorEmail?: string;
   fechaRegistro?: string;
+  originalNewsId?: string;
 }
 
 interface Proceso {
   id: string;
+  originalNewsId?: string;
   numeroProceso: string;
   noticiaOrigen: string;
   cedula: string;
@@ -2962,6 +2964,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
 
     return {
       id: proceso.id,
+      originalNewsId: proceso.news?.id,
       numeroProceso: proceso.radicadoProceso,
       noticiaOrigen: proceso.news?.radicado || 'N/A',
       
@@ -3691,6 +3694,7 @@ export function DashboardKanbanOperativo({
 
     return {
       id: proceso.id,
+      originalNewsId: proceso.news?.id,
       numeroProceso: proceso.radicadoProceso,
       noticiaOrigen: proceso.news?.radicado || 'N/A',
       
@@ -4179,28 +4183,61 @@ export function DashboardKanbanOperativo({
       cargo: d.cargo,
       entidad: d.entidad,
       tipo: d.tipo,
-      apoderado: d.apoderado
+      apoderado: d.apoderado // RESTORED: Backend seems to allow it in some cases, following "hazlo asi"
     }));
     const denunciadosPayload = denunciadosEdit.map((d: any) => ({
       nombre: d.nombre,
       cedula: d.identificacion || d.cedula,
       cargo: d.cargo,
       dependencia: d.lugarHechos || d.dependencia,
-      apoderado: d.apoderado
+      apoderado: d.apoderado // RESTORED: Backend seems to allow it in some cases, following "hazlo asi"
     }));
+
+    // ✅ Lógica 1 o N: objeto si es uno, array si son varios (para campos singulares)
+    const denuncianteSingular = denunciantesPayload.length === 1 ? denunciantesPayload[0] : (denunciantesPayload.length > 0 ? denunciantesPayload : null);
+    const disciplinableSingular = denunciadosPayload.length === 1 ? denunciadosPayload[0] : (denunciadosPayload.length > 0 ? denunciadosPayload : null);
 
     const toastId = toast.loading(esProceso ? 'Actualizando proceso...' : 'Actualizando noticia...');
 
     try {
       if (esProceso) {
+        // ✅ 1. Actualizar la noticia asociada primero
+        const newsId = (noticiaAEditar as any).originalNewsId || (itemOriginal as any).originalNewsId;
+        
+        if (newsId) {
+          console.log('🔄 Actualizando noticia asociada ID:', newsId);
+          const origenMap: Record<string, string> = {
+            'AnÃ³nimo': 'ANONIMO',
+            'Anonimo': 'ANONIMO',
+            'Quejoso': 'QUE_JOSO',
+            'De oficio': 'OFICIO',
+            'Oficio': 'OFICIO',
+            'RemisiÃ³n': 'REMISION',
+            'Remision': 'REMISION',
+            'Por determinar': 'POR_DETERMINAR'
+          };
+
+          await disciplinaryService.updateNoticia(newsId, {
+            origen: origenMap[data.origen] || data.origen || 'POR_DETERMINAR',
+            territorial: data.territorial,
+            dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
+            hechos: hechosEdit,
+            conducta: conductaEdit,
+            conductas: conductaEdit ? [conductaEdit] : [],
+            denunciante: denuncianteSingular,
+            denunciantes: denunciantesPayload, // ✅ Enviar plural tambiÃ©n
+            disciplinable: disciplinableSingular,
+            disciplinables: denunciadosPayload, // ✅ Enviar plural tambiÃ©n
+            fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : null,
+            fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined
+          });
+        }
+
+        // ✅ 2. Actualizar el proceso (solo campos permitidos)
+        // Usamos solo el primer disciplinable como objeto si hay varios para evitar "must be an object"
         await disciplinaryService.updateProcess(noticiaAEditar.id, {
-          territorial: data.territorial,
-          fechaHechos: data.fechaHechos || null,
           hechos: hechosEdit,
-          conducta: conductaEdit,
-          conductas: conductaEdit ? [conductaEdit] : [],
-          denunciante: denunciantesPayload,
-          disciplinable: denunciadosPayload
+          disciplinable: Array.isArray(disciplinableSingular) ? disciplinableSingular[0] : disciplinableSingular
         } as any);
       } else {
         const origenMap: Record<string, string> = {
@@ -4223,8 +4260,10 @@ export function DashboardKanbanOperativo({
           hechos: hechosEdit,
           conducta: conductaEdit,
           conductas: conductaEdit ? [conductaEdit] : [],
-          denunciante: denunciantesPayload,
-          disciplinable: denunciadosPayload,
+          denunciante: denuncianteSingular,
+          denunciantes: denunciantesPayload,
+          disciplinable: disciplinableSingular,
+          disciplinables: denunciadosPayload,
           fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : null,
           fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined
         });
@@ -4251,11 +4290,13 @@ export function DashboardKanbanOperativo({
           hechos: hechosEdit,
           hechosSeparados: data.hechosSeparados,
           conductasSeleccionadas: conductaEdit ? [conductaEdit] : [],
+          conductaSeleccionada: conductaEdit, // ✅ Actualizado para UI
           conducta: conductaEdit,
           cargo: primerDenunciadoEdit?.cargo,
           dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos,
           territorial: data.territorial,
-          fechaHechos: data.fechaHechos
+          fechaHechos: data.fechaHechos,
+          origenNoticia: data.origen // ✅ Actualizado para UI
         };
       }
       if (item.tipo === 'noticia' && item.id === noticiaAEditar.id) {
@@ -4271,7 +4312,7 @@ export function DashboardKanbanOperativo({
           denunciantes: denunciantesEdit,
           hechos: hechosEdit,
           hechosSeparados: data.hechosSeparados,
-          conductaSeleccionada: conductaEdit,
+          conductaSeleccionada: conductaEdit, // ✅ Actualizado para UI
           conducta: conductaEdit,
           cargo: primerDenunciadoEdit?.cargo,
           dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos
@@ -4294,9 +4335,10 @@ export function DashboardKanbanOperativo({
     // Convertir el proceso a formato de noticia para el wizard
     const noticiaDesdeProceso: Noticia = {
       id: proceso.id,
+      originalNewsId: proceso.originalNewsId,
       numero: proceso.numeroProceso,
       fechaRecepcion: proceso.fechaCreacion,
-      origen: 'Proceso Disciplinario',
+      origen: proceso.origenNoticia || 'OFICIO', // ✅ Usar origen real
       denunciante: proceso.denunciante,
       denunciado: proceso.denunciado,
       hechos: proceso.hechos || '',
@@ -4309,7 +4351,8 @@ export function DashboardKanbanOperativo({
       dependencia: proceso.dependencia,
       territorial: proceso.territorial,
       hechosSeparados: proceso.hechosSeparados,
-      conductasSeleccionadas: proceso.conductasSeleccionadas
+      conductaSeleccionada: proceso.conductaSeleccionada || proceso.conducta, // ✅ Asegurar que se pase
+      conducta: proceso.conducta,
     };
 
     setNoticiaAEditar(noticiaDesdeProceso);
