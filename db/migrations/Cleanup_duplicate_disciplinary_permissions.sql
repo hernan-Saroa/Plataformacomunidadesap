@@ -142,5 +142,6 @@ BEGIN
         (v_module_id, 'control-disciplinario.noticia-disciplinaria.redimir', 'Noticias - Redimir', 'Permite remitir noticias', true),
         (v_module_id, 'control-disciplinario.noticia-disciplinaria.restaurar_mine', 'Noticias - Restaurar Mías', 'Permite restaurar noticias propias archivadas', true);
 
+
     RAISE NOTICE 'Disciplinary permissions cleaned and recreated successfully (130 permissions)';
 END $$;
