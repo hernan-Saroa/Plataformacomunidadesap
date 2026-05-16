@@ -4469,7 +4469,7 @@ export function DashboardKanbanOperativo({
   };
 
   const handleDevolverNoticia = (noticia: Noticia) => {
-    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_DEVOLVER)) {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER)) {
       toast.error('No tiene permisos para devolver noticias');
       return;
     }
