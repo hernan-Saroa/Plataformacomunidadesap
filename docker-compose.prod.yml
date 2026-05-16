@@ -290,6 +290,8 @@ services:
         condition: service_started
     networks:
       - superapp-net-prod
+    volumes:
+      - ./backend/internal-disciplinary-control-service/uploads:/app/uploads
     restart: unless-stopped
 
   # ============ INTEROPERABILITY SERVICE ============
