@@ -141,4 +141,19 @@ export class NotificationsService {
     await this.repo.save({ ...n, email_click: true });
     return { success: true };
   }
+
+  async toggleFavorite(id: string): Promise<{ success: boolean; es_favorito: boolean }> {
+    try {
+      const n = await this.repo.findOne({ where: { id_notificacion: id } });
+      if (!n) throw new NotFoundException('Notificación no encontrada');
+
+      const newState = !n.es_favorito;
+      await this.repo.update({ id_notificacion: id }, { es_favorito: newState });
+      
+      return { success: true, es_favorito: newState };
+    } catch (error) {
+      console.error(`[NotificationsService] Error en toggleFavorite:`, error);
+      throw error;
+    }
+  }
 }

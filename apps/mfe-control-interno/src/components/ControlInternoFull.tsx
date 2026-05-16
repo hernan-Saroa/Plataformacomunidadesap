@@ -391,5 +391,40 @@ function MenuDinamicoWrapper({
     return () => window.removeEventListener('navegarModuloControlInterno', handler as EventListener);
   }, [onCambiarSeccion, onNavegarAListasChequeo]);
 
+  const { setAuditoriaIdFoco, setFaseFoco } = useIntegracionAuditoriaPlanes();
+
+  // ✅ Navegación: Escuchar eventos de Notificaciones (Control Interno)
+  useEffect(() => {
+    const handleOpenExpediente = (e: any) => {
+      const { seccion, auditoriaId, planId, fase } = e.detail || {};
+      if (seccion) {
+        onCambiarSeccion(seccion as SeccionActiva);
+        const focalId = auditoriaId || planId;
+        if (focalId) {
+          console.log('[ControlInterno] Estableciendo foco en:', focalId, 'Fase:', fase);
+          setAuditoriaIdFoco(focalId);
+          if (fase) setFaseFoco(fase);
+        }
+      }
+    };
+
+    // 1. Escuchar el evento en tiempo real
+    window.addEventListener('control-interno:open-expediente', handleOpenExpediente);
+
+    // 2. Verificar si hay una navegación pendiente al montar el componente
+    const pending = sessionStorage.getItem('control-interno:pendingOpenExpediente');
+    if (pending) {
+      try {
+        const detail = JSON.parse(pending);
+        handleOpenExpediente({ detail });
+        sessionStorage.removeItem('control-interno:pendingOpenExpediente');
+      } catch (err) {
+        console.error('Error al procesar navegación pendiente:', err);
+      }
+    }
+
+    return () => window.removeEventListener('control-interno:open-expediente', handleOpenExpediente);
+  }, [onCambiarSeccion]);
+
   return null;
 }

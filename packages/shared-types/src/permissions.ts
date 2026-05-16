@@ -155,6 +155,8 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_ASIGNAR = 'control-disciplinario.noticia-disciplinaria.asignar',
   CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DEVOLVER = 'control-disciplinario.noticia-disciplinaria.devolver',
   CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR = 'control-disciplinario.noticia-disciplinaria.redimir',
+  CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW = 'control-disciplinario.noticia-disciplinaria.view',
+  CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_MINE = 'control-disciplinario.noticia-disciplinaria.view_mine',
   CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_RESTAURAR = 'control-disciplinario.noticia-disciplinaria.restaurar',
   CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_RESTAURAR_MINE = 'control-disciplinario.noticia-disciplinaria.restaurar_mine',
 
@@ -225,7 +227,6 @@ export enum Permissions {
   CONTROL_DISCIPLINARIO_PROCESOS_NOTES_VIEW = 'control-disciplinario.procesos.notas.view',
   CONTROL_DISCIPLINARIO_PROCESOS_KANBAN_MOVE = 'control-disciplinario.procesos.kanban.move',
   CONTROL_DISCIPLINARIO_PROCESOS_VIEW_LIST = 'control-disciplinario.procesos.view_list',
-  CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW = 'control-disciplinario.noticia-disciplinaria.view',
   CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DETAIL = 'control-disciplinario.noticia-disciplinaria.view_detail',
   CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_DEVUELTAS = 'control-disciplinario.noticia-disciplinaria.view_devueltas',
   CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_MIS_DEVUELTAS = 'control-disciplinario.noticia-disciplinaria.view_mis_devueltas',
