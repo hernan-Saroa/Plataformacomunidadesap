@@ -3288,7 +3288,7 @@ export function DashboardKanbanOperativo({
     setEtapasLoading(true);
     try {
       const etapas = await disciplinaryService.getStageConfiguration();
-      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW)
+      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW) || authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_MINE)
       console.log('[DashboardKanban] Etapas cargadas desde backend:', etapas);
       // Si no tienen orden, asignar orden por defecto basado en índice
       const etapasOrdenadas = (getDataArray<any>(etapas) || []).map((etapa, idx) => ({
@@ -3315,27 +3315,31 @@ export function DashboardKanbanOperativo({
     try {
       const canViewAll = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL);
       const canViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE);
-      const hasPermissionNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW);
-      
-      console.log('hasPermissionNoticia', hasPermissionNoticia);
-      console.log('canViewAll', canViewAll);
-      console.log('canViewMine', canViewMine);
-      
+      const hasNoticiaView = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW);
+      const hasNoticiaViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_MINE);
       const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
 
       console.log('esJefe', esJefe);
+      console.log('hasNoticiaView', hasNoticiaView);
+      console.log('hasNoticiaViewMine', hasNoticiaViewMine);
+      console.log('canViewAll', canViewAll);
+      console.log('canViewMine', canViewMine);
 
       // Cargar noticias y procesos en paralelo (filtrados por profesional si hay filtro activo o permiso restringido)
       // Para superadmin o jefe ocid, mostrar todas las noticias y procesos sin filtrar
       const [noticiasRaw, procesosRaw] = await Promise.all([
-        hasPermissionNoticia ?
-          (esJefe ? disciplinaryService.getAllNoticias() : disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId))
+        // esJefe || hasNoticiaView
+        //   ? disciplinaryService.getAllNoticias() 
+        //   : hasNoticiaViewMine ? disciplinaryService.getMisNoticias(filtroProfesionalId || currentUserId)
+        //   : [],
+
+        esJefe || hasNoticiaView || hasNoticiaViewMine
+          ? disciplinaryService.getAllNoticias() 
           : [],
-        esJefe ?
-          disciplinaryService.getAllProcesos()
-          : (filtroProfesionalId || (!canViewAll && canViewMine && currentUserId))
-          ? disciplinaryService.getMisProcesos(filtroProfesionalId || currentUserId)
-          : disciplinaryService.getAllProcesos()
+        esJefe || canViewAll
+          ? disciplinaryService.getAllProcesos()
+          : canViewMine ? disciplinaryService.getMisProcesos(filtroProfesionalId || currentUserId)
+          : []
       ]);
 
       const noticiasData = getDataArray<ApiNoticia>(noticiasRaw);
@@ -3343,10 +3347,15 @@ export function DashboardKanbanOperativo({
 
       
 
-      // Filtrar solo items activos
-      const noticiasFiltradas = noticiasData.filter(n => (n as any).activo !== false);
+      const user = authService.getCurrentUser?.();
+      let noticiasFiltradas = noticiasData;
+      if (hasNoticiaViewMine) {
+        noticiasFiltradas = noticiasData.filter(n => (n as any).idUsuario === user?.sub);
+      }
+      noticiasFiltradas = noticiasFiltradas.filter(n => (n as any).activo !== false);
       const procesosFiltrados = procesosData.filter(p => (p as any).activo !== false);
 
+      
       // Separar noticias archivadas de las activas. Excluir ASIGNADA porque ya tienen proceso asociado
       const noticiasActivas = noticiasFiltradas.filter(n => {
         const estado = (n as any).estado;
@@ -5815,7 +5824,7 @@ export function DashboardKanbanOperativo({
                 onChange={(id) => setTipoVista(id as any)}
               />
 
-              {authService.hasPermission(Permissions.NOTICIAS_DISCIPLINARIAS_CREATE || Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE) && (
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT || Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE) && (
                 <KanbanToolbarCTA
                   onClick={() => setModalActivo('crear-noticia')}
                   icon={<Plus style={{ width: 16, height: 16 }} />}
@@ -5879,6 +5888,8 @@ export function DashboardKanbanOperativo({
           </div>
         )}
 
+        
+
         {!loading && tipoVista === 'kanban' && itemsFiltrados.length === 0 && (
           <div className="flex flex-col items-center justify-center py-24 px-4">
             <div className="text-center max-w-md">
@@ -5891,7 +5902,7 @@ export function DashboardKanbanOperativo({
               <p className="text-sm mb-6" style={{ color: '#6B7280' }}>
                 Actualmente no existen noticias ni procesos disciplinarios en el sistema. Puede crear una nueva noticia haciendo clic en el botón "Nueva".
               </p>
-              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_CREATE) && (
+              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) && (
                 <Button
                   onClick={() => setModalActivo('crear-noticia')}
                   className="px-6 py-2.5 text-white font-semibold rounded-xl shadow-md"
