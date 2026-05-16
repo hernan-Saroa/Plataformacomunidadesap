@@ -8,6 +8,7 @@
 
 import { apiClient, type UploadRequestOptions } from './apiClient';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl, getServiceUrl } from '../../config/environment';
+import { authService } from '.';
 
 // Prefijo del servicio en el API Gateway
 // Nueva estructura: /{service}/api/v{version}/{path}
@@ -946,6 +947,11 @@ class DisciplinaryService {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/versions`);
     }
 
+    
+    
+    /**
+     * Recarga / reemplazo de documento Word (usa PATCH)
+     */
     async uploadDocumentoRevision(id: string, file: File, comentario: string): Promise<any> {
         const formData = new FormData();
         formData.append('file', file);
@@ -958,6 +964,7 @@ class DisciplinaryService {
         }
         
         return apiClient.patch<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
+        
     }
 
     // --- TÉRMINOS PROCESALES ---
