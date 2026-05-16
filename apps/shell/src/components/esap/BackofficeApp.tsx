@@ -617,7 +617,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'control-disciplinario':
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <ControlDisciplinarioFull />
+            <ControlDisciplinarioFull
+              key={[
+                userData?.personId || currentUser.id || currentUser.email || 'anon',
+                ...(userData?.roles || []),
+                ...(userData?.permissions || []),
+              ].join(':')}
+            />
           </Suspense>
         );
 
