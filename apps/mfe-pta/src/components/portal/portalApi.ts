@@ -47,7 +47,6 @@ export async function getEstadisticasPortal(personaId: string) {
         incrementoMes: 'Sin cambios',
         certificadosLaborales: 0,
         documentosCarpeta: 0,
-        tieneCarpetaDigital: false
       }
     };
   }
@@ -150,46 +149,4 @@ export async function solicitarCertificadoLaboral(params: {
     method: 'POST',
     body: JSON.stringify(params),
   });
-}
-
-// ============================================================================
-// CARPETA DIGITAL DEL PORTAL
-// ============================================================================
-
-export async function getCarpetaDigitalPortal(personaId: string) {
-  try {
-    return await fetchApi(`/portal/carpeta-digital/${personaId}`);
-  } catch (err) {
-    console.warn('Error obteniendo carpeta digital del portal:', err);
-    return { success: true, data: { documentos: [], tipos_requeridos: [], persona: null } };
-  }
-}
-
-export async function uploadDocumentoCarpetaDigital(params: {
-  personaId: string;
-  file: File;
-  tipoDocumento: string;
-  categoria?: string;
-  descripcion?: string;
-}) {
-  const formData = new FormData();
-  formData.append('file', params.file);
-  formData.append('personaId', params.personaId);
-  formData.append('tipoDocumento', params.tipoDocumento);
-  if (params.categoria) formData.append('categoria', params.categoria);
-  if (params.descripcion) formData.append('descripcion', params.descripcion);
-
-  const res = await fetch(`${BASE_URL}/portal/carpeta-digital/upload`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${publicAnonKey}`,
-    },
-    body: formData,
-  });
-
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => 'Unknown error');
-    throw new Error(`Error uploading document: ${res.status} - ${errorText}`);
-  }
-  return res.json();
 }
