@@ -19,10 +19,29 @@ class AuthService {
   private _cachedUser: AuthUser | null = null;
   private _cacheRevision = 0;
 
+  private setSharedUserCache(user: AuthUser | null): void {
+    if (typeof window === 'undefined') {
+      this._cachedUser = user;
+      return;
+    }
+
+    if (user) {
+      (window as any).__esap_auth_cache = user;
+    } else {
+      delete (window as any).__esap_auth_cache;
+    }
+
+    this._cachedUser = user;
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user } }));
+  }
+
   /**
    * Login con Microsoft (OAuth)
    */
   async loginWithMicrosoft(payload: { email: string; idToken: string }): Promise<LoginResponse> {
+    this._cacheRevision += 1;
+    this.setSharedUserCache(null);
+
     const response = await apiClient.post<any>(
       API_ENDPOINTS.AUTH.LOGIN_MICROSOFT,
       payload,
@@ -44,6 +63,9 @@ class AuthService {
    * Login de usuario
    */
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
+    this._cacheRevision += 1;
+    this.setSharedUserCache(null);
+
     // Mapear email a username para el backend
     const loginData = {
       username: credentials.email,
@@ -164,10 +186,7 @@ class AuthService {
    */
   setCurrentUserCache(user: AuthUser): void {
     this._cacheRevision += 1;
-    this._cachedUser = user;
-    // Compartir con otros MFEs en la misma ventana (no es almacenamiento persistente — OTIC-002)
-    (window as any).__esap_auth_cache = user;
-    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user } }));
+    this.setSharedUserCache(user);
   }
 
   /**
@@ -287,9 +306,7 @@ class AuthService {
 
   private clearAuthData(): void {
     this._cacheRevision += 1;
-    this._cachedUser = null;
-    delete (window as any).__esap_auth_cache;
-    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user: null } }));
+    this.setSharedUserCache(null);
     clearAuthTokens();
     // Limpiar residuos de versiones anteriores que pudieran quedar en storage
     sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
