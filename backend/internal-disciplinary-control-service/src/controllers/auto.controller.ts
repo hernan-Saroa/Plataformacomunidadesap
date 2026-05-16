@@ -241,17 +241,18 @@ export class AutoController {
     return await this.autoService.registerNotification(id, registerNotificationDto);
   }
 
-  /**
-   * Subir/reemplazar documento de un auto durante revisión (con control de versiones)
-   */
-  @Patch(':id/upload-document')
+   /**
+    * Subir/reemplazar documento de un auto durante revisión (con control de versiones)
+    */
+   @Post(':id/upload-document')
+   @Patch(':id/upload-document')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reemplazar documento del auto durante revisión' })
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
         destination: (req, file, cb) => {
-          const uploadPath = join(process.cwd(), 'uploads', 'autos');
+          const uploadPath = join(process.cwd(), 'uploads');
           if (!existsSync(uploadPath)) {
             mkdirSync(uploadPath, { recursive: true });
           }
@@ -284,7 +285,7 @@ export class AutoController {
     if (!file) {
       throw new BadRequestException('No se ha subido ningún archivo');
     }
-    const documentUrl = `/uploads/autos/${file.filename}`;
+    const documentUrl = `/files/${file.filename}`;
     return await this.autoService.uploadDocumentoDuranteRevision(
       id,
       documentUrl,

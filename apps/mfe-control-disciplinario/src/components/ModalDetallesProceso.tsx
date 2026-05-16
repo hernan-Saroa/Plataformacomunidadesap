@@ -3674,36 +3674,30 @@ export function ModalDetallesProceso({
     }
 
     const id = autoRecargar.id;
-    const nuevaVersion = (autoRecargar.version || 1) + 1;
-
-    // Actualizar el archivo existente con nueva versión
-    const enReal = archivosBackend.find(a => a.id === id);
-    if (enReal) {
-      enReal.estado = 'borrador';
-      enReal.version = nuevaVersion;
-      enReal.fecha = new Date().toISOString().split('T')[0];
-      enReal.tamaño = formatBytes(nuevoArchivo.size);
-      enReal.observacionesDevolucion = undefined;
-    } else {
-      setArchivosSubidos(prev => prev.map(a =>
-        a.id === id ? {
-          ...a,
-          estado: 'borrador' as const,
-          version: nuevaVersion,
-          fecha: new Date().toISOString().split('T')[0],
-          tamaño: formatBytes(nuevoArchivo.size),
-          observacionesDevolucion: undefined,
-        } : a
-      ));
-    }
-
-    toast.success(`Auto reemplazado — Versión ${nuevaVersion}`, {
-      description: `${nuevoArchivo.name} (${formatBytes(nuevoArchivo.size)}) · Listo para enviar a revisión`,
-      duration: 5000,
-    });
-    setAutoRecargar(null);
-    if (inputRecargarRef.current) inputRecargarRef.current.value = '';
-  }, [autoRecargar]);
+    
+    // Iniciar subida real al backend
+    toast.promise(
+      disciplinaryService.uploadDocumentoRevision(id, nuevoArchivo, 'Recarga de archivo corregido'),
+      {
+        loading: 'Subiendo nueva versión del auto...',
+        success: (data) => {
+          // Recargar los documentos del expediente desde el backend
+          void cargarDocumentosExpediente();
+          
+          setAutoRecargar(null);
+          if (inputRecargarRef.current) inputRecargarRef.current.value = '';
+          
+          return `Auto reemplazado — Versión ${data.currentVersion || (autoRecargar.version || 1) + 1}`;
+        },
+        error: (err) => {
+          console.error('Error al recargar auto:', err);
+          setAutoRecargar(null);
+          if (inputRecargarRef.current) inputRecargarRef.current.value = '';
+          return 'Error al subir la nueva versión del documento';
+        }
+      }
+    );
+  }, [autoRecargar, cargarDocumentosExpediente]);
 
   // ── Helper: Renderizar fila de archivo ────────────────────────────────────────
   const renderArchivoFila = (archivo: Archivo, ocultarBadgeEtapa = false) => {

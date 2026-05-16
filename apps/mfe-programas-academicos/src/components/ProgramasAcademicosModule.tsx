@@ -64,6 +64,7 @@ export function ProgramasAcademicosModule() {
   const [programaToEdit, setProgramaToEdit] = useState<ProgramaAcademico | null>(null);
   const [programaToDelete, setProgramaToDelete] = useState<ProgramaAcademico | null>(null);
   const [activeView, setActiveView] = useState<'lista' | 'dashboard' | 'oferta-asignaturas'>('lista');
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const itemsPerPage = 10;
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
@@ -105,7 +106,7 @@ export function ProgramasAcademicosModule() {
     };
 
     loadProgramas();
-  }, [searchQuery, nivelFilter, modalidadFilter, sedeFilter, estadoFilter, currentPage]);
+  }, [searchQuery, nivelFilter, modalidadFilter, sedeFilter, estadoFilter, currentPage, refreshTrigger]);
 
 
 
@@ -175,7 +176,7 @@ export function ProgramasAcademicosModule() {
         await apiClient.delete(`/auth/api/v1/programas-academicos/${programaToDelete.id}`);
         toast.success('Programa Eliminado', { description: `Se eliminó: ${programaToDelete.nombre}` });
         // Recargar datos
-        window.location.reload();
+        setRefreshTrigger(prev => prev + 1);
       } catch (error) {
         console.error('Error deleting programa:', error);
         toast.error('Error al eliminar el programa');
@@ -223,7 +224,7 @@ export function ProgramasAcademicosModule() {
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Error al cargar datos</h3>
           <p className="text-gray-600 mb-4">{error}</p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => setRefreshTrigger(prev => prev + 1)}
             className="px-4 py-2 bg-[#003DA5] text-white rounded-lg hover:bg-[#002d7a] transition-colors"
           >
             Reintentar
@@ -855,6 +856,7 @@ export function ProgramasAcademicosModule() {
         <CreateProgramaModal
           onClose={handleCloseModal}
           programaToEdit={programaToEdit}
+          onSuccess={() => setRefreshTrigger(prev => prev + 1)}
         />
       )}
 

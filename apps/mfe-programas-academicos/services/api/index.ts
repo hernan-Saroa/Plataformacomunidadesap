@@ -22,6 +22,7 @@ import certificadosServiceImport from './certificados.service';
 import portalServiceImport from './portal.service';
 import publicoServiceImport from './publico.service';
 import * as programasServiceImport from './programas.service';
+import * as asignaturasServiceImport from './asignaturas.service';
 
 // Re-exportar servicios individuales
 export const authService = authServiceImport;
@@ -33,6 +34,7 @@ export const certificadosService = certificadosServiceImport;
 export const portalService = portalServiceImport;
 export const publicoService = publicoServiceImport;
 export const programasService = programasServiceImport;
+export const asignaturasService = asignaturasServiceImport;
 
 /**
  * Objeto con todos los servicios agrupados
@@ -48,6 +50,7 @@ export const api = {
   portal: portalServiceImport,
   publico: publicoServiceImport,
   programas: programasServiceImport,
+  asignaturas: asignaturasServiceImport,
 } as const;
 
 /**

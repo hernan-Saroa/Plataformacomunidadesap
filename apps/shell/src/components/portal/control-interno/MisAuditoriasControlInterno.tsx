@@ -631,12 +631,6 @@ async function loadMisAuditorias(_personaId: string): Promise<AuditoriaItem[]> {
   try {
     const raw = await controlInternoService.getMisAuditoriasAuditado();
     const lista = Array.isArray(raw) ? raw : [];
-    if (lista.length === 0) {
-      // El usuario no figura como responsable de área en ninguna auditoría
-      // notificada. Mostramos el mock para mantener UX en demo, pero idealmente
-      // este caso debería mostrar un estado vacío explícito.
-      return AUDITORIAS_MOCK;
-    }
     return lista.map(mapAuditoriaApi);
   } catch (err) {
     console.warn('[MisAuditorias] API no disponible, usando mock:', err);

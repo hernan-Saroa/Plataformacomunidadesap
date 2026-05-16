@@ -10,8 +10,5 @@ export class AppController {
     return this.appService.getHello();
   }
 
-  @Get('asignaturas')
-  getAsignaturas(): string {
-    return 'Asignaturas endpoint';
-  }
+
 }

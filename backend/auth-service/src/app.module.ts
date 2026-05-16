@@ -15,6 +15,7 @@ import { Seccional } from './users/seccional.entity';
 import { ProgramaAcademico } from './programas/programa.entity';
 import { Asignatura } from './programas/asignatura.entity';
 import { ProgramasModule } from './programas/programas.module';
+import { AsignaturasModule } from './asignaturas/asignaturas.module';
 import { PortalModule } from './portal/portal.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 
@@ -46,6 +47,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
     UsersModule,
     AuthModule,
     ProgramasModule,
+    AsignaturasModule,
     PortalModule,
   ],
   providers: [
