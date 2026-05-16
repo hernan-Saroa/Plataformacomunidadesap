@@ -43,6 +43,9 @@ export class Notification {
   @Column({ default: false })
   archivada: boolean;
 
+  @Column({ name: 'es_favorito', default: false })
+  es_favorito: boolean;
+
   @CreateDateColumn({ name: 'fecha_creacion' })
   fecha_creacion: Date;
 

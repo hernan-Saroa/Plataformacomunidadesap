@@ -31,6 +31,7 @@ export interface Notification {
   email_click: boolean;
   fecha_envio_email?: string;
   fecha_apertura_email?: string;
+  es_favorito?: boolean;
 }
 
 export interface CreateNotificationData {
@@ -261,6 +262,19 @@ export const notificationsService = {
       return response.data;
     } catch (error) {
       console.error('Error updating notification preferences:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Marcar/Desmarcar como favorito
+   */
+  toggleFavorite: async (notificationId: string): Promise<{ success: boolean; es_favorito: boolean }> => {
+    try {
+      const response = await apiClient.post(`${SERVICE_PREFIX}/notifications/${notificationId}/favorite`, {});
+      return response.data;
+    } catch (error) {
+      console.error('Error toggling favorite status:', error);
       throw error;
     }
   }
