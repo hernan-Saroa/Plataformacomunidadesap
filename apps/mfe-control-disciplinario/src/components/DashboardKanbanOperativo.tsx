@@ -282,6 +282,7 @@ interface Proceso {
     hechos: string;
     disciplinable: any;
   };
+  news?: any;
 }
 
 
@@ -2993,6 +2994,14 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       conductaSeleccionada: proceso.news?.conductas?.[0] || '',
       conductaPersonalizada: '',
       conducta: proceso.news?.conducta || '',
+      archivosAdjuntos: (proceso.news?.adjuntos || []).map((url: string, i: number) => ({
+        nombre: url.split('/').pop() || `evidencia-${i}`,
+        tipo: 'evidencia',
+        tamano: 0,
+        fechaSubida: new Date().toISOString(),
+        url
+      })),
+      news: proceso.news || null,
       denunciado: (() => {
         const source = (proceso.news as any)?.disciplinable || (proceso.news as any)?.denunciado || (proceso.news as any)?.disciplinable;
         const list = Array.isArray(source) ? source : (source ? [source] : []);
@@ -3723,6 +3732,14 @@ export function DashboardKanbanOperativo({
       conductaSeleccionada: proceso.news?.conductas?.[0] || '',
       conductaPersonalizada: '',
       conducta: proceso.news?.conducta || '',
+      archivosAdjuntos: (proceso.news?.adjuntos || []).map((url: string, i: number) => ({
+        nombre: url.split('/').pop() || `evidencia-${i}`,
+        tipo: 'evidencia',
+        tamano: 0,
+        fechaSubida: new Date().toISOString(),
+        url
+      })),
+      news: proceso.news || null,
       denunciado: (() => {
         const source = (proceso.news as any)?.disciplinable || (proceso.news as any)?.denunciado || (proceso.news as any)?.disciplinable;
         const list = Array.isArray(source) ? source : (source ? [source] : []);
@@ -5277,7 +5294,19 @@ export function DashboardKanbanOperativo({
   };
 
   const handleVerDetalles = (proceso: Proceso) => {
-    setItemSeleccionado(proceso);
+    const rawNews = (proceso as any).news;
+    const enrichedArchivos = proceso.archivosAdjuntos?.length
+      ? proceso.archivosAdjuntos
+      : (rawNews?.adjuntos || []).map((url: string, i: number) => ({
+          nombre: url.split('/').pop() || `evidencia-${i}`,
+          tipo: 'evidencia',
+          tamano: 0,
+          fechaSubida: new Date().toISOString(),
+          url
+        }));
+    const enriched = { ...proceso, archivosAdjuntos: enrichedArchivos, news: rawNews || null };
+    console.log('[Kanban] handleVerDetalles enriched archivosAdjuntos:', enrichedArchivos);
+    setItemSeleccionado(enriched);
     setModalActivo('ver-detalles');
   };
 

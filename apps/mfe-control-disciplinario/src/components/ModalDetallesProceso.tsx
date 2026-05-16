@@ -114,7 +114,7 @@ interface Proceso {
   denunciados?: DenunciadoCompleto[];
   denunciantes?: DenuncianteCompleto[];
   hechosSeparados?: { id: string; descripcion: string; fecha?: string }[];
-  archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string }[];
+  archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string; url?: string }[];
   origenNoticia?: string;
   fechaRecepcionNoticia?: string;
   prioridadNoticia?: 'alta' | 'media' | 'baja';
@@ -219,14 +219,6 @@ interface ModalDetallesProcesoProps {
   onNavigateToRevision?: () => void;
 }
 
-// ─── Mock data ───────────────────────────────────────────────────────────────
-
-const MOCK_ACTUACIONES: ActuacionItem[] = [
-  { id: 'a1', fecha: '2026-02-10', descripcion: 'Apertura de indagaci�n preliminar', tipo: 'auto', responsable: 'Dr. Andr�s Moreno', etapa: 'Indagaci�n', observaciones: 'Se deja constancia del inicio de la actuaci�n preliminar.' },
-  { id: 'a2', fecha: '2026-02-05', descripcion: 'Notificaci�n al disciplinado', tipo: 'notificacion', responsable: 'Dr. Andr�s Moreno', etapa: 'Valoraci�n', observaciones: 'Se envi� comunicaci�n formal al disciplinado por los canales establecidos.' },
-  { id: 'a3', fecha: '2026-01-28', descripcion: 'Asignaci�n al profesional investigador', tipo: 'asignacion', responsable: 'Jefe OCID', etapa: 'Valoraci�n', observaciones: 'Asignaci�n realizada seg�n reparto interno.' },
-  { id: 'a4', fecha: '2026-01-15', descripcion: 'Recepci�n de la noticia disciplinaria', tipo: 'recepcion', responsable: 'Secretar�a OCID', etapa: 'Recepci�n', observaciones: 'Ingreso inicial del asunto en el sistema disciplinario.' },
-];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -2251,10 +2243,11 @@ export function ModalDetallesProceso({
       });
 
       // ═══ Incluir archivos adjuntos de la noticia ═══
+      console.log('[ModalDetallesProceso] archivosAdjuntos recibidos:', proceso.archivosAdjuntos);
       const archivosNoticia: Archivo[] = (proceso.archivosAdjuntos || []).map((adj, index) => {
         const ext = adj.nombre.split('.').pop()?.toLowerCase() || 'pdf';
-        // Intentar encontrar la URL correspondiente en noticia.adjuntos (asumiendo orden)
-        const url = noticia?.adjuntos?.[index] || null;
+        const url = adj.url || noticia?.adjuntos?.[index] || null;
+        console.log('[ModalDetallesProceso] evidencia noticia', index, { nombre: adj.nombre, url, adj });
         return {
           id: `noticia-${index}`,
           nombre: adj.nombre,
@@ -2273,6 +2266,7 @@ export function ModalDetallesProceso({
         };
       });
 
+      console.log('[ModalDetallesProceso] total archivos:', mapped.length, ' + noticia:', archivosNoticia.length);
       setArchivosBackend(mapped.concat(archivosNoticia));
     } catch (err) {
       console.error('[ModalDetallesProceso] Error cargando documentos:', err);
