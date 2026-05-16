@@ -31,6 +31,7 @@ export interface GlobalNotification {
   url_accion?: string;
   email_enviado: boolean;
   email_abierto: boolean;
+  es_favorito: boolean;
   // Campos adicionales para notificaciones de Control Interno
   modulo_origen?: string;
   datos_adicionales?: any;
@@ -43,6 +44,7 @@ interface NotificationsContextType {
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   archiveNotification: (id: string) => void;
+  toggleFavorite: (id: string) => Promise<void>;
   clearNotifications: () => void;
   unreadCount: number;
 }
@@ -83,6 +85,7 @@ function mapApiNotification(n: ApiNotification): GlobalNotification {
     url_accion: n.url_accion,
     email_enviado: n.email_enviado,
     email_abierto: n.email_abierto,
+    es_favorito: n.es_favorito ?? false,
     datos_adicionales: n.datos_adicionales,
   };
 }
@@ -101,19 +104,20 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
       leida: false,
       archivada: false,
       email_enviado: false,
-      email_abierto: false
+      email_abierto: false,
+      es_favorito: false
     };
 
     setNotifications(prev => {
       // Evitar duplicados basados en título y mensaje
-      const exists = prev.some(n => 
-        n.titulo === newNotification.titulo && 
+      const exists = prev.some(n =>
+        n.titulo === newNotification.titulo &&
         n.mensaje === newNotification.mensaje &&
         !n.archivada
       );
-      
+
       if (exists) return prev;
-      
+
       return [newNotification, ...prev];
     });
   }, []);
@@ -129,19 +133,20 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
       leida: false,
       archivada: false,
       email_enviado: false,
-      email_abierto: false
+      email_abierto: false,
+      es_favorito: false
     }));
 
     setNotifications(prev => {
       // Filtrar duplicados
-      const filtered = newNotifications.filter(newNotif => 
-        !prev.some(existingNotif => 
-          existingNotif.titulo === newNotif.titulo && 
+      const filtered = newNotifications.filter(newNotif =>
+        !prev.some(existingNotif =>
+          existingNotif.titulo === newNotif.titulo &&
           existingNotif.mensaje === newNotif.mensaje &&
           !existingNotif.archivada
         )
       );
-      
+
       return [...filtered, ...prev];
     });
   }, []);
@@ -207,7 +212,7 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
           : notif
       )
     );
-    notificationsService.markAsRead(id).catch(() => {});
+    notificationsService.markAsRead(id).catch(() => { });
   }, []);
 
   // Marcar todas como leídas
@@ -217,7 +222,7 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
     setNotifications(prev =>
       prev.map(notif => ({ ...notif, leida: true, fecha_lectura: now }))
     );
-    if (user?.id) notificationsService.markAllAsRead(user.id).catch(() => {});
+    if (user?.id) notificationsService.markAllAsRead(user.id).catch(() => { });
   }, []);
 
   // Archivar notificación
@@ -227,7 +232,36 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
         notif.id_notificacion === id ? { ...notif, archivada: true } : notif
       )
     );
-    notificationsService.archive(id).catch(() => {});
+    notificationsService.archive(id).catch(() => { });
+  }, []);
+
+  // Marcar/Desmarcar como favorito
+  const toggleFavorite = useCallback(async (id: string) => {
+    // 1. Actualización optimista inmediata
+    setNotifications(prev =>
+      prev.map(notif =>
+        notif.id_notificacion === id ? { ...notif, es_favorito: !notif.es_favorito } : notif
+      )
+    );
+
+    try {
+      const result = await notificationsService.toggleFavorite(id);
+      
+      // 2. Sincronizar con el dato real del servidor (sin recargar todo)
+      if (result && typeof result.es_favorito === 'boolean') {
+        setNotifications(prev => prev.map(n => 
+          n.id_notificacion === id ? { ...n, es_favorito: result.es_favorito } : n
+        ));
+      }
+    } catch (error: any) {
+      console.error('[NotificationsContext] ❌ Error en toggleFavorite:', error);
+      // Revertir solo si falló la red o el servidor
+      setNotifications(prev =>
+        prev.map(notif =>
+          notif.id_notificacion === id ? { ...notif, es_favorito: !notif.es_favorito } : notif
+        )
+      );
+    }
   }, []);
 
   // Limpiar todas las notificaciones (solo local)
@@ -245,6 +279,7 @@ export function NotificationsProvider({ children }: NotificationsProviderProps) 
     markAsRead,
     markAllAsRead,
     archiveNotification,
+    toggleFavorite,
     clearNotifications,
     unreadCount
   };

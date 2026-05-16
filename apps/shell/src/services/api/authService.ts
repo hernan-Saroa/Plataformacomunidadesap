@@ -19,10 +19,29 @@ class AuthService {
   private _cachedUser: AuthUser | null = null;
   private _cacheRevision = 0;
 
+  private setSharedUserCache(user: AuthUser | null): void {
+    if (typeof window === 'undefined') {
+      this._cachedUser = user;
+      return;
+    }
+
+    if (user) {
+      (window as any).__esap_auth_cache = user;
+    } else {
+      delete (window as any).__esap_auth_cache;
+    }
+
+    this._cachedUser = user;
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user } }));
+  }
+
   /**
    * Login con Microsoft (OAuth)
    */
   async loginWithMicrosoft(payload: { email: string; idToken: string }): Promise<LoginResponse> {
+    this._cacheRevision += 1;
+    this.setSharedUserCache(null);
+
     const response = await apiClient.post<any>(
       API_ENDPOINTS.AUTH.LOGIN_MICROSOFT,
       payload,
@@ -35,7 +54,9 @@ class AuthService {
     };
 
     this.saveTokens(normalizedResponse.accessToken, normalizedResponse.refreshToken);
-    this.saveUserData(normalizedResponse.user);
+    const verifiedUser = await this.getAuthoritativeUserAfterLogin(normalizedResponse.user);
+    normalizedResponse.user = verifiedUser;
+    this.saveUserData(verifiedUser);
 
     return normalizedResponse;
   }
@@ -44,6 +65,9 @@ class AuthService {
    * Login de usuario
    */
   async login(credentials: LoginCredentials): Promise<LoginResponse> {
+    this._cacheRevision += 1;
+    this.setSharedUserCache(null);
+
     // Mapear email a username para el backend
     const loginData = {
       username: credentials.email,
@@ -58,9 +82,11 @@ class AuthService {
 
     // Guardar tokens
     this.saveTokens(response.accessToken, response.refreshToken);
-    
-    // Guardar datos de usuario
-    this.saveUserData(response.user);
+
+    // Publicar el usuario autoritativo de la sesión recién creada.
+    const verifiedUser = await this.getAuthoritativeUserAfterLogin(response.user);
+    response.user = verifiedUser;
+    this.saveUserData(verifiedUser);
 
     return response;
   }
@@ -102,6 +128,7 @@ class AuthService {
    */
   async verifyToken(): Promise<AuthUser> {
     return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY, undefined, {
+      cache: 'no-store',
       retries: 0,
       skipAuthRefresh: true,
       skipErrorToast: true,
@@ -164,10 +191,7 @@ class AuthService {
    */
   setCurrentUserCache(user: AuthUser): void {
     this._cacheRevision += 1;
-    this._cachedUser = user;
-    // Compartir con otros MFEs en la misma ventana (no es almacenamiento persistente — OTIC-002)
-    (window as any).__esap_auth_cache = user;
-    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user } }));
+    this.setSharedUserCache(user);
   }
 
   /**
@@ -279,6 +303,15 @@ class AuthService {
     setAuthTokens(accessToken, refreshToken);
   }
 
+  private async getAuthoritativeUserAfterLogin(fallbackUser: AuthUser): Promise<AuthUser> {
+    try {
+      return await this.verifyToken();
+    } catch (error) {
+      console.warn('[AuthService] No se pudo verificar la sesión tras login; usando usuario de la respuesta inicial.', error);
+      return fallbackUser;
+    }
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private saveUserData(user: any): void {
     // Datos del usuario en memoria únicamente — nunca en sessionStorage/localStorage (OTIC-002)
@@ -287,9 +320,7 @@ class AuthService {
 
   private clearAuthData(): void {
     this._cacheRevision += 1;
-    this._cachedUser = null;
-    delete (window as any).__esap_auth_cache;
-    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user: null } }));
+    this.setSharedUserCache(null);
     clearAuthTokens();
     // Limpiar residuos de versiones anteriores que pudieran quedar en storage
     sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);

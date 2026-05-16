@@ -23,9 +23,10 @@ type ProgramaAcademico = ProgramaAcademicoDTO;
 interface CreateProgramaModalProps {
   onClose: () => void;
   programaToEdit?: ProgramaAcademico | null;
+  onSuccess?: () => void;
 }
 
-export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaModalProps) {
+export function CreateProgramaModal({ onClose, programaToEdit, onSuccess }: CreateProgramaModalProps) {
   const isEditMode = !!programaToEdit;
 
   // Estados del formulario
@@ -169,7 +170,7 @@ export function CreateProgramaModal({ onClose, programaToEdit }: CreateProgramaM
         });
         onClose();
         // Refresh the parent component
-        window.location.reload();
+        onSuccess?.();
       } catch (error) {
         console.error('Error saving programa:', error);
         toast.error('Error al guardar el programa', {

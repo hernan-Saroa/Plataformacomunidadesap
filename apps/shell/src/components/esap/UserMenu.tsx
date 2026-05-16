@@ -218,6 +218,29 @@ export function UserMenu({
                     <div className="h-px bg-[--esap-gray-200] my-2" />
                   )}
 
+                  {/* Cambiar de sistema */}
+                  {hasBothSystemsAccess && onSystemChange && currentSystem && (
+                    <>
+                      <button
+                        onClick={() => handleSystemChangeClick(currentSystem === 'backoffice' ? 'portal' : 'backoffice')}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-blue-50 transition-colors text-left group"
+                      >
+                        <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-100 to-emerald-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <ArrowLeftRight className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-[--esap-gray-900]">
+                            Cambiar a {currentSystem === 'backoffice' ? 'Portal' : 'Backoffice'}
+                          </p>
+                          <p className="text-xs text-[--esap-gray-600]">
+                            {currentSystem === 'backoffice' ? 'Red social universitaria' : 'Sistema de gestión'}
+                          </p>
+                        </div>
+                      </button>
+                      <div className="h-px bg-[--esap-gray-200] my-2" />
+                    </>
+                  )}
+
                   {/* Cerrar Sesión */}
                   <button
                     onClick={handleLogoutClick}

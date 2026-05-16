@@ -116,7 +116,7 @@ export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClos
     && justificacion.trim().length >= 20;
 
   const handleRemitir = async () => {
-    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REMITIR_COMPETENCIA)) {
+    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR)) {
       toast.error('No tiene permisos para remitir noticias por competencia');
       return;
     }

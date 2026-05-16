@@ -49,7 +49,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import esapLogoWhite from '../../assets/bf33c0f2d5f03ef0d7baf88a705a5a66362cd8c4.png';
 import { colors, radius } from '../esap/shared/designTokens';
 import { CardSkeleton, EmptyStateIllustration } from '../ui/CardSkeleton';
-import { MiPerfilPortal } from './MiPerfilPortal';
+import { PerfilUsuarioEditable } from './PerfilUsuarioEditable';
 import { getEstadisticasPortal, inicializarDatosPortal, uploadFotoPerfil, getPerfilPortal } from './portalApi';
 import { MisCertificadosLaborales } from './recursos-humanos/MisCertificadosLaborales';
 import { MisDocumentos } from './gestion-documental/MisDocumentos';
@@ -66,6 +66,7 @@ interface PortalTransaccionalProps {
   userEmail: string;
   userPersonId: string;
   activeRole: string;
+  userPermissions?: string[];
   adminData?: {
     area?: string;
     cargo?: string;
@@ -90,6 +91,10 @@ interface Servicio {
   badges: { label: string; color: string; bgColor: string }[];
   prioridad?: string;
   prioridadColor?: string;
+  /** Roles del portal que pueden ver este servicio (fallback si no hay permiso). */
+  visiblePara?: string[];
+  /** Permiso requerido para ver este servicio. Tiene prioridad sobre visiblePara. */
+  requierePermiso?: string;
 }
 
 type InternalView =
@@ -171,6 +176,7 @@ export function PortalTransaccional({
   userEmail,
   userPersonId,
   activeRole,
+  userPermissions,
   adminData,
   onLogout,
   navbarNavigateTo,
@@ -352,6 +358,7 @@ export function PortalTransaccional({
         ],
         prioridad: 'Media',
         prioridadColor: '#D97706',
+        requierePermiso: 'portal-transaccional.certificado-laboral.view',
       },
       {
         id: 'gesdoc',
@@ -365,6 +372,7 @@ export function PortalTransaccional({
         badges: [{ label: 'Disponible', color: '#059669', bgColor: '#ECFDF5' }],
         prioridad: 'Baja',
         prioridadColor: '#6B7280',
+        requierePermiso: 'portal-transaccional.carpeta-digital.view',
       },
       {
         id: 'pta-docente',
@@ -381,6 +389,7 @@ export function PortalTransaccional({
         ],
         prioridad: 'Alta',
         prioridadColor: '#DC2626',
+        requierePermiso: 'portal-transaccional.pta.view',
       },
       {
         id: 'control-interno-gestion',
@@ -396,8 +405,18 @@ export function PortalTransaccional({
         ],
         prioridad: 'Media',
         prioridadColor: '#D97706',
+        requierePermiso: 'portal-transaccional.mis-auditorias.view',
       },
     ];
+
+    // Filtrar servicios: si tiene requierePermiso, verificar permisos del usuario.
+    // Si no, usar visiblePara (fallback por rol). Si ninguno, visible para todos.
+    const perms = new Set(userPermissions || []);
+    const filteredBase = base.filter(s => {
+      if (s.requierePermiso) return perms.has(s.requierePermiso);
+      if (s.visiblePara) return s.visiblePara.includes(activeRole);
+      return true;
+    });
 
     // Merge with persisted ordering
     const storageKey = `portal_services_order_${userPersonId}_${activeRole}`;
@@ -405,13 +424,13 @@ export function PortalTransaccional({
     if (saved) {
       try {
         const order = JSON.parse(saved) as string[];
-        const map = new Map(base.map((s) => [s.id, s]));
+        const map = new Map(filteredBase.map((s) => [s.id, s]));
         const ordered: Servicio[] = [];
         order.forEach((id) => {
           const item = map.get(id);
           if (item) ordered.push(item);
         });
-        base.forEach((s) => {
+        filteredBase.forEach((s) => {
           if (!order.includes(s.id)) ordered.push(s);
         });
         return ordered;
@@ -420,7 +439,7 @@ export function PortalTransaccional({
       }
     }
 
-    return base;
+    return filteredBase;
   }, [userPersonId, activeRole]);
 
   const [serviciosOrdenados, setServiciosOrdenados] = useState<Servicio[]>(servicios);
@@ -632,13 +651,11 @@ export function PortalTransaccional({
     switch (currentView.type) {
       case 'mi-perfil':
         return (
-          <MiPerfilPortal
+          <PerfilUsuarioEditable
             userName={userName}
             userEmail={userEmail}
-            personaId={userPersonId}
-            adminData={adminData}
             activeRole={activeRole}
-            onBack={() => setCurrentView({ type: 'dashboard' })}
+            onVolver={() => setCurrentView({ type: 'dashboard' })}
           />
         );
       case 'certificado-laboral':
@@ -893,7 +910,7 @@ export function PortalTransaccional({
 
               <div className="px-6 pb-5">
                 <div className="flex flex-wrap gap-2">
-                  {CATEGORIAS.map((cat) => (
+                  {CATEGORIAS.filter(cat => cat === 'Todos' || serviciosOrdenados.some(s => s.categoria === cat)).map((cat) => (
                     <button
                       key={cat}
                       onClick={() => setCategoriaActiva(cat)}

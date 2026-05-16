@@ -7,6 +7,7 @@
  */
 
 import { apiClient, type UploadRequestOptions } from './apiClient';
+import { authService } from './authService';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl, getServiceUrl } from '../../config/environment';
 
 // Prefijo del servicio en el API Gateway
@@ -531,7 +532,7 @@ class DisciplinaryService {
             });
         }
 
-        return apiClient.upload<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
+        return apiClient.post<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
     }
 
     async updateNoticia(id: string, data: {
@@ -750,7 +751,7 @@ class DisciplinaryService {
         }
         formData.append('file', file);
 
-        return apiClient.upload<{ message: string; url: string; filename: string }>(
+        return apiClient.post<{ message: string; url: string; filename: string }>(
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`,
             formData,
             uploadOptions,
@@ -1022,7 +1023,14 @@ class DisciplinaryService {
         const formData = new FormData();
         formData.append('file', file);
         if (comentario) formData.append('comentario', comentario);
-        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
+        
+        // Agregar userId si está disponible para la trazabilidad en el backend
+        const currentUser = authService.getCurrentUser();
+        if (currentUser?.id) {
+            formData.append('userId', currentUser.id);
+        }
+        
+        return apiClient.post<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
     }
 
     // --- TÉRMINOS PROCESALES ---
@@ -1060,7 +1068,7 @@ class DisciplinaryService {
     async uploadSignature(professionalId: string, file: File): Promise<{ url: string }> {
         const formData = new FormData();
         formData.append('file', file);
-        return apiClient.upload<{ url: string }>(`${SERVICE_PREFIX}/professionals/${professionalId}/signature`, formData);
+        return apiClient.post<{ url: string }>(`${SERVICE_PREFIX}/professionals/${professionalId}/signature`, formData);
     }
 
     async getCandidates(): Promise<any[]> {
@@ -1077,7 +1085,7 @@ class DisciplinaryService {
         formData.append('file', file);
         // Enviar el tipo de documento para que el backend valide los formatos permitidos
         formData.append('tipo', tipo);
-        return apiClient.upload<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData);
+        return apiClient.post<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData);
     }
 
     // ==================== CONFIGURACION ====================
@@ -1209,7 +1217,7 @@ class DisciplinaryService {
         formData.append('usuarioCarga', data.aportadoPor || 'Sistema');
         formData.append('file', file);
 
-        return apiClient.upload<any>(
+        return apiClient.post<any>(
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`,
             formData,
             uploadOptions,
@@ -1255,7 +1263,7 @@ class DisciplinaryService {
         if (data.etapa) formData.append('etapa', data.etapa);
         if (data.categoria) formData.append('categoria', data.categoria);
         formData.append('usuarioCarga', data.usuarioCarga || 'Sistema');
-        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`, formData);
+        return apiClient.post<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`, formData);
     }
 
     async deleteOficio(processId: string, oficioId: string): Promise<void> {
@@ -1413,7 +1421,7 @@ class DisciplinaryService {
     async uploadAutoPlantilla(id: string, file: File): Promise<AutoConfiguration> {
         const formData = new FormData();
         formData.append('file', file);
-        return apiClient.upload<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
+        return apiClient.post<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
     }
 
     // ==================== CONFIGURACIÓN DE OFICIOS ====================
@@ -1513,7 +1521,7 @@ class DisciplinaryService {
         if (descripcionPlantilla) formData.append('descripcion_plantilla', descripcionPlantilla);
         if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
         if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
-        return apiClient.upload<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}/upload-files`, formData);
+        return apiClient.post<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}/upload-files`, formData);
     }
 
     // ==================== CONFIGURACIÓN DE ACTAS ====================
@@ -1599,7 +1607,7 @@ class DisciplinaryService {
         if (descripcionPlantilla) formData.append('descripcion_plantilla', descripcionPlantilla);
         if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
         if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
-        return apiClient.upload<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}/upload-files`, formData);
+        return apiClient.post<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}/upload-files`, formData);
     }
 
     // ==================== GENERAR CONSECUTIVO DE ACTA DESDE BACKEND ====================

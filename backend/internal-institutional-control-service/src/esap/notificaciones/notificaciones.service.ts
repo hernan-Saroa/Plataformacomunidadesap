@@ -169,27 +169,7 @@ export class NotificacionesService {
    */
   private normalizarTexto(texto: string): string {
     if (!texto) return '';
-    
-    // Mapeo manual de correcciones comunes para "Control Interno"
-    let limpio = texto
-      .replace(/auditora/g, 'auditoría')
-      .replace(/Auditora/g, 'Auditoría')
-      .replace(/programacin/g, 'programación')
-      .replace(/notificacin/g, 'notificación');
-
-    // Intentar reparar encoding UTF-8 roto
-    try {
-      if (/[\xC2-\xDF][\x80-\xBF]/.test(limpio) || /Ã|â|€|/.test(limpio)) {
-        const bytes = Uint8Array.from(limpio.split('').map(c => c.charCodeAt(0)));
-        limpio = new TextDecoder('utf-8').decode(bytes);
-      }
-    } catch (e) {}
-
-    try {
-      return decodeURIComponent(escape(limpio));
-    } catch (e) {
-      return limpio.replace(/[^\x20-\x7E\xA0-\xFF\u0100-\uFFFF]/g, '');
-    }
+    return texto;
   }
 
   /**

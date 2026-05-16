@@ -86,6 +86,7 @@ export class RolesGuard implements CanActivate {
 
 function hasDisciplinaryAccess(userRoles: Set<string>): boolean {
   return Array.from(userRoles).some((role) => {
+    
     if (LEGACY_DISCIPLINARY_ROLES.has(role)) {
       return true;
     }

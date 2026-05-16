@@ -266,9 +266,8 @@ export function AuthenticatedPortalNavbar({
           <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0">
             {hasBothSystemsAccess && onSystemChange && (
               <SystemSwitcher
-                system="portal"
+                currentSystem="portal"
                 onSystemChange={onSystemChange}
-                compact
               />
             )}
 
