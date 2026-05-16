@@ -1,6 +1,6 @@
 /**
  * MÓDULO PREMIUM: CARPETA DIGITAL WORLD CLASS
- *
+ * 
  * Sistema avanzado de gestión documental universitaria
  * - Vista de grilla y lista optimizada
  * - Drag & Drop para subir archivos
@@ -8,16 +8,15 @@
  * - Vista previa de documentos
  * - Descarga individual y masiva
  * - Búsqueda y filtros avanzados
- * - Adaptado al shell principal con datos locales del proyecto
+ * - 100% conectado a Supabase
  * 
  * @version 2.0.3 - Fix: Agregado keys a elementos condicionales
  * @date 2026-03-03
  */
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { DndProvider } from 'react-dnd';
+import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import {
   FolderOpen, Search, Filter, Eye, ChevronLeft, FileText,
@@ -26,11 +25,13 @@ import {
   User, Calendar, AlertCircle, Check, X, MessageSquare,
   RotateCcw, Archive, Share2, Star, Tag, Loader2,
   ChevronRight, FolderPlus, FileUp, RefreshCw,
-  Settings, TrendingUp, Mail, GitBranch, History, Keyboard, Shield, Layers,
+  Settings, TrendingUp, Mail, GitBranch, History, Keyboard,
   Square, CheckSquare, Move, Command, GripVertical, Zap,
-  ClipboardCheck, Plus, Edit, Save, ToggleLeft, ToggleRight, Award, Briefcase
+  ClipboardCheck
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
+import { supabaseService } from '../../services/api/supabase.service';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
@@ -40,13 +41,25 @@ import {
   DropdownMenuTrigger,
 } from '../ui/dropdown-menu';
 import { Container4K } from '../ui/container-4k';
+import { ResponsiveHeader } from '../ui/responsive-header';
+import { DocumentUploadModal } from './DocumentUploadModal';
+import { DocumentPreviewModal } from './DocumentPreviewModal';
+import { DocumentVersionHistoryModal } from './DocumentVersionHistoryModal';
+import { DocumentNewVersionModal } from './DocumentNewVersionModal';
+import { DocumentsListView } from './DocumentsListView';
+import { DocumentsWorldClassView } from './DocumentsWorldClassView';
+import { EditDocumentCategoryModal } from './EditDocumentCategoryModal';
 import {
   searchContainerStyle, searchContainerClass,
   searchIconWrapStyle, searchIconWrapClass, searchIconStyle,
   searchInputStyle, clearButtonStyle, clearButtonClass, clearIconStyle,
 } from './shared/designTokens';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
+import { ConfiguracionTiposDocumentos } from './ConfiguracionTiposDocumentos';
 import { DigitalFolderSection } from './DigitalFolderSection';
-import { MOCK_USERS_WITH_SEDES } from '../../data/mockUsersWithSedes';
+import { ChecklistMatrixView } from './ChecklistMatrixView';
+import { tiposDocumentosService } from '../../services/api/supabase.service';
+import { useScopeFilter } from '../../hooks/useScopeFilter'; // ✅ SCOPE FILTER
 
 // [ACTUALIZACIÓN 2026-03-03]: Correcciones de protección contra undefined en filtros y ordenamientos
 
@@ -62,6 +75,7 @@ type DocumentCategory =
   | 'academico'
   | 'certificados'
   | 'laboral'
+  | 'administrativo'
   | 'otros';
 
 type DocumentStatus =
@@ -153,6 +167,7 @@ const getCategoryLabel = (category: DocumentCategory): string => {
     academico: 'Académico',
     certificados: 'Certificados',
     laboral: 'Laboral',
+    administrativo: 'Administrativo',
     otros: 'Otros'
   };
   return labels[category] || category;
@@ -184,1016 +199,14 @@ const getStatusBadgeProps = (status: DocumentStatus) => {
   return props[status] || props.pendiente;
 };
 
-const seededRandom = (seed: number, min: number, max: number) => {
-  const x = Math.sin(seed) * 10000;
-  return Math.floor((x - Math.floor(x)) * (max - min + 1)) + min;
-};
-
-const buildMockCarpetas = (): CarpetaDigital[] => {
-  return MOCK_USERS_WITH_SEDES.map((user, index) => {
-    const seed = index + 1000;
-    const total = seededRandom(seed, 8, 28);
-    const completos = seededRandom(seed + 1, Math.floor(total * 0.45), Math.floor(total * 0.78));
-    const pendientes = seededRandom(seed + 2, 1, Math.max(2, total - completos));
-    const rechazados = Math.max(0, total - completos - pendientes);
-    const vencidos = seededRandom(seed + 3, 0, Math.min(3, total));
-    const updated = new Date(Date.now() - seededRandom(seed + 4, 1, 45) * 24 * 60 * 60 * 1000);
-
-    return {
-      id: `carpeta:${user.personId || user.id}`,
-      persona_id: `persona:${user.personId || user.id}`,
-      nombre_carpeta: `${user.firstName} ${user.lastName}`,
-      email_propietario: user.email,
-      numero_documento: user.documentNumber,
-      total_documentos: total,
-      documentos_completos: completos,
-      documentos_pendientes: pendientes,
-      documentos_rechazados: rechazados,
-      documentos_vencidos: vencidos,
-      ultima_actualizacion: updated.toISOString(),
-      fecha_creacion: user.createdAt || updated.toISOString(),
-    };
-  });
-};
-
-const buildMockDocumentos = (carpetaId: string): Documento[] => {
-  const carpetaSeed = carpetaId.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
-  const count = seededRandom(carpetaSeed, 8, 18);
-  const names = [
-    'Cédula de Ciudadanía',
-    'Hoja de Vida',
-    'Acta de Grado',
-    'Diploma Profesional',
-    'Certificado Laboral',
-    'Certificado EPS',
-    'Referencias Laborales',
-    'Paz y Salvo Académico',
-    'Certificado de Ingresos',
-    'Foto Documento',
-  ];
-  const categories: DocumentCategory[] = ['personal', 'academico', 'certificados', 'laboral', 'otros'];
-  const statuses: DocumentStatus[] = ['validado', 'pendiente', 'rechazado', 'vencido'];
-  const extensions = ['pdf', 'jpg', 'docx', 'xlsx'];
-
-  return Array.from({ length: count }, (_, index) => {
-    const seed = carpetaSeed + index * 17;
-    const extension = extensions[seededRandom(seed, 0, extensions.length - 1)];
-    const nombreBase = names[seededRandom(seed + 1, 0, names.length - 1)];
-    return {
-      id: `${carpetaId}:doc:${index}`,
-      carpeta_id: carpetaId,
-      nombre: `${nombreBase}.${extension}`,
-      categoria: categories[seededRandom(seed + 2, 0, categories.length - 1)],
-      tipo_archivo: extension,
-      tamano_bytes: seededRandom(seed + 3, 180000, 5200000),
-      estado: statuses[seededRandom(seed + 4, 0, statuses.length - 1)],
-      fecha_subida: new Date(Date.now() - seededRandom(seed + 5, 1, 380) * 24 * 60 * 60 * 1000).toISOString(),
-      version_actual: seededRandom(seed + 6, 1, 4),
-      comentarios: '',
-    };
-  });
-};
-
-const buildMockTiposDocumentos = (documentos: Documento[]) => {
-  const tipos = [
-    { id: 'tipo-cedula', nombre: 'Cédula de Ciudadanía', categoria: 'personal', obligatorio: true, color: '#2563EB' },
-    { id: 'tipo-hoja-vida', nombre: 'Hoja de Vida', categoria: 'laboral', obligatorio: true, color: '#059669' },
-    { id: 'tipo-diploma', nombre: 'Diploma Profesional', categoria: 'academico', obligatorio: true, color: '#7C3AED' },
-    { id: 'tipo-certificado-laboral', nombre: 'Certificado Laboral', categoria: 'laboral', obligatorio: false, color: '#D97706' },
-    { id: 'tipo-acta-grado', nombre: 'Acta de Grado', categoria: 'academico', obligatorio: false, color: '#003DA5' },
-  ];
-
-  return tipos.map((tipo) => {
-    const matchedDoc = documentos.find((doc) =>
-      doc.nombre.toLowerCase().includes(tipo.nombre.toLowerCase()) ||
-      doc.categoria === tipo.categoria
-    );
-
-    return {
-      ...tipo,
-      descripcion: '',
-      requiere_validacion: true,
-      formatos_permitidos: ['pdf', 'jpg', 'png', 'docx'],
-      icono: 'file-text',
-      completado: !!matchedDoc,
-      documento: matchedDoc || null,
-    };
-  });
-};
-
-function ChecklistMatrixView({
-  carpetas,
-  tiposDocumentos,
-  onOpenCarpeta,
-}: {
-  carpetas: CarpetaDigital[];
-  tiposDocumentos: any[];
-  onOpenCarpeta: (carpetaId: string) => void;
-}) {
-  const tipos = tiposDocumentos.length > 0 ? tiposDocumentos : buildMockTiposDocumentos([]);
-
-  return (
-    <div className="bg-white rounded-xl border-2 border-gray-200 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full" style={{ minWidth: 900 }}>
-          <thead className="bg-gray-50 border-b-2 border-gray-200">
-            <tr>
-              <th className="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Carpeta
-              </th>
-              {tipos.map((tipo) => (
-                <th key={tipo.id} className="px-4 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
-                  {tipo.nombre}
-                </th>
-              ))}
-              <th className="px-6 py-4 text-center text-xs font-bold text-gray-700 uppercase tracking-wider">
-                Completitud
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {carpetas.map((carpeta) => {
-              const completionRate = carpeta.total_documentos > 0
-                ? Math.round((carpeta.documentos_completos / carpeta.total_documentos) * 100)
-                : 0;
-
-              return (
-                <tr key={carpeta.id} className="hover:bg-blue-50 cursor-pointer" onClick={() => onOpenCarpeta(carpeta.id)}>
-                  <td className="px-6 py-4">
-                    <p className="text-sm font-semibold text-gray-900">{carpeta.nombre_carpeta}</p>
-                    <p className="text-xs text-blue-600">{carpeta.email_propietario}</p>
-                  </td>
-                  {tipos.map((tipo, index) => {
-                    const completed = (carpeta.documentos_completos + index) % 3 !== 0;
-                    return (
-                      <td key={tipo.id} className="px-4 py-4 text-center">
-                        {completed ? (
-                          <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />
-                        ) : (
-                          <Clock className="w-5 h-5 text-yellow-600 mx-auto" />
-                        )}
-                      </td>
-                    );
-                  })}
-                  <td className="px-6 py-4 text-center">
-                    <span className="text-sm font-bold text-blue-700">{completionRate}%</span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function ConfiguracionTiposDocumentos({
-  isOpen,
-  onClose,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-}) {
-  const initialTipos = useMemo(() => buildMockTiposDocumentos([]), []);
-  const [activeTab, setActiveTab] = useState<'tipos' | 'checklist'>('tipos');
-  const [documentTypes, setDocumentTypes] = useState<any[]>(initialTipos);
-  const [templates, setTemplates] = useState([
-    {
-      id: 'tpl-docente',
-      nombre: 'Checklist Docente',
-      descripcion: 'Documentos requeridos para docentes y gestión profesoral.',
-      color: '#003DA5',
-      items: ['Cédula de Ciudadanía', 'Hoja de Vida', 'Diploma Profesional', 'Certificado Laboral'],
-      activo: true,
-    },
-    {
-      id: 'tpl-estudiante',
-      nombre: 'Checklist Estudiante',
-      descripcion: 'Documentación base para trámites académicos.',
-      color: '#10B981',
-      items: ['Cédula de Ciudadanía', 'Acta de Grado', 'Diploma Profesional'],
-      activo: true,
-    },
-  ]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [showEditor, setShowEditor] = useState(false);
-  const [editingType, setEditingType] = useState<any | null>(null);
-  const [form, setForm] = useState({
-    nombre: '',
-    descripcion: '',
-    categoria: 'personal',
-    icono: 'file-text',
-    color: '#2962FF',
-    obligatorio: false,
-    requiere_validacion: true,
-    formatos_permitidos: ['pdf'],
-    tamano_max_mb: 10,
-    activo: true,
-    rol_validador: '',
-    asignacion_tipo: 'todos',
-    asignacion_valor: '',
-  });
-
-  const categories = [
-    { id: 'personal', nombre: 'Personal', color: '#2962FF', icon: User },
-    { id: 'academico', nombre: 'Académico', color: '#10B981', icon: FileText },
-    { id: 'laboral', nombre: 'Laboral', color: '#F59E0B', icon: Archive },
-    { id: 'certificados', nombre: 'Certificados', color: '#8B5CF6', icon: Shield },
-    { id: 'otros', nombre: 'Otros', color: '#6B7280', icon: Layers },
-  ];
-  const iconOptions = [
-    { nombre: 'Documento', valor: 'file-text', icon: FileText },
-    { nombre: 'Archivo', valor: 'file', icon: File },
-    { nombre: 'Imagen', valor: 'image', icon: ImageIcon },
-    { nombre: 'Certificado', valor: 'award', icon: Award },
-    { nombre: 'Carpeta', valor: 'folder', icon: FolderOpen },
-    { nombre: 'Laboral', valor: 'briefcase', icon: Briefcase },
-    { nombre: 'Seguridad', valor: 'shield', icon: Shield },
-    { nombre: 'Etiqueta', valor: 'tag', icon: Tag },
-    { nombre: 'Archivo Hist.', valor: 'archive', icon: Archive },
-  ];
-  const colorOptions = [
-    { nombre: 'Azul ESAP', valor: '#2962FF' },
-    { nombre: 'Azul Oscuro', valor: '#003DA5' },
-    { nombre: 'Verde', valor: '#10B981' },
-    { nombre: 'Amarillo', valor: '#F59E0B' },
-    { nombre: 'Rojo', valor: '#EF4444' },
-    { nombre: 'Púrpura', valor: '#8B5CF6' },
-    { nombre: 'Naranja', valor: '#FF6D00' },
-    { nombre: 'Gris', valor: '#6B7280' },
-    { nombre: 'Rosa', valor: '#EC4899' },
-    { nombre: 'Cyan', valor: '#06B6D4' },
-  ];
-  const formatOptions = [
-    { label: 'PDF', value: 'pdf' },
-    { label: 'Word', value: 'doc,docx' },
-    { label: 'Excel', value: 'xls,xlsx' },
-    { label: 'Imágenes', value: 'jpg,jpeg,png' },
-    { label: 'Todos', value: '*' },
-  ];
-
-  const filteredTypes = useMemo(() => {
-    return documentTypes.filter((type) => {
-      const matchesCategory = categoryFilter === 'all' || type.categoria === categoryFilter;
-      const matchesSearch =
-        !searchQuery.trim() ||
-        type.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (type.descripcion || '').toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
-  }, [documentTypes, categoryFilter, searchQuery]);
-
-  const groupedTypes = useMemo(() => {
-    return filteredTypes.reduce<Record<string, any[]>>((acc, type) => {
-      const category = type.categoria || 'otros';
-      if (!acc[category]) acc[category] = [];
-      acc[category].push(type);
-      return acc;
-    }, {});
-  }, [filteredTypes]);
-
-  const stats = useMemo(() => ({
-    total: documentTypes.length,
-    activos: documentTypes.filter(type => type.activo !== false).length,
-    obligatorios: documentTypes.filter(type => type.obligatorio).length,
-    validacion: documentTypes.filter(type => type.requiere_validacion).length,
-  }), [documentTypes]);
-
-  const resetForm = () => {
-    setForm({
-      nombre: '',
-      descripcion: '',
-      categoria: 'personal',
-      icono: 'file-text',
-      color: '#2962FF',
-      obligatorio: false,
-      requiere_validacion: true,
-      formatos_permitidos: ['pdf'],
-      tamano_max_mb: 10,
-      activo: true,
-      rol_validador: '',
-      asignacion_tipo: 'todos',
-      asignacion_valor: '',
-    });
-    setEditingType(null);
-  };
-
-  const openCreate = () => {
-    resetForm();
-    setShowEditor(true);
-  };
-
-  const openEdit = (type: any) => {
-    setEditingType(type);
-    setForm({
-      nombre: type.nombre || '',
-      descripcion: type.descripcion || '',
-      categoria: type.categoria || 'personal',
-      icono: type.icono || 'file-text',
-      color: type.color || '#2962FF',
-      obligatorio: !!type.obligatorio,
-      requiere_validacion: !!type.requiere_validacion,
-      formatos_permitidos: type.formatos_permitidos || ['pdf'],
-      tamano_max_mb: type.tamano_max_mb || 10,
-      activo: type.activo !== false,
-      rol_validador: type.rol_validador || '',
-      asignacion_tipo: type.asignacion_tipo || 'todos',
-      asignacion_valor: type.asignacion_valor || '',
-    });
-    setShowEditor(true);
-  };
-
-  const toggleFormatoPermitido = (value: string) => {
-    setForm(prev => {
-      if (value === '*') {
-        return {
-          ...prev,
-          formatos_permitidos: prev.formatos_permitidos.includes('*') ? ['pdf'] : ['*'],
-        };
-      }
-
-      const parts = value.split(',');
-      const current = prev.formatos_permitidos.filter(format => format !== '*');
-      const isSelected = parts.every(part => current.includes(part));
-      const next = isSelected
-        ? current.filter(format => !parts.includes(format))
-        : Array.from(new Set([...current, ...parts]));
-
-      return {
-        ...prev,
-        formatos_permitidos: next.length > 0 ? next : ['pdf'],
-      };
-    });
-  };
-
-  const saveType = () => {
-    if (form.nombre.trim().length < 3) {
-      toast.error('Validación', { description: 'El nombre debe tener al menos 3 caracteres.' });
-      return;
-    }
-
-    if (editingType) {
-      setDocumentTypes(prev => prev.map(type => (
-        type.id === editingType.id
-          ? { ...type, ...form, updated_at: new Date().toISOString() }
-          : type
-      )));
-      toast.success('Tipo actualizado', { description: `"${form.nombre}" actualizado.` });
-    } else {
-      setDocumentTypes(prev => [
-        ...prev,
-        {
-          id: `tipo-${Date.now()}`,
-          ...form,
-          icono: 'file-text',
-          activo: true,
-          es_sistema: false,
-          orden: prev.length,
-          documentos_asociados: 0,
-        },
-      ]);
-      toast.success('Tipo creado', { description: `"${form.nombre}" creado.` });
-    }
-
-    setShowEditor(false);
-    resetForm();
-  };
-
-  const deleteType = (type: any) => {
-    setDocumentTypes(prev => prev.filter(item => item.id !== type.id));
-    toast.success('Tipo eliminado', { description: `"${type.nombre}" eliminado.` });
-  };
-
-  const duplicateTemplate = (template: any) => {
-    const duplicated = {
-      ...template,
-      id: `tpl-${Date.now()}`,
-      nombre: `${template.nombre} copia`,
-    };
-    setTemplates(prev => [...prev, duplicated]);
-    toast.success('Lista duplicada', { description: `"${duplicated.nombre}" creada.` });
-  };
-
-  if (!isOpen) return null;
-
-  return createPortal(
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-        style={{ background: 'rgba(0, 0, 0, 0.5)', backdropFilter: 'blur(4px)' }}
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0, y: 20 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.95, opacity: 0, y: 20 }}
-          transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="bg-white rounded-2xl shadow-2xl w-full overflow-hidden flex flex-col"
-          style={{ maxWidth: 1280, height: '95vh' }}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <div
-            className="px-6 py-4 flex-shrink-0"
-            style={{ background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)' }}
-          >
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-4 min-w-0">
-                <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                  <Settings className="w-6 h-6 text-white" />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="text-lg font-bold text-white truncate">Configuración Documental</h2>
-                  <p className="text-sm text-white/80 truncate">Tipos de documentos y listas de chequeo</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="hidden sm:flex items-center gap-1 bg-white/15 rounded-xl p-1">
-                  {[
-                    { key: 'tipos' as const, label: 'Tipos de Documentos', icon: FileText, count: documentTypes.length },
-                    { key: 'checklist' as const, label: 'Listas de Chequeo', icon: ClipboardCheck, count: templates.length },
-                  ].map((tab) => {
-                    const TabIcon = tab.icon;
-                    const active = activeTab === tab.key;
-                    return (
-                      <button
-                        key={tab.key}
-                        onClick={() => setActiveTab(tab.key)}
-                        className="h-10 px-4 rounded-lg transition-all flex items-center gap-2 text-sm font-bold"
-                        style={{
-                          background: active ? '#FFFFFF' : 'transparent',
-                          color: active ? '#003DA5' : 'rgba(255,255,255,0.88)',
-                          boxShadow: active ? '0 2px 8px rgba(0,0,0,0.14)' : 'none',
-                        }}
-                      >
-                        <TabIcon className="w-4 h-4" />
-                        <span>{tab.label}</span>
-                        <span
-                          className="text-[10px] rounded-md px-1.5 py-0.5"
-                          style={{
-                            background: active ? '#003DA5' : 'rgba(255,255,255,0.24)',
-                            color: '#FFFFFF',
-                          }}
-                        >
-                          {tab.count}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <button
-                  onClick={onClose}
-                  className="w-9 h-9 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
-                >
-                  <X className="w-5 h-5 text-white" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="sm:hidden px-4 py-3 bg-blue-50 border-b border-blue-100 flex gap-2">
-            <button
-              onClick={() => setActiveTab('tipos')}
-              className={`flex-1 h-10 rounded-lg text-sm font-bold ${activeTab === 'tipos' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600'}`}
-            >
-              Tipos
-            </button>
-            <button
-              onClick={() => setActiveTab('checklist')}
-              className={`flex-1 h-10 rounded-lg text-sm font-bold ${activeTab === 'checklist' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600'}`}
-            >
-              Listas
-            </button>
-          </div>
-
-          {activeTab === 'tipos' ? (
-            <>
-              <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex-shrink-0">
-                <div className="flex flex-col xl:flex-row xl:items-center gap-4">
-                  <div className="flex items-center gap-5">
-                    {[
-                      { label: 'Total', value: stats.total, color: '#003DA5', bg: '#EFF6FF', icon: FileText },
-                      { label: 'Activos', value: stats.activos, color: '#059669', bg: '#ECFDF5', icon: CheckCircle },
-                      { label: 'Obligatorios', value: stats.obligatorios, color: '#D97706', bg: '#FFFBEB', icon: AlertCircle },
-                      { label: 'Validación', value: stats.validacion, color: '#7C3AED', bg: '#F5F3FF', icon: Shield },
-                    ].map((stat) => {
-                      const StatIcon = stat.icon;
-                      return (
-                        <div key={stat.label} className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: stat.bg }}>
-                            <StatIcon className="w-4 h-4" style={{ color: stat.color }} />
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-gray-500 font-semibold leading-none">{stat.label}</p>
-                            <p className="text-sm font-extrabold leading-tight" style={{ color: stat.color }}>{stat.value}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div className="flex-1" />
-                    <button
-                      onClick={openCreate}
-                      className="h-10 px-5 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all"
-                      style={{ background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)' }}
-                    >
-                      <FolderPlus className="w-4 h-4" />
-                      Nuevo Tipo
-                    </button>
-                  </div>
-                  
-                </div>
-              </div>
-
-              <div className="px-6 py-4 border-b border-gray-100 flex flex-col md:flex-row gap-3 flex-shrink-0">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Buscar tipos de documentos..."
-                    className="w-full h-10 pl-10 pr-4 border border-gray-300 rounded-xl text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
-                  />
-                </div>
-
-                <select
-                  value={categoryFilter}
-                  onChange={(event) => setCategoryFilter(event.target.value)}
-                  className="h-10 px-4 border border-gray-300 rounded-xl text-sm outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-100 bg-white"
-                >
-                  <option value="all">Todas las categorías</option>
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>{category.nombre}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
-                <div className="space-y-6">
-                  {Object.entries(groupedTypes).map(([categoryId, types]) => {
-                    const category = categories.find(item => item.id === categoryId) || categories[categories.length - 1];
-                    const CategoryIcon = category.icon;
-                    return (
-                      <section key={categoryId}>
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${category.color}18` }}>
-                            <CategoryIcon className="w-5 h-5" style={{ color: category.color }} />
-                          </div>
-                          <div>
-                            <h3 className="font-bold text-gray-900">{category.nombre}</h3>
-                            <p className="text-xs text-gray-500">{types.length} tipo(s) configurado(s)</p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                          {types.map((type) => (
-                            <motion.div
-                              key={type.id}
-                              layout
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="bg-white rounded-2xl border border-gray-200 p-4 hover:border-blue-300 hover:shadow-lg transition-all"
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex items-start gap-3 min-w-0">
-                                  <div
-                                    className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                                    style={{ background: `${type.color || category.color}16` }}
-                                  >
-                                    <FileText className="w-5 h-5" style={{ color: type.color || category.color }} />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <h4 className="font-bold text-gray-900 text-sm truncate">{type.nombre}</h4>
-                                    <p className="text-xs text-gray-500 line-clamp-2 mt-1">{type.descripcion || 'Sin descripción'}</p>
-                                  </div>
-                                </div>
-
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <button className="p-2 hover:bg-gray-100 rounded-lg">
-                                      <MoreVertical className="w-4 h-4 text-gray-500" />
-                                    </button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem onClick={() => openEdit(type)}>
-                                      <Settings className="w-4 h-4 mr-2" />
-                                      Editar
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => deleteType(type)} className="text-red-600">
-                                      <Trash2 className="w-4 h-4 mr-2" />
-                                      Eliminar
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
-
-                              <div className="flex flex-wrap gap-2 mt-4">
-                                <Badge className={type.obligatorio ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-gray-100 text-gray-700 border-gray-300'}>
-                                  {type.obligatorio ? 'Obligatorio' : 'Opcional'}
-                                </Badge>
-                                <Badge className={type.requiere_validacion ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-gray-100 text-gray-700 border-gray-300'}>
-                                  {type.requiere_validacion ? 'Con validación' : 'Sin validación'}
-                                </Badge>
-                              </div>
-
-                              <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 text-xs text-gray-500">
-                                <span>{(type.formatos_permitidos || ['pdf']).join(', ').toUpperCase()}</span>
-                                <span>{type.documentos_asociados || 0} documentos</span>
-                              </div>
-                            </motion.div>
-                          ))}
-                        </div>
-                      </section>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-[320px_1fr] min-h-0 bg-gray-50">
-              <aside className="border-r border-gray-200 bg-white p-4 overflow-y-auto">
-                <button
-                  onClick={() => {
-                    const next = {
-                      id: `tpl-${Date.now()}`,
-                      nombre: 'Nueva lista de chequeo',
-                      descripcion: 'Plantilla documental personalizada.',
-                      color: '#2962FF',
-                      items: ['Cédula de Ciudadanía'],
-                      activo: true,
-                    };
-                    setTemplates(prev => [...prev, next]);
-                    toast.success('Lista creada');
-                  }}
-                  className="w-full h-11 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2 mb-4"
-                  style={{ background: 'linear-gradient(135deg, #003DA5 0%, #2962FF 100%)' }}
-                >
-                  <FolderPlus className="w-4 h-4" />
-                  Nueva lista
-                </button>
-
-                <div className="space-y-2">
-                  {templates.map((template) => (
-                    <div key={template.id} className="rounded-xl border border-gray-200 p-3 hover:border-blue-300 transition-all">
-                      <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${template.color}18` }}>
-                          <ClipboardCheck className="w-5 h-5" style={{ color: template.color }} />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-bold text-gray-900 truncate">{template.nombre}</p>
-                          <p className="text-xs text-gray-500 line-clamp-2">{template.descripcion}</p>
-                          <p className="text-[11px] text-blue-700 font-semibold mt-2">{template.items.length} ítems</p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 mt-3">
-                        <button
-                          onClick={() => duplicateTemplate(template)}
-                          className="flex-1 h-8 rounded-lg bg-blue-50 text-blue-700 text-xs font-bold hover:bg-blue-100"
-                        >
-                          Duplicar
-                        </button>
-                        <button
-                          onClick={() => setTemplates(prev => prev.filter(item => item.id !== template.id))}
-                          className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center hover:bg-red-100"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </aside>
-
-              <main className="p-6 overflow-y-auto">
-                <div className="max-w-4xl">
-                  <div className="mb-6">
-                    <h3 className="text-xl font-bold text-gray-900">Editor de listas de chequeo</h3>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Configura plantillas reutilizables con documentos obligatorios, validación y orden de presentación.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {templates.map((template) => (
-                      <div key={template.id} className="bg-white rounded-2xl border border-gray-200 p-5">
-                        <div className="flex items-center gap-3 mb-4">
-                          <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: `${template.color}18` }}>
-                            <ClipboardCheck className="w-6 h-6" style={{ color: template.color }} />
-                          </div>
-                          <div>
-                            <h4 className="font-bold text-gray-900">{template.nombre}</h4>
-                            <p className="text-xs text-gray-500">{template.descripcion}</p>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          {template.items.map((item, index) => (
-                            <div key={`${template.id}-${item}`} className="flex items-center gap-3 rounded-xl bg-gray-50 border border-gray-100 p-3">
-                              <span className="w-6 h-6 rounded-lg bg-white border border-gray-200 text-xs font-bold text-gray-500 flex items-center justify-center">
-                                {index + 1}
-                              </span>
-                              <FileText className="w-4 h-4 text-blue-600" />
-                              <span className="text-sm font-medium text-gray-800 flex-1">{item}</span>
-                              <Badge className="bg-blue-100 text-blue-700 border-blue-300">Validación</Badge>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </main>
-            </div>
-          )}
-        </motion.div>
-
-        <AnimatePresence>
-          {showEditor && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
-              style={{ background: 'rgba(0,0,0,0.4)' }}
-              onClick={(event) => {
-                event.stopPropagation();
-                setShowEditor(false);
-              }}
-            >
-              <motion.div
-                initial={{ scale: 0.95, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.95, opacity: 0 }}
-                className="w-full max-w-xl bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
-                style={{ maxHeight: '85vh' }}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
-                        {editingType ? <Edit className="w-5 h-5 text-blue-800" /> : <Plus className="w-5 h-5 text-blue-800" />}
-                      </div>
-                      <div className="min-w-0">
-                        <h3 className="text-[15px] font-bold text-gray-800 truncate">
-                          {editingType ? 'Editar Tipo de Documento' : 'Nuevo Tipo de Documento'}
-                        </h3>
-                        <p className="text-xs text-gray-500 truncate">
-                          {editingType ? 'Actualiza la configuración' : 'Completa los datos del tipo'}
-                        </p>
-                      </div>
-                    </div>
-                    <button onClick={() => setShowEditor(false)} className="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center shrink-0">
-                      <X className="w-4 h-4 text-gray-500" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-6 overflow-y-auto">
-                  <div className="flex flex-col gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Nombre <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      value={form.nombre}
-                      onChange={(event) => setForm(prev => ({ ...prev, nombre: event.target.value }))}
-                      className="w-full h-9 px-3 border border-gray-300 rounded-[10px] text-[13px] outline-none focus:border-blue-800 focus:ring-4 focus:ring-blue-100"
-                      placeholder="Ej: Copia documento de identidad"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">Descripción</label>
-                    <textarea
-                      value={form.descripcion}
-                      onChange={(event) => setForm(prev => ({ ...prev, descripcion: event.target.value }))}
-                      rows={2}
-                      className="w-full min-h-[72px] px-3 py-2 border border-gray-300 rounded-[10px] text-[13px] outline-none focus:border-blue-800 focus:ring-4 focus:ring-blue-100 resize-none"
-                      placeholder="Describe el tipo de documento..."
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Carpeta / Categoría</label>
-                      <select
-                        value={form.categoria}
-                        onChange={(event) => setForm(prev => ({ ...prev, categoria: event.target.value }))}
-                        className="w-full h-9 px-3 border border-gray-300 rounded-[10px] text-[13px] bg-white outline-none focus:border-blue-800 focus:ring-4 focus:ring-blue-100"
-                      >
-                        {categories.map((category) => (
-                          <option key={category.id} value={category.id}>{category.nombre}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1.5">Icono</label>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {iconOptions.map((option) => {
-                          const IconOption = option.icon;
-                          const selected = form.icono === option.valor;
-                          return (
-                            <button
-                              key={option.valor}
-                              type="button"
-                              onClick={() => setForm(prev => ({ ...prev, icono: option.valor }))}
-                              className="w-8 h-8 rounded-lg border flex items-center justify-center"
-                              style={{
-                                borderColor: selected ? '#2962FF' : '#E5E7EB',
-                                borderWidth: selected ? 2 : 1,
-                                background: selected ? '#EFF6FF' : '#FFFFFF',
-                              }}
-                              title={option.nombre}
-                            >
-                              <IconOption className="w-4 h-4" style={{ color: selected ? '#2962FF' : '#6B7280' }} />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">Color</label>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {colorOptions.map((color) => (
-                        <button
-                          key={color.valor}
-                          type="button"
-                          onClick={() => setForm(prev => ({ ...prev, color: color.valor }))}
-                          className="w-7 h-7 rounded-full transition-transform"
-                          style={{
-                            background: color.valor,
-                            border: form.color === color.valor ? '3px solid #1F2937' : '2px solid transparent',
-                            transform: form.color === color.valor ? 'scale(1.08)' : 'scale(1)',
-                          }}
-                          title={color.nombre}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">Formatos permitidos</label>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {formatOptions.map((format) => {
-                        const parts = format.value.split(',');
-                        const selected = format.value === '*'
-                          ? form.formatos_permitidos.includes('*')
-                          : parts.every(part => form.formatos_permitidos.includes(part));
-                        return (
-                          <button
-                            type="button"
-                            key={format.value}
-                            onClick={() => toggleFormatoPermitido(format.value)}
-                            className="px-3.5 py-1.5 rounded-lg text-xs font-semibold border transition-colors"
-                            style={{
-                              borderColor: selected ? '#BFDBFE' : '#E5E7EB',
-                              background: selected ? '#EFF6FF' : '#FFFFFF',
-                              color: selected ? '#2962FF' : '#6B7280',
-                            }}
-                          >
-                            {format.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">Tamaño máximo (MB)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={form.tamano_max_mb}
-                      onChange={(event) => setForm(prev => ({ ...prev, tamano_max_mb: parseInt(event.target.value, 10) || 10 }))}
-                      className="w-24 h-9 px-3 border border-gray-300 rounded-[10px] text-[13px] outline-none focus:border-blue-800 focus:ring-4 focus:ring-blue-100"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {[
-                      { key: 'obligatorio' as const, label: 'Obligatorio', desc: 'El usuario debe subir este tipo', color: '#D97706', bg: '#FFFBEB', border: '#FDE68A' },
-                      { key: 'requiere_validacion' as const, label: 'Validación', desc: 'Requiere revisión manual', color: '#2962FF', bg: '#EFF6FF', border: '#BFDBFE' },
-                      { key: 'activo' as const, label: 'Activo', desc: 'Visible para usuarios', color: '#059669', bg: '#ECFDF5', border: '#A7F3D0' },
-                    ].map((toggle) => {
-                      const active = form[toggle.key];
-                      return (
-                        <button
-                          key={toggle.key}
-                          type="button"
-                          onClick={() => setForm(prev => ({ ...prev, [toggle.key]: !active }))}
-                          className="rounded-[10px] p-3 text-left border transition-colors"
-                          style={{
-                            borderColor: active ? toggle.border : '#E5E7EB',
-                            background: active ? toggle.bg : '#F9FAFB',
-                          }}
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            {active ? <ToggleRight className="w-5 h-5" style={{ color: toggle.color }} /> : <ToggleLeft className="w-5 h-5 text-gray-400" />}
-                            <span className="text-xs font-bold text-gray-700">{toggle.label}</span>
-                          </div>
-                          <p className="text-[10px] text-gray-500">{toggle.desc}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {form.requiere_validacion && (
-                    <div className="p-4 rounded-xl border border-blue-200 bg-blue-50">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Shield className="w-4 h-4 text-blue-800" />
-                        <label className="block text-xs font-extrabold text-blue-900">Autorización de Validación</label>
-                      </div>
-                      <label className="block text-[11px] font-bold text-blue-600 mb-1">Especifique qué rol puede validar este documento</label>
-                      <input
-                        type="text"
-                        value={form.rol_validador}
-                        onChange={(event) => setForm(prev => ({ ...prev, rol_validador: event.target.value }))}
-                        placeholder="Ej: Coordinador Académico, RRHH, Revisor..."
-                        className="w-full h-9 px-3 border border-blue-300 rounded-[10px] text-[13px] text-blue-900 outline-none focus:border-blue-700 focus:ring-4 focus:ring-blue-100"
-                      />
-                      <p className="text-[10px] text-blue-400 mt-1.5">Si se deja vacío, cualquier usuario con permisos de edición en la carpeta podrá validarlo.</p>
-                    </div>
-                  )}
-
-                  <div className="p-4 rounded-xl border border-slate-200 bg-slate-50">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Shield className="w-4 h-4 text-blue-800" />
-                      <label className="block text-[13px] font-extrabold text-slate-800">Alcance y Visibilidad</label>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-bold text-slate-500 mb-1">Asignar a</label>
-                        <select
-                          value={form.asignacion_tipo}
-                          onChange={(event) => setForm(prev => ({ ...prev, asignacion_tipo: event.target.value, asignacion_valor: '' }))}
-                          className="w-full h-9 px-3 border border-gray-300 rounded-[10px] text-[13px] bg-white outline-none focus:border-blue-800 focus:ring-4 focus:ring-blue-100"
-                        >
-                          <option value="todos">Todos los usuarios</option>
-                          <option value="rol">Por Rol Específico</option>
-                          <option value="territorial">Por Territorial</option>
-                          <option value="sede">Por Sede / CETAP</option>
-                          <option value="asignatura">Por Asignatura</option>
-                        </select>
-                      </div>
-
-                      {form.asignacion_tipo !== 'todos' && (
-                        <div>
-                          <label className="block text-[11px] font-bold text-slate-500 mb-1">
-                            Especifique el {form.asignacion_tipo}
-                          </label>
-                          <input
-                            type="text"
-                            value={form.asignacion_valor}
-                            onChange={(event) => setForm(prev => ({ ...prev, asignacion_valor: event.target.value }))}
-                            placeholder={
-                              form.asignacion_tipo === 'rol' ? 'Ej: Docente, Estudiante' :
-                              form.asignacion_tipo === 'territorial' ? 'Ej: Antioquia' :
-                              form.asignacion_tipo === 'sede' ? 'Ej: CETAP Medellín' : 'Ej: Algebra'
-                            }
-                            className="w-full h-9 px-3 border border-gray-300 rounded-[10px] text-[13px] outline-none focus:border-blue-800 focus:ring-4 focus:ring-blue-100"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  </div>
-                </div>
-
-                <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3 flex-shrink-0">
-                  <button
-                    onClick={() => setShowEditor(false)}
-                    className="h-10 px-4 rounded-[10px] border border-gray-300 bg-white text-gray-700 font-semibold text-[13px] hover:bg-gray-50"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={saveType}
-                    className="h-10 px-5 rounded-[10px] text-white font-bold text-[13px] flex items-center gap-2 disabled:opacity-60"
-                    style={{ background: '#2962FF' }}
-                  >
-                    <Save className="w-4 h-4" />
-                    {editingType ? 'Actualizar' : 'Crear'}
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-    </AnimatePresence>,
-    document.body
-  );
-}
+const normalizeDocumentText = (value: unknown): string =>
+  String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 
 // ============================================================================
 // MAIN COMPONENT
@@ -1263,9 +276,13 @@ export function CarpetaDigitalModule() {
   const [carpetaOrder, setCarpetaOrder] = useState<string[]>([]);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
+  // ✅ SCOPE FILTER - Filtrado por alcance territorial del rol
+  const { applyAllFilters, scopeBadge, isGlobal: isScopeGlobal } = useScopeFilter();
+  const scopedCarpetas = useMemo(() => applyAllFilters(carpetas), [carpetas, applyAllFilters]);
+
   // ========== COMPUTED VALUES (BEFORE EFFECTS) ==========
   const filteredCarpetas = useMemo(() => {
-    const filtered = carpetas.filter(carpeta => {
+    const filtered = scopedCarpetas.filter(carpeta => {
       const matchesSearch =
         (carpeta.nombre_carpeta || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (carpeta.email_propietario || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1414,29 +431,131 @@ export function CarpetaDigitalModule() {
 
   // ========== DATA LOADING ==========
   const cargarCarpetas = async () => {
-    setIsLoadingCarpetas(true);
-    setError(null);
+    try {
+      setIsLoadingCarpetas(true);
+      setError(null);
+      const result = await supabaseService.documentos.getAllCarpetas();
 
-    window.setTimeout(() => {
-      const carpetasMock = buildMockCarpetas();
-      setCarpetas(carpetasMock);
-      setCarpetaOrder(carpetasMock.map((carpeta) => carpeta.id));
+      if (result.success) {
+        // Filtro de seguridad: excluir carpetas sin usuario asociado válido
+        const carpetasValidas = (result.data || []).filter((c: CarpetaDigital) =>
+          c.persona_id && c.persona_id.trim() !== '' &&
+          c.nombre_carpeta && c.nombre_carpeta.trim() !== ''
+        );
+        const excluidas = (result.data || []).length - carpetasValidas.length;
+        if (excluidas > 0) {
+          console.warn(`⚠️ ${excluidas} carpeta(s) huérfana(s) excluida(s) (sin usuario asociado)`);
+        }
+        setCarpetas(carpetasValidas);
+      } else {
+        throw new Error('Error al cargar carpetas digitales');
+      }
+    } catch (err: any) {
+      console.warn('⚠️ Error al cargar carpetas:', err.message);
+      setError(err.message || 'Error al cargar carpetas');
+
+      // Manejo específico para timeout
+      if (err.message && err.message.includes('Timeout')) {
+        toast.warning('La carga está tardando más de lo esperado', {
+          description: 'El servidor está procesando muchos datos. Por favor espera...'
+        });
+      } else {
+        toast.error('Error al cargar carpetas', {
+          description: 'No se pudieron cargar las carpetas digitales'
+        });
+      }
+    } finally {
       setIsLoadingCarpetas(false);
-    }, 250);
+    }
   };
 
   const cargarDocumentos = async (carpetaId: string) => {
-    setIsLoadingDocumentos(true);
+    try {
+      console.log('═══════════════════════════════════════════════════════════════');
+      console.log('📥 FRONTEND - CARGAR DOCUMENTOS DE CARPETA');
+      console.log('═══════════════════════════════════════════════════════════════');
+      console.log('📂 Carpeta ID:', carpetaId);
+      console.log('───────────────────────────────────────────────────────────────');
 
-    window.setTimeout(() => {
-      const docs = buildMockDocumentos(carpetaId);
-      setDocumentos(docs);
+      setIsLoadingDocumentos(true);
+      const result = await supabaseService.documentos.getDocumentosByCarpeta(carpetaId);
+
+      console.log('📥 Respuesta del backend:', result);
+
+      if (result.success) {
+        const docs = result.data || [];
+        console.log(`✅ ${docs.length} documentos cargados exitosamente`);
+        console.log('📋 Lista de documentos cargados:');
+        docs.forEach((doc: Documento, idx: number) => {
+          console.log(`   ${idx + 1}. "${doc.nombre}" (ID: "${doc.id}", Estado: ${doc.estado})`);
+        });
+        console.log('═══════════════════════════════════════════════════════════════');
+        setDocumentos(docs);
+      } else {
+        throw new Error(result.error || 'Error al cargar documentos');
+      }
+    } catch (err: any) {
+      console.error('❌ Error al cargar documentos:', err.message);
+      console.log('═══════════════════════════════════════════════════════════════');
+
+      // Manejo específico para timeout
+      if (err.message && err.message.includes('Timeout')) {
+        toast.warning('La carga está tardando más de lo esperado', {
+          description: 'Intenta recargar la página o verifica tu conexión'
+        });
+      } else {
+        toast.error('Error al cargar documentos', {
+          description: 'No se pudieron cargar los documentos de esta carpeta'
+        });
+      }
+
+      setDocumentos([]);
+    } finally {
       setIsLoadingDocumentos(false);
-    }, 180);
+    }
   };
 
   const cargarTiposDocumentos = async () => {
-    setTiposDocumentos(buildMockTiposDocumentos(documentos));
+    try {
+      const personaId = selectedCarpeta?.persona_id || selectedCarpetaId || '';
+      const result = await supabaseService.documentos.getChecklistForPersona(personaId);
+      const tiposRaw = result.success && result.data?.tiposDocumentos
+        ? result.data.tiposDocumentos
+        : [];
+
+      if (result.success) {
+        const tiposChecklist = result.data
+          ? tiposRaw.filter((t: any) => t.activo !== false)
+          .map((tipo: any) => {
+            const tipoNombre = normalizeDocumentText(tipo.nombre_documento || tipo.nombre);
+
+            const matchedDoc = documentos.find((d) => {
+              if (d.tipo_documento_id && d.tipo_documento_id === tipo.id) return true;
+              if (d.tipo_documento_id) return false;
+              const docNombre = normalizeDocumentText(d.nombre);
+              return !!tipoNombre && !!docNombre && (docNombre.includes(tipoNombre) || tipoNombre.includes(docNombre));
+            });
+
+            return {
+              id: tipo.id,
+              nombre: tipo.nombre,
+              descripcion: tipo.descripcion || '',
+              categoria: tipo.categoria || 'otros',
+              obligatorio: !!tipo.obligatorio,
+              requiere_validacion: !!tipo.requiere_validacion,
+              formatos_permitidos: tipo.formatos_permitidos || [],
+              color: tipo.color || '#6B7280',
+              icono: tipo.icono || 'file-text',
+              completado: !!matchedDoc,
+              documento: matchedDoc || null,
+            };
+          }) : [];
+        setTiposDocumentos(tiposChecklist);
+      }
+    } catch (err) {
+      console.warn('No se pudieron cargar tipos de documentos:', err);
+      setTiposDocumentos([]);
+    }
   };
 
   // ========== COMPUTED VALUES ==========
@@ -1542,17 +661,78 @@ export function CarpetaDigitalModule() {
   };
 
   const handleDeleteAllDocuments = async () => {
-    setDocumentos([]);
-    setSelectedCarpetaId(null);
-    await cargarCarpetas();
-    toast.success('Documentos reiniciados en la vista de demostración');
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('🗑️ FRONTEND - ELIMINAR TODOS LOS DOCUMENTOS');
+    console.log('═══════════════════════════════════════════════════════════════');
+    toast.info('Eliminando todos los documentos...', { duration: 1000 });
+
+    try {
+      console.log('📤 Enviando petición de eliminación masiva...');
+      const result = await supabaseService.documentos.eliminarTodosLosDocumentos();
+      console.log('📥 Respuesta del backend:', JSON.stringify(result, null, 2));
+
+      if (result.success) {
+        console.log('✅ Eliminación exitosa');
+        console.log('📊 Estadísticas:', result.stats);
+        toast.success(
+          `✅ Eliminación completada: ${result.stats.documentos_eliminados} documentos eliminados`,
+          { duration: 3000 }
+        );
+
+        // Recargar las carpetas
+        console.log('🔄 Recargando carpetas...');
+        await cargarCarpetas();
+
+        // Limpiar selección
+        setSelectedCarpetaId(null);
+        setDocumentos([]);
+        console.log('✅ UI actualizada - selección limpiada');
+      } else {
+        console.error('❌ Respuesta con success: false');
+        console.error('Error del backend:', result.error);
+        toast.error(`Error: ${result.error || 'Error desconocido'}`);
+      }
+      console.log('═══════════════════════════════════════════════════════════════');
+    } catch (error: any) {
+      console.error('═══════════════════════════════════════════════════════════════');
+      console.error('❌ EXCEPCIÓN AL ELIMINAR DOCUMENTOS');
+      console.error('═══════════════════════════════════════════════════════════════');
+      console.error('Tipo de error:', typeof error);
+      console.error('Error completo:', error);
+      console.error('Mensaje:', error.message);
+      console.error('Stack:', error.stack);
+      console.error('═══════════════════════════════════════════════════════════════');
+
+      toast.error(`⚠️ Error al eliminar: ${error.message}`, {
+        duration: 5000,
+        description: 'Revisa la consola para más detalles'
+      });
+    }
   };
 
   const handlePreviewDocumento = (documento: Documento) => {
-    setSelectedDocumento(documento);
-    toast.info(`Vista previa de ${documento.nombre}`, {
-      description: 'La previsualización real se conecta al repositorio documental en producción.',
-    });
+    console.log('👁️ FRONTEND - PREVIEW DOCUMENTO:', documento.nombre, 'ID:', documento.id);
+
+    toast.info('Cargando vista previa...', { duration: 1000 });
+
+    (async () => {
+      try {
+        const result = await supabaseService.documentos.getDownloadUrl(documento.id);
+        if (result.success && result.data?.url) {
+          const docWithUrl = { ...documento, url_archivo: result.data.url };
+          setSelectedDocumento(docWithUrl);
+          setShowPreviewModal(true);
+        } else {
+          console.warn('No signed URL available, opening modal without preview');
+          setSelectedDocumento(documento);
+          setShowPreviewModal(true);
+        }
+      } catch (err: any) {
+        console.warn('Error fetching preview URL:', err.message);
+        setSelectedDocumento(documento);
+        setShowPreviewModal(true);
+      }
+    })();
   };
 
   const handleShowVersionHistory = (documento: Documento) => {
@@ -1613,10 +793,34 @@ export function CarpetaDigitalModule() {
   const handleConfirmDeleteDocument = async () => {
     if (!documentToDelete) return;
 
-    setDocumentos(prev => prev.filter(doc => doc.id !== documentToDelete.id));
-    toast.success('Documento eliminado de la vista');
-    setDocumentToDelete(null);
-    setShowDeleteSingleConfirmDialog(false);
+    console.log('🗑️ ELIMINANDO DOCUMENTO INDIVIDUAL:', documentToDelete.nombre);
+    toast.info('Eliminando documento...', { duration: 500 });
+
+    try {
+      const result = await supabaseService.documentos.delete(documentToDelete.id);
+      if (result.success) {
+        toast.success('Documento eliminado exitosamente');
+        cargarDocumentos(selectedCarpetaId || '');
+      } else {
+        toast.error('No se pudo eliminar el documento', {
+          description: result.error || 'Error desconocido'
+        });
+      }
+    } catch (err: any) {
+      console.error('❌ Error al eliminar documento:', err);
+      if (err.message?.includes('Timeout') || err.message?.includes('tardó')) {
+        toast.error('Timeout de eliminación', {
+          description: 'El servidor no responde. Intente más tarde.'
+        });
+      } else {
+        toast.error('Error al eliminar documento', {
+          description: err.message || 'Error desconocido'
+        });
+      }
+    } finally {
+      setDocumentToDelete(null);
+      setShowDeleteSingleConfirmDialog(false);
+    }
   };
 
   // ========== SELECTION HANDLERS ==========
@@ -1715,7 +919,7 @@ export function CarpetaDigitalModule() {
             <div className="text-center">
               <Loader2 className="w-16 h-16 animate-spin mx-auto mb-4" style={{ color: '#003DA5' }} />
               <p className="text-base font-medium text-gray-900">Cargando Carpeta Digital</p>
-              <p className="text-sm text-gray-600 mt-1">Obteniendo datos de Supabase...</p>
+              <p className="text-sm text-gray-600 mt-1">Obteniendo datos ...</p>
             </div>
           </div>
         </Container4K>
@@ -1787,6 +991,7 @@ export function CarpetaDigitalModule() {
                     onClick={() => setShowKeyboardShortcuts(true)}
                     className="w-[44px] h-[44px] flex items-center justify-center bg-white border-2 border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 transition-all shadow-sm shrink-0 hidden sm:flex"
                     title="Atajos de teclado (?)"
+                    style={{ padding: '10px' }}
                   >
                     <Keyboard className="w-4 h-4 text-gray-600" />
                   </button>
@@ -1808,7 +1013,7 @@ export function CarpetaDigitalModule() {
 
 
             {/* Barra de herramientas premium - Sticky & Glassmorphism */}
-            <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl py-3 sm:py-4 mb-4 sm:mb-6 flex flex-col md:flex-row gap-3 border-b border-gray-100 shadow-sm rounded-xl px-2 sm:px-4 -mx-2 sm:-mx-4 w-[calc(100%+16px)] sm:w-[calc(100%+32px)]">
+            <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl py-3 sm:py-4 mb-10 sm:mb-12 flex flex-col md:flex-row gap-3 border-b border-gray-200 shadow-sm px-0 w-full">
               <div className="flex-1 min-w-0">
                 <div
                   className={searchContainerClass}
@@ -1991,7 +1196,7 @@ export function CarpetaDigitalModule() {
           {/* Carpetas Grid/List */}
           {viewMode === 'grid' && (
             <>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5 2xl:gap-6 items-start">
                 <AnimatePresence mode="popLayout">
                   {paginatedCarpetas.map((carpeta, index) => {
                     // Protección contra undefined/null para evitar NaN
@@ -2145,23 +1350,26 @@ export function CarpetaDigitalModule() {
                         </div>
 
                         {/* Card Content */}
-                        <div className="p-5 flex flex-col h-full relative z-0">
+                        <div className="p-4 flex flex-col h-full relative z-0">
                           {/* Top section: Avatar + Folder Icon */}
                           <div className="flex items-start justify-between mb-4">
                             <div className="relative">
-                              <div className="w-14 h-14 rounded-full flex items-center justify-center bg-gradient-to-br from-[#E3F2FD] to-[#BBDEFB] shadow-sm border-2 border-white ring-1 ring-gray-100">
-                                <span className="text-xl font-bold" style={{ color: '#003DA5' }}>
+                              <div
+                                className="w-12 h-12 rounded-full flex items-center justify-center shadow-sm border-2 border-white ring-1 ring-gray-200"
+                                style={{ backgroundColor: '#D9EEFF' }}
+                              >
+                                <span className="text-sm font-bold leading-none" style={{ color: '#003DA5' }}>
                                   {initials}
                                 </span>
                               </div>
                               {/* Document Count Badge */}
-                              <div className="absolute -top-1.5 -right-1.5 bg-blue-600 text-white rounded-full min-w-[24px] h-6 px-1.5 flex items-center justify-center shadow-sm border-2 border-white">
-                                <span className="text-[11px] font-bold">{carpeta.total_documentos || 0}</span>
+                              <div className="absolute -top-1 -right-1 bg-blue-600 text-white rounded-full min-w-[20px] h-5 px-1 flex items-center justify-center shadow-sm border-2 border-white">
+                                <span className="text-[10px] font-bold leading-none">{carpeta.total_documentos || 0}</span>
                               </div>
                             </div>
-                            <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-gray-50 border border-gray-200 group-hover:bg-blue-50 group-hover:border-blue-200 transition-colors">
+                            <div className="w-9 h-9 rounded-lg flex items-center justify-center bg-gray-50 border border-gray-200 group-hover:bg-blue-50 group-hover:border-blue-200 transition-colors">
                               <FolderOpen
-                                className="w-5 h-5 text-gray-500 group-hover:text-blue-600 transition-colors"
+                                className="w-4 h-4 text-gray-500 group-hover:text-blue-600 transition-colors"
                                 strokeWidth={2}
                               />
                             </div>

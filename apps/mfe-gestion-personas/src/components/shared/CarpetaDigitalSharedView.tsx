@@ -173,6 +173,15 @@ const getFileIconColor = (t: string) => {
   return '#6B7280';
 };
 
+const normalizeDocumentText = (value: unknown): string =>
+  String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\.[a-z0-9]+$/i, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
 /** Check if a document is near expiration (within 30 days) or already expired */
 const getExpirationStatus = (doc: CarpetaDocumento): 'expired' | 'warning' | 'ok' | null => {
   if (!doc.fecha_vencimiento) return null;
@@ -732,14 +741,12 @@ export function CarpetaDigitalSharedView({
   // ========== HELPERS ==========
   const getDocsForTipo = (tipo: TipoDocumentoRequerido): CarpetaDocumento[] => {
     if (tipo.documento) return [tipo.documento];
-    const tipoCat = (tipo.categoria || '').toLowerCase();
+    const tipoNombre = normalizeDocumentText(tipo.nombre);
     return documentos.filter(d => {
       if (d.tipo_documento_id && d.tipo_documento_id === tipo.id) return true;
-      if (!d.tipo_documento_id) {
-        const docCat = (d.categoria || '').toLowerCase();
-        if (docCat === tipoCat) return true;
-      }
-      return false;
+      if (d.tipo_documento_id) return false;
+      const docNombre = normalizeDocumentText(d.nombre);
+      return !!tipoNombre && !!docNombre && (docNombre.includes(tipoNombre) || tipoNombre.includes(docNombre));
     });
   };
 
