@@ -290,6 +290,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      - ./backend/internal-disciplinary-control-service/uploads:/app/uploads
     networks:
       - superapp-net
     restart: unless-stopped
