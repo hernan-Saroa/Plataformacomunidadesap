@@ -3392,17 +3392,17 @@ export function DashboardKanbanOperativo({
 
       // Separar procesos archivados (en etapa 'Archivo') de los activos
       const procesosActivos = procesosTransformados.filter(p =>
-        p.etapaActual !== 'Archivo' && p.estadoActual !== 'ARCHIVADO'
+        p.etapaActual !== 'Archivo' && p.estadoActual !== 'ARCHIVADO' && p.estadoActual !== 'CERRADO'
       );
       const procesosArchivados = procesosTransformados.filter(p =>
-        p.etapaActual === 'Archivo' || p.estadoActual === 'ARCHIVADO'
+        p.etapaActual === 'Archivo' || p.estadoActual === 'ARCHIVADO' || p.estadoActual === 'CERRADO'
       );
 
       // Transformar procesos archivados al formato de archivados
       const procesosArchivadosTransformados = procesosArchivados.map(p => ({
         ...p,
         fechaArchivo: (p as any).fechaCreacion || new Date().toISOString(),
-        motivoArchivo: 'Completado - Archivo'
+        motivoArchivo: p.estadoActual === 'CERRADO' ? 'Cerrado - Enviado a Jurídica' : 'Completado - Archivo'
       }));
 
       // Combinar noticias y procesos activos
