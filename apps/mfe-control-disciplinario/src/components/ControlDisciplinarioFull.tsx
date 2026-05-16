@@ -39,6 +39,24 @@ export interface ResultadoRevision {
 }
 
 const BORRADORES_INICIALES: BorradorPendiente[] = [];
+const getAuthUserRenderKey = () => {
+  const user = authService.getCurrentUser() as any;
+  if (!user) return 'anonymous';
+
+  const userId = user.id_user ?? user.userId ?? user.id ?? user.sub ?? user.email ?? 'unknown';
+  const roles = Array.isArray(user.roles)
+    ? user.roles
+        .map((role: any) => typeof role === 'string' ? role : role?.code || role?.name || '')
+        .filter(Boolean)
+        .sort()
+    : [];
+  const permissions = Array.isArray(user.permissions)
+    ? user.permissions.filter(Boolean).sort()
+    : [];
+
+  return [userId, roles.join(','), permissions.join(',')].join('|');
+};
+
 const BORRADORES_INICIALES_MOCK: BorradorPendiente[] = [
   {
     id: 'b1',
@@ -109,6 +127,21 @@ export function ControlDisciplinarioFull() {
   const [navegandoDesdeProfesional, setNavegandoDesdeProfesional] = useState(false);
   const [borradores, setBorradores] = useState<BorradorPendiente[]>(BORRADORES_INICIALES);
   const [revisionLog, setRevisionLog] = useState<ResultadoRevision[]>([]);
+  const [authUserRenderKey, setAuthUserRenderKey] = useState(getAuthUserRenderKey);
+
+  useEffect(() => {
+    const handleAuthUserChanged = () => {
+      setAuthUserRenderKey(getAuthUserRenderKey());
+      setFiltroProfesional(null);
+    };
+
+    handleAuthUserChanged();
+    window.addEventListener('esap:auth-user-changed', handleAuthUserChanged);
+
+    return () => {
+      window.removeEventListener('esap:auth-user-changed', handleAuthUserChanged);
+    };
+  }, []);
 
   const cargarAutosEnRevision = useCallback(async () => {
     try {
@@ -237,7 +270,7 @@ export function ControlDisciplinarioFull() {
     if (!hasPermissionBySection[currentSection]) {
       setCurrentSection(getFirstAllowedSection());
     }
-  }, [currentSection]);
+  }, [currentSection, authUserRenderKey]);
 
   const menuItems: MenuItem[] = [
     { id: 'dashboard', label: 'Procesos', icon: <LayoutDashboard className="w-5 h-5" />, color: '#003DA5', visible: hasPermissionBySection.dashboard },
@@ -531,6 +564,7 @@ export function ControlDisciplinarioFull() {
       {/* Contenido Principal */}
       {currentSection === 'dashboard' && (
         <DashboardKanbanOperativo 
+          key={authUserRenderKey}
           onNavigateToExpediente={() => setCurrentSection('expediente')} 
           filtroProfesionalId={filtroProfesional}
           onEnviarARevision={handleEnviarARevisionGlobal}
