@@ -22,7 +22,6 @@ export { SedeBadge } from './SedeBadge';
 // Documents
 export { ExportadorReportes } from './ExportadorReportes';
 export { FileUploadDragDrop } from './FileUploadDragDrop';
-export { ConfirmDeleteModal } from './ConfirmDeleteModal';
 export { UserSedesYProgramasInfo } from './UserSedesYProgramasInfo';
 
 // Auth & Permissions

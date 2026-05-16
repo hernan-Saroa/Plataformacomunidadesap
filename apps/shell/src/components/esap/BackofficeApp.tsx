@@ -437,6 +437,15 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   // Controla firma-electronica en sidebar según permiso certificate.sign del módulo cert-laborales
   const computedAssignedModules = (() => {
     const mods = (userData?.modules as string[]) || [];
+    const roleCodes = ((userData?.roles as string[]) || []).map((role) => String(role).toUpperCase());
+    const email = String(currentUser.email || userData?.email || '').toLowerCase();
+    const isSystemAdmin =
+      roleCodes.some((role) => ['SUPER_ADMIN', 'ADMIN', 'ADMINISTRADOR'].includes(role)) ||
+      email === 'superuser@esap.edu.co' ||
+      email === 'admin@esap.edu.co';
+
+    if (isSystemAdmin) return ['all'];
+
     const hasCertLaborales = mods.includes('certificados-laborales');
     const hasSignPerm =
       userPermissionsList.includes('certificados-laborales.certificate.sign') ||
