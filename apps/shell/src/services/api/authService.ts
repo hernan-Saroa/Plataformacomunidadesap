@@ -54,7 +54,9 @@ class AuthService {
     };
 
     this.saveTokens(normalizedResponse.accessToken, normalizedResponse.refreshToken);
-    this.saveUserData(normalizedResponse.user);
+    const verifiedUser = await this.getAuthoritativeUserAfterLogin(normalizedResponse.user);
+    normalizedResponse.user = verifiedUser;
+    this.saveUserData(verifiedUser);
 
     return normalizedResponse;
   }
@@ -80,9 +82,11 @@ class AuthService {
 
     // Guardar tokens
     this.saveTokens(response.accessToken, response.refreshToken);
-    
-    // Guardar datos de usuario
-    this.saveUserData(response.user);
+
+    // Publicar el usuario autoritativo de la sesión recién creada.
+    const verifiedUser = await this.getAuthoritativeUserAfterLogin(response.user);
+    response.user = verifiedUser;
+    this.saveUserData(verifiedUser);
 
     return response;
   }
@@ -124,6 +128,7 @@ class AuthService {
    */
   async verifyToken(): Promise<AuthUser> {
     return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY, undefined, {
+      cache: 'no-store',
       retries: 0,
       skipAuthRefresh: true,
       skipErrorToast: true,
@@ -296,6 +301,15 @@ class AuthService {
 
   private saveTokens(accessToken?: string, refreshToken?: string): void {
     setAuthTokens(accessToken, refreshToken);
+  }
+
+  private async getAuthoritativeUserAfterLogin(fallbackUser: AuthUser): Promise<AuthUser> {
+    try {
+      return await this.verifyToken();
+    } catch (error) {
+      console.warn('[AuthService] No se pudo verificar la sesión tras login; usando usuario de la respuesta inicial.', error);
+      return fallbackUser;
+    }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
