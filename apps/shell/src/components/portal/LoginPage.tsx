@@ -24,7 +24,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
     ((import.meta.env.VITE_LOGIN_OPTIONS as string | undefined) || 'both')
       .trim()
       .toLowerCase();
-  const showMicrosoftLogin = false;
+  const showMicrosoftLogin = true;
   const showCredentialLogin = !showMicrosoftLogin || loginOptions !== 'microsoft';
 
   const [email, setEmail] = useState('');
@@ -175,19 +175,14 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
     // 🔥 LIMPIAR CACHÉ COMPLETAMENTE AL HACER LOGIN
     sessionStorage.removeItem('esap-sesion-activa');
-    console.log('🗑️ LocalStorage limpiado');
 
     try {
-      console.log('📡 Llamando a authService.login');
-      
       // Llamar a la API de autenticación real
       const response = await authService.login({
         email: email.toLowerCase(),
         password,
         rememberMe,
       });
-
-      console.log('✅ [6] Auth service response received:', response);
 
       // Determinar el tipo de usuario basado en el email para mostrar mensaje personalizado
       const emailLower = email.toLowerCase();
@@ -250,21 +245,23 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         });
       }
 
-      console.log('🔄 [7] Calling onLogin handler with user data');
       // Pasar los datos del usuario autenticado al handler de login (igual que el LoginPage de esap)
       setRemainingAttempts(null);
       onLogin(response.user, response.accessToken, rememberMe);
-      console.log('✅ [8] onLogin handler completed');
     } catch (error: any) {
-      console.error('❌ Error de autenticación:', error);
       const statusCode =
+        error?.status ??
         error?.statusCode ??
+        error?.response?.status ??
         error?.response?.data?.statusCode ??
-        error?.response?.status;
+        null;
       const errorMessage =
         typeof error?.message === 'string' && error.message.trim()
           ? error.message
           : 'Ocurrió un error inesperado. Intenta nuevamente.';
+      if (![400, 401, 429].includes(statusCode)) {
+        console.error('Error de autenticación:', error);
+      }
 
       // Manejar diferentes tipos de errores
       if (statusCode === 429) {
@@ -369,43 +366,23 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
   return (
     <div
       data-login-page-root
-      className="min-h-screen flex flex-col lg:flex-row"
+      className="esap-login-root fixed inset-0 grid h-screen w-screen max-w-none overflow-hidden bg-white"
       style={{
-        width: '100vw',
-        minWidth: '100vw',
-        height: '100vh',
-        minHeight: '100vh',
+        width: '100dvw',
+        minWidth: '100dvw',
+        height: '100dvh',
+        minHeight: '100dvh',
         margin: 0,
+        maxWidth: 'none',
         position: 'fixed',
         inset: 0,
+        display: 'grid',
         overflow: 'hidden',
+        backgroundColor: '#fff',
         zIndex: 0,
       }}
     >
-      <style>{`
-        @media (min-width: 1024px) {
-          [data-login-left-pane] {
-            flex: 0 0 37.4% !important;
-            width: 37.4% !important;
-            max-width: 37.4% !important;
-          }
-
-          [data-login-hero-pane] {
-            flex: 0 0 62.6% !important;
-            width: 62.6% !important;
-            max-width: 62.6% !important;
-          }
-        }
-
-        @media (max-width: 1023px) {
-          [data-login-left-pane],
-          [data-login-hero-pane] {
-            width: 100% !important;
-            max-width: 100% !important;
-          }
-        }
-      `}</style>
-      <div data-login-left-pane className="flex flex-col min-h-screen lg:min-h-0 bg-white relative">
+      <div data-login-left-pane className="esap-login-left flex flex-col min-h-screen lg:min-h-0 bg-white relative">
         <div className="flex-shrink-0 px-6 sm:px-10 pt-6 sm:pt-8">
           <motion.button
             initial={{ opacity: 0, x: -10 }}
@@ -749,7 +726,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.8 }}
-        className="hidden lg:flex relative overflow-hidden"
+        className="esap-login-hero relative overflow-hidden"
       >
         <div className="absolute inset-0">
           <img

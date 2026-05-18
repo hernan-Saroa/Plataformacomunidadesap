@@ -18,7 +18,7 @@
  * - Headers sticky con métricas
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, AlertTriangle, Target, Users, Calendar, Clock,
@@ -44,6 +44,7 @@ import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesCont
 
 // ✅ Hook de backend para planes de mejoramiento
 import { usePlanesMejoramiento, PlanMejoramientoKanban } from './services/usePlanesMejoramiento';
+import { controlInternoService } from '../../services/api/controlInternoService';
 
 // Validaciones
 import { validarPlanParaAuditoriaCompleta, mostrarErroresValidacion } from './utils/validaciones';
@@ -67,7 +68,7 @@ const Card = ({ className = '', children, ...props }: React.HTMLAttributes<HTMLD
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
 
-type EstadoPlan = 'FORMULACION' | 'APROBADO' | 'EN_EJECUCION' | 'CON_RETRASO' | 'COMPLETADO' | 'SUSPENDIDO';
+type EstadoPlan = 'FORMULACION' | 'borrador' | 'revision' | 'APROBADO' | 'aprobado' | 'EN_EJECUCION' | 'en_ejecucion' | 'CON_RETRASO' | 'COMPLETADO' | 'completado' | 'SUSPENDIDO' | 'rechazado' | 'RECHAZADO';
 type SemaforoPlan = 'verde' | 'amarillo' | 'rojo';
 
 interface PlanMejoramiento {
@@ -381,6 +382,7 @@ export function PlanesMejoramientoModuleRediseno() {
   } = usePlanesMejoramiento();
 
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
+  const [auditoriasElegiblesBackend, setAuditoriasElegiblesBackend] = useState<any[]>([]);
 
 
 
@@ -394,7 +396,9 @@ export function PlanesMejoramientoModuleRediseno() {
     auditoriaIdParaVerPlan,
     limpiarVerPlan,
     crearPlan: crearPlanContext,
-    generarExpediente
+    generarExpediente,
+    auditoriaIdFoco,
+    setAuditoriaIdFoco
   } = useIntegracionAuditoriaPlanes();
 
   // Plan a abrir cuando viene de "Ir a ver plan" (plan ya existe)
@@ -406,6 +410,104 @@ export function PlanesMejoramientoModuleRediseno() {
     return plan?.id ?? null;
   }, [auditoriaIdParaVerPlan, planes]);
 
+  const normalizarTexto = (valor: unknown): string =>
+    String(valor || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+  const contarHallazgos = (auditoria: any): number => {
+    if (Array.isArray(auditoria?.hallazgos)) return auditoria.hallazgos.length;
+    const candidatos = [
+      auditoria?.hallazgos,
+      auditoria?.totalHallazgos,
+      auditoria?.total_hallazgos,
+      auditoria?.numeroHallazgos,
+      auditoria?.hallazgosDetectados,
+    ];
+    for (const c of candidatos) {
+      const n = Number(c);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return 0;
+  };
+
+  const auditoriasElegiblesParaCrear = useMemo(() => {
+    const fuente = Array.isArray(auditoriasElegiblesBackend) ? auditoriasElegiblesBackend : [];
+    const porId = new Map<string, any>();
+
+    for (const aud of fuente) {
+      if (aud?.id) porId.set(aud.id, aud);
+    }
+
+    for (const aud of auditoriasConHallazgos) {
+      if (aud?.id && !porId.has(aud.id)) porId.set(aud.id, aud);
+    }
+
+    return Array.from(porId.values());
+  }, [auditoriasElegiblesBackend, auditoriasConHallazgos]);
+
+  const cargarAuditoriasElegibles = useCallback(async () => {
+    try {
+      const [auditoriasResp, planesResp] = await Promise.all([
+        controlInternoService.getAuditorias(),
+        controlInternoService.getPlanesMejoramiento().catch(() => []),
+      ]);
+
+      const auditorias = Array.isArray(auditoriasResp) ? auditoriasResp : [];
+      const planesExistentes = Array.isArray(planesResp) ? planesResp : [];
+      const idsConPlan = new Set(
+        planesExistentes
+          .map((p: any) => p?.auditoriaId || p?.auditoria_id || p?.auditoria?.id)
+          .filter((id: any) => typeof id === 'string' && id.length > 0)
+      );
+
+      const elegibles = auditorias
+        .filter((a: any) => {
+          const estado = normalizarTexto(a?.estadoKanban || a?.fase || a?.estado);
+          const enEstadoPermitido =
+            estado === 'comunicacion' || estado === 'seguimiento' || estado === 'finalizada';
+          const hallazgos = contarHallazgos(a);
+          return enEstadoPermitido && hallazgos > 0 && !idsConPlan.has(a?.id);
+        })
+        .map((a: any) => {
+          const fechaFin = String(
+            a?.fechaFinComunicacion || a?.fechaFin || a?.fecha_fin || new Date().toISOString().split('T')[0]
+          );
+          const fechaFinIso = fechaFin.includes('T') ? fechaFin.split('T')[0] : fechaFin;
+          const fechaLimiteObj = new Date(`${fechaFinIso}T00:00:00`);
+          if (!Number.isNaN(fechaLimiteObj.getTime())) fechaLimiteObj.setDate(fechaLimiteObj.getDate() + 30);
+          const fechaLimitePlan = !Number.isNaN(fechaLimiteObj.getTime())
+            ? fechaLimiteObj.toISOString().split('T')[0]
+            : calcularFechaLimite();
+
+          return {
+            id: a.id,
+            codigo: a.codigo || 'AUD',
+            nombre: a.nombre || a.titulo || a.proceso || 'Auditoría',
+            areaResponsable: a.areaResponsable || a.areaObjetivo || a.proceso || 'N/A',
+            responsable:
+              typeof a.auditorLider === 'string'
+                ? a.auditorLider
+                : a.auditorLider?.nombre || a.responsable || 'N/A',
+            cargo:
+              typeof a.auditorLider === 'object' && a.auditorLider?.cargo ? a.auditorLider.cargo : '',
+            fechaFinalizacion: fechaFinIso,
+            estadoPlan: 'SIN_PLAN' as const,
+            fechaLimitePlan,
+            plazoFormulacion: 30,
+            hallazgos: Array.isArray(a.hallazgos) ? a.hallazgos : [],
+          };
+        });
+
+      setAuditoriasElegiblesBackend(elegibles);
+    } catch (err) {
+      console.error('[PlanesMejoramiento] Error cargando auditorias elegibles:', err);
+      setAuditoriasElegiblesBackend([]);
+    }
+  }, []);
+
   // Auto-abrir modal CREAR solo si viene desde auditorías para crear (no para ver)
   useEffect(() => {
     if (auditoriaSeleccionada && navegarAFormulacion && !auditoriaIdParaVerPlan) {
@@ -413,6 +515,16 @@ export function PlanesMejoramientoModuleRediseno() {
       setNavegarAFormulacion(false);
     }
   }, [auditoriaSeleccionada, navegarAFormulacion, setNavegarAFormulacion, auditoriaIdParaVerPlan]);
+
+  useEffect(() => {
+    cargarAuditoriasElegibles();
+  }, [cargarAuditoriasElegibles]);
+
+  useEffect(() => {
+    if (planes.length > 0) {
+      cargarAuditoriasElegibles();
+    }
+  }, [planes, cargarAuditoriasElegibles]);
 
   const handleCrearPlanDesdeAuditoria = async (auditoria: any) => {
     if (!auditoria) return;
@@ -587,7 +699,7 @@ export function PlanesMejoramientoModuleRediseno() {
         <SeguimientoView 
           planes={planes} 
           onAbrirCrearPlan={() => setModalCrearPlanOpen(true)}
-          auditoriasDisponibles={auditoriasConHallazgos}
+          auditoriasDisponibles={auditoriasElegiblesParaCrear}
           onCompletarPlan={handleCompletarPlan}
           planIdParaAbrir={planIdParaAbrir}
           onPlanAbiertoParaVer={limpiarVerPlan}
@@ -598,7 +710,7 @@ export function PlanesMejoramientoModuleRediseno() {
         {modalCrearPlanOpen && (
           <ModalCrearPlanDesdeAuditoria
             auditoria={auditoriaSeleccionada}
-            auditoriasDisponibles={auditoriasConHallazgos}
+            auditoriasDisponibles={auditoriasElegiblesParaCrear}
             onCrear={handleCrearPlanDesdeAuditoria}
             onCerrar={() => {
               setModalCrearPlanOpen(false);
@@ -640,6 +752,7 @@ function SeguimientoView({ planes, onAbrirCrearPlan, auditoriasDisponibles, onCo
   const [filtroEstado, setFiltroEstado] = useState<EstadoPlan | 'TODOS'>('TODOS');
   const [planSeleccionado, setPlanSeleccionado] = useState<PlanMejoramiento | null>(null);
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
+  const { auditoriaIdFoco, setAuditoriaIdFoco } = useIntegracionAuditoriaPlanes();
 
   // Abrir detalle cuando viene de "Ir a ver plan"
   useEffect(() => {
@@ -652,11 +765,38 @@ function SeguimientoView({ planes, onAbrirCrearPlan, auditoriasDisponibles, onCo
     }
   }, [planIdParaAbrir, planes, onPlanAbiertoParaVer]);
 
+  // ✅ NUEVO: Foco automático desde Notificaciones (Abrir plan)
+  useEffect(() => {
+    if (auditoriaIdFoco && planes.length > 0) {
+      console.log('[PlanesMejoramiento] Detectado foco para plan (vía auditoríaId/planId):', auditoriaIdFoco);
+      // El foco puede ser el ID del plan directamente o el ID de la auditoría asociada
+      const plan = planes.find(
+        (p: any) => 
+          p.id === auditoriaIdFoco || 
+          (p.auditoriaId || p.auditoria_id || p.auditoria?.id) === auditoriaIdFoco
+      );
+      if (plan) {
+        setPlanSeleccionado(plan);
+        setAuditoriaIdFoco(null); // Limpiar foco después de abrir
+      }
+    }
+  }, [auditoriaIdFoco, planes, setAuditoriaIdFoco]);
+
   const planesFiltrados = useMemo(() => {
     let resultado = planes;
     
     if (filtroEstado !== 'TODOS') {
-      resultado = resultado.filter(p => p.estado === filtroEstado);
+      // Agrupar estados del backend a filtros Kanban
+      const estadosDelFiltro: Record<string, string[]> = {
+        FORMULACION: ['FORMULACION', 'borrador', 'revision'],
+        APROBADO: ['APROBADO', 'aprobado'],
+        EN_EJECUCION: ['EN_EJECUCION', 'en_ejecucion'],
+        CON_RETRASO: ['CON_RETRASO'],
+        COMPLETADO: ['COMPLETADO', 'completado'],
+        SUSPENDIDO: ['SUSPENDIDO', 'rechazado', 'RECHAZADO'],
+      };
+      const permitidos = estadosDelFiltro[filtroEstado] ?? [filtroEstado];
+      resultado = resultado.filter(p => permitidos.includes(p.estado));
     }
     
     if (busqueda) {
@@ -674,11 +814,11 @@ function SeguimientoView({ planes, onAbrirCrearPlan, auditoriasDisponibles, onCo
 
   const estadisticas = useMemo(() => {
     const total = planes.length;
-    const formulacion = planes.filter(p => p.estado === 'FORMULACION').length;
-    const aprobados = planes.filter(p => p.estado === 'APROBADO').length;
-    const enEjecucion = planes.filter(p => p.estado === 'EN_EJECUCION').length;
+    const formulacion = planes.filter(p => p.estado === 'FORMULACION' || p.estado === 'borrador' || p.estado === 'revision').length;
+    const aprobados = planes.filter(p => p.estado === 'APROBADO' || p.estado === 'aprobado').length;
+    const enEjecucion = planes.filter(p => p.estado === 'EN_EJECUCION' || p.estado === 'en_ejecucion').length;
     const conRetraso = planes.filter(p => p.estado === 'CON_RETRASO').length;
-    const completados = planes.filter(p => p.estado === 'COMPLETADO').length;
+    const completados = planes.filter(p => p.estado === 'COMPLETADO' || p.estado === 'completado').length;
     const suspendidos = planes.filter(p => p.estado === 'SUSPENDIDO').length;
     
     // Semáforos
@@ -999,7 +1139,23 @@ function VistaKanban({ planes, onMoverPlan, onAbrirPlan, onCompletarPlan, column
         }}
       >
         {COLUMNAS_KANBAN.map((columna) => {
-        const planesColumna = planes.filter(p => p.estado === columna.id);
+        // Normalizar estados del backend (minúsculas) a columnas Kanban (MAYÚSCULAS)
+        const estadoToColumna: Record<string, string> = {
+          borrador: 'FORMULACION',
+          revision: 'FORMULACION',
+          FORMULACION: 'FORMULACION',
+          aprobado: 'APROBADO',
+          APROBADO: 'APROBADO',
+          en_ejecucion: 'EN_EJECUCION',
+          EN_EJECUCION: 'EN_EJECUCION',
+          CON_RETRASO: 'CON_RETRASO',
+          completado: 'COMPLETADO',
+          COMPLETADO: 'COMPLETADO',
+          rechazado: 'SUSPENDIDO',
+          RECHAZADO: 'SUSPENDIDO',
+          SUSPENDIDO: 'SUSPENDIDO',
+        };
+        const planesColumna = planes.filter(p => (estadoToColumna[p.estado] ?? p.estado) === columna.id);
         const colapsada = columnasColapsadas.has(columna.id);
         
         return (
@@ -1656,16 +1812,25 @@ function FilterButton({ active, onClick, label, count, color = 'gray' }: FilterB
 }
 
 function EstadoBadge({ estado }: { estado: EstadoPlan }) {
-  const config = {
-    FORMULACION: { label: 'Formulación', bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
-    APROBADO: { label: 'Aprobado', bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
-    EN_EJECUCION: { label: 'En Ejecución', bg: 'bg-green-100', text: 'text-green-700', border: 'border-green-300' },
-    CON_RETRASO: { label: 'Con Retraso', bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300' },
-    COMPLETADO: { label: 'Completado', bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
-    SUSPENDIDO: { label: 'Suspendido', bg: 'bg-gray-100', text: 'text-gray-700', border: 'border-gray-300' }
+  // Mapa unificado: backend (minusculas) + legacy (MAYUSCULAS)
+  const configMap: Record<string, { label: string; bg: string; text: string; border: string }> = {
+    borrador:     { label: 'Borrador',      bg: 'bg-gray-100',    text: 'text-gray-700',    border: 'border-gray-300' },
+    revision:     { label: 'En Revision',   bg: 'bg-amber-100',   text: 'text-amber-700',   border: 'border-amber-300' },
+    aprobado:     { label: 'Aprobado',      bg: 'bg-blue-100',    text: 'text-blue-700',    border: 'border-blue-300' },
+    en_ejecucion: { label: 'En Ejecucion',  bg: 'bg-green-100',   text: 'text-green-700',   border: 'border-green-300' },
+    completado:   { label: 'Completado',    bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
+    rechazado:    { label: 'Rechazado',     bg: 'bg-red-100',     text: 'text-red-700',     border: 'border-red-300' },
+    FORMULACION:  { label: 'Formulacion',  bg: 'bg-purple-100',  text: 'text-purple-700',  border: 'border-purple-300' },
+    APROBADO:     { label: 'Aprobado',     bg: 'bg-blue-100',    text: 'text-blue-700',    border: 'border-blue-300' },
+    EN_EJECUCION: { label: 'En Ejecucion', bg: 'bg-green-100',   text: 'text-green-700',   border: 'border-green-300' },
+    CON_RETRASO:  { label: 'Con Retraso',  bg: 'bg-orange-100',  text: 'text-orange-700',  border: 'border-orange-300' },
+    COMPLETADO:   { label: 'Completado',   bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
+    SUSPENDIDO:   { label: 'Suspendido',   bg: 'bg-gray-100',    text: 'text-gray-700',    border: 'border-gray-300' },
+    RECHAZADO:    { label: 'Rechazado',    bg: 'bg-red-100',     text: 'text-red-700',     border: 'border-red-300' },
   };
+  const config = configMap[estado] ?? { label: estado, bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-200' };
 
-  const { label, bg, text, border } = config[estado];
+  const { label, bg, text, border } = config;
 
   return (
     <span className={`px-3 py-1 rounded-lg text-xs font-medium border ${bg} ${text} ${border}`}>

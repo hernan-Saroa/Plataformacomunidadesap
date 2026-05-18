@@ -9,7 +9,7 @@ import {
   Menu,
   X,
 } from 'lucide-react';
-import { Avatar, AvatarImage, AvatarFallback } from '../ui/avatar';
+import { Avatar, AvatarFallback } from '../ui/avatar';
 import { ESAPLogo } from '../assets/ESAPLogo';
 import { PortalCommandPalette } from './PortalCommandPalette';
 import { Button } from '../ui/button';
@@ -135,7 +135,6 @@ const UserMenuButton = forwardRef<
       aria-label={`Menú de usuario: ${safeUserName}`}
     >
       <Avatar className="w-8 h-8 flex-shrink-0">
-        <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${safeUserName}&backgroundColor=003DA5`} />
         <AvatarFallback className="bg-[#003DA5] text-white text-[13px] font-bold">
           {initials}
         </AvatarFallback>
@@ -267,9 +266,8 @@ export function AuthenticatedPortalNavbar({
           <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0">
             {hasBothSystemsAccess && onSystemChange && (
               <SystemSwitcher
-                system="portal"
+                currentSystem="portal"
                 onSystemChange={onSystemChange}
-                compact
               />
             )}
 

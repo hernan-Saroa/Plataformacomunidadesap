@@ -27,6 +27,7 @@ import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { toast } from 'sonner';
 import { legalService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
 import { ModalNuevoTermino } from './ModalNuevoTermino';
 import { ModalDetalleTermino } from './ModalDetalleTermino';
 import { ModalDocumentosTermino } from './ModalDocumentosTermino';
@@ -41,6 +42,10 @@ type VistaModulo = 'timeline' | 'calendario' | 'lista' | 'archivados';
 export function ModuloTerminosInformesV3() {
   // ========== PERMISOS ==========
   const { usuario } = usePermisos();
+  const esMonitoreoGestionLegal = authService.hasRole('MONITOREO_GESTION_LEGAL');
+  const esResuelveGestionLegal = authService.hasRole('RESUELVE_GESTION_LEGAL');
+  const canModifyTerminos = !esMonitoreoGestionLegal;
+  const canEnviarRecordatorio = !esMonitoreoGestionLegal && !esResuelveGestionLegal;
 
   // ========== ESTADO ==========
   const [solicitudes, setSolicitudes] = useState<SolicitudInforme[]>(solicitudesConsolidadas);
@@ -146,6 +151,7 @@ export function ModuloTerminosInformesV3() {
         descripcion: t.observaciones ? t.observaciones.split('\n').filter((l: string) => !l.startsWith('[ARCHIVO_ADJUNTO]')).join('\n').trim() : '', 
 
         responsable: t.responsableNombre || t.responsableId || 'Sin asignar',
+        responsableId: t.responsableId || null, // Preserve UUID for filtering
         fechaSolicitud: new Date(t.fechaBase),
         fechaVencimiento: new Date(t.fechaVencimiento),
         diasTotales: t.diasTermino,
@@ -153,7 +159,57 @@ export function ModuloTerminosInformesV3() {
         datosRequeridos: [],
         metadata: { uuid: t.id } // Store real UUID here
       }));
-      setSolicitudes(mapped);
+
+      // ✅ Filtrado por rol RESUELVE_GESTION_LEGAL
+      const currentUser = authService.getCurrentUser() as any;
+      const isResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
+      let mappedFiltrado: SolicitudInforme[] = mapped;
+
+      if (isResuelve && currentUser) {
+        const cuEmail: string = (
+          currentUser.email ??
+          currentUser.person?.email ??
+          currentUser.mail ??
+          ''
+        ).toLowerCase();
+        const cuName: string = (
+          currentUser.fullName ??
+          currentUser.full_name ??
+          currentUser.name ??
+          (currentUser.firstName || currentUser.first_name
+            ? `${currentUser.firstName ?? currentUser.first_name ?? ''} ${currentUser.lastName ?? currentUser.last_name ?? ''}`.trim()
+            : null) ??
+          (currentUser.person?.first_name
+            ? `${currentUser.person.first_name ?? ''} ${currentUser.person.last_name ?? ''}`.trim()
+            : null) ??
+          ''
+        ).toLowerCase();
+        const cuIds = new Set<string>(
+          [
+            currentUser.id,
+            currentUser.id_user,
+            currentUser.user?.id,
+            currentUser.user?.id_user,
+            currentUser.person?.id,
+          ].filter(Boolean)
+        );
+
+        console.log('[DEBUG RESUELVE TERMINOS] email:', cuEmail, '| nombre:', cuName, '| ids:', [...cuIds]);
+
+        mappedFiltrado = mapped.filter((t: any) => {
+          // 1. Match por responsableId (UUID) — más preciso
+          if (t.responsableId && cuIds.has(t.responsableId)) return true;
+          // 2. Match por nombre (responsable texto)
+          const tNombre = (t.responsable || '').toLowerCase();
+          if (cuName && tNombre && tNombre === cuName) return true;
+          // 3. Match por email si el responsable coincide
+          if (cuEmail && tNombre && tNombre === cuEmail) return true;
+          return false;
+        });
+        console.log('[DEBUG RESUELVE TERMINOS] filtrados:', mappedFiltrado.length, 'de', mapped.length);
+      }
+
+      setSolicitudes(mappedFiltrado);
     } catch (error) {
       console.error('Error fetching terminos:', error);
       toast.error('Error al cargar términos');
@@ -161,6 +217,7 @@ export function ModuloTerminosInformesV3() {
       setLoading(false);
     }
   };
+
 
   useEffect(() => {
     fetchData();
@@ -233,12 +290,25 @@ export function ModuloTerminosInformesV3() {
       const solicitud = solicitudes.find(s => s.id === id);
       if (!solicitud) return;
 
-      const userStr = localStorage.getItem('user');
-      const user = userStr ? JSON.parse(userStr) : null;
-      const userName = user?.nombre || 'Usuario';
-      
+      // ✅ Resolver nombre de usuario de forma robusta (mismo patrón que el resto del sistema)
+      const currentUser = authService.getCurrentUser() as any;
+      const userName = (
+        currentUser?.fullName ??
+        currentUser?.full_name ??
+        currentUser?.nombre ??
+        (currentUser?.firstName || currentUser?.first_name
+          ? `${currentUser?.firstName ?? currentUser?.first_name ?? ''} ${currentUser?.lastName ?? currentUser?.last_name ?? ''}`.trim()
+          : null) ??
+        (currentUser?.person?.first_name
+          ? `${currentUser?.person?.first_name ?? ''} ${currentUser?.person?.last_name ?? ''}`.trim()
+          : null) ??
+        currentUser?.email ??
+        'Usuario'
+      );
+
+      // Formato compatible con parseObservaciones: "[fecha hora] Nombre:\nTexto"
       const newCommentText = `[${new Date().toLocaleDateString('es-CO')} ${new Date().toLocaleTimeString('es-CO')}] ${userName}:\n${comentario}`;
-      const updatedDescripcion = solicitud.descripcion 
+      const updatedDescripcion = solicitud.descripcion
         ? `${solicitud.descripcion}\n\n---\n${newCommentText}`
         : newCommentText;
 
@@ -333,7 +403,7 @@ export function ModuloTerminosInformesV3() {
             { label: 'Archivados', icon: <FileText className="w-4 h-4" />, value: 'archivados' }
           ]
         }}
-        buttons={[
+        buttons={canModifyTerminos ? [
           {
             label: 'Nueva Solicitud',
             labelMobile: 'Nuevo',
@@ -341,7 +411,7 @@ export function ModuloTerminosInformesV3() {
             onClick: () => setModalNuevaSolicitudOpen(true),
             variant: 'primary'
           }
-        ]}
+        ] : []}
         infoTooltip={
           <ModuleInfoTooltip
             title="Guía de Términos e Informes"
@@ -437,15 +507,15 @@ export function ModuloTerminosInformesV3() {
       />
 
       {/* Contenido principal */}
-      {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={handleArchivar} onEliminar={handleEliminar} />}
+      {vistaActual === 'timeline' && <VistaTimeline solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={canModifyTerminos ? handleArchivar : undefined} onEliminar={canModifyTerminos ? handleEliminar : undefined} />}
       {vistaActual === 'calendario' && <VistaCalendario solicitudes={solicitudesFiltradas} mesActual={mesActual} setMesActual={setMesActual} onVerDetalle={handleVerDetalle} />}
-      {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={handleArchivar} onEliminar={handleEliminar} />}
+      {vistaActual === 'lista' && <VistaLista solicitudes={solicitudesFiltradas} onVerDetalle={handleVerDetalle} onArchivar={canModifyTerminos ? handleArchivar : undefined} onEliminar={canModifyTerminos ? handleEliminar : undefined} />}
       {vistaActual === 'archivados' && (
         <VistaArchivados
           items={itemsArchivados}
           moduloNombre="Términos e Informes"
-          onRestaurar={handleRestaurar}
-          onEliminarPermanente={handleEliminarPermanente}
+          onRestaurar={canModifyTerminos ? handleRestaurar : undefined}
+          onEliminarPermanente={canModifyTerminos ? handleEliminarPermanente : undefined}
         />
       )}
 
@@ -471,10 +541,11 @@ export function ModuloTerminosInformesV3() {
         isOpen={modalDetalleOpen}
         onClose={() => setModalDetalleOpen(false)}
         solicitud={solicitudSeleccionada}
-        onCambiarEtapa={handleCambiarEtapa}
-        onAgregarComentario={handleAgregarComentario}
-        onArchivar={handleArchivar}
-        onEliminar={handleEliminar}
+        onCambiarEtapa={canModifyTerminos ? handleCambiarEtapa : undefined}
+        onArchivar={canModifyTerminos ? handleArchivar : undefined}
+        onEliminar={canModifyTerminos ? handleEliminar : undefined}
+        canModify={canModifyTerminos}
+        canEnviarRecordatorio={canEnviarRecordatorio}
       />
 
       {/* Modal Confirmar Eliminar */}
@@ -523,8 +594,8 @@ export function ModuloTerminosInformesV3() {
 interface VistaTimelineProps {
   solicitudes: SolicitudInforme[];
   onVerDetalle: (s: SolicitudInforme) => void;
-  onArchivar: (id: string) => void;
-  onEliminar: (id: string) => void;
+  onArchivar?: (id: string) => void;
+  onEliminar?: (id: string) => void;
 }
 
 function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaTimelineProps) {
@@ -623,6 +694,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
                     <Eye className="w-3.5 h-3.5" />
                     Ver Detalle
                   </button>
+                  {onArchivar && (
                   <button
                     onClick={() => onArchivar(solicitud.id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95 bg-amber-50 text-amber-700 border border-amber-300 hover:bg-amber-100"
@@ -631,6 +703,8 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
                     <Archive className="w-3.5 h-3.5" />
                     Archivar
                   </button>
+                  )}
+                  {onEliminar && (
                   <button
                     onClick={() => onEliminar(solicitud.id)}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200 hover:shadow-md active:scale-95 bg-red-50 text-red-600 border border-red-300 hover:bg-red-100"
@@ -638,6 +712,7 @@ function VistaTimeline({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vi
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -760,8 +835,8 @@ function VistaCalendario({ solicitudes, mesActual, setMesActual, onVerDetalle }:
 interface VistaListaProps {
   solicitudes: SolicitudInforme[];
   onVerDetalle: (solicitud: SolicitudInforme) => void;
-  onArchivar: (id: string) => void;
-  onEliminar: (id: string) => void;
+  onArchivar?: (id: string) => void;
+  onEliminar?: (id: string) => void;
 }
 
 function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: VistaListaProps) {
@@ -819,6 +894,7 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
                         <Eye className="w-3.5 h-3.5" />
                         Ver
                       </button>
+                      {onArchivar && (
                       <Button
                         onClick={() => onArchivar(solicitud.id)}
                         size="sm"
@@ -828,6 +904,8 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
                       >
                         <Archive className="w-3 h-3" />
                       </Button>
+                      )}
+                      {onEliminar && (
                       <Button
                         onClick={() => onEliminar(solicitud.id)}
                         size="sm"
@@ -837,6 +915,7 @@ function VistaLista({ solicitudes, onVerDetalle, onArchivar, onEliminar }: Vista
                       >
                         <Trash2 className="w-3 h-3" />
                       </Button>
+                      )}
                     </div>
                   </td>
                 </tr>

@@ -121,12 +121,10 @@ async function apiRequest<T>(
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
   try {
-    const token = sessionStorage.getItem('esap_auth_token');
-    
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
         ...options?.headers,
       },
       ...options,
@@ -345,24 +343,15 @@ export function useNotificaciones() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Obtener usuarioId del localStorage o contexto de autenticación
+  // Obtener usuarioId desde el cache de autenticación en memoria
   const getUsuarioId = useCallback((): string => {
     try {
-      // Intentar con la key principal: esap_user_data
-      const userData = sessionStorage.getItem('esap_user_data');
-      if (userData) {
-        const user = JSON.parse(userData);
-        return user.id || user.userId || user.id_tercero || '';
-      }
-      
-      // Fallback: esap_auth_user (legacy)
-      const authData = localStorage.getItem('esap_auth_user');
-      if (authData) {
-        const user = JSON.parse(authData);
+      const user = (window as any).__esap_auth_cache;
+      if (user) {
         return user.id || user.userId || user.id_tercero || '';
       }
     } catch {
-      console.warn('[useNotificaciones] No se pudo obtener usuario del storage');
+      console.warn('[useNotificaciones] No se pudo obtener usuario del cache');
     }
     return '';
   }, []);

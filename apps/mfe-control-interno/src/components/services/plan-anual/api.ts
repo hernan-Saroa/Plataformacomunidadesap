@@ -54,12 +54,10 @@ async function apiRequest<T>(
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
   try {
-    const token = sessionStorage.getItem('esap_auth_token');
-    
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { 'Authorization': `Bearer ${token}` }),
         ...options?.headers,
       },
       ...options,
@@ -168,9 +166,8 @@ export const planAnualApi = {
    */
   exportExcel: async (planId: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const token = sessionStorage.getItem('esap_auth_token');
       const response = await fetch(`${API_BASE_URL}${PLAN_ANUAL_ENDPOINT}/${planId}/export/excel`, {
-        headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+        credentials: 'include',
       });
       if (!response.ok) {
         const text = await response.text();

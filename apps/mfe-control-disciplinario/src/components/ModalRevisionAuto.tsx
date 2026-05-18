@@ -45,6 +45,7 @@ export interface BorradorPendiente {
   estado: 'pendiente_revision' | 'en_revision' | 'aprobado' | 'devuelto';
   historial: AccionRevision[];
   tiempoEspera?: string;
+  procesoId?: string;
   // Campos de prórroga (solo para AUTO_PRORROGA)
   tipo?: string;
   prorrogaMeses?: number;
@@ -65,6 +66,7 @@ interface ModalRevisionAutoProps {
   onClose: () => void;
   onAprobar: (comentarios: string) => void | Promise<void>;
   onDevolver?: (motivo: string, comentarios: string, archivos: File[]) => void;
+  onRefresh?: () => void | Promise<void>;
   mostrarBotonDevolver?: boolean;
   tituloModal?: string;
   descripcionModal?: string;
@@ -479,6 +481,7 @@ export function ModalRevisionAuto({
   onClose,
   onAprobar,
   onDevolver,
+  onRefresh,
   mostrarBotonDevolver = true,
   tituloModal = 'Revisión de Auto',
   descripcionModal
@@ -497,6 +500,7 @@ export function ModalRevisionAuto({
   const [comentarioSubida, setComentarioSubida] = useState('');
   const [subiendoDoc, setSubiendoDoc] = useState(false);
   const [aprobandoAuto, setAprobandoAuto] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!borrador.autoId) return;
@@ -507,11 +511,10 @@ export function ModalRevisionAuto({
         const auto = await disciplinaryService.getAutoById(borrador.autoId!);
         if (auto.documentUrl) {
           const restPath = auto.documentUrl;
-          const fileUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
-          const token = sessionStorage.getItem('esap_access_token');
+          const fileUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`) + `?t=${Date.now()}`;
           const response = await fetch(fileUrl, {
             method: 'GET',
-            headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            credentials: 'include',
           });
           if (response.ok) {
             const blob = await response.blob();
@@ -567,7 +570,7 @@ export function ModalRevisionAuto({
     return () => {
       urlsToRevoke.forEach(url => URL.revokeObjectURL(url));
     };
-  }, [borrador.autoId]);
+  }, [borrador.autoId, borrador.version, refreshKey]);
 
   const handleDescargarDocumento = async () => {
     if (documentoDownloadServerUrl) {
@@ -962,6 +965,8 @@ export function ModalRevisionAuto({
                               setArchivoAuto(null);
                               setComentarioSubida('');
                               setTipoVista('texto');
+                              setRefreshKey(prev => prev + 1);
+                              onRefresh?.();
                             } catch (err) {
                               console.error('Error subiendo documento:', err);
                               toast.error('Error al subir el documento');

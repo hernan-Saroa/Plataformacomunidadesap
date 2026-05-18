@@ -252,6 +252,7 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
       <div className="fixed inset-0 z-[9999] overflow-hidden">
         {/* Overlay */}
         <motion.div
+          key="overlay"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -383,29 +384,20 @@ export function ModalCodigoQR({ isOpen, onClose, certificado, verificationUrl }:
               </div>
 
               {/* Botones de acción */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+              <div className="grid grid-cols-2 gap-3 mb-6">
                 <button
                   onClick={handleDescargarQR}
                   className="flex items-center justify-center gap-2 px-4 py-3 bg-[#003DA5] hover:bg-[#002873] text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md"
                 >
                   <Download className="w-4 h-4" />
-                  <span className="hidden sm:inline">Descargar QR</span>
-                  <span className="sm:hidden">Descargar</span>
-                </button>
-                <button
-                  onClick={handleImprimir}
-                  className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-700 text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md border border-gray-800"
-                >
-                  <Printer className="w-4 h-4" />
-                  Imprimir
+                  Descargar QR
                 </button>
                 <button
                   onClick={handleCopiarEnlace}
                   className="flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors font-semibold shadow-sm hover:shadow-md"
                 >
                   <Copy className="w-4 h-4" />
-                  <span className="hidden sm:inline">Copiar Enlace</span>
-                  <span className="sm:hidden">Copiar</span>
+                  Copiar Enlace
                 </button>
               </div>
 

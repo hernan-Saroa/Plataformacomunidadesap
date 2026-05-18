@@ -48,12 +48,37 @@ export class ConsultasJuridicasService implements OnModuleInit {
         }
     }
 
-    async findAll(): Promise<any[]> {
-        const consultas = await this.consultaRepository.find({
-            where: { estadoArchivo: 'ACTIVO' },
-            relations: ['abogadoAsignado'],
-            order: { fechaRecepcion: 'DESC' }
-        });
+    async findAll(filtros: { asignadoKeys?: string[] } = {}): Promise<any[]> {
+        const query = this.consultaRepository
+            .createQueryBuilder('consulta')
+            .where('consulta.estadoArchivo = :estadoArchivo', { estadoArchivo: 'ACTIVO' });
+
+        if (filtros.asignadoKeys?.length) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const uuidKey = filtros.asignadoKeys.find(k => uuidRegex.test(k));
+            const normalizedKeys = filtros.asignadoKeys.map(k => k.toLowerCase());
+            if (uuidKey) {
+                query.andWhere(
+                    `(consulta.abogado_asignado_id::text = :userId
+                      OR LOWER(consulta.abogado_asignado_nombre) IN (:...normalizedKeys)
+                      OR LOWER(consulta.abogado_asignado_nombre) = (
+                          SELECT LOWER(p.nom_largo)
+                          FROM auth."user" u
+                          LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                          WHERE u.id_user::text = :userId
+                          LIMIT 1
+                      ))`,
+                    { userId: uuidKey, normalizedKeys },
+                );
+            } else {
+                query.andWhere(
+                    'LOWER(consulta.abogadoAsignadoNombre) IN (:...normalizedKeys)',
+                    { normalizedKeys },
+                );
+            }
+        }
+
+        const consultas = await query.orderBy('consulta.fechaRecepcion', 'DESC').getMany();
 
         // Return with calculated diasRestantes and prioridad
         return consultas.map(c => {
@@ -68,10 +93,7 @@ export class ConsultasJuridicasService implements OnModuleInit {
     }
 
     async findOne(id: string): Promise<ConsultaJuridica> {
-        const consulta = await this.consultaRepository.findOne({
-            where: { id },
-            relations: ['abogadoAsignado']
-        });
+        const consulta = await this.consultaRepository.findOne({ where: { id } });
         if (!consulta) throw new NotFoundException('Consulta no encontrada');
         return consulta;
     }
@@ -113,7 +135,8 @@ export class ConsultasJuridicasService implements OnModuleInit {
             numeroRadicado,
             fechaRecepcion: new Date(),
             fechaMaximaRespuesta: fechaMaxima,
-            estado: 'en_radicacion'
+            estado: data.abogadoAsignadoId ? 'asignado' : 'en_radicacion',
+            fechaAsignacion: data.abogadoAsignadoId ? new Date() : undefined
         });
 
         const savedConsulta = await this.consultaRepository.save(nuevaConsulta);
@@ -533,15 +556,22 @@ export class ConsultasJuridicasService implements OnModuleInit {
 
     // --- Métodos de Archivo y Eliminación ---
 
-    async getArchivadas(): Promise<ConsultaJuridica[]> {
-        return this.consultaRepository.find({
-            where: [
-                { estadoArchivo: 'ARCHIVADO' },
-                { estadoArchivo: 'ELIMINADO' }
-            ],
-            relations: ['abogadoAsignado'],
-            order: { fechaArchivo: 'DESC' }
-        });
+    async getArchivadas(filtros: { asignadoKeys?: string[] } = {}): Promise<ConsultaJuridica[]> {
+        const query = this.consultaRepository
+            .createQueryBuilder('consulta')
+            .where('consulta.estadoArchivo IN (:...estadosArchivo)', {
+                estadosArchivo: ['ARCHIVADO', 'ELIMINADO'],
+            });
+
+        if (filtros.asignadoKeys?.length) {
+            const normalizedKeys = filtros.asignadoKeys.map((key) => key.toLowerCase());
+            query.andWhere(
+                '(consulta.abogado_asignado_id::text IN (:...asignadoKeys) OR LOWER(consulta.abogadoAsignadoNombre) IN (:...normalizedKeys))',
+                { asignadoKeys: filtros.asignadoKeys, normalizedKeys },
+            );
+        }
+
+        return query.orderBy('consulta.fechaArchivo', 'DESC').getMany();
     }
 
     async archivar(id: string, motivo: string, usuario: string): Promise<ConsultaJuridica> {
@@ -585,8 +615,7 @@ export class ConsultasJuridicasService implements OnModuleInit {
     async restaurar(id: string, usuario: string): Promise<ConsultaJuridica> {
         // Buscar incluso si está archivado/eliminado
         const consulta = await this.consultaRepository.findOne({
-            where: { id },
-            relations: ['abogadoAsignado']
+            where: { id }
         });
 
         if (!consulta) throw new NotFoundException('Consulta no encontrada');

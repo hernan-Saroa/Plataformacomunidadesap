@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ArrowLeft, FileText, Download, CheckCircle, CheckCircle2, AlertCircle,
   Send, Loader2, User, CreditCard, Building2, Calendar,
-  Mail, Phone, MapPin, Search, ChevronDown, Printer,
+  Mail, Phone, MapPin, Search, ChevronDown,
   Shield, Clock, FileCheck, Sparkles, TrendingUp, Star, Eye, XCircle, Lock
 } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -332,7 +332,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       observations,
       templateType,
       includeCodeLabel: true,
-      codeLabel: 'Codigo',
+      codeLabel: 'Código',
     });
 
   const construirMetadataPrimaTecnica = (
@@ -444,6 +444,12 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
           incluyeSalario: incluyeSalarioBackend,
           incluyePrimaTecnica: incluyePrimaBackend,
           technical_bonus: bonusBase,
+          technical_bonus_category:
+            cert.technical_bonus_category ??
+            cert.technicalBonusCategory ??
+            cert.request?.technical_bonus_category ??
+            cert.request?.technicalBonusCategory ??
+            null,
           career_category: cert.career_category,
           position_category: cert.position_category,
           cod_cargo: cert.cod_cargo || cert.codCargo,
@@ -708,14 +714,14 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     const doc = String(documento || '').trim();
     if (!doc) {
       if (opciones.mostrarToastError !== false) {
-        toast.error('Primero ingresa tu numero de documento.');
+        toast.error('Primero ingresa tu número de documento.');
       }
       return false;
     }
 
     if (doc.length < 6) {
       if (opciones.mostrarToastError !== false) {
-        toast.error('El numero de documento debe tener al menos 6 digitos.');
+        toast.error('El número de documento debe tener al menos 6 dígitos.');
       }
       return false;
     }
@@ -724,13 +730,13 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       if (!primaTecnicaMetadata.disponible) {
         if (opciones.mostrarToastError !== false) {
           toast.error(
-            'No tienes Prima Tecnica registrada. No es posible seleccionar esta opcion.',
+            'No tienes prima técnica y/o coordinación registrada. No es posible seleccionar esta opción.',
           );
         }
         return false;
       }
       if (opciones.mostrarToastExito) {
-        toast.success('Prima Tecnica habilitada para este documento.');
+        toast.success('Prima técnica y/o coordinación habilitada para este documento.');
       }
       return true;
     }
@@ -748,14 +754,14 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       if (!metadata.disponible) {
         if (opciones.mostrarToastError !== false) {
           toast.error(
-            'No tienes Prima Tecnica registrada. No es posible seleccionar esta opcion.',
+            'No tienes prima técnica y/o coordinación registrada. No es posible seleccionar esta opción.',
           );
         }
         return false;
       }
 
       if (opciones.mostrarToastExito) {
-        toast.success('Prima Tecnica habilitada para este documento.');
+        toast.success('Prima técnica y/o coordinación habilitada para este documento.');
       }
       return true;
     } catch (error: any) {
@@ -763,7 +769,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         toast.error(
           error?.response?.data?.message ||
             error?.message ||
-            'No pudimos validar la Prima Tecnica en este momento.',
+            'No pudimos validar la prima técnica y/o coordinación en este momento.',
         );
       }
       return false;
@@ -782,7 +788,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
 
     if (!incluirSalario) {
       setIncluirPrimaTecnica(false);
-      toast.error('Debes incluir la informacion salarial para habilitar Prima Tecnica.');
+      toast.error('Debes incluir la información salarial para habilitar la prima técnica y/o coordinación.');
       return;
     }
 
@@ -803,6 +809,13 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
 
     if (!tipoDocumento) {
       toast.error('Por favor selecciona el tipo de documento');
+      return;
+    }
+    if (tipoDocumento !== 'CC') {
+      toast.error('Tipo de documento no válido', {
+        description: 'Por ahora solo puedes solicitar certificados laborales con Cédula de Ciudadanía (CC).',
+        duration: 6000,
+      });
       return;
     }
     if (!documentoIngresado) {
@@ -856,7 +869,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         setBuscandoEmpleado(false);
         setIncluirPrimaTecnica(false);
         toast.error(
-          'No tienes Prima Tecnica registrada en tu informacion laboral. No es posible incluirla en el certificado.',
+          'No tienes prima técnica y/o coordinación registrada en tu información laboral. No es posible incluirla en el certificado.',
         );
         return;
       }
@@ -869,7 +882,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         );
       if (!response || typeof response !== 'object') {
         setBuscandoEmpleado(false);
-        toast.error('No pudimos generar el codigo en este momento. Intenta nuevamente.');
+        toast.error('No pudimos generar el código en este momento. Intenta nuevamente.');
         return;
       }
 
@@ -886,8 +899,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
 
       if (!tieneFormatoCorreoValido(emailDestino)) {
         setBuscandoEmpleado(false);
-        toast.error('El correo registrado no tiene un formato valido.', {
-          description: 'No fue enviado el codigo de validacion. Comunicate con Talento Humano para actualizarlo.',
+        toast.error('El correo registrado no tiene un formato válido.', {
+          description: 'No fue enviado el código de validación. Comunícate con Talento Humano para actualizarlo.',
           duration: 7000,
         });
         return;
@@ -1046,6 +1059,12 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
         incluyeSalario: incluyeSalarioFinal,
         incluyePrimaTecnica: incluyePrimaFinal,
         technical_bonus: bonusBase,
+        technical_bonus_category:
+          cert.technical_bonus_category ??
+          cert.technicalBonusCategory ??
+          cert.request?.technical_bonus_category ??
+          cert.request?.technicalBonusCategory ??
+          null,
         career_category: cert.career_category,
         position_category: cert.position_category,
         cod_cargo: cert.cod_cargo || cert.codCargo,
@@ -1150,8 +1169,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
 
       if (!tieneFormatoCorreoValido(emailDestino)) {
         setReenviandoCodigo(false);
-        toast.error('El correo registrado no tiene un formato valido.', {
-          description: 'No fue enviado el codigo de validacion. Comunicate con Talento Humano para actualizarlo.',
+        toast.error('El correo registrado no tiene un formato válido.', {
+          description: 'No fue enviado el código de validación. Comunícate con Talento Humano para actualizarlo.',
           duration: 7000,
         });
         return;
@@ -1204,14 +1223,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     setShowPDFViewer(true);
   };
 
-  const handleImprimir = () => {
-    if (!certificadoGenerado?.certificado_completo) {
-      toast.error('No se puede imprimir el certificado. Faltan datos.');
-      return;
-    }
-    setAutoPDFAction('print');
-    setShowPDFViewer(true);
-  };
 
   const handleNuevaSolicitud = () => {
     // Reset todo
@@ -1546,7 +1557,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                         />
                         <div>
                           <Label htmlFor="sin-salario" className="text-sm font-semibold text-gray-800 cursor-pointer">
-                            Solicitar certificado sin informacion salarial
+                            Solicitar certificado sin información salarial
                           </Label>
                           <p className="text-xs text-gray-600 mt-1">
                             Oculta el salario en el PDF y en la vista previa. Puedes cambiarlo en cualquier momento.
@@ -1570,16 +1581,16 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                           <Label htmlFor="incluir-prima-tecnica-paso1" className={`text-sm font-semibold cursor-pointer ${
                             incluirSalario ? 'text-gray-800' : 'text-gray-500'
                           }`}>
-                            Incluir prima tecnica en el certificado
+                            Incluir prima técnica y/o coordinación en el certificado
                           </Label>
                           <p className={`text-xs mt-1 ${
                             incluirSalario ? 'text-gray-600' : 'text-gray-500'
                           }`}>
-                            Agrega la prima tecnica mensual como valor adicional en el PDF y en la vista previa.
+                            Agrega la prima técnica y/o coordinación como valor adicional en el PDF y en la vista previa.
                           </p>
                           {!incluirSalario && (
                             <p className="text-xs text-amber-700 mt-1">
-                              Debes habilitar la informacion salarial para activar esta opcion.
+                              Debes habilitar la información salarial para activar esta opción.
                             </p>
                           )}
                         </div>
@@ -1588,7 +1599,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                       {/* Botón Solicitar Certificado */}
                       <Button
                         onClick={handleBuscarEmpleado}
-                        disabled={buscandoEmpleado || estadoLaboral === 'inactivo'}
+                        disabled={buscandoEmpleado || estadoLaboral === 'inactivo' || tipoDocumento === ''}
                         className="w-full h-12 bg-gradient-to-r from-[#003DA5] to-[#1e5da8] hover:from-[#002d7a] hover:to-[#164a8f] text-white font-bold text-base shadow-lg"
                       >
                         {buscandoEmpleado ? (
@@ -1934,16 +1945,16 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                       <Label htmlFor="toggle-prima-tecnica" className={`text-sm font-semibold cursor-pointer ${
                         incluirSalario ? 'text-gray-800' : 'text-gray-500'
                       }`}>
-                        Incluir prima tecnica en este certificado
+                        Incluir prima técnica y/o coordinación en este certificado
                       </Label>
                       <p className={`text-xs mt-1 ${
                         incluirSalario ? 'text-gray-600' : 'text-gray-500'
                       }`}>
-                        Incluye un valor adicional de prima tecnica en el contenido del certificado y en el PDF.
+                        Incluye un valor adicional de prima técnica y/o coordinación en el contenido del certificado y en el PDF.
                       </p>
                       {!incluirSalario && (
                         <p className="text-xs text-amber-700 mt-1">
-                          Debes incluir la informacion salarial para habilitar la prima tecnica.
+                          Debes incluir la información salarial para habilitar la prima técnica y/o coordinación.
                         </p>
                       )}
                     </div>
@@ -1999,7 +2010,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                           )}
                           {incluirSalario && incluirPrimaTecnica && (
                             <div className="sm:col-span-2">
-                              <p className="text-gray-600 mb-1">Prima Tecnica</p>
+                              <p className="text-gray-600 mb-1">Prima técnica y/o coordinación</p>
                               <p className="font-bold text-gray-900">
                                 $
                                 {formatearMonto(certificadoGenerado.prima_tecnica ?? 0)}{' '}
@@ -2065,14 +2076,6 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                     >
                       <Download className="w-5 h-5 mr-2" />
                       Descargar PDF
-                    </Button>
-                    <Button
-                      onClick={handleImprimir}
-                      variant="outline"
-                      className="flex-1 h-12 border-2 font-bold"
-                    >
-                      <Printer className="w-5 h-5 mr-2" />
-                      Imprimir
                     </Button>
                     <Button
                       onClick={handleNuevaSolicitud}

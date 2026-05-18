@@ -49,11 +49,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import esapLogoWhite from '../../assets/bf33c0f2d5f03ef0d7baf88a705a5a66362cd8c4.png';
 import { colors, radius } from '../esap/shared/designTokens';
 import { CardSkeleton, EmptyStateIllustration } from '../ui/CardSkeleton';
-import { MiPerfilPortal } from './MiPerfilPortal';
+import { PerfilUsuarioEditable } from './PerfilUsuarioEditable';
 import { getEstadisticasPortal, inicializarDatosPortal, uploadFotoPerfil, getPerfilPortal } from './portalApi';
 import { MisCertificadosLaborales } from './recursos-humanos/MisCertificadosLaborales';
 import { MisDocumentos } from './gestion-documental/MisDocumentos';
 import { PortalDocentePTA } from './pta/PortalDocentePTA';
+import { MisAuditoriasControlInterno } from './control-interno/MisAuditoriasControlInterno';
 import { toast } from 'sonner';
 import { NotificationsProvider } from '../esap/NotificationsContext';
 import { PortalNotificationBell } from './PortalNotificationBell';
@@ -65,6 +66,7 @@ interface PortalTransaccionalProps {
   userEmail: string;
   userPersonId: string;
   activeRole: string;
+  userPermissions?: string[];
   adminData?: {
     area?: string;
     cargo?: string;
@@ -89,6 +91,10 @@ interface Servicio {
   badges: { label: string; color: string; bgColor: string }[];
   prioridad?: string;
   prioridadColor?: string;
+  /** Roles del portal que pueden ver este servicio (fallback si no hay permiso). */
+  visiblePara?: string[];
+  /** Permiso requerido para ver este servicio. Tiene prioridad sobre visiblePara. */
+  requierePermiso?: string;
 }
 
 type InternalView =
@@ -98,10 +104,11 @@ type InternalView =
   | { type: 'gestion-documental' }
   | { type: 'carpeta-digital' }
   | { type: 'pta' }
+  | { type: 'mis-auditorias' }
   | { type: 'configuracion' }
   | { type: 'ayuda' };
 
-const CATEGORIAS = ['Todos', 'Recursos Humanos', 'Carpeta Digital', 'Académico'];
+const CATEGORIAS = ['Todos', 'Recursos Humanos', 'Carpeta Digital', 'Académico', 'Control Interno'];
 
 function SkeletonPulse({
   width,
@@ -130,25 +137,6 @@ function SkeletonPulse({
 }
 
 const shimmerStyleId = 'portal-shimmer-style';
-if (typeof document !== 'undefined' && !document.getElementById(shimmerStyleId)) {
-  const style = document.createElement('style');
-  style.id = shimmerStyleId;
-  style.textContent = `
-    @keyframes shimmer {
-      0% { background-position: 200% 0; }
-      100% { background-position: -200% 0; }
-    }
-    @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes progressPulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.7; }
-    }
-  `;
-  document.head.appendChild(style);
-}
 
 const DND_ITEM_TYPE = 'PORTAL_SERVICE';
 
@@ -188,6 +176,7 @@ export function PortalTransaccional({
   userEmail,
   userPersonId,
   activeRole,
+  userPermissions,
   adminData,
   onLogout,
   navbarNavigateTo,
@@ -196,6 +185,28 @@ export function PortalTransaccional({
   const [vistaGrid, setVistaGrid] = useState<'grid' | 'list'>('grid');
   const [currentView, setCurrentView] = useState<InternalView>({ type: 'dashboard' });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (!document.getElementById(shimmerStyleId)) {
+      const style = document.createElement('style');
+      style.id = shimmerStyleId;
+      style.textContent = `
+        @keyframes shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes progressPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.7; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
 
   useEffect(() => {
     if (!navbarNavigateTo) return;
@@ -209,6 +220,8 @@ export function PortalTransaccional({
       configuracion: { type: 'configuracion' },
       ayuda: { type: 'ayuda' },
       pta: { type: 'pta' },
+      'mis-auditorias': { type: 'mis-auditorias' },
+      'control-interno': { type: 'mis-auditorias' },
     };
     const target = viewMap[section];
     if (target) {
@@ -322,6 +335,8 @@ export function PortalTransaccional({
       setCurrentView({ type: 'carpeta-digital' });
     } else if (servicioId === 'pta-docente') {
       setCurrentView({ type: 'pta' });
+    } else if (servicioId === 'control-interno-gestion') {
+      setCurrentView({ type: 'mis-auditorias' });
     }
   };
 
@@ -343,6 +358,7 @@ export function PortalTransaccional({
         ],
         prioridad: 'Media',
         prioridadColor: '#D97706',
+        requierePermiso: 'portal-transaccional.certificado-laboral.view',
       },
       {
         id: 'gesdoc',
@@ -356,6 +372,7 @@ export function PortalTransaccional({
         badges: [{ label: 'Disponible', color: '#059669', bgColor: '#ECFDF5' }],
         prioridad: 'Baja',
         prioridadColor: '#6B7280',
+        requierePermiso: 'portal-transaccional.carpeta-digital.view',
       },
       {
         id: 'pta-docente',
@@ -372,8 +389,34 @@ export function PortalTransaccional({
         ],
         prioridad: 'Alta',
         prioridadColor: '#DC2626',
+        requierePermiso: 'portal-transaccional.pta.view',
+      },
+      {
+        id: 'control-interno-gestion',
+        nombre: 'Control Interno de Gestión',
+        codigo: 'OCIG-001',
+        descripcion: 'Responde hallazgos, sube documentos y comunícate con el equipo auditor',
+        icon: <Shield style={{ width: 18, height: 18 }} />,
+        iconBg: '#FEF2F2',
+        iconColor: '#DC2626',
+        categoria: 'Control Interno',
+        badges: [
+          { label: 'Mis auditorías', color: '#1D4ED8', bgColor: '#EFF6FF' },
+        ],
+        prioridad: 'Media',
+        prioridadColor: '#D97706',
+        requierePermiso: 'portal-transaccional.mis-auditorias.view',
       },
     ];
+
+    // Filtrar servicios: si tiene requierePermiso, verificar permisos del usuario.
+    // Si no, usar visiblePara (fallback por rol). Si ninguno, visible para todos.
+    const perms = new Set(userPermissions || []);
+    const filteredBase = base.filter(s => {
+      if (s.requierePermiso) return perms.has(s.requierePermiso);
+      if (s.visiblePara) return s.visiblePara.includes(activeRole);
+      return true;
+    });
 
     // Merge with persisted ordering
     const storageKey = `portal_services_order_${userPersonId}_${activeRole}`;
@@ -381,13 +424,13 @@ export function PortalTransaccional({
     if (saved) {
       try {
         const order = JSON.parse(saved) as string[];
-        const map = new Map(base.map((s) => [s.id, s]));
+        const map = new Map(filteredBase.map((s) => [s.id, s]));
         const ordered: Servicio[] = [];
         order.forEach((id) => {
           const item = map.get(id);
           if (item) ordered.push(item);
         });
-        base.forEach((s) => {
+        filteredBase.forEach((s) => {
           if (!order.includes(s.id)) ordered.push(s);
         });
         return ordered;
@@ -396,7 +439,7 @@ export function PortalTransaccional({
       }
     }
 
-    return base;
+    return filteredBase;
   }, [userPersonId, activeRole]);
 
   const [serviciosOrdenados, setServiciosOrdenados] = useState<Servicio[]>(servicios);
@@ -608,13 +651,11 @@ export function PortalTransaccional({
     switch (currentView.type) {
       case 'mi-perfil':
         return (
-          <MiPerfilPortal
+          <PerfilUsuarioEditable
             userName={userName}
             userEmail={userEmail}
-            personaId={userPersonId}
-            adminData={adminData}
             activeRole={activeRole}
-            onBack={() => setCurrentView({ type: 'dashboard' })}
+            onVolver={() => setCurrentView({ type: 'dashboard' })}
           />
         );
       case 'certificado-laboral':
@@ -632,6 +673,14 @@ export function PortalTransaccional({
             userPersonId={userPersonId}
             userName={userName}
             userEmail={userEmail}
+            onBack={() => setCurrentView({ type: 'dashboard' })}
+          />,
+        );
+      case 'mis-auditorias':
+        return renderWithLeftLayout(
+          <MisAuditoriasControlInterno
+            personaId={userPersonId}
+            userName={userName}
             onBack={() => setCurrentView({ type: 'dashboard' })}
           />,
         );
@@ -861,7 +910,7 @@ export function PortalTransaccional({
 
               <div className="px-6 pb-5">
                 <div className="flex flex-wrap gap-2">
-                  {CATEGORIAS.map((cat) => (
+                  {CATEGORIAS.filter(cat => cat === 'Todos' || serviciosOrdenados.some(s => s.categoria === cat)).map((cat) => (
                     <button
                       key={cat}
                       onClick={() => setCategoriaActiva(cat)}

@@ -24,6 +24,7 @@ import { config } from './config/environment';
 import { NotificacionesProvider } from './contexts/NotificacionesContext';
 import { EditorPlantillasPage } from './pages/EditorPlantillasPage';
 import { ExpedienteCompartidoPage } from './pages/ExpedienteCompartidoPage';
+import { getAppOnlineStatus } from './utils/connectivity';
 
 
 // Importar componentes de servicios públicos
@@ -190,14 +191,84 @@ interface UserData {
 }
 
 const extractPermissionCodes = (user: any): string[] => {
-  if (!user?.roles || !Array.isArray(user.roles)) return [];
-  const codes = user.roles.flatMap((role: any) =>
-    Array.isArray(role?.permissions)
-      ? role.permissions.map((perm: any) => perm?.code).filter(Boolean)
-      : []
-  );
-  return Array.from(new Set(codes));
+  const directCodes = Array.isArray(user?.permissions)
+    ? user.permissions
+        .map((permission: any) => (typeof permission === 'string' ? permission : permission?.code))
+        .filter(Boolean)
+    : [];
+
+  const roleCodes = Array.isArray(user?.roles)
+    ? user.roles.flatMap((role: any) =>
+        Array.isArray(role?.permissions)
+          ? role.permissions
+              .map((perm: any) => (typeof perm === 'string' ? perm : perm?.code))
+              .filter(Boolean)
+          : []
+      )
+    : [];
+
+  return Array.from(new Set([...directCodes, ...roleCodes]));
 };
+
+/**
+ * Determina destino del usuario a partir del campo `sistema_destino` del rol.
+ * Valores posibles: 'Portal' | 'Backoffice' | 'Ambos'
+ * Si el usuario tiene roles con distintos destinos, 'Ambos' tiene precedencia.
+ */
+function resolveDestino(user: any): {
+  destino: 'portal' | 'backoffice' | 'ambos';
+  hasBoth: boolean;
+  roleCodes: string[];
+  roleNames: string[];
+  roleObjects: any[];
+  permissions: string[];
+  module?: string;
+} {
+  const roleObjects: any[] = Array.isArray(user?.roles) ? user.roles : [];
+  const roleCodes = roleObjects.map((r: any) => (typeof r === 'string' ? r : r?.code)).filter(Boolean);
+  const permissions = extractPermissionCodes(user);
+
+  // Leer sistema_destino de cada rol
+  const destinos = roleObjects
+    .map((r: any) => (typeof r === 'object' ? (r?.sistema_destino || '').toLowerCase() : ''))
+    .filter(Boolean);
+
+  let destino: 'portal' | 'backoffice' | 'ambos' = 'portal'; // default
+  if (destinos.includes('ambos')) {
+    destino = 'ambos';
+  } else if (destinos.includes('backoffice') && destinos.includes('portal')) {
+    destino = 'ambos';
+  } else if (destinos.includes('backoffice')) {
+    destino = 'backoffice';
+  } else if (destinos.includes('portal')) {
+    destino = 'portal';
+  }
+
+  // Si ningún rol tiene sistema_destino, usar fallback por código
+  if (!destinos.length) {
+    const isAdmin = roleCodes.includes('ADMIN') || roleCodes.includes('SUPER_ADMIN');
+    const isPortalOnly = roleCodes.some(c => ['ESTUDIANTE', 'DOCENTE', 'GRADUADO', 'ASPIRANTE', 'USUARIO_AUDITADO'].includes(c));
+    if (isAdmin) destino = 'backoffice';
+    else if (!isPortalOnly) destino = 'backoffice';
+    else destino = 'portal';
+  }
+
+  // Nombres de rol para mostrar en el portal/backoffice
+  const roleNames = roleObjects
+    .map((r: any) => (typeof r === 'object' ? r?.name : null))
+    .filter(Boolean) as string[];
+
+  // Módulo principal para backoffice
+  const hasGestionLegal = roleCodes.some(c => ['GESTION_LEGAL', 'JEFE_GESTION_LEGAL', 'MONITOREO_GESTION_LEGAL', 'SECRETARIADO_GESTION_LEGAL', 'RESUELVE_GESTION_LEGAL'].includes(c));
+  const hasControlInterno = roleCodes.some(c => ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(c));
+  const module = roleCodes.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
+    : hasGestionLegal ? 'gestion-legal'
+    : hasDisciplinaryAccess(roleCodes) ? 'control-disciplinario'
+    : hasControlInterno ? 'control-interno'
+    : undefined;
+
+  return { destino, hasBoth: destino === 'ambos', roleCodes, roleNames, roleObjects, permissions, module };
+}
 
 // Configuración de timeout (15 minutos en milisegundos)
 const TIMEOUT_INACTIVIDAD = 15 * 60 * 1000; // 15 minutos
@@ -210,18 +281,23 @@ const AUTH_TOKEN_STORAGE_KEYS = [
 ];
 const USER_DATA_STORAGE_KEY = config.STORAGE_KEYS.USER_DATA;
 const ACTIVE_SESSION_STORAGE_KEY = 'esap-sesion-activa';
+/** Persiste la elección manual del usuario (portal ↔ backoffice) entre recargas */
+const SYSTEM_OVERRIDE_KEY = 'esap-system-override';
 const SENSITIVE_SESSION_STORAGE_KEYS = [
   USER_DATA_STORAGE_KEY,
+];
+const CLEAR_SESSION_STATE_STORAGE_KEYS = [
+  USER_DATA_STORAGE_KEY,
   ACTIVE_SESSION_STORAGE_KEY,
+  SYSTEM_OVERRIDE_KEY,
 ];
 
 function migrateAuthTokensToSessionStorage() {
+  // OTIC-001: los tokens ya no se almacenan en sessionStorage ni localStorage.
+  // Solo limpiamos residuos de versiones anteriores.
   for (const key of AUTH_TOKEN_STORAGE_KEYS) {
-    const token = localStorage.getItem(key);
-    if (token && !sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, token);
-    }
     localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
   }
 
   const rememberedSession = localStorage.getItem('esap-remember-session');
@@ -241,31 +317,22 @@ function migrateAuthTokensToSessionStorage() {
 }
 
 function migrateSensitiveSessionDataToSessionStorage() {
-  for (const key of SENSITIVE_SESSION_STORAGE_KEYS) {
-    const value = localStorage.getItem(key);
-    if (value && !sessionStorage.getItem(key)) {
-      sessionStorage.setItem(key, value);
-    }
-    localStorage.removeItem(key);
-  }
-}
-
-function clearSensitiveSessionState() {
+  // OTIC-002: datos sensibles del usuario ya no se almacenan en sessionStorage/localStorage.
+  // Solo limpiamos residuos de versiones anteriores.
   for (const key of SENSITIVE_SESSION_STORAGE_KEYS) {
     sessionStorage.removeItem(key);
     localStorage.removeItem(key);
   }
 }
 
-function sanitizeUserForStorage(user: User) {
-  const sanitizedUser = { ...(user as Record<string, any>) };
-  delete sanitizedUser.accessToken;
-  delete sanitizedUser.refreshToken;
-  delete sanitizedUser.token;
-  delete sanitizedUser.idToken;
-  delete sanitizedUser.rememberMe;
-  return sanitizedUser;
+function clearSensitiveSessionState() {
+  for (const key of CLEAR_SESSION_STATE_STORAGE_KEYS) {
+    sessionStorage.removeItem(key);
+    localStorage.removeItem(key);
+  }
 }
+
+
 const TIEMPO_ALERTA = 1 * 60 * 1000; // 1 minuto antes de cerrar sesión
 
 function DemoNoDisponible({ title }: { title: string }) {
@@ -301,7 +368,7 @@ export default function App() {
     );
   }
 
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [isOnline, setIsOnline] = useState(getAppOnlineStatus);
   const [currentView, setCurrentView] = useState<AppView>('landing');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userData, setUserData] = useState<any>({ name: '', email: '', personId: '', modules: [], roles: [], permissions: [] });
@@ -321,6 +388,8 @@ export default function App() {
   );
   const [usuarioActual, setUsuarioActual] = useState<Usuario | null>(null);
   const [mostrarAlertaInactividad, setMostrarAlertaInactividad] = useState(false);
+  // OTIC-002: true mientras se verifica la cookie con el backend al recargar
+  const [isRestoringSession, setIsRestoringSession] = useState(true);
 
   const timerInactividadRef = useRef<NodeJS.Timeout | null>(null);
   const timerAlertaRef = useRef<NodeJS.Timeout | null>(null);
@@ -331,15 +400,19 @@ export default function App() {
 
   // Detector de conexión a internet
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const refreshOnlineStatus = () => setIsOnline(getAppOnlineStatus());
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
+    refreshOnlineStatus();
+    window.addEventListener('online', refreshOnlineStatus);
+    window.addEventListener('offline', refreshOnlineStatus);
+    window.addEventListener('focus', refreshOnlineStatus);
+    document.addEventListener('visibilitychange', refreshOnlineStatus);
 
     return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', refreshOnlineStatus);
+      window.removeEventListener('offline', refreshOnlineStatus);
+      window.removeEventListener('focus', refreshOnlineStatus);
+      document.removeEventListener('visibilitychange', refreshOnlineStatus);
     };
   }, []);
 
@@ -347,10 +420,12 @@ export default function App() {
   useEffect(() => {
     // No restaurar sesión para rutas públicas de expediente compartido
     if (window.location.pathname.startsWith('/expediente-compartido/')) {
+      setIsRestoringSession(false);
       return;
     }
     // Priorizar procesamiento de callback OAuth de Microsoft antes de restaurar sesión local
     if (hasMicrosoftOAuthCallback) {
+      setIsRestoringSession(false);
       return;
     }
 
@@ -358,158 +433,103 @@ export default function App() {
       const userEmail = user?.person?.email || user?.email || '';
       const userName = user?.person?.first_name
         ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
-        : user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
+        : user?.fullName || user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
 
-      const roles = Array.isArray(user?.roles)
-        ? user.roles.map((role: any) => (typeof role === 'string' ? role : role?.code)).filter(Boolean)
-        : [];
-      const permissions = extractPermissionCodes(user);
-      const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
-      const hasConfigRole = !(roles.includes('ESTUDIANTE') || roles.includes('DOCENTE') || roles.includes('GRADUADO') || roles.includes('ASPIRANTE'))
-      // const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO') || roles.includes('GESTION_LEGAL');
-      const emailLower = userEmail.toLowerCase();
+      const { destino, hasBoth, roleCodes, roleNames, permissions, module } = resolveDestino(user);
 
-      let nextView: Vista = 'portal';
-      let nextCurrentView: AppView = 'portal-transaccional';
-      let nextUserType: 'portal' | 'administrativo' = 'portal';
-      let module: string | undefined;
-      const portalRoles: string[] = [];
+      const portalRoles = roleNames.length > 0 ? roleNames : (destino !== 'backoffice' ? ['Estudiante'] : ['Administrativo']);
 
-      if (hasAdminRole) {
-        nextView = 'backoffice';
-        nextCurrentView = 'backoffice';
-        nextUserType = 'administrativo';
-        portalRoles.push('Administrativo');
-      } else if (hasConfigRole) {
-        nextView = 'backoffice';
-        nextCurrentView = 'backoffice';
-        nextUserType = 'administrativo';
-        // Verificar si tiene acceso a Control Interno (múltiples roles)
-        const hasControlInterno = roles.some((role: string) =>
-          ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
-            'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
-        );
-        const hasGestionLegal = roles.some((role: string) =>
-          ['GESTION_LEGAL', 'JEFE_GESTION_LEGAL', 'MONITOREO_GESTION_LEGAL',
-            'SECRETARIADO_GESTION_LEGAL', 'RESUELVE_GESTION_LEGAL'].includes(role)
-        );
+      // Respetar la elección manual del usuario si tiene acceso a ambos sistemas
+      const savedOverride = sessionStorage.getItem(SYSTEM_OVERRIDE_KEY) as 'portal' | 'backoffice' | null;
+      const effectiveDestino = (hasBoth && savedOverride) ? savedOverride : (destino === 'ambos' ? 'backoffice' : destino);
 
-        module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
-          : hasGestionLegal ? 'gestion-legal'
-            : hasDisciplinaryAccess(roles) ? 'control-disciplinario'
-              : hasControlInterno ? 'control-interno'
-                : 'users-persons';
-        const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
-          : roles.includes('JEFE_GESTION_LEGAL') ? 'Jefe Gestión Legal'
-            : roles.includes('MONITOREO_GESTION_LEGAL') ? 'Monitoreo Gestión Legal'
-              : roles.includes('SECRETARIADO_GESTION_LEGAL') ? 'Secretariado Gestión Legal'
-                : roles.includes('RESUELVE_GESTION_LEGAL') ? 'Resuelve Gestión Legal'
-                  : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
-                    : hasDisciplinaryAccess(roles) ? 'Control Disciplinario'
-                      : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
-                        : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
-                          : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
-                            : roles.includes('CONSULTA') ? 'Consulta Control Interno'
-                              : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
-                                : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
-                                  : 'Control Interno';
-        portalRoles.push(rolStr);
-      } else {
-        if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
-          portalRoles.push('Docente');
-        } else if (emailLower.includes('graduado') || emailLower.includes('egresado')) {
-          portalRoles.push('Graduado');
-        } else {
-          portalRoles.push('Estudiante');
-        }
-      }
+      const goToBackoffice = effectiveDestino === 'backoffice';
+      const nextView: Vista = goToBackoffice ? 'backoffice' : 'portal';
+      const nextCurrentView: AppView = goToBackoffice ? 'backoffice' : 'portal-transaccional';
 
       setIsAuthenticated(true);
-      setUserType(nextUserType);
+      setUserType(goToBackoffice ? 'administrativo' : 'portal');
       setUserRoles(portalRoles);
       setCurrentView(nextCurrentView);
       setVistaActual(nextView);
       setUserData({
         name: userName,
         email: userEmail,
-        personId: user?.person?.id || user?.id,
+        personId: user?.person?.id || user?.id || user?.userId,
         modules: user?.modules || [],
-        roles,
+        roles: roleCodes,
         permissions,
-        module
+        module,
+        hasBothSystemsAccess: hasBoth,
       });
       setUsuarioActual({
-        id: user?.id || user?.person?.id || 'unknown',
+        id: user?.id || user?.person?.id || user?.userId || 'unknown',
         nombre: userName,
         email: userEmail,
-        tipo: nextView === 'backoffice' ? 'interno' : 'externo'
+        tipo: goToBackoffice ? 'interno' : 'externo'
       });
     };
 
     migrateAuthTokensToSessionStorage();
     migrateSensitiveSessionDataToSessionStorage();
 
-    const authToken =
-      sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
-      sessionStorage.getItem('esap_access_token');
-    if (authToken && !sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN)) {
-      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, authToken);
-    }
-    const storedAuthUser = sessionStorage.getItem(USER_DATA_STORAGE_KEY);
-    let sesionGuardada = sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
-    if (authToken && storedAuthUser) {
-      try {
-        applySessionFromUser(JSON.parse(storedAuthUser));
-        return;
-      } catch (error) {
-        console.error('Error al restaurar sesión de auth:', error);
-        clearSensitiveSessionState();
-        sesionGuardada = null;
-      }
-    } else {
-      if (sesionGuardada) {
-        toast.error('Sesión ha expirado', {
-          description: 'Por seguridad la sesión se ha cerrado',
-          duration: 5000,
-        });
-        clearSensitiveSessionState();
-        sesionGuardada = null;
-      }
+    // Limpiar cualquier token residual de versiones anteriores (OTIC-001)
+    AUTH_TOKEN_STORAGE_KEYS.forEach((key) => {
+      sessionStorage.removeItem(key);
+      localStorage.removeItem(key);
+    });
+
+    // OTIC-002: los datos de usuario ya no se guardan en sessionStorage.
+    // Usamos ACTIVE_SESSION_STORAGE_KEY solo como señal de que hubo sesión,
+    // y verificamos con el backend para restaurar los datos de usuario.
+    const sesionGuardada = sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+
+    // Si esta pestana no tiene senal de sesion, no consultar /verify.
+    // Evita un 401 esperado antes del login sin exponer ni guardar tokens en JS.
+    if (!sesionGuardada) {
+      setIsRestoringSession(false);
+      return;
     }
 
-    if (sesionGuardada) {
+    (async () => {
       try {
-        const sesionParsed = JSON.parse(sesionGuardada);
-        if (sesionParsed?.usuario && sesionParsed?.vista && sesionParsed?.timestamp) {
-          const sesion: SesionGuardada = sesionParsed;
-
-          const tiempoTranscurrido = Date.now() - sesion.timestamp;
-
-          if (tiempoTranscurrido < TIMEOUT_INACTIVIDAD) {
-            setUsuarioActual(sesion.usuario);
-            setVistaActual(sesion.vista);
-            console.log('✅ Sesión restaurada:', sesion.usuario.nombre);
-
-            toast.success('Sesión restaurada', {
-              description: `Bienvenido de nuevo, ${sesion.usuario.nombre}`,
-            });
-          } else {
-            // Sesión expirada
+        // Si hay señal de sesión y el timeout de inactividad ya pasó, cerrar sin llamar al backend
+        if (sesionGuardada) {
+          const sesionParsed = JSON.parse(sesionGuardada);
+          const tiempoTranscurrido = Date.now() - (sesionParsed.timestamp || 0);
+          if (tiempoTranscurrido >= TIMEOUT_INACTIVIDAD) {
             clearSensitiveSessionState();
             console.log('⏰ Sesión expirada');
+            setIsRestoringSession(false);
+            return;
           }
-        } else if (sesionParsed?.email || sesionParsed?.person?.email) {
-          applySessionFromUser(sesionParsed);
         }
-      } catch (error) {
-        console.error('Error al restaurar sesión:', error);
+        // Verificar con el backend solo si hubo sesion previa en esta pestana.
+        const user = await authService.verifyToken();
+        authService.setCurrentUserCache(user as any);
+        applySessionFromUser(user);
+        console.log('✅ Sesión restaurada desde backend');
+      } catch {
+        // Cookie inexistente, expirada o inválida
+        if (sesionGuardada) {
+          toast.error('Sesión ha expirado', {
+            description: 'Por seguridad la sesión se ha cerrado',
+            duration: 5000,
+          });
+        }
         clearSensitiveSessionState();
+      } finally {
+        setIsRestoringSession(false);
       }
-    }
+    })();
   }, []);
 
   // Guardar sesión cuando cambie el usuario o vista
   useEffect(() => {
+    if (isRestoringSession) {
+      return;
+    }
+
     if (usuarioActual && (vistaActual === 'portal' || vistaActual === 'backoffice')) {
       const sesion: SesionGuardada = {
         vista: vistaActual,
@@ -521,7 +541,7 @@ export default function App() {
       sessionStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
     }
-  }, [usuarioActual, vistaActual]);
+  }, [usuarioActual, vistaActual, isRestoringSession]);
 
   // Deep links de certificados públicos (laborales y graduados)
   useEffect(() => {
@@ -643,212 +663,76 @@ export default function App() {
   };
 
   // Handler para login con integración del backend
-  const handleLogin = (user: User, accessToken: string, rememberMe?: boolean) => {
+  const handleLogin = (user: User, _accessToken: string, rememberMe?: boolean) => {
     try {
-      // console.log('🔐 Login handler called with user:', user);
-      // console.log('🔐 Login handler called with roles:', user.roles);
-      // console.log('🔐 Login handler called with accessToken:', accessToken);
-      // console.log('🔐 Login handler called with rememberMe:', rememberMe);
-      // Guardar token JWT
-      sessionStorage.setItem('esap_auth_token', accessToken);
-      sessionStorage.setItem('esap_access_token', accessToken);
+      authService.setCurrentUserCache(user as any);
 
-      // Extraer información del usuario
       const userEmail = user?.person?.email || user?.email || '';
       const userName = user?.person?.first_name
         ? `${user.person.first_name} ${user.person.last_name || ''}`.trim()
-        : user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
+        : user?.fullName || user?.name || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.username || 'Usuario ESAP';
 
       console.log('👤 User info extracted:', { userEmail, userName });
 
-      // Determinar tipo de usuario basado en roles del backend
-      const roles = user?.roles?.map((role: any) => role.code) || [];
-      const permissions = extractPermissionCodes(user);
-      const hasAdminRole = roles.includes('ADMIN') || roles.includes('SUPER_ADMIN');
-      const hasConfigRole = !(roles.includes('ESTUDIANTE') || roles.includes('DOCENTE') || roles.includes('GRADUADO') || roles.includes('ASPIRANTE'))
-      // const hasConfigRole = roles.includes('COORDINADOR_CERT_LABORAL') || roles.includes('CONTROL_DISCIPLINARIO')  || roles.includes('GESTION_LEGAL');
-      let sessionVista: Vista = hasAdminRole ? 'backoffice' : 'portal';
+      // ── Usar sistema_destino del rol para decidir dónde va el usuario ──
+      const { destino, hasBoth, roleCodes, roleNames, permissions, module } = resolveDestino(user);
+      console.log('🔑 User roles:', roleCodes, '| sistema_destino resuelto:', destino, '| hasBoth:', hasBoth);
 
-      console.log('🔑 User roles:', roles, 'Has admin role:', hasAdminRole);
+      const goToBackoffice = destino === 'backoffice' || destino === 'ambos';
+      const vistaActualNext: Vista = goToBackoffice ? 'backoffice' : 'portal';
+      const currentViewNext: AppView = goToBackoffice ? 'backoffice' : 'portal-transaccional';
 
-      if (hasAdminRole) {
-        console.log('🏢 Redirecting to backoffice');
-        // Usuario Administrativo → Backoffice
-        setUserType('administrativo');
-        setIsAuthenticated(true);
-        setUserData({
-          name: userName,
-          email: userEmail,
-          personId: user?.person?.id || user?.id,
-          modules: user?.modules || [],
-          roles,
-          permissions
-        });
-        setUsuarioActual({
-          id: user?.id || user?.person?.id || 'unknown',
-          nombre: userName,
-          email: userEmail,
-          tipo: 'interno'
-        });
-        setUserRoles(['Administrativo']);
-        setCurrentView('backoffice');
-        setVistaActual('backoffice');
-        // toast.success('¡Bienvenido al Backoffice Administrativo!', {
-        //   description: `Hola ${userName}`,
-        // });
-      } else {
-        console.log('🎓 Redirecting to portal');
-        let vistaActualCurrent: Vista = 'portal'
-        // Usuario Estudiante/Graduado/Docente → Portal Transaccional
-        // Determinar tipo basado en el email o roles
-        const emailLower = userEmail.toLowerCase();
-        let userType: UserType = 'estudiante';
-        let currentView: AppView = 'portal-transaccional';
-        const portalRoles: string[] = [];
+      // Nombres de rol para el Portal (RoleSelector)
+      const portalRoles = roleNames.length > 0 ? roleNames : (goToBackoffice ? ['Administrativo'] : ['Estudiante']);
 
-        if (hasConfigRole) {
-          userType = 'administrativo';
-          currentView = 'backoffice'
-          vistaActualCurrent = 'backoffice';
-          // Verificar si tiene acceso a Control Interno (múltiples roles)
-          const hasControlInterno = roles.some((role: string) =>
-            ['CONTROL_INTERNO', 'JEFE_OCI', 'PROFESIONAL_AUDITOR', 'AUXILIAR_AUDITORIA', 'CONSULTA',
-              'JEFE_CONTROL_INTERNO', 'AUDITOR_LIDER'].includes(role)
-          );
-          const hasGestionLegal = roles.some((role: string) =>
-            ['GESTION_LEGAL', 'JEFE_GESTION_LEGAL', 'MONITOREO_GESTION_LEGAL',
-              'SECRETARIADO_GESTION_LEGAL', 'RESUELVE_GESTION_LEGAL'].includes(role)
-          );
-          const module = roles.includes('COORDINADOR_CERT_LABORAL') ? 'certificados-laborales'
-            : hasGestionLegal ? 'gestion-legal'
-              : roles.includes('CONTROL_DISCIPLINARIO') ? 'control-disciplinario'
-                : user.modules.length > 0 ? user.modules[0]
-                  : 'control-interno';
-        const rolStr = roles.includes('COORDINADOR_CERT_LABORAL') ? 'Coordinador de Certificados Laborales'
-          : roles.includes('JEFE_GESTION_LEGAL') ? 'Jefe Gestión Legal'
-            : roles.includes('MONITOREO_GESTION_LEGAL') ? 'Monitoreo Gestión Legal'
-              : roles.includes('SECRETARIADO_GESTION_LEGAL') ? 'Secretariado Gestión Legal'
-                : roles.includes('RESUELVE_GESTION_LEGAL') ? 'Resuelve Gestión Legal'
-                  : roles.includes('GESTION_LEGAL') ? 'Gestión Legal'
-                    : hasDisciplinaryAccess(roles) ? 'Control Disciplinario'
-                      : roles.includes('JEFE_OCI') ? 'Jefe de Control Interno'
-                        : roles.includes('PROFESIONAL_AUDITOR') ? 'Profesional Auditor'
-                          : roles.includes('AUXILIAR_AUDITORIA') ? 'Auxiliar de Auditoría'
-                            : roles.includes('CONSULTA') ? 'Consulta Control Interno'
-                              : roles.includes('JEFE_CONTROL_INTERNO') ? 'Jefe de Control Interno'
-                                : roles.includes('AUDITOR_LIDER') ? 'Auditor Líder'
-                                  : 'Control Interno';
-          const userDataToSave = {
-            name: userName,
-            email: userEmail,
-            personId: user?.person?.id || user?.id,
-            modules: user?.modules || [],
-            roles,
-            permissions,
-            module: module // Módulo específico de acceso
-          };
-          setUserData(userDataToSave);
-          // También guardar en esap_user_data para que otros componentes puedan acceder
-          sessionStorage.setItem(USER_DATA_STORAGE_KEY, JSON.stringify({
-            ...sanitizeUserForStorage(user),
-            roles: user?.roles || roles.map((code: string) => ({ code, name: code })),
-            permissions
-          }));
-          localStorage.removeItem(USER_DATA_STORAGE_KEY);
-          portalRoles.push(rolStr);
-        } else if (emailLower.includes('docente') || emailLower.includes('profesor') || emailLower.includes('planta') || emailLower.includes('catedra')) {
-          userType = 'docente';
-          portalRoles.push('Docente');
+      setUserType(goToBackoffice ? 'administrativo' : 'portal');
+      setIsAuthenticated(true);
+      setUserData({
+        name: userName,
+        email: userEmail,
+        personId: user?.person?.id || user?.id || (user as any)?.userId,
+        modules: (user as any)?.modules || [],
+        roles: roleCodes,
+        permissions,
+        module,
+        hasBothSystemsAccess: hasBoth,
+      });
+      setUsuarioActual({
+        id: user?.id || user?.person?.id || (user as any)?.userId || 'unknown',
+        nombre: userName,
+        email: userEmail,
+        tipo: goToBackoffice ? 'interno' : 'externo'
+      });
+      setUserRoles(portalRoles);
+      setCurrentView(currentViewNext);
+      setVistaActual(vistaActualNext);
 
-          // Crear datos simulados para docentes (en producción vendría del backend)
-          const userDataWithDetails = {
-            name: userName,
-            email: userEmail,
-            personId: user?.person?.id || user?.id,
-            modules: user?.modules || [],
-            datos_por_rol: {
-              Docente: {
-                tipo_vinculacion: emailLower.includes('planta') ? 'Carrera' : emailLower.includes('catedra') ? 'Cátedra' : 'Ocasional',
-                dedicacion: emailLower.includes('planta') ? 'Tiempo Completo' : 'Medio Tiempo',
-                area: 'Administración Pública',
-                codigo_docente: `DOC-${user?.id?.slice(-3).toUpperCase()}`,
-                clases_asignadas: emailLower.includes('planta') ? 4 : 2,
-                estudiantes_totales: emailLower.includes('planta') ? 112 : 58,
-                nivel_educativo: 'Doctorado',
-                anos_experiencia: 10,
-              }
-            },
-            roles,
-            permissions
-          };
-          setUserData(userDataWithDetails);
-        } else if (emailLower.includes('graduado') || emailLower.includes('egresado')) {
-          userType = 'graduado';
-          portalRoles.push('Graduado');
-          setUserData({
-            name: userName,
-            email: userEmail,
-            personId: user?.person?.id || user?.id,
-            modules: user?.modules || [],
-            roles,
-            permissions
-          });
-        } else {
-          userType = 'estudiante';
-          portalRoles.push('Estudiante');
-          setUserData({
-            name: userName,
-            email: userEmail,
-            personId: user?.person?.id || user?.id,
-            modules: user?.modules || [],
-            roles,
-            permissions
-          });
-        }
+      toast.success(goToBackoffice ? '¡Bienvenido al Backoffice!' : '¡Bienvenido al Portal!', {
+        description: `Hola ${userName}`,
+      });
 
-        setUserType(userType);
-        setIsAuthenticated(true);
-        setUserRoles(portalRoles);
-        setCurrentView(currentView);
-        setVistaActual(vistaActualCurrent);
-        sessionVista = vistaActualCurrent;
-        setUsuarioActual({
-          id: user?.id || user?.person?.id || 'unknown',
-          nombre: userName,
-          email: userEmail,
-          tipo: currentView === 'backoffice' ? 'interno' : 'externo'
-        });
-        toast.success('¡Bienvenido al Portal Transaccional!', {
-          description: `Hola ${userName}`,
-        });
-      }
-
-      // Guardar sesión si rememberMe está activo
       if (rememberMe) {
-        localStorage.setItem('esap-remember-session', JSON.stringify({
-          email: userEmail
-        }));
+        localStorage.setItem('esap-remember-session', JSON.stringify({ email: userEmail }));
       }
-
       sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify({
-        vista: sessionVista,
+        vista: vistaActualNext,
         timestamp: Date.now(),
       }));
       localStorage.removeItem(ACTIVE_SESSION_STORAGE_KEY);
-
-      // Iniciar sistema de detección de inactividad
       resetearTimerInactividad();
-
       console.log('✅ Login completed successfully');
     } catch (error) {
       console.error('❌ Error in handleLogin:', error);
-      // Mostrar error pero no recargar la página
       alert('Error al procesar el login. Revisa la consola para más detalles.');
     }
   };
 
   // Handler para logout (desde cualquier ambiente)
   const handleLogout = (viewToast = true) => {
+    // Limpiar la cookie HttpOnly en el backend (OTIC-001)
+    authService.logout().catch(() => {/* el servidor puede estar caído; la cookie expira sola */});
+    delete (window as any).__esap_auth_cache;
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user: null } }));
     localStorage.clear();
     AUTH_TOKEN_STORAGE_KEYS.forEach((key) => sessionStorage.removeItem(key));
     clearSensitiveSessionState();
@@ -892,45 +776,15 @@ export default function App() {
   // Handler para cambio directo de sistema (sin pasar por selector)
   const handleSystemChange = (system: 'backoffice' | 'portal') => {
     console.log('🔄 System change requested:', system);
+    // Persistir la elección del usuario para que sobreviva recargas
+    sessionStorage.setItem(SYSTEM_OVERRIDE_KEY, system);
     if (system === 'backoffice') {
+      setVistaActual('backoffice');
       setCurrentView('backoffice');
       setUserType('administrativo');
     } else {
+      setVistaActual('portal');
       setCurrentView('portal-transaccional');
-      // Para Super Users que van al Portal, necesitan tener un userType válido
-      // y roles del Portal para que el PortalDashboard funcione
-      if (userType === 'administrativo') {
-        setUserType('docente');
-
-        // Si el usuario solo tiene roles administrativos, agregar rol de Docente
-        const hasPortalRole = userRoles.some(role =>
-          ['Estudiante', 'Docente', 'Graduado', 'Aspirante'].includes(role)
-        );
-
-        if (!hasPortalRole) {
-          // Agregar rol de Docente para Super Users
-          setUserRoles([...userRoles, 'Docente']);
-
-          // Actualizar userData con datos de Docente
-          setUserData({
-            ...userData,
-            datos_por_rol: {
-              Docente: {
-                tipo_vinculacion: 'Carrera',
-                dedicacion: 'Tiempo Completo',
-                area: 'Administración Pública y Gestión Territorial',
-                codigo_docente: 'DOC-ADMIN-001',
-                clases_asignadas: 0,
-                estudiantes_totales: 0,
-                nivel_educativo: 'Doctorado',
-                anos_experiencia: 15,
-                funciones_administrativas: ['Dirección', 'Rectoría'],
-                investigacion_activa: true,
-              }
-            }
-          });
-        }
-      }
     }
   };
 
@@ -1022,63 +876,30 @@ export default function App() {
           />
         );
 
+
       case 'portal':
-        // Determinar roles según el email del usuario
-        const portalRoles = usuarioActual?.email === 'gestion.profesoral@esap.edu.co'
-          ? ['Docente']
-          : usuarioActual?.email === 'estudiantes@esap.edu.co'
-            ? ['Estudiante']
-            : usuarioActual?.email === 'funcionario@esap.edu.co'
-              ? ['Administrativo']
-              : ['Estudiante']; // Default
-
-        const teacherData = usuarioActual?.email === 'gestion.profesoral@esap.edu.co'
-          ? {
-            tipo_vinculacion: 'Carrera',
-            dedicacion: 'Tiempo Completo',
-            area: 'Administración Pública',
-            codigo_docente: 'DOC-GP-001',
-            clases_asignadas: 5,
-            estudiantes_totales: 120,
-            nivel_educativo: 'Doctorado',
-            anos_experiencia: 12,
-          }
-          : undefined;
-
-        const adminData = usuarioActual?.email === 'funcionario@esap.edu.co'
-          ? {
-            area: 'Planeación',
-            cargo: 'Funcionario Administrativo',
-            dependencia: 'Oficina de Control Interno',
-            codigo_empleado: 'FUNC-001',
-            solicitudes_pendientes: 5,
-            reportes_generados: 12
-          }
-          : undefined;
-
-        console.log('📊 Datos para Portal Dashboard:', {
-          userName: usuarioActual!.nombre,
-          userEmail: usuarioActual!.email,
-          userRoles: portalRoles,
-          adminData
-        });
+      case 'portal-transaccional': {
+        // Usar los roles y permisos reales del login (no hardcoded por email)
+        const activePortalRoles = userRoles.length > 0 ? userRoles : ['Estudiante'];
+        // hasBothSystemsAccess viene de resolveDestino() guardado en userData
+        const hasBothAccess = userData?.hasBothSystemsAccess ?? false;
 
         return (
           <PortalDashboard
             userName={usuarioActual!.nombre}
             userEmail={usuarioActual!.email}
             userPersonId={usuarioActual!.id}
-            userRoles={portalRoles}
-            userData={{
-              rol_principal: portalRoles[0],
-              datos_por_rol: {
-                Docente: teacherData,
-                Administrativo: adminData
-              }
-            }}
+            userRoles={activePortalRoles}
+            userPermissions={userData?.permissions || []}
+            userData={userData}
             onLogout={handleLogout}
+            hasBothSystemsAccess={hasBothAccess}
+            onSystemChange={handleSystemChange}
+            onActiveRoleChange={(role) => setActiveRole(role)}
           />
         );
+      }
+
 
       case 'backoffice':
         // Determinar si el usuario tiene acceso restringido a un módulo específico
@@ -1104,6 +925,11 @@ export default function App() {
 
         return (
           <BackofficeApp
+            key={[
+              userData?.personId || usuarioActual?.id || 'anon',
+              ...(userData?.roles || []),
+              ...(userData?.permissions || []),
+            ].join(':')}
             // usuario={usuarioActual!}
             onLogout={handleLogout}
             onBackToSystemSelector={handleBackToSystemSelector}
@@ -1231,7 +1057,14 @@ export default function App() {
             path="/expediente-compartido/:token"
             element={<ExpedienteCompartidoPage />}
           />
-          <Route path="*" element={renderVista()} />
+          <Route path="*" element={isRestoringSession ? (
+            <div className="min-h-screen flex items-center justify-center bg-white">
+              <div className="text-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-600 border-t-transparent mx-auto mb-3" />
+                <p className="text-sm text-slate-500">Verificando sesión...</p>
+              </div>
+            </div>
+          ) : renderVista()} />
         </Routes>
 
         {/* Modal de Alerta de Inactividad */}

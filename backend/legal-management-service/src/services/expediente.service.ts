@@ -143,6 +143,17 @@ export class ExpedienteService {
             creadoPor,
         });
 
+        if (saved.abogadoSustanciador) {
+            await this.legalNotifications.notifyAbogadoAsignado({
+                modulo,
+                radicado: saved.radicado,
+                procesoId: saved.id,
+                abogadoId: saved.abogadoSustanciador,
+                asignadoPor: creadoPor,
+                esReasignacion: false,
+            });
+        }
+
         return saved;
     }
 
@@ -159,7 +170,7 @@ export class ExpedienteService {
         return currentDate;
     }
 
-    async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string }): Promise<Expediente[]> {
+    async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string; abogadoSustanciadorKeys?: string[] }): Promise<Expediente[]> {
         const queryBuilder = this.expedienteRepository.createQueryBuilder('expediente');
         // queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones'); // Removed due to loose coupling
         queryBuilder.leftJoinAndSelect('expediente.evidencias', 'evidencias');
@@ -190,6 +201,36 @@ export class ExpedienteService {
 
         if (filtros.search) {
             queryBuilder.andWhere('(expediente.radicado ILIKE :search OR expediente.demandante ILIKE :search OR expediente.demandado ILIKE :search)', { search: `%${filtros.search}%` });
+        }
+
+        if (filtros.abogadoSustanciadorKeys?.length) {
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const uuidKey = filtros.abogadoSustanciadorKeys.find(k => uuidRegex.test(k));
+            const normalizedKeys = filtros.abogadoSustanciadorKeys.map(k => k.toLowerCase());
+            if (uuidKey) {
+                queryBuilder.andWhere(
+                    `(LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys)
+                      OR LOWER(expediente.abogadoSustanciador) = (
+                          SELECT LOWER(u.public_id::text)
+                          FROM auth."user" u
+                          WHERE u.id_user::text = :userId
+                          LIMIT 1
+                      )
+                      OR LOWER(expediente.abogadoSustanciador) = (
+                          SELECT LOWER(p.nom_largo)
+                          FROM auth."user" u
+                          LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                          WHERE u.id_user::text = :userId
+                          LIMIT 1
+                      ))`,
+                    { normalizedKeys, userId: uuidKey },
+                );
+            } else {
+                queryBuilder.andWhere(
+                    'LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys)',
+                    { normalizedKeys },
+                );
+            }
         }
 
         const { entities, raw } = await queryBuilder.orderBy('expediente.createdAt', 'DESC').getRawAndEntities();
@@ -252,7 +293,9 @@ export class ExpedienteService {
         }
 
         // 2b. Detectar reasignación de abogado
+        let nuevoAbogadoId: string | undefined;
         if (data.abogadoSustanciador && data.abogadoSustanciador !== currentExpediente.abogadoSustanciador) {
+            nuevoAbogadoId = data.abogadoSustanciador;
             const abogadoAnterior = currentExpediente.abogadoSustanciador;
             if (abogadoAnterior) {
                 // Append to abogadosAnteriores (deduplicated)
@@ -268,6 +311,26 @@ export class ExpedienteService {
         await this.expedienteRepository.update(id, data);
         const updated = await this.findOne(id);
         if (!updated) throw new Error('Expediente no encontrado post-update');
+
+        // Notificar al nuevo abogado si hubo reasignación
+        if (nuevoAbogadoId) {
+            const esDisciplinario =
+                updated.jurisdiccion === 'DISCIPLINARIO' ||
+                updated.jurisdiccion === 'Disciplinaria' ||
+                updated.tipoProceso === 'DISCIPLINARIO' ||
+                updated.tipoProceso === 'Disciplinario';
+            const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
+
+            await this.legalNotifications.notifyAbogadoAsignado({
+                modulo,
+                radicado: updated.radicado,
+                procesoId: updated.id,
+                abogadoId: nuevoAbogadoId,
+                asignadoPor: 'Sistema',
+                esReasignacion: true,
+            });
+        }
+
         return updated;
     }
 
@@ -385,15 +448,23 @@ export class ExpedienteService {
     /**
      * Obtener expedientes archivados y eliminados
      */
-    async getExpedientesArchivados(): Promise<Expediente[]> {
-        return this.expedienteRepository.find({
-            where: [
-                { estadoArchivo: 'ARCHIVADO' },
-                { estadoArchivo: 'ELIMINADO' }
-            ],
-            order: { fechaArchivo: 'DESC' },
-            relations: ['actors']
-        });
+    async getExpedientesArchivados(filtros: { abogadoSustanciadorKeys?: string[] } = {}): Promise<Expediente[]> {
+        const query = this.expedienteRepository
+            .createQueryBuilder('expediente')
+            .leftJoinAndSelect('expediente.actors', 'actors')
+            .where('expediente.estadoArchivo IN (:...estadosArchivo)', {
+                estadosArchivo: ['ARCHIVADO', 'ELIMINADO'],
+            });
+
+        if (filtros.abogadoSustanciadorKeys?.length) {
+            const normalizedKeys = filtros.abogadoSustanciadorKeys.map((key) => key.toLowerCase());
+            query.andWhere(
+                '(expediente.abogadoSustanciador IN (:...abogadoSustanciadorKeys) OR LOWER(expediente.abogadoSustanciador) IN (:...normalizedKeys))',
+                { abogadoSustanciadorKeys: filtros.abogadoSustanciadorKeys, normalizedKeys },
+            );
+        }
+
+        return query.orderBy('expediente.fechaArchivo', 'DESC').getMany();
     }
 
     /**
@@ -580,6 +651,17 @@ export class ExpedienteService {
             radicadoPrincipal: updated.radicado,
             procesoPrincipalId: updated.id,
             anexadoPor: usuario,
+        });
+
+        await this.legalNotifications.notifyAbogadosProcesoAnexado({
+            modulo,
+            radicadoAnexado: anexado.radicado,
+            radicadoPrincipal: updated.radicado,
+            procesoPrincipalId: updated.id,
+            procesoAnexadoId: anexado.id,
+            anexadoPor: usuario,
+            abogadoPrincipalId: updated.abogadoSustanciador ?? undefined,
+            abogadoAnexadoId: anexado.abogadoSustanciador ?? undefined,
         });
 
         return updated;

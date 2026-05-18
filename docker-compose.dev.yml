@@ -290,6 +290,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    volumes:
+      - ./backend/internal-disciplinary-control-service/uploads:/app/uploads
     networks:
       - superapp-net
     restart: unless-stopped
@@ -388,10 +390,11 @@ services:
       AZURE_TENANT_ID: ${AZURE_TENANT_ID}
       AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
       AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
-      EMAIL_ACCOUNT_QA: ${EMAIL_ACCOUNT_QA}
+      LEGAL_EMAIL_ACCOUNT: ${LEGAL_EMAIL_ACCOUNT}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://4.156.71.181}
     ports:
       - "3008:3008"
     depends_on:
@@ -428,6 +431,11 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASS: ${SMTP_PASS}
       SMTP_FROM: ${SMTP_FROM}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-}
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID:-}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID:-}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET:-}
+      NOTIFICATIONS_EMAIL_ACCOUNT: ${NOTIFICATIONS_EMAIL_ACCOUNT:-}
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000

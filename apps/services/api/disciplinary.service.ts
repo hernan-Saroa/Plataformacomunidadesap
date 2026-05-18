@@ -7,6 +7,7 @@
  */
 
 import { apiClient, type UploadRequestOptions } from './apiClient';
+import { authService } from './authService';
 import { API_MODE, MICROSERVICE_URLS, buildApiUrl, getServiceUrl } from '../../config/environment';
 
 // Prefijo del servicio en el API Gateway
@@ -531,7 +532,7 @@ class DisciplinaryService {
             });
         }
 
-        return apiClient.upload<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
+        return apiClient.post<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news`, formData);
     }
 
     async updateNoticia(id: string, data: {
@@ -750,7 +751,7 @@ class DisciplinaryService {
         }
         formData.append('file', file);
 
-        return apiClient.upload<{ message: string; url: string; filename: string }>(
+        return apiClient.post<{ message: string; url: string; filename: string }>(
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`,
             formData,
             uploadOptions,
@@ -814,19 +815,14 @@ class DisciplinaryService {
             : `/api/v1${restPath}`;
         const url = buildApiUrl('control-disciplinario', endpoint);
 
-        // Obtener token de autenticacion
-        const token = sessionStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/octet-stream',
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(url, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -876,18 +872,14 @@ class DisciplinaryService {
             fullUrl = buildApiUrl('control-disciplinario', url) + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
         }
 
-        const token = sessionStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': '*/*', // Aceptar cualquier cosa (binarios)
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(fullUrl, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -986,6 +978,10 @@ class DisciplinaryService {
         return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}`, data);
     }
 
+    async restoreProcess(id: string): Promise<DisciplinaryProcess> {
+        return apiClient.patch<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/${id}/restore`, {});
+    }
+
     async getProcesoByRadicado(radicado: string): Promise<DisciplinaryProcess> {
         const safeRadicado = encodeURIComponent(radicado);
         return apiClient.get<DisciplinaryProcess>(`${SERVICE_PREFIX}/disciplinary-processes/by-radicado/${safeRadicado}`);
@@ -1027,7 +1023,14 @@ class DisciplinaryService {
         const formData = new FormData();
         formData.append('file', file);
         if (comentario) formData.append('comentario', comentario);
-        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
+        
+        // Agregar userId si está disponible para la trazabilidad en el backend
+        const currentUser = authService.getCurrentUser();
+        if (currentUser?.id) {
+            formData.append('userId', currentUser.id);
+        }
+        
+        return apiClient.post<any>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/upload-document`, formData);
     }
 
     // --- TÉRMINOS PROCESALES ---
@@ -1065,7 +1068,7 @@ class DisciplinaryService {
     async uploadSignature(professionalId: string, file: File): Promise<{ url: string }> {
         const formData = new FormData();
         formData.append('file', file);
-        return apiClient.upload<{ url: string }>(`${SERVICE_PREFIX}/professionals/${professionalId}/signature`, formData);
+        return apiClient.post<{ url: string }>(`${SERVICE_PREFIX}/professionals/${professionalId}/signature`, formData);
     }
 
     async getCandidates(): Promise<any[]> {
@@ -1082,7 +1085,7 @@ class DisciplinaryService {
         formData.append('file', file);
         // Enviar el tipo de documento para que el backend valide los formatos permitidos
         formData.append('tipo', tipo);
-        return apiClient.upload<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData);
+        return apiClient.post<{ url: string; filename: string }>(`${SERVICE_PREFIX}/files/upload`, formData);
     }
 
     // ==================== CONFIGURACION ====================
@@ -1122,19 +1125,14 @@ class DisciplinaryService {
         const endpoint = `/api/v1/configuration/export/zip`;
         const url = buildApiUrl('control-disciplinario', endpoint);
 
-        // Obtener token
-        const token = sessionStorage.getItem('esap_access_token');
         const headers: HeadersInit = {
             'Accept': 'application/zip',
         };
 
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        }
-
         const response = await fetch(url, {
             method: 'GET',
             headers,
+            credentials: 'include',
         });
 
         if (!response.ok) {
@@ -1219,7 +1217,7 @@ class DisciplinaryService {
         formData.append('usuarioCarga', data.aportadoPor || 'Sistema');
         formData.append('file', file);
 
-        return apiClient.upload<any>(
+        return apiClient.post<any>(
             `${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`,
             formData,
             uploadOptions,
@@ -1265,7 +1263,7 @@ class DisciplinaryService {
         if (data.etapa) formData.append('etapa', data.etapa);
         if (data.categoria) formData.append('categoria', data.categoria);
         formData.append('usuarioCarga', data.usuarioCarga || 'Sistema');
-        return apiClient.upload<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`, formData);
+        return apiClient.post<any>(`${SERVICE_PREFIX}/disciplinary-processes/${processId}/documents`, formData);
     }
 
     async deleteOficio(processId: string, oficioId: string): Promise<void> {
@@ -1423,7 +1421,7 @@ class DisciplinaryService {
     async uploadAutoPlantilla(id: string, file: File): Promise<AutoConfiguration> {
         const formData = new FormData();
         formData.append('file', file);
-        return apiClient.upload<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
+        return apiClient.post<AutoConfiguration>(`${SERVICE_PREFIX}/autos-configuration/${id}/upload-files`, formData);
     }
 
     // ==================== CONFIGURACIÓN DE OFICIOS ====================
@@ -1523,7 +1521,7 @@ class DisciplinaryService {
         if (descripcionPlantilla) formData.append('descripcion_plantilla', descripcionPlantilla);
         if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
         if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
-        return apiClient.upload<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}/upload-files`, formData);
+        return apiClient.post<OficioConfiguration>(`${SERVICE_PREFIX}/oficios-configuration/${id}/upload-files`, formData);
     }
 
     // ==================== CONFIGURACIÓN DE ACTAS ====================
@@ -1609,7 +1607,7 @@ class DisciplinaryService {
         if (descripcionPlantilla) formData.append('descripcion_plantilla', descripcionPlantilla);
         if (versionPlantilla) formData.append('version_plantilla', versionPlantilla);
         if (estadoPlantilla) formData.append('estado_plantilla', estadoPlantilla);
-        return apiClient.upload<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}/upload-files`, formData);
+        return apiClient.post<ActaConfiguration>(`${SERVICE_PREFIX}/actas-configuration/${id}/upload-files`, formData);
     }
 
     // ==================== GENERAR CONSECUTIVO DE ACTA DESDE BACKEND ====================
@@ -1658,11 +1656,6 @@ class DisciplinaryService {
         emailDestinatario: string;
         createdAt: string;
     }> {
-        // Debug: verificar que hay token disponible
-        const token = sessionStorage.getItem('esap_auth_token');
-        console.log('[DEBUG] Token available:', !!token);
-        console.log('[DEBUG] Token prefix:', token?.substring(0, 20));
-
         // Obtener la URL base del frontend para generar enlaces correctos
         // Esto asegura que la URL funcione en todos los ambientes (local, dev, qa, pre, prod)
         const frontendBaseUrl = typeof window !== 'undefined' ? window.location.origin : undefined;

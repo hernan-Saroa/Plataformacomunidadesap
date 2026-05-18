@@ -864,11 +864,10 @@ export function PerfilUsuarioCompletoPT({ usuario, onVolver }: PerfilUsuarioComp
 
             <div className="text-center py-6 border-b">
               <Avatar className="w-24 h-24 mx-auto border-4 border-white shadow-lg">
-                {fotoPerfil ? (
-                  <AvatarImage src={fotoPerfil} />
-                ) : (
-                  <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${datosPersonales.nombres} ${datosPersonales.apellidos}`} />
-                )}
+                {fotoPerfil && <AvatarImage src={fotoPerfil} />}
+                <AvatarFallback className="bg-[#2962FF] text-white text-2xl font-bold">
+                  {datosPersonales.nombres[0]}{datosPersonales.apellidos[0]}
+                </AvatarFallback>
               </Avatar>
               <h3 className="text-xl font-bold mt-4">{datosPersonales.nombres} {datosPersonales.apellidos}</h3>
               <p className="text-gray-600">{datosLaborales.cargo}</p>

@@ -1,16 +1,20 @@
-import { Controller, Get, Post, Patch, Delete, Param, Body, UploadedFile, UseInterceptors, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Param, Body, UploadedFile, UseInterceptors, BadRequestException, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ConsultasJuridicasService } from '../services/consultas-juridicas.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('consultas-juridicas')
 export class ConsultasJuridicasController {
     constructor(private readonly consultasService: ConsultasJuridicasService) { }
 
     @Get()
-    async findAll() {
-        const consultas = await this.consultasService.findAll();
+    async findAll(@Req() req?: any) {
+        const access = getLegalAccessFromRequest(req);
+        const consultas = await this.consultasService.findAll({
+            asignadoKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
         // Add calculated diasRestantes to each consulta
         return consultas.map(c => ({
             ...c,
@@ -56,7 +60,8 @@ export class ConsultasJuridicasController {
             prioridad: body.prioridad || 'media',
             complejidad: body.complejidad,
             terminoLegalDias: parseInt(body.terminoLegalDias) || 30,
-            abogadoAsignadoId: body.abogadoAsignadoId || null
+            abogadoAsignadoId: body.abogadoAsignadoId || null,
+            abogadoAsignadoNombre: body.abogadoAsignadoNombre || null
         };
 
         const fileData = file ? {
@@ -148,8 +153,11 @@ export class ConsultasJuridicasController {
     // --- Endpoints de Archivo ---
 
     @Get('archivadas/lista')
-    async getArchivadas() {
-        return this.consultasService.getArchivadas();
+    async getArchivadas(@Req() req?: any) {
+        const access = getLegalAccessFromRequest(req);
+        return this.consultasService.getArchivadas({
+            asignadoKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Post(':id/archivar')

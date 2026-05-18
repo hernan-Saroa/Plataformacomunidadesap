@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { controlInternoService } from '../../../services/api/controlInternoService';
+import { notificationsService } from '../../../services/api/notificationsService';
 import { HeaderSeccionConfig } from './HeaderSeccionConfig';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -72,11 +73,10 @@ interface NotificacionEnviada {
   titulo: string;
   mensaje: string;
   destinatario: string;
-  canal: 'sistema' | 'email';
+  canal: 'sistema' | 'email' | 'ambos';
   fechaEnvio: string;
   leida: boolean;
   accion?: {
-    texto: string;
     url: string;
   };
 }
@@ -341,43 +341,27 @@ export function NotificacionesModule() {
   const [error, setError] = useState<string | null>(null);
   const yaCargadoRef = useRef(false); // ✅ Ref para evitar múltiples cargas (no causa re-render)
 
-  // ✅ Obtener el usuarioId del localStorage
+  // ✅ Obtener el usuarioId desde el cache de autenticación en memoria
   const getUsuarioId = useCallback(() => {
     try {
-      // Intentar con la key principal: esap_user_data
-      let userStr = sessionStorage.getItem('esap_user_data');
-      console.log('[NotificacionesModule] sessionStorage esap_user_data:', userStr?.slice(0, 200));
-      
-      if (userStr) {
-        const user = JSON.parse(userStr);
-        console.log('[NotificacionesModule] User object parsed:', user);
-        // Buscar en diferentes propiedades donde puede estar el ID
-        const userId = user.id || user.userId || user.id_user || user.uid || user.terceroId;
-        console.log('[NotificacionesModule] UserId extraído:', userId, '| tipo:', typeof userId);
-        if (userId) return String(userId);
-      }
-      
-      // Fallback: esap_auth_user (legacy)
-      userStr = localStorage.getItem('esap_auth_user');
-      if (userStr) {
-        const user = JSON.parse(userStr);
+      const user = (window as any).__esap_auth_cache;
+      if (user) {
         const userId = user.id || user.userId || user.id_user || user.uid || user.terceroId;
         if (userId) return String(userId);
       }
     } catch (e) {
-      console.error('[NotificacionesModule] Error parsing localStorage:', e);
+      console.error('[NotificacionesModule] Error leyendo usuario:', e);
     }
-    console.log('[NotificacionesModule] Usando fallback admin');
     return 'admin';
   }, []);
 
-  // ✅ Cargar configuración desde el backend
+  // ✅ Cargar configuración desde el backend (Global para el módulo)
   const cargarConfiguracion = useCallback(async () => {
     setCargando(true);
     setError(null);
     try {
-      const usuarioId = getUsuarioId();
-      console.log('[NotificacionesModule] Cargando configuración para usuario:', usuarioId);
+      const usuarioId = 'GLOBAL_CONFIG';
+      console.log('[NotificacionesModule] Guardando configuración GLOBAL...');
       
       // Cargar preferencias de notificación
       const preferencias = await controlInternoService.getPreferenciasNotificacion(usuarioId);
@@ -386,37 +370,63 @@ export function NotificacionesModule() {
       // Mapear preferencias del backend a eventos del frontend
       if (preferencias?.tiposNotificacion) {
         const tiposBackend = preferencias.tiposNotificacion;
-        
-        // ✅ Crear nuevos eventos actualizados directamente desde el MOCK
-        const eventosActualizados = EVENTOS_NOTIFICABLES_MOCK.map(evento => {
-          const configBackend = tiposBackend[evento.id];
-          if (configBackend) {
-            const nuevoCanal = (configBackend.email && configBackend.sistema) ? 'ambos' as const : 
-                              configBackend.email ? 'email' as const : 'sistema' as const;
-            console.log(`[NotificacionesModule] Aplicando config backend para ${evento.id}: activo=${configBackend.activo}, canal=${nuevoCanal}`);
-            return {
-              ...evento,
+        const eventosBase = [...EVENTOS_NOTIFICABLES_MOCK];
+        const eventosFinales: EventoNotificable[] = [];
+
+        Object.keys(tiposBackend).forEach(id => {
+          const configBackend = tiposBackend[id];
+          const nuevoCanal = (configBackend.email && configBackend.sistema) ? 'ambos' as const : 
+                            configBackend.email ? 'email' as const : 'sistema' as const;
+
+          const eventoMock = eventosBase.find(e => e.id === id);
+          if (eventoMock) {
+            // Regla por defecto, actualizamos con datos del backend
+            eventosFinales.push({
+              ...eventoMock,
               activo: configBackend.activo === true || configBackend.activo === 'true',
-              canal: nuevoCanal
-            };
+              canal: nuevoCanal,
+              destinatarios: configBackend.roles && configBackend.roles.length > 0 ? configBackend.roles : eventoMock.destinatarios
+            });
+            const idx = eventosBase.findIndex(e => e.id === id);
+            if (idx > -1) eventosBase.splice(idx, 1);
+          } else {
+            // Regla personalizada recuperada de la base de datos
+            eventosFinales.push({
+              id: id,
+              categoria: configBackend.categoria || 'Personalizada',
+              nombre: configBackend.nombre || 'Notificación Personalizada',
+              descripcion: configBackend.descripcion || '',
+              activo: configBackend.activo === true || configBackend.activo === 'true',
+              canal: nuevoCanal,
+              destinatarios: configBackend.roles || [],
+              esPersonalizada: true
+            });
           }
-          console.log(`[NotificacionesModule] Sin config backend para ${evento.id}, usando default`);
-          return evento;
         });
-        
-        console.log('[NotificacionesModule] Eventos actualizados:', 
-          eventosActualizados.map(e => ({ id: e.id, activo: e.activo, canal: e.canal }))
-        );
-        
-        // Actualizar estado con los nuevos eventos
-        setEventos(eventosActualizados);
+
+        // Agregar los del mock que aún no han sido guardados en backend
+        eventosBase.forEach(evento => {
+          eventosFinales.push(evento);
+        });
+
+        setEventos(eventosFinales);
       }
 
-      // Cargar historial de notificaciones
+      // Cargar historial de notificaciones (TODAS las del sistema para visibilidad completa)
       try {
-        console.log('[NotificacionesModule] Solicitando notificaciones para usuario:', usuarioId);
-        const notificaciones = await controlInternoService.getNotificacionesUsuario(usuarioId);
-        console.log('[NotificacionesModule] Notificaciones recibidas:', notificaciones?.length || 0, 'items');
+        console.log('[NotificacionesModule] Solicitando historial de notificaciones...');
+        // Intentar cargar TODAS las notificaciones del sistema (para Jefe OCI / Admin)
+        // Si falla, cargar solo las del usuario actual
+        let notificaciones: any[] = [];
+        try {
+          notificaciones = await controlInternoService.getTodasNotificaciones();
+          console.log('[NotificacionesModule] Notificaciones del sistema recibidas:', notificaciones?.length || 0);
+        } catch {
+          // Fallback: cargar solo las del usuario actual
+          notificaciones = await controlInternoService.getNotificacionesUsuario(usuarioId);
+          console.log('[NotificacionesModule] Notificaciones del usuario recibidas:', notificaciones?.length || 0);
+        }
+        
         console.log('[NotificacionesModule] Respuesta completa:', JSON.stringify(notificaciones)?.slice(0, 500));
         if (Array.isArray(notificaciones)) {
           const historialMapeado = notificaciones.map((n: any) => ({
@@ -424,8 +434,10 @@ export function NotificacionesModule() {
             eventoId: n.tipoNotificacion || n.tipo || 'EVT-SISTEMA',
             titulo: n.titulo,
             mensaje: n.mensaje,
-            destinatario: n.nombreUsuario || usuarioId,
-            canal: n.canal?.toLowerCase() === 'email' ? 'email' : 'sistema',
+            destinatario: n.nombreUsuario || n.usuarioId || usuarioId,
+            // Mapear canal correctamente: 'email' | 'sistema' | 'ambos'
+            canal: n.canal === 'email' ? 'email' as const : 
+                   n.canal === 'ambos' ? 'ambos' as const : 'sistema' as const,
             fechaEnvio: n.createdAt || n.fechaCreacion,
             leida: n.leida ?? false,
             accion: n.accionUrl ? { texto: 'Ver', url: n.accionUrl } : undefined
@@ -434,7 +446,9 @@ export function NotificacionesModule() {
           setHistorial(historialMapeado);
         }
       } catch (histErr) {
-        console.warn('[NotificacionesModule] Error cargando historial (no crítico):', histErr);
+        console.warn('[NotificacionesModule] Error cargando historial:', histErr);
+        // No bloquear por error del historial - mostrar vacío
+        setHistorial([]);
       }
       
     } catch (err: any) {
@@ -452,19 +466,27 @@ export function NotificacionesModule() {
   const guardarConfiguracionBackend = useCallback(async (eventosActualizados: EventoNotificable[]) => {
     setGuardando(true);
     try {
-      const usuarioId = getUsuarioId();
+      const usuarioId = 'GLOBAL_CONFIG';
+      console.log('[NotificacionesModule] Guardando configuración GLOBAL...');
       
       // Convertir eventos a formato de preferencias del backend
-      const tiposNotificacion: Record<string, { email: boolean; sistema: boolean; activo: boolean }> = {};
+      const tiposNotificacion: Record<string, any> = {};
       eventosActualizados.forEach(evento => {
         tiposNotificacion[evento.id] = {
           email: evento.canal === 'email' || evento.canal === 'ambos',
           sistema: evento.canal === 'sistema' || evento.canal === 'ambos',
-          activo: evento.activo
+          activo: evento.activo,
+          roles: evento.destinatarios, // Guardar roles
+          nombre: evento.nombre, // Guardar metadatos para recuperarlos después
+          titulo: evento.nombre, // Para el trigger del backend
+          descripcion: evento.descripcion,
+          mensaje: evento.descripcion, // Para el trigger del backend
+          categoria: evento.categoria,
+          esPersonalizada: evento.esPersonalizada || false
         };
       });
 
-      await controlInternoService.updatePreferenciasNotificacion(usuarioId, {
+      await controlInternoService.updatePreferenciasNotificacion('GLOBAL_CONFIG', {
         tiposNotificacion,
         recibirEmail: eventosActualizados.some(e => e.activo && (e.canal === 'email' || e.canal === 'ambos')),
         recibirSistema: eventosActualizados.some(e => e.activo && (e.canal === 'sistema' || e.canal === 'ambos'))
@@ -616,6 +638,27 @@ export function NotificacionesModule() {
     toast.success('🗑️ Notificación personalizada eliminada');
   };
 
+  // ✅ Ejecutar job de notificaciones automáticas manualmente
+  const handleEjecutarJob = useCallback(async () => {
+    try {
+      toast.loading('⚙️ Ejecutando job de notificaciones...', { id: 'job-notif' });
+      const resultado = await controlInternoService.ejecutarJobNotificaciones();
+      toast.dismiss('job-notif');
+      if (resultado?.success !== false) {
+        const enviadas = resultado?.resultado?.notificacionesEnviadas ?? resultado?.notificacionesEnviadas ?? '?';
+        toast.success(`✅ Job ejecutado: ${enviadas} notificaciones generadas`);
+        // Recargar historial después de ejecutar el job
+        await cargarConfiguracion();
+      } else {
+        toast.error(`❌ Error al ejecutar job: ${resultado?.message || 'Error desconocido'}`);
+      }
+    } catch (err: any) {
+      toast.dismiss('job-notif');
+      toast.error(`❌ Error al ejecutar job: ${err?.message || 'Error de red'}`);
+      console.error('[NotificacionesModule] Error ejecutando job:', err);
+    }
+  }, [cargarConfiguracion]);
+
   return (
     <div className="p-3 w-full">
       {/* ═══════════════════════════════════════════════════════════════ */}
@@ -735,6 +778,9 @@ export function NotificacionesModule() {
           <TabHistorial
             key="historial"
             historial={historial}
+            eventos={eventos}
+            onEjecutarJob={handleEjecutarJob}
+            onRecargar={cargarConfiguracion}
           />
         )}
       </AnimatePresence>
@@ -991,9 +1037,20 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
 
 interface TabHistorialProps {
   historial: NotificacionEnviada[];
+  eventos: EventoNotificable[];
+  onEjecutarJob: () => void;
+  onRecargar: () => void;
 }
 
-function TabHistorial({ historial }: TabHistorialProps) {
+function TabHistorial({ historial, eventos, onEjecutarJob, onRecargar }: TabHistorialProps) {
+  const [ejecutandoJob, setEjecutandoJob] = useState(false);
+
+  const handleEjecutar = async () => {
+    setEjecutandoJob(true);
+    await onEjecutarJob();
+    setTimeout(() => setEjecutandoJob(false), 2000);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -1001,20 +1058,48 @@ function TabHistorial({ historial }: TabHistorialProps) {
       exit={{ opacity: 0, y: -20 }}
       className="space-y-3"
     >
+      {/* Cabecera informativa + acciones */}
       <div className="bg-blue-50 border-2 border-blue-300 rounded-xl p-4 mb-4">
-        <div className="flex items-start gap-3">
-          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-blue-900">
-            <strong>Historial de notificaciones enviadas</strong>
-            <p className="mt-1">
-              Aquí se muestran las notificaciones que el sistema ha generado y enviado
-              en los últimos 30 días según las reglas configuradas.
-            </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-900">
+              <strong>Historial de notificaciones enviadas</strong>
+              <p className="mt-1">
+                Aquí se muestran las notificaciones que el sistema ha generado y enviado
+                según las reglas configuradas. Total: <strong>{historial.length}</strong> registro(s).
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <button
+              onClick={onRecargar}
+              className="px-3 py-1.5 bg-white border border-blue-300 hover:bg-blue-100 text-blue-700 rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-all"
+              title="Recargar historial"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Recargar
+            </button>
+            <button
+              onClick={handleEjecutar}
+              disabled={ejecutandoJob}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg font-semibold text-xs flex items-center gap-1.5 transition-all"
+              title="Ejecutar job de notificaciones ahora"
+            >
+              {ejecutandoJob ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Zap className="w-3.5 h-3.5" />
+              )}
+              Ejecutar Job
+            </button>
           </div>
         </div>
       </div>
 
-      {historial.map((notif) => (
+      {historial.map((notif) => {
+        const eventoBase = eventos.find(e => e.id === notif.eventoId);
+        return (
         <div
           key={notif.id}
           className={`bg-white rounded-xl border-2 p-4 hover:shadow-md transition-all ${
@@ -1022,13 +1107,17 @@ function TabHistorial({ historial }: TabHistorialProps) {
           }`}
         >
           <div className="flex items-start gap-4">
+            {/* Ícono de canal */}
             <div className={`p-3 rounded-xl flex-shrink-0 ${
-              notif.canal === 'sistema' ? 'bg-blue-600' : 'bg-purple-600'
+              notif.canal === 'ambos' ? 'bg-green-600' :
+              notif.canal === 'email' ? 'bg-purple-600' : 'bg-blue-600'
             }`}>
-              {notif.canal === 'sistema' ? (
-                <Bell className="w-5 h-5 text-white" />
-              ) : (
+              {notif.canal === 'ambos' ? (
+                <Zap className="w-5 h-5 text-white" />
+              ) : notif.canal === 'email' ? (
                 <Mail className="w-5 h-5 text-white" />
+              ) : (
+                <Bell className="w-5 h-5 text-white" />
               )}
             </div>
 
@@ -1046,32 +1135,60 @@ function TabHistorial({ historial }: TabHistorialProps) {
               <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
                 <span className="flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
-                  {new Date(notif.fechaEnvio).toLocaleString()}
+                  {notif.fechaEnvio ? new Date(notif.fechaEnvio).toLocaleString('es-CO') : 'Sin fecha'}
                 </span>
                 <span className="flex items-center gap-1">
                   <Users className="w-3 h-3" />
                   {notif.destinatario}
                 </span>
                 <span className={`px-2 py-1 rounded font-semibold ${
-                  notif.canal === 'sistema'
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-purple-100 text-purple-700'
+                  notif.canal === 'ambos'
+                    ? 'bg-green-100 text-green-700'
+                    : notif.canal === 'email'
+                    ? 'bg-purple-100 text-purple-700'
+                    : 'bg-blue-100 text-blue-700'
                 }`}>
-                  {notif.canal === 'sistema' ? 'Sistema' : 'Email'}
+                  {notif.canal === 'ambos' ? '📨 Email + Sistema' :
+                   notif.canal === 'email' ? '✉️ Email' : '🔔 Sistema'}
+                </span>
+                {notif.leida && (
+                  <span className="flex items-center gap-1 text-green-600">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Leída
+                  </span>
+                )}
+                <span className="flex items-center gap-1 bg-gray-100 text-gray-700 px-2 py-1 rounded font-mono text-[10px] border border-gray-200 uppercase">
+                  <Settings className="w-3 h-3" />
+                  {eventoBase ? `${notif.eventoId} (${eventoBase.categoria})` : notif.eventoId}
                 </span>
               </div>
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {historial.length === 0 && (
         <div className="bg-white rounded-xl border-2 border-gray-200 p-12 text-center">
           <History className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <p className="text-lg font-bold text-gray-500">No hay notificaciones en el historial</p>
-          <p className="text-sm text-gray-400 mt-2">
-            Las notificaciones enviadas aparecerán aquí
+          <p className="text-sm text-gray-400 mt-2 max-w-md mx-auto">
+            Las notificaciones se generan automáticamente cuando ocurren eventos del sistema
+            (auditorías, planes de mejoramiento, aprobaciones). Puede ejecutar el job manual
+            usando el botón <strong>&quot;Ejecutar Job&quot;</strong> para generar notificaciones de vencimientos ahora.
           </p>
+          <button
+            onClick={handleEjecutar}
+            disabled={ejecutandoJob}
+            className="mt-6 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl font-semibold text-sm flex items-center gap-2 mx-auto transition-all"
+          >
+            {ejecutandoJob ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Zap className="w-4 h-4" />
+            )}
+            Ejecutar Job de Notificaciones
+          </button>
         </div>
       )}
     </motion.div>
@@ -1089,7 +1206,16 @@ interface ModalEditarEventoProps {
 }
 
 function ModalEditarEvento({ evento, onGuardar, onCerrar }: ModalEditarEventoProps) {
-  const [form, setForm] = useState(evento);
+  // ✅ BUG 4 FIX: Asegurar que destinatarios sea siempre un array al inicializar
+  // y que el estado inicial capture correctamente los datos del evento
+  const [form, setForm] = useState({
+    ...evento,
+    destinatarios: Array.isArray(evento.destinatarios) ? [...evento.destinatarios] : []
+  });
+
+  // ✅ BUG 3 FIX: Guardar el nombre original del evento padre para el subtítulo
+  // para que no cambie mientras el usuario edita el campo "Nombre"
+  const nombreEventoPadre = evento.nombre || 'Configurar notificación';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1131,7 +1257,7 @@ function ModalEditarEvento({ evento, onGuardar, onCerrar }: ModalEditarEventoPro
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-black">Configurar Notificación</h2>
-                <p className="text-sm text-blue-100 mt-1">{evento.nombre}</p>
+                <p className="text-sm text-blue-100 mt-1">Evento: {nombreEventoPadre}</p>
               </div>
               <button
                 type="button"
@@ -1148,6 +1274,22 @@ function ModalEditarEvento({ evento, onGuardar, onCerrar }: ModalEditarEventoPro
             {/* Nombre y Descripción (solo para nuevas) */}
             {evento.esPersonalizada && (
               <>
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-2">
+                    Identificador Único (ID) <span className="text-red-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.id}
+                    onChange={(e) => setForm({ ...form, id: e.target.value.replace(/\s+/g, '-').toUpperCase() })}
+                    placeholder="Ej: EVT-CUSTOM-001"
+                    disabled={evento.nombre !== ''}
+                    className={`w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none font-mono text-sm ${evento.nombre !== '' ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Identificador usado en el historial y campanita para reconocer la regla.</p>
+                </div>
+                
                 <div>
                   <label className="block text-sm font-bold text-gray-900 mb-2">
                     Nombre de la Notificación <span className="text-red-600">*</span>

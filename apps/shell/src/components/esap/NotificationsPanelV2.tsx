@@ -6,7 +6,6 @@ import {
   CheckCheck,
   X,
   Archive,
-  Filter,
   Mail,
   Calendar,
   Award,
@@ -17,14 +16,13 @@ import {
   DollarSign,
   Settings,
   TrendingUp,
-  ChevronRight,
   AlertTriangle,
-  Info
+  Info,
+  Star
 } from 'lucide-react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { toast } from 'react-toastify';
 import { useNotifications } from './NotificationsContext';
 
 // Types basados en tabla notificaciones
@@ -94,14 +92,70 @@ function tryHandleLegalNotificationInApp(
   }
 }
 
+/**
+ * Intenta manejar in-app las notificaciones de Control Interno de Gestión
+ * Soporta tanto formato con params (?seccion=...) como formato REST (/auditorias/ID)
+ */
+function tryHandleControlInternoNotificationInApp(
+  url: string,
+  notif: { datos_adicionales?: any },
+): boolean {
+  try {
+    // 1. Validar prefijo base
+    if (!url.startsWith('/control-interno')) return false;
+
+    let seccion = 'dashboard';
+    let auditoriaId = notif.datos_adicionales?.auditoriaId;
+    let planId = notif.datos_adicionales?.planId;
+    let fase = notif.datos_adicionales?.fase || notif.datos_adicionales?.etapa;
+
+    // 2. Analizar por query params (formato tradicional)
+    const queryStart = url.indexOf('?');
+    if (queryStart !== -1) {
+      const params = new URLSearchParams(url.slice(queryStart + 1));
+      seccion = params.get('seccion') || seccion;
+      auditoriaId = params.get('auditoriaId') || auditoriaId;
+      planId = params.get('planId') || planId;
+      fase = params.get('fase') || params.get('etapa') || fase;
+
+      // Mapeo inteligente: si la seccion es una fase, redirigir al dashboard
+      const fasesConocidas = ['planeacion', 'ejecucion', 'comunicacion', 'seguimiento', 'finalizada'];
+      if (fasesConocidas.includes(seccion.toLowerCase())) {
+        fase = seccion;
+        seccion = 'dashboard';
+      }
+    }
+    // 3. Analizar por ruta REST (formato backend automatico)
+    else {
+      const parts = url.split('/');
+      // /control-interno/auditorias/ID -> parts: ["", "control-interno", "auditorias", "ID"]
+      if (parts.includes('auditorias')) {
+        seccion = 'dashboard';
+        const idx = parts.indexOf('auditorias');
+        if (parts[idx + 1]) auditoriaId = parts[idx + 1];
+      } else if (parts.includes('planes-mejoramiento')) {
+        seccion = 'planes-mejoramiento';
+        const idx = parts.indexOf('planes-mejoramiento');
+        if (parts[idx + 1]) planId = parts[idx + 1];
+      }
+    }
+
+    const detail = { seccion, auditoriaId, planId, fase };
+
+    sessionStorage.setItem('control-interno:pendingOpenExpediente', JSON.stringify(detail));
+    window.dispatchEvent(new CustomEvent('control-interno:open-expediente', { detail }));
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function NotificationsPanelV2({
-  userId,
   isOpen,
-  onClose,
-  compact = false
+  onClose
 }: NotificationsPanelV2Props) {
   const [filter, setFilter] = useState<'all' | 'unread' | 'important'>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
   // Usar el contexto global de notificaciones
   const {
@@ -109,6 +163,7 @@ export function NotificationsPanelV2({
     markAsRead,
     markAllAsRead,
     archiveNotification,
+    toggleFavorite,
     unreadCount
   } = useNotifications();
 
@@ -144,12 +199,9 @@ export function NotificationsPanelV2({
   const filteredNotifications = notifications.filter(notif => {
     if (notif.archivada) return false;
     if (filter === 'unread' && notif.leida) return false;
-    if (filter === 'important' && notif.prioridad !== 'Alta' && notif.prioridad !== 'Crítica') return false;
-    if (categoryFilter !== 'all' && notif.categoria !== categoryFilter) return false;
+    if (filter === 'important') return (notif as any).es_favorito === true;
     return true;
   });
-
-  const categories = Array.from(new Set(notifications.map(n => n.categoria)));
 
   const handleAction = (notif: Notification) => {
     // Mark as read first
@@ -157,7 +209,6 @@ export function NotificationsPanelV2({
 
     // Get the URL
     const url = notif.url_accion || '';
-
     if (!url) return;
 
     // Store the highlighted item ID in sessionStorage for visual highlighting
@@ -165,17 +216,14 @@ export function NotificationsPanelV2({
       sessionStorage.setItem('highlightTerminoId', notif.datos_adicionales.terminoId);
     }
 
-    // Notificaciones de Gestión Legal con `?modulo=...&radicado=...` se manejan in-app
-    // (sin recargar la página): emiten un CustomEvent que GestionLegalFull intercepta
-    // para cambiar la vista activa y abrir el modal del expediente.
-    const handledInApp = tryHandleLegalNotificationInApp(url, notif);
-
+    let handledInApp = tryHandleLegalNotificationInApp(url, notif);
     if (!handledInApp) {
-      // Fallback: navegación normal por URL (otras notificaciones del sistema).
-      window.location.href = url;
+      handledInApp = tryHandleControlInternoNotificationInApp(url, notif);
     }
 
-    // Close the panel
+    if (!handledInApp) {
+      window.location.href = url;
+    }
     onClose();
   };
 
@@ -226,7 +274,6 @@ export function NotificationsPanelV2({
               <button
                 onClick={onClose}
                 className="absolute top-4 right-4 p-2 hover:bg-white/20 rounded-lg transition-all active:scale-95"
-                aria-label="Cerrar notificaciones"
               >
                 <X className="w-5 h-5 text-white" />
               </button>
@@ -237,9 +284,7 @@ export function NotificationsPanelV2({
                 </div>
                 <div>
                   <h2 className="text-white font-semibold text-lg">Notificaciones</h2>
-                  <p className="text-sm text-white/80">
-                    {unreadCount} sin leer
-                  </p>
+                  <p className="text-sm text-white/80">{unreadCount} sin leer</p>
                 </div>
               </div>
 
@@ -254,19 +299,12 @@ export function NotificationsPanelV2({
                   <CheckCheck className="w-4 h-4 mr-2" />
                   Marcar todas
                 </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-white hover:bg-white/20 px-3"
-                >
-                  <Settings className="w-4 h-4" />
-                </Button>
               </div>
             </div>
 
             {/* Filters - Compacto */}
             <div className="px-4 py-3 border-b bg-gray-50">
-              <div className="flex gap-2 mb-3">
+              <div className="flex gap-2">
                 <Button
                   size="sm"
                   variant={filter === 'all' ? 'default' : 'outline'}
@@ -274,9 +312,7 @@ export function NotificationsPanelV2({
                   className="flex-1 text-xs h-8"
                 >
                   Todas
-                  <Badge variant="secondary" className="ml-2 text-xs">
-                    {notifications.length}
-                  </Badge>
+                  <Badge variant="secondary" className="ml-2 text-xs">{notifications.length}</Badge>
                 </Button>
                 <Button
                   size="sm"
@@ -285,9 +321,7 @@ export function NotificationsPanelV2({
                   className="flex-1 text-xs h-8"
                 >
                   No leídas
-                  <Badge variant="secondary" className="ml-2 text-xs">
-                    {unreadCount}
-                  </Badge>
+                  <Badge variant="secondary" className="ml-2 text-xs">{unreadCount}</Badge>
                 </Button>
                 <Button
                   size="sm"
@@ -296,36 +330,13 @@ export function NotificationsPanelV2({
                   className="flex-1 text-xs h-8"
                 >
                   Importantes
+                  <Badge variant="secondary" className="ml-2 text-xs">
+                    {notifications.filter(n => (n as any).es_favorito).length}
+                  </Badge>
                 </Button>
-              </div>
-
-              {/* Category Filter */}
-              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                <button
-                  onClick={() => setCategoryFilter('all')}
-                  className={`px-3 py-1 rounded-full text-xs whitespace-nowrap transition-colors ${categoryFilter === 'all'
-                    ? 'bg-[#1e5da8] text-white'
-                    : 'bg-white border hover:bg-gray-50'
-                    }`}
-                >
-                  Todas
-                </button>
-                {categories.map(cat => (
-                  <button
-                    key={cat}
-                    onClick={() => setCategoryFilter(cat)}
-                    className={`px-3 py-1 rounded-full text-xs capitalize whitespace-nowrap transition-colors ${categoryFilter === cat
-                      ? 'bg-[#1e5da8] text-white'
-                      : 'bg-white border hover:bg-gray-50'
-                      }`}
-                  >
-                    {cat}
-                  </button>
-                ))}
               </div>
             </div>
 
-            {/* Notifications List - Scroll Area */}
             <div className="flex-1 overflow-y-auto">
               <div className="p-4 space-y-3">
                 <AnimatePresence>
@@ -340,11 +351,11 @@ export function NotificationsPanelV2({
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -20 }}
                         transition={{ delay: index * 0.05 }}
-                        className={`group relative ${!notif.leida ? 'bg-blue-50/50' : ''}`}
                       >
-                        <Card className={`p-4 hover:shadow-md transition-all ${!notif.leida ? 'border-l-4 border-l-[#1e5da8]' : ''
-                          }`}>
-                          {/* Unread indicator */}
+                        <Card
+                          onClick={() => notif.url_accion && handleAction(notif as any)}
+                          className={`p-4 transition-all cursor-pointer hover:shadow-md relative group ${!notif.leida ? 'border-l-4 border-l-[#1e5da8] bg-blue-50/30' : ''}`}
+                        >
                           {!notif.leida && (
                             <div className="absolute top-4 right-4">
                               <div className="w-2 h-2 bg-[#1e5da8] rounded-full" />
@@ -357,27 +368,36 @@ export function NotificationsPanelV2({
                               className="p-2 rounded-xl flex-shrink-0"
                               style={{ backgroundColor: `${notif.color}15` }}
                             >
-                              <Icon
-                                className="w-5 h-5"
-                                style={{ color: notif.color }}
-                              />
+                              <Icon className="w-5 h-5" style={{ color: notif.color }} />
                             </div>
 
                             {/* Content */}
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between gap-2 mb-1">
-                                <h4 className="font-medium text-sm">{notif.titulo}</h4>
-                                <Badge
-                                  variant="outline"
-                                  className={`text-xs ${priorityConfig.bg} ${priorityConfig.text} ${priorityConfig.border}`}
-                                >
-                                  {notif.prioridad}
-                                </Badge>
+                              <div className="flex items-center justify-between gap-2 mb-1">
+                                <h4 className="font-medium text-sm text-gray-900 line-clamp-1">{notif.titulo}</h4>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleFavorite(notif.id_notificacion);
+                                    }}
+                                    className={`p-1 rounded-full transition-all ${(notif as any).es_favorito
+                                        ? 'text-amber-500 hover:bg-amber-50'
+                                        : 'text-gray-300 hover:text-amber-400 hover:bg-gray-100'
+                                      }`}
+                                  >
+                                    <Star className={`w-4 h-4 ${(notif as any).es_favorito ? 'fill-current' : ''}`} />
+                                  </button>
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-xs ${priorityConfig.bg} ${priorityConfig.text} ${priorityConfig.border}`}
+                                  >
+                                    {notif.prioridad}
+                                  </Badge>
+                                </div>
                               </div>
 
-                              <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                                {notif.mensaje}
-                              </p>
+                              <p className="text-sm text-gray-600 mb-2 line-clamp-2">{notif.mensaje}</p>
 
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3 text-xs text-gray-500">
@@ -385,28 +405,30 @@ export function NotificationsPanelV2({
                                   {notif.email_enviado && (
                                     <div className="flex items-center gap-1">
                                       <Mail className="w-3 h-3" />
-                                      {notif.email_abierto && (
-                                        <span className="text-green-600">Abierto</span>
-                                      )}
+                                      {notif.email_abierto && <span className="text-green-600 font-medium">Abierto</span>}
                                     </div>
                                   )}
                                 </div>
 
-                                {/* Actions */}
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   {!notif.leida && (
                                     <button
-                                      onClick={() => markAsRead(notif.id_notificacion)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        markAsRead(notif.id_notificacion);
+                                      }}
                                       className="p-1 hover:bg-gray-100 rounded transition-colors"
                                       title="Marcar como leída"
                                     >
                                       <Check className="w-4 h-4 text-gray-600" />
                                     </button>
                                   )}
-                                  {/* Hide archive button for term notifications */}
                                   {!notif.tipo_notificacion.startsWith('termino_') && (
                                     <button
-                                      onClick={() => archiveNotification(notif.id_notificacion)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        archiveNotification(notif.id_notificacion);
+                                      }}
                                       className="p-1 hover:bg-gray-100 rounded transition-colors"
                                       title="Archivar"
                                     >
@@ -415,19 +437,6 @@ export function NotificationsPanelV2({
                                   )}
                                 </div>
                               </div>
-
-                              {/* Action Button */}
-                              {notif.tiene_accion && (
-                                <button
-                                  onClick={() => handleAction(notif)}
-                                  className="mt-3 w-full flex items-center justify-between px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg text-sm transition-colors group/btn"
-                                >
-                                  <span className="font-medium text-[#1e5da8]">
-                                    {notif.texto_boton_accion}
-                                  </span>
-                                  <ChevronRight className="w-4 h-4 text-[#1e5da8] group-hover/btn:translate-x-1 transition-transform" />
-                                </button>
-                              )}
                             </div>
                           </div>
                         </Card>
@@ -445,7 +454,7 @@ export function NotificationsPanelV2({
                     <p className="text-sm text-gray-600">
                       {filter === 'unread'
                         ? 'Has leído todas tus notificaciones'
-                        : 'No tienes notificaciones en esta categoría'
+                        : 'No tienes notificaciones marcadas como favoritas'
                       }
                     </p>
                   </div>
@@ -453,7 +462,6 @@ export function NotificationsPanelV2({
               </div>
             </div>
 
-            {/* Footer - Compacto */}
             <div className="px-4 py-3 border-t bg-gray-50/80 backdrop-blur-sm">
               <Button
                 variant="outline"

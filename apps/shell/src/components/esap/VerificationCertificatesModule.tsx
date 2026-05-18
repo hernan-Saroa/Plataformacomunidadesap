@@ -237,6 +237,19 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [templateSignatureForm, setTemplateSignatureForm] = useState(
     DEFAULT_TEMPLATE_SIGNATURE_FORM,
   );
+  const canEditCertificates = authService.hasPermission(
+    Permissions.GRADUATES_CERTIFICATES_EDIT,
+  );
+  const canExportCertificates = authService.hasPermission(
+    Permissions.GRADUATES_CERTIFICATES_EXPORT,
+  );
+  const canResendCertificates = authService.hasPermission(
+    Permissions.GRADUATES_CERTIFICATES_REENVIAR,
+  );
+  const canViewQrValidationHistory = authService.hasPermission(
+    Permissions.GRADUATES_VERIFY_CERTIFICATE,
+  );
+  const canShowCertificateRowActions = canEditCertificates || canResendCertificates;
   const [editCertificateForm, setEditCertificateForm] = useState({
     fullName: '',
     idNumber: '',
@@ -631,7 +644,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const qrCardMinHeight = qrDisplaySize + 60;
 
   useEffect(() => {
-    if (!isQrModalOpen || !qrPreviewCertificate?.id) {
+    if (!isQrModalOpen || !qrPreviewCertificate?.id || !canViewQrValidationHistory) {
       return;
     }
 
@@ -690,9 +703,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, [isQrModalOpen, qrPreviewCertificate?.id]);
+  }, [isQrModalOpen, qrPreviewCertificate?.id, canViewQrValidationHistory]);
 
   const handleOpenEditCertificate = async (cert: CertificateRecord) => {
+    if (!canEditCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Editar Certificados para consultar o editar este certificado.',
+      });
+      return;
+    }
+
     setSelectedCertificate(cert);
     setIsExistingGraduate(false);
     const initialProgram = (cert.graduate.program || '').trim();
@@ -761,6 +781,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
 
   const handleSaveCertificate = async () => {
     if (!selectedCertificate) return;
+    if (!canEditCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Editar Certificados para guardar cambios.',
+      });
+      return;
+    }
+
     const trimmedFullName = editCertificateForm.fullName.trim();
     const trimmedIdNumber = editCertificateForm.idNumber.trim();
     const trimmedEmail = editCertificateForm.email.trim();
@@ -1018,6 +1045,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   };
 
   const handleOpenTemplateEditor = async () => {
+    if (!canEditCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Editar Certificados para modificar la plantilla.',
+      });
+      return;
+    }
+
     setIsTemplateEditorOpen(true);
     setIsLoadingTemplateConfig(true);
 
@@ -1374,6 +1408,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   };
 
   const handleResendCertificate = async (cert: CertificateRecord) => {
+    if (!canResendCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Reenviar Certificados para ejecutar esta accion.',
+      });
+      return;
+    }
+
     if (resendingCertificateId === cert.id) {
       return;
     }
@@ -1481,8 +1522,26 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
   };
+
+  const handleOpenExportModal = () => {
+    if (!canExportCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Exportar Certificados para descargar esta informacion.',
+      });
+      return;
+    }
+
+    setIsExportModalOpen(true);
+  };
   
   const handleExportCertificates = () => {
+    if (!canExportCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Exportar Certificados para descargar esta informacion.',
+      });
+      return;
+    }
+
     if (!filteredCertificates.length) {
       toast.info('No hay registros para exportar');
       return;
@@ -1758,7 +1817,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
       </motion.div>
 
       <div className="flex justify-end gap-3 flex-wrap">
-        {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EDIT) && (
+        {canEditCertificates && (
           <button
             onClick={() => void handleOpenTemplateEditor()}
             className="inline-flex items-center justify-center gap-2 transition-all"
@@ -1786,9 +1845,9 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           </button>
         )}
 
-        {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EXPORT) && (
+        {canExportCertificates && (
           <button
-            onClick={() => setIsExportModalOpen(true)}
+            onClick={handleOpenExportModal}
             className="inline-flex items-center justify-center gap-2 transition-all"
             style={{
               background: '#FFFFFF',
@@ -2146,6 +2205,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         <Eye className="w-4 h-4" />
                       </button>
 
+                      {canShowCertificateRowActions && (
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <button
@@ -2165,13 +2225,13 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_EDIT) && (
+                          {canEditCertificates && (
                           <DropdownMenuItem onClick={() => handleOpenEditCertificate(cert)}>
                             <Eye className="w-4 h-4 mr-2" />
                             Ver certificado
                           </DropdownMenuItem>
                           )}
-                          {authService.hasPermission(Permissions.GRADUATES_CERTIFICATES_REENVIAR) && (
+                          {canResendCertificates && (
                           <DropdownMenuItem
                             onClick={() => handleResendCertificate(cert)}
                             disabled={resendingCertificateId === cert.id}
@@ -2186,6 +2246,7 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                           )}
                         </DropdownMenuContent>
                       </DropdownMenu>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2432,11 +2493,27 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                               Historial Completo de Escaneos
                             </h4>
                             <Badge className="bg-gray-100 text-gray-700 border-gray-200 border text-xs">
-                              {cert.scanHistory.length} registros
+                              {canViewQrValidationHistory
+                                ? `${cert.scanHistory.length} registros`
+                                : 'Permiso requerido'}
                             </Badge>
                           </div>
                           
-                          {cert.scanHistory.length === 0 ? (
+                          {!canViewQrValidationHistory ? (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                              <div className="flex items-start gap-2">
+                                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+                                <div>
+                                  <p className="text-sm font-semibold text-amber-900">
+                                    Necesitas permiso para ver este historial de verificaciones.
+                                  </p>
+                                  <p className="mt-1 text-xs text-amber-800">
+                                    Activa el permiso Verificar Certificado para consultar los escaneos QR registrados.
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ) : cert.scanHistory.length === 0 ? (
                             <div className="text-center py-6">
                               <Monitor className="w-10 h-10 mx-auto mb-2 text-gray-300" />
                               <p className="text-sm text-gray-500">No hay escaneos registrados</p>
@@ -3377,7 +3454,18 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
             </div>
 
             {/* Historial de Validaciones (Escaneos del QR) */}
-            {qrPreviewCertificate && qrPreviewCertificate.scanHistory.length > 0 && (
+            {qrPreviewCertificate && !canViewQrValidationHistory && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <h4 className="text-sm font-semibold text-amber-900 mb-2 flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  Historial de Validaciones
+                </h4>
+                <p className="text-xs text-amber-800">
+                  Necesitas permiso para ver este historial de verificaciones.
+                </p>
+              </div>
+            )}
+            {qrPreviewCertificate && canViewQrValidationHistory && qrPreviewCertificate.scanHistory.length > 0 && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
                   <History className="w-4 h-4 text-green-600" />

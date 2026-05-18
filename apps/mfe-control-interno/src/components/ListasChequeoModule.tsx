@@ -16,12 +16,13 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Upload, Download, Trash2, Edit2, Plus, CheckSquare,
   FolderOpen, File, CheckCircle2, Clock, AlertCircle, Search,
-  Filter, X, Save, Paperclip, List, Calendar, Users, Eye
+  Filter, X, Save, Paperclip, List, Calendar, Users, Eye, ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { HeaderModulOCIG } from './HeaderModuloCIG';
@@ -184,6 +185,59 @@ const ETAPAS_KANBAN_AUDITORIA_FALLBACK = [
   { value: 'Ejecución', label: 'Ejecución' },
   { value: 'Comunicación', label: 'Comunicación' }
 ] as const;
+
+/** Normaliza para comparar etiquetas de etapa Kanban / estado auditoría */
+function normalizarEtapaTexto(s: string): string {
+  return (s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+/** Solo Planeación, Ejecución, Comunicación (listas de chequeo no aplican a Plan Anual, Seguimiento ni Finalizada) */
+function esNombreEtapaListaChequeoCore(nombre: string): boolean {
+  const n = normalizarEtapaTexto(nombre);
+  return n.includes('planeac') || n.includes('ejecuc') || n.includes('comunicac');
+}
+
+function filtrarEtapasListaChequeo(
+  etapas: { value: string; label: string }[],
+): { value: string; label: string }[] {
+  return etapas.filter((e) => esNombreEtapaListaChequeoCore(e.label));
+}
+
+function buildEtapasListaChequeo(
+  etapasDisponibles?: { value: string; label: string }[],
+): { value: string; label: string }[] {
+  const base =
+    etapasDisponibles && etapasDisponibles.length > 0
+      ? etapasDisponibles
+      : ETAPAS_KANBAN_AUDITORIA_FALLBACK.map((e) => ({
+          value: String(e.value),
+          label: e.label,
+        }));
+  const filtradas = filtrarEtapasListaChequeo(base);
+  return filtradas.length > 0 ? filtradas : base;
+}
+
+function estadoAuditoriaOCIG(aud: any): string {
+  return String(aud?.estado ?? aud?.estadoKanban ?? '').trim();
+}
+
+function auditoriaPermiteListaChequeo(aud: any): boolean {
+  return esNombreEtapaListaChequeoCore(estadoAuditoriaOCIG(aud));
+}
+
+function resolverEtapaOpcionParaAuditoria(
+  etapasListaChequeo: { value: string; label: string }[],
+  estadoAuditoria: string,
+): { value: string; label: string } | undefined {
+  if (!estadoAuditoria) return undefined;
+  return etapasListaChequeo.find(
+    (e) => normalizarEtapaTexto(e.label) === normalizarEtapaTexto(estadoAuditoria),
+  );
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // MAPEADORES API -> UI
@@ -367,12 +421,14 @@ export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tab
   // ✅ CARGAR ETAPAS DINÁMICAS DESDE CONFIGURACIÓN
   const { etapas: etapasKanban, loading: loadingEtapas } = useConfiguracionKanban();
   
-  // ✅ Todas las etapas disponibles para listas de chequeo
-  // value = ID de la etapa (UUID, estable aunque cambie el nombre)
-  const etapasParaListas = etapasKanban.map(etapa => ({
-    value: etapa.id,       // ID estable
-    label: etapa.nombre,  // Nombre para mostrar
-  }));
+  // ✅ Etapas permitidas para listas de chequeo: solo Planeación, Ejecución, Comunicación
+  const etapasParaListas = useMemo(() => {
+    const mapped = etapasKanban.map((etapa) => ({
+      value: etapa.id,
+      label: etapa.nombre,
+    }));
+    return buildEtapasListaChequeo(mapped);
+  }, [etapasKanban]);
 
   useEffect(() => {
     let cancelled = false;
@@ -534,8 +590,10 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
   const etapasActivas: { value: string; label: string }[] = (etapasDisponibles && etapasDisponibles.length > 0) ? etapasDisponibles : [...ETAPAS_KANBAN_AUDITORIA_FALLBACK];
 
   const documentosFiltrados = documentos.filter(doc => {
-    const cumpleBusqueda = doc.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-                          doc.descripcion.toLowerCase().includes(busqueda.toLowerCase());
+    const q = busqueda.toLowerCase();
+    const nombreSafe = (doc.nombre ?? '').toLowerCase();
+    const descSafe = (doc.descripcion ?? '').toLowerCase();
+    const cumpleBusqueda = nombreSafe.includes(q) || descSafe.includes(q);
     const cumpleCategoria = filtroCategoria === 'TODOS' || doc.categoria === filtroCategoria;
     
     // ✅ FILTRAR POR UUID DE ETAPA O POR NOMBRE (para compatibilidad)
@@ -581,7 +639,8 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
   // ═══════════════════════════════════════════════════════════════════
   const handleDescargar = async (documento: DocumentoBiblioteca) => {
     try {
-      const url = documento.urlDownload.startsWith('http') ? documento.urlDownload : `${window.location.origin}${documento.urlDownload}`;
+      const dl = documento.urlDownload ?? '';
+      const url = dl.startsWith('http') ? dl : `${window.location.origin}${dl}`;
       const res = await fetch(url, { headers: getDefaultHeaders() });
       if (!res.ok) {
         throw new Error(res.status === 401 ? 'No autorizado. Inicia sesión nuevamente.' : `Error ${res.status}`);
@@ -590,7 +649,7 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
       const blobUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = blobUrl;
-      link.download = documento.nombreArchivo || `${documento.nombre}.${documento.extension.toLowerCase()}`;
+      link.download = documento.nombreArchivo || `${documento.nombre ?? 'documento'}.${(documento.extension ?? 'bin').toLowerCase()}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -1890,6 +1949,189 @@ function TabButton({ active, onClick, icon, label, badge }: TabButtonProps) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// SELECTOR: AUDITORÍA CON BUSQUEDA (lista cargada desde el backend)
+// ════════════════════════════════════════════════════════════════════════════
+
+function SelectorAuditoriaListaChequeo({
+  auditorias,
+  value,
+  onChange,
+  disabled,
+  placeholder = 'Buscar por código, nombre o fase…',
+}: {
+  auditorias: any[];
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busqueda, setBusqueda] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+
+  const seleccionada = auditorias.find((a) => (a?.id ?? '') === value);
+
+  const updatePosition = useCallback(() => {
+    if (open && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setCoords({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: Math.max(rect.width, 320),
+      });
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      updatePosition();
+      const handleScroll = () => setOpen(false);
+      document.addEventListener('scroll', handleScroll, true);
+      window.addEventListener('resize', updatePosition);
+      return () => {
+        document.removeEventListener('scroll', handleScroll, true);
+        window.removeEventListener('resize', updatePosition);
+      };
+    }
+  }, [open, updatePosition]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const popup = document.getElementById('selector-auditoria-lista-chequeo-popup');
+      if (popup?.contains(e.target as Node)) return;
+      if (containerRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    if (open) {
+      setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
+
+  const filtradas = useMemo(() => {
+    const q = busqueda.trim().toLowerCase();
+    if (!q) return auditorias;
+    return auditorias.filter((a) => {
+      const cod = String(a.codigo ?? '').toLowerCase();
+      const tit = String(a.titulo ?? a.nombre ?? '').toLowerCase();
+      const est = estadoAuditoriaOCIG(a).toLowerCase();
+      const id = String(a.id ?? '').toLowerCase();
+      return (
+        cod.includes(q) ||
+        tit.includes(q) ||
+        est.includes(q) ||
+        id.includes(q)
+      );
+    });
+  }, [auditorias, busqueda]);
+
+  const textoSeleccion = seleccionada
+    ? `${seleccionada.codigo} · ${seleccionada.titulo || seleccionada.nombre || 'Sin título'} · ${estadoAuditoriaOCIG(seleccionada)}`
+    : placeholder;
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <div className="flex gap-2 items-stretch">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => !disabled && setOpen(!open)}
+          className="flex-1 min-w-0 px-3 py-2.5 text-sm border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none font-semibold bg-white text-left flex items-center justify-between gap-2 min-h-[44px] hover:border-purple-400 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
+        >
+          <span className={`truncate ${seleccionada ? 'text-gray-900' : 'text-gray-500'}`}>
+            {textoSeleccion}
+          </span>
+          <ChevronDown
+            className={`w-4 h-4 shrink-0 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
+          />
+        </button>
+        {seleccionada && !disabled && (
+          <button
+            type="button"
+            title="Quitar auditoría"
+            onClick={() => {
+              onChange('');
+              setBusqueda('');
+            }}
+            className="px-3 py-2 border-2 border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 text-sm font-semibold shrink-0"
+          >
+            Quitar
+          </button>
+        )}
+      </div>
+
+      {open &&
+        createPortal(
+          <div
+            id="selector-auditoria-lista-chequeo-popup"
+            style={{
+              position: 'fixed',
+              top: coords.top,
+              left: coords.left,
+              width: coords.width,
+              zIndex: 100000,
+            }}
+            className="bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[min(360px,70vh)]"
+          >
+            <div className="p-2 border-b border-gray-100 bg-gray-50 sticky top-0 z-10">
+              <div className="relative">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="search"
+                  autoFocus
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Filtrar por código, título o fase Kanban…"
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/30"
+                />
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1 px-1">
+                Solo auditorías registradas en el sistema ({auditorias.length} disponibles
+                {filtradas.length !== auditorias.length ? ` · ${filtradas.length} coinciden` : ''})
+              </p>
+            </div>
+            <ul className="overflow-y-auto overscroll-contain p-1">
+              {filtradas.length === 0 ? (
+                <li className="px-3 py-6 text-center text-sm text-gray-500">
+                  No hay coincidencias. Pruebe otro término.
+                </li>
+              ) : (
+                filtradas.map((a) => (
+                  <li key={a.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onChange(a.id);
+                        setOpen(false);
+                        setBusqueda('');
+                      }}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                        value === a.id
+                          ? 'bg-purple-100 text-purple-900 font-semibold'
+                          : 'hover:bg-gray-50 text-gray-800'
+                      }`}
+                    >
+                      <span className="font-mono text-xs text-purple-700">{a.codigo}</span>
+                      <span className="block font-medium truncate">
+                        {a.titulo || a.nombre || 'Sin título'}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        Fase Kanban: {estadoAuditoriaOCIG(a)}
+                      </span>
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // MODAL: CREAR NUEVA LISTA DE CHEQUEO
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -1908,34 +2150,27 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
   const [nombre, setNombre] = useState(listaEditar?.nombre || '');
   const [descripcion, setDescripcion] = useState(listaEditar?.descripcion || '');
   
-  // ✅ ETAPA KANBAN: Usar ID (UUID) en lugar de enum hardcoded
-  // Si no hay etapas disponibles, usar la primera del fallback
-  const etapasPorDefecto = etapasDisponibles && etapasDisponibles.length > 0 
-    ? etapasDisponibles 
-    : ETAPAS_KANBAN_AUDITORIA_FALLBACK;
+  // ✅ Solo Planeación / Ejecución / Comunicación (no Seguimiento, Cierre, Plan Anual, etc.)
+  const etapasListaChequeo = buildEtapasListaChequeo(etapasDisponibles);
   
   const [etapaKanbanId, setEtapaKanbanId] = useState<string>(() => {
     if (listaEditar) {
-      // ✅ PRIORIDAD 1: Usar el ID guardado en el backend (más confiable)
       if (listaEditar.etapaKanbanId) {
         return listaEditar.etapaKanbanId;
       }
-      // ✅ PRIORIDAD 2: Buscar por nombre de la etapa
       if (listaEditar.etapaNombreKanban) {
-        const etapaEncontrada = etapasPorDefecto.find(e => e.label === listaEditar.etapaNombreKanban);
+        const etapaEncontrada = etapasListaChequeo.find(e => e.label === listaEditar.etapaNombreKanban);
         if (etapaEncontrada) return etapaEncontrada.value;
       }
-      // ✅ PRIORIDAD 3: Buscar por el enum etapaKanban
       if (listaEditar.etapaKanban) {
-        const etapaEncontrada = etapasPorDefecto.find(e => 
+        const etapaEncontrada = etapasListaChequeo.find(e => 
           e.label === listaEditar.etapaKanban || 
           e.value === listaEditar.etapaKanban
         );
         if (etapaEncontrada) return etapaEncontrada.value;
       }
     }
-    // Por defecto, la primera etapa disponible
-    return etapasPorDefecto[0]?.value || '';
+    return '';
   });
   
   const [items, setItems] = useState<ItemChequeo[]>(listaEditar?.items || []);
@@ -1949,6 +2184,83 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
   // ✅ LEGACY: Configuración de auditoría (mantener compatibilidad)
   const [etapaProceso, setEtapaProceso] = useState(listaEditar?.etapaProceso || '');
   const [auditoriaAsignada, setAuditoriaAsignada] = useState(listaEditar?.auditoriaAsignada || '');
+
+  const auditoriasElegibles = useMemo(
+    () => (auditorias || []).filter((a) => auditoriaPermiteListaChequeo(a)),
+    [auditorias],
+  );
+
+  /** En edición, incluir la auditoría ya vinculada aunque su fase ya no sea elegible para nuevas listas */
+  const auditoriasParaSelector = useMemo(() => {
+    const ids = new Set(auditoriasElegibles.map((a) => a.id));
+    const extraId = listaEditar?.auditoriaId;
+    if (extraId && !ids.has(extraId)) {
+      const extra = (auditorias || []).find((a) => a.id === extraId);
+      if (extra) return [...auditoriasElegibles, extra];
+    }
+    return auditoriasElegibles;
+  }, [auditoriasElegibles, auditorias, listaEditar?.auditoriaId]);
+
+  const auditoriaActual = auditorias.find((a) => a.id === auditoriaSeleccionada);
+  const etapaAcordeAuditoria = auditoriaSeleccionada
+    ? resolverEtapaOpcionParaAuditoria(
+        etapasListaChequeo,
+        estadoAuditoriaOCIG(auditoriaActual),
+      )
+    : undefined;
+
+  const opcionesEtapaKanban = useMemo(() => {
+    if (!auditoriaSeleccionada) {
+      return [{ value: '', label: '— Seleccione primero una auditoría —' }];
+    }
+    if (modoEdicion && listaEditar?.etapaKanbanId) {
+      const found = etapasListaChequeo.find((e) => e.value === listaEditar.etapaKanbanId);
+      if (found) return etapasListaChequeo;
+      return [
+        ...etapasListaChequeo,
+        {
+          value: listaEditar.etapaKanbanId,
+          label:
+            listaEditar.etapaNombreKanban ||
+            String(listaEditar.etapaKanban || 'Etapa registrada'),
+        },
+      ];
+    }
+    return etapasListaChequeo;
+  }, [
+    auditoriaSeleccionada,
+    etapasListaChequeo,
+    modoEdicion,
+    listaEditar?.etapaKanbanId,
+    listaEditar?.etapaNombreKanban,
+    listaEditar?.etapaKanban,
+  ]);
+
+  const etapaKanbanBloqueada = false;
+
+  // Al elegir auditoría: mantener las 3 etapas permitidas y preseleccionar una etapa válida.
+  useEffect(() => {
+    if (!auditoriaSeleccionada) {
+      setEtapaKanbanId('');
+      setFiltroEtapaModal('');
+      return;
+    }
+    const aud = auditorias.find((a) => a.id === auditoriaSeleccionada);
+    if (!aud || !auditoriaPermiteListaChequeo(aud)) return;
+    const match = resolverEtapaOpcionParaAuditoria(
+      etapasListaChequeo,
+      estadoAuditoriaOCIG(aud),
+    );
+    const etapaInicial =
+      etapasListaChequeo.find((e) => e.value === etapaKanbanId)?.value ||
+      match?.value ||
+      etapasListaChequeo[0]?.value ||
+      '';
+    if (etapaInicial) {
+      setEtapaKanbanId(etapaInicial);
+      setFiltroEtapaModal(etapaInicial);
+    }
+  }, [auditoriaSeleccionada, auditorias, etapasListaChequeo]);
 
   const handleAgregarItem = () => {
     if (!nuevoItemTexto.trim()) return;
@@ -2021,17 +2333,35 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
       return;
     }
 
-    // ✅ OBTENER INFO DE LA ETAPA SELECCIONADA
-    const etapaSeleccionada = etapasPorDefecto.find(e => e.value === etapaKanbanId);
+    const audValidar = auditorias.find((a) => a.id === auditoriaSeleccionada);
+    if (!audValidar) {
+      toast.error('❌ Auditoría no encontrada');
+      return;
+    }
+    if (!modoEdicion && !auditoriaPermiteListaChequeo(audValidar)) {
+      toast.error('❌ Auditoría no elegible', {
+        description:
+          'Solo puedes crear listas cuando la auditoría está en etapa Planeación, Ejecución o Comunicación (Kanban OCI).',
+        duration: 6000,
+      });
+      return;
+    }
+    if (!etapaKanbanId.trim()) {
+      toast.error('❌ Etapa requerida', {
+        description: 'Selecciona una etapa del Kanban (Planeación, Ejecución o Comunicación).',
+        duration: 5000,
+      });
+      return;
+    }
+
+    const etapaSeleccionada = etapasListaChequeo.find(e => e.value === etapaKanbanId);
     const nombreEtapa = etapaSeleccionada?.label || 'Sin etapa';
-    
-    // ✅ CAMPOS BOOLEANOS LEGACY: El backend moderno debería usar etapaKanbanId
-    // Por compatibilidad, enviamos estos campos pero todos en false
-    // (el backend ya no debería depender de ellos si tiene etapaKanbanId)
+    const ne = normalizarEtapaTexto(nombreEtapa);
+
     const fases = {
-      fasePlaneacion: false,
-      faseEjecucion: false,
-      faseComunicacion: false,
+      fasePlaneacion: ne.includes('planeac'),
+      faseEjecucion: ne.includes('ejecuc'),
+      faseComunicacion: ne.includes('comunicac'),
       faseSeguimiento: false,
     };
 
@@ -2151,27 +2481,6 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
             />
           </div>
 
-          {/* ✅ SELECTOR DE ETAPA KANBAN - TODAS LAS ETAPAS DINÁMICAS */}
-          <div>
-            <label className="block text-xs sm:text-sm font-bold text-gray-900 mb-2">
-              Etapa del Kanban <span className="text-red-600">*</span>
-            </label>
-            <select
-              value={etapaKanbanId}
-              onChange={(e) => setEtapaKanbanId(e.target.value)}
-              className="w-full px-4 py-3 text-sm border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none bg-white font-semibold text-gray-800"
-            >
-              {etapasPorDefecto.map((etapa) => (
-                <option key={etapa.value} value={etapa.value}>
-                  {etapa.label}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              💡 Selecciona la etapa del ciclo de auditoría para esta lista de chequeo
-            </p>
-          </div>
-
           {/* ═══════════════════════════════════════════════════════════════ */}
           {/* SECCIÓN: VINCULACIÓN CON AUDITORÍAS OCI */}
           {/* ═══════════════════════════════════════════════════════════════ */}
@@ -2191,23 +2500,24 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
                 <label className="block text-xs font-bold text-gray-900 mb-2">
                   🎯 Auditoría OCI <span className="text-red-600">*OBLIGATORIO*</span>
                 </label>
-                <select
+                <p className="text-[11px] text-gray-600 mb-2">
+                  Busque entre las auditorías ya cargadas del backend (misma lista que en Auditorías OCI).
+                </p>
+                <SelectorAuditoriaListaChequeo
+                  auditorias={auditoriasParaSelector}
                   value={auditoriaSeleccionada}
-                  onChange={(e) => {
-                    setAuditoriaSeleccionada(e.target.value);
-                  }}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-purple-500 focus:outline-none font-semibold bg-white"
-                >
-                  <option value="">🔍 Selecciona una auditoría del Plan Anual (OBLIGATORIO)...</option>
-                  {auditorias.map((auditoria) => (
-                    <option key={auditoria.id} value={auditoria.id}>
-                      {auditoria.codigo} - {auditoria.titulo} ({auditoria.estado})
-                    </option>
-                  ))}
-                </select>
+                  onChange={setAuditoriaSeleccionada}
+                  disabled={auditoriasParaSelector.length === 0}
+                  placeholder="Elegir auditoría en Planeación, Ejecución o Comunicación…"
+                />
                 {auditorias.length === 0 && (
                   <p className="text-xs text-orange-600 mt-2 bg-orange-50 p-2 rounded border border-orange-200">
                     ⚠️ No hay auditorías creadas en el Plan Anual. Crea primero una auditoría para vincularla.
+                  </p>
+                )}
+                {!modoEdicion && auditorias.length > 0 && auditoriasElegibles.length === 0 && (
+                  <p className="text-xs text-amber-800 mt-2 bg-amber-50 p-2 rounded border border-amber-200">
+                    No hay auditorías en etapa Planeación, Ejecución o Comunicación. Avanza la auditoría en el Kanban de Auditorías OCI para poder crear una lista de chequeo.
                   </p>
                 )}
               </div>
@@ -2226,6 +2536,34 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Etapa Kanban: 3 opciones permitidas (Planeación, Ejecución, Comunicación) */}
+          <div>
+            <label className="block text-xs sm:text-sm font-bold text-gray-900 mb-2">
+              Etapa del Kanban <span className="text-red-600">*</span>
+            </label>
+            <select
+              value={etapaKanbanId}
+              onChange={(e) => setEtapaKanbanId(e.target.value)}
+              disabled={!auditoriaSeleccionada || etapaKanbanBloqueada}
+              className="w-full px-4 py-3 text-sm border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none bg-white font-semibold text-gray-800 disabled:bg-slate-100 disabled:text-slate-700"
+            >
+              {opcionesEtapaKanban.map((etapa) => (
+                <option key={etapa.value || 'placeholder'} value={etapa.value}>
+                  {etapa.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              {!auditoriaSeleccionada
+                ? 'Seleccione primero la auditoría para habilitar las etapas permitidas (Planeación, Ejecución o Comunicación).'
+                : etapaAcordeAuditoria
+                  ? '✅ Puede elegir libremente entre Planeación, Ejecución y Comunicación.'
+                  : modoEdicion
+                    ? 'Etapa registrada para esta lista (auditoría en una fase distinta a las permitidas para nuevas listas).'
+                    : 'Seleccione una de las 3 etapas permitidas para la lista de chequeo.'}
+            </p>
           </div>
 
           {/* Items de Verificación con Plantillas Asociadas */}
@@ -2251,7 +2589,7 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
               {/* Selector de plantilla para el ítem */}
               <div className="space-y-2">
                 {/* Filtro por etapa */}
-                {etapasDisponibles && etapasDisponibles.length > 0 && (
+                {etapasListaChequeo.length > 0 && (
                   <div className="flex items-center gap-2">
                     <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
                     <select
@@ -2259,8 +2597,8 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
                       onChange={(e) => { setFiltroEtapaModal(e.target.value); setPlantillaItemActual(''); }}
                       className="flex-1 px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none bg-white text-gray-600"
                     >
-                      <option value="">Todas las etapas</option>
-                      {etapasDisponibles.map((etapa) => (
+                      <option value="">Todas las etapas (lista chequeo)</option>
+                      {etapasListaChequeo.map((etapa) => (
                         <option key={etapa.value} value={etapa.value}>{etapa.label}</option>
                       ))}
                     </select>
@@ -2279,7 +2617,7 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
                       .filter((doc) => {
                         if (!filtroEtapaModal) return true;
                         // Buscar nombre de la etapa seleccionada
-                        const etapaSelec = etapasPorDefecto.find(e => e.value === filtroEtapaModal);
+                        const etapaSelec = etapasListaChequeo.find(e => e.value === filtroEtapaModal);
                         const nombreEtapaFiltro = etapaSelec?.label;
                         
                         // ✅ COMPARAR POR MÚLTIPLES CRITERIOS

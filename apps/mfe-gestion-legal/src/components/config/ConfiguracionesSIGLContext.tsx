@@ -6,7 +6,7 @@
 
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { toast } from 'sonner';
-import { legalService } from '../../../../services/api/legal.service';
+import { legalService, ocService } from '../../../../services/api/legal.service';
 import { getServiceUrl, API_MODE } from '../../../../config/environment';
 
 // ============ TIPOS ============
@@ -109,6 +109,7 @@ export interface OrganismoControl {
   id: string;
   nombre: string;
   descripcion: string;
+  correos: string[];
   activo: boolean;
 }
 
@@ -163,6 +164,8 @@ export const casosPorEstado: Record<string, Record<string, number>> = {
     'asignado': 0,
     'en_analisis': 0,
     'en_revision': 0,
+    'pendiente_revision_jefe': 0,
+    'devuelta_por_jefe': 0,
     'respondido': 0,
   },
 };
@@ -197,6 +200,7 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'controversias-contractuales', nombre: 'Controversias Contractuales', descripcion: 'Acción para resolver controversias surgidas de contratos estatales.', plazo: 35, alertaDias: 7, activo: true },
       { id: 'tutela', nombre: 'Tutela', descripcion: 'Acción para la protección inmediata de derechos fundamentales.', plazo: 10, alertaDias: 2, activo: true },
       { id: 'proceso-ejecutivo', nombre: 'Proceso Ejecutivo', descripcion: 'Proceso para el cobro de obligaciones claras, expresas y exigibles.', plazo: 20, alertaDias: 5, activo: true },
+      { id: 'proceso-penal', nombre: 'Proceso Penal', descripcion: 'Proceso de naturaleza penal relacionado con la entidad, incluyendo delitos contra la administración pública y/o conductas que afecten el patrimonio público.', plazo: 30, alertaDias: 7, activo: true },
       { id: 'otro', nombre: 'Otro', descripcion: 'Otros tipos de procesos judiciales no categorizados.', plazo: 15, alertaDias: 3, activo: true },
     ],
     tiposAutos: [
@@ -274,7 +278,9 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'asignado', nombre: 'Asignado', color: '#8B5CF6', orden: 2, activo: true },
       { id: 'en_analisis', nombre: 'En Análisis', color: '#06B6D4', orden: 3, activo: true },
       { id: 'en_revision', nombre: 'En Revisión', color: '#F59E0B', orden: 4, activo: true },
-      { id: 'respondido', nombre: 'Respondido', color: '#10B981', orden: 5, activo: true },
+      { id: 'pendiente_revision_jefe', nombre: 'Pendiente Revisión Jefe', color: '#8B5CF6', orden: 5, activo: true },
+      { id: 'devuelta_por_jefe', nombre: 'Devuelta por Jefe', color: '#EF4444', orden: 6, activo: true },
+      { id: 'respondido', nombre: 'Respondido', color: '#10B981', orden: 7, activo: true },
     ],
     tiempos: [
       { id: 'analisis-inicial', tipo: 'Análisis Inicial', dias: 3, alertaDias: 1, activo: true },
@@ -406,30 +412,35 @@ const organismosControlIniciales: OrganismoControl[] = [
     id: 'CONTRALORIA',
     nombre: 'Contraloría General de la República',
     descripcion: 'Máximo órgano de control fiscal del Estado',
+    correos: [],
     activo: true
   },
   {
     id: 'PROCURADURIA',
     nombre: 'Procuraduría General de la Nación',
     descripcion: 'Entidad encargada de investigar, sancionar, intervenir y prevenir las irregularidades cometidas por los gobernantes, los funcionarios públicos, los particulares que ejercen funciones públicas y las agencias del Estado',
+    correos: [],
     activo: true
   },
   {
     id: 'FISCALIA',
     nombre: 'Fiscalía General de la Nación',
     descripcion: 'Entidad de la rama judicial del poder público con plena autonomía administrativa y presupuestal',
+    correos: [],
     activo: true
   },
   {
     id: 'PERSONERIA',
     nombre: 'Personería Distrital',
     descripcion: 'Órgano de control del Distrito Capital',
+    correos: [],
     activo: true
   },
   {
     id: 'DEFENSORIA',
     nombre: 'Defensoría del Pueblo',
     descripcion: 'Institución del Estado encargada de velar por la promoción, el ejercicio y la divulgación de los derechos humanos',
+    correos: [],
     activo: true
   }
 ];
@@ -520,7 +531,18 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
             // Buscar si existe configuración cargada para este módulo
             const cargada = configsCargadas.find(c => c && c.id === inicial.id);
             if (cargada) {
-              return { ...inicial, ...cargada };
+              // Para tiposProcesos: merge por id para no perder tipos del default que el backend no tenga (ej: Proceso Penal)
+              // Para todo lo demás (estados, mediosControl, etc.): el backend manda, comportamiento original
+              const mergeTiposProcesos = (base: TipoProcesoJudicial[] = [], override: TipoProcesoJudicial[] = []): TipoProcesoJudicial[] => {
+                const map = new Map(base.map(item => [item.id, item]));
+                override.forEach(item => map.set(item.id, item));
+                return Array.from(map.values());
+              };
+              return {
+                ...inicial,
+                ...cargada,
+                tiposProcesos: mergeTiposProcesos(inicial.tiposProcesos, cargada.tiposProcesos),
+              };
             }
             return inicial;
           });
@@ -714,6 +736,18 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
           legalService.saveConfiguration(config.id, config)
         )
       );
+
+      // Sincronizar organismos de control al backend
+      try {
+        await ocService.syncOrganismosControl(
+          organismosControl.map(o => ({
+            ...o,
+            correos: o.correos ?? [],
+          }))
+        );
+      } catch (err) {
+        console.warn('⚠️ No se pudo sincronizar organismos al backend:', err);
+      }
 
       // Guardar en localStorage como backup
       localStorage.setItem('sigl-configuraciones', JSON.stringify(configuraciones));

@@ -857,6 +857,8 @@ export function GestionNoticias() {
   const [filterEstado, setFilterEstado] = useState('all');
   const [filterOrigen, setFilterOrigen] = useState('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [noticiaParaEditar, setNoticiaParaEditar] = useState<NoticiaDisciplinaria | null>(null);
   const [showDevolucionModal, setShowDevolucionModal] = useState(false);
   const [showAsignacionModal, setShowAsignacionModal] = useState(false);
   const [showHistorialModal, setShowHistorialModal] = useState(false);
@@ -1265,6 +1267,52 @@ export function GestionNoticias() {
     }
   };
 
+  const handleEditNoticia = async (data: any) => {
+    if (!noticiaParaEditar) return;
+    try {
+      setLoading(true);
+      const denunciantesArray = (data.denunciantes || []).map((d: any) => ({
+        nombre: d.nombre || '',
+        cedula: d.identificacion || '',
+        direccion: d.direccion || '',
+        telefono: d.telefono || '',
+        correo: d.correo || '',
+        cargo: d.cargo || '',
+        entidad: d.entidad || '',
+        tipo: d.tipo || 'Denunciante',
+        apoderado: d.apoderado,
+      }));
+      const disciplinablesArray = (data.denunciados || []).map((d: any) => ({
+        nombre: d.nombre || '',
+        cedula: d.identificacion || '',
+        cargo: d.cargo || '',
+        dependencia: d.lugarHechos || '',
+        apoderado: d.apoderado,
+      }));
+      await disciplinaryService.updateNoticia(noticiaParaEditar.id, {
+        origen: data.origen,
+        territorial: data.territorial,
+        hechos: data.descripcionHechos,
+        denunciante: denunciantesArray,
+        denunciantes: denunciantesArray,
+        disciplinable: disciplinablesArray,
+        disciplinables: disciplinablesArray,
+        conductas: data.conductasSeleccionadas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : []),
+        fechaHechos: data.fechaHechos || null,
+        fechaQueja: data.fechaQueja,
+      });
+      toast.success('Noticia actualizada', { description: 'Los cambios han sido guardados.' });
+      setShowEditModal(false);
+      setNoticiaParaEditar(null);
+      loadNoticias();
+    } catch (error) {
+      console.error('Error actualizando noticia:', error);
+      toast.error('Error al actualizar la noticia');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAsignar = async (profesionalId: string, observaciones: string, convertirAProceso: boolean) => {
     if (!noticiaSeleccionada) return;
 
@@ -1451,7 +1499,7 @@ export function GestionNoticias() {
             RF001 - Sistema de Radicación | RF002 - Revisión y Asignación
           </p>
         </div>
-        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE || Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_CREATE) && (
+        {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE || Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) && (
         <Button
           onClick={() => setShowCreateModal(true)}
           className="flex items-center gap-2 w-full sm:w-auto"
@@ -1739,6 +1787,20 @@ export function GestionNoticias() {
                   </button>
                   )}
 
+                  {/* Botón Editar */}
+                  {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) && (
+                  <button
+                    onClick={() => {
+                      setNoticiaParaEditar(noticia);
+                      setShowEditModal(true);
+                    }}
+                    className="w-9 h-9 flex items-center justify-center rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 transition-colors flex-shrink-0"
+                    title="Editar noticia"
+                  >
+                    <Edit className="w-4 h-4 text-blue-600" />
+                  </button>
+                  )}
+
                   {/* Botón Archivar */}
                   {(noticia.estado !== 'ARCHIVADA' && noticia.estado !== 'archivado') && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ARCHIVAR) && (
                     <button
@@ -1855,6 +1917,15 @@ export function GestionNoticias() {
           <CreateNoticiaModal
             onClose={() => setShowCreateModal(false)}
             onSave={handleCreateNoticia}
+          />
+        )}
+
+        {showEditModal && noticiaParaEditar && (
+          <CreateNoticiaModal
+            onClose={() => { setShowEditModal(false); setNoticiaParaEditar(null); }}
+            onSave={handleEditNoticia}
+            noticiaToEdit={noticiaParaEditar}
+            isEditMode={true}
           />
         )}
 

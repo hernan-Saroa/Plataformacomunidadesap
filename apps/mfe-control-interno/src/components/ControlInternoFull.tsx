@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { Toaster } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import {
   Shield,
   LayoutDashboard,
@@ -8,7 +8,8 @@ import {
   FolderOpen,
   Settings,
   FileText,
-  Layers
+  Layers,
+  Bell
 } from "lucide-react";
 import { ModuleLayout, MenuItem } from "../shared/ModuleLayout";
 import { ControlInternoProvider } from "./ControlInternoContext";
@@ -18,6 +19,8 @@ import { HallazgosProvider } from "./HallazgosContext";
 import { TareasProvider } from "./TareasContext";
 import { toast } from "sonner";
 import { KanbanConfigProvider } from "./context/KanbanConfigContext";
+import { NotificacionesControlInternoDropdown } from "./NotificacionesControlInternoDropdown";
+import { useNotificacionesControlInterno } from "./hooks/useNotificacionesControlInterno";
 
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 
@@ -109,6 +112,22 @@ function ControlInternoContent({
   
   // ✅ HOOK DE BACKEND - Total de planes para badge
   const { planes: planesBackend, loading: loadingPlanes } = usePlanesMejoramiento();
+
+  // ✅ HOOK DE NOTIFICACIONES - Bell icon con conteo
+  const {
+    conteoNoLeidas,
+    cargarNotificaciones,
+  } = useNotificacionesControlInterno();
+  const [notifDropdownOpen, setNotifDropdownOpen] = useState(false);
+
+  // Polling: recargar conteo cada 60 segundos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      cargarNotificaciones();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [cargarNotificaciones]);
+
 
   // Mapeo de IDs de sección a módulos de permisos
   const MAPEO_SECCION_MODULO: Record<string, string> = {
@@ -270,6 +289,7 @@ function ControlInternoContent({
         setNavegacionManual(Date.now());
         if (section !== 'listas-chequeo') setListasChequeoTabActiva('BIBLIOTECA');
       }}
+
     >
       {/* Navegación automática */}
       <MenuDinamicoWrapper
@@ -370,6 +390,41 @@ function MenuDinamicoWrapper({
     window.addEventListener('navegarModuloControlInterno', handler as EventListener);
     return () => window.removeEventListener('navegarModuloControlInterno', handler as EventListener);
   }, [onCambiarSeccion, onNavegarAListasChequeo]);
+
+  const { setAuditoriaIdFoco, setFaseFoco } = useIntegracionAuditoriaPlanes();
+
+  // ✅ Navegación: Escuchar eventos de Notificaciones (Control Interno)
+  useEffect(() => {
+    const handleOpenExpediente = (e: any) => {
+      const { seccion, auditoriaId, planId, fase } = e.detail || {};
+      if (seccion) {
+        onCambiarSeccion(seccion as SeccionActiva);
+        const focalId = auditoriaId || planId;
+        if (focalId) {
+          console.log('[ControlInterno] Estableciendo foco en:', focalId, 'Fase:', fase);
+          setAuditoriaIdFoco(focalId);
+          if (fase) setFaseFoco(fase);
+        }
+      }
+    };
+
+    // 1. Escuchar el evento en tiempo real
+    window.addEventListener('control-interno:open-expediente', handleOpenExpediente);
+
+    // 2. Verificar si hay una navegación pendiente al montar el componente
+    const pending = sessionStorage.getItem('control-interno:pendingOpenExpediente');
+    if (pending) {
+      try {
+        const detail = JSON.parse(pending);
+        handleOpenExpediente({ detail });
+        sessionStorage.removeItem('control-interno:pendingOpenExpediente');
+      } catch (err) {
+        console.error('Error al procesar navegación pendiente:', err);
+      }
+    }
+
+    return () => window.removeEventListener('control-interno:open-expediente', handleOpenExpediente);
+  }, [onCambiarSeccion]);
 
   return null;
 }

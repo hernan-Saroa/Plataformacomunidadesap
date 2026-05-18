@@ -343,7 +343,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'cl.certificate.generate', name: 'Generar Certificado', description: 'Emitir certificado laboral', module: 'certificados_laborales', criticidad: 'alta' },
       { id: 'cl.certificate.approve', name: 'Aprobar Certificado', description: 'Aprobar certificado para entrega', module: 'certificados_laborales', criticidad: 'alta' },
       { id: 'cl.certificate.sign', name: 'Firmar Certificado', description: 'Firmar digitalmente certificado', module: 'certificados_laborales', criticidad: 'critica' },
-      { id: 'cl.certificate.deliver', name: 'Entregar Certificado', description: 'Marcar como entregado', module: 'certificados_laborales', criticidad: 'media' },
+      { id: 'cl.certificate.deliver', name: 'Reenviar Certificado', description: 'Reenviar certificado al correo del solicitante', module: 'certificados_laborales', criticidad: 'media' },
       { id: 'cl.certificate.verify', name: 'Verificar Certificado', description: 'Validar autenticidad mediante QR', module: 'certificados_laborales', criticidad: 'media' },
       { id: 'cl.certificate.revoke', name: 'Revocar Certificado', description: 'Anular certificado emitido', module: 'certificados_laborales', criticidad: 'critica' },
       { id: 'cl.template.manage', name: 'Gestionar Plantillas', description: 'Administrar plantillas de certificados', module: 'certificados_laborales', criticidad: 'alta' },
@@ -351,7 +351,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'cl.stats.view', name: 'Ver Estadísticas', description: 'Consultar métricas', module: 'certificados_laborales', criticidad: 'baja' },
       { id: 'cl.notification.send', name: 'Enviar Notificaciones', description: 'Notificar al solicitante', module: 'certificados_laborales', criticidad: 'media' },
       { id: 'cl.history.view', name: 'Ver Histórico', description: 'Consultar histórico de validaciones', module: 'certificados_laborales', criticidad: 'baja' },
-      { id: 'cl.config.edit', name: 'Editar Configuraciones', description: 'Modificar parámetros', module: 'certificados_laborales', criticidad: 'alta' },
+      { id: 'cl.config.edit', name: 'Editar Prima', description: 'Modificar primas', module: 'certificados_laborales', criticidad: 'alta' },
     ]
   },
 

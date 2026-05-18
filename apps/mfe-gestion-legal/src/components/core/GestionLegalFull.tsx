@@ -44,7 +44,6 @@ import { Riesgos } from '../modulos/Riesgos';
 import { ModuloPlanesMejoramientoV4 } from '../modulos/PlanesMejoramientoV4';
 import { ConfiguracionesSIGL } from '../modulos/ConfiguracionesSIGL';
 import { ExpedientesModuloSIGL } from '../modulos/ExpedientesModuloSIGL';
-import { ReportesGestionLegal } from '../modulos/ReportesGestionLegal';
 
 // ✅ Tour Guiado Multi-Módulo
 import { GuidedTour, TourButton, useTourCompleted } from '../design-system/GuidedTour';
@@ -55,6 +54,7 @@ import { useNotifications } from '../../../esap/NotificationsContext';
 import { legalService } from '../../services/api/legal.service';
 import { authService } from '../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 
 type VistaDisponible =
   | 'defensa-judicial'
@@ -68,7 +68,6 @@ type VistaDisponible =
   | 'plan-accion'
   | 'riesgos'
   | 'planes-mejoramiento'
-  | 'reportes'
   | 'configuraciones';
 
 /**
@@ -89,7 +88,6 @@ const VISTAS_VALIDAS: VistaDisponible[] = [
   'plan-accion',
   'riesgos',
   'planes-mejoramiento',
-  'reportes',
   'configuraciones',
 ];
 
@@ -102,8 +100,22 @@ function getVistaInicialDesdeQuery(): VistaDisponible {
   return 'defensa-judicial';
 }
 
+function getAuthContextKey(): string {
+  const user = authService.getCurrentUser() as any;
+  const userId = user?.id_user ?? user?.user?.id_user ?? user?.userId ?? user?.id ?? user?.sub ?? 'anon';
+  const roles = Array.isArray(user?.roles)
+    ? user.roles
+        .map((role: any) => (typeof role === 'string' ? role : role?.code || role?.name || ''))
+        .filter(Boolean)
+        .sort()
+        .join('|')
+    : '';
+  return `${userId}:${roles}`;
+}
+
 export function GestionLegalFull() {
   const [vistaActual, setVistaActual] = useState<VistaDisponible>(getVistaInicialDesdeQuery);
+  const [authContextKey, setAuthContextKey] = useState(getAuthContextKey);
 
   // ✅ Estados del tour guiado multi-módulo
   const [isTourOpen, setIsTourOpen] = useState(false);
@@ -112,6 +124,16 @@ export function GestionLegalFull() {
   // Sistema de notificaciones para términos urgentes/críticos
   const { addNotification } = useNotifications();
   const notificacionesGeneradas = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const handleAuthChange = () => {
+      notificacionesGeneradas.current.clear();
+      setAuthContextKey(getAuthContextKey());
+    };
+
+    window.addEventListener('esap:auth-user-changed', handleAuthChange);
+    return () => window.removeEventListener('esap:auth-user-changed', handleAuthChange);
+  }, []);
 
   // Cargar y verificar términos al entrar a Gestión Legal
   useEffect(() => {
@@ -200,12 +222,14 @@ export function GestionLegalFull() {
       const vista = moduloAVista[detail.modulo];
       if (!vista) return;
       setVistaActual(vista);
-      // Re-emitir tras un microtick para que el submódulo ya esté montado.
+      // Re-emitir con delay para dar tiempo a React a montar el submódulo.
+      // 500ms es suficiente incluso en renders lentos; el submódulo guarda el
+      // evento en sessionStorage como respaldo adicional por si llega antes de montar.
       setTimeout(() => {
         window.dispatchEvent(
           new CustomEvent('legal:open-expediente-detail', { detail }),
         );
-      }, 80);
+      }, 500);
     };
 
     window.addEventListener('legal:open-expediente', handleOpen);
@@ -335,14 +359,6 @@ export function GestionLegalFull() {
       visible: authService.hasPermission(Permissions.GESTION_LEGAL_PLANES_MEJORAMIENTO_MANAGE),
     },
     {
-      id: 'reportes',
-      label: 'Reportes',
-      subtitle: 'Analítica y trazabilidad legal',
-      icon: <BarChart3 className="w-5 h-5" />,
-      color: '#003DA5',
-      visible: authService.hasPermission(Permissions.GESTION_LEGAL_REPORTES_MANAGE),
-    },
-    {
       id: 'configuraciones',
       label: 'Configuraciones del Sistema',
       subtitle: 'Ajustes y parámetros del SIGL',
@@ -377,8 +393,6 @@ export function GestionLegalFull() {
         return <Riesgos />;
       case 'planes-mejoramiento':
         return <ModuloPlanesMejoramientoV4 />;
-      case 'reportes':
-        return <ReportesGestionLegal />;
       case 'configuraciones':
         return <ConfiguracionesSIGL />;
       default:
@@ -387,8 +401,9 @@ export function GestionLegalFull() {
   };
 
   return (
-    <ConfiguracionesSIGLProvider>
+    <ConfiguracionesSIGLProvider key={authContextKey}>
       <PermisosProvider>
+        <Toaster position="top-right" richColors closeButton duration={4000} />
         <ModuleLayout
           moduleName="GESTIÓN LEGAL"
           moduleDescription="Sistema Integrado de Gestión Legal (SIGL v5.0)"

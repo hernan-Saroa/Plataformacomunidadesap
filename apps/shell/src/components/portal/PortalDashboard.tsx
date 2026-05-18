@@ -16,6 +16,7 @@ interface PortalDashboardProps {
   userEmail: string;
   userPersonId: string;
   userRoles: string[];
+  userPermissions?: string[];
   userData?: any;
   onActiveRoleChange?: (role: string) => void;
   onLogout?: () => void;
@@ -28,6 +29,7 @@ export function PortalDashboard({
   userEmail,
   userPersonId,
   userRoles,
+  userPermissions,
   userData,
   onActiveRoleChange,
   onLogout,
@@ -110,6 +112,7 @@ export function PortalDashboard({
             userEmail={userEmail}
             userPersonId={userPersonId}
             activeRole={activeRole}
+            userPermissions={userPermissions}
             adminData={roleData?.Administrativo}
             onLogout={onLogout}
             navbarNavigateTo={navbarNavigateTo}

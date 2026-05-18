@@ -432,6 +432,12 @@ export interface AuditoriaCreateData {
   auditorAsignado?: string;
   equipoAuditores?: string[];
   supervisorAsignado?: string;
+  // Responsable del área auditada (auditado). Permite enviar al backend la persona
+  // que recibirá el informe preliminar y entrará al portal del auditado.
+  responsableAreaIdPersona?: string;
+  responsableAreaNombre?: string;
+  responsableAreaCargo?: string;
+  responsableAreaEmail?: string;
   fechaInicio: string;
   fechaFinPlaneacion?: string; // Fin de Planeación
   fechaInicioEjecucion?: string; // Inicio de Ejecución
@@ -549,24 +555,24 @@ export function useProgramaAnualData(
             procesoId: a.procesoId || '',
             proceso: {
               id: a.procesoId || a.id,
-              nombre: a.proceso.nombre,
-              tipo: 'Apoyo' as const,
-              descripcion: '',
-              responsable: a.auditorLider,
-              nivelRiesgo: 'Medio' as const,
-              puntajeRiesgo: 50,
-              calificacionDafp: 3,
-              categoria: 'General',
+              nombre: a.proceso?.nombre || a.nombre,
+              tipo: a.proceso?.tipo || 'Apoyo',
+              descripcion: a.proceso?.descripcion || '',
+              responsable: a.proceso?.responsable || a.auditorLider,
+              nivelRiesgo: a.proceso?.nivelRiesgo || 'Medio',
+              puntajeRiesgo: a.proceso?.scoreRiesgo || 50,
+              calificacionDafp: a.proceso?.ponderacionFinalDafp || 3,
+              categoria: a.proceso?.macroproceso || 'General',
               auditable: true,
               frecuenciaAuditoria: 'Anual' as const,
               activo: true,
-              codigo: a.proceso.codigo || '',
-              macroproceso: '',
-              tipoProceso: 'Apoyo' as const,
-              dependenciaResponsable: '',
-              scoreRiesgo: 50,
+              codigo: a.proceso?.codigo || '',
+              macroproceso: a.proceso?.macroproceso || '',
+              tipoProceso: a.proceso?.tipo || 'Apoyo',
+              dependenciaResponsable: a.proceso?.dependencia || '',
+              scoreRiesgo: a.proceso?.scoreRiesgo || 50,
               frecuenciaSugerida: 'Anual',
-              horasEstimadas: a.horasEstimadas,
+              horasEstimadas: a.horasEstimadas || a.proceso?.horasEstimadas || 40,
             },
             tipo: a.tipo,
             // Propagar tipo operativo (Regular / Territorial / Especial) para filtros del cronograma
@@ -665,6 +671,11 @@ export function useProgramaAnualData(
         equipoAuditores: data.equipoAuditores,
         supervisorAsignado: data.supervisorAsignado,
         responsable: data.auditorLider || 'Por asignar',
+        // Responsable del área auditada (auditado): se envía al servicio para que
+        // viaje al backend y la auditoría quede vinculada a esa persona.
+        responsableAreaNombre: data.responsableAreaNombre,
+        responsableAreaCargo: data.responsableAreaCargo,
+        responsableAreaEmail: data.responsableAreaEmail,
         fechaInicio: data.fechaInicio,
         fechaFinPlaneacion: data.fechaFinPlaneacion,
         fechaInicioEjecucion: data.fechaInicioEjecucion,

@@ -298,6 +298,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         lugar: a.ubicacion || 'Sede Judicial',
         modalidad: a.modalidad,
         linkReunion: a.linkReunion,
+        abogadoId: a.abogadoId,
         abogadoResponsable: a.nombreAbogado || expediente.abogadoAsignado || 'Abogado Asignado',
         estado: a.estado || 'Programada',
         historial: a.historial || [],
@@ -451,17 +452,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     try {
       toast.loading('⬇️ Iniciando descarga...', { id: 'descarga-doc' });
 
-      // Obtener token para autenticación
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(fullUrl, {
         method: 'GET',
-        headers,
-        credentials: 'include', // Importante para CORS en producción
+        credentials: 'include',
       });
 
       if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -521,16 +514,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       const id = expediente.uuid || expediente.id;
       const url = legalService.getDocumentosDownloadZipUrl(id);
 
-      // Obtener token para autenticación
-      const token = sessionStorage.getItem('esap_auth_token');
-      const headers: HeadersInit = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const response = await fetch(url, {
         method: 'GET',
-        headers,
         credentials: 'include',
       });
       if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -783,9 +768,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         descripcion: data.descripcion,
         fechaVencimiento: data.vencimiento,
         prioridad: data.prioridad.toLowerCase(),
-        // Enviamos nombre por ahora ya que los IDs del modal son mocks ('1', '2'...)
-        // El backend guardará esto en responsable_nombre
-        responsableNombre: data.responsable
+        responsableNombre: data.responsable,
+        responsableId: data.responsableId ?? null
       });
 
       toast.success('✅ Tarea creada');
@@ -933,10 +917,13 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       const modalidadVal = (audienciaData.modalidad === 'Virtual' ? 'VIRTUAL' : 'PRESENCIAL') as 'VIRTUAL' | 'PRESENCIAL';
 
       // Adaptar formato si es necesario
+      const abogadoSeleccionado = abogados.find((a: any) => a.id === audienciaData.abogadoResponsable);
       const dataToSend = {
         expedienteId: id,
-        abogadoId: audienciaData.abogadoResponsable || expediente.abogadoAsignado, // Asegurar ID
-        titulo: audienciaData.tipo + ' - ' + audienciaData.lugar, // TODO: Check if titulo logic needs adjustment for updates
+        abogadoId: audienciaData.abogadoResponsable || expediente.abogadoAsignado,
+        abogadoNombre: abogadoSeleccionado?.nombreCompleto || abogadoSeleccionado?.nombre || audienciaData.abogadoResponsable || '',
+        abogadoEmail: abogadoSeleccionado?.email || '',
+        titulo: audienciaData.tipo + ' - ' + audienciaData.lugar,
         fechaHoraInicio: new Date(`${audienciaData.fecha}T${audienciaData.hora}`).toISOString(),
         duracionMinutos: 60, // Default o pedir en modal
         modalidad: modalidadVal,
@@ -1037,11 +1024,23 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       // But user wanted "Fully functional".
       // Let's assume createNota is available or we mock it via actuacion.
 
+      const autorNota = ((): string => {
+        const u = authService.getCurrentUser() as any;
+        return (
+          u?.fullName ||
+          u?.person?.full_name ||
+          `${u?.person?.first_name ?? ''} ${u?.person?.last_name ?? ''}`.trim() ||
+          u?.username ||
+          'Un usuario'
+        );
+      })();
+
       await legalService.createActuacion({
         expedienteId: id,
         tipoActuacion: 'NOTA_INTERNA',
         descripcion: `[${notaData.tipo}] ${notaData.titulo}: ${notaData.contenido}`,
-        fechaActuacion: new Date().toISOString()
+        fechaActuacion: new Date().toISOString(),
+        responsable: autorNota,
       });
 
       toast.success('✅ Nota interna agregada');
@@ -1601,6 +1600,29 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         <span className="text-xs text-gray-500">Tipo de Proceso:</span>
                         <span className="text-sm font-bold text-gray-900">{expediente.tipoProceso}</span>
                       </div>
+                      {/* Clasificación Penal (solo visible para Proceso Penal) */}
+                      {(expediente.tipoProceso === 'Proceso Penal' || (expediente as any).esDelitoAdminPublica || (expediente as any).esConductaPatrimonioPublico) && (
+                        <div className="mt-2 p-3 rounded-lg bg-red-50 border border-red-200">
+                          <p className="text-xs font-bold text-red-800 mb-2 flex items-center gap-1.5">
+                            <Shield className="w-3.5 h-3.5" />
+                            Clasificación Penal (Contraloría / ANDJE)
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge
+                              variant="outline"
+                              className={`text-xs font-semibold ${(expediente as any).esDelitoAdminPublica ? 'border-red-500 text-red-700 bg-red-100' : 'border-gray-300 text-gray-400 bg-gray-50'}`}
+                            >
+                              {(expediente as any).esDelitoAdminPublica ? '✅' : '—'} Delitos contra la Administración Pública
+                            </Badge>
+                            <Badge
+                              variant="outline"
+                              className={`text-xs font-semibold ${(expediente as any).esConductaPatrimonioPublico ? 'border-red-500 text-red-700 bg-red-100' : 'border-gray-300 text-gray-400 bg-gray-50'}`}
+                            >
+                              {(expediente as any).esConductaPatrimonioPublico ? '✅' : '—'} Conductas que afectan el Patrimonio Público
+                            </Badge>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </Card>
 
@@ -2316,11 +2338,16 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       </Dialog>
 
       {/* ==================== MODALES SECUNDARIOS (FUERA DEL DIALOG PRINCIPAL) ==================== */}
-      < ModalNotificar
+      <ModalNotificar
         isOpen={modalNotificarAbierto}
-        onClose={() => setModalNotificarAbierto(false)
-        }
+        onClose={() => setModalNotificarAbierto(false)}
         expediente={expediente}
+        abogadosDisponibles={abogadosDisponibles}
+        rolUsuarioActual={
+          authService.hasRole('MONITOREO_GESTION_LEGAL') ? 'MONITOREO_GESTION_LEGAL' :
+          authService.hasRole('JEFE_GESTION_LEGAL') ? 'JEFE_GESTION_LEGAL' :
+          authService.hasRole('RESUELVE_GESTION_LEGAL') ? 'RESUELVE_GESTION_LEGAL' : ''
+        }
       />
       <ModalCompartir
         isOpen={modalCompartirAbierto}

@@ -170,20 +170,19 @@ export function ExpedienteCompartidoPage() {
     }
   };
 
+  // Detectar si es dispositivo móvil
+  const isMobile = () => {
+    return window.innerWidth < 768 || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  };
+
   // Ver documento
   const handleVerDocumento = async (doc: Documento) => {
-    setDocumentoSeleccionado(doc);
-    setShowModalVisor(true);
-    setPdfBlobUrl(null);
-    setCargandoPDF(true);
-    setErrorPDF(null);
-    setEsDocumentoConvertido(false);
+    if (!token || !doc.id) {
+      toast.error('Información del documento incompleta');
+      return;
+    }
 
     try {
-      if (!token || !doc.id) {
-        throw new Error('Información del documento incompleta');
-      }
-
       // Usar el endpoint público para descarga de documentos compartidos
       const docPath = `/compartir-expediente/documento/${token}/${doc.id}/download?view=true`;
       const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? docPath : `/api/v1${docPath}`);
@@ -200,6 +199,21 @@ export function ExpedienteCompartidoPage() {
       }
 
       const blob = await response.blob();
+
+      // En móviles, abrir PDFs en nueva pestaña, pero DOCX en modal ya que funciona
+      if (isMobile() && blob.type !== 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+        toast.info('Documento abierto en nueva pestaña');
+        return;
+      }
+
+      // Mostrar modal con visor para desktop o DOCX en móvil
+      setDocumentoSeleccionado(doc);
+      setShowModalVisor(true);
+      setPdfBlobUrl(null);
+      setCargandoPDF(true);
+      setErrorPDF(null);
+      setEsDocumentoConvertido(false);
 
       // Check if it's a DOCX file and convert to HTML for display
       if (blob.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
@@ -240,8 +254,8 @@ export function ExpedienteCompartidoPage() {
         setEsDocumentoConvertido(false);
       }
     } catch (error: any) {
-      console.error('Error al cargar PDF:', error);
-      setErrorPDF(error.message || 'No se pudo cargar el documento');
+      console.error('Error al cargar documento:', error);
+      toast.error('No se pudo cargar el documento');
     } finally {
       setCargandoPDF(false);
     }

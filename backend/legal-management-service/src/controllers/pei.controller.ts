@@ -1,19 +1,29 @@
-import { Controller, Get, Post, Body, Param, Put, Patch, Delete, Res } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Put, Patch, Delete, Res, UseInterceptors, UploadedFile, Req } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 import type { Response } from 'express';
 import { PeiService } from '../services/pei.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('pei')
 export class PeiController {
     constructor(private readonly peiService: PeiService) { }
 
     @Get('dashboard')
-    async getDashboard() {
-        return this.peiService.getDashboard();
+    async getDashboard(@Req() req?: any) {
+        const access = getLegalAccessFromRequest(req);
+        return this.peiService.getDashboard({
+            responsableKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Get('archivados')
-    async getArchivados() {
-        return this.peiService.getArchivados();
+    async getArchivados(@Req() req?: any) {
+        const access = getLegalAccessFromRequest(req);
+        return this.peiService.getArchivados({
+            responsableKeys: access.esResuelveSolo ? access.userKeys : undefined,
+        });
     }
 
     @Post('indicador')
@@ -31,12 +41,39 @@ export class PeiController {
         return this.peiService.updateIndicador(id, body);
     }
 
+    /**
+     * Bug 6: registra un avance del indicador. Acepta evidencia como archivo
+     * (multipart/form-data, campo `evidencia`) o como URL (campo `evidenciaUrl`).
+     * Persiste también el campo `observaciones` que antes se ignoraba en algunos
+     * payloads, y dispara el recálculo del % global vía la lógica del dashboard.
+     */
     @Post('indicador/:id/avance')
+    @UseInterceptors(FileInterceptor('evidencia', {
+        storage: diskStorage({
+            destination: './uploads',
+            filename: (req, file, cb) => {
+                const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
+                cb(null, `${randomName}${extname(file.originalname)}`);
+            }
+        }),
+        limits: { fileSize: 200 * 1024 * 1024 }
+    }))
     async registrarAvance(
         @Param('id') id: number,
-        @Body() body: { valor: number; observaciones?: string; usuarioId?: string }
+        @Body() body: { valor: number | string; observaciones?: string; usuarioId?: string; evidenciaUrl?: string },
+        @UploadedFile() file?: Express.Multer.File,
     ) {
-        return this.peiService.registrarAvance(id, body.valor, body.observaciones, body.usuarioId);
+        const valorNum = typeof body.valor === 'string' ? parseFloat(body.valor) : body.valor;
+        const evidenciaUrl = file
+            ? `files/${file.filename}`
+            : (body.evidenciaUrl?.trim() || undefined);
+        return this.peiService.registrarAvance(
+            id,
+            valorNum,
+            body.observaciones,
+            body.usuarioId,
+            evidenciaUrl,
+        );
     }
 
     @Patch('indicador/:id/archivar')

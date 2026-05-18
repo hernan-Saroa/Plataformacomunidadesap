@@ -142,6 +142,7 @@ export function mapBackendToUI(proceso: BackendProcesoAuditable): ProcesoAuditab
   const nivelRiesgo = mapNivelRiesgo(proceso.evaluacionRiesgo);
   const puntajeRiesgo = calcularPuntajeRiesgo(proceso.evaluacionRiesgo);
   const frecuencia = mapFrecuenciaAuditoria(proceso.frecuenciaAuditoria);
+  const ev = proceso.evaluacionRiesgo as any;
   
   return {
     id: proceso.id,
@@ -151,9 +152,9 @@ export function mapBackendToUI(proceso: BackendProcesoAuditable): ProcesoAuditab
     responsable: proceso.responsable,
     nivelRiesgo,
     puntajeRiesgo,
-    calificacionDafp: calcularCalificacionDafp(proceso.evaluacionRiesgo),
+    calificacionDafp: ev?.ponderacionFinalDafp ?? calcularCalificacionDafp(proceso.evaluacionRiesgo),
     categoria: proceso.macroproceso || 'General',
-    auditable: true,
+    auditable: ev?.auditable ?? true,
     ultimaAuditoria: proceso.ultimaAuditoria || undefined,
     resultadoUltimaAuditoria: (proceso as any).resultadoUltimaAuditoria || undefined,
     frecuenciaAuditoria: frecuencia,
@@ -163,9 +164,9 @@ export function mapBackendToUI(proceso: BackendProcesoAuditable): ProcesoAuditab
     macroproceso: proceso.macroproceso || 'General',
     tipoProceso,
     dependenciaResponsable: proceso.dependencia || proceso.responsable || 'Sin asignar',
-    scoreRiesgo: (proceso.evaluacionRiesgo as any)?.scoreRiesgo ?? puntajeRiesgo,
+    scoreRiesgo: ev?.scoreRiesgo ?? puntajeRiesgo,
     frecuenciaSugerida: frecuencia,
-    horasEstimadas: calcularHorasEstimadas(nivelRiesgo),
+    horasEstimadas: ev?.horasEstimadas ?? calcularHorasEstimadas(nivelRiesgo),
     // Guardamos los campos backend para mapeo inverso
     _backendId: proceso.id,
     _codigo: proceso.codigo,
@@ -326,9 +327,14 @@ export function mapFormularioDafpToBackend(formData: any): Partial<BackendProces
       exposicion: formData.exposicion ?? 0,
       mitigantes: formData.mitigantes ?? 0,
       scoreRiesgo: formData.scoreRiesgoCEM ?? formData.scoreRiesgo ?? 0,
-      // NOTA: Los campos vigencia, fechaCorte, ponderacionRiesgo, diasRotacion,
-      // decisionRotacion, decisionFinal, motivoDecision, prioridadRegla
-      // NO se envían al backend porque no los acepta en evaluacionRiesgo
+      // Campos DAFP calculados — se persisten en el JSONB del backend
+      ponderacionFinalDafp: formData.ponderacionFinalDafp ?? 0,
+      nivelCriticidadDafp: formData.nivelCriticidadDafp || nivelRiesgoCalculado,
+      cicloRotacionDafp: formData.cicloRotacionDafp || formData.planRotacion || '1 año',
+      horasEstimadas: formData.horasEstimadas ?? (nivelRiesgo === 'alto' ? 120 : nivelRiesgo === 'medio' ? 80 : 40),
+      auditable: formData.auditable ?? (nivelRiesgo !== 'bajo'),
+      decisionFinal: formData.decisionFinal || 'POR EVALUAR',
+      añosProgramados: formData.priorizacionAnos || [],
     },
     frecuenciaAuditoria,
     ultimaAuditoria: formData.fechaUltimaAuditoria || undefined,

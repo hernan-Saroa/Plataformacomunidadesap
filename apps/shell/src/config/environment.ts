@@ -313,7 +313,7 @@ export const config = {
     enableAnalytics: ENV === 'production',
   },
 
-  // Keys para localStorage
+  // Keys para sessionStorage (tokens de sesión — NO localStorage)
   STORAGE_KEYS: {
     AUTH_TOKEN: 'esap_auth_token',
     REFRESH_TOKEN: 'esap_refresh_token',
@@ -466,35 +466,58 @@ export const API_ENDPOINTS = {
   },
 };
 
-// Headers comunes para todas las requests
-export const getDefaultHeaders = (includeAuth = true): HeadersInit => {
-  const headers: HeadersInit = {
+// Headers comunes para todas las requests.
+// Los tokens JWT viajan como cookie HttpOnly (OTIC-001) y el navegador los envía
+// automáticamente gracias a credentials:'include' en CORS_CONFIG.
+// NO se inyecta el header Authorization desde el frontend.
+export const getDefaultHeaders = (_includeAuth = true): HeadersInit => {
+  return {
     'Content-Type': 'application/json; charset=utf-8',
     'Accept': 'application/json; charset=utf-8',
     'X-Client-Version': '1.0.0',
     'X-Client-Platform': 'web',
   };
+};
 
-  if (includeAuth) {
-    const primaryToken = sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    const legacyToken = sessionStorage.getItem('esap_access_token');
-    const token = primaryToken || legacyToken;
+export const getUserContextHeaders = (): HeadersInit => {
+  const user =
+    typeof window !== 'undefined'
+      ? (window as any).__esap_auth_cache
+      : null;
+  const userId =
+    user?.id_user ??
+    user?.user?.id_user ??
+    user?.userId ??
+    user?.id ??
+    user?.sub;
+  const userEmail =
+    user?.email ??
+    user?.person?.email ??
+    user?.mail;
+  const userName =
+    user?.fullName ??
+    user?.full_name ??
+    user?.name ??
+    user?.person?.full_name ??
+    (user?.person?.first_name || user?.person?.last_name
+      ? `${user.person.first_name ?? ''} ${user.person.last_name ?? ''}`.trim()
+      : undefined);
+  const roles = Array.isArray(user?.roles)
+    ? user.roles
+        .map((role: any) =>
+          typeof role === 'string'
+            ? role
+            : role?.code || role?.name || '',
+        )
+        .filter(Boolean)
+    : [];
 
-    // Compatibilidad con módulos legados: migrar token antiguo a la clave nueva.
-    if (!primaryToken && legacyToken) {
-      sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, legacyToken);
-    }
-
-    if (token) {
-      headers[config.AUTH.TOKEN_HEADER] = `${config.AUTH.TOKEN_PREFIX} ${token}`;
-      // Header redundante para entornos con proxy/SSL que no reenvían Authorization.
-      if (API_MODE !== 'direct') {
-        headers['X-Access-Token'] = token;
-      }
-    }
-  }
-
-  return headers;
+  return {
+    ...(userId ? { 'X-User-ID': userId } : {}),
+    ...(userEmail ? { 'X-User-Email': userEmail } : {}),
+    ...(userName ? { 'X-User-Name': userName } : {}),
+    ...(roles.length ? { 'X-User-Roles': roles.join(',') } : {}),
+  };
 };
 
 // Configuración de CORS para desarrollo

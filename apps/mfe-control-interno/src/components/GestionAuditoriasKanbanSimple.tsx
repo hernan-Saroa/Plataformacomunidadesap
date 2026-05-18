@@ -58,6 +58,7 @@ import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAud
 
 // ✅ Servicio para crear planes de mejoramiento
 import controlInternoService from '../../../services/api/controlInternoService';
+import { notificationsService } from '../../services/api/notificationsService';
 
 // ✅ INTEGRACIÓN: Contextos de Hallazgos y Tareas
 import { useHallazgos } from './HallazgosContext';
@@ -1026,17 +1027,23 @@ function TarjetaAuditoria({
                   className="text-[10px] md:text-xs"
                   style={{ background: '#E0EDFF', color: '#003DA5' }}
                 >
-                  {auditoria.auditorAsignado.iniciales}
+                  {auditoria.auditorAsignado.nombre === 'Por asignar' && auditoria.equipoAuditores?.length > 0 
+                    ? 'EQ' 
+                    : auditoria.auditorAsignado.iniciales}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
                 <p className="text-[10px] md:text-xs text-gray-500">👤 Auditor Asignado:</p>
                 <p className="font-bold text-[11px] md:text-sm text-gray-900 line-clamp-1 leading-tight">
-                  {auditoria.auditorAsignado.nombre}
+                  {auditoria.auditorAsignado.nombre === 'Por asignar' && auditoria.equipoAuditores?.length > 0
+                    ? auditoria.equipoAuditores.map((a: any) => typeof a === 'string' ? a : a.nombre).join(', ')
+                    : auditoria.auditorAsignado.nombre}
                 </p>
-                <p className="text-[10px] md:text-xs text-gray-600 leading-tight">
-                  {auditoria.auditorAsignado.tipoIdentificacion} {auditoria.auditorAsignado.numeroIdentificacion}
-                </p>
+                {auditoria.auditorAsignado.nombre !== 'Por asignar' && (
+                  <p className="text-[10px] md:text-xs text-gray-600 leading-tight">
+                    {auditoria.auditorAsignado.tipoIdentificacion} {auditoria.auditorAsignado.numeroIdentificacion}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -1854,8 +1861,8 @@ export function GestionAuditoriasKanbanSimple() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   useEffect(() => {
     try {
-      const userDataStr = sessionStorage.getItem('esap_user_data');
-      if (userDataStr) setCurrentUser(JSON.parse(userDataStr));
+      const userData = (window as any).__esap_auth_cache;
+      if (userData) setCurrentUser(userData);
     } catch (e) {}
   }, []);
 
@@ -1923,7 +1930,11 @@ export function GestionAuditoriasKanbanSimple() {
     auditoriasProgramadas, 
     limpiarAuditoriasProgramadas,
     agregarAuditoriaConHallazgos,
-    seleccionarAuditoria
+    seleccionarAuditoria,
+    auditoriaIdFoco,
+    setAuditoriaIdFoco,
+    faseFoco,
+    setFaseFoco
   } = useIntegracionAuditoriaPlanes();
 
   const extraerAuditoriaIdPlan = (plan: any): string | null => {
@@ -2207,6 +2218,19 @@ export function GestionAuditoriasKanbanSimple() {
     }
   }, [auditoriasProgramadas, limpiarAuditoriasProgramadas]);
 
+  // ✅ NUEVO: Foco automático desde Notificaciones (Abrir expediente)
+  useEffect(() => {
+    if (auditoriaIdFoco && auditorias.length > 0) {
+      console.log('[Kanban] Detectado foco para auditoría:', auditoriaIdFoco, 'Fase:', faseFoco);
+      const auditoria = auditorias.find(a => a.id === auditoriaIdFoco);
+      if (auditoria) {
+        handleVerDetalle(auditoria);
+        setAuditoriaIdFoco(null);
+        // NO limpiamos faseFoco aquí, lo usará el componente ExpedienteAuditoriaCompleto al renderizar
+      }
+    }
+  }, [auditoriaIdFoco, auditorias, setAuditoriaIdFoco, faseFoco]);
+
   // Helper para calcular días restantes
   const calcularDiasRestantes = (fechaFin: string): number => {
     const hoy = new Date();
@@ -2425,6 +2449,15 @@ export function GestionAuditoriasKanbanSimple() {
         auditorAsignadoId: data.auditorAsignado || undefined,
         supervisorAsignadoId: data.supervisorAsignado || undefined,
         equipoAuditores: data.equipoAuditores || [],
+        // Responsable del Área Auditada (Paso 2 del formulario). Se envía en campos
+        // planos al backend para que la auditoría quede asociada al auditado y este
+        // pueda verla en su portal (`/auditorias/auditado/mis-auditorias`).
+        ...(data.responsableArea && {
+          responsableAreaIdPersona: data.responsableArea.idPersona,
+          responsableAreaNombre: data.responsableArea.nombre,
+          responsableAreaCargo: data.responsableArea.cargo || 'Responsable de Área Auditada',
+          responsableAreaEmail: data.responsableArea.email,
+        }),
         // ✅ Incluir TODAS las fechas del cronograma de 3 etapas
         // Etapa 1: Planeación
         ...(data.fechaFinPlaneacion && { fechaFinPlaneacion: data.fechaFinPlaneacion }),
@@ -2606,6 +2639,67 @@ export function GestionAuditoriasKanbanSimple() {
     }
   };
 
+  /**
+   * Valida que al menos un Plan de Mejoramiento de la auditoría esté aprobado
+   * (o más adelante en el ciclo) antes de permitir el paso a Seguimiento.
+   * Si la auditoría no tiene hallazgos no requiere plan.
+   */
+  const validarPlanAprobadoParaSeguimiento = async (
+    auditoriaId: string,
+  ): Promise<boolean> => {
+    try {
+      const auditoria = auditorias.find(a => a.id === auditoriaId);
+      const tieneHallazgos =
+        (typeof auditoria?.hallazgos === 'number' && auditoria.hallazgos > 0) ||
+        (Array.isArray((auditoria as any)?.hallazgos) && (auditoria as any).hallazgos.length > 0);
+      if (!tieneHallazgos) return true;
+
+      const planes = await controlInternoService
+        .getPlanesMejoramientoByAuditoria(auditoriaId)
+        .catch(() => [] as any[]);
+
+      if (!Array.isArray(planes) || planes.length === 0) {
+        toast.error('Sin Plan de Mejoramiento', {
+          description:
+            'Esta auditoría tiene hallazgos pero no existe un Plan de Mejoramiento. Cree y apruebe el plan antes de pasar a Seguimiento.',
+          duration: 6000,
+        });
+        return false;
+      }
+
+      const estadosValidos = new Set([
+        'aprobado',
+        'en_ejecucion',
+        'en-ejecucion',
+        'en ejecucion',
+        'en_seguimiento',
+        'en-seguimiento',
+        'completado',
+        'cumplido',
+      ]);
+      const algunoAprobado = planes.some((p: any) => {
+        const estado = String(p?.estado || '')
+          .trim()
+          .toLowerCase()
+          .replace(/-/g, '_');
+        return estadosValidos.has(estado.replace(/_/g, ' ')) || estadosValidos.has(estado);
+      });
+
+      if (!algunoAprobado) {
+        const codigos = planes.map((p: any) => p?.codigo).filter(Boolean).join(', ');
+        toast.error('Plan de Mejoramiento sin aprobar', {
+          description: `Debe aprobar el plan ${codigos || 'asociado a la auditoría'} antes de pasar a Seguimiento. Vaya al módulo Planes de Mejoramiento, abra el detalle y pulse "Aprobar Plan".`,
+          duration: 8000,
+        });
+        return false;
+      }
+      return true;
+    } catch {
+      toast.error('No se pudo verificar el Plan de Mejoramiento');
+      return false;
+    }
+  };
+
   const handleDrop = async (item: Auditoria, nuevoEstado: EstadoAuditoria) => {
     if (item.estado === nuevoEstado) return;
 
@@ -2627,6 +2721,7 @@ export function GestionAuditoriasKanbanSimple() {
     }
     if (estadoAnterior === 'Comunicación' && nuevoEstado === 'Seguimiento') {
       if (!(await validarDocumentosEtapa(item.id, 'comunicacion', 'Comunicación', 'Seguimiento'))) return;
+      if (!(await validarPlanAprobadoParaSeguimiento(item.id))) return;
     }
 
     const usuario = 'Usuario Actual'; // En producción vendría del contexto de autenticación
@@ -2689,6 +2784,21 @@ export function GestionAuditoriasKanbanSimple() {
       
       console.log('📋 Trazabilidad - Movimiento de tarjeta:', eventoTrazabilidad);
 
+      // 🚀 DISPARAR EVENTO AL BACKEND (Notificaciones Campanita + Email)
+      try {
+        await notificationsService.triggerEvent('EVT-KANBAN-001', {
+          auditoriaId: item.id,
+          auditoriaCodigo: item.codigo,
+          nuevoEstado: nuevoEstado,
+          tituloCustom: 'Auditoría Movida',
+          mensajeCustom: `La auditoría ${item.codigo} ha sido movida a la etapa: ${nuevoEstado}.`,
+          url_accion: `/control-interno/auditorias/${item.id}`,
+        });
+        console.log(`✅ Evento KANBAN_MOVE disparado exitosamente al backend.`);
+      } catch (err) {
+        console.error('❌ Error al disparar evento al Shell:', err);
+      }
+
       toast.success(`✅ ${item.codigo} movido a ${nuevoEstado}`, {
         description: `Estado actualizado en el servidor`
       });
@@ -2739,6 +2849,7 @@ export function GestionAuditoriasKanbanSimple() {
     }
     if (estadoAnterior === 'Comunicación' && nuevoEstado === 'Seguimiento') {
       if (!(await validarDocumentosEtapa(auditoriaId, 'comunicacion', 'Comunicación', 'Seguimiento'))) return;
+      if (!(await validarPlanAprobadoParaSeguimiento(auditoriaId))) return;
     }
 
     // ============ VALIDACIÓN DE CHECKLIST (ADVERTENCIA, NO BLOQUEA) ============
@@ -3432,7 +3543,7 @@ export function GestionAuditoriasKanbanSimple() {
               
               <div 
                 ref={scrollContainerRef}
-                className="overflow-x-auto overflow-y-hidden pb-3 px-2 md:px-3 scroll-smooth"
+                className="gestion-auditorias-kanban-scroll overflow-x-auto overflow-y-hidden pb-3 px-2 md:px-3 scroll-smooth"
                 style={{
                   scrollbarWidth: 'thin',
                   scrollbarColor: '#2962FF #E5E7EB',
@@ -3450,247 +3561,6 @@ export function GestionAuditoriasKanbanSimple() {
                     : {})
                 }}
               >
-                <style>{`
-                  /* ══════════════════════════════════════════════════════════ */
-                  /* SCROLL HORIZONTAL (Navegación entre columnas) - SIEMPRE VISIBLE */
-                  /* ══════════════════════════════════════════════════════════ */
-                  .overflow-x-auto {
-                    overflow-x: auto !important;
-                    overflow-y: hidden !important;
-                    -webkit-overflow-scrolling: touch !important;
-                  }
-                  
-                  /* CRÍTICO: En tablets/desktop NUNCA hacer wrap */
-                  @media (min-width: 768px) {
-                    .overflow-x-auto > div {
-                      flex-wrap: nowrap !important;
-                      display: flex !important;
-                    }
-                  }
-                  
-                  .overflow-x-auto::-webkit-scrollbar {
-                    height: 12px;
-                    display: block !important;
-                  }
-                  .overflow-x-auto::-webkit-scrollbar-track {
-                    background: #F3F4F6;
-                    border-radius: 8px;
-                    margin: 0 8px;
-                  }
-                  .overflow-x-auto::-webkit-scrollbar-thumb {
-                    background: linear-gradient(to right, #2962FF, #003DA5);
-                    border-radius: 8px;
-                    border: 2px solid #F3F4F6;
-                  }
-                  .overflow-x-auto::-webkit-scrollbar-thumb:hover {
-                    background: linear-gradient(to right, #003DA5, #2962FF);
-                  }
-                  
-                  /* ══════════════════════════════════════════════════════════ */
-                  /* SCROLL VERTICAL (Dentro de cada columna) - UNIFICADO */
-                  /* ══════════════════════════════════════════════════════════ */
-                  .overflow-y-auto::-webkit-scrollbar {
-                    width: 8px;
-                    display: block !important;
-                  }
-                  .overflow-y-auto::-webkit-scrollbar-track {
-                    background: #F9FAFB;
-                    border-radius: 8px;
-                  }
-                  .overflow-y-auto::-webkit-scrollbar-thumb {
-                    background: linear-gradient(to bottom, #F97316, #F57C00);
-                    border-radius: 8px;
-                    border: 2px solid #F9FAFB;
-                  }
-                  .overflow-y-auto::-webkit-scrollbar-thumb:hover {
-                    background: linear-gradient(to bottom, #EA580C, #F97316);
-                  }
-                  
-                  /* Optimización responsive para diferentes pantallas */
-                  @media (max-width: 640px) {
-                    .overflow-x-auto::-webkit-scrollbar {
-                      height: 10px;
-                    }
-                  }
-                  
-                  @media (min-width: 768px) and (max-width: 1279px) {
-                    /* Tablets y pantallas 10-11 pulgadas */
-                    .overflow-x-auto::-webkit-scrollbar {
-                      height: 14px;
-                    }
-                    .overflow-x-auto::-webkit-scrollbar-track {
-                      background: #E5E7EB;
-                    }
-                    .overflow-x-auto::-webkit-scrollbar-thumb {
-                      border: 3px solid #E5E7EB;
-                    }
-                  }
-                  
-                  @media (min-width: 1280px) {
-                    .overflow-x-auto::-webkit-scrollbar {
-                      height: 14px;
-                    }
-                  }
-                  
-                  @media (min-width: 3840px) {
-                    .overflow-x-auto::-webkit-scrollbar {
-                      height: 18px;
-                    }
-                  }
-                  
-                  /* Mejorar scroll en móvil y tablets */
-                  @media (max-width: 1023px) {
-                    .overflow-x-auto, .overflow-y-auto {
-                      -webkit-overflow-scrolling: touch;
-                      scrollbar-width: thin;
-                    }
-                  }
-                  
-                  /* Prevenir colapso de columnas y mantener tamaño estable */
-                  @media (min-width: 768px) {
-                    .md\\:flex-1 {
-                      flex-grow: 1;
-                      flex-shrink: 1;
-                      flex-basis: 0%;
-                      min-width: 264px;
-                    }
-                    
-                    /* Asegurar min-width en columnas Kanban */
-                    .md\\:min-w-\\[264px\\] {
-                      min-width: 264px !important;
-                    }
-                  }
-                  
-                  /* Asegurar que el contenedor no cambie de tamaño */
-                  .space-y-3 > *, .space-y-4 > *, .space-y-5 > * {
-                    flex-shrink: 0;
-                  }
-                  
-                  /* Optimización específica para tablets portrait (700-768px) */
-                  @media (min-width: 640px) and (max-width: 767px) {
-                    /* Mantener layout vertical en tablets portrait */
-                    .flex-col {
-                      width: 100%;
-                    }
-                    
-                    /* Reducir padding en tablets portrait */
-                    .p-3, .p-4 {
-                      padding: 0.75rem;
-                    }
-                    
-                    /* Ajustar fuentes para mejor legibilidad */
-                    .text-xs {
-                      font-size: 0.75rem;
-                    }
-                  }
-                  
-                  /* ══════════════════════════════════════════════════════════ */
-                  /* SISTEMA DE SCROLL DUAL - TABLETS Y DESKTOP (768px+) */
-                  /* ══════════════════════════════════════════════════════════ */
-                  @media (min-width: 768px) {
-                    /* Contenedor principal: SOLO scroll horizontal */
-                    .overflow-x-auto {
-                      overflow-x: auto !important;
-                      overflow-y: hidden !important;
-                      display: flex !important;
-                    }
-                    
-                    /* Columnas: altura adaptativa - se controla vía inline style */
-                    .flex.flex-col.bg-white.rounded-xl {
-                      display: flex;
-                      flex-direction: column;
-                    }
-                    
-                    /* Asegurar que el contenedor de tarjetas use flex-1 */
-                    .flex-1.overflow-y-auto {
-                      flex: 1;
-                      overflow-y: auto !important;
-                      overflow-x: hidden;
-                    }
-                  }
-                  
-                  /* ══════════════════════════════════════════════════════════ */
-                  /* OPTIMIZACIONES RESPONSIVE PARA PANTALLAS PEQUEÑAS/MEDIANAS */
-                  /* ══════════════════════════════════════════════════════════ */
-                  
-                  /* Tablet pequeña (768-1023px): Diseño compacto */
-                  @media (min-width: 768px) and (max-width: 1023px) {
-                    /* Espaciado reducido */
-                    .space-y-3 {
-                      gap: 0.5rem !important;
-                    }
-                    
-                    .p-3 {
-                      padding: 0.5rem !important;
-                    }
-                  }
-                  
-                  /* Tablet (1024-1365px): Diseño medio */
-                  @media (min-width: 1024px) and (max-width: 1365px) {
-                    .space-y-3 {
-                      gap: 0.625rem !important;
-                    }
-                  }
-                  
-                  /* Pantallas con altura ≤ 900px: Optimizar espacio vertical */
-                  @media (min-width: 768px) and (max-height: 900px) {
-                    /* Reducir espaciado vertical */
-                    .space-y-3 {
-                      gap: 0.5rem !important;
-                    }
-                    
-                    .space-y-4 {
-                      gap: 0.625rem !important;
-                    }
-                    
-                    /* Padding más compacto */
-                    .p-3 {
-                      padding: 0.625rem !important;
-                    }
-                    
-                    .p-4 {
-                      padding: 0.75rem !important;
-                    }
-                    
-                    /* Scrollbar horizontal delgado */
-                    .overflow-x-auto::-webkit-scrollbar {
-                      height: 8px !important;
-                    }
-                    
-                    /* Headers más compactos */
-                    .border-b-2 {
-                      padding-top: 0.5rem !important;
-                      padding-bottom: 0.5rem !important;
-                    }
-                  }
-                  
-                  /* Optimización para pantallas 10-11-12 pulgadas (768-1440px) */
-                  @media (min-width: 768px) and (max-width: 1440px) {
-                    /* Asegurar scroll visible */
-                    .overflow-x-auto {
-                      padding-bottom: 1rem;
-                    }
-                    
-                    /* 🔥 FORZAR: Columnas NO se comprimen NUNCA */
-                    .bg-white.rounded-xl.shadow-lg {
-                      flex-shrink: 0 !important;
-                      flex-grow: 0 !important;
-                    }
-                  }
-                  
-                  /* En móvil: sin restricciones de altura */
-                  @media (max-width: 767px) {
-                    .overflow-x-auto, .flex-1 {
-                      height: auto !important;
-                      max-height: none !important;
-                    }
-                  }
-                  
-                  @keyframes fadeInOut {
-                    0%, 100% { opacity: 0.3; }
-                    50% { opacity: 0.8; }
-                  }
-                `}</style>
                 <div 
                   className={`flex pb-2 ${
                     modoVista === 'ajustado' 
@@ -3898,11 +3768,19 @@ export function GestionAuditoriasKanbanSimple() {
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs text-white" style={{ background: '#2a6dbd' }}>
-                            {auditoria.auditorAsignado.iniciales}
+                            {auditoria.auditorAsignado.nombre === 'Por asignar' && auditoria.equipoAuditores?.length > 0 
+                              ? 'EQ' 
+                              : auditoria.auditorAsignado.iniciales}
                           </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">{auditoria.auditorAsignado.nombre}</p>
-                            <p className="text-xs text-gray-500">{auditoria.auditorAsignado.tipoIdentificacion} {auditoria.auditorAsignado.numeroIdentificacion}</p>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-900 truncate">
+                              {auditoria.auditorAsignado.nombre === 'Por asignar' && auditoria.equipoAuditores?.length > 0
+                                ? auditoria.equipoAuditores.map((a: any) => typeof a === 'string' ? a : a.nombre).join(', ')
+                                : auditoria.auditorAsignado.nombre}
+                            </p>
+                            {auditoria.auditorAsignado.nombre !== 'Por asignar' && (
+                              <p className="text-xs text-gray-500">{auditoria.auditorAsignado.tipoIdentificacion} {auditoria.auditorAsignado.numeroIdentificacion}</p>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -4224,17 +4102,26 @@ export function GestionAuditoriasKanbanSimple() {
             auditoriaDataInicial={auditoriaSeleccionada}
             isOpen={modalExpedienteOpen}
             tabInicial={(() => {
+              if (faseFoco) {
+                console.log('[Kanban] Aplicando fase focal:', faseFoco);
+                const fase = faseFoco.toLowerCase();
+                if (fase === 'ejecucion' || fase === 'ejecución') return 'ejecucion';
+                if (fase === 'planeacion' || fase === 'planeación') return 'planeacion';
+                if (fase === 'comunicacion' || fase === 'comunicación') return 'comunicacion';
+                return fase;
+              }
               const e = (auditoriaSeleccionada?.estado || '').toLowerCase();
               if (e.includes('planeacion') || e.includes('planeación')) return 'planeacion';
               if (e.includes('ejecucion') || e.includes('ejecución')) return 'ejecucion';
               if (e.includes('comunicacion') || e.includes('comunicación')) return 'comunicacion';
-              if (e.includes('seguimiento')) return 'documentacion';
-              if (e.includes('finalizada')) return 'historial';
+              if (e.includes('seguimiento')) return 'seguimiento';
+              if (e.includes('finalizada')) return 'finalizada';
               return 'general';
             })()}
             onClose={() => {
               setModalExpedienteOpen(false);
               setAuditoriaSeleccionada(null);
+              setFaseFoco(null); // Limpiar fase al cerrar
             }}
             onComunicacionCompletada={recargarAuditorias}
           />
@@ -4408,12 +4295,25 @@ export function GestionAuditoriasKanbanSimple() {
                   cargo: auditoriaSeleccionada.auditorLider?.cargo || 'Auditor',
                   email: auditoriaSeleccionada.auditorLider?.nombre?.toLowerCase().replace(' ', '.') + '@esap.edu.co' || 'auditor@esap.edu.co'
                 },
-                equipoAuditores: auditoriaSeleccionada.auditorAsignado ? [
-                  {
-                    nombre: auditoriaSeleccionada.auditorAsignado?.nombre || 'Sin asignar',
-                    cargo: auditoriaSeleccionada.auditorAsignado?.cargo || 'Auditor'
-                  }
-                ] : [],
+                equipoAuditores: [
+                  // Incluir el auditor asignado principal (si no es "Por asignar")
+                  ...(auditoriaSeleccionada.auditorAsignado && auditoriaSeleccionada.auditorAsignado.nombre !== 'Por asignar' ? [{
+                    nombre: auditoriaSeleccionada.auditorAsignado.nombre,
+                    cargo: auditoriaSeleccionada.auditorAsignado.cargo || 'Auditor'
+                  }] : []),
+                  // Incluir el equipo adicional (vienen como objetos {personaId, nombre, cargo} o strings)
+                  ...(Array.isArray(auditoriaSeleccionada.equipoAuditores) 
+                    ? auditoriaSeleccionada.equipoAuditores
+                        .filter(a => {
+                          const name = typeof a === 'string' ? a : (a.nombre || '');
+                          return name && name !== auditoriaSeleccionada.auditorAsignado?.nombre;
+                        })
+                        .map(a => ({
+                          nombre: typeof a === 'string' ? a : (a.nombre || 'Auditor'),
+                          cargo: typeof a === 'object' ? (a.cargo || 'Auditor') : 'Auditor'
+                        }))
+                    : [])
+                ],
                 // Cronograma de 3 etapas - fechas reales
                 fechaInicio: auditoriaSeleccionada.fechaInicio,
                 fechaFinPlaneacion: auditoriaSeleccionada.fechaFinPlaneacion,
@@ -4471,9 +4371,10 @@ export function GestionAuditoriasKanbanSimple() {
             auditorActualId={auditoriaSeleccionada.auditorLiderId}
             onAsignar={async (auditorId) => {
               console.log('Auditor asignado:', auditorId);
-              // Actualizar auditoría en el backend
+              // Actualizar auditoría en el backend - asignar a ambos roles por defecto en este flujo
               const exito = await actualizarAuditoriaBackend(auditoriaSeleccionada.id, {
-                auditorLiderId: auditorId
+                auditorLiderId: auditorId,
+                auditorAsignadoId: auditorId
               });
               if (exito) {
                 // ✅ Actualizar también el estado local con los datos del auditor
@@ -4483,8 +4384,16 @@ export function GestionAuditoriasKanbanSimple() {
                     aud.id === auditoriaSeleccionada.id 
                       ? {
                           ...aud,
-                          auditorLiderId: auditorId, // ✅ Guardar también el ID (UUID string)
+                          auditorLiderId: auditorId,
+                          auditorAsignadoId: auditorId,
                           auditorLider: {
+                            nombre: auditorSeleccionado.nombre,
+                            cargo: auditorSeleccionado.cargo || 'Auditor',
+                            iniciales: auditorSeleccionado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+                            tipoIdentificacion: 'CC' as const,
+                            numeroIdentificacion: ''
+                          },
+                          auditorAsignado: {
                             nombre: auditorSeleccionado.nombre,
                             cargo: auditorSeleccionado.cargo || 'Auditor',
                             iniciales: auditorSeleccionado.nombre.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
@@ -4497,6 +4406,8 @@ export function GestionAuditoriasKanbanSimple() {
                 }
                 setModalAsignarAuditorOpen(false);
                 setAuditoriaSeleccionada(null);
+                // Recargar desde backend para asegurar sincronización completa
+                await recargarAuditorias();
               }
             }}
             auditoresDisponibles={auditoresBackend}

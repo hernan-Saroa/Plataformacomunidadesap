@@ -74,11 +74,11 @@ export function ConfirmationModal({
       icon: <AlertCircle className="w-6 h-6" />,
     },
     info: {
-      bgColor: 'bg-[--esap-primary]',
+      bgColor: 'bg-[#1e5da8]',
       iconBgColor: 'bg-blue-100',
-      iconColor: 'text-[--esap-primary]',
-      borderColor: 'border-[--esap-primary]',
-      buttonBg: 'bg-[--esap-primary] hover:bg-[#1a4d8a]',
+      iconColor: 'text-[#1e5da8]',
+      borderColor: 'border-[#1e5da8]',
+      buttonBg: 'bg-[#1e5da8] hover:bg-[#1a4d8a]',
       buttonText: 'text-white',
       headerTextColor: 'text-white',
       icon: <Info className="w-6 h-6" />,
@@ -110,7 +110,7 @@ export function ConfirmationModal({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={handleClose}
-            className="fixed inset-0 bg-black bg-opacity-40 backdrop-blur-sm z-[9998]"
+            className="fixed inset-0 bg- bg-opacity-40 backdrop-blur-sm z-[9998]"
           />
 
           {/* Modal */}

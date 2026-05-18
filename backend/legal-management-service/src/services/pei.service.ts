@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull, Not } from 'typeorm';
+import { Brackets, Repository } from 'typeorm';
 import { PeiIndicador } from '../entities/pei-indicador.entity';
 import { PeiRegistroAvance } from '../entities/pei-registro-avance.entity';
 
@@ -13,13 +13,30 @@ export class PeiService {
         private registroRepo: Repository<PeiRegistroAvance>,
     ) { }
 
-    async getDashboard() {
+    async getDashboard(filtros: { responsableKeys?: string[] } = {}) {
         // 1. Get all active indicators with their latest records
-        const indicadores = await this.indicadorRepo.find({
-            where: { estado: 'ACTIVO', archivedAt: IsNull() },
-            relations: ['registros'],
-            order: { id: 'ASC' } // Stable order
-        });
+        const query = this.indicadorRepo
+            .createQueryBuilder('indicador')
+            .leftJoinAndSelect('indicador.registros', 'registros')
+            .where('indicador.estado = :estado', { estado: 'ACTIVO' })
+            .andWhere('indicador.archivedAt IS NULL');
+
+        if (filtros.responsableKeys?.length) {
+            const responsableUuidKeys = filtros.responsableKeys.filter((key) =>
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key),
+            );
+            const normalizedKeys = filtros.responsableKeys.map((key) => key.toLowerCase());
+            query.andWhere(new Brackets((qb) => {
+                if (responsableUuidKeys.length) {
+                    qb.where('indicador.responsableId IN (:...responsableUuidKeys)', { responsableUuidKeys })
+                        .orWhere('LOWER(indicador.responsableNombre) IN (:...normalizedKeys)', { normalizedKeys });
+                } else {
+                    qb.where('LOWER(indicador.responsableNombre) IN (:...normalizedKeys)', { normalizedKeys });
+                }
+            }));
+        }
+
+        const indicadores = await query.orderBy('indicador.id', 'ASC').getMany();
 
         // 2. Process data for the dashboard
         let sumAvance = 0;
@@ -84,38 +101,76 @@ export class PeiService {
         return ind;
     }
 
-    async registrarAvance(id: number, valorReportado: number, observaciones?: string, usuarioId?: string) {
+    /**
+     * Bug 6: registra avance, persiste observaciones y evidencia (URL relativa
+     * al archivo subido o URL externa proporcionada). Tras guardar, recalcula
+     * el porcentaje del indicador (el dashboard ya promediará al consultar).
+     */
+    async registrarAvance(
+        id: number,
+        valorReportado: number,
+        observaciones?: string,
+        usuarioId?: string,
+        evidenciaUrl?: string,
+    ) {
         const indicador = await this.findOne(id);
 
         // Calculate percentage
-        let porcentaje = 0;
         const meta = Number(indicador.metaObjetivo);
-
+        let porcentaje = 0;
         if (meta !== 0) {
-            porcentaje = (valorReportado / meta) * 100;
+            porcentaje = (Number(valorReportado) / meta) * 100;
         }
+        // Cap a 100 para no romper restricciones decimal(5,2) y mantener lógica visual sana
+        if (porcentaje > 100) porcentaje = 100;
+        if (porcentaje < 0) porcentaje = 0;
 
         const registro = this.registroRepo.create({
             indicadorId: id,
             valorReportado,
-            porcentajeAvance: porcentaje > 100 ? 100 : porcentaje,
-            observaciones,
-            usuarioRegistraId: usuarioId
+            porcentajeAvance: porcentaje,
+            observaciones: observaciones ?? null as any,
+            evidenciaUrl: evidenciaUrl ?? null as any,
+            usuarioRegistraId: usuarioId,
         });
+        const saved = await this.registroRepo.save(registro);
 
-        // Recalculate percentage strictly
-        registro.porcentajeAvance = (valorReportado / meta) * 100;
+        // Bug 6: tras guardar, devolvemos el indicador con su histórico actualizado
+        // y el % global recalculado a partir de TODOS los indicadores activos.
+        // Esto permite al frontend reflejar el nuevo avance sin un refetch extra.
+        const indicadorActualizado = await this.findOne(id);
+        const dashboard = await this.getDashboard();
 
-        return this.registroRepo.save(registro);
+        return {
+            registro: saved,
+            indicador: indicadorActualizado,
+            avanceGlobal: dashboard.stats.avance_global,
+        };
     }
 
     // ==================== ARCHIVADO ====================
-    async getArchivados() {
-        return this.indicadorRepo.find({
-            where: { archivedAt: Not(IsNull()) },
-            relations: ['registros'],
-            order: { id: 'DESC' },
-        });
+    async getArchivados(filtros: { responsableKeys?: string[] } = {}) {
+        const query = this.indicadorRepo
+            .createQueryBuilder('indicador')
+            .leftJoinAndSelect('indicador.registros', 'registros')
+            .where('indicador.archivedAt IS NOT NULL');
+
+        if (filtros.responsableKeys?.length) {
+            const responsableUuidKeys = filtros.responsableKeys.filter((key) =>
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key),
+            );
+            const normalizedKeys = filtros.responsableKeys.map((key) => key.toLowerCase());
+            query.andWhere(new Brackets((qb) => {
+                if (responsableUuidKeys.length) {
+                    qb.where('indicador.responsableId IN (:...responsableUuidKeys)', { responsableUuidKeys })
+                        .orWhere('LOWER(indicador.responsableNombre) IN (:...normalizedKeys)', { normalizedKeys });
+                } else {
+                    qb.where('LOWER(indicador.responsableNombre) IN (:...normalizedKeys)', { normalizedKeys });
+                }
+            }));
+        }
+
+        return query.orderBy('indicador.id', 'DESC').getMany();
     }
 
     async archivar(id: number) {

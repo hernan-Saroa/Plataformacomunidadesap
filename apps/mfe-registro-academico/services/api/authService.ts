@@ -14,6 +14,8 @@ import type {
 } from '../../types';
 
 class AuthService {
+  // Cache en memoria: los JWT siguen protegidos como cookies HttpOnly.
+  private _cachedUser: AuthUser | null = null;
   /**
    * Login con Microsoft (OAuth)
    */
@@ -65,39 +67,37 @@ class AuthService {
    */
   async logout(): Promise<void> {
     try {
-      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT);
+      await apiClient.post(API_ENDPOINTS.AUTH.LOGOUT, {}, {
+        skipAuth: true,
+        skipAuthRefresh: true,
+        skipErrorToast: true,
+        retries: 0,
+      });
     } finally {
       this.clearAuthData();
     }
   }
 
   /**
-   * Refresh del access token
+   * Refresh de sesion con cookie HttpOnly.
+   * El frontend no lee ni guarda refresh tokens.
    */
   async refreshToken(): Promise<RefreshTokenResponse> {
-    const refreshToken = this.getRefreshToken();
-    
-    if (!refreshToken) {
-      throw new Error('No refresh token available');
-    }
-
-    const response = await apiClient.post<RefreshTokenResponse>(
+    return apiClient.post<RefreshTokenResponse>(
       API_ENDPOINTS.AUTH.REFRESH,
-      { refreshToken },
+      {},
       { skipAuth: true }
     );
-
-    // Actualizar access token
-    this.saveAccessToken(response.accessToken);
-
-    return response;
   }
-
   /**
    * Verificar token actual
    */
   async verifyToken(): Promise<AuthUser> {
-    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY);
+    return apiClient.get<AuthUser>(API_ENDPOINTS.AUTH.VERIFY, undefined, {
+      retries: 0,
+      skipAuthRefresh: true,
+      skipErrorToast: true,
+    });
   }
 
   /**
@@ -137,18 +137,42 @@ class AuthService {
   // ==========================================================================
 
   /**
+   * Permite restaurar el usuario tras verifyToken sin persistir datos sensibles.
+   */
+  setCurrentUserCache(user: AuthUser): void {
+    this._cachedUser = user;
+    if (typeof window !== 'undefined') {
+      (window as any).__esap_auth_cache = user;
+    }
+  }
+  /**
    * Verifica si el usuario está autenticado
    */
   isAuthenticated(): boolean {
-    return !!this.getAccessToken();
+    return this.getCurrentUser() !== null;
   }
 
   /**
-   * Obtiene el usuario actual del localStorage
+   * Obtiene el usuario actual de la sesion en memoria.
+   * Los MFEs pueden quedar cargados entre logout/login; por eso siempre se
+   * sincroniza contra la cache global de la pestana antes de responder.
    */
   getCurrentUser(): AuthUser | null {
-    const userData = sessionStorage.getItem(config.STORAGE_KEYS.USER_DATA);
-    return userData ? JSON.parse(userData) : null;
+    if (typeof window === 'undefined') {
+      return this._cachedUser;
+    }
+
+    const sharedUser = (window as any).__esap_auth_cache ?? null;
+    if (!sharedUser) {
+      this._cachedUser = null;
+      return null;
+    }
+
+    if (this._cachedUser !== sharedUser) {
+      this._cachedUser = sharedUser;
+    }
+
+    return this._cachedUser;
   }
 
   /**
@@ -156,8 +180,32 @@ class AuthService {
    */
   hasPermission(permission: string): boolean {
     const user = this.getCurrentUser();
-    if (user?.roles.find(r => r.code === 'SUPER_ADMIN')) return true;
-    return user?.permissions?.includes(permission) || false;
+    if (!user) return false;
+    if (this.isSuperAdmin()) return true;
+
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+    const directPermissions = Array.isArray(user.permissions)
+      ? user.permissions
+          .map((permissionItem: any) =>
+            typeof permissionItem === 'string'
+              ? permissionItem
+              : permissionItem?.code,
+          )
+          .filter(Boolean)
+      : [];
+    const rolePermissions = roles.flatMap((role: any) =>
+      Array.isArray(role?.permissions)
+        ? role.permissions
+            .map((rolePermission: any) =>
+              typeof rolePermission === 'string'
+                ? rolePermission
+                : rolePermission?.code,
+            )
+            .filter(Boolean)
+        : [],
+    );
+
+    return [...directPermissions, ...rolePermissions].includes(permission);
   }
 
   /**
@@ -165,8 +213,11 @@ class AuthService {
    */
   isSuperAdmin(): boolean {
     const user = this.getCurrentUser();
-    if (user?.roles.find(r => r.code === 'SUPER_ADMIN')) return true;
-    return false;
+    return (user?.roles || []).some((role: any) =>
+      typeof role === 'string'
+        ? role === 'SUPER_ADMIN'
+        : role?.code === 'SUPER_ADMIN' || role?.name === 'SUPER_ADMIN',
+    );
   }
 
   /**
@@ -201,38 +252,22 @@ class AuthService {
   // MÉTODOS PRIVADOS
   // ==========================================================================
 
-  private saveTokens(accessToken: string, refreshToken: string): void {
-    sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
-    // Compatibilidad con cliente legacy que usa otra clave.
-    sessionStorage.setItem('esap_access_token', accessToken);
-    sessionStorage.setItem(config.STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
-  }
-
-  private saveAccessToken(accessToken: string): void {
-    sessionStorage.setItem(config.STORAGE_KEYS.AUTH_TOKEN, accessToken);
-    sessionStorage.setItem('esap_access_token', accessToken);
+  private saveTokens(_accessToken?: string, _refreshToken?: string): void {
+    // Los tokens JWT se gestionan como cookies HttpOnly por el backend.
+    // El frontend no los almacena en sessionStorage/localStorage.
   }
 
   private saveUserData(user: AuthUser): void {
-    sessionStorage.setItem(config.STORAGE_KEYS.USER_DATA, JSON.stringify(user));
-  }
-
-  private getAccessToken(): string | null {
-    return (
-      sessionStorage.getItem(config.STORAGE_KEYS.AUTH_TOKEN) ||
-      sessionStorage.getItem('esap_access_token')
-    );
-  }
-
-  private getRefreshToken(): string | null {
-    return sessionStorage.getItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+    this.setCurrentUserCache(user);
   }
 
   private clearAuthData(): void {
-    sessionStorage.removeItem(config.STORAGE_KEYS.AUTH_TOKEN);
-    sessionStorage.removeItem('esap_access_token');
-    sessionStorage.removeItem(config.STORAGE_KEYS.REFRESH_TOKEN);
+    this._cachedUser = null;
+    if (typeof window !== 'undefined') {
+      delete (window as any).__esap_auth_cache;
+    }
     sessionStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
+    localStorage.removeItem(config.STORAGE_KEYS.USER_DATA);
     apiClient.clearCache();
   }
 

@@ -1,85 +1,62 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  ManyToOne,
-  OneToOne,
-  OneToMany,
-  JoinColumn,
-} from 'typeorm';
-import { Sede } from '../users/sede.entity';
-import { RegistroCalificado } from './registro-calificado.entity';
-import { AcreditacionPrograma } from './acreditacion.entity';
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
-@Entity({ schema: 'auth', name: 'programas_academicos' })
+@Entity({ schema: 'academic_work_plan', name: 'programas' })
 export class ProgramaAcademico {
-  @PrimaryGeneratedColumn({ type: 'bigint' })
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
-  @Column({ type: 'text', unique: true })
+  @Column({ type: 'varchar', length: 255 })
   codigo: string;
 
-  @Column({ type: 'text' })
+  @Column({ type: 'varchar', length: 500 })
   nombre: string;
-
-  @Column({ name: 'nivel_formacion', type: 'text' })
-  nivelFormacion: string;
-
-  @Column({ type: 'text' })
-  modalidad: string;
-
-  @Column({ type: 'text' })
-  jornada: string;
-
-  @Column({ name: 'duracion_semestres', type: 'int' })
-  duracionSemestres: number;
-
-  @Column({ type: 'int' })
-  creditos: number;
-
-  @Column({ name: 'facultad', type: 'text', nullable: true })
-  facultad?: string;
-
-  @Column({ type: 'text', default: 'Activo' })
-  estado: string;
 
   @Column({ type: 'text', nullable: true })
   descripcion?: string;
 
+  @Column({ name: 'nivel_formacion', type: 'varchar', length: 255, nullable: true })
+  nivelFormacion?: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  facultad?: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  modalidad?: string;
+
+  @Column({ type: 'integer', nullable: true })
+  duracion?: number;
+
+  @Column({ type: 'integer', nullable: true })
+  creditos?: number;
+
+  @Column({ name: 'costo_matricula', type: 'decimal', precision: 10, scale: 2, nullable: true })
+  costoMatricula?: number;
+
+  @Column({ name: 'requisitos_de_ingreso', type: 'text', nullable: true })
+  requisitosDeIngreso?: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  jornada?: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  sede?: string;
+
+  @Column({ name: 'registro_calificado', type: 'jsonb', nullable: true })
+  registroCalificado?: any;
+
   @Column({ name: 'perfil_egresado', type: 'text', nullable: true })
   perfilEgresado?: string;
 
-  @Column({ name: 'requisitos_ingreso', type: 'text', array: true, nullable: true })
-  requisitosIngreso?: string[];
+  @Column({ type: 'varchar', length: 50, default: 'ACTIVO' })
+  estado: string;
 
-  @Column({ name: 'costo_matricula', type: 'numeric', precision: 14, scale: 2, nullable: true })
-  costoMatricula?: number;
+  @Column({ name: 'created_at', type: 'timestamp with time zone', default: () => 'NOW()' })
+  createdAt: Date;
 
-  @Column({ name: 'estudiantes_activos', type: 'int', default: 0 })
-  estudiantesActivos: number;
+  @Column({ name: 'updated_at', type: 'timestamp with time zone', default: () => 'NOW()' })
+  updatedAt: Date;
 
-  @Column({ type: 'int', default: 0 })
-  graduados: number;
-
-  @Column({ name: 'docentes_asignados', type: 'int', default: 0 })
-  docentesAsignados: number;
-
-  @Column({ name: 'fecha_creacion', type: 'date', nullable: true })
-  fechaCreacion?: string;
-
-  @Column({ name: 'ultima_actualizacion', type: 'date', nullable: true })
-  ultimaActualizacion?: string;
-
-  @ManyToOne(() => Sede, { eager: true })
-  @JoinColumn({ name: 'sede_id' })
-  sede: Sede;
-
-  @OneToOne(() => RegistroCalificado, (rc) => rc.programa, { cascade: true, eager: true })
-  registroCalificado?: RegistroCalificado;
-
-  @OneToMany(() => AcreditacionPrograma, (ac) => ac.programa, {
-    cascade: true,
-    eager: true,
-  })
-  acreditaciones?: AcreditacionPrograma[];
+  // Virtual properties for calculated plan de estudios stats (populated by service)
+  totalAsignaturas?: number;
+  creditosPlan?: number;
 }

@@ -432,6 +432,36 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     initials: userName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
   };
 
+  const userPermissionsList = (userData?.permissions as string[]) || [];
+
+  // Controla firma-electronica en sidebar según permiso certificate.sign del módulo cert-laborales
+  const computedAssignedModules = (() => {
+    const mods = (userData?.modules as string[]) || [];
+    const roleCodes = ((userData?.roles as string[]) || []).map((role) => String(role).toUpperCase());
+    const email = String(currentUser.email || userData?.email || '').toLowerCase();
+    const isSystemAdmin =
+      roleCodes.some((role) => ['SUPER_ADMIN', 'ADMIN', 'ADMINISTRADOR'].includes(role)) ||
+      email === 'superuser@esap.edu.co' ||
+      email === 'admin@esap.edu.co';
+
+    if (isSystemAdmin) return ['all'];
+
+    const hasCertLaborales = mods.includes('certificados-laborales');
+    const hasSignPerm =
+      userPermissionsList.includes('certificados-laborales.certificate.sign') ||
+      userPermissionsList.includes('cl.certificate.sign');
+
+    if (!hasCertLaborales) return mods;
+
+    if (hasSignPerm && !mods.includes('firma-electronica')) {
+      return [...mods, 'firma-electronica'];
+    }
+    if (!hasSignPerm && mods.includes('firma-electronica')) {
+      return mods.filter((m) => m !== 'firma-electronica');
+    }
+    return mods;
+  })();
+
   // Handlers
   const handleLogout = () => {
     // Llamar al handler de logout del padre (App.tsx) si existe
@@ -587,7 +617,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'control-disciplinario':
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <ControlDisciplinarioFull />
+            <ControlDisciplinarioFull
+              key={[
+                userData?.personId || currentUser.id || currentUser.email || 'anon',
+                ...(userData?.roles || []),
+                ...(userData?.permissions || []),
+              ].join(':')}
+            />
           </Suspense>
         );
 
@@ -635,9 +671,10 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'certificados-laborales':
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <CertificadosLaboralesRouter 
+            <CertificadosLaboralesRouter
               userRoles={userRoles || []}
               userEmail={currentUser.email}
+              userPermissions={userPermissionsList}
             />
           </Suspense>
         );
@@ -716,7 +753,7 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
                 }}
                 userEmail={currentUser.email}
                 certificatesPendingCount={certificatesPendingCount}
-                assignedModules={userData?.modules}
+                assignedModules={computedAssignedModules}
                 restrictedMode={
                   userData?.module === 'control-interno'
                     ? 'control-interno'

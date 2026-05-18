@@ -1,4 +1,7 @@
 import { BadRequestException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import { ClientSecretCredential } from '@azure/identity';
+import { Client } from '@microsoft/microsoft-graph-client';
+import { TokenCredentialAuthenticationProvider } from '@microsoft/microsoft-graph-client/authProviders/azureTokenCredentials';
 import * as nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { SendValidationCodeDto } from './dto/send-validation-code.dto';
@@ -13,10 +16,34 @@ type SmtpConfig = {
   from: string;
 };
 
+type MicrosoftGraphConfig = {
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+  emailAccount: string;
+};
+
+type EmailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+};
+
+type EmailPayload = {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+  attachments?: EmailAttachment[];
+};
+
+type EmailProvider = 'smtp' | 'microsoft_graph';
+
 @Injectable()
 export class EmailsService {
   private readonly logger = new Logger(EmailsService.name);
   private transporter: nodemailer.Transporter | null = null;
+  private graphClient: Client | null = null;
 
   private getSmtpConfig(): SmtpConfig | null {
     const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
@@ -55,17 +82,134 @@ export class EmailsService {
     return this.transporter;
   }
 
-  async sendValidationCode(data: SendValidationCodeDto) {
+  private getConfiguredProvider(): EmailProvider {
+    const provider = (process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
+
+    if (provider === 'microsoft' || provider === 'microsoft_graph' || provider === 'graph') {
+      return 'microsoft_graph';
+    }
+
+    if (provider === 'smtp') {
+      return 'smtp';
+    }
+
+    return this.hasMicrosoftGraphEnv() ? 'microsoft_graph' : 'smtp';
+  }
+
+  private hasMicrosoftGraphEnv(): boolean {
+    return Boolean(
+      process.env.AZURE_TENANT_ID &&
+        process.env.AZURE_CLIENT_ID &&
+        process.env.AZURE_CLIENT_SECRET &&
+        process.env.NOTIFICATIONS_EMAIL_ACCOUNT,
+    );
+  }
+
+  private getMicrosoftGraphConfig(): MicrosoftGraphConfig | null {
+    const tenantId = process.env.AZURE_TENANT_ID;
+    const clientId = process.env.AZURE_CLIENT_ID;
+    const clientSecret = process.env.AZURE_CLIENT_SECRET;
+    const emailAccount = process.env.NOTIFICATIONS_EMAIL_ACCOUNT;
+
+    if (!tenantId || !clientId || !clientSecret || !emailAccount || tenantId === 'development-disabled') {
+      this.logger.warn(
+        'Microsoft Graph no configurado. Variables requeridas: AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, NOTIFICATIONS_EMAIL_ACCOUNT',
+      );
+      return null;
+    }
+
+    return { tenantId, clientId, clientSecret, emailAccount };
+  }
+
+  private getGraphClient(config: MicrosoftGraphConfig): Client {
+    if (this.graphClient) {
+      return this.graphClient;
+    }
+
+    const credential = new ClientSecretCredential(config.tenantId, config.clientId, config.clientSecret);
+    const authProvider = new TokenCredentialAuthenticationProvider(credential, {
+      scopes: ['https://graph.microsoft.com/.default'],
+    });
+
+    this.graphClient = Client.initWithMiddleware({ authProvider });
+    this.logger.log(`Microsoft Graph inicializado para ${config.emailAccount}`);
+    return this.graphClient;
+  }
+
+  private async sendMail(payload: EmailPayload): Promise<{ sent: boolean }> {
+    const provider = this.getConfiguredProvider();
+
+    if (provider === 'microsoft_graph') {
+      return this.sendWithMicrosoftGraph(payload);
+    }
+
+    return this.sendWithSmtp(payload);
+  }
+
+  private async sendWithSmtp(payload: EmailPayload): Promise<{ sent: boolean }> {
     const config = this.getSmtpConfig();
     if (!config) {
-      throw new BadRequestException('SMTP no configurado, no se puede enviar el código');
+      throw new BadRequestException('SMTP no configurado, no se puede enviar el email');
     }
 
     const transporter = await this.getTransporter(config);
-    const subject = data.subject ?? 'Código de validación - Certificado Laboral ESAP';
-
-    const mailOptions = {
+    await transporter.sendMail({
       from: config.from,
+      to: payload.to,
+      subject: payload.subject,
+      text: payload.text,
+      html: payload.html,
+      attachments: payload.attachments?.map((attachment) => ({
+        filename: attachment.filename,
+        content: attachment.content,
+        contentType: attachment.contentType,
+      })),
+    });
+
+    return { sent: true };
+  }
+
+  private async sendWithMicrosoftGraph(payload: EmailPayload): Promise<{ sent: boolean }> {
+    const config = this.getMicrosoftGraphConfig();
+    if (!config) {
+      throw new BadRequestException('Microsoft Graph no configurado, no se puede enviar el email');
+    }
+
+    const client = this.getGraphClient(config);
+    const attachments =
+      payload.attachments?.map((attachment) => ({
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: attachment.filename,
+        contentBytes: attachment.content.toString('base64'),
+        contentType: attachment.contentType,
+      })) || [];
+
+    const message = {
+      message: {
+        subject: payload.subject,
+        body: {
+          contentType: payload.html ? 'HTML' : 'Text',
+          content: payload.html || payload.text,
+        },
+        toRecipients: [
+          {
+            emailAddress: {
+              address: payload.to,
+            },
+          },
+        ],
+        ...(attachments.length > 0 && { attachments }),
+      },
+      saveToSentItems: true,
+    };
+
+    await client.api(`/users/${config.emailAccount}/sendMail`).post(message);
+    return { sent: true };
+  }
+
+  async sendValidationCode(data: SendValidationCodeDto) {
+    const subject = data.subject ?? 'Código de validación - Certificado Laboral ESAP';
+    const mailPayload: EmailPayload = {
       to: data.to,
       subject,
       text: `Tu código de validación es: ${data.code}\n\nEste código es válido por un tiempo limitado.`,
@@ -119,7 +263,7 @@ export class EmailsService {
     };
 
     try {
-      await transporter.sendMail(mailOptions);
+      await this.sendMail(mailPayload);
       this.logger.log(`Código de validación enviado a ${data.to}`);
       return { sent: true };
     } catch (error) {
@@ -129,11 +273,6 @@ export class EmailsService {
   }
 
   async sendEmailWithAttachment(data: SendEmailAttachmentDto) {
-    const config = this.getSmtpConfig();
-    if (!config) {
-      throw new BadRequestException('SMTP no configurado, no se puede enviar el email con adjunto');
-    }
-
     let contentBuffer: Buffer;
     try {
       contentBuffer = Buffer.from(data.attachmentBase64, 'base64');
@@ -142,10 +281,7 @@ export class EmailsService {
       throw new BadRequestException('El adjunto no es un base64 válido');
     }
 
-    const transporter = await this.getTransporter(config);
-
-    const mailOptions = {
-      from: config.from,
+    const mailPayload: EmailPayload = {
       to: data.to,
       subject: data.subject,
       text: data.text || 'Se adjunta el archivo solicitado.',
@@ -160,7 +296,7 @@ export class EmailsService {
     };
 
     try {
-      await transporter.sendMail(mailOptions);
+      await this.sendMail(mailPayload);
       this.logger.log(`Email con adjunto enviado a ${data.to} (${data.attachmentName})`);
       return { sent: true };
     } catch (error) {
@@ -170,15 +306,7 @@ export class EmailsService {
   }
 
   async sendEmail(data: SendEmailDto) {
-    const config = this.getSmtpConfig();
-    if (!config) {
-      throw new BadRequestException('SMTP no configurado, no se puede enviar el email');
-    }
-
-    const transporter = await this.getTransporter(config);
-
-    const mailOptions = {
-      from: config.from,
+    const mailPayload: EmailPayload = {
       to: data.to,
       subject: data.subject,
       text: data.text || 'Notificacion ESAP',
@@ -220,7 +348,7 @@ export class EmailsService {
     };
 
     try {
-      await transporter.sendMail(mailOptions);
+      await this.sendMail(mailPayload);
       this.logger.log(`Email enviado a ${data.to}`);
       return { sent: true };
     } catch (error) {

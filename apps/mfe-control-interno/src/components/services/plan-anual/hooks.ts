@@ -378,8 +378,10 @@ export function usePlanAnualCompleto(year: number) {
     auditores: auditoresQuery.data || [],
     estadisticas: planQuery.estadisticas,
     
-    // Estados
+    // Estados (loadingPlan / loadingAuditores evitan bloquear toda la UI mientras cargan auditores)
     loading: planQuery.loading || auditoresQuery.loading,
+    loadingPlan: planQuery.loading,
+    loadingAuditores: auditoresQuery.loading,
     error: planQuery.error || auditoresQuery.error,
     
     // Acciones

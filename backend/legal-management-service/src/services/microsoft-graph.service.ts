@@ -38,7 +38,7 @@ export class MicrosoftGraphService {
     private readonly tenantId = process.env.AZURE_TENANT_ID || '';
     private readonly clientId = process.env.AZURE_CLIENT_ID || '';
     private readonly clientSecret = process.env.AZURE_CLIENT_SECRET || '';
-    private readonly emailAccount = process.env.EMAIL_ACCOUNT_QA || 'desarrollo.ccd@esap.edu.co';
+    private readonly emailAccount = process.env.LEGAL_EMAIL_ACCOUNT || 'desarrollo.ccd@esap.edu.co';
 
     private getClient(): Client {
         if (this.graphClient) {
@@ -240,15 +240,16 @@ export class MicrosoftGraphService {
      * Note: Microsoft/Exchange may add organizational signature after the content
      */
     async sendEmail(
-        to: string,
+        to: string | string[],
         subject: string,
         body: string,
         cc?: string[],
         attachments?: { name: string; contentBytes: string; contentType: string }[]
     ): Promise<boolean> {
+        const toList = Array.isArray(to) ? to : [to];
         // MOCK FOR DEV: Si no hay credenciales configuradas, simular envío exitoso
         if (!this.tenantId || !this.clientId || !this.clientSecret || this.tenantId === 'development-disabled') {
-            this.logger.warn(`[DEV MOCK] Email simulación enviado a: ${to} | Asunto: ${subject}`);
+            this.logger.warn(`[DEV MOCK] Email simulación enviado a: ${toList.join(', ')} | Asunto: ${subject}`);
             this.logger.debug(`[DEV MOCK] Cuerpo: ${body.substring(0, 100)}...`);
             return true;
         }
@@ -287,13 +288,9 @@ export class MicrosoftGraphService {
                         contentType: 'HTML',
                         content: htmlBody,
                     },
-                    toRecipients: [
-                        {
-                            emailAddress: {
-                                address: to,
-                            },
-                        },
-                    ],
+                    toRecipients: toList.map(addr => ({
+                        emailAddress: { address: addr.trim() },
+                    })),
                     ...(ccRecipients.length > 0 && { ccRecipients }),
                     ...(graphAttachments.length > 0 && { attachments: graphAttachments }),
                     from: {

@@ -11,7 +11,6 @@ import {
   Calendar,
   Hash,
   Mail,
-  Printer,
   QrCode,
   Eye,
   Copy,
@@ -61,8 +60,12 @@ interface CertificadoDetallePanelProps {
     observations?: string;
     request?: {
       observations?: string;
+      technical_bonus_category?: string | null;
+      technicalBonusCategory?: string | null;
     };
     technical_bonus?: number;
+    technical_bonus_category?: string | null;
+    technicalBonusCategory?: string | null;
     incluyeSalario?: boolean;
     incluyePrimaTecnica?: boolean;
     templateSnapshot?: any;
@@ -137,7 +140,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
       observations: certificado.request?.observations || certificado.observations,
       templateType: certificado.templateType,
       includeCodeLabel: true,
-      codeLabel: 'Codigo',
+      codeLabel: 'Código',
     }) ||
     certificado.empleado.cargo
   );
@@ -562,15 +565,6 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     }
   };
 
-  const handleImprimir = () => {
-    setAutoPDFAction('print');
-    setShowPDFViewer(true);
-    setTimeout(() => {
-      setShowPDFViewer(false);
-      setAutoPDFAction(null);
-    }, 1000);
-  };
-
   const handleVerQR = () => {
     setShowQRModal(true);
   };
@@ -614,7 +608,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     const copiado = await copiarAlPortapapeles(certificado.consecutivo);
     if (copiado) {
       toast.success('Consecutivo copiado', {
-        description: 'El numero de consecutivo fue copiado al portapapeles'
+        description: 'El número de consecutivo fue copiado al portapapeles'
       });
     } else {
       toast.error('No se pudo copiar el consecutivo');
@@ -662,6 +656,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
     <AnimatePresence>
       {isOpen && (
         <motion.div
+          key="panel-content"
           initial={{ opacity: 0, height: 0 }}
           animate={{ opacity: 1, height: 'auto' }}
           exit={{ opacity: 0, height: 0 }}
@@ -770,7 +765,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                             </p>
                             {incluyePrimaTecnicaCertificado && primaTecnicaCertificado > 0 && (
                               <p className="text-xs text-emerald-700 mt-1 pl-5">
-                                Prima Tecnica: ${Number(primaTecnicaCertificado).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} COP
+                                Prima técnica y/o coordinación: ${Number(primaTecnicaCertificado).toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} COP
                               </p>
                             )}
                           </>
@@ -889,19 +884,21 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                     </h3>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-2">
+                    {/* Fila de acciones iguales */}
+                    <div className="flex gap-2">
                     <button
                       onClick={handleVerPDF}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium"
+                      className="flex-1 flex flex-col items-center justify-center gap-1.5 px-2 py-3 min-h-[64px] bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-xs font-medium"
                     >
-                      <Eye className="w-4 h-4" />
+                      <Eye className="w-4 h-4 shrink-0" />
                       Ver PDF
                     </button>
                     <button
                       onClick={handleDescargar}
                       disabled={isDownloading}
                       aria-busy={isDownloading}
-                      className={`flex items-center justify-center gap-2 px-4 py-2.5 bg-green-50 text-green-700 rounded-lg transition-colors text-sm font-medium ${
+                      className={`flex-1 flex flex-col items-center justify-center gap-1.5 px-2 py-3 min-h-[64px] bg-green-50 text-green-700 rounded-lg transition-colors text-xs font-medium ${
                         isDownloading ? 'opacity-80 cursor-not-allowed' : 'hover:bg-green-100'
                       }`}
                     >
@@ -914,7 +911,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           <Loader2 className="w-4 h-4" />
                         </motion.span>
                       ) : (
-                        <Download className="w-4 h-4" />
+                        <Download className="w-4 h-4 shrink-0" />
                       )}
                       {isDownloading ? (
                         <motion.span
@@ -931,7 +928,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                       onClick={handleEnviarEmail}
                       disabled={isSendingEmail}
                       aria-busy={isSendingEmail}
-                      className={`flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-50 text-purple-700 rounded-lg transition-colors text-sm font-medium ${
+                      className={`flex-1 flex flex-col items-center justify-center gap-1.5 px-2 py-3 min-h-[64px] bg-purple-50 text-purple-700 rounded-lg transition-colors text-xs font-medium ${
                         isSendingEmail ? 'opacity-80 cursor-not-allowed' : 'hover:bg-purple-100'
                       }`}
                     >
@@ -944,7 +941,7 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                           <Loader2 className="w-4 h-4" />
                         </motion.span>
                       ) : (
-                        <Mail className="w-4 h-4" />
+                        <Mail className="w-4 h-4 shrink-0" />
                       )}
                       {isSendingEmail ? (
                         <motion.span
@@ -957,30 +954,24 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                         'Reenviar'
                       )}
                     </button>
-                    <button
-                      onClick={handleImprimir}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
-                    >
-                      <Printer className="w-4 h-4" />
-                      Imprimir
-                    </button>
+                    </div>
                     <button
                       onClick={handleVerQR}
-                      className="col-span-2 flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] text-white rounded-lg hover:bg-[#002873] transition-colors text-sm font-medium"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#003DA5] text-white rounded-lg hover:bg-[#002873] transition-colors text-sm font-medium"
                     >
                       <QrCode className="w-4 h-4" />
                       Ver Código QR
                     </button>
                     <button
                       onClick={handleToggleHistorial}
-                      className="col-span-2 flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition-colors text-sm font-medium"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-orange-50 text-orange-700 rounded-lg hover:bg-orange-100 transition-colors text-sm font-medium"
                     >
                       <Activity className="w-4 h-4" />
                       {showHistorialVerificaciones ? 'Ocultar' : 'Ver'} Historial de Verificaciones
                     </button>
                     {(isDownloading || isSendingEmail || emailFeedback.type) && (
                       <div
-                        className={`col-span-2 rounded-lg border px-3 py-2 text-xs flex items-center gap-2 ${
+                        className={`w-full rounded-lg border px-3 py-2 text-xs flex items-center gap-2 ${
                           isDownloading || isSendingEmail
                             ? 'bg-blue-50 border-blue-200 text-blue-700'
                             : emailFeedback.type === 'success'
@@ -1090,6 +1081,12 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
               incluyeSalario: incluyeSalarioCertificado,
               incluyePrimaTecnica: incluyePrimaTecnicaCertificado,
               technical_bonus: primaTecnicaCertificado,
+              technical_bonus_category:
+                certificado.technical_bonus_category ??
+                certificado.technicalBonusCategory ??
+                certificado.request?.technical_bonus_category ??
+                certificado.request?.technicalBonusCategory ??
+                null,
             }}
           />
 

@@ -5,16 +5,17 @@
  */
 
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { 
+import {
   Building2, Plus, Search, Download, Upload, MapPin,
   ChevronRight, GitBranch, Network, Users, Loader2, ChevronDown, Pencil, Trash2,
-  GraduationCap
+  GraduationCap, RefreshCw, AlertTriangle
 } from 'lucide-react';
 import { Card, Button, Badge, Input } from '@esap-mfe/shared-ui';
-import { toast, Toaster } from 'sonner';
+import { toast } from 'sonner';
+import { Toaster } from '@esap-mfe/shared-ui/sonner';
 import { estructuraService } from '../../services/estructuraService';
 import { CreateSeccionalSedeModal } from './CreateSeccionalSedeModal';
+import { AsignarUsuariosModal } from './AsignarUsuariosModal';
 import { useAuth } from '../../hooks';
 import type { Seccional, Sede, EstadisticasEstructuraOrganizacional } from '../../services/api/types';
 
@@ -33,6 +34,9 @@ export function EstructuraOrganizacionalModule() {
   const [tipoCreacion, setTipoCreacion] = useState<TipoCreacion>('sede');
   const [showDropdown, setShowDropdown] = useState(false);
   const [editItem, setEditItem] = useState<Seccional | Sede | null>(null);
+  const [showAsignarModal, setShowAsignarModal] = useState(false);
+  const [sinTerritorial, setSinTerritorial] = useState(0);
+  const [sinCetap, setSinCetap] = useState(0);
   const { hasRole } = useAuth();
   const isSuperAdmin = hasRole('SUPER_ADMIN');
 
@@ -56,6 +60,16 @@ export function EstructuraOrganizacionalModule() {
       toast.error('Error al cargar la estructura organizacional');
     } finally {
       setLoading(false);
+    }
+
+    try {
+      const resp = await estructuraService.getUsuariosSinAsignar();
+      if (resp.success && resp.data) {
+        setSinTerritorial(resp.data.filter((u: any) => u.sinTerritorial).length);
+        setSinCetap(resp.data.filter((u: any) => !u.cetapId).length);
+      }
+    } catch {
+      // endpoint no disponible aún, no mostrar alerta
     }
   };
 
@@ -143,6 +157,16 @@ export function EstructuraOrganizacionalModule() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap sm:flex-nowrap shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={cargarDatos}
+            className="gap-2"
+            title="Actualizar datos"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span className="hidden sm:inline">Actualizar</span>
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -246,6 +270,28 @@ export function EstructuraOrganizacionalModule() {
         </div>
       </Card>
 
+      {/* Alerta usuarios sin asignar */}
+      {(sinTerritorial > 0 || sinCetap > 0) && (
+        <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+          <div className="flex-1 text-sm text-amber-800">
+            {sinTerritorial > 0 && (
+              <span className="font-medium">{sinTerritorial} usuario(s) sin territorial</span>
+            )}
+            {sinTerritorial > 0 && sinCetap > 0 && <span> · </span>}
+            {sinCetap > 0 && (
+              <span className="font-medium">{sinCetap} usuario(s) sin CETAP</span>
+            )}
+          </div>
+          <button
+            onClick={() => setShowAsignarModal(true)}
+            className="text-sm font-medium text-amber-800 underline hover:text-amber-900 shrink-0"
+          >
+            Asignar ahora
+          </button>
+        </div>
+      )}
+
       {/* Vista segun seleccion */}
       {loading ? (
         <Card className="p-12">
@@ -283,6 +329,23 @@ export function EstructuraOrganizacionalModule() {
         tipo={tipoCreacion}
         seccionales={seccionales}
         editItem={editItem}
+      />
+
+      {/* Modal Asignar Usuarios */}
+      <AsignarUsuariosModal
+        isOpen={showAsignarModal}
+        onClose={() => setShowAsignarModal(false)}
+        onSuccess={cargarDatos}
+        territoriales={seccionales
+          .filter(s => s.codSeccional?.toUpperCase() !== 'SCENT')
+          .map(s => ({
+            id: String(s.idSeccional),
+            nombre: s.nomSeccional,
+            cetap: sedes
+              .filter(sede => sede.idSeccional === s.idSeccional)
+              .map(sede => ({ id: String(sede.idSede), nombre: sede.nomSede }))
+          }))
+        }
       />
     </div>
   );
@@ -395,13 +458,9 @@ function VistaArbolSeccionalesSedes({
             No se encontraron resultados para "{busqueda}"
           </div>
         ) : (
-          <>
+          <div className="space-y-2">
             {sedeCentral && (
-              <motion.div
-                initial={{ opacity: 0, y: -5 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mb-3"
-              >
+              <div className="mb-3">
                 <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white">
                   <button
                     onClick={() => setExpandidosSedeCentral(!expandidosSedeCentral)}
@@ -435,29 +494,27 @@ function VistaArbolSeccionalesSedes({
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             )}
             {expandidosSedeCentral && (
-            <div className="ml-6 space-y-2">
-              {territorialesFiltradas.map((item, index) => {
-                if (!item) return null;
-                const { seccional, sedes: sedesSeccional } = item;
-                const isExpandida = seccionalesExpandidas[seccional.idSeccional] ?? false;
+              <div key="territoriales-sede-central" className="ml-6 space-y-2">
+                {territorialesFiltradas.map((item, index) => {
+                  if (!item) return null;
+                  const { seccional, sedes: sedesSeccional } = item;
+                  const isExpandida = seccionalesExpandidas[seccional.idSeccional] ?? false;
 
-                return (
-                  <div key={seccional.idSeccional ?? `seccional-${index}`}>
-                <motion.div
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="group"
-                >
-                  <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-[#003DA5] hover:shadow-md transition-all bg-white">
-                    <button
-                      onClick={() => toggleSeccional(seccional.idSeccional)}
-                      className="w-6 h-6 rounded flex items-center justify-center hover:bg-gray-100 transition-colors"
+                  return (
+                    <div
+                      key={seccional.idSeccional ?? `seccional-${index}`}
+                      className="group"
                     >
-                      <ChevronRight className={`w-4 h-4 transition-transform ${isExpandida ? 'rotate-90' : ''}`} />
-                    </button>
+                      <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-[#003DA5] hover:shadow-md transition-all bg-white">
+                        <button
+                          onClick={() => toggleSeccional(seccional.idSeccional)}
+                          className="w-6 h-6 rounded flex items-center justify-center hover:bg-gray-100 transition-colors"
+                        >
+                          <ChevronRight className={`w-4 h-4 transition-transform ${isExpandida ? 'rotate-90' : ''}`} />
+                        </button>
 
                       <Badge className="bg-green-100 text-green-700 border-0">
                         Territorial
@@ -510,24 +567,15 @@ function VistaArbolSeccionalesSedes({
                       </button>
                     </div>
                   </div>
-                </motion.div>
 
-                {/* Sedes de esta seccional */}
-                <AnimatePresence>
-                  {isExpandida && sedesSeccional.length > 0 && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="mt-2 ml-6 space-y-1"
-                    >
-                      {sedesSeccional.map((sede, sedeIndex) => (
-                        <motion.div
-                          key={sede.idSede ?? `sede-${sedeIndex}`}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="group"
-                        >
+                      {/* Sedes de esta seccional */}
+                      {isExpandida && sedesSeccional.length > 0 && (
+                        <div className="mt-2 ml-6 space-y-1">
+                          {sedesSeccional.map((sede, sedeIndex) => (
+                            <div
+                              key={sede.idSede ?? `sede-${sedeIndex}`}
+                              className="group"
+                            >
                           <div className="flex items-center gap-3 p-2 rounded-lg border border-gray-200 hover:border-[#003DA5] hover:shadow-sm transition-all bg-gray-50">
                             <div className="w-6" />
 
@@ -583,17 +631,16 @@ function VistaArbolSeccionalesSedes({
                               </button>
                             </div>
                           </div>
-                        </motion.div>
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-                  </div>
-                );
-              })}
-            </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )}
-          </>
+          </div>
         )}
       </div>
     </Card>
@@ -738,12 +785,7 @@ function VistaListaTerritorialesCetap({
         <div className="relative p-8 md:p-12">
           {/* NIVEL 1: SEDE CENTRAL - Diseño Premium */}
           <div className="flex flex-col items-center mb-16">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: -20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-              className="relative z-10"
-            >
+            <div className="relative z-10">
               {/* Tarjeta Sede Central */}
               <div 
                 className="relative px-10 py-8 rounded-3xl border-4 shadow-2xl"
@@ -824,7 +866,7 @@ function VistaListaTerritorialesCetap({
                 <line x1="1" y1="0" x2="1" y2="60" stroke="url(#connector-gradient)" strokeWidth="2" />
                 <circle cx="1" cy="60" r="4" fill="#2962FF" />
               </svg>
-            </motion.div>
+            </div>
           </div>
 
           {/* NIVEL 2: TERRITORIALES - Grid Optimizado */}
@@ -836,15 +878,8 @@ function VistaListaTerritorialesCetap({
                 const isHovered = hoveredTerritorial === seccional.idSeccional;
 
                 return (
-                  <motion.div
+                  <div
                     key={seccional.idSeccional ?? `seccional-${index}`}
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ 
-                      delay: index * 0.04,
-                      duration: 0.4,
-                      ease: [0.22, 1, 0.36, 1]
-                    }}
                     className="relative"
                     onMouseEnter={() => setHoveredTerritorial(seccional.idSeccional)}
                     onMouseLeave={() => setHoveredTerritorial(null)}
@@ -1008,15 +1043,8 @@ function VistaListaTerritorialesCetap({
                       </div>
 
                       {/* NIVEL 3: CETAP (expandible) - Diseño Mejorado */}
-                      <AnimatePresence>
-                        {isExpanded && sedesTerritorial.length > 0 && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                            className="border-t-2 border-white/30 bg-gradient-to-b from-white/15 to-white/5 backdrop-blur-xl p-4"
-                          >
+                      {isExpanded && sedesTerritorial.length > 0 && (
+                        <div className="border-t-2 border-white/30 bg-gradient-to-b from-white/15 to-white/5 backdrop-blur-xl p-4">
                             <div className="flex items-center gap-2 mb-3 pb-3 border-b border-white/20">
                               <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
                                 <Network className="w-4 h-4 text-white" />
@@ -1029,15 +1057,8 @@ function VistaListaTerritorialesCetap({
                             
                             <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar-white pr-1">
                               {sedesTerritorial.map((sede, sedeIndex) => (
-                                <motion.div
+                                <div
                                   key={sede.idSede ?? `sede-${sedeIndex}`}
-                                  initial={{ opacity: 0, x: -20 }}
-                                  animate={{ opacity: 1, x: 0 }}
-                                  transition={{ 
-                                    delay: sedeIndex * 0.03,
-                                    duration: 0.3,
-                                    ease: [0.22, 1, 0.36, 1]
-                                  }}
                                   className="group bg-white rounded-xl p-3 hover:shadow-md transition-all duration-200"
                                 >
                                   <div className="flex items-start gap-3">
@@ -1063,14 +1084,13 @@ function VistaListaTerritorialesCetap({
                                       </div>
                                     </div>
                                   </div>
-                                </motion.div>
+                                </div>
                               ))}
                             </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                        </div>
+                      )}
                     </div>
-                  </motion.div>
+                  </div>
                 );
               })}
             </div>

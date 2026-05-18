@@ -39,8 +39,11 @@ export class DisciplinaryProcessReassignmentRequest {
   @JoinColumn({ name: 'current_professional_id' })
   currentProfessional: DisciplinaryProfessional;
 
-  @Column({ name: 'current_professional_id', type: 'uuid' })
-  currentProfessionalId: string;
+  @Column({ name: 'current_professional_id', type: 'uuid', nullable: true })
+  currentProfessionalId: string | null;
+
+  @Column({ name: 'was_initially_unassigned', type: 'boolean', default: false })
+  wasInitiallyUnassigned: boolean;
 
   @ManyToOne(() => DisciplinaryProfessional, {
     onDelete: 'CASCADE',

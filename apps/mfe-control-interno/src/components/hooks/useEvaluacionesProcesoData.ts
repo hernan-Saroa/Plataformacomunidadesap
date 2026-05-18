@@ -26,7 +26,7 @@ import {
 // ════════════════════════════════════════════════════════════════════════════
 
 export type PonderacionRiesgo = 'EXTREMO' | 'ALTO' | 'MODERADO' | 'BAJO' | 'MUY BAJO';
-export type DecisionFinal = 'INCLUIR PLAN ANUAL' | 'AUDITORÍA POSTERIOR';
+export type DecisionFinal = 'INCLUIR_PLAN_ANUAL' | 'INCLUIR_AUDITORIA_POSTERIOR';
 
 export interface EvaluacionProcesoUI {
   id: string;

@@ -3,7 +3,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between } from 'typeorm';
 import { Audiencia } from '../entities/audiencia.entity';
 import { CreateAudienciaDto, AudienciaDTO } from '../dtos/audiencia.dto';
-import { Abogado } from '../entities/abogado.entity';
 import { Expediente } from '../entities/expediente.entity';
 
 import { ActuacionService } from './actuacion.service';
@@ -15,8 +14,6 @@ export class AudienciaService {
     constructor(
         @InjectRepository(Audiencia)
         private audienciaRepo: Repository<Audiencia>,
-        @InjectRepository(Abogado)
-        private abogadoRepo: Repository<Abogado>,
         @InjectRepository(Expediente)
         private expedienteRepo: Repository<Expediente>,
         private actuacionService: ActuacionService,
@@ -25,7 +22,7 @@ export class AudienciaService {
     async update(id: string, data: any): Promise<Audiencia> {
         const audiencia = await this.audienciaRepo.findOne({
             where: { id },
-            relations: ['expediente', 'abogado']
+            relations: ['expediente']
         });
         if (!audiencia) throw new NotFoundException('Audiencia no encontrada');
 
@@ -69,7 +66,7 @@ export class AudienciaService {
                 'AUDIENCIA',
                 saved.id,
                 { ...data, tipoEvento: 'REASIGNACION' },
-                saved.abogado?.nombreCompleto || 'Sistema'
+                saved.abogadoNombre || 'Sistema'
             );
         }
 
@@ -79,7 +76,6 @@ export class AudienciaService {
     async delete(id: string): Promise<void> {
         const audiencia = await this.audienciaRepo.findOne({
             where: { id },
-            relations: ['abogado']
         });
 
         if (!audiencia) {
@@ -103,9 +99,6 @@ export class AudienciaService {
     async create(dto: CreateAudienciaDto): Promise<Audiencia> {
         const expediente = await this.expedienteRepo.findOne({ where: { id: dto.expedienteId } });
         if (!expediente) throw new NotFoundException('Expediente no encontrado');
-
-        const abogado = await this.abogadoRepo.findOne({ where: { id: dto.abogadoId } });
-        if (!abogado) throw new NotFoundException('Abogado no encontrado');
 
         // Conflict Validation
         const end = new Date(new Date(dto.fechaHoraInicio).getTime() + dto.duracionMinutos * 60000);
@@ -137,21 +130,21 @@ export class AudienciaService {
                 linkReunion: dto.linkReunion,
                 duracionMinutos: dto.duracionMinutos
             },
-            abogado.nombreCompleto
+            dto.abogadoNombre ?? 'Sistema'
         );
 
         // ENVIAR NOTIFICACIÓN AL ENCARGADO
-        if (abogado.email) {
+        if (dto.abogadoEmail) {
             try {
                 const mailPayload = {
-                    to: abogado.email,
+                    to: dto.abogadoEmail,
                     subject: `Nueva audiencia programada: ${dto.titulo}`,
                     html: `
                         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
                             <h2 style="color: #003DA5;">Notificación de Audiencia Programada</h2>
-                            <p>Estimado(a) <strong>${abogado.nombreCompleto}</strong>,</p>
+                            <p>Estimado(a) <strong>${dto.abogadoNombre}</strong>,</p>
                             <p>Se le informa que ha sido asignado(a) a una nueva audiencia en el expediente <strong>${expediente.radicado || expediente.id}</strong>.</p>
-                            
+
                             <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
                                 <tr>
                                     <td style="padding: 10px; border-bottom: 1px solid #eee; width: 30%;"><strong>Título:</strong></td>
@@ -176,7 +169,7 @@ export class AudienciaService {
                                     <td style="padding: 10px; border-bottom: 1px solid #eee;"><a href="${dto.linkReunion}" style="color: #003DA5;">Vincularse con este enlace</a></td>
                                 </tr>` : ''}
                             </table>
-                            
+
                             <p style="font-size: 12px; color: #666; margin-top: 30px;">
                                 Este es un mensaje automatizado desde la Plataforma Integrada ESAP. Por favor, no responda a este correo.
                             </p>
@@ -184,7 +177,6 @@ export class AudienciaService {
                     `
                 };
 
-                // Síncrono esperado para notificar status al front
                 const res = await fetch('http://localhost:3009/api/v1/emails/send', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -195,7 +187,7 @@ export class AudienciaService {
                     this.logger.error(`Fallo envío notificación HTTP ${res.status}`);
                     (saved as any)._notificationError = true;
                 } else {
-                    this.logger.log(`Notificación de audiencia enviada a ${abogado.email}`);
+                    this.logger.log(`Notificación de audiencia enviada a ${dto.abogadoEmail}`);
                     (saved as any)._notificationError = false;
                 }
             } catch (err) {
@@ -218,7 +210,7 @@ export class AudienciaService {
 
         const audiencias = await this.audienciaRepo.find({
             where,
-            relations: ['expediente', 'abogado'],
+            relations: ['expediente'],
             order: { fechaHoraInicio: 'ASC' }
         });
 
@@ -236,7 +228,7 @@ export class AudienciaService {
             radicado: a.expediente ? a.expediente.radicado : 'N/A',
             nombreInvestigado: a.expediente ? a.expediente.demandante : 'N/A',
             abogadoId: a.abogadoId,
-            nombreAbogado: a.abogado ? a.abogado.nombreCompleto : 'N/A',
+            nombreAbogado: a.abogadoNombre || 'N/A',
             historial: a.historial || [] // Include historial
         }));
     }

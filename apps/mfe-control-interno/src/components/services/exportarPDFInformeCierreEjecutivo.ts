@@ -198,13 +198,17 @@ export async function exportarPDFInformeCierre(datos: DatosInformeCierre): Promi
   const auditorLiderNombre = primerValor(
     aud.auditorLider,
     audAny.auditorLider?.nombre,
+    audAny.auditorLider?.persona?.nombre,
     audAny.auditorLiderNombre,
     audAny.responsable,
   );
   const auditorLiderEmail = primerValor(
     aud.auditorLiderEmail,
     audAny.auditorLider?.email,
+    audAny.auditorLider?.correo,
+    audAny.auditorLider?.persona?.email,
     audAny.emailAuditorLider,
+    audAny.correoAuditorLider,
   );
   const tipoAuditoria = primerValor(aud.tipo, audAny.tipoAuditoria, resumen?.tipo);
   const estadoAuditoria = primerValor(aud.estado, audAny.estadoKanban, audAny.fase, resumen?.estado);
@@ -266,8 +270,11 @@ export async function exportarPDFInformeCierre(datos: DatosInformeCierre): Promi
     doc.text('Equipo de auditoría:', margin, y);
     y += 5;
     doc.setFont('helvetica', 'normal');
-    aud.equipoAuditores.forEach((m: { nombre?: string; rol?: string; email?: string }) => {
-      doc.text(`• ${m.nombre || '—'} (${m.rol || '—'})${m.email ? ` - ${m.email}` : ''}`, margin + 2, y);
+    aud.equipoAuditores.forEach((m: any) => {
+      const nombre = typeof m === 'string' ? m : (m.nombre || m.nombreCompleto || m.persona?.nombre || m.name || '—');
+      const rol = typeof m === 'string' ? 'Auditor' : (m.rol || m.cargo || m.persona?.cargo || 'Auditor');
+      const email = typeof m === 'string' ? '' : (m.email || m.correo || m.persona?.email || '');
+      doc.text(`• ${nombre} (${rol})${email ? ` - ${email}` : ''}`, margin + 2, y);
       y += 5;
     });
   }

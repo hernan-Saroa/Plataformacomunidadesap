@@ -50,18 +50,28 @@ export class AuditoriasController {
   ) {}
 
   /**
+   * GET /esap/auditorias/jefes-control-interno
+   * Obtiene la lista de IDs de usuarios con roles de Jefe OCI o Administrador
+   */
+  @Get('jefes-control-interno')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async getJefesControlInterno() {
+    return this.auditoriasService.obtenerJefesControlInterno();
+  }
+
+  /**
    * Helper para extraer usuario del token de forma opcional
    * Si el token está presente y es válido, retorna el usuario
    * Si no está presente o es inválido, retorna null sin lanzar error
    */
   private extractUserFromToken(req: any): any | null {
     try {
-      const authHeader = req.headers?.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      const token = this.extractJwtFromRequest(req);
+      if (!token) {
         return null;
       }
 
-      const token = authHeader.substring(7);
       const payload = this.jwtService.verify(token, {
         secret: process.env.JWT_SECRET || 'esap-super-secret-jwt-key-2024',
       });
@@ -90,6 +100,38 @@ export class AuditoriasController {
       // Si el token es inválido o expirado, simplemente retornar null
       // No lanzar error para permitir acceso sin autenticación
       return null;
+    }
+  }
+
+  private extractJwtFromRequest(req: any): string | null {
+    const authHeader = req.headers?.authorization;
+    if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+      return authHeader.substring(7);
+    }
+
+    const cookieHeader = req.headers?.cookie;
+    if (typeof cookieHeader !== 'string') {
+      return null;
+    }
+
+    const cookiePart = cookieHeader
+      .split(';')
+      .map((part: string) => part.trim())
+      .find((part: string) => part.startsWith('esap_access_token='));
+
+    if (!cookiePart) {
+      return null;
+    }
+
+    const token = cookiePart.split('=').slice(1).join('=');
+    if (!token) {
+      return null;
+    }
+
+    try {
+      return decodeURIComponent(token);
+    } catch {
+      return token;
     }
   }
 
@@ -270,6 +312,19 @@ export class AuditoriasController {
   }
 
   /**
+   * GET /esap/auditorias/personas/all
+   * Retorna todas las personas de auth.personas (máx 50, orden alfabético).
+   * Pensado para precargar el selector «Responsable del Área Auditada» al abrir el formulario.
+   */
+  @Get('personas/all')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async getAllPersonas(@Query('limit') limit?: string) {
+    const parsedLimit = limit ? parseInt(limit, 10) : 50;
+    return this.auditoriasService.getAllPersonas(parsedLimit > 0 ? parsedLimit : 50);
+  }
+
+  /**
    * GET /esap/auditorias/personas/buscar
    * Busca una persona por número de identificación
    * Retorna el ID_TERCERO que se usa como FK
@@ -300,6 +355,24 @@ export class AuditoriasController {
   @Permissions(CIP.AUDITORIA_VIEW)
   async obtenerPersonasDisponibles() {
     return this.auditoriasService.obtenerPersonasDisponibles();
+  }
+
+  /**
+   * GET /esap/auditorias/personas/search?q=...
+   * Búsqueda libre en auth.personas por nombre, email o identificación.
+   * Pensado para autocompletar el "responsable del área auditada" al crear
+   * una auditoría.
+   */
+  @Get('personas/search')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_VIEW)
+  async searchPersonas(@Query('q') q?: string) {
+    if (!q || q.trim().length < 2) {
+      throw new BadRequestException(
+        'El parámetro q es obligatorio y debe tener al menos 2 caracteres',
+      );
+    }
+    return this.auditoriasService.searchPersonasByText(q);
   }
 
   /**

@@ -14,6 +14,7 @@ import { TemplateConfig } from './certificates/template-config.entity';
 import { TemplateConfigChange } from './certificates/template-config-change.entity';
 import { Firmante } from './certificates/firmante.entity';
 import { TechnicalBonusAssignment } from './certificates/technical-bonus-assignment.entity';
+import { TechnicalBonusTemplate } from './certificates/technical-bonus-template.entity';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
@@ -38,6 +39,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
         TemplateConfigChange,
         Firmante,
         TechnicalBonusAssignment,
+        TechnicalBonusTemplate,
       ],
       synchronize: false, // Using existing schema
     }),

@@ -10,10 +10,12 @@ import { Button } from '@esap-mfe/shared-ui/button';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import {
-  X, FileText, Eye, AlertCircle, ZoomIn, ZoomOut, Download
+  X, FileText, Eye, AlertCircle, ZoomIn, ZoomOut, Download,
+  ChevronUp, ChevronDown
 } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
+import * as mammoth from 'mammoth';
 import { isViewableInBrowser, getFileTypeCategory } from '../../../../utils/fileUtils';
 
 interface VisorDocumentoModalProps {
@@ -34,7 +36,15 @@ export function VisorDocumentoModal({
   const [zoomLevel, setZoomLevel] = useState(100);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [docxHtml, setDocxHtml] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const docxScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollDocx = (direction: 'up' | 'down') => {
+    const el = docxScrollRef.current;
+    if (!el) return;
+    el.scrollBy({ top: direction === 'down' ? 300 : -300, behavior: 'smooth' });
+  };
 
   // Reset loading state when archivo changes
   useEffect(() => {
@@ -42,11 +52,51 @@ export function VisorDocumentoModal({
       const isMock = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:');
 
       const nombreParaExtension = (numero || archivo || '').toLowerCase();
-      const isViewable = nombreParaExtension.match(/\.(pdf|jpg|jpeg|png|gif|webp)/i) || archivo.match(/\.(pdf|jpg|jpeg|png|gif|webp)/i);
+      const isViewable = nombreParaExtension.match(/\.(pdf|jpg|jpeg|png|gif|webp|docx|doc)/i) || archivo.match(/\.(pdf|jpg|jpeg|png|gif|webp|docx|doc)/i);
 
       setIsLoading(!isMock && isViewable !== null);
       setHasError(false);
+      setDocxHtml(null);
     }
+  }, [archivo, numero]);
+
+  // Cargar y convertir DOCX a HTML cuando aplica
+  useEffect(() => {
+    if (!archivo) return;
+    const nombreParaExtension = (numero || archivo || '').toLowerCase();
+    const extension = nombreParaExtension.split('.').pop()?.toLowerCase();
+    const isDocx =
+      extension === 'docx' ||
+      archivo.toLowerCase().includes('.docx') ||
+      nombreParaExtension.includes('.docx');
+    const isMockFile = !archivo.startsWith('http') && !archivo.startsWith('blob:') && !archivo.startsWith('data:');
+
+    if (!isDocx || isMockFile) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        setIsLoading(true);
+        const response = await fetch(archivo);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const arrayBuffer = await response.arrayBuffer();
+        if (cancelled) return;
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        if (cancelled) return;
+        setDocxHtml(result.value || '');
+        setIsLoading(false);
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Error convirtiendo DOCX:', err);
+          setHasError(true);
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [archivo, numero]);
 
   if (!archivo || !numero) {
@@ -117,29 +167,59 @@ export function VisorDocumentoModal({
 
         {/* ==================== SIMPLE TOOLBAR (ONLY ZOOM) ==================== */}
         <div className="flex-shrink-0 px-6 py-2 bg-gray-50 border-b flex items-center justify-between">
-          {/* Zoom controls */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleZoomOut}
-              disabled={zoomLevel <= 50}
-              className="font-bold"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </Button>
-            <span className="text-sm font-bold text-gray-700 px-3 min-w-[60px] text-center">
-              {zoomLevel}%
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleZoomIn}
-              disabled={zoomLevel >= 200}
-              className="font-bold"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </Button>
+          <div className="flex items-center gap-3">
+            {/* Zoom controls */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleZoomOut}
+                disabled={zoomLevel <= 50}
+                className="font-bold"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </Button>
+              <span className="text-sm font-bold text-gray-700 px-3 min-w-[60px] text-center">
+                {zoomLevel}%
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleZoomIn}
+                disabled={zoomLevel >= 200}
+                className="font-bold"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </Button>
+            </div>
+
+            {/* Flechas de scroll — solo visibles para documentos Word */}
+            {docxHtml !== null && (
+              <>
+                <div className="w-px h-5 bg-gray-300" />
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => scrollDocx('up')}
+                    className="font-bold"
+                    title="Subir"
+                  >
+                    <ChevronUp className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => scrollDocx('down')}
+                    className="font-bold"
+                    title="Bajar"
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                  <span className="text-xs text-gray-500 ml-1">Desplazar</span>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -149,7 +229,9 @@ export function VisorDocumentoModal({
         </div>
 
         {/* ==================== DOCUMENT VIEWER AREA ==================== */}
-        <div className="flex-1 overflow-hidden bg-gray-200 relative">
+        {/* min-h-0 es crítico: sin él, flex-1 en un contenedor flex-col ignora overflow
+            y el hijo crece más allá del límite del Dialog, rompiendo el scroll */}
+        <div className="flex-1 min-h-0 overflow-hidden bg-gray-200 relative">
           {/* Loading indicator */}
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
@@ -178,6 +260,7 @@ export function VisorDocumentoModal({
               const extension = nombreParaExtension.split('.').pop()?.toLowerCase();
               const isPdf = extension === 'pdf' || archivo.includes('pdf') || archivo.includes('.pdf') || nombreParaExtension.includes('.pdf');
               const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '') || archivo.match(/\.(jpg|jpeg|png|gif|webp)/i) || nombreParaExtension.match(/\.(jpg|jpeg|png|gif|webp)/i);
+              const isDocx = extension === 'docx' || archivo.toLowerCase().includes('.docx') || nombreParaExtension.includes('.docx');
 
               // MODO SIMULADO: Si es un PDF mock (sin URL real), mostramos un documento HTML simulado
               // Esto evita que se cargue la app recursivamente en el iframe (error "mini ventana web")
@@ -267,6 +350,53 @@ export function VisorDocumentoModal({
                       <div className="absolute bottom-12 left-12 right-12 text-center text-xs text-gray-400 border-t pt-2">
                         <p>Calle 44 No. 53-37 CAN Bogotá D.C. - Código Postal: 111321</p>
                         <p>Documento generado por Plataforma Gestión Legal ESAP</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (isDocx && !isMockFile) {
+                if (docxHtml === null) {
+                  return null;
+                }
+                // Para docx usamos fontSize escalado en vez de transform:scale,
+                // así el scroll nativo con rueda del ratón funciona sin problemas.
+                const docFontSize = Math.round(14 * (zoomLevel / 100));
+                return (
+                  <div
+                    ref={docxScrollRef}
+                    className="absolute inset-0 overflow-y-auto overflow-x-auto bg-gray-200"
+                    style={{ scrollBehavior: 'smooth' }}
+                  >
+                    <div className="flex justify-center p-8">
+                      <div
+                        className="bg-white shadow-2xl p-12 min-h-[1100px] text-gray-800"
+                        style={{
+                          fontFamily: 'Calibri, Arial, sans-serif',
+                          lineHeight: 1.6,
+                          fontSize: `${docFontSize}px`,
+                          width: `${Math.round(800 * (zoomLevel / 100))}px`,
+                          minWidth: '320px',
+                        }}
+                      >
+                        <style>{`
+                          .docx-viewer-content p { margin-bottom: 0.7em; }
+                          .docx-viewer-content h1 { font-size: 1.6em; margin: 0.8em 0 0.4em; }
+                          .docx-viewer-content h2 { font-size: 1.3em; margin: 0.7em 0 0.35em; }
+                          .docx-viewer-content h3 { font-size: 1.1em; margin: 0.6em 0 0.3em; }
+                          .docx-viewer-content ul, .docx-viewer-content ol { margin-left: 1.5em; margin-bottom: 0.7em; }
+                          .docx-viewer-content table { border-collapse: collapse; width: 100%; margin: 0.8em 0; }
+                          .docx-viewer-content td, .docx-viewer-content th { border: 1px solid #ddd; padding: 6px 10px; }
+                          .docx-viewer-content th { background-color: #f5f5f5; font-weight: bold; }
+                          .docx-viewer-content img { max-width: 100%; height: auto; display: block; margin: 0.5em 0; }
+                          .docx-viewer-content strong, .docx-viewer-content b { font-weight: bold; }
+                          .docx-viewer-content em, .docx-viewer-content i { font-style: italic; }
+                        `}</style>
+                        <div
+                          className="docx-viewer-content"
+                          dangerouslySetInnerHTML={{ __html: docxHtml }}
+                        />
                       </div>
                     </div>
                   </div>
