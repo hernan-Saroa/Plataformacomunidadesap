@@ -97,7 +97,7 @@ export class ReportesService {
     }
 
     private async getProcesosJudicialesData() {
-        // 'Radicado', 'Tipo Proceso', 'Demandante', 'Despacho', 'Etapa Actual', 'Fecha Inicio', 'Próximo Término', 'Abogado', 'Estado'
+        // 'Radicado', 'Tipo Proceso', 'Demandante', 'Despacho', 'Etapa Actual', 'Fecha Inicio', 'Próximo Término', 'Profesional', 'Estado'
         const data = await this.expedienteRepo.createQueryBuilder('e')
             .where('e.jurisdiccion != :juris', { juris: 'DISCIPLINARIO' })
             .orWhere('e.jurisdiccion IS NULL')
@@ -111,7 +111,7 @@ export class ReportesService {
             'Etapa Actual': d.etapaProcesal,
             'Fecha Inicio': d.fechaRadicacion ? new Date(d.fechaRadicacion).toLocaleDateString() : '',
             'Próximo Término': d.fechaVencimientoTermino ? new Date(d.fechaVencimientoTermino).toLocaleDateString() : 'N/A',
-            'Abogado': d.abogadoSustanciador || 'Sin asignar',
+            'Profesional': d.abogadoSustanciador || 'Sin asignar',
             'Estado': d.estado
         }));
     }
@@ -150,7 +150,7 @@ export class ReportesService {
     }
 
     private async getDisciplinariosData() {
-        // 'Número Proceso', 'Investigado', 'Cargo', 'Tipo Falta', 'Etapa', 'Quejoso', 'Fecha Apertura', 'Abogado', 'Estado'
+        // 'Número Proceso', 'Investigado', 'Cargo', 'Tipo Falta', 'Etapa', 'Quejoso', 'Fecha Apertura', 'Profesional', 'Estado'
         const data = await this.expedienteRepo.find({
             where: { jurisdiccion: 'DISCIPLINARIO' }
         });
@@ -163,7 +163,7 @@ export class ReportesService {
             'Etapa': d.etapa || 'AVOCAMIENTO',
             'Quejoso': d.demandante || 'De Oficio',
             'Fecha Apertura': d.fechaRadicacion ? new Date(d.fechaRadicacion).toLocaleDateString() : '',
-            'Abogado': d.abogadoSustanciador || 'Sin asignar',
+            'Profesional': d.abogadoSustanciador || 'Sin asignar',
             'Estado': d.estado
         }));
     }
@@ -184,14 +184,14 @@ export class ReportesService {
     }
 
     private async getConsultasData() {
-        // 'ID Consulta', 'Área Solicitante', 'Tema', 'Fecha Solicitud', 'Abogado Asignado', 'Fecha Respuesta', 'Días de Atención', 'Estado'
+        // 'ID Consulta', 'Área Solicitante', 'Tema', 'Fecha Solicitud', 'Profesional Asignado', 'Fecha Respuesta', 'Días de Atención', 'Estado'
         const data = await this.consultaRepo.find();
         return data.map(d => ({
             'ID Consulta': d.numeroRadicado || d.id,
             'Área Solicitante': d.dependenciaSolicitante || d.cargoSolicitante || 'N/A',
             'Tema': d.materiaJuridica || d.tipoSolicitud || 'Sin tema',
             'Fecha Solicitud': d.fechaRecepcion ? new Date(d.fechaRecepcion).toLocaleDateString() : '',
-            'Abogado Asignado': d.abogadoAsignadoId || 'Sin asignar', // Podría hacerse join a users si hay info disponible
+            'Profesional Asignado': d.abogadoAsignadoId || 'Sin asignar', // Podría hacerse join a users si hay info disponible
             'Fecha Respuesta': d.fechaRespuesta ? new Date(d.fechaRespuesta).toLocaleDateString() : 'Pendiente',
             'Días de Atención': this.calcularDiasDiff(d.fechaRecepcion, d.fechaRespuesta) || 'En curso',
             'Estado': d.estado

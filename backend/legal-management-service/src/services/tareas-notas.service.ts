@@ -27,15 +27,13 @@ export class TareasNotasService {
     async findTareasByExpediente(expedienteId: string): Promise<TareaExpediente[]> {
         return this.tareaRepository.find({
             where: { expedienteId },
-            relations: ['responsable'],
             order: { fechaVencimiento: 'ASC' }
         });
     }
 
     async findTareaById(id: string): Promise<TareaExpediente> {
         const tarea = await this.tareaRepository.findOne({
-            where: { id },
-            relations: ['responsable']
+            where: { id }
         });
         if (!tarea) throw new NotFoundException('Tarea no encontrada');
         return tarea;
@@ -58,6 +56,8 @@ export class TareasNotasService {
     }
 
     private async notificarTareaAsignada(tarea: TareaExpediente): Promise<void> {
+        if (!tarea.responsableId) return;
+
         const expediente = await this.expedienteRepository.findOne({
             where: { id: tarea.expedienteId },
             select: ['id', 'radicado', 'jurisdiccion', 'tipoProceso'],
@@ -197,15 +197,13 @@ export class TareasNotasService {
     async findNotasByExpediente(expedienteId: string): Promise<NotaExpediente[]> {
         return this.notaRepository.find({
             where: { expedienteId },
-            relations: ['autor'],
             order: { createdAt: 'DESC' }
         });
     }
 
     async findNotaById(id: string): Promise<NotaExpediente> {
         const nota = await this.notaRepository.findOne({
-            where: { id },
-            relations: ['autor']
+            where: { id }
         });
         if (!nota) throw new NotFoundException('Nota no encontrada');
         return nota;
@@ -216,7 +214,7 @@ export class TareasNotasService {
         const saved = await this.notaRepository.save(nota);
 
         if (saved.expedienteId) {
-            this.notificarObservacionAbogado(saved).catch(err =>
+            this.notificarObservacionProfesional(saved).catch(err =>
                 this.logger.warn(`Error enviando notificación de observación: ${err?.message}`)
             );
         }
@@ -224,7 +222,7 @@ export class TareasNotasService {
         return saved;
     }
 
-    private async notificarObservacionAbogado(nota: NotaExpediente): Promise<void> {
+    private async notificarObservacionProfesional(nota: NotaExpediente): Promise<void> {
         const expediente = await this.expedienteRepository.findOne({
             where: { id: nota.expedienteId },
             select: ['id', 'radicado', 'abogadoSustanciador', 'jurisdiccion', 'tipoProceso'],

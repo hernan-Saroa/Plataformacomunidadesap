@@ -169,7 +169,7 @@ export class ConsultasJuridicasService implements OnModuleInit {
             data.tipoSolicitud || 'Consulta Jurídica',
             new Date(),
             data.terminoLegalDias || 30,
-            data.abogadoAsignadoId // If assigned on creation
+            data.abogadoAsignadoId || undefined // If assigned on creation
         );
 
         // Registro Historial Creación
@@ -206,8 +206,8 @@ export class ConsultasJuridicasService implements OnModuleInit {
             await this.registrarEvento(
                 id,
                 'ASIGNACIÓN',
-                'Abogado asignado a la consulta',
-                `Abogado ID: ${data.abogadoAsignadoId}`,
+                'Profesional asignado a la consulta',
+                `Profesional ID: ${data.abogadoAsignadoId}`,
                 'Sistema'
             );
         } else if (data.abogadoAsignadoId && data.abogadoAsignadoId !== consulta.abogadoAsignadoId) {
@@ -216,7 +216,7 @@ export class ConsultasJuridicasService implements OnModuleInit {
                 id,
                 'REASIGNACIÓN',
                 'Cambio de abogado asignado',
-                `Nuevo Abogado ID: ${data.abogadoAsignadoId}`,
+                `Nuevo profesional ID: ${data.abogadoAsignadoId}`,
                 'Sistema'
             );
         }

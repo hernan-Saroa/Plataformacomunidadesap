@@ -1,6 +1,7 @@
 import { Injectable, ConflictException, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Like } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource, Repository, Like } from 'typeorm';
 import { Expediente } from '../entities/expediente.entity';
 import { Actuacion } from '../entities/actuacion.entity';
 import { Documento } from '../entities/documento.entity';
@@ -25,6 +26,8 @@ export class ExpedienteService {
         private decisionRepository: Repository<DecisionDisciplinaria>,
         @InjectRepository(ExcepcionProcesal)
         private excepcionRepository: Repository<ExcepcionProcesal>,
+        @InjectDataSource()
+        private readonly dataSource: DataSource,
         private readonly configService: ConfigurationsService,
         private readonly legalNotifications: LegalNotificationsService
     ) { }
@@ -144,7 +147,7 @@ export class ExpedienteService {
         });
 
         if (saved.abogadoSustanciador) {
-            await this.legalNotifications.notifyAbogadoAsignado({
+            await this.legalNotifications.notifyProfesionalAsignado({
                 modulo,
                 radicado: saved.radicado,
                 procesoId: saved.id,
@@ -170,7 +173,7 @@ export class ExpedienteService {
         return currentDate;
     }
 
-    async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string; abogadoSustanciadorKeys?: string[] }): Promise<Expediente[]> {
+    async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string; abogadoSustanciadorKeys?: string[] }): Promise<any[]> {
         const queryBuilder = this.expedienteRepository.createQueryBuilder('expediente');
         // queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones'); // Removed due to loose coupling
         queryBuilder.leftJoinAndSelect('expediente.evidencias', 'evidencias');
@@ -258,13 +261,59 @@ export class ExpedienteService {
         //     });
         // }
 
+        const profesionalIds = [...new Set(entities.map((entity) => entity.abogadoSustanciador).filter(Boolean))];
+        const profesionalesMap = await this.resolveProfesionalesDesdeAuth(profesionalIds);
+
         return entities.map((entity) => {
             const rawRow = raw.find(r => r.expediente_id === entity.id);
             const count = rawRow ? Number(rawRow.conteo_docs) : 0;
             entity.documentosCount = count;
             if (!entity.actuaciones) entity.actuaciones = [];
-            return entity;
+            const abogadoId = entity.abogadoSustanciador || null;
+            const abogadoAuth = abogadoId ? profesionalesMap.get(abogadoId) : undefined;
+            return {
+                ...entity,
+                abogadoAsignado: {
+                    id: abogadoId,
+                    nombre: abogadoAuth?.nombre ?? 'Sin asignar',
+                    identificacion: abogadoAuth?.identificacion ?? '',
+                },
+            };
         });
+    }
+
+    private async resolveProfesionalesDesdeAuth(ids: string[]): Promise<Map<string, { nombre: string; identificacion: string }>> {
+        const filteredIds = ids.filter(Boolean);
+        if (filteredIds.length === 0) return new Map();
+
+        try {
+            const rows = await this.dataSource.query(
+                `SELECT
+                    u.id_user::text AS id_user,
+                    u.public_id::text AS public_id,
+                    COALESCE(p.nom_largo, u.username, u.id_user::text) AS nombre,
+                    COALESCE(p.num_identificacion::text, p.dir_email, u.username, '') AS identificacion
+                 FROM auth."user" u
+                 LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                 WHERE u.id_user::text = ANY($1)
+                    OR u.public_id::text = ANY($1)`,
+                [filteredIds],
+            );
+
+            const map = new Map<string, { nombre: string; identificacion: string }>();
+            for (const row of rows) {
+                const value = {
+                    nombre: row.nombre || 'Sin asignar',
+                    identificacion: row.identificacion || '',
+                };
+                if (row.id_user) map.set(row.id_user, value);
+                if (row.public_id) map.set(row.public_id, value);
+            }
+            return map;
+        } catch (error) {
+            Logger.warn(`[ExpedienteService] No se pudieron resolver profesionales desde auth: ${error?.message || error}`);
+            return new Map();
+        }
     }
 
     async updateExpediente(id: string, data: Partial<Expediente>): Promise<Expediente> {
@@ -293,9 +342,9 @@ export class ExpedienteService {
         }
 
         // 2b. Detectar reasignación de abogado
-        let nuevoAbogadoId: string | undefined;
+        let nuevoProfesionalId: string | undefined;
         if (data.abogadoSustanciador && data.abogadoSustanciador !== currentExpediente.abogadoSustanciador) {
-            nuevoAbogadoId = data.abogadoSustanciador;
+            nuevoProfesionalId = data.abogadoSustanciador;
             const abogadoAnterior = currentExpediente.abogadoSustanciador;
             if (abogadoAnterior) {
                 // Append to abogadosAnteriores (deduplicated)
@@ -313,7 +362,7 @@ export class ExpedienteService {
         if (!updated) throw new Error('Expediente no encontrado post-update');
 
         // Notificar al nuevo abogado si hubo reasignación
-        if (nuevoAbogadoId) {
+        if (nuevoProfesionalId) {
             const esDisciplinario =
                 updated.jurisdiccion === 'DISCIPLINARIO' ||
                 updated.jurisdiccion === 'Disciplinaria' ||
@@ -321,11 +370,11 @@ export class ExpedienteService {
                 updated.tipoProceso === 'Disciplinario';
             const modulo = esDisciplinario ? 'JUZGAMIENTO_DISCIPLINARIO' : 'DEFENSA_JUDICIAL';
 
-            await this.legalNotifications.notifyAbogadoAsignado({
+            await this.legalNotifications.notifyProfesionalAsignado({
                 modulo,
                 radicado: updated.radicado,
                 procesoId: updated.id,
-                abogadoId: nuevoAbogadoId,
+                abogadoId: nuevoProfesionalId,
                 asignadoPor: 'Sistema',
                 esReasignacion: true,
             });
@@ -653,7 +702,7 @@ export class ExpedienteService {
             anexadoPor: usuario,
         });
 
-        await this.legalNotifications.notifyAbogadosProcesoAnexado({
+        await this.legalNotifications.notifyProfesionalesProcesoAnexado({
             modulo,
             radicadoAnexado: anexado.radicado,
             radicadoPrincipal: updated.radicado,

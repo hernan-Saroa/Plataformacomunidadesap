@@ -1,6 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
-import { OrganismoControlOC } from './organismo-control-legal.entity';
-import { Abogado } from './abogado.entity';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { DocumentoOC } from './documento-oc.entity';
 
 // Legacy type kept for compatibility, but now accepts any string from cat_tipos_requerimiento
@@ -58,11 +56,7 @@ export class RequerimientoOC {
     areaResponsable: string;
 
     @Column({ name: 'abogado_asignado_id', type: 'uuid', nullable: true })
-    abogadoAsignadoId: string;
-
-    @ManyToOne(() => Abogado, { eager: true, nullable: true, createForeignKeyConstraints: false })
-    @JoinColumn({ name: 'abogado_asignado_id' })
-    abogadoAsignado: Abogado;
+    abogadoAsignadoId: string | null;
 
     @Column({ length: 30, default: 'RECIBIDO' })
     estado: EstadoRequerimiento;

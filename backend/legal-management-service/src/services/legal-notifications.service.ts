@@ -163,7 +163,7 @@ export class LegalNotificationsService {
   /**
    * Notifica al abogado (Resuelve) que se le asignó o reasignó un proceso.
    */
-  async notifyAbogadoAsignado(params: {
+  async notifyProfesionalAsignado(params: {
     modulo: LegalModuleKey;
     radicado: string;
     procesoId: string;
@@ -174,7 +174,7 @@ export class LegalNotificationsService {
     const meta = MODULE_META[params.modulo];
     const url = buildUrl(params.modulo, params.radicado);
     const accion = params.esReasignacion ? 'reasignado' : 'asignado';
-    this.logger.log(`[NOTIFY] Abogado ${accion} — modulo=${params.modulo} radicado=${params.radicado} abogadoId=${params.abogadoId}`);
+    this.logger.log(`[NOTIFY] Profesional ${accion} — modulo=${params.modulo} radicado=${params.radicado} abogadoId=${params.abogadoId}`);
 
     try {
       // Notificar al abogado específico (resuelve id_user desde BD)
@@ -308,7 +308,7 @@ export class LegalNotificationsService {
   /**
    * Notifica al abogado del proceso principal y al del proceso anexado sobre el evento de anexado.
    */
-  async notifyAbogadosProcesoAnexado(params: {
+  async notifyProfesionalesProcesoAnexado(params: {
     modulo: 'DEFENSA_JUDICIAL' | 'JUZGAMIENTO_DISCIPLINARIO';
     radicadoAnexado: string;
     radicadoPrincipal: string;

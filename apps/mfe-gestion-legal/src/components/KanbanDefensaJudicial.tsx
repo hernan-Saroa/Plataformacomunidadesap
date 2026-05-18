@@ -829,8 +829,8 @@ export function KanbanDefensaJudicial() {
             juzgado: item.juzgadoConocimiento || 'Por definir',
             medioControl: item.medioControl || 'Nulidad',
             abogadoAsignado: {
-              nombre: abogadoInfo?.nombre || item.abogadoSustanciador || 'Por asignar',
-              identificacion: abogadoInfo?.email || 'N/A'
+              nombre: item.abogadoAsignado?.nombre || abogadoInfo?.nombre || item.abogadoSustanciador || 'Por asignar',
+              identificacion: item.abogadoAsignado?.identificacion || abogadoInfo?.email || 'N/A'
             },
             etapa: mapEtapa(item.etapaProcesal),
             diasRestantes,

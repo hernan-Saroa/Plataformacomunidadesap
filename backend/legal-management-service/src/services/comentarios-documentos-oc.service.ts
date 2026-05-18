@@ -23,7 +23,6 @@ export class ComentariosDocumentosOCService {
     async findComentariosByRequerimiento(requerimientoId: string): Promise<ComentarioOC[]> {
         return this.comentarioRepository.find({
             where: { requerimientoId },
-            relations: ['autor'],
             order: { createdAt: 'DESC' }
         });
     }

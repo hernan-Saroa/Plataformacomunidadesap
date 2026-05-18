@@ -23,7 +23,7 @@ export class PlanMejoramiento {
   origenId: string;
 
   @Column({ name: 'responsable_id', nullable: true })
-  responsableId: string; // FK to Abogados/Users
+  responsableId: string; // FK to auth users
 
   @Column({ name: 'responsable_nombre', nullable: true })
   responsableNombre: string; // Text name when no abogado is linked
