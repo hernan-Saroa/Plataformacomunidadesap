@@ -132,6 +132,12 @@ interface IntegracionContextType {
   auditoriaIdParaVerPlan: string | null;
   navegarAVerPlan: (auditoriaId: string) => void;
   limpiarVerPlan: () => void;
+
+  // NUEVO: Foco automático para abrir expedientes/planes desde notificaciones
+  auditoriaIdFoco: string | null;
+  setAuditoriaIdFoco: (id: string | null) => void;
+  faseFoco: string | null;
+  setFaseFoco: (fase: string | null) => void;
 }
 
 // ============ CONTEXT ============
@@ -147,6 +153,8 @@ export function IntegracionAuditoriasPlanesProvider({ children }: { children: Re
   const [planesCreados, setPlanesCreados] = useState<PlanMejoramientoCreado[]>([]);
   const [navegarAFormulacion, setNavegarAFormulacion] = useState(false);
   const [auditoriaIdParaVerPlan, setAuditoriaIdParaVerPlan] = useState<string | null>(null);
+  const [auditoriaIdFoco, setAuditoriaIdFoco] = useState<string | null>(null);
+  const [faseFoco, setFaseFoco] = useState<string | null>(null);
   
   // NUEVO: Estados para Planeación → Auditorías
   const [auditoriasProgramadas, setAuditoriasProgramadas] = useState<AuditoriaProgramada[]>([]);
@@ -250,6 +258,12 @@ export function IntegracionAuditoriasPlanesProvider({ children }: { children: Re
         expedientes,
         generarExpediente,
         obtenerExpedientePorAuditoria,
+
+        // NUEVO: Foco
+        auditoriaIdFoco,
+        setAuditoriaIdFoco,
+        faseFoco,
+        setFaseFoco,
       }}
     >
       {children}

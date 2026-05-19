@@ -396,7 +396,9 @@ export function PlanesMejoramientoModuleRediseno() {
     auditoriaIdParaVerPlan,
     limpiarVerPlan,
     crearPlan: crearPlanContext,
-    generarExpediente
+    generarExpediente,
+    auditoriaIdFoco,
+    setAuditoriaIdFoco
   } = useIntegracionAuditoriaPlanes();
 
   // Plan a abrir cuando viene de "Ir a ver plan" (plan ya existe)
@@ -750,6 +752,7 @@ function SeguimientoView({ planes, onAbrirCrearPlan, auditoriasDisponibles, onCo
   const [filtroEstado, setFiltroEstado] = useState<EstadoPlan | 'TODOS'>('TODOS');
   const [planSeleccionado, setPlanSeleccionado] = useState<PlanMejoramiento | null>(null);
   const [columnasColapsadas, setColumnasColapsadas] = useState<Set<string>>(new Set());
+  const { auditoriaIdFoco, setAuditoriaIdFoco } = useIntegracionAuditoriaPlanes();
 
   // Abrir detalle cuando viene de "Ir a ver plan"
   useEffect(() => {
@@ -761,6 +764,23 @@ function SeguimientoView({ planes, onAbrirCrearPlan, auditoriasDisponibles, onCo
       }
     }
   }, [planIdParaAbrir, planes, onPlanAbiertoParaVer]);
+
+  // ✅ NUEVO: Foco automático desde Notificaciones (Abrir plan)
+  useEffect(() => {
+    if (auditoriaIdFoco && planes.length > 0) {
+      console.log('[PlanesMejoramiento] Detectado foco para plan (vía auditoríaId/planId):', auditoriaIdFoco);
+      // El foco puede ser el ID del plan directamente o el ID de la auditoría asociada
+      const plan = planes.find(
+        (p: any) => 
+          p.id === auditoriaIdFoco || 
+          (p.auditoriaId || p.auditoria_id || p.auditoria?.id) === auditoriaIdFoco
+      );
+      if (plan) {
+        setPlanSeleccionado(plan);
+        setAuditoriaIdFoco(null); // Limpiar foco después de abrir
+      }
+    }
+  }, [auditoriaIdFoco, planes, setAuditoriaIdFoco]);
 
   const planesFiltrados = useMemo(() => {
     let resultado = planes;

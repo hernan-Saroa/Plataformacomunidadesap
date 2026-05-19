@@ -114,7 +114,7 @@ interface Proceso {
   denunciados?: DenunciadoCompleto[];
   denunciantes?: DenuncianteCompleto[];
   hechosSeparados?: { id: string; descripcion: string; fecha?: string }[];
-  archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string }[];
+  archivosAdjuntos?: { nombre: string; tipo: string; tamano: number; fechaSubida: string; url?: string }[];
   origenNoticia?: string;
   fechaRecepcionNoticia?: string;
   prioridadNoticia?: 'alta' | 'media' | 'baja';
@@ -219,14 +219,6 @@ interface ModalDetallesProcesoProps {
   onNavigateToRevision?: () => void;
 }
 
-// ─── Mock data ───────────────────────────────────────────────────────────────
-
-const MOCK_ACTUACIONES: ActuacionItem[] = [
-  { id: 'a1', fecha: '2026-02-10', descripcion: 'Apertura de indagaci�n preliminar', tipo: 'auto', responsable: 'Dr. Andr�s Moreno', etapa: 'Indagaci�n', observaciones: 'Se deja constancia del inicio de la actuaci�n preliminar.' },
-  { id: 'a2', fecha: '2026-02-05', descripcion: 'Notificaci�n al disciplinado', tipo: 'notificacion', responsable: 'Dr. Andr�s Moreno', etapa: 'Valoraci�n', observaciones: 'Se envi� comunicaci�n formal al disciplinado por los canales establecidos.' },
-  { id: 'a3', fecha: '2026-01-28', descripcion: 'Asignaci�n al profesional investigador', tipo: 'asignacion', responsable: 'Jefe OCID', etapa: 'Valoraci�n', observaciones: 'Asignaci�n realizada seg�n reparto interno.' },
-  { id: 'a4', fecha: '2026-01-15', descripcion: 'Recepci�n de la noticia disciplinaria', tipo: 'recepcion', responsable: 'Secretar�a OCID', etapa: 'Recepci�n', observaciones: 'Ingreso inicial del asunto en el sistema disciplinario.' },
-];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -2251,10 +2243,11 @@ export function ModalDetallesProceso({
       });
 
       // ═══ Incluir archivos adjuntos de la noticia ═══
+      console.log('[ModalDetallesProceso] archivosAdjuntos recibidos:', proceso.archivosAdjuntos);
       const archivosNoticia: Archivo[] = (proceso.archivosAdjuntos || []).map((adj, index) => {
         const ext = adj.nombre.split('.').pop()?.toLowerCase() || 'pdf';
-        // Intentar encontrar la URL correspondiente en noticia.adjuntos (asumiendo orden)
-        const url = noticia?.adjuntos?.[index] || null;
+        const url = adj.url || noticia?.adjuntos?.[index] || null;
+        console.log('[ModalDetallesProceso] evidencia noticia', index, { nombre: adj.nombre, url, adj });
         return {
           id: `noticia-${index}`,
           nombre: adj.nombre,
@@ -2273,6 +2266,7 @@ export function ModalDetallesProceso({
         };
       });
 
+      console.log('[ModalDetallesProceso] total archivos:', mapped.length, ' + noticia:', archivosNoticia.length);
       setArchivosBackend(mapped.concat(archivosNoticia));
     } catch (err) {
       console.error('[ModalDetallesProceso] Error cargando documentos:', err);
@@ -3637,7 +3631,8 @@ export function ModalDetallesProceso({
       }
 
       if (archivo.downloadUrl) {
-        await disciplinaryService.downloadFileFromUrl(archivo.downloadUrl, nombreArchivo);
+        const normalizedUrl = disciplinaryService.getFileUrl(archivo.downloadUrl);
+        await disciplinaryService.downloadFileFromUrl(normalizedUrl, nombreArchivo);
       } else {
         await disciplinaryService.downloadDocument(proceso.id, archivo.id, nombreArchivo);
       }
@@ -3674,36 +3669,30 @@ export function ModalDetallesProceso({
     }
 
     const id = autoRecargar.id;
-    const nuevaVersion = (autoRecargar.version || 1) + 1;
-
-    // Actualizar el archivo existente con nueva versión
-    const enReal = archivosBackend.find(a => a.id === id);
-    if (enReal) {
-      enReal.estado = 'borrador';
-      enReal.version = nuevaVersion;
-      enReal.fecha = new Date().toISOString().split('T')[0];
-      enReal.tamaño = formatBytes(nuevoArchivo.size);
-      enReal.observacionesDevolucion = undefined;
-    } else {
-      setArchivosSubidos(prev => prev.map(a =>
-        a.id === id ? {
-          ...a,
-          estado: 'borrador' as const,
-          version: nuevaVersion,
-          fecha: new Date().toISOString().split('T')[0],
-          tamaño: formatBytes(nuevoArchivo.size),
-          observacionesDevolucion: undefined,
-        } : a
-      ));
-    }
-
-    toast.success(`Auto reemplazado — Versión ${nuevaVersion}`, {
-      description: `${nuevoArchivo.name} (${formatBytes(nuevoArchivo.size)}) · Listo para enviar a revisión`,
-      duration: 5000,
-    });
-    setAutoRecargar(null);
-    if (inputRecargarRef.current) inputRecargarRef.current.value = '';
-  }, [autoRecargar]);
+    
+    // Iniciar subida real al backend
+    toast.promise(
+      disciplinaryService.uploadDocumentoRevision(id, nuevoArchivo, 'Recarga de archivo corregido'),
+      {
+        loading: 'Subiendo nueva versión del auto...',
+        success: (data) => {
+          // Recargar los documentos del expediente desde el backend
+          void cargarDocumentosExpediente();
+          
+          setAutoRecargar(null);
+          if (inputRecargarRef.current) inputRecargarRef.current.value = '';
+          
+          return `Auto reemplazado — Versión ${data.currentVersion || (autoRecargar.version || 1) + 1}`;
+        },
+        error: (err) => {
+          console.error('Error al recargar auto:', err);
+          setAutoRecargar(null);
+          if (inputRecargarRef.current) inputRecargarRef.current.value = '';
+          return 'Error al subir la nueva versión del documento';
+        }
+      }
+    );
+  }, [autoRecargar, cargarDocumentosExpediente]);
 
   // ── Helper: Renderizar fila de archivo ────────────────────────────────────────
   const renderArchivoFila = (archivo: Archivo, ocultarBadgeEtapa = false) => {
@@ -3799,13 +3788,13 @@ export function ModalDetallesProceso({
                 <RefreshCw className="w-3 h-3" /><span className="hidden sm:inline">Recargar</span>
               </button>
             )}
-            {isZip ? (
+            {archivo.firmante === 'Archivo de la noticia' || isZip ? (
               <button type="button" onClick={(e) => { e.stopPropagation(); void handleDescargarDocumento(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all"
                 style={{ borderColor: '#D97706', color: '#92400E', background: '#FFFBEB' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#FEF3C7'}
                 onMouseLeave={e => e.currentTarget.style.background = '#FFFBEB'}
-                title="Descargar archivo .ZIP">
+                title={isZip ? 'Descargar archivo .ZIP' : 'Descargar evidencia de la noticia'}>
                 <Download className="w-3 h-3" /><span className="hidden sm:inline">Descargar</span>
               </button>
             ) : (
@@ -3818,11 +3807,13 @@ export function ModalDetallesProceso({
                 <Eye className="w-3 h-3" /><span className="hidden sm:inline">Ver</span>
               </button>
             )}
-            <button type="button" onClick={(e) => { e.stopPropagation(); void handleDescargarDocumento(archivo); }}
-              className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all border-gray-300 text-gray-600 bg-white hover:bg-gray-50"
-              title="Descargar archivo">
-              <Download className="w-3 h-3" /><span className="hidden sm:inline">Descargar</span>
-            </button>
+            {archivo.firmante !== 'Archivo de la noticia' && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); void handleDescargarDocumento(archivo); }}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all border-gray-300 text-gray-600 bg-white hover:bg-gray-50"
+                title="Descargar archivo">
+                <Download className="w-3 h-3" /><span className="hidden sm:inline">Descargar</span>
+              </button>
+            )}
           </div>
         </div>
         {fueDevuelto && archivo.observacionesDevolucion && (

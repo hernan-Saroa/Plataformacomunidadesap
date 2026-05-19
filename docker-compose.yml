@@ -211,6 +211,8 @@ services:
       - redis
     networks:
       - superapp-net
+    volumes:
+      - ./backend/internal-disciplinary-control-service/uploads:/app/uploads
 
   # ============ INTEROPERABILITY SERVICE ============
   interoperability-service:

@@ -18,6 +18,9 @@ import { ProgramasModule } from './programas/programas.module';
 import { AsignaturasModule } from './asignaturas/asignaturas.module';
 import { PortalModule } from './portal/portal.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
+import { CarpetaDigitalModule } from './carpeta-digital/carpeta-digital.module';
+import { CarpetaDigital } from './carpeta-digital/carpeta-digital.entity';
+import { TipoDocumento } from './carpeta-digital/tipo-documento.entity';
 
 @NestModule({
   imports: [
@@ -41,17 +44,17 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
         Seccional,
         ProgramaAcademico,
         Asignatura,
+        CarpetaDigital,
+        TipoDocumento,
       ],
       synchronize: false, // Desactivado para evitar conflictos con tablas existentes
     }),
     UsersModule,
     AuthModule,
     ProgramasModule,
-<<<<<<< HEAD
     AsignaturasModule,
-=======
     PortalModule,
->>>>>>> 2f5f51ecb51054edccd6c84402b905e6ad763dd4
+    CarpetaDigitalModule,
   ],
   providers: [
     {

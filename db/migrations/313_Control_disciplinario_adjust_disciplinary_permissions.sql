@@ -70,7 +70,7 @@ BEGIN
         'control-disciplinario.procesos.view_list',
         'control-disciplinario.procesos.files.upload',
         -- Noticias
-        'control-disciplinario.noticia-disciplinaria.view',
+        'control-disciplinario.noticia-disciplinaria.view_mine',
         'control-disciplinario.noticia-disciplinaria.edit',
         'control-disciplinario.noticia-disciplinaria.asignar',
         'control-disciplinario.noticia-disciplinaria.view_detail',

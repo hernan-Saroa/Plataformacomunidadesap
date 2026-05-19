@@ -1930,7 +1930,11 @@ export function GestionAuditoriasKanbanSimple() {
     auditoriasProgramadas, 
     limpiarAuditoriasProgramadas,
     agregarAuditoriaConHallazgos,
-    seleccionarAuditoria
+    seleccionarAuditoria,
+    auditoriaIdFoco,
+    setAuditoriaIdFoco,
+    faseFoco,
+    setFaseFoco
   } = useIntegracionAuditoriaPlanes();
 
   const extraerAuditoriaIdPlan = (plan: any): string | null => {
@@ -2213,6 +2217,19 @@ export function GestionAuditoriasKanbanSimple() {
       );
     }
   }, [auditoriasProgramadas, limpiarAuditoriasProgramadas]);
+
+  // ✅ NUEVO: Foco automático desde Notificaciones (Abrir expediente)
+  useEffect(() => {
+    if (auditoriaIdFoco && auditorias.length > 0) {
+      console.log('[Kanban] Detectado foco para auditoría:', auditoriaIdFoco, 'Fase:', faseFoco);
+      const auditoria = auditorias.find(a => a.id === auditoriaIdFoco);
+      if (auditoria) {
+        handleVerDetalle(auditoria);
+        setAuditoriaIdFoco(null);
+        // NO limpiamos faseFoco aquí, lo usará el componente ExpedienteAuditoriaCompleto al renderizar
+      }
+    }
+  }, [auditoriaIdFoco, auditorias, setAuditoriaIdFoco, faseFoco]);
 
   // Helper para calcular días restantes
   const calcularDiasRestantes = (fechaFin: string): number => {
@@ -4085,6 +4102,14 @@ export function GestionAuditoriasKanbanSimple() {
             auditoriaDataInicial={auditoriaSeleccionada}
             isOpen={modalExpedienteOpen}
             tabInicial={(() => {
+              if (faseFoco) {
+                console.log('[Kanban] Aplicando fase focal:', faseFoco);
+                const fase = faseFoco.toLowerCase();
+                if (fase === 'ejecucion' || fase === 'ejecución') return 'ejecucion';
+                if (fase === 'planeacion' || fase === 'planeación') return 'planeacion';
+                if (fase === 'comunicacion' || fase === 'comunicación') return 'comunicacion';
+                return fase;
+              }
               const e = (auditoriaSeleccionada?.estado || '').toLowerCase();
               if (e.includes('planeacion') || e.includes('planeación')) return 'planeacion';
               if (e.includes('ejecucion') || e.includes('ejecución')) return 'ejecucion';
@@ -4096,6 +4121,7 @@ export function GestionAuditoriasKanbanSimple() {
             onClose={() => {
               setModalExpedienteOpen(false);
               setAuditoriaSeleccionada(null);
+              setFaseFoco(null); // Limpiar fase al cerrar
             }}
             onComunicacionCompletada={recargarAuditorias}
           />
