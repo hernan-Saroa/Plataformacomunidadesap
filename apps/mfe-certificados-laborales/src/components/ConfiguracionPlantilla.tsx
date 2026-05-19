@@ -107,6 +107,10 @@ import {
 
 
 
+  Copy,
+
+
+
   Download,
 
 
@@ -128,6 +132,10 @@ import {
 
 
   QrCode,
+
+
+
+  Plus,
 
 
 
@@ -604,6 +612,30 @@ const descripcionVariables: Record<string, string> = {
   '[CIUDAD_EXPEDICION]': 'Ciudad de expedicion',
 };
 
+const ordenVariablesPlantilla = [
+  '[NOMBRE_EMPLEADO]',
+  '[DOCUMENTO]',
+  '[TIPO_DATO]',
+  '[FECHA_INICIO]',
+  '[CARGO]',
+  '[DEPENDENCIA]',
+  '[SALARIO]',
+  '[SALARIO_LETRAS]',
+  '[FECHA_EXPEDICION_COMPLETA]',
+  '[GRUPO]',
+];
+
+const normalizarTextoBusqueda = (value: string): string =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const variableTokenStyle = 'font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;';
+
+const crearVariableTokenHtml = (codigoVariable: string): string =>
+  `<span class="variable-token bg-yellow-200 text-black" style="${variableTokenStyle}" contenteditable="false">${codigoVariable}</span>`;
+
 
 
 
@@ -696,31 +728,28 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   const [activeTab, setActiveTab] = useState<string>(canEdit ? 'Modificacion' : 'historial');
 
   const [editorContent, setEditorContent] = useState<string>('');
+  const [variableSearch, setVariableSearch] = useState<string>('');
 
   const variablesDisponibles = useMemo(() => {
-    const contenidoBase = editorContent || borrador?.contenidoCertificado.texto || defaultContenidoCertificado;
-    const tokens = contenidoBase.match(/\[[A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*\]/g) || [];
-    const ordenados: string[] = [];
-    const vistos = new Set<string>();
-    for (const token of tokens) {
-      if (!vistos.has(token)) {
-        vistos.add(token);
-        ordenados.push(token);
-      }
-    }
-    const variableOpcionalGrupo = '[GRUPO]';
-    if (!vistos.has(variableOpcionalGrupo)) {
-      ordenados.push(variableOpcionalGrupo);
-    }
-    return ordenados.map((codigo) => ({
+    return ordenVariablesPlantilla.map((codigo) => ({
       codigo,
-      descripcion: descripcionVariables[codigo] || 'Variable usada en la plantilla'
+      descripcion: descripcionVariables[codigo] || 'Variable usada en la plantilla',
     }));
-  }, [editorContent, borrador?.contenidoCertificado.texto]);
+  }, []);
+
+  const variablesFiltradas = useMemo(() => {
+    const query = normalizarTextoBusqueda(variableSearch.trim());
+    if (!query) return variablesDisponibles;
+
+    return variablesDisponibles.filter((variable) =>
+      normalizarTextoBusqueda(`${variable.codigo} ${variable.descripcion}`).includes(query),
+    );
+  }, [variableSearch, variablesDisponibles]);
 
 
 
   const editorRef = useRef<HTMLDivElement | null>(null);
+  const savedSelectionRef = useRef<Range | null>(null);
 
 
 
@@ -765,6 +794,11 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
       setEditorContent(contenidoNormalizado);
     }
   }, [borrador?.contenidoCertificado.texto]);
+
+  useEffect(() => {
+    setVariableSearch('');
+    savedSelectionRef.current = null;
+  }, [templateType]);
 
   // Actualizar el editor cuando cambia el activeTab o editorContent
   useEffect(() => {
@@ -838,7 +872,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      '<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;" contenteditable="false">[$1]</span>'
+      crearVariableTokenHtml('[$1]')
 
 
 
@@ -870,13 +904,13 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
     // Paso 2: Normalizar todos los spans con clase variable-token
     resultado = resultado.replace(
       /<span[^>]*class="[^"]*variable-token[^"]*"[^>]*>([^<]*\[([A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*)\][^<]*)<\/span>/g,
-      '<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;" contenteditable="false">[$2]</span>'
+      crearVariableTokenHtml('[$2]')
     );
 
     // Paso 3: Envolver variables sueltas que no tienen span
     resultado = resultado.replace(
       /(-<!<span[^>]*>)\[([A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*)\](-![^<]*<\/span>)/g,
-      '<span class="variable-token bg-yellow-200 text-black" style="font-weight: inherit; display: inline; padding: 0px 2px; font-size: inherit; line-height: inherit; border-radius: 2px; margin: 0;" contenteditable="false">[$1]</span>'
+      crearVariableTokenHtml('[$1]')
     );
 
     // Paso 4: Limpiar spans vacAos
@@ -1319,6 +1353,127 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
   };
 
+  const actualizarBorradorContenido = (nuevoContenido: string) => {
+    const contenidoAnterior = borrador?.contenidoCertificado.texto;
+
+    setEditorContent(nuevoContenido);
+    setBorrador((actual) => actual
+      ? {
+          ...actual,
+          contenidoCertificado: {
+            ...actual.contenidoCertificado,
+            texto: nuevoContenido,
+          },
+        }
+      : actual);
+
+    if (contenidoAnterior !== nuevoContenido) {
+      setHasChanges(true);
+    }
+  };
+
+  const sincronizarContenidoEditorActual = () => {
+    if (!editorRef.current) return;
+    actualizarBorradorContenido(normalizarVariables(editorRef.current.innerHTML));
+  };
+
+  const rangoPerteneceAlEditor = (range: Range | null): boolean =>
+    Boolean(range && editorRef.current && editorRef.current.contains(range.commonAncestorContainer));
+
+  const guardarSeleccionEditor = () => {
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+    if (rangoPerteneceAlEditor(range)) {
+      savedSelectionRef.current = range.cloneRange();
+    }
+  };
+
+  const obtenerRangoInsercion = (): Range | null => {
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount) {
+      const activeRange = selection.getRangeAt(0);
+      if (rangoPerteneceAlEditor(activeRange)) {
+        return activeRange.cloneRange();
+      }
+    }
+
+    if (rangoPerteneceAlEditor(savedSelectionRef.current)) {
+      return savedSelectionRef.current?.cloneRange() || null;
+    }
+
+    if (!editorRef.current) return null;
+    const fallbackRange = document.createRange();
+    fallbackRange.selectNodeContents(editorRef.current);
+    fallbackRange.collapse(false);
+    return fallbackRange;
+  };
+
+  const restaurarSeleccionEditor = (): boolean => {
+    if (!editorRef.current) return false;
+
+    const range = obtenerRangoInsercion();
+    if (!range) return false;
+
+    editorRef.current.focus();
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    return true;
+  };
+
+  const aplicarComandoEditor = (command: string, value = '') => {
+    if (!ensureEditable()) return;
+
+    restaurarSeleccionEditor();
+    document.execCommand(command, false, value);
+    sincronizarContenidoEditorActual();
+    guardarSeleccionEditor();
+  };
+
+  const copiarVariable = async (codigoVariable: string) => {
+    try {
+      const tokenHtml = crearVariableTokenHtml(codigoVariable);
+
+      if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([tokenHtml], { type: 'text/html' }),
+            'text/plain': new Blob([codigoVariable], { type: 'text/plain' }),
+          }),
+        ]);
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(codigoVariable);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = codigoVariable;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+
+      toast.success(`Variable ${codigoVariable} copiada`);
+    } catch {
+      toast.error('No se pudo copiar la variable');
+    }
+  };
+
+  const manejarPegadoEditor = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const textoPegado = event.clipboardData.getData('text/plain').trim();
+
+    if (!canEdit || !ordenVariablesPlantilla.includes(textoPegado)) {
+      return;
+    }
+
+    event.preventDefault();
+    insertarVariable(textoPegado);
+  };
+
 
 
 
@@ -1341,7 +1496,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    if (!editorRef.current) return;
+    if (!ensureEditable() || !editorRef.current) return;
 
 
 
@@ -1350,18 +1505,13 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
     const selection = window.getSelection();
+    const range = obtenerRangoInsercion();
 
+    if (!range) return;
 
-
-    if (!selection || !selection.rangeCount) return;
-
-
-
-
-
-
-
-    const range = selection.getRangeAt(0);
+    editorRef.current.focus();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
 
 
 
@@ -1385,19 +1535,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    span.style.fontWeight = 'inherit';
-
-    span.style.display = 'inline';
-
-    span.style.padding = '0px 2px';
-
-    span.style.fontSize = 'inherit';
-
-    span.style.lineHeight = 'inherit';
-
-    span.style.borderRadius = '2px';
-
-    span.style.margin = '0';
+    span.style.cssText = variableTokenStyle;
 
 
 
@@ -1453,11 +1591,12 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    selection.removeAllRanges();
+    selection?.removeAllRanges();
 
 
 
-    selection.addRange(range);
+    selection?.addRange(range);
+    savedSelectionRef.current = range.cloneRange();
 
 
 
@@ -1465,47 +1604,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-    // Actualizar el contenido del borrador
-
-
-
-    if (borrador) {
-
-
-
-      setBorrador({
-
-
-
-        ...borrador,
-
-
-
-        contenidoCertificado: {
-
-
-
-          ...borrador.contenidoCertificado,
-
-
-
-          texto: editorRef.current.innerHTML
-
-
-
-        }
-
-
-
-      });
-
-
-
-      setHasChanges(true);
-
-
-
-    }
+    sincronizarContenidoEditorActual();
 
 
 
@@ -1533,6 +1632,10 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+    if (!ensureEditable()) return;
+
+    restaurarSeleccionEditor();
+
     const sel = window.getSelection();
 
 
@@ -1542,6 +1645,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
       document.execCommand('bold', false, '');
+      sincronizarContenidoEditorActual();
 
 
 
@@ -1614,6 +1718,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
     document.execCommand('bold', false, '');
+    sincronizarContenidoEditorActual();
 
 
 
@@ -4260,8 +4365,6 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
                 </div>
 
-
-
               </div>
 
 
@@ -5251,7 +5354,9 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                <div className="flex flex-wrap items-center gap-2 p-3 bg-white border border-gray-300 rounded-t-lg">
+                <div className="flex flex-col gap-3 p-3 bg-white border border-gray-300 rounded-t-lg">
+
+                  <div className="flex flex-wrap items-center gap-2">
 
 
 
@@ -5267,11 +5372,15 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                        className="p-2 hover:bg-gray-100 rounded transition-colors"
+                        className="p-2 hover:bg-gray-100 rounded transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 
 
 
                         title="Negrita"
+
+                        disabled={!canEdit}
+
+                        onMouseDown={(event) => event.preventDefault()}
 
 
 
@@ -5299,11 +5408,15 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      className="p-2 hover:bg-gray-100 rounded transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 
 
 
                       title="Cursiva"
+
+                      disabled={!canEdit}
+
+                      onMouseDown={(event) => event.preventDefault()}
 
 
 
@@ -5311,7 +5424,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                        document.execCommand('italic', false, '');
+                        aplicarComandoEditor('italic');
 
 
 
@@ -5339,11 +5452,15 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      className="p-2 hover:bg-gray-100 rounded transition-colors"
+                      className="p-2 hover:bg-gray-100 rounded transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 
 
 
                       title="Subrayado"
+
+                      disabled={!canEdit}
+
+                      onMouseDown={(event) => event.preventDefault()}
 
 
 
@@ -5351,7 +5468,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                        document.execCommand('underline', false, '');
+                        aplicarComandoEditor('underline');
 
 
 
@@ -5403,7 +5520,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                        className="w-6 h-6 rounded border-2 border-gray-300 hover:border-gray-500 transition-colors"
+                        className="w-6 h-6 rounded border-2 border-gray-300 hover:border-gray-500 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
 
 
 
@@ -5413,13 +5530,17 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
                         title={color.label}
 
+                        disabled={!canEdit}
+
+                        onMouseDown={(event) => event.preventDefault()}
+
 
 
                         onClick={() => {
 
 
 
-                          document.execCommand('foreColor', false, color.value);
+                          aplicarComandoEditor('foreColor', color.value);
 
 
 
@@ -5447,7 +5568,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  <div className="flex items-center gap-2">
+                  <div className="hidden">
 
 
 
@@ -5459,7 +5580,9 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      className="text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:bg-gray-50 cursor-pointer"
+                      className="min-w-[220px] flex-1 text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:bg-gray-50 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+
+                      disabled={!canEdit}
 
 
 
@@ -5535,6 +5658,71 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+                  <div className="border-t border-gray-200 pt-3">
+                    <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Type className="h-4 w-4 flex-shrink-0 text-yellow-700" />
+                        <span className="text-xs font-semibold text-gray-800">Variables disponibles</span>
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                          {variablesDisponibles.length}
+                        </span>
+                      </div>
+
+                      <Input
+                        value={variableSearch}
+                        onChange={(event) => setVariableSearch(event.target.value)}
+                        placeholder="Buscar variable..."
+                        className="h-9 w-full text-xs lg:max-w-xs"
+                      />
+                    </div>
+
+                    <div className="mt-3 grid max-h-52 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3">
+                      {variablesFiltradas.map((variable) => (
+                        <div
+                          key={variable.codigo}
+                          className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-yellow-200 bg-yellow-50 px-2 py-2"
+                        >
+                          <button
+                            type="button"
+                            className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                            title={`Insertar ${variable.codigo}`}
+                            disabled={!canEdit}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => insertarVariable(variable.codigo)}
+                          >
+                            <Plus className="h-3.5 w-3.5 flex-shrink-0 text-yellow-700" />
+                            <span className="min-w-0">
+                              <span className="block truncate font-mono text-[11px] font-semibold text-gray-950">
+                                {variable.codigo}
+                              </span>
+                              <span className="block truncate text-[11px] text-gray-600">
+                                {variable.descripcion}
+                              </span>
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded border border-yellow-200 bg-white text-gray-600 hover:bg-yellow-100 hover:text-gray-950"
+                            title={`Copiar ${variable.codigo}`}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => copiarVariable(variable.codigo)}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {variablesFiltradas.length === 0 && (
+                      <p className="mt-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                        No hay variables con ese filtro.
+                      </p>
+                    )}
+                  </div>
+
+                </div>
+
                 {/* Editor de texto */}
 
 
@@ -5586,45 +5774,19 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+                  onFocus={guardarSeleccionEditor}
+                  onMouseUp={guardarSeleccionEditor}
+                  onKeyUp={guardarSeleccionEditor}
+                  onBlur={guardarSeleccionEditor}
+                  onPaste={manejarPegadoEditor}
                   onInput={(e) => {
                     let newContent = e.currentTarget.innerHTML;
 
                     // Normalizar el contenido para limpiar spans anidados
                     newContent = normalizarVariables(newContent);
 
-                    // Actualizar el estado local del editor
-                    setEditorContent(newContent);
-
-                    // Actualizar el borrador
-                    setBorrador({
-
-
-
-                      ...borrador,
-
-
-
-                      contenidoCertificado: {
-
-
-
-                        ...borrador.contenidoCertificado,
-
-
-
-                        texto: newContent
-
-
-
-                      }
-
-
-
-                    });
-
-
-
-                    setHasChanges(true);
+                    actualizarBorradorContenido(newContent);
+                    guardarSeleccionEditor();
 
 
 
@@ -5640,7 +5802,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-300">
+                <div className="hidden">
 
 
 
