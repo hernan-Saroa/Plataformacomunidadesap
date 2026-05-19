@@ -1767,7 +1767,7 @@ function ColumnaKanban({
       {/* 📋 LISTA DE TARJETAS - SCROLL VERTICAL UNIFICADO */}
       <div
         ref={drop}
-        className={`flex-1 p-2.5 sm:p-3 space-y-2 sm:space-y-2.5 overflow-y-auto ${isOver ? 'bg-blue-50/50' : 'bg-gray-50/40'}`}
+        className={`flex-1 p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-y-auto ${isOver ? 'bg-blue-50/50' : 'bg-gray-50/40'}`}
         style={{ 
           minHeight: '180px',
           scrollbarWidth: 'thin',
@@ -3547,8 +3547,8 @@ export function GestionAuditoriasKanbanSimple() {
                 <div 
                   className={`flex pb-2 ${
                     modoVista === 'ajustado' 
-                      ? 'flex-col md:flex-row gap-3 md:gap-2 lg:gap-3 md:items-stretch md:h-full w-full' 
-                      : 'flex-col md:flex-row gap-3 md:gap-3 lg:gap-4 xl:gap-4 md:items-start md:h-full w-full'
+                      ? 'flex-col md:flex-row gap-4 md:gap-4 lg:gap-6 xl:gap-8 md:items-stretch md:h-full w-full' 
+                      : 'flex-col md:flex-row gap-6 md:gap-6 lg:gap-8 xl:gap-12 md:items-start md:h-full w-full'
                   }`}
                   style={{
                     // ✅ SOLUCIÓN V5: Contenedor fluido sin restricciones
