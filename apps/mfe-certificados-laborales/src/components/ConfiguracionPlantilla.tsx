@@ -1962,6 +1962,30 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+  const getNombreCampoHistorial = (fieldName?: string): string => {
+    if (!fieldName) return 'Campo no especificado';
+
+    const traduccionCampos: Record<string, string> = {
+      'entity_logo_url': 'Logo institucional',
+      'firma_digital_url': 'Firma digital',
+      'signature_url': 'Firma digital',
+      'signatureUrl': 'Firma digital',
+      'nombre_completo': 'Nombre del firmante',
+      'typography_font': 'Fuente tipografica',
+      'cargo_title': 'Titulo del cargo',
+      'certificate_content_html': 'Contenido del certificado',
+      'typographyFont': 'Fuente tipografica',
+      'cargoTitle': 'Titulo del cargo',
+      'certificateContentHtml': 'Contenido del certificado',
+    };
+
+    return traduccionCampos[fieldName] || fieldName.replace(/_/g, ' ');
+  };
+
+
+
+
+
   // Funcion helper para formatear cambio
 
 
@@ -2342,7 +2366,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      await certificadosService.plantilla.subirFirma(file, 'Admin', templateType);
+      await certificadosService.plantilla.subirFirma(file, publishingActor, templateType);
 
 
 
@@ -2551,7 +2575,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-      await certificadosService.plantilla.subirLogo(file, 'Admin', templateType);
+      await certificadosService.plantilla.subirLogo(file, publishingActor, templateType);
 
 
 
@@ -3007,6 +3031,9 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   };
 
   const totalPages = Math.ceil(historialTotal / HISTORIAL_POR_PAGINA);
+  const historialDesde = historialTotal === 0 ? 0 : (historialPage - 1) * HISTORIAL_POR_PAGINA + 1;
+  const historialHasta = Math.min(historialPage * HISTORIAL_POR_PAGINA, historialTotal);
+  const nombreTipoPlantilla = templateType === 'docente' ? 'Docente' : 'Administrativo';
 
   const getVisiblePages = (): Array<number | '...'> => {
     if (totalPages <= 7) {
@@ -6661,38 +6688,45 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-            <div className="mb-6">
+            <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <History className="w-5 h-5 text-[#003DA5]" />
+                    <h3 className="text-lg font-bold text-gray-900">
+                      Historial de cambios
+                    </h3>
+                    <Badge className="bg-blue-50 text-blue-700 border border-blue-200">
+                      Plantilla {nombreTipoPlantilla}
+                    </Badge>
+                  </div>
 
+                  <p className="mt-2 text-sm text-gray-600">
+                    Cada tipo de plantilla conserva su propio historial independiente. Los cambios listados corresponden solo a la plantilla {nombreTipoPlantilla.toLowerCase()}.
+                  </p>
+                </div>
 
-
-              <h3 className="text-xl font-bold text-gray-900 mb-2 flex items-center gap-2">
-
-
-
-                <History className="w-5 h-5 text-[#003DA5]" />
-
-
-
-                Historial de Cambios en la Plantilla
-
-
-
-              </h3>
-
-
-
-              <p className="text-sm text-gray-600">
-
-
-
-                Registro completo de todas las Modificaciones realizadas a la plantilla de certificados
-
-
-
-              </p>
-
-
-
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+                    <span className="font-semibold text-gray-900">{historialTotal}</span> cambios
+                    {historialTotal > 0 && (
+                      <span className="ml-1 text-gray-500">
+                        ({historialDesde}-{historialHasta})
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => cargarHistorial(historialPage, true)}
+                    disabled={isLoadingHistorial}
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-2 ${isLoadingHistorial ? 'animate-spin' : ''}`} />
+                    Actualizar
+                  </Button>
+                </div>
+              </div>
             </div>
 
 
@@ -6701,7 +6735,22 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-            {logCambios.length === 0 ? (
+            {isLoadingHistorial && logCambios.length === 0 ? (
+              <div className={`space-y-3 transition-opacity ${isLoadingHistorial ? 'opacity-60' : 'opacity-100'}`}>
+                {[1, 2, 3].map((item) => (
+                  <div key={item} className="rounded-lg border border-gray-200 bg-white p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="h-11 w-11 animate-pulse rounded-xl bg-gray-200" />
+                      <div className="flex-1 space-y-3">
+                        <div className="h-4 w-2/5 animate-pulse rounded bg-gray-200" />
+                        <div className="h-3 w-3/5 animate-pulse rounded bg-gray-100" />
+                        <div className="h-14 w-full animate-pulse rounded bg-gray-100" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : logCambios.length === 0 ? (
 
 
 
@@ -6721,7 +6770,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  Los cambios que realices aparecerAn aquA para su seguimiento
+                  Los cambios que realices en la plantilla {nombreTipoPlantilla.toLowerCase()} apareceran aqui para su seguimiento.
 
 
 
@@ -6737,7 +6786,27 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-              <div className="space-y-3">
+              <div className={`space-y-3 transition-opacity ${isLoadingHistorial ? 'opacity-60' : 'opacity-100'}`}>
+
+
+
+                {isLoadingHistorial && (
+
+
+
+                  <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+
+
+
+                    Actualizando historial de la plantilla {nombreTipoPlantilla.toLowerCase()}...
+
+
+
+                  </div>
+
+
+
+                )}
 
 
 
@@ -6761,7 +6830,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                        return { icon: ImageIcon, color: 'bg-blue-50 text-blue-600 border-blue-200' };
+                        return { icon: ImageIcon, color: 'bg-blue-50 text-blue-600 border-blue-200', barColor: 'bg-blue-500', label: 'Logo' };
 
 
 
@@ -6769,7 +6838,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                        return { icon: PenTool, color: 'bg-purple-50 text-purple-600 border-purple-200' };
+                        return { icon: PenTool, color: 'bg-purple-50 text-purple-600 border-purple-200', barColor: 'bg-purple-500', label: 'Firma' };
 
 
 
@@ -6777,7 +6846,16 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                        return { icon: User, color: 'bg-green-50 text-green-600 border-green-200' };
+                        return { icon: User, color: 'bg-green-50 text-green-600 border-green-200', barColor: 'bg-green-500', label: 'Firmante' };
+
+                      case 'tipografia':
+                        return { icon: Type, color: 'bg-orange-50 text-orange-600 border-orange-200', barColor: 'bg-orange-500', label: 'Tipografia' };
+
+                      case 'titulo_cargo':
+                        return { icon: Type, color: 'bg-sky-50 text-sky-600 border-sky-200', barColor: 'bg-sky-500', label: 'Cargo' };
+
+                      case 'contenido':
+                        return { icon: FileText, color: 'bg-teal-50 text-teal-600 border-teal-200', barColor: 'bg-teal-500', label: 'Contenido' };
 
 
 
@@ -6785,7 +6863,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                        return { icon: Edit3, color: 'bg-gray-50 text-gray-600 border-gray-200' };
+                        return { icon: Edit3, color: 'bg-gray-50 text-gray-600 border-gray-200', barColor: 'bg-gray-400', label: 'Cambio' };
 
 
 
@@ -6801,11 +6879,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                  const changeConfig = getChangeIcon(log.accion.toLowerCase().includes('logo') ? 'logo' :
-
-
-
-                                                     log.accion.toLowerCase().includes('firma') ? 'firma' : 'nombre');
+                  const changeConfig = getChangeIcon(log.changeType);
 
 
 
@@ -6841,7 +6915,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                      <div className={`h-1 ${changeConfig.color.split(' ')[0].replace('bg-', 'bg-')}`}></div>
+                      <div className={`h-1 ${changeConfig.barColor}`}></div>
 
 
 
@@ -7104,7 +7178,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                          {!log.changeType && (
+                          {!['logo', 'firma', 'nombre', 'tipografia', 'titulo_cargo', 'contenido'].includes(log.changeType) && (
 
 
 
@@ -7112,7 +7186,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                              <Edit3 className="w-6 h-6 text-gray-600" strokeWidth={2.5} />
+                              <IconComponent className="w-6 h-6 text-gray-600" strokeWidth={2.5} />
 
 
 
@@ -7144,7 +7218,47 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                                <h4 className="font-semibold text-gray-900 text-sm">{log.accion}</h4>
+                                <div className="flex flex-wrap items-center gap-2">
+
+
+
+                                  <h4 className="font-semibold text-gray-900 text-sm">{log.accion}</h4>
+
+
+
+                                  <Badge className={`${changeConfig.color} px-2 py-0.5 text-[11px] font-medium`}>
+
+
+
+                                    {changeConfig.label}
+
+
+
+                                  </Badge>
+
+
+
+                                  {log.fieldName && (
+
+
+
+                                    <span className="text-xs text-gray-500">
+
+
+
+                                      Campo: {getNombreCampoHistorial(log.fieldName)}
+
+
+
+                                    </span>
+
+
+
+                                  )}
+
+
+
+                                </div>
 
 
 
