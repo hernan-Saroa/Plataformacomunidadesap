@@ -5,7 +5,7 @@
  * quede idéntico al portal transaccional original.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RoleSelector } from './RoleSelector';
 import { AuthenticatedPortalNavbar } from './AuthenticatedPortalNavbar';
@@ -24,6 +24,29 @@ interface PortalDashboardProps {
   onSystemChange?: (system: 'backoffice' | 'portal') => void;
 }
 
+const normalizePortalRoleCode = (role?: string | null) =>
+  String(role || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s-]+/g, '_');
+
+const displayPortalRoleFromCode = (roleCode?: string | null) => {
+  const code = normalizePortalRoleCode(roleCode);
+  const labels: Record<string, string> = {
+    DOCENTE: 'Docente',
+    ESTUDIANTE: 'Estudiante',
+    GRADUADO: 'Graduado',
+    EGRESADO: 'Graduado',
+    ASPIRANTE: 'Aspirante',
+    ADMINISTRATIVO: 'Administrativo',
+    FUNCIONARIO: 'Administrativo',
+    SUPER_ADMIN: 'Super Administrador',
+  };
+  return labels[code] || roleCode || 'Estudiante';
+};
+
 export function PortalDashboard({
   userName,
   userEmail,
@@ -36,8 +59,16 @@ export function PortalDashboard({
   hasBothSystemsAccess = false,
   onSystemChange,
 }: PortalDashboardProps) {
-  const initialRole = userData?.rol_principal || userRoles[0] || 'Estudiante';
-  const [activeRole, setActiveRole] = useState<string>(initialRole);
+  const portalRoleCodes = useMemo(
+    () =>
+      Array.from(
+        new Set(((Array.isArray(userData?.roles) && userData.roles.length ? userData.roles : userRoles) || []).map(normalizePortalRoleCode).filter(Boolean)),
+      ),
+    [userData?.roles, userRoles],
+  );
+  const initialRoleCode = normalizePortalRoleCode(userData?.rol_principal || portalRoleCodes[0] || 'ESTUDIANTE');
+  const [activeRoleCode, setActiveRoleCode] = useState<string>(initialRoleCode);
+  const activeRole = displayPortalRoleFromCode(activeRoleCode);
   const [navbarNavigateTo, setNavbarNavigateTo] = useState<string | null>(null);
   const navCounter = useRef(0);
   const [currentSection, setCurrentSection] = useState<string>('inicio');
@@ -46,28 +77,35 @@ export function PortalDashboard({
     const storageKey = `portal_active_role_${userPersonId}`;
     const savedRole = localStorage.getItem(storageKey);
 
-    if (savedRole && userRoles.includes(savedRole)) {
-      setActiveRole(savedRole);
-      onActiveRoleChange?.(savedRole);
+    const savedRoleCode = normalizePortalRoleCode(savedRole);
+    const savedRoleMatches = savedRoleCode && portalRoleCodes.includes(savedRoleCode);
+
+    if (savedRoleMatches) {
+      setActiveRoleCode(savedRoleCode);
+      onActiveRoleChange?.(displayPortalRoleFromCode(savedRoleCode));
     } else {
-      const portalRoles = ['Estudiante', 'Docente', 'Graduado', 'Aspirante', 'Administrativo'];
-      const validRole = userRoles.find((role) => portalRoles.includes(role));
-      if (validRole) {
-        setActiveRole(validRole);
-        onActiveRoleChange?.(validRole);
+      const validRoleCode = portalRoleCodes.find((roleCode) =>
+        ['ESTUDIANTE', 'DOCENTE', 'GRADUADO', 'EGRESADO', 'ASPIRANTE', 'ADMINISTRATIVO'].includes(roleCode),
+      );
+      if (validRoleCode) {
+        setActiveRoleCode(validRoleCode);
+        onActiveRoleChange?.(displayPortalRoleFromCode(validRoleCode));
       }
     }
-  }, [userPersonId, userRoles, onActiveRoleChange]);
+  }, [userPersonId, portalRoleCodes, onActiveRoleChange]);
 
   useEffect(() => {
     const storageKey = `portal_active_role_${userPersonId}`;
-    localStorage.setItem(storageKey, activeRole);
+    localStorage.setItem(storageKey, activeRoleCode);
     onActiveRoleChange?.(activeRole);
-  }, [activeRole, userPersonId, onActiveRoleChange]);
+  }, [activeRoleCode, activeRole, userPersonId, onActiveRoleChange]);
 
   const handleRoleChange = (newRole: string) => {
-    setActiveRole(newRole);
-    onActiveRoleChange?.(newRole);
+    const selectedCode =
+      portalRoleCodes.find((roleCode) => displayPortalRoleFromCode(roleCode) === newRole) ||
+      normalizePortalRoleCode(newRole);
+    setActiveRoleCode(selectedCode);
+    onActiveRoleChange?.(displayPortalRoleFromCode(selectedCode));
   };
 
   const handleNavbarNavigate = useCallback((section: string) => {
@@ -77,6 +115,7 @@ export function PortalDashboard({
   }, []);
 
   const roleData = userData?.datos_por_rol || {};
+  const portalDisplayRoles = Array.from(new Set(portalRoleCodes.map(displayPortalRoleFromCode)));
 
   return (
     <div style={{ minHeight: '100vh', background: '#F1F5F9' }}>
@@ -93,8 +132,8 @@ export function PortalDashboard({
       />
 
       <RoleSelector
-        roles={userRoles}
-        userRoles={userRoles}
+        roles={portalDisplayRoles}
+        userRoles={portalDisplayRoles}
         activeRole={activeRole}
         onRoleChange={handleRoleChange}
       />
@@ -112,6 +151,7 @@ export function PortalDashboard({
             userEmail={userEmail}
             userPersonId={userPersonId}
             activeRole={activeRole}
+            activeRoleCode={activeRoleCode}
             userPermissions={userPermissions}
             adminData={roleData?.Administrativo}
             onLogout={onLogout}
