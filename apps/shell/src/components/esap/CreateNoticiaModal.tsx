@@ -115,6 +115,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   const [conductasIndisciplinarias, setConductasIndisciplinarias] = useState<DisciplinaryBehavior[]>([]);
   const [loadingConductas, setLoadingConductas] = useState(true);
   const [territoriales, setTerritoriales] = useState<string[]>([]);
+  const [dependencias, setDependencias] = useState<string[]>(DEPENDENCIAS_ESAP);
 
   // Cargar conductas indisciplinarias desde la API
   useEffect(() => {
@@ -151,6 +152,10 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
         
         const list = seccionales.map((s: any) => s.nomSeccional).filter(Boolean);
         setTerritoriales(list);
+
+        // También agregar las seccionales a las dependencias
+        const merged = Array.from(new Set([...DEPENDENCIAS_ESAP, ...list]));
+        setDependencias(merged);
       } catch (_) {
         setTerritoriales([]);
       }
@@ -1364,7 +1369,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denunciadoLugarHechos ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     >
                       <option value="">Seleccione lugar de los hechos...</option>
-                      {DEPENDENCIAS_ESAP.map(dep => (
+                      {dependencias.map(dep => (
                         <option key={dep} value={dep}>{dep}</option>
                       ))}
                     </select>
