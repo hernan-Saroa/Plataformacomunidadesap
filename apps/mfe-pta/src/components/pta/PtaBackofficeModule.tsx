@@ -2038,7 +2038,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   // ── Atención requerida ──
   return (
-    <div className="pta-module-root" style={{ minHeight: '100%' }}>
+    <div style={{ minHeight: '100%' }}>
     <React.Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300 }}><ESAPLogoLoader size={48} text="Cargando módulo..." /></div>}>
 
 
@@ -2089,7 +2089,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       {moduleView !== 'banco_docentes' && (
         <>
           {/* ─── CLEAN PAGE HEADER & TABS ─── */}
-          <div className="bg-white border-b border-slate-200">
+          <div>
             {/* Top Bar */}
             <div className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="flex items-center gap-3">

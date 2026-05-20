@@ -56,8 +56,6 @@ import { MisDocumentos } from './gestion-documental/MisDocumentos';
 import { PortalDocentePTA } from './pta/PortalDocentePTA';
 import { MisAuditoriasControlInterno } from './control-interno/MisAuditoriasControlInterno';
 import { toast } from 'sonner';
-import { NotificationsProvider } from '../esap/NotificationsContext';
-import { PortalNotificationBell } from './PortalNotificationBell';
 import { PortalSettings } from './PortalSettings';
 import { AyudaView } from './AyudaView';
 
@@ -66,6 +64,7 @@ interface PortalTransaccionalProps {
   userEmail: string;
   userPersonId: string;
   activeRole: string;
+  activeRoleCode?: string;
   userPermissions?: string[];
   adminData?: {
     area?: string;
@@ -140,18 +139,18 @@ const shimmerStyleId = 'portal-shimmer-style';
 
 const DND_ITEM_TYPE = 'PORTAL_SERVICE';
 
-const normalizeRole = (role?: string | null) =>
+const normalizeRoleCode = (role?: string | null) =>
   String(role || '')
     .trim()
-    .toLowerCase()
+    .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[\s-]+/g, '_');
 
-const roleMatches = (role: string, allowedRoles?: string[]) => {
+const roleCodeMatches = (roleCode: string, allowedRoles?: string[]) => {
   if (!allowedRoles?.length) return false;
-  const normalizedRole = normalizeRole(role);
-  return allowedRoles.some((allowedRole) => normalizeRole(allowedRole) === normalizedRole);
+  const normalizedRole = normalizeRoleCode(roleCode);
+  return allowedRoles.some((allowedRole) => normalizeRoleCode(allowedRole) === normalizedRole);
 };
 
 function moveItem<T>(items: T[], fromIndex: number, toIndex: number) {
@@ -190,6 +189,7 @@ export function PortalTransaccional({
   userEmail,
   userPersonId,
   activeRole,
+  activeRoleCode,
   userPermissions,
   adminData,
   onLogout,
@@ -236,6 +236,7 @@ export function PortalTransaccional({
       pta: { type: 'pta' },
       'mis-auditorias': { type: 'mis-auditorias' },
       'control-interno': { type: 'mis-auditorias' },
+      'control-interno-gestion': { type: 'mis-auditorias' },
     };
     const target = viewMap[section];
     if (target) {
@@ -372,7 +373,7 @@ export function PortalTransaccional({
         ],
         prioridad: 'Media',
         prioridadColor: '#D97706',
-        visiblePara: ['Administrativo', 'SUPER_ADMIN', 'RECTOR', 'SECRETARIO_GENERAL', 'SUBDIRECTOR_ACADEMICO', 'SUBDIRECTOR_PROYECCION', 'SUBDIRECTOR_ALTO_GOBIERNO', 'JEFE_JURIDICA', 'JEFE_PLANEACION'],
+        visiblePara: ['SUPER_ADMIN', 'RECTOR', 'SECRETARIO_GENERAL', 'SUBDIRECTOR_ACADEMICO', 'SUBDIRECTOR_PROYECCION', 'SUBDIRECTOR_ALTO_GOBIERNO', 'JEFE_JURIDICA', 'JEFE_PLANEACION', 'DOCENTE'],
         requierePermiso: 'portal-transaccional.certificado-laboral.view',
       },
       {
@@ -387,7 +388,7 @@ export function PortalTransaccional({
         badges: [{ label: 'Disponible', color: '#059669', bgColor: '#ECFDF5' }],
         prioridad: 'Baja',
         prioridadColor: '#6B7280',
-        visiblePara: ['Administrativo', 'Docente', 'Estudiante', 'Graduado', 'Aspirante', 'USUARIO_AUDITADO', 'SUPER_ADMIN', 'JEFE_OCI', 'AUDITOR_LIDER', 'AUDITOR_SENIOR', 'AUDITOR_JUNIOR', 'PROFESIONAL_OCI', 'ADMIN_CI', 'RECTOR', 'SECRETARIO_GENERAL', 'SUBDIRECTOR_ACADEMICO', 'SUBDIRECTOR_PROYECCION', 'SUBDIRECTOR_ALTO_GOBIERNO', 'JEFE_JURIDICA', 'JEFE_PLANEACION'],
+        visiblePara: ['DOCENTE', 'ESTUDIANTE', 'USUARIO_AUDITADO', 'SUPER_ADMIN', 'JEFE_OCI', 'AUDITOR_LIDER', 'AUDITOR_SENIOR', 'AUDITOR_JUNIOR', 'PROFESIONAL_OCI', 'ADMIN_CI', 'RECTOR', 'SECRETARIO_GENERAL', 'SUBDIRECTOR_ACADEMICO', 'SUBDIRECTOR_PROYECCION', 'SUBDIRECTOR_ALTO_GOBIERNO', 'JEFE_JURIDICA', 'JEFE_PLANEACION'],
         requierePermiso: 'portal-transaccional.carpeta-digital.view',
       },
       {
@@ -405,7 +406,7 @@ export function PortalTransaccional({
         ],
         prioridad: 'Alta',
         prioridadColor: '#DC2626',
-        visiblePara: ['Docente', 'DOCENTE', 'SUPER_ADMIN'],
+        visiblePara: ['DOCENTE', 'SUPER_ADMIN'],
         requierePermiso: 'portal-transaccional.pta.view',
       },
       {
@@ -432,9 +433,9 @@ export function PortalTransaccional({
     const perms = new Set(userPermissions || []);
     const hasPortalPermissions = [...perms].some((permission) => permission.startsWith('portal-transaccional.'));
     const filteredBase = base.filter(s => {
-      if (s.requierePermiso && hasPortalPermissions) return perms.has(s.requierePermiso);
-      if (s.visiblePara) return roleMatches(activeRole, s.visiblePara);
-      return true;
+      if (s.requierePermiso && hasPortalPermissions && perms.has(s.requierePermiso)) return true;
+      if (s.visiblePara) return roleCodeMatches(activeRoleCode || activeRole, s.visiblePara);
+      return !s.requierePermiso || !hasPortalPermissions;
     });
 
     // Merge with persisted ordering
@@ -1006,7 +1007,6 @@ export function PortalTransaccional({
   };
 
   return (
-    <NotificationsProvider>
       <div className="min-h-[calc(100vh-64px)]" style={{ background: '#F3F4F6' }}>
         <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <input ref={fotoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFotoUpload} />
@@ -1023,7 +1023,6 @@ export function PortalTransaccional({
           </AnimatePresence>
         </div>
       </div>
-    </NotificationsProvider>
   );
 }
 

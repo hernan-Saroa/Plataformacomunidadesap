@@ -28,6 +28,8 @@ interface FirmaDigitalPTAProps {
   firmanteNombre: string;
   firmanteCargo: string;
   etapaLabel: string;
+  correoDestino?: string;
+  onVerifyCodigo?: (codigo: string) => Promise<void>;
   onFirmaCompleta: (firmaData: FirmaData) => void;
   onCancelar: () => void;
 }
@@ -69,12 +71,14 @@ function generateCertificateId(): string {
 
 export function FirmaDigitalPTA({
   ptaId, docenteNombre, periodo, totalHoras,
-  firmanteNombre, firmanteCargo, etapaLabel,
+  firmanteNombre, firmanteCargo, etapaLabel, correoDestino,
+  onVerifyCodigo,
   onFirmaCompleta, onCancelar,
 }: FirmaDigitalPTAProps) {
   const [step, setStep] = useState<FirmaStep>('verificacion');
   const [pin, setPin] = useState(['', '', '', '', '', '']);
   const [pinError, setPinError] = useState('');
+  const [verifyingPin, setVerifyingPin] = useState(false);
   const [intentos, setIntentos] = useState(0);
   const [firmaData, setFirmaData] = useState<FirmaData | null>(null);
   const [generatingProgress, setGeneratingProgress] = useState(0);
@@ -131,15 +135,28 @@ export function FirmaDigitalPTA({
   };
 
   const verificarPin = useCallback(async (pinValue: string) => {
-    // Validación local — cualquier PIN de 6 dígitos es aceptado (simulación)
     if (pinValue.length !== 6 || !/^\d{6}$/.test(pinValue)) {
       setIntentos(prev => prev + 1);
-      setPinError('PIN inválido. Ingrese los 6 dígitos.');
+      setPinError('Código inválido. Ingrese los 6 dígitos.');
       setPin(['', '', '', '', '', '']);
       setTimeout(() => inputRefs.current[0]?.focus(), 100);
       return;
     }
 
+    setVerifyingPin(true);
+    try {
+      if (onVerifyCodigo) {
+        await onVerifyCodigo(pinValue);
+      }
+    } catch (error: any) {
+      setIntentos(prev => prev + 1);
+      setPinError(error?.message || 'Código incorrecto. Verifica e intenta nuevamente.');
+      setPin(['', '', '', '', '', '']);
+      setVerifyingPin(false);
+      setTimeout(() => inputRefs.current[0]?.focus(), 100);
+      return;
+    }
+    setVerifyingPin(false);
     setStep('generando');
 
     const hashInput = `${ptaId}|${docenteNombre}|${periodo}|${totalHoras}|${firmanteNombre}|${Date.now()}`;
@@ -167,7 +184,7 @@ export function FirmaDigitalPTA({
       }
       setGeneratingProgress(Math.min(progress, 100));
     }, 400);
-  }, [ptaId, docenteNombre, periodo, totalHoras, firmanteNombre, firmanteCargo]);
+  }, [ptaId, docenteNombre, periodo, totalHoras, firmanteNombre, firmanteCargo, onVerifyCodigo]);
 
   const confirmarFirma = () => {
     if (firmaData) {
@@ -236,7 +253,9 @@ export function FirmaDigitalPTA({
                     <Key style={{ width: 26, height: 26, color: '#003DA5' }} />
                   </div>
                   <h4 style={{ fontSize: '1rem', fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>Verificación de identidad</h4>
-                  <p style={{ fontSize: '0.82rem', color: '#6B7280' }}>Ingrese su PIN institucional de 6 dígitos</p>
+                  <p style={{ fontSize: '0.82rem', color: '#6B7280' }}>
+                    Ingrese el código de 6 dígitos enviado a {correoDestino || 'su correo institucional'}
+                  </p>
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 10, padding: '8px 18px', borderRadius: 24, background: timerSecs <= 60 ? '#FEF2F2' : '#F3F4F6', border: `2px solid ${timerSecs <= 60 ? '#FECACA' : '#E5E7EB'}`, boxShadow: timerSecs <= 60 ? '0 0 12px rgba(220,38,38,0.15)' : 'none' }}>
                     <Clock style={{ width: 20, height: 20, color: timerSecs <= 60 ? '#DC2626' : '#6B7280' }} />
                     <span style={{ fontSize: '1.15rem', fontWeight: 800, color: timerSecs <= 60 ? '#DC2626' : '#374151', fontVariantNumeric: 'tabular-nums', letterSpacing: '0.05em' }}>
@@ -256,11 +275,11 @@ export function FirmaDigitalPTA({
                       value={digit}
                       onChange={e => handlePinChange(i, e.target.value)}
                       onKeyDown={e => handlePinKeyDown(i, e)}
-                      disabled={intentos >= 3}
+                      disabled={intentos >= 3 || verifyingPin}
                       style={{
                         width: 48, height: 56, borderRadius: 12, border: pinError ? '2px solid #FCA5A5' : '2px solid #D1D5DB',
                         textAlign: 'center', fontSize: '1.5rem', fontWeight: 800, outline: 'none',
-                        background: intentos >= 3 ? '#F3F4F6' : 'white',
+                        background: intentos >= 3 || verifyingPin ? '#F3F4F6' : 'white',
                         transition: 'border-color 0.15s',
                       }}
                       onFocus={e => { e.currentTarget.style.borderColor = '#003DA5'; }}
@@ -275,13 +294,16 @@ export function FirmaDigitalPTA({
                   </motion.div>
                 )}
 
+                {verifyingPin && (
+                  <div style={{ textAlign: 'center', margin: '8px 0', fontSize: '0.78rem', color: '#003DA5', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                    <Loader2 style={{ width: 14, height: 14, animation: 'spin 1s linear infinite' }} /> Validando código...
+                  </div>
+                )}
+
                 <div style={{ textAlign: 'center', marginTop: 16 }}>
                   <p style={{ fontSize: '0.72rem', color: '#9CA3AF' }}>
                     <Lock style={{ width: 11, height: 11, display: 'inline', verticalAlign: 'middle', marginRight: 4 }} />
-                    Conexión segura — Los datos se procesan localmente
-                  </p>
-                  <p style={{ fontSize: '0.68rem', color: '#D1D5DB', marginTop: 4 }}>
-                    Demo: Cualquier PIN cuya suma de dígitos sea ≥ 10 (ej: 123456)
+                    El código vence en 5 minutos
                   </p>
                 </div>
               </motion.div>
