@@ -181,6 +181,37 @@ export class PlanAnual5RolesController {
     return this.service.update(id, { estado: 'activo' }, req.user?.userId);
   }
 
+  @Post(':id/notificar-responsable')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT)
+  @HttpCode(HttpStatus.OK)
+  async notificarResponsable(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      solicitanteNombre?: string;
+      mensaje?: string;
+      responsableEmail?: string;
+    },
+    @Req() req: any,
+  ) {
+    if (!id || id === 'undefined') {
+      throw new BadRequestException('id es requerido');
+    }
+    const solicitanteNombre =
+      body?.solicitanteNombre ||
+      req.user?.nombre ||
+      req.user?.fullName ||
+      req.user?.email;
+    return this.service.notificarResponsableEnvioRevision(
+      id,
+      req.user?.userId,
+      solicitanteNombre,
+      body?.mensaje,
+      body?.responsableEmail,
+    );
+  }
+
   // Rutas específicas de actividades
   @Post(':rolId/actividades')
   @UseGuards(JwtAuthGuard, PermissionsGuard)

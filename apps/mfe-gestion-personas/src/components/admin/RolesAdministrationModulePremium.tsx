@@ -33,7 +33,8 @@ import {
   Scale,
   Monitor,
   Tablet,
-  Menu
+  Menu,
+  ShieldIcon
 } from 'lucide-react';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
@@ -645,21 +646,24 @@ export function RolesAdministrationModulePremium() {
   const hasActiveFilters = searchTerm || filterType !== 'todos' || filterStatus !== 'todos' || filter2FA !== 'todos' || filterSistemaDestino !== 'todos';
 
   return (
-    <div className="space-y-6">
+    <div className="w-full px-4 sm:px-6 lg:px-8 space-y-6">
       {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"
-      >
-        <div>
-          <h1 className="text-2xl lg:text-xl xl:text-2xl font-extrabold text-[--esap-gray-900] tracking-tight">
-            Roles y Permisos
-          </h1>
-          <p className="text-xs lg:text-[11px] xl:text-xs text-[--esap-gray-600]">
-            Administra roles del sistema y asigna permisos granulares
-          </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#003DA5] to-blue-600 flex items-center justify-center shrink-0">
+              <ShieldIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">
+                Roles y Permisos
+              </h1>
+              <p className="text-sm text-gray-600 mt-0.5 line-clamp-1">
+                Administra roles del sistema y asigna permisos granulares
+              </p>
+            </div>
+          </div>
         </div>
 
         {isSuperAdmin && (
@@ -671,7 +675,7 @@ export function RolesAdministrationModulePremium() {
             <span className="text-sm">Crear Rol</span>
           </button>
         )}
-      </motion.div>
+      </div>
 
 
 
