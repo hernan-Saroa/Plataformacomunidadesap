@@ -1301,10 +1301,27 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
   const puedeAprobarPlan = puedeRealizar('plan-anual', 'approve');
   const puedeActivarPlan = puedeRealizar('plan-anual', 'activate');
   /** Misma regla que `puedeVerAprobacion` en el dashboard */
-  const puedeIrAAprobacion = puedeAprobarPlan || puedeActivarPlan || esSuperUsuario;
+  const puedeIrAAprobacion =
+    puedeAprobarPlan || puedeActivarPlan || puedeEditarPlan || esSuperUsuario;
   const [wizardSoloLectura, setWizardSoloLectura] = useState(false);
   const [dashboardSeccionForzada, setDashboardSeccionForzada] = useState<'gestion' | 'aprobar' | null>(null);
   const limpiarSeccionForzadaDashboard = useCallback(() => setDashboardSeccionForzada(null), []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const seccion = params.get('seccion');
+    const vigenciaParam = params.get('vigencia');
+    if (vigenciaParam) {
+      const v = parseInt(vigenciaParam, 10);
+      if (!Number.isNaN(v) && v > 2000) {
+        setAñoActual(v);
+      }
+    }
+    if (seccion === 'aprobar') {
+      setDashboardSeccionForzada('aprobar');
+    }
+  }, []);
   
   // ═══════════════════════════════════════════════════════════════════════
   // AÑO ACTIVO (puede cambiar al seleccionar otro plan)
@@ -1389,8 +1406,18 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             'Responsable del plan';
           const emailResp = (pb.responsable_email || '').trim();
           const cargoResp = pb.responsable_cargo || 'Jefe de Control Interno';
-          if (rid && auditores?.length) {
-            const coincidencia = auditores.find((a) => String(a.id) === String(rid));
+          if (auditores?.length) {
+            const norm = (s: string) =>
+              (s || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .trim()
+                .toLowerCase();
+            const coincidencia =
+              (rid
+                ? auditores.find((a) => String(a.id) === String(rid))
+                : undefined) ||
+              auditores.find((a) => norm(a.nombre) === norm(nombreResp));
             if (coincidencia) return coincidencia;
           }
           return {
