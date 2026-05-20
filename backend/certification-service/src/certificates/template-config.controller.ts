@@ -11,8 +11,14 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
+import { mkdirSync } from 'fs';
 import { extname } from 'path';
 import { TemplateConfigService } from './template-config.service';
+
+const ensureUploadDestination = (directory: string) => {
+  mkdirSync(directory, { recursive: true });
+  return directory;
+};
 
 @Controller('certificates/template-config')
 export class TemplateConfigController {
@@ -52,7 +58,13 @@ export class TemplateConfigController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
-        destination: './uploads/signatures',
+        destination: (_req, _file, cb) => {
+          try {
+            cb(null, ensureUploadDestination('./uploads/signatures'));
+          } catch (error) {
+            cb(error as Error, './uploads/signatures');
+          }
+        },
         filename: (req, file, cb) => {
           const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
           const ext = extname(file.originalname);
@@ -97,7 +109,13 @@ export class TemplateConfigController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
-        destination: './uploads/logos',
+        destination: (_req, _file, cb) => {
+          try {
+            cb(null, ensureUploadDestination('./uploads/logos'));
+          } catch (error) {
+            cb(error as Error, './uploads/logos');
+          }
+        },
         filename: (_req, file, cb) => {
           const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
           const ext = extname(file.originalname);

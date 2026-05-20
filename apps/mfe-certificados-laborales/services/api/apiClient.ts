@@ -44,6 +44,8 @@ export interface UploadRequestOptions {
   onProgressDetail?: (detail: UploadProgressDetail) => void;
   signal?: AbortSignal;
   timeoutMs?: number;
+  skipAuthRefresh?: boolean;
+  _authRetry?: boolean;
 }
 
 // ============================================================================
@@ -188,6 +190,8 @@ export class ApiClient {
       onProgressDetail,
       signal,
       timeoutMs,
+      skipAuthRefresh = false,
+      _authRetry = false,
     } = resolvedOptions;
 
     // Para upload, no enviamos Content-Type header (el browser lo setea automáticamente con boundary)
@@ -218,7 +222,7 @@ export class ApiClient {
       }
 
       // Success
-      xhr.addEventListener('load', () => {
+      xhr.addEventListener('load', async () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const responseText = xhr.responseText;
@@ -231,6 +235,20 @@ export class ApiClient {
             resolve((response.data !== undefined ? response.data : response) as T);
           } catch (error) {
             reject(new Error('Error al parsear respuesta del servidor'));
+          }
+        } else if (xhr.status === 401 && !skipAuthRefresh && !_authRetry) {
+          try {
+            const newToken = await this.refreshAccessToken();
+            if (newToken) {
+              resolve(this.upload<T>(endpoint, formData, {
+                ...resolvedOptions,
+                _authRetry: true,
+              }));
+              return;
+            }
+            reject(new Error('Sesion expirada. Por favor, inicia sesion nuevamente.'));
+          } catch {
+            reject(new Error('Sesion expirada. Por favor, inicia sesion nuevamente.'));
           }
         } else {
           try {
@@ -257,6 +275,7 @@ export class ApiClient {
       });
 
       xhr.open('POST', url);
+      xhr.withCredentials = true;
 
       // Set headers
       Object.entries(headers).forEach(([key, value]) => {
