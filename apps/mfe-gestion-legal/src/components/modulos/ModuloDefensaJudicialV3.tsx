@@ -373,7 +373,7 @@ export function ModuloDefensaJudicialV3() {
             if (exp.abogado?.nombreCompleto) return exp.abogado.nombreCompleto;
 
             // 3. Fallback a string si no parece UUID
-            if (typeof exp.abogadoSustanciador === 'string' && exp.abogadoSustanciador.length < 30 && !exp.abogadoSustanciador.includes('-')) {
+            if (typeof exp.abogadoSustanciador === 'string' && exp.abogadoSustanciador.trim() !== '' && exp.abogadoSustanciador.length < 30 && !exp.abogadoSustanciador.includes('-')) {
               return exp.abogadoSustanciador;
             }
 
@@ -541,9 +541,11 @@ export function ModuloDefensaJudicialV3() {
       ((exp as any).tipoProceso && normalize((exp as any).tipoProceso).includes(filtroNorm));
 
     // Filtro por Abogado (solo visible para Jefe/Secretariado)
+    const esSinAsignar = !exp.abogadoAsignado || exp.abogadoAsignado === 'Sin asignar' || exp.abogadoAsignado === 'No asignado';
     const matchAbogado = filtroAbogado === 'TODOS' ||
       exp.abogadoAsignado === filtroAbogado ||
-      exp.abogadoResponsable === filtroAbogado;
+      exp.abogadoResponsable === filtroAbogado ||
+      (filtroAbogado === 'Sin asignar' && esSinAsignar);
 
     return matchBusqueda && matchTipo && matchAbogado;
   });

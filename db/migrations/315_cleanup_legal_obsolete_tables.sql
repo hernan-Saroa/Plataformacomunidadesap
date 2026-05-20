@@ -16,13 +16,13 @@ BEGIN;
 
 -- 1) Soltar las 7 FKs restantes hacia abogados (los nombres reales pueden variar:
 --    confirmar con: SELECT conname FROM pg_constraint WHERE confrelid = 'legal_management.abogados'::regclass;)
-ALTER TABLE legal_management.audiencias            DROP CONSTRAINT IF EXISTS audiencias_abogado_id_fkey;
-ALTER TABLE legal_management.comentarios_oc        DROP CONSTRAINT IF EXISTS comentarios_oc_autor_id_fkey;
-ALTER TABLE legal_management.conceptos_juridicos   DROP CONSTRAINT IF EXISTS conceptos_juridicos_abogado_redactor_id_fkey;
-ALTER TABLE legal_management.consultas_juridicas   DROP CONSTRAINT IF EXISTS consultas_juridicas_abogado_asignado_id_fkey;
-ALTER TABLE legal_management.notas_expediente      DROP CONSTRAINT IF EXISTS notas_expediente_autor_id_fkey;
-ALTER TABLE legal_management.planes_mejoramiento   DROP CONSTRAINT IF EXISTS planes_mejoramiento_responsable_id_fkey;
-ALTER TABLE legal_management.tareas_expediente     DROP CONSTRAINT IF EXISTS tareas_expediente_responsable_id_fkey;
+ALTER TABLE IF EXISTS legal_management.audiencias            DROP CONSTRAINT IF EXISTS audiencias_abogado_id_fkey;
+ALTER TABLE IF EXISTS legal_management.comentarios_oc        DROP CONSTRAINT IF EXISTS comentarios_oc_autor_id_fkey;
+ALTER TABLE IF EXISTS legal_management.conceptos_juridicos   DROP CONSTRAINT IF EXISTS conceptos_juridicos_abogado_redactor_id_fkey;
+ALTER TABLE IF EXISTS legal_management.consultas_juridicas   DROP CONSTRAINT IF EXISTS consultas_juridicas_abogado_asignado_id_fkey;
+ALTER TABLE IF EXISTS legal_management.notas_expediente      DROP CONSTRAINT IF EXISTS notas_expediente_autor_id_fkey;
+ALTER TABLE IF EXISTS legal_management.planes_mejoramiento   DROP CONSTRAINT IF EXISTS planes_mejoramiento_responsable_id_fkey;
+ALTER TABLE IF EXISTS legal_management.tareas_expediente     DROP CONSTRAINT IF EXISTS tareas_expediente_responsable_id_fkey;
 
 -- 2) Eliminar trigger + funcion de historial OC (la tabla destino se dropea abajo)
 DROP TRIGGER IF EXISTS trg_historial_oc ON legal_management.requerimientos_oc;
