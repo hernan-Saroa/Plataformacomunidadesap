@@ -1154,18 +1154,74 @@ export class PtaService {
     const q = query || {};
     const programaId = coalesceString(q.programaId, q.programa_id);
     const completo = String(q.completo || '').toLowerCase() === 'true';
-    const where = !completo && programaId ? { programaId } : {};
-    const rows = await this.asignaturaRepo.find({
-      where,
-      relations: { programa: true },
-      order: { nombre: 'ASC' },
-      take: 5000,
-    });
+
+    const params: any[] = [];
+    const where = !completo && programaId
+      ? (() => {
+          params.push(programaId);
+          return `WHERE a."programaId" = $1 OR p.id::text = $1 OR p.codigo = $1`;
+        })()
+      : '';
+
+    const rows = await this.asignaturaRepo.query(
+      `
+      SELECT
+        a.id,
+        a."programaId",
+        a.nombre,
+        a.codigo,
+        a.creditos,
+        a.horas,
+        a."nucleoTematico",
+        a.semestre,
+        a.modalidad,
+        a.tipo,
+        a."createdAt",
+        a."updatedAt",
+        p.id AS programa_real_id,
+        p.codigo AS programa_codigo,
+        p.nombre AS programa_nombre,
+        p.descripcion AS programa_descripcion,
+        p.estado AS programa_estado,
+        p.nivel_formacion AS programa_nivel,
+        p.facultad AS programa_facultad,
+        p.modalidad AS programa_modalidad
+      FROM academic_work_plan."Asignatura" a
+      LEFT JOIN academic_work_plan.programas p
+        ON p.codigo = a."programaId"
+        OR p.id::text = a."programaId"
+      ${where}
+      ORDER BY a.nombre ASC
+      LIMIT 5000
+      `,
+      params,
+    );
 
     return rows.map((a: any) => ({
-      ...a,
+      id: a.id,
+      programaId: a.programaId,
+      programa_id: a.programa_real_id || a.programaId,
+      nombre: a.nombre,
+      codigo: a.codigo,
+      creditos: a.creditos,
+      horas: a.horas,
+      nucleoTematico: a.nucleoTematico,
       nucleo: a.nucleoTematico || 'General',
-      programa_id: a.programaId,
+      semestre: a.semestre,
+      modalidad: a.modalidad,
+      tipo: a.tipo,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+      programa: a.programa_real_id ? {
+        id: a.programa_real_id,
+        codigo: a.programa_codigo,
+        nombre: a.programa_nombre,
+        descripcion: a.programa_descripcion,
+        estado: a.programa_estado,
+        nivel: a.programa_nivel,
+        facultad: a.programa_facultad,
+        modalidad: a.programa_modalidad,
+      } : null,
     }));
   }
 

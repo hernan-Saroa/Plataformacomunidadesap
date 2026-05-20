@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import '../styles/esap-theme.css';
-import '../styles/modo-compacto.css';
 import '../styles/responsive.css';
 import '../styles/globals.css';
 import '../styles/accessibility.css';

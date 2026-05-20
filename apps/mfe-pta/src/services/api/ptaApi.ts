@@ -3,7 +3,7 @@ import { apiClient } from '../../../../shell/src/services/api';
 type ApiResult<T> = { success: boolean; data: T };
 
 const SERVICE_BASE = '/pta/api/v1';
-const PTA_BASE = `${SERVICE_BASE}/pta`;
+const PTA_BASE = SERVICE_BASE;
 
 function normalizeResult<T>(raw: any, fallback: T): ApiResult<T> {
   if (raw !== undefined && raw !== null) {

@@ -1167,9 +1167,9 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
 
                   {renderMenuItem(
                     'pta',
-                    <FileText className="w-5 h-5" strokeWidth={2} />,
-                    'PTA',
-                    'Plan de Trabajo Académico'
+                    <Briefcase className="w-5 h-5" strokeWidth={2} />,
+                    'Plan de Trabajo Académico',
+                    'Gestión y aprobación de PTAs'
                   )}
 
                   {renderMenuItem(
