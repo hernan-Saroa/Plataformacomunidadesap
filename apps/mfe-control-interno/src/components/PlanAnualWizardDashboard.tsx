@@ -1263,6 +1263,60 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     setRolesConfig((prev) => normalizarResponsables(prev));
   }, [rolesConfig]);
 
+  // Efecto global: Sincronizar automáticamente en el fondo (útil si se carga desde borrador o API)
+  useEffect(() => {
+    if (!jefeSeleccionado) return;
+    setRolesConfig((prev) =>
+      prev.map((rol) => {
+        const validResponsables = (rol.responsables || []).filter(Boolean);
+        if (validResponsables.length > 0) return rol;
+        
+        return {
+          ...rol,
+          responsables: [jefeSeleccionado],
+          actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map((act) => {
+            const actValidResp = (act.responsables || []).filter(Boolean);
+            return actValidResp.length === 0 ? { ...act, responsables: [jefeSeleccionado] } : act;
+          }),
+          actividadesCustom: (rol.actividadesCustom || []).map((act) => {
+            const actValidResp = (act.responsables || []).filter(Boolean);
+            return actValidResp.length === 0 ? { ...act, responsables: [jefeSeleccionado] } : act;
+          }),
+        };
+      })
+    );
+  }, [jefeSeleccionado]);
+
+  // Auto-asignar el Responsable del Plan como Responsable del Rol por defecto (cuando lo cambia el usuario manualmente)
+  const handleJefeChange = (nuevoJefe: Auditor | null) => {
+    setJefeSeleccionado(nuevoJefe);
+    wizardTouchedByUserRef.current = true;
+    
+    if (nuevoJefe) {
+      setRolesConfig((prev) =>
+        prev.map((rol) => {
+          // Solo aplicar si el rol no tiene un responsable válido aún
+          const validResponsables = (rol.responsables || []).filter(Boolean);
+          if (validResponsables.length > 0) return rol;
+          
+          return {
+            ...rol,
+            responsables: [nuevoJefe],
+            // También pre-asignar en actividades que no tengan responsable
+            actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map((act) => {
+              const actValidResp = (act.responsables || []).filter(Boolean);
+              return actValidResp.length === 0 ? { ...act, responsables: [nuevoJefe] } : act;
+            }),
+            actividadesCustom: (rol.actividadesCustom || []).map((act) => {
+              const actValidResp = (act.responsables || []).filter(Boolean);
+              return actValidResp.length === 0 ? { ...act, responsables: [nuevoJefe] } : act;
+            }),
+          };
+        })
+      );
+    }
+  };
+
   const handleRolesChange = (config: RolConfig[]) => {
     wizardTouchedByUserRef.current = true;
     setRolesConfig(normalizarResponsables(config));
@@ -1584,6 +1638,30 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     if (!soloLectura) {
       if (paso === 1 && !validarPaso1()) return;
       if (paso === 2 && !validarPaso2()) return;
+      
+      // Auto-asignar el Responsable del Plan a los roles y actividades vacías 
+      // justo antes de entrar al Paso 2, garantizando que no haya problemas de estado.
+      if (paso === 1 && jefeSeleccionado) {
+        setRolesConfig((prev) =>
+          prev.map((rol) => {
+            const validResponsables = (rol.responsables || []).filter(Boolean);
+            if (validResponsables.length > 0) return rol;
+            
+            return {
+              ...rol,
+              responsables: [jefeSeleccionado],
+              actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map((act) => {
+                const actValidResp = (act.responsables || []).filter(Boolean);
+                return actValidResp.length === 0 ? { ...act, responsables: [jefeSeleccionado] } : act;
+              }),
+              actividadesCustom: (rol.actividadesCustom || []).map((act) => {
+                const actValidResp = (act.responsables || []).filter(Boolean);
+                return actValidResp.length === 0 ? { ...act, responsables: [jefeSeleccionado] } : act;
+              }),
+            };
+          })
+        );
+      }
     }
     setPaso(paso + 1);
   };
@@ -1910,7 +1988,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
                 vigencia={vigencia} 
                 onVigenciaChange={handleVigenciaChange} 
                 jefeOCI={jefeSeleccionado} 
-                onJefeChange={setJefeSeleccionado}
+                onJefeChange={handleJefeChange}
                 fechaInicio={fechaInicio}
                 onFechaInicioChange={setFechaInicio}
                 fechaFin={fechaFin}
