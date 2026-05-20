@@ -25,7 +25,7 @@ import { Badge } from '../ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '../ui/sheet';
 import { toast } from 'sonner';
 import { SystemSwitcher } from '../esap/SystemSwitcher';
-import { NotificacionesDropdown } from './NotificacionesDropdown';
+import { PortalNotificationBell } from './PortalNotificationBell';
 
 interface AuthenticatedPortalNavbarProps {
   userName: string;
@@ -271,14 +271,7 @@ export function AuthenticatedPortalNavbar({
               />
             )}
 
-            <DropdownMenu open={showNotifications} onOpenChange={setShowNotifications}>
-              <DropdownMenuTrigger asChild>
-                <NotificationButton unreadCount={0} />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[380px] p-0">
-                <NotificacionesDropdown onNavigate={handleNotificationNavigate} />
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <PortalNotificationBell onNavigate={handleNotificationNavigate} />
 
             <button
               type="button"

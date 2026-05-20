@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { RoleSelector } from './RoleSelector';
 import { AuthenticatedPortalNavbar } from './AuthenticatedPortalNavbar';
 import { PortalTransaccional } from './PortalTransaccional';
+import { NotificationsProvider } from '../esap/NotificationsContext';
 
 interface PortalDashboardProps {
   userName: string;
@@ -79,6 +80,7 @@ export function PortalDashboard({
   const roleData = userData?.datos_por_rol || {};
 
   return (
+    <NotificationsProvider>
     <div style={{ minHeight: '100vh', background: '#F1F5F9' }}>
       <AuthenticatedPortalNavbar
         userName={userName}
@@ -120,5 +122,6 @@ export function PortalDashboard({
         </motion.div>
       </AnimatePresence>
     </div>
+    </NotificationsProvider>
   );
 }

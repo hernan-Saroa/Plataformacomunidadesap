@@ -6,6 +6,8 @@ import { CreateHallazgoDto } from './dto/create-hallazgo.dto';
 import { UpdateHallazgoDto } from './dto/update-hallazgo.dto';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { HistorialAuditoria, TipoEvento } from '../auditorias/entities/historial-auditoria.entity';
+import { NotificacionesService } from '../notificaciones/notificaciones.service';
+import { TipoNotificacion, PrioridadNotificacion } from '../notificaciones/entities/notificacion.entity';
 
 @Injectable()
 export class HallazgosService {
@@ -16,7 +18,113 @@ export class HallazgosService {
     private readonly auditoriaRepository: Repository<Auditoria>,
     @InjectRepository(HistorialAuditoria)
     private readonly historialRepository: Repository<HistorialAuditoria>,
+    private readonly notificacionesService: NotificacionesService,
   ) {}
+
+  private async cargarAuditoria(auditoriaId: string): Promise<Auditoria | null> {
+    return this.auditoriaRepository.findOne({ where: { id: auditoriaId } });
+  }
+
+  /**
+   * Notifica al equipo OCI (auditor líder, jefe, equipo) — backoffice.
+   * NO usar para el área auditada: ellos reciben aviso solo con notificarAuditadoPortal
+   * (p. ej. al publicar el informe preliminar).
+   */
+  private async notificarEquipoOciHallazgo(
+    hallazgo: Hallazgo,
+    tipo: 'aceptado' | 'controversia',
+  ): Promise<void> {
+    if (!hallazgo.auditoriaId) return;
+    const auditoria = await this.cargarAuditoria(hallazgo.auditoriaId);
+    if (!auditoria) return;
+
+    const area =
+      auditoria.responsableAreaNombre?.trim() || 'el área auditada';
+    const tituloHallazgo = hallazgo.titulo || hallazgo.codigo;
+
+    const payload =
+      tipo === 'aceptado'
+        ? {
+            evento: 'EVT-AUD-003',
+            titulo: `Hallazgo aceptado — ${hallazgo.codigo}`,
+            mensaje:
+              `${area} aceptó el hallazgo "${tituloHallazgo}" en la auditoría ${auditoria.codigo}. ` +
+              `No requiere decisión sobre controversia.`,
+          }
+        : {
+            evento: 'EVT-AUD-001',
+            titulo: `Controversia presentada — ${hallazgo.codigo}`,
+            mensaje:
+              `${area} presentó controversia sobre el hallazgo "${tituloHallazgo}" en la auditoría ${auditoria.codigo}. ` +
+              `Debe registrar su decisión: ratificar, modificar o retirar.`,
+          };
+
+    const metadata = {
+      hallazgoId: hallazgo.id,
+      hallazgoCodigo: hallazgo.codigo,
+      accionAuditado: tipo,
+      responsableArea: area,
+      eventoCode: payload.evento,
+    };
+
+    await this.notificacionesService.dispararEvento(payload.evento, {
+      auditoriaId: auditoria.id,
+      auditoriaCodigo: auditoria.codigo,
+      tituloCustom: payload.titulo,
+      mensajeCustom: payload.mensaje,
+      metadata,
+      url_accion: `/control-interno/auditorias/${auditoria.id}`,
+    });
+
+    // Asegurar que el auditor líder reciba la alerta (además del broadcast por roles).
+    await this.notificarAuditorLiderDirecto(
+      auditoria,
+      payload.titulo,
+      payload.mensaje,
+      tipo === 'controversia'
+        ? TipoNotificacion.CONTROVERSIA_HALLAZGO
+        : TipoNotificacion.RECEPCION_DOCUMENTO,
+      metadata,
+    );
+  }
+
+  private async notificarAuditorLiderDirecto(
+    auditoria: Auditoria,
+    titulo: string,
+    mensaje: string,
+    tipo: TipoNotificacion,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    const liderId = auditoria.auditorLiderId;
+    if (!liderId) return;
+    try {
+      const rows = await this.auditoriaRepository.query(
+        `SELECT u.id_user::text AS id_user
+         FROM auth."user" u
+         WHERE u.id_person = $1::uuid AND u.is_active = true
+         LIMIT 1`,
+        [liderId],
+      );
+      const idUser = rows?.[0]?.id_user;
+      if (!idUser) {
+        console.warn(
+          `[HallazgosService] Sin id_user para auditor líder (id_person=${liderId}) auditoría ${auditoria.codigo}`,
+        );
+        return;
+      }
+      await this.notificacionesService.create({
+        usuarioId: String(idUser),
+        tipoNotificacion: tipo,
+        titulo,
+        mensaje,
+        prioridad: PrioridadNotificacion.ALTA,
+        metadata,
+        accionUrl: `/control-interno/auditorias/${auditoria.id}`,
+      });
+    } catch (err) {
+      console.error('[HallazgosService] Error notificando auditor líder:', err.message);
+    }
+  }
 
   /**
    * Registra evento en el historial de la auditoría
@@ -263,6 +371,9 @@ export class HallazgosService {
       `Se creó el hallazgo ${saved.codigo} - ${saved.titulo}`,
     );
 
+    // El hallazgo queda en BORRADOR: no se notifica al auditado (aún no es visible en el portal).
+    // El área auditada recibe aviso al generar el informe preliminar (estado NOTIFICADO).
+
     return this.findOne(saved.id);
   }
 
@@ -411,6 +522,12 @@ export class HallazgosService {
       `El área auditada aceptó el hallazgo ${hallazgo.codigo}`,
     );
 
+    try {
+      await this.notificarEquipoOciHallazgo(hallazgo, 'aceptado');
+    } catch (notifErr) {
+      console.error('[HallazgosService] Error notificando aceptación al equipo OCI:', notifErr.message);
+    }
+
     return this.findOne(actualizado.id);
   }
 
@@ -448,6 +565,12 @@ export class HallazgosService {
       'Controversia presentada',
       `El área auditada presentó controversia sobre el hallazgo ${hallazgo.codigo}`,
     );
+
+    try {
+      await this.notificarEquipoOciHallazgo(hallazgo, 'controversia');
+    } catch (notifErr) {
+      console.error('[HallazgosService] Error notificando controversia al equipo OCI:', notifErr.message);
+    }
 
     return this.findOne(actualizado.id);
   }
@@ -493,6 +616,41 @@ export class HallazgosService {
       `El auditor ${tipoDecision} el hallazgo ${hallazgo.codigo}. Fundamentación: ${fundamentacionTecnica.substring(0, 100)}...`,
     );
 
+    try {
+      if (hallazgo.auditoriaId) {
+      const auditoria = await this.cargarAuditoria(hallazgo.auditoriaId);
+      if (auditoria?.responsableAreaEmail) {
+        const etiquetaDecision =
+          tipoDecision === 'ratificado'
+            ? 'ratificado (se mantiene el hallazgo)'
+            : tipoDecision === 'modificado'
+              ? 'modificado'
+              : 'retirado';
+        await this.notificacionesService.notificarAuditadoPortal({
+          responsableAreaEmail: auditoria.responsableAreaEmail,
+          responsableAreaNombre: auditoria.responsableAreaNombre,
+          auditoriaId: auditoria.id,
+          auditoriaCodigo: auditoria.codigo,
+          auditoriaNombre: auditoria.nombre,
+          tipoNotificacion: TipoNotificacion.OTRO,
+          titulo: `Decisión sobre su controversia — ${hallazgo.codigo}`,
+          mensaje:
+            `Usted presentó controversia sobre el hallazgo "${hallazgo.titulo || hallazgo.codigo}". ` +
+            `La OCI ha ${etiquetaDecision} el hallazgo en la auditoría ${auditoria.codigo}. ` +
+            `Revise la fundamentación en el portal.`,
+          prioridad: PrioridadNotificacion.ALTA,
+          metadata: {
+            hallazgoId: hallazgo.id,
+            decision: tipoDecision,
+            quienPresentoControversia: 'area_auditada',
+          },
+        });
+      }
+      }
+    } catch (notifErr) {
+      console.error('[HallazgosService] Error notificando decisión al auditado:', notifErr.message);
+    }
+
     return this.findOne(actualizado.id);
   }
 
@@ -530,6 +688,40 @@ export class HallazgosService {
       'Informe preliminar generado',
       `${pendientes.length} hallazgos notificados al área auditada`,
     );
+
+    try {
+      const auditoria = await this.cargarAuditoria(auditoriaId);
+      if (auditoria?.responsableAreaEmail) {
+        const n = pendientes.length;
+        const mensajeHallazgos =
+          n > 0
+            ? `Se notificaron ${n} hallazgo(s). Tiene 10 días hábiles para aceptar cada uno o presentar controversia con documento adjunto.`
+            : todos > 0
+              ? `Los hallazgos de esta auditoría ya estaban en trámite. Revise el estado en el portal.`
+              : `No hay hallazgos registrados aún; el área será informada cuando se publiquen.`;
+        await this.notificacionesService.notificarAuditadoPortal({
+          responsableAreaEmail: auditoria.responsableAreaEmail,
+          responsableAreaNombre: auditoria.responsableAreaNombre,
+          auditoriaId: auditoria.id,
+          auditoriaCodigo: auditoria.codigo,
+          auditoriaNombre: auditoria.nombre,
+          tipoNotificacion: TipoNotificacion.HALLAZGO_IDENTIFICADO,
+          titulo: `Informe preliminar disponible — ${auditoria.codigo}`,
+          mensaje:
+            `La OCI publicó el informe preliminar de la auditoría "${auditoria.nombre}" (${auditoria.codigo}). ` +
+            mensajeHallazgos,
+          prioridad: PrioridadNotificacion.CRITICA,
+          metadata: {
+            hallazgosNotificados: n,
+            totalHallazgos: todos,
+            plazoDiasHabiles: 10,
+          },
+        });
+      }
+    } catch (notifErr) {
+      console.error('[HallazgosService] Error notificando informe preliminar al auditado:', notifErr.message);
+    }
+
     return { count: pendientes.length, total: todos };
   }
 }

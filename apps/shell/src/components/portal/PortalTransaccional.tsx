@@ -56,8 +56,6 @@ import { MisDocumentos } from './gestion-documental/MisDocumentos';
 import { PortalDocentePTA } from './pta/PortalDocentePTA';
 import { MisAuditoriasControlInterno } from './control-interno/MisAuditoriasControlInterno';
 import { toast } from 'sonner';
-import { NotificationsProvider } from '../esap/NotificationsContext';
-import { PortalNotificationBell } from './PortalNotificationBell';
 import { PortalSettings } from './PortalSettings';
 import { AyudaView } from './AyudaView';
 
@@ -236,6 +234,7 @@ export function PortalTransaccional({
       pta: { type: 'pta' },
       'mis-auditorias': { type: 'mis-auditorias' },
       'control-interno': { type: 'mis-auditorias' },
+      'control-interno-gestion': { type: 'mis-auditorias' },
     };
     const target = viewMap[section];
     if (target) {
@@ -1006,7 +1005,6 @@ export function PortalTransaccional({
   };
 
   return (
-    <NotificationsProvider>
       <div className="min-h-[calc(100vh-64px)]" style={{ background: '#F3F4F6' }}>
         <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <input ref={fotoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFotoUpload} />
@@ -1023,7 +1021,6 @@ export function PortalTransaccional({
           </AnimatePresence>
         </div>
       </div>
-    </NotificationsProvider>
   );
 }
 
