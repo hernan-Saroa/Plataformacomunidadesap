@@ -1103,6 +1103,256 @@ export class PlanAnual5RolesService {
   }
 
   /**
+   * Resuelve auth.user.id_user del responsable (mismo identificador que usa el Shell en campanita).
+   */
+  private async resolverUsuarioIdResponsablePlan(
+    plan: PlanAnual5Roles,
+    emailHint?: string,
+  ): Promise<string | null> {
+    const uuidRegex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const idPersonCandidatos = new Set<string>();
+    const emails = new Set<string>();
+
+    const agregarEmail = (value?: string | null) => {
+      const e = (value || '').trim().toLowerCase();
+      if (e && e.includes('@')) {
+        emails.add(e);
+      }
+    };
+
+    const agregarIdPerson = (value?: string | null) => {
+      const v = (value || '').trim();
+      if (uuidRegex.test(v)) {
+        idPersonCandidatos.add(v);
+      }
+    };
+
+    agregarIdPerson(plan.responsable_id);
+
+    if (plan.responsable_id) {
+      try {
+        const porConfig = await this.dataSource.query(
+          `SELECT c.id_tercero::text AS id_tercero, p.dir_email
+           FROM control_interno.configuracion_profesionales_ocig c
+           LEFT JOIN auth.personas p ON p.id_person::text = c.id_tercero::text
+           WHERE c.id::text = $1 OR c.id_tercero::text = $1
+           LIMIT 1`,
+          [String(plan.responsable_id)],
+        );
+        if (porConfig?.length) {
+          agregarIdPerson(porConfig[0].id_tercero);
+          agregarEmail(porConfig[0].dir_email);
+        }
+      } catch (error) {
+        console.error(
+          '[PlanAnual5RolesService.resolverUsuarioIdResponsablePlan] Error config OCI:',
+          error,
+        );
+      }
+    }
+
+    if (plan.responsable) {
+      const nombre = plan.responsable.trim();
+      try {
+        const porNombre = await this.dataSource.query(
+          `SELECT p.id_person::text AS id_person, p.dir_email
+           FROM auth.personas p
+           WHERE p.nom_largo ILIKE $1
+              OR CONCAT(p.nom_tercero, ' ', p.pri_apellido) ILIKE $1
+              OR CONCAT(p.pri_apellido, ' ', p.nom_tercero) ILIKE $1
+           ORDER BY
+             CASE WHEN p.nom_largo ILIKE $2 THEN 0 ELSE 1 END
+           LIMIT 5`,
+          [`%${nombre}%`, nombre],
+        );
+        for (const row of porNombre || []) {
+          agregarIdPerson(row.id_person);
+          agregarEmail(row.dir_email);
+        }
+      } catch (error) {
+        console.error(
+          '[PlanAnual5RolesService.resolverUsuarioIdResponsablePlan] Error por nombre:',
+          error,
+        );
+      }
+    }
+
+    agregarEmail(emailHint);
+
+    for (const idPerson of idPersonCandidatos) {
+      try {
+        const porPersona = await this.dataSource.query(
+          `SELECT u.id_user::text AS id_user
+           FROM auth."user" u
+           WHERE u.id_person::text = $1 AND u.is_active = true
+           LIMIT 1`,
+          [idPerson],
+        );
+        if (porPersona?.[0]?.id_user) {
+          return String(porPersona[0].id_user);
+        }
+      } catch (error) {
+        console.error(
+          '[PlanAnual5RolesService.resolverUsuarioIdResponsablePlan] Error id_person:',
+          error,
+        );
+      }
+    }
+
+    for (const email of emails) {
+      try {
+        const porEmail = await this.dataSource.query(
+          `SELECT u.id_user::text AS id_user
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+           WHERE (
+             LOWER(TRIM(u.email)) = $1
+             OR LOWER(TRIM(p.dir_email)) = $1
+           )
+           AND u.is_active = true
+           LIMIT 1`,
+          [email],
+        );
+        if (porEmail?.[0]?.id_user) {
+          return String(porEmail[0].id_user);
+        }
+      } catch (error) {
+        console.error(
+          '[PlanAnual5RolesService.resolverUsuarioIdResponsablePlan] Error email:',
+          error,
+        );
+      }
+    }
+
+    if (plan.responsable_id) {
+      try {
+        const legacy = await this.dataSource.query(
+          `SELECT u.id_user::text AS id_user
+           FROM auth."user" u
+           WHERE u.id_user::text = $1
+              OR u.id_tercero::text = $1
+           LIMIT 1`,
+          [String(plan.responsable_id)],
+        );
+        if (legacy?.[0]?.id_user) {
+          return String(legacy[0].id_user);
+        }
+      } catch (error) {
+        console.error(
+          '[PlanAnual5RolesService.resolverUsuarioIdResponsablePlan] Error legacy id:',
+          error,
+        );
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Un editor solicita al responsable del plan que revise y envíe al comité PAI.
+   */
+  async notificarResponsableEnvioRevision(
+    planId: string,
+    usuarioSolicitanteId?: string,
+    solicitanteNombre?: string,
+    mensajeAdicional?: string,
+    responsableEmail?: string,
+  ): Promise<{
+    ok: boolean;
+    destinatarioNombre: string;
+    porcentajeAsignacion: number;
+    listoParaEnvio: boolean;
+  }> {
+    const plan = await this.findOne(planId);
+    const estado = (plan.estado || '').toLowerCase();
+
+    if (!['borrador', 'devuelto'].includes(estado)) {
+      throw new BadRequestException(
+        'Solo se puede notificar al responsable cuando el plan está en borrador o devuelto.',
+      );
+    }
+
+    const usuarioId = await this.resolverUsuarioIdResponsablePlan(
+      plan,
+      responsableEmail,
+    );
+    if (!usuarioId) {
+      throw new BadRequestException(
+        `No se encontró un usuario activo para el responsable "${plan.responsable || 'sin nombre'}". ` +
+          'Verifique que tenga cuenta en el sistema, email en personas y que responsable_id sea id_person (no el UUID de configuración OCI).',
+      );
+    }
+
+    const actividades = await this.actividadRepository.find({
+      where: { planId, activo: true },
+    });
+    const total = actividades.length;
+    const asignadas = actividades.filter((a) => {
+      const resp = (a.responsable || '').trim();
+      const responsablesJson = Array.isArray(a.responsables) ? a.responsables : [];
+      return resp.length > 0 || responsablesJson.length > 0;
+    }).length;
+    const porcentajeAsignacion =
+      total > 0 ? Math.round((asignadas / total) * 100) : 0;
+    const comiteConfigurado = (plan.equipo_aprobacion || []).length >= 5;
+    const listoParaEnvio = porcentajeAsignacion === 100 && comiteConfigurado;
+
+    const solicitante = (solicitanteNombre || 'Un colaborador').trim();
+    const extra = (mensajeAdicional || '').trim();
+    const estadoLabel = estado === 'devuelto' ? 'devuelto con observaciones' : 'borrador';
+
+    let mensaje = `${solicitante} indica que el Plan Anual ${plan.año} está listo para tu revisión. `;
+    mensaje += `Estado: ${estadoLabel}. Asignación de responsables: ${porcentajeAsignacion}%`;
+    if (!comiteConfigurado) {
+      mensaje += '. Falta configurar el comité de aprobación (5 miembros)';
+    } else if (!listoParaEnvio) {
+      mensaje += '. Revisa actividades pendientes antes de enviar al comité';
+    } else {
+      mensaje += '. Puedes enviarlo al comité PAI desde la pestaña Aprobación';
+    }
+    if (extra) {
+      mensaje += `. Nota: ${extra}`;
+    }
+
+    await this.notificacionesService.create({
+      usuarioId,
+      tipoNotificacion: TipoNotificacion.OTRO,
+      titulo: `Plan Anual ${plan.año} — pendiente de tu envío al comité`,
+      mensaje,
+      prioridad: PrioridadNotificacion.ALTA,
+      canal: CanalNotificacion.SISTEMA,
+      metadata: {
+        planAnualId: plan.id,
+        año: plan.año,
+        accion: 'enviar_comite_pai',
+        abrirSeccion: 'aprobar',
+        solicitante,
+        porcentajeAsignacion,
+        listoParaEnvio,
+      },
+      accionUrl: `/control-interno/plan-anual?seccion=aprobar&vigencia=${plan.año}`,
+    });
+
+    await this.registrarHistorial(
+      planId,
+      TipoEventoPlanAnual.ACTUALIZACION,
+      'Notificación al responsable',
+      `${solicitante} solicitó al responsable (${plan.responsable || 'sin nombre'}) revisar y enviar el plan al comité PAI.`,
+      usuarioSolicitanteId,
+      plan.estado,
+      plan.estado,
+    );
+
+    return {
+      ok: true,
+      destinatarioNombre: plan.responsable || 'Responsable del plan',
+      porcentajeAsignacion,
+      listoParaEnvio,
+    };
+  }
+
+  /**
    * Obtiene los IDs de usuarios con rol JEFE_CONTROL_INTERNO
    */
   private async obtenerJefesControlInterno(): Promise<string[]> {
