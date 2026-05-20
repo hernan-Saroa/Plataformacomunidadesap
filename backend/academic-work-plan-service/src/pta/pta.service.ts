@@ -162,12 +162,18 @@ export class PtaService {
       const byCorreo = await this.docenteRepo.findOne({ where: { correoInstitucional: email } as any });
       if (byCorreo) return { personId: byCorreo.id, email, fullName };
 
-      // Buscar por email en academic_work_plan."Usuario" → "Persona" → "Docente"
+      // Buscar por email en auth.personas → academic_work_plan."Docente"
       const byUsuarioEmail = await this.docenteRepo
         .createQueryBuilder('d')
-        .innerJoin('d.persona', 'p')
-        .innerJoin('p.usuario', 'u')
-        .where('LOWER(u.email) = LOWER(:email)', { email })
+        .where(
+          `EXISTS (
+            SELECT 1
+            FROM auth.personas p
+            WHERE p.id_person = d."personaId"
+              AND LOWER(p.dir_email) = LOWER(:email)
+          )`,
+          { email },
+        )
         .getOne();
       if (byUsuarioEmail) return { personId: byUsuarioEmail.id, email, fullName };
     }
@@ -182,15 +188,22 @@ export class PtaService {
       if (numId) {
         const byDoc = await this.docenteRepo
           .createQueryBuilder('d')
-          .innerJoin('d.persona', 'p')
-          .where('p.identificacion = :numId', { numId })
+          .where(
+            `EXISTS (
+              SELECT 1
+              FROM academic_work_plan."Persona" p
+              WHERE p.id = d."personaId"::text
+                AND p.identificacion = :numId
+            )`,
+            { numId },
+          )
           .getOne();
         if (byDoc) return { personId: byDoc.id, email, fullName };
       }
     }
 
     // Si no existe, auto-aprovisionamos el docente para no violar la FK al guardar el PTA
-    const fallbackTerritorial = options?.fallbackTerritorial || (await this.ptaRepo.manager.query(`SELECT id FROM academic_work_plan."Territorial" LIMIT 1`))?.[0]?.id;
+    const fallbackTerritorial = options?.fallbackTerritorial || (await this.ptaRepo.manager.query(`SELECT id_seccional::text AS id FROM auth.seccionales LIMIT 1`))?.[0]?.id;
 
     if (fallbackTerritorial) {
       console.warn(`[PTA] Auto-aprovisionando Docente ${personId} en academic_work_plan."Docente" para evitar error de FK.`);
@@ -801,7 +814,10 @@ export class PtaService {
     if (territorialesIds.length <= 1) return; // Solo multi-territorial requiere registros
 
     for (const tId of territorialesIds) {
-      const territorial = await this.territorialRepo.findOne({ where: { id: tId } as any });
+      const [territorial] = await this.ptaRepo.manager.query(
+        `SELECT nom_seccional AS nombre FROM auth.seccionales WHERE id_seccional::text = $1 LIMIT 1`,
+        [tId],
+      );
       await this.aprobacionJefaturaRepo
         .createQueryBuilder()
         .insert()
@@ -1154,43 +1170,170 @@ export class PtaService {
     const q = query || {};
     const programaId = coalesceString(q.programaId, q.programa_id);
     const completo = String(q.completo || '').toLowerCase() === 'true';
-    const where = !completo && programaId ? { programaId } : {};
-    const rows = await this.asignaturaRepo.find({
-      where,
-      relations: { programa: true },
-      order: { nombre: 'ASC' },
-      take: 5000,
-    });
+
+    const params: any[] = [];
+    const where = !completo && programaId
+      ? (() => {
+          params.push(programaId);
+          return `WHERE a."programaId" = $1 OR p.id::text = $1 OR p.codigo = $1`;
+        })()
+      : '';
+
+    const rows = await this.asignaturaRepo.query(
+      `
+      SELECT
+        a.id,
+        a."programaId",
+        a.nombre,
+        a.codigo,
+        a.creditos,
+        a.horas,
+        a."nucleoTematico",
+        a.semestre,
+        a.modalidad,
+        a.tipo,
+        a."createdAt",
+        a."updatedAt",
+        p.id AS programa_real_id,
+        p.codigo AS programa_codigo,
+        p.nombre AS programa_nombre,
+        p.descripcion AS programa_descripcion,
+        p.estado AS programa_estado,
+        p.nivel_formacion AS programa_nivel,
+        p.facultad AS programa_facultad,
+        p.modalidad AS programa_modalidad
+      FROM academic_work_plan."Asignatura" a
+      LEFT JOIN academic_work_plan.programas p
+        ON p.codigo = a."programaId"
+        OR p.id::text = a."programaId"
+      ${where}
+      ORDER BY a.nombre ASC
+      LIMIT 5000
+      `,
+      params,
+    );
 
     return rows.map((a: any) => ({
-      ...a,
+      id: a.id,
+      programaId: a.programaId,
+      programa_id: a.programa_real_id || a.programaId,
+      nombre: a.nombre,
+      codigo: a.codigo,
+      creditos: a.creditos,
+      horas: a.horas,
+      nucleoTematico: a.nucleoTematico,
       nucleo: a.nucleoTematico || 'General',
-      programa_id: a.programaId,
+      semestre: a.semestre,
+      modalidad: a.modalidad,
+      tipo: a.tipo,
+      createdAt: a.createdAt,
+      updatedAt: a.updatedAt,
+      programa: a.programa_real_id ? {
+        id: a.programa_real_id,
+        codigo: a.programa_codigo,
+        nombre: a.programa_nombre,
+        descripcion: a.programa_descripcion,
+        estado: a.programa_estado,
+        nivel: a.programa_nivel,
+        facultad: a.programa_facultad,
+        modalidad: a.programa_modalidad,
+      } : null,
     }));
   }
 
   async getCatalogoTerritoriales() {
-    return await this.territorialRepo
-      .createQueryBuilder('t')
-      .leftJoinAndSelect('t.sedes', 's')
-      .orderBy('t.nombre', 'ASC')
-      .addOrderBy('s.nombre', 'ASC')
-      .getMany();
+    const rows = await this.ptaRepo.manager.query(`
+      SELECT
+        sec.id_seccional::text AS id,
+        sec.nom_seccional AS nombre,
+        sec.cod_seccional AS codigo,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', sede.id_sede::text,
+              'territorialId', sec.id_seccional::text,
+              'nombre', sede.nom_sede,
+              'municipio', NULL,
+              'codigo', sede.cod_sede
+            )
+            ORDER BY sede.nom_sede
+          ) FILTER (WHERE sede.id_sede IS NOT NULL),
+          '[]'::json
+        ) AS sedes
+      FROM auth.seccionales sec
+      LEFT JOIN auth.sedes sede ON sede.id_seccional = sec.id_seccional
+      GROUP BY sec.id_seccional, sec.nom_seccional, sec.cod_seccional
+      ORDER BY sec.nom_seccional ASC
+    `);
+    return rows;
   }
 
   async getCatalogoCetaps(query?: any) {
     const territorialId = coalesceString(query?.territorial_id, query?.territorialId);
-    const where = territorialId ? { territorialId } : {};
-    return await this.sedeRepo.find({ where, order: { nombre: 'ASC' } });
+    const params: any[] = [];
+    const where = territorialId ? 'WHERE sede.id_seccional::text = $1' : '';
+    if (territorialId) params.push(territorialId);
+    return await this.ptaRepo.manager.query(
+      `
+      SELECT
+        sede.id_sede::text AS id,
+        sede.id_seccional::text AS "territorialId",
+        sede.nom_sede AS nombre,
+        NULL AS municipio,
+        sede.cod_sede AS codigo
+      FROM auth.sedes sede
+      ${where}
+      ORDER BY sede.nom_sede ASC
+      `,
+      params,
+    );
   }
 
   async getDocentesDisponibles(query?: any) {
     const periodo = coalesceString(query?.periodo);
-    const docentes = await this.docenteRepo.find({
-      relations: { persona: { usuario: true }, territorial: true, sede: true },
-      order: { ordenListado: 'ASC' as any, createdAt: 'DESC' as any },
-      take: 5000,
-    });
+    const docentes = await this.ptaRepo.manager.query(`
+      SELECT
+        d.*,
+        json_build_object(
+          'id', p.id_person,
+          'identificacion', p.num_identificacion,
+          'tipo_identificacion', p.tip_identificacion,
+          'primer_nombre', p.nom_tercero,
+          'primer_apellido', p.pri_apellido,
+          'segundo_apellido', p.seg_apellido,
+          'telefono', p.tel_celular,
+          'genero', p.gen_tercero,
+          'fecha_nacimiento', p.fec_nacimiento,
+          'correo_alternativo', NULL,
+          'usuario', json_build_object(
+            'id', u.id_user,
+            'email', u.username,
+            'nombre', p.nom_largo,
+            'activo', u.is_active
+          )
+        ) AS persona,
+        json_build_object(
+          'id', sec.id_seccional::text,
+          'nombre', sec.nom_seccional,
+          'codigo', sec.cod_seccional
+        ) AS territorial,
+        CASE
+          WHEN sede.id_sede IS NULL THEN NULL
+          ELSE json_build_object(
+            'id', sede.id_sede::text,
+            'territorialId', sede.id_seccional::text,
+            'nombre', sede.nom_sede,
+            'codigo', sede.cod_sede
+          )
+        END AS sede
+      FROM academic_work_plan."Docente" d
+      LEFT JOIN auth.personas p ON p.id_person = d."personaId"
+      LEFT JOIN auth."user" u ON u.id_person = p.id_person
+      LEFT JOIN auth.seccionales sec ON sec.id_seccional::text = COALESCE(d."territorialId", p.id_seccional::text)
+      LEFT JOIN auth.sedes sede ON sede.id_sede::text = COALESCE(d."sedeId", p.id_sede::text)
+      ORDER BY d."ordenListado" ASC NULLS LAST, d."createdAt" DESC
+      LIMIT 5000
+    `);
 
     const docenteIds = docentes.map((d) => d.id);
     const ptas = docenteIds.length

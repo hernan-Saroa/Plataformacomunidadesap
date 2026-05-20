@@ -162,6 +162,26 @@ export const planAnualApi = {
   },
 
   /**
+   * Solicitar al responsable del plan que revise y envíe al comité PAI (notificación in-app).
+   */
+  notificarResponsable: async (
+    planId: string,
+    body?: { solicitanteNombre?: string; mensaje?: string; responsableEmail?: string },
+  ): Promise<
+    ApiResponse<{
+      ok: boolean;
+      destinatarioNombre: string;
+      porcentajeAsignacion: number;
+      listoParaEnvio: boolean;
+    }>
+  > => {
+    return apiRequest(`${PLAN_ANUAL_ENDPOINT}/${planId}/notificar-responsable`, {
+      method: 'POST',
+      body: JSON.stringify(body ?? {}),
+    });
+  },
+
+  /**
    * Exportar plan a Excel (descarga archivo .xlsx)
    */
   exportExcel: async (planId: string): Promise<{ success: boolean; error?: string }> => {

@@ -45,10 +45,13 @@ const buildDiskStorage = (folder: string, prefix: string) =>
  * mientras se implementa la lógica real (DB/Prisma, reglas, workflows, etc).
  *
  * Base URL via Gateway:
- * - Gateway: /pta/api/v1/pta/...  -> service: http://localhost:3003/pta/...
+ * - Gateway: /pta/api/v1/...  -> service: http://localhost:3003/...
+ *
+ * En desarrollo local directo el cliente llama al microservicio sin prefijo:
+ * - Direct: http://localhost:3003/todos
  */
 @Public()
-@Controller('api/v1')
+@Controller()
 export class PtaController {
   constructor(private readonly ptaService: PtaService) {}
 

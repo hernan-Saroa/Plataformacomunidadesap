@@ -140,6 +140,20 @@ const shimmerStyleId = 'portal-shimmer-style';
 
 const DND_ITEM_TYPE = 'PORTAL_SERVICE';
 
+const normalizeRole = (role?: string | null) =>
+  String(role || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s-]+/g, '_');
+
+const roleMatches = (role: string, allowedRoles?: string[]) => {
+  if (!allowedRoles?.length) return false;
+  const normalizedRole = normalizeRole(role);
+  return allowedRoles.some((allowedRole) => normalizeRole(allowedRole) === normalizedRole);
+};
+
 function moveItem<T>(items: T[], fromIndex: number, toIndex: number) {
   const updated = [...items];
   const [moved] = updated.splice(fromIndex, 1);
@@ -358,6 +372,7 @@ export function PortalTransaccional({
         ],
         prioridad: 'Media',
         prioridadColor: '#D97706',
+        visiblePara: ['Administrativo', 'SUPER_ADMIN', 'RECTOR', 'SECRETARIO_GENERAL', 'SUBDIRECTOR_ACADEMICO', 'SUBDIRECTOR_PROYECCION', 'SUBDIRECTOR_ALTO_GOBIERNO', 'JEFE_JURIDICA', 'JEFE_PLANEACION'],
         requierePermiso: 'portal-transaccional.certificado-laboral.view',
       },
       {
@@ -372,6 +387,7 @@ export function PortalTransaccional({
         badges: [{ label: 'Disponible', color: '#059669', bgColor: '#ECFDF5' }],
         prioridad: 'Baja',
         prioridadColor: '#6B7280',
+        visiblePara: ['Administrativo', 'Docente', 'Estudiante', 'Graduado', 'Aspirante', 'USUARIO_AUDITADO', 'SUPER_ADMIN', 'JEFE_OCI', 'AUDITOR_LIDER', 'AUDITOR_SENIOR', 'AUDITOR_JUNIOR', 'PROFESIONAL_OCI', 'ADMIN_CI', 'RECTOR', 'SECRETARIO_GENERAL', 'SUBDIRECTOR_ACADEMICO', 'SUBDIRECTOR_PROYECCION', 'SUBDIRECTOR_ALTO_GOBIERNO', 'JEFE_JURIDICA', 'JEFE_PLANEACION'],
         requierePermiso: 'portal-transaccional.carpeta-digital.view',
       },
       {
@@ -389,6 +405,7 @@ export function PortalTransaccional({
         ],
         prioridad: 'Alta',
         prioridadColor: '#DC2626',
+        visiblePara: ['Docente', 'DOCENTE', 'SUPER_ADMIN'],
         requierePermiso: 'portal-transaccional.pta.view',
       },
       {
@@ -405,16 +422,18 @@ export function PortalTransaccional({
         ],
         prioridad: 'Media',
         prioridadColor: '#D97706',
+        visiblePara: ['USUARIO_AUDITADO', 'JEFE_OCI', 'AUDITOR_LIDER', 'AUDITOR_SENIOR', 'AUDITOR_JUNIOR', 'PROFESIONAL_OCI', 'ADMIN_CI', 'RECTOR', 'SECRETARIO_GENERAL', 'SUBDIRECTOR_ACADEMICO', 'SUBDIRECTOR_PROYECCION', 'SUBDIRECTOR_ALTO_GOBIERNO', 'JEFE_JURIDICA', 'JEFE_PLANEACION', 'SUPER_ADMIN'],
         requierePermiso: 'portal-transaccional.mis-auditorias.view',
       },
     ];
 
     // Filtrar servicios: si tiene requierePermiso, verificar permisos del usuario.
-    // Si no, usar visiblePara (fallback por rol). Si ninguno, visible para todos.
+    // Si los permisos del portal aun no llegan, usar visiblePara como fallback por rol.
     const perms = new Set(userPermissions || []);
+    const hasPortalPermissions = [...perms].some((permission) => permission.startsWith('portal-transaccional.'));
     const filteredBase = base.filter(s => {
-      if (s.requierePermiso) return perms.has(s.requierePermiso);
-      if (s.visiblePara) return s.visiblePara.includes(activeRole);
+      if (s.requierePermiso && hasPortalPermissions) return perms.has(s.requierePermiso);
+      if (s.visiblePara) return roleMatches(activeRole, s.visiblePara);
       return true;
     });
 
@@ -440,7 +459,7 @@ export function PortalTransaccional({
     }
 
     return filteredBase;
-  }, [userPersonId, activeRole]);
+  }, [userPersonId, activeRole, userPermissions]);
 
   const [serviciosOrdenados, setServiciosOrdenados] = useState<Servicio[]>(servicios);
   useEffect(() => setServiciosOrdenados(servicios), [servicios]);
