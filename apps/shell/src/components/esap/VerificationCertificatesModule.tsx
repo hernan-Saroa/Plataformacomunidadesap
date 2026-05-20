@@ -207,12 +207,20 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
   const [qrPreviewCertificate, setQrPreviewCertificate] = useState<CertificateRecord | null>(null);
   const qrCanvasRef = useRef<HTMLDivElement>(null);
   const validationUrlCodeRef = useRef<HTMLElement | null>(null);
+  const certificatePdfUrlRef = useRef<string | null>(null);
+  const certificatePdfRequestRef = useRef(0);
   const [qrModalViewport, setQrModalViewport] = useState({ width: 0, height: 0 });
   const isLoadingCertificatesRef = useRef(false);
   const lastCertificatesLoadAtRef = useRef(0);
   const FOCUS_RELOAD_COOLDOWN_MS = 20000;
   const QR_HISTORY_POLL_INTERVAL_MS = 7000;
   const [resendingCertificateId, setResendingCertificateId] = useState<string | null>(null);
+  const [pdfPreviewCertificate, setPdfPreviewCertificate] = useState<CertificateRecord | null>(null);
+  const [certificatePdfUrl, setCertificatePdfUrl] = useState<string | null>(null);
+  const [isCertificatePdfModalOpen, setIsCertificatePdfModalOpen] = useState(false);
+  const [isLoadingCertificatePdf, setIsLoadingCertificatePdf] = useState(false);
+  const [loadingCertificatePdfId, setLoadingCertificatePdfId] = useState<string | null>(null);
+  const [certificatePdfError, setCertificatePdfError] = useState<string | null>(null);
   const [certificates, setCertificates] = useState<CertificateRecord[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [sedesOptions, setSedesOptions] = useState<string[]>([]);
@@ -1402,9 +1410,90 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
     toast.error('No se pudo copiar. Por favor, copialo manualmente.');
   };
 
+  const releaseCertificatePdfUrl = useCallback((clearState = true) => {
+    if (certificatePdfUrlRef.current) {
+      URL.revokeObjectURL(certificatePdfUrlRef.current);
+      certificatePdfUrlRef.current = null;
+    }
+    if (clearState) {
+      setCertificatePdfUrl(null);
+    }
+  }, []);
+
   const handleViewQR = (cert: CertificateRecord) => {
     setQrPreviewCertificate(cert);
     setIsQrModalOpen(true);
+  };
+
+  const handleCloseCertificatePdf = useCallback(() => {
+    certificatePdfRequestRef.current += 1;
+    setIsCertificatePdfModalOpen(false);
+    setIsLoadingCertificatePdf(false);
+    setLoadingCertificatePdfId(null);
+    setCertificatePdfError(null);
+    setPdfPreviewCertificate(null);
+    releaseCertificatePdfUrl();
+  }, [releaseCertificatePdfUrl]);
+
+  useEffect(() => {
+    return () => {
+      releaseCertificatePdfUrl(false);
+    };
+  }, [releaseCertificatePdfUrl]);
+
+  const handleViewCertificatePdf = async (cert: CertificateRecord) => {
+    if (!canEditCertificates) {
+      toast.error('Permiso requerido', {
+        description: 'Necesitas el permiso Editar Certificados para consultar este certificado.',
+      });
+      return;
+    }
+
+    const requestId = certificatePdfRequestRef.current + 1;
+    certificatePdfRequestRef.current = requestId;
+
+    setPdfPreviewCertificate(cert);
+    setIsCertificatePdfModalOpen(true);
+    setIsLoadingCertificatePdf(true);
+    setLoadingCertificatePdfId(cert.id);
+    setCertificatePdfError(null);
+    releaseCertificatePdfUrl();
+
+    try {
+      const blob = await graduadosService.certificados.descargarPDF(cert.id);
+      const pdfBlob =
+        blob.type === 'application/pdf'
+          ? blob
+          : new Blob([blob], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(pdfBlob);
+
+      if (certificatePdfRequestRef.current !== requestId) {
+        URL.revokeObjectURL(blobUrl);
+        return;
+      }
+
+      certificatePdfUrlRef.current = blobUrl;
+      setCertificatePdfUrl(blobUrl);
+    } catch (error: any) {
+      console.error('Error cargando PDF del certificado:', error);
+
+      if (certificatePdfRequestRef.current !== requestId) {
+        return;
+      }
+
+      const message =
+        error?.message ||
+        'No se pudo cargar el PDF del certificado. Intenta nuevamente.';
+      setCertificatePdfError(message);
+      toast.error('No se pudo abrir el certificado', {
+        description: message,
+      });
+    } finally {
+      if (certificatePdfRequestRef.current === requestId) {
+        setIsLoadingCertificatePdf(false);
+        setLoadingCertificatePdfId(null);
+      }
+    }
   };
 
   const handleResendCertificate = async (cert: CertificateRecord) => {
@@ -2226,9 +2315,16 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           {canEditCertificates && (
-                          <DropdownMenuItem onClick={() => handleOpenEditCertificate(cert)}>
-                            <Eye className="w-4 h-4 mr-2" />
-                            Ver certificado
+                          <DropdownMenuItem
+                            onClick={() => handleViewCertificatePdf(cert)}
+                            disabled={loadingCertificatePdfId === cert.id}
+                          >
+                            {loadingCertificatePdfId === cert.id ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Eye className="w-4 h-4 mr-2" />
+                            )}
+                            {loadingCertificatePdfId === cert.id ? 'Abriendo...' : 'Ver certificado'}
                           </DropdownMenuItem>
                           )}
                           {canResendCertificates && (
@@ -2654,6 +2750,128 @@ export function VerificationCertificatesModule({ onPendingCountChange }: Verific
           />
         </motion.div>
       )}
+
+      {/* Modal: Vista PDF del certificado */}
+      <AnimatePresence>
+        {isCertificatePdfModalOpen && (
+          <div className="fixed inset-0 z-[9999] overflow-hidden">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={handleCloseCertificatePdf}
+            />
+
+            <div className="fixed inset-0 flex items-center justify-center p-4 sm:p-6">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="bg-white rounded-xl shadow-2xl max-w-5xl w-full overflow-hidden flex flex-col"
+                style={{
+                  height: 'calc(100vh - 48px)',
+                  maxHeight: 'calc(100vh - 48px)',
+                }}
+              >
+                <div className="bg-gradient-to-r from-[#003DA5] to-[#0052cc] px-4 sm:px-6 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="bg-white/20 p-2 rounded-lg flex-shrink-0">
+                        <FileText className="w-6 h-6 text-white" />
+                      </div>
+                      <div className="min-w-0">
+                        <h2 className="text-white text-lg sm:text-xl font-semibold truncate">
+                          Vista Previa - Certificado
+                        </h2>
+                        <p className="text-blue-100 text-xs sm:text-sm truncate">
+                          No. {pdfPreviewCertificate?.certificateNumber || 'Certificado'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                      {certificatePdfUrl && (
+                        <>
+                          <a
+                            href={certificatePdfUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-white/80 hover:text-white transition-colors p-2 hover:bg-white/10 rounded-lg"
+                            title="Abrir en nueva pestana"
+                          >
+                            <ExternalLink className="w-5 h-5" />
+                          </a>
+                          <a
+                            href={certificatePdfUrl}
+                            download={`${pdfPreviewCertificate?.certificateNumber || 'certificado'}.pdf`}
+                            className="text-white/80 hover:text-white transition-colors p-2 hover:bg-white/10 rounded-lg"
+                            title="Descargar certificado"
+                          >
+                            <Download className="w-5 h-5" />
+                          </a>
+                        </>
+                      )}
+                      <button
+                        onClick={handleCloseCertificatePdf}
+                        className="text-white/80 hover:text-white transition-colors p-2 hover:bg-white/10 rounded-lg"
+                        title="Cerrar"
+                      >
+                        <X className="w-6 h-6" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="relative flex-1 min-h-0 bg-gray-100 overflow-hidden flex flex-col">
+                  {certificatePdfUrl && (
+                    <iframe
+                      key={certificatePdfUrl}
+                      src={`${certificatePdfUrl}#navpanes=0&zoom=page-width`}
+                      className="w-full border-none"
+                      style={{ flex: '1 1 0', minHeight: 0 }}
+                      title={`Certificado ${pdfPreviewCertificate?.certificateNumber || ''}`}
+                    />
+                  )}
+
+                  {isLoadingCertificatePdf && !certificatePdfUrl && (
+                    <div className="flex-1 min-h-0 flex items-center justify-center">
+                      <div className="text-center">
+                        <Loader2 className="h-10 w-10 animate-spin text-[#003DA5] mx-auto mb-3" />
+                        <p className="text-gray-500 text-sm">Cargando certificado...</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {!isLoadingCertificatePdf && certificatePdfError && (
+                    <div className="flex-1 min-h-0 flex items-center justify-center p-6">
+                      <div className="max-w-md text-center">
+                        <AlertCircle className="h-10 w-10 text-red-600 mx-auto mb-3" />
+                        <p className="text-sm font-semibold text-gray-900 mb-1">
+                          No se pudo cargar el PDF
+                        </p>
+                        <p className="text-sm text-gray-600 mb-4">
+                          {certificatePdfError}
+                        </p>
+                        {pdfPreviewCertificate && (
+                          <button
+                            onClick={() => handleViewCertificatePdf(pdfPreviewCertificate)}
+                            className="px-4 py-2 text-sm font-medium rounded-lg text-white"
+                            style={{ background: '#003DA5' }}
+                          >
+                            Reintentar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Modal: Ver Certificado */}
       <Dialog open={isEditGraduateModalOpen} onOpenChange={setIsEditGraduateModalOpen}>

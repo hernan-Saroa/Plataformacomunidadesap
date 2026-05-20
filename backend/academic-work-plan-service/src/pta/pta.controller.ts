@@ -279,6 +279,26 @@ export class PtaController {
   // ─────────────────────────────
   // Firma electrónica OTP (legacy)
   // ─────────────────────────────
+  @Post('firma-docente/request-code')
+  async requestFirmaDocenteCode(@Body() body: any) {
+    const data = await this.ptaService.requestFirmaDocenteOtp({
+      ptaId: body?.ptaId,
+      docenteId: body?.docenteId,
+      periodo: body?.periodo,
+      etapaLabel: body?.etapaLabel,
+    });
+    return { success: true, message: 'Código enviado al correo registrado.', data };
+  }
+
+  @Post('firma-docente/verify-code')
+  verifyFirmaDocenteCode(@Body() body: any) {
+    const data = this.ptaService.verifyFirmaDocenteOtp({
+      verificationId: body?.verificationId,
+      code: body?.code,
+    });
+    return { success: true, ...data };
+  }
+
   @Post(':id/generate-otp')
   generateOtp(@Param('id') id: string) {
     const data = this.ptaService.generateOtp(id);

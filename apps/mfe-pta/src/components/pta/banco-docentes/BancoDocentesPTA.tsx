@@ -6,8 +6,9 @@ import {
 } from 'lucide-react';
 import {
   getBancoDocentes, getBancoDocenteStats, toggleBancoDocenteEstado,
-  bulkUploadBancoDocentes, exportBancoDocentes, downloadBancoDocentesTemplate,
+  bulkUploadBancoDocentes, exportBancoDocentes,
 } from '../../../services/api/ptaApi';
+import { downloadBancoDocentesTemplate, type BancoDocentePreviewRow } from '../../../utils/bancoDocentesExcel';
 import { BancoDocenteDetalle } from './BancoDocenteDetalle';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
 
@@ -191,13 +192,7 @@ export function BancoDocentesPTA() {
 
   const handleDownloadTemplate = async () => {
     try {
-      const blob = await downloadBancoDocentesTemplate();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'Plantilla_Docentes_ESAP.xlsx';
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBancoDocentesTemplate();
     } catch {
       showToast('Plantilla no disponible — descargando ejemplo');
     }

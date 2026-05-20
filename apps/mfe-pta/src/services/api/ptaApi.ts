@@ -360,6 +360,44 @@ export async function guardarFirmaDigitalPTA(
   }
 }
 
+export async function requestPTAFirmaDocenteCode(data: {
+  ptaId?: string;
+  docenteId: string;
+  periodo?: string;
+  etapaLabel?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/firma-docente/request-code`, data);
+    const normalized = normalizeResult<any>(raw, null);
+    return {
+      ...asObject(raw),
+      success: normalized.success,
+      data: normalized.data,
+    };
+  } catch (error) {
+    console.error('[mfe-pta][requestPTAFirmaDocenteCode] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+export async function verifyPTAFirmaDocenteCode(data: {
+  verificationId: string;
+  code: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/firma-docente/verify-code`, data);
+    const normalized = normalizeResult<any>(raw, null);
+    return {
+      ...asObject(raw),
+      success: normalized.success,
+      data: normalized.data,
+    };
+  } catch (error) {
+    console.error('[mfe-pta][verifyPTAFirmaDocenteCode] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
 export async function getAprobacionesJefatura(ptaId: string) {
   try {
     const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/aprobaciones-jefatura`);

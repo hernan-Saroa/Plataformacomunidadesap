@@ -700,7 +700,7 @@ export function downloadBancoDocentesTemplate() {
       'Rango de edad': 'De 36 a 45 años',
     },
   ];
-  appendMainSheet(workbook, ejemplos, 'EJEMPLO');
+  appendMainSheet(workbook, [], 'EJEMPLO');
 
   XLSX.utils.book_append_sheet(
     workbook,

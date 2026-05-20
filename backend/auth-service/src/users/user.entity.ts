@@ -26,6 +26,9 @@ export class User {
   @Column({ default: true })
   is_active: boolean;
 
+  @Column({ default: false })
+  password_temp: boolean;
+
   @Column({ type: 'numeric', precision: 6, scale: 0, nullable: true })
   token: string | null;
 
