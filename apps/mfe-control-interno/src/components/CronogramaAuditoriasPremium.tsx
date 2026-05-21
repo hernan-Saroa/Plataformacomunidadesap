@@ -112,12 +112,14 @@ interface AuditoriaProgramada {
   avance: number;
   horasEstimadas: number;
   trimestre: 1 | 2 | 3 | 4;
-  territorial: string; // 🆕 Propiedad territorial
+  territorial: string;
   // ✅ Fechas de etapas persistidas (4-4-5)
   fechaFinPlaneacion?: string;
   fechaInicioEjecucion?: string;
   fechaFinEjecucion?: string;
   fechaInicioComunicacion?: string;
+  /** Fecha de última actualización del backend (usada como corte temporal de cambio de etapa) */
+  updatedAt?: string;
 }
 
 interface CronogramaAuditoriasPremiumProps {
@@ -140,7 +142,8 @@ const DURACION_ETAPAS_WEEKS = {
 };
 
 /** 
- * Calcula en qué etapa debería estar la auditoría según la fecha de referencia.
+ * Calcula en qué etapa debería estar la auditoría según la fecha de referencia
+ * (solo fechas, sin considerar el estado Kanban).
  */
 function obtenerEtapaAutomatica(fechaReferencia: Date, auditoria: AuditoriaProgramada): ColumnaKanban {
   if (!auditoria.fechaInicio) return 'desconocido';
@@ -158,21 +161,109 @@ function obtenerEtapaAutomatica(fechaReferencia: Date, auditoria: AuditoriaProgr
   return 'seguimiento';
 }
 
-/** Calcula los rangos de fechas de cada etapa a partir de la fecha de inicio o datos persistidos */
+/**
+ * ✅ FUENTE DE VERDAD PARA EL CRONOGRAMA - CORTE TEMPORAL:
+ * Implementa la regla: "la etapa cambia desde el día que se movió en el Kanban".
+ *
+ * Lógica:
+ *  - Si NO hay estadoKanban → usar cálculo automático por fechas (4-4-5 semanas)
+ *  - Si HAY estadoKanban (usuario lo movió):
+ *      * Días ANTES de updatedAt (fecha del movimiento) → cálculo por fechas (etapa anterior)
+ *      * Días DESDE updatedAt en adelante → estadoKanban (etapa actual)
+ *  - Si no hay updatedAt disponible → usar estadoKanban directamente en todos los días
+ */
+function resolverEtapaParaCronograma(dia: Date, aud: AuditoriaProgramada): ColumnaKanban {
+  const ui = aud as any;
+  const kanbanCol = resolverColumnaKanban(ui.estadoKanban, ui.fase, ui.estado);
+
+  // Sin estado Kanban definido → calcular por fechas
+  if (kanbanCol === 'desconocido') {
+    return obtenerEtapaAutomatica(dia, aud);
+  }
+
+  // Intentar obtener la fecha en que se cambió el estado
+  const fechaCambio = parsearFecha(ui.updatedAt || ui.fechaCambioEstadoKanban);
+
+  if (fechaCambio) {
+    const diaNorm = new Date(dia);
+    diaNorm.setHours(0, 0, 0, 0);
+    fechaCambio.setHours(0, 0, 0, 0);
+
+    // Días ANTERIORES al movimiento → mostrar lo que indicaban las fechas plan
+    if (diaNorm < fechaCambio) {
+      return obtenerEtapaAutomatica(dia, aud);
+    }
+  }
+
+  // Desde la fecha del movimiento en adelante → mostrar estadoKanban
+  return kanbanCol;
+}
+
+/**
+ * ✅ ETAPA ACTUAL PARA BADGE "ACTUAL" EN MODAL:
+ * Siempre usa estadoKanban si está definido (el usuario lo eligió explícitamente),
+ * fallback a cálculo por fecha para hoy.
+ */
+function resolverEtapaActual(auditoria: AuditoriaProgramada): ColumnaKanban {
+  const ui = auditoria as any;
+  const kanbanCol = resolverColumnaKanban(ui.estadoKanban, ui.fase, ui.estado);
+  if (kanbanCol !== 'desconocido') {
+    return kanbanCol;
+  }
+  return obtenerEtapaAutomatica(new Date(), auditoria);
+}
+
+/**
+ * Parsea una fecha que puede venir en formato ISO (YYYY-MM-DD, 2025-01-15T...) 
+ * o en formato colombiano (DD/MM/YYYY). Normaliza la hora a 12:00 para evitar
+ * desplazamientos por zona horaria.
+ */
+function parsearFecha(raw: string | undefined | null): Date | null {
+  if (!raw) return null;
+  // Limpiar parte de tiempo si existe (ISO con hora)
+  const limpia = raw.split('T')[0].trim();
+  if (!limpia) return null;
+
+  // Formato DD/MM/YYYY (formateado por useAuditoriasKanban)
+  if (limpia.includes('/')) {
+    const partes = limpia.split('/');
+    if (partes.length === 3) {
+      const [dia, mes, anio] = partes;
+      const d = new Date(`${anio}-${mes.padStart(2,'0')}-${dia.padStart(2,'0')}T12:00:00`);
+      return isNaN(d.getTime()) ? null : d;
+    }
+  }
+
+  // Formato ISO YYYY-MM-DD
+  if (limpia.includes('-')) {
+    const d = new Date(`${limpia}T12:00:00`);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  return null;
+}
+
 function obtenerRangosEtapas(auditoria: AuditoriaProgramada) {
   const { fechaInicio, fechaFinPlaneacion, fechaInicioEjecucion, fechaFinEjecucion, fechaInicioComunicacion, fechaFin } = auditoria;
   
+  const pStart = parsearFecha(fechaInicio);
+  const pEnd   = parsearFecha(fechaFinPlaneacion);
+  const eStart = parsearFecha(fechaInicioEjecucion);
+  const eEnd   = parsearFecha(fechaFinEjecucion);
+  const cStart = parsearFecha(fechaInicioComunicacion);
+  const cEnd   = parsearFecha(fechaFin);
+
   // Si tenemos todas las fechas persistidas, usarlas directamente
-  if (fechaFinPlaneacion && fechaInicioEjecucion && fechaFinEjecucion && fechaInicioComunicacion) {
+  if (pStart && pEnd && eStart && eEnd && cStart && cEnd) {
     return {
-      planeacion: { inicio: new Date(fechaInicio), fin: new Date(fechaFinPlaneacion) },
-      ejecucion: { inicio: new Date(fechaInicioEjecucion), fin: new Date(fechaFinEjecucion) },
-      comunicacion: { inicio: new Date(fechaInicioComunicacion), fin: new Date(fechaFin) }
+      planeacion:   { inicio: pStart, fin: pEnd   },
+      ejecucion:    { inicio: eStart, fin: eEnd   },
+      comunicacion: { inicio: cStart, fin: cEnd   }
     };
   }
 
-  // Fallback: Cálculo dinámico (4-4-5 semanas)
-  const inicio = new Date(fechaInicio);
+  // Fallback: Cálculo dinámico (4-4-5 semanas desde fechaInicio)
+  const inicio = parsearFecha(fechaInicio) || new Date();
   inicio.setHours(0, 0, 0, 0);
   
   const pInicio = new Date(inicio);
@@ -190,9 +281,9 @@ function obtenerRangosEtapas(auditoria: AuditoriaProgramada) {
   cFin.setDate(cFin.getDate() + (DURACION_ETAPAS_WEEKS.comunicacion * 7) - 1);
 
   return {
-    planeacion: { inicio: pInicio, fin: pFin },
-    ejecucion: { inicio: eInicio, fin: eFin },
-    comunicacion: { inicio: cInicio, fin: cFin }
+    planeacion:   { inicio: pInicio, fin: pFin   },
+    ejecucion:    { inicio: eInicio, fin: eFin   },
+    comunicacion: { inicio: cInicio, fin: cFin   }
   };
 }
 
@@ -224,19 +315,24 @@ function obtenerEstadoVisual(auditoria: any, fechaReferencia?: Date): { colores:
   const fase = auditoria.fase as string | undefined;
   const estado = auditoria.estado as EstadoAuditoriaHook | undefined;
 
-  let columna: ColumnaKanban = 'desconocido';
-
-  if (fechaReferencia && auditoria.fechaInicio) {
-    columna = obtenerEtapaAutomatica(fechaReferencia, auditoria);
-  } else {
-    columna = resolverColumnaKanban(estadoKanban, fase, estado);
+  // ✅ PRIORIDAD: estadoKanban (lo que el usuario movió en el tablero)
+  const kanbanCol = resolverColumnaKanban(estadoKanban, fase, estado);
+  if (kanbanCol !== 'desconocido') {
+    return {
+      colores: COLORES_POR_COLUMNA_KANBAN[kanbanCol],
+      label: ETIQUETA_COLUMNA_KANBAN[kanbanCol],
+    };
   }
 
-  if (columna !== 'desconocido') {
-    return {
-      colores: COLORES_POR_COLUMNA_KANBAN[columna],
-      label: ETIQUETA_COLUMNA_KANBAN[columna],
-    };
+  // FALLBACK: cálculo por fecha solo si no hay estadoKanban
+  if (fechaReferencia && auditoria.fechaInicio) {
+    const columnaFecha = obtenerEtapaAutomatica(fechaReferencia, auditoria);
+    if (columnaFecha !== 'desconocido') {
+      return {
+        colores: COLORES_POR_COLUMNA_KANBAN[columnaFecha],
+        label: ETIQUETA_COLUMNA_KANBAN[columnaFecha],
+      };
+    }
   }
 
   const estadoUI = auditoria.estado as keyof typeof COLORES_ESTADO;
@@ -273,16 +369,24 @@ function colorBordePorTipo(tipo: unknown): string {
   return COLORES_TIPO.regular;
 }
 
-/** Auditorías en el rango del día; en festivos nacionales no se muestran chips (sáb/dom se tratan como días normales). */
+/** Auditorías cuyo rango total cae en el día dado; en festivos nacionales no se muestran chips. */
 function auditoriasEnRangoDiaLaborable(
   dia: Date,
   auditorias: AuditoriaProgramada[]
 ): AuditoriaProgramada[] {
   if (esFestivo(dia)) return [];
+  // Normalizar el día a inicio de jornada para comparación robusta
+  const diaInicio = new Date(dia);
+  diaInicio.setHours(0, 0, 0, 0);
+  const diaFin = new Date(dia);
+  diaFin.setHours(23, 59, 59, 999);
+
   return auditorias.filter((aud) => {
-    const inicio = new Date(aud.fechaInicio);
-    const fin = new Date(aud.fechaFin);
-    return dia >= inicio && dia <= fin;
+    const inicio = parsearFecha(aud.fechaInicio);
+    const fin    = parsearFecha(aud.fechaFin);
+    if (!inicio || !fin) return false;
+    // El día debe solaparse con el rango de la auditoría
+    return diaInicio <= fin && diaFin >= inicio;
   });
 }
 
@@ -702,7 +806,8 @@ function VistaDia({ fecha, auditorias, onSeleccionar }: VistaDiaProps) {
   const etapasInteres: ColumnaKanban[] = ['planeacion', 'ejecucion', 'comunicacion'];
   const agrupadas = etapasInteres.map(etapa => ({
     etapa,
-    auditorias: auditoriasDelDia.filter(aud => obtenerEtapaAutomatica(fecha, aud) === etapa)
+    // ✅ Prioriza estadoKanban (drag & drop) sobre cálculo automático por fechas
+    auditorias: auditoriasDelDia.filter(aud => resolverEtapaParaCronograma(fecha, aud) === etapa)
   })).filter(g => g.auditorias.length > 0);
 
   return (
@@ -892,7 +997,8 @@ function VistaSemana({ fecha, auditorias, onSeleccionar }: VistaSemanaProps) {
           const etapasInteres: ColumnaKanban[] = ['planeacion', 'ejecucion', 'comunicacion'];
           const agrupadas = etapasInteres.map(etapa => ({
             etapa,
-            auditorias: auditoriasDelDia.filter(aud => obtenerEtapaAutomatica(dia, aud) === etapa)
+            // ✅ Prioriza estadoKanban (drag & drop) sobre cálculo automático por fechas
+            auditorias: auditoriasDelDia.filter(aud => resolverEtapaParaCronograma(dia, aud) === etapa)
           })).filter(g => g.auditorias.length > 0);
 
           return (
@@ -1088,7 +1194,8 @@ function VistaMes({ fecha, auditorias, onSeleccionar }: VistaMesProps) {
           const etapasInteres: ColumnaKanban[] = ['planeacion', 'ejecucion', 'comunicacion'];
           const agrupadas = etapasInteres.map(etapa => ({
             etapa,
-            auditorias: auditoriasDelDia.filter(aud => obtenerEtapaAutomatica(dia, aud) === etapa)
+            // ✅ Prioriza estadoKanban (drag & drop) sobre cálculo automático por fechas
+            auditorias: auditoriasDelDia.filter(aud => resolverEtapaParaCronograma(dia, aud) === etapa)
           })).filter(g => g.auditorias.length > 0);
 
           return (
@@ -1682,7 +1789,8 @@ function ModalDetalleAuditoria({ auditoria, onCerrar }: ModalDetalleAuditoriaPro
                 {Object.entries(obtenerRangosEtapas(auditoria)).map(([etapa, rango]) => {
                   const col = etapa as ColumnaKanban;
                   const coloresEtapa = COLORES_POR_COLUMNA_KANBAN[col];
-                  const esActual = obtenerEtapaAutomatica(new Date(), auditoria) === col;
+                  // ✅ Badge ACTUAL respeta estadoKanban (movido por el usuario)
+                  const esActual = resolverEtapaActual(auditoria) === col;
 
                   return (
                     <div 

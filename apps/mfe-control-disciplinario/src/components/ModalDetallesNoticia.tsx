@@ -26,7 +26,9 @@ import {
   Scale, Clock, FileWarning, Download, Eye, Users, Gavel, Loader2
 } from 'lucide-react';
 import { authService } from '../../../services/api/authService';
+import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
+import * as mammoth from 'mammoth';
 
 // ═══════════════════════════════════════════════════════════════
 // TIPOS (extendidos para datos completos de creación)
@@ -337,6 +339,14 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
                 controls
                 style={{ maxWidth: '100%', maxHeight: '100%' }}
               />
+            ) : (nombre || '').toLowerCase().match(/\.(docx?|doc|html?)$/i) || tipo.includes('html') || tipo.includes('word') ? (
+              // Soporte DOCX/DOC convertido a HTML o HTML directo (iframe sandboxed como en evidencias)
+              <iframe
+                src={fileBlobUrl}
+                className="w-full h-full border-0 bg-white"
+                title={`Vista previa de ${nombre}`}
+                sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+              />
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <FileText className="w-16 h-16 text-gray-300 mb-4" />
@@ -374,12 +384,44 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
     setViewingFile(archivo);
     setFileBlobUrl(null);
     try {
-      const requestUrl = archivo.url.includes('?') ? `${archivo.url}&view=true` : `${archivo.url}?view=true`;
+      const absoluteUrl = disciplinaryService.getAbsoluteFileUrl(archivo.url || (archivo as any).fullUrl || '');
+      const requestUrl = absoluteUrl.includes('?') ? `${absoluteUrl}&view=true` : `${absoluteUrl}?view=true`;
       const response = await fetch(requestUrl, {
         credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to load file');
-      const blob = await response.blob();
+      let blob = await response.blob();
+
+      // Soporte para previsualización de DOCX igual que evidencias (usando mammoth)
+      const isDocx = (archivo.nombre || '').toLowerCase().endsWith('.docx') || (archivo.tipo || '').includes('word') || (archivo.tipo || '').includes('docx');
+      if (isDocx) {
+        try {
+          const arrayBuffer = await blob.arrayBuffer();
+          const result = await mammoth.convertToHtml({ arrayBuffer });
+          const htmlContent = result.value;
+          const docxHtml = `
+            <div style="font-family: Arial, sans-serif; padding: 20px; background: white; min-height: 100vh;">
+              <style>
+                .docx-content { max-width: 800px; margin: 0 auto; }
+                .docx-content p { margin-bottom: 10px; line-height: 1.5; }
+                .docx-content h1, .docx-content h2, .docx-content h3 { margin-top: 20px; margin-bottom: 10px; }
+                .docx-content ul, .docx-content ol { margin-left: 20px; }
+                .docx-content table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+                .docx-content td, .docx-content th { border: 1px solid #ddd; padding: 8px; }
+                .docx-content th { background-color: #f5f5f5; }
+              </style>
+              <div class="docx-content">
+                ${htmlContent}
+              </div>
+            </div>
+          `;
+          blob = new Blob([docxHtml], { type: 'text/html' });
+        } catch (convErr) {
+          console.error('Error convirtiendo DOCX para preview en noticia:', convErr);
+          // fallback: usa el blob original (puede no renderizar bien)
+        }
+      }
+
       const blobUrl = URL.createObjectURL(blob);
       setFileBlobUrl(blobUrl);
     } catch (error) {
@@ -1124,17 +1166,17 @@ function TabAdjuntos({ n, formatFileSize, onDownload, onView }: { n: NoticiaComp
                   </span>
                 </div>
               </div>
-               <div className="flex gap-1" style={{ opacity: 1 }}>
-                 {/* {onView && (
-                   <button
-                     onClick={() => onView(archivo)}
-                     className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
-                     title="Ver"
-                   >
-                     <Eye className="w-4 h-4 text-gray-500" />
-                   </button>
-                 )} */}
-                 {onDownload && (
+                <div className="flex gap-1" style={{ opacity: 1 }}>
+                  {onView && (
+                    <button
+                      onClick={() => onView(archivo)}
+                      className="p-2 rounded-lg hover:bg-gray-200 transition-colors"
+                      title="Previsualizar"
+                    >
+                      <Eye className="w-4 h-4 text-gray-500" />
+                    </button>
+                  )}
+                  {onDownload && (
                    <button
                      onClick={() => onDownload(archivo.url, archivo.nombre)}
                      className="p-2 rounded-lg hover:bg-gray-200 transition-colors"

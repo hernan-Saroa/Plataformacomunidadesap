@@ -377,9 +377,11 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     };
     
     const result = await agregarEvaluacion(evaluacionData);
-    if (result) {
-      await refetchEvaluaciones();
-      toast.success('Evaluación creada exitosamente');
+    // ✅ Siempre refetch para sincronizar la tabla (el hook ya gestiona el toast)
+    await refetchEvaluaciones();
+    if (!result) {
+      // El hook ya mostró toast de error
+      return;
     }
   };
 
@@ -440,8 +442,8 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     };
 
     await editarEvaluacion(evaluacionId, evaluacionData);
+    // ✅ Siempre refetch para sincronizar la tabla (el hook ya gestiona el toast)
     await refetchEvaluaciones();
-    toast.success('Evaluación actualizada');
   };
 
   return (
@@ -688,16 +690,17 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             setProcesoSeleccionado(null);
             setEvaluacionSeleccionada(null);
           }}
-          onSubmit={(proceso, procesoIdSeleccionado) => {
+          onSubmit={async (proceso, procesoIdSeleccionado) => {
             // ✅ FIX: Universo Auditable crea EVALUACIONES, no procesos
             // El proceso maestro viene del catálogo (Configuración → Procesos)
             // Aquí se crean evaluaciones DAFP del proceso seleccionado
+            // ✅ CRÍTICO: await para que el guardado se complete ANTES de cerrar el modal
             if (evaluacionSeleccionada) {
               // Modo EDIT: actualizar evaluación existente
-              handleEditarEvaluacion(proceso, evaluacionSeleccionada.id);
+              await handleEditarEvaluacion(proceso, evaluacionSeleccionada.id);
             } else {
               // Modo CREATE: crear nueva evaluación para el proceso seleccionado
-              handleAgregarEvaluacion(proceso, procesoIdSeleccionado || procesoSeleccionado?.id);
+              await handleAgregarEvaluacion(proceso, procesoIdSeleccionado || procesoSeleccionado?.id);
             }
             setMostrarFormularioProceso(false);
             setProcesoSeleccionado(null);
