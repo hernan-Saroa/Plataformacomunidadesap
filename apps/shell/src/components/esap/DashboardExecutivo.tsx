@@ -348,7 +348,7 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
           </div>
 
           {/* Salud + Alertas + Tendencia */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-8 gap-4">
             <div className="lg:col-span-3">
               <Section title="Salud Institucional" icon={Activity} color="#003DA5">
                 <div className="flex flex-col items-center">
@@ -389,7 +389,7 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
               </Section>
             </div>
 
-            <div className="lg:col-span-5">
+            <div className="lg:col-span-3">
               <Section title={`Centro de Alertas (${alertas.length})`} icon={Zap} color="#F59E0B">
                 {alertas.length === 0 ? (
                   <div className="flex flex-col items-center py-6"><Target className="w-10 h-10 text-emerald-400 mb-2" /><p className="text-sm font-bold text-gray-700">Todo en orden</p></div>
@@ -421,7 +421,7 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
               </Section>
             </div>
 
-            <div className="lg:col-span-4">
+            <div className="lg:col-span-2">
               <Section title="Tendencia 30 Días" icon={TrendingUp} color="#10B981">
                 <div className="flex items-end justify-between mb-3">
                   <div>
@@ -459,10 +459,10 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
 
           {/* Territorial */}
           {terrChartData.length > 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-              <div className="lg:col-span-7">
+            <div className="grid grid-cols-1 lg:grid-cols-8 gap-4">
+              <div className="lg:col-span-4">
                 <Section title="Cobertura por Territorial (Docentes vs CETAPs)" icon={BarChart3} color="#8B5CF6" action="Ver todo" onAction={() => nav('estructura-organizacional')}>
-                  <div className="h-[260px]">
+                  <div className="h-[260px]" style={{ height: '260px' }}>
                     <ResponsiveContainer><BarChart data={terrChartData} layout="vertical" margin={{ left:5, right:10 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
                       <XAxis type="number" tick={{ fontSize:9, fill:'#94a3b8' }} axisLine={false} tickLine={false} />
@@ -474,7 +474,7 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
                   </div>
                 </Section>
               </div>
-              <div className="lg:col-span-5 grid grid-cols-2 gap-4">
+              <div className="lg:col-span-4 grid grid-cols-2 gap-4">
                 <Section title="Vinculación" icon={Users} color="#3B82F6">
                   <MiniDonut data={vinData} size={100} inner={30} />
                 </Section>
@@ -488,7 +488,7 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
           {/* Timeline multi-entidad */}
           {timeline.length > 0 && (
             <Section title="Evolución Histórica Multi-Entidad" icon={Activity} color="#6366F1">
-              <div className="h-[200px]">
+              <div className="h-[200px]" style={{ height: '200px' }}>
                 <ResponsiveContainer><ComposedChart data={timeline}>
                   <defs>
                     <linearGradient id="ag1" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#3B82F6" stopOpacity={0.15}/><stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/></linearGradient>
