@@ -664,7 +664,16 @@ export class AuditoriasController {
     await this.auditoriasService.update(id, {
       checklistCompletados: { informeFinalGenerado: true },
     });
-    return { generado: true, mensaje: 'Informe Final generado' };
+    try {
+      await this.auditoriasService.notificarInformeFinalGenerado(id);
+    } catch (notifErr) {
+      console.error('[AuditoriasController] Error notificando informe final al auditado:', notifErr.message);
+    }
+    return {
+      generado: true,
+      mensaje:
+        'Informe Final generado. Se notificó al área auditada para formular el plan de mejoramiento (30 días hábiles).',
+    };
   }
 
   /**

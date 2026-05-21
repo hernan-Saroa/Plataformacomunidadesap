@@ -1,20 +1,21 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Like, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 import { DocenteEntity } from '../entities/docente.entity';
 import { PersonaEntity } from '../entities/persona.entity';
 import { UsuarioEntity } from '../entities/usuario.entity';
-import { TerritorialEntity } from '../entities/territorial.entity';
-import { SedeEntity } from '../entities/sede.entity';
 import { sanitizeText } from '../utils/text-sanitizer';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../catalogos/territoriales-cetaps-esap';
 
-const DEFAULT_PASSWORD = '123456';
-const DEFAULT_EMAIL_DOMAIN = 'esap.local';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
-let cachedPasswordHash: string | null = null;
+type AuthSeccionalTerritorial = {
+  id: string;
+  nombre: string;
+  codigo: string | null;
+};
 
 // ─── text helpers ─────────────────────────────────────────────────────────────
 
@@ -185,7 +186,7 @@ const TERRITORIAL_ALIASES: Record<string, string[]> = Object.fromEntries(
   OFFICIAL_TERRITORIALES_ESAP.map((t) => [normalizeLookupText(t.nombre), t.aliases.map((a) => normalizeLookupText(a))]),
 );
 
-function findTerritorialMatch(territoriales: TerritorialEntity[], rawValue: any): TerritorialEntity | null {
+function findTerritorialMatch(territoriales: AuthSeccionalTerritorial[], rawValue: any): AuthSeccionalTerritorial | null {
   const lookup = normalizeLookupText(rawValue);
   if (!lookup) return null;
   const exact = territoriales.find((t) => normalizeLookupText(t.nombre) === lookup);
@@ -202,7 +203,7 @@ function findTerritorialMatch(territoriales: TerritorialEntity[], rawValue: any)
   }) || null;
 }
 
-export function resolveTerritorial(territoriales: TerritorialEntity[], rawValue: any): TerritorialEntity | null {
+export function resolveTerritorial(territoriales: AuthSeccionalTerritorial[], rawValue: any): AuthSeccionalTerritorial | null {
   return findTerritorialMatch(territoriales, rawValue) || territoriales.find((t) => normalizeLookupText(t.nombre) === 'sedecentral') || territoriales[0] || null;
 }
 
@@ -216,14 +217,14 @@ export function normalizeBancoDocentePayload(raw: any) {
 
   return {
     orderIndex: parseMaybeInt(raw?.ordenListado ?? raw?.orderIndex),
-    documentNumber: firstNonEmpty(raw?.documentNumber, raw?.identificacion, raw?.document, raw?.documento, raw?.['Documento de identidad']),
-    documentType: firstNonEmpty(raw?.tipo_identificacion, raw?.documentType, raw?.tipoDocumento, 'CC'),
+    documentNumber: firstNonEmpty(raw?.documentNumber, raw?.documento_identidad, raw?.identificacion, raw?.document, raw?.documento, raw?.['Documento de identidad']),
+    documentType: firstNonEmpty(raw?.tipo_identificacion, raw?.tipo_documento, raw?.documentType, raw?.tipoDocumento, 'CC'),
     fullName,
     primer_nombre: firstNonEmpty(raw?.primer_nombre, raw?.primerNombre, splitName.primer_nombre),
     segundo_nombre: firstNonEmpty(raw?.segundo_nombre, raw?.segundoNombre, splitName.segundo_nombre),
     primer_apellido: firstNonEmpty(raw?.primer_apellido, raw?.primerApellido, splitName.primer_apellido),
     segundo_apellido: firstNonEmpty(raw?.segundo_apellido, raw?.segundoApellido, splitName.segundo_apellido),
-    territorialNombre: firstNonEmpty(raw?.territorialNombre, raw?.territorial, raw?.['Territorial']),
+    territorialNombre: firstNonEmpty(raw?.territorialNombre, raw?.territorial, raw?.territorial_nombre, raw?.['Territorial']),
     vinculacionLabel: firstNonEmpty(raw?.vinculacion, raw?.vinculacionDisplay, raw?.tipoVinculacionDisplay, raw?.['Vinculación'], raw?.tipoVinculacion),
     tipoVinculacion: normalizeTipoVinculacionCode(raw?.tipoVinculacion ?? raw?.vinculacion ?? raw?.['Vinculación']),
     dedicacionLabel: firstNonEmpty(raw?.dedicacionLabel, raw?.dedicacion, raw?.['Dedicación']),
@@ -241,8 +242,8 @@ export function normalizeBancoDocentePayload(raw: any) {
     investigacion: firstNonEmpty(raw?.investigacion, raw?.investigacion2025, raw?.['Investigación'], raw?.['Investigación 2025']),
     origenVinculacion: firstNonEmpty(raw?.origenVinculacion, raw?.['Origen de vinculación']),
     actoAdministrativoVinculacion: firstNonEmpty(raw?.actoAdministrativoVinculacion, raw?.actoAdministrativo, raw?.['Acto Administrativo de Vinculación'], raw?.['Acto Administrativo de Vinculación ']),
-    correoInstitucional: extractFirstEmail(firstNonEmpty(raw?.correoInstitucional, raw?.['Correo Institucional'], raw?.['Correo\nInstitucional'], raw?.email)),
-    correoAlternativo: extractFirstEmail(firstNonEmpty(raw?.correoAlternativo, raw?.correo_alternativo, raw?.correoPersonal, raw?.['Correo personal'])),
+    correoInstitucional: extractFirstEmail(firstNonEmpty(raw?.correoInstitucional, raw?.correo_institucional, raw?.['Correo Institucional'], raw?.['Correo\nInstitucional'], raw?.email)),
+    correoAlternativo: extractFirstEmail(firstNonEmpty(raw?.correoAlternativo, raw?.correo_alternativo, raw?.correo_personal, raw?.correoPersonal, raw?.['Correo personal'])),
     telefono: firstNonEmpty(raw?.telefono, raw?.phone, raw?.['Telefono']),
     ultimaEvaluacion: firstNonEmpty(raw?.ultimaEvaluacion, raw?.['Última Evaluación']),
     situacionAdministrativa: firstNonEmpty(raw?.situacionAdministrativa, raw?.['Situación Administrativa']),
@@ -261,6 +262,7 @@ function validatePayload(payload: ReturnType<typeof normalizeBancoDocentePayload
   if (!payload.documentNumber) throw new BadRequestException('Cada docente debe incluir un número de documento.');
   if (!payload.fullName && !payload.primer_nombre && !payload.primer_apellido)
     throw new BadRequestException(`El docente ${payload.documentNumber} debe incluir nombre completo.`);
+  if (!payload.correoInstitucional) throw new BadRequestException(`El docente ${payload.documentNumber} debe incluir correo institucional.`);
   if (!payload.territorialNombre) throw new BadRequestException(`El docente ${payload.documentNumber} debe incluir la territorial.`);
   if (!isSupportedTipoVinculacion(payload.vinculacionLabel || payload.tipoVinculacion))
     throw new BadRequestException(`La vinculación del docente ${payload.documentNumber} no es válida.`);
@@ -335,10 +337,77 @@ export function buildBancoDocenteResponse(docente: DocenteEntity & { persona?: P
   };
 }
 
+function buildAuthBancoDocenteResponse(row: any) {
+  const fechaNacimiento = row.fecha_nacimiento || null;
+  const edad = computeEdad(fechaNacimiento, row.edad_referencia);
+  const rangoEdad = computeRangoEdad(edad, row.rango_edad);
+  const nombreCompleto = row.nombre_completo || [row.primer_nombre, row.primer_apellido, row.segundo_apellido].filter(Boolean).join(' ').trim() || row.username || 'Sin nombre';
+  const dedicacionCodigo = row.dedicacion_codigo || null;
+  const email = row.email || row.username || null;
+
+  return {
+    id: row.usuario_id,
+    persona_id: row.persona_id,
+    usuario_id: row.usuario_id,
+    docente_id: row.docente_id || null,
+    orden_listado: row.orden_listado ?? null,
+    documento_identidad: row.documento_identidad ?? null,
+    tipo_documento: row.tipo_documento ?? null,
+    nombre_completo: nombreCompleto,
+    primer_nombre: row.primer_nombre ?? null,
+    segundo_nombre: null,
+    primer_apellido: row.primer_apellido ?? null,
+    segundo_apellido: row.segundo_apellido ?? null,
+    vinculacion: getTipoVinculacionLabel(row.vinculacion_codigo, row.vinculacion) || row.vinculacion || null,
+    vinculacion_codigo: row.vinculacion_codigo ?? null,
+    dedicacion: dedicacionCodigo ? getDedicacionLabel(dedicacionCodigo, row.dedicacion) : null,
+    dedicacion_codigo: dedicacionCodigo,
+    territorial: row.territorial || row.auth_territorial || null,
+    territorial_id: row.territorial_id || row.auth_territorial_id || null,
+    territorial_codigo: row.territorial_codigo || row.auth_territorial_codigo || null,
+    sede: row.sede || row.auth_sede || null,
+    sede_id: row.sede_id || row.auth_sede_id || null,
+    categoria: row.categoria ?? null,
+    nucleo_tematico: row.nucleo_tematico ?? null,
+    nivel_formacion: row.nivel_formacion ?? null,
+    perfil_academico_pro: row.perfil_academico_pro ?? null,
+    perfil_academico: row.perfil_academico ?? null,
+    pregrado: row.pregrado ?? null,
+    especializacion: row.especializacion ?? null,
+    maestria: row.maestria ?? null,
+    doctorado: row.doctorado ?? null,
+    posdoctorado: row.posdoctorado ?? null,
+    investigacion: row.investigacion ?? null,
+    origen_vinculacion: row.origen_vinculacion ?? null,
+    acto_administrativo_vinculacion: row.acto_administrativo_vinculacion ?? null,
+    correo_institucional: row.correo_institucional || email,
+    correo_personal: row.correo_personal ?? null,
+    telefono: row.telefono ?? null,
+    ultima_evaluacion: row.ultima_evaluacion ?? null,
+    situacion_administrativa: row.situacion_administrativa ?? null,
+    inicio_vinculacion: row.inicio_vinculacion ?? null,
+    fin_vinculacion: row.fin_vinculacion ?? null,
+    puntaje_salarial: row.puntaje_salarial ?? null,
+    genero: row.genero ?? null,
+    nacimiento: fechaNacimiento,
+    edad,
+    rango_edad: rangoEdad,
+    horas_programables: row.horas_programables ?? 0,
+    estado: row.activo ? 'ACTIVO' : 'INACTIVO',
+    email,
+    activo: row.activo,
+    roles: row.roles || ['DOCENTE'],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 // ─── service ──────────────────────────────────────────────────────────────────
 
 @Injectable()
 export class BancoDocentesService {
+  private readonly logger = new Logger(BancoDocentesService.name);
+
   constructor(
     @InjectRepository(DocenteEntity)
     private readonly docenteRepo: Repository<DocenteEntity>,
@@ -346,67 +415,267 @@ export class BancoDocentesService {
     private readonly personaRepo: Repository<PersonaEntity>,
     @InjectRepository(UsuarioEntity)
     private readonly usuarioRepo: Repository<UsuarioEntity>,
-    @InjectRepository(TerritorialEntity)
-    private readonly territorialRepo: Repository<TerritorialEntity>,
-    @InjectRepository(SedeEntity)
-    private readonly sedeRepo: Repository<SedeEntity>,
     private readonly dataSource: DataSource,
   ) {}
 
-  private async getTerritoriales(): Promise<TerritorialEntity[]> {
-    return this.territorialRepo.find({ order: { nombre: 'ASC' } });
+  private async getTerritoriales(): Promise<AuthSeccionalTerritorial[]> {
+    const rows = await this.dataSource.query(
+      `
+      SELECT
+        id_seccional::text AS id,
+        nom_seccional AS nombre,
+        cod_seccional AS codigo
+      FROM auth.seccionales
+      ORDER BY nom_seccional ASC
+      `,
+    );
+    return rows.map((row: any) => ({
+      id: String(row.id),
+      nombre: row.nombre,
+      codigo: row.codigo ?? null,
+    }));
   }
 
-  private async getDefaultPasswordHash(): Promise<string> {
-    if (!cachedPasswordHash) {
-      cachedPasswordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+  private async getNextAuthLegacyPersonId(manager: any): Promise<string | null> {
+    const [columnInfo] = await manager.query(
+      `
+        SELECT column_default
+        FROM information_schema.columns
+        WHERE table_schema = 'auth'
+          AND table_name = 'personas'
+          AND column_name = 'id_tercero'
+        LIMIT 1
+      `,
+    );
+
+    if (!columnInfo) return null;
+
+    const columnDefault = typeof columnInfo.column_default === 'string' ? columnInfo.column_default : null;
+    if (columnDefault?.includes('nextval')) {
+      const [nextValue] = await manager.query(
+        `SELECT nextval(pg_get_serial_sequence($1, 'id_tercero')) AS next_id`,
+        ['auth.personas'],
+      );
+      return String(nextValue.next_id);
     }
-    return cachedPasswordHash;
+
+    await manager.query(`LOCK TABLE auth.personas IN EXCLUSIVE MODE`);
+    const [nextValue] = await manager.query(
+      `SELECT COALESCE(MAX(id_tercero), 0) + 1 AS next_id FROM auth.personas`,
+    );
+    return String(nextValue.next_id);
   }
 
-  private async ensureUniqueEmail(baseEmail: string, documentNumber: string, currentUserId?: string): Promise<string> {
-    let email = baseEmail.toLowerCase();
-    let suffix = 1;
-    while (true) {
-      const existing = await this.usuarioRepo.findOne({ where: { email } });
-      if (!existing || existing.id === currentUserId) return email;
-      const [local, domain = DEFAULT_EMAIL_DOMAIN] = baseEmail.toLowerCase().split('@');
-      email = `${local}.${documentNumber}.${suffix}@${domain}`;
-      suffix++;
+  private resolveNotificationsBaseUrl(): string {
+    const direct = process.env.NOTIFICATIONS_SERVICE_URL || process.env.NOTIFICATION_SERVICE_URL;
+    if (direct) return direct.replace(/\/$/, '');
+    if ((process.env.NODE_ENV || 'development') !== 'production') return 'http://localhost:3009';
+    return 'http://notifications-service:3009';
+  }
+
+  private async sendWelcomeEmail(to: string, username: string, password: string, fullName: string): Promise<{ sent: boolean; error?: string }> {
+    const baseUrl = this.resolveNotificationsBaseUrl();
+    const subject = 'Credenciales de acceso - Banco de Docentes ESAP';
+    const text = [
+      `Hola ${fullName},`,
+      '',
+      'Tu usuario docente fue creado en la plataforma ESAP.',
+      `Usuario: ${username}`,
+      `Contraseña temporal: ${password}`,
+      '',
+      'Por seguridad, cambia tu contraseña en el primer ingreso.',
+    ].join('\n');
+    const html = `
+      <p>Hola ${fullName},</p>
+      <p>Tu usuario docente fue creado en la plataforma ESAP.</p>
+      <p><strong>Usuario:</strong> ${username}<br><strong>Contraseña temporal:</strong> ${password}</p>
+      <p>Por seguridad, cambia tu contraseña en el primer ingreso.</p>
+    `;
+
+    try {
+      const response = await fetch(`${baseUrl}/api/v1/emails/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to, subject, text, html }),
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        const error = `notifications-service ${response.status}: ${body}`;
+        this.logger.warn(`No se pudo enviar bienvenida a ${to}: ${error}`);
+        return { sent: false, error };
+      }
+
+      return { sent: true };
+    } catch (error: any) {
+      const message = error?.message || String(error);
+      this.logger.warn(`No se pudo conectar a notifications-service (${baseUrl}) para ${to}: ${message}`);
+      return { sent: false, error: message };
     }
+  }
+
+  private authDocentesBaseSql() {
+    return `
+      WITH auth_docentes AS (
+        SELECT DISTINCT ON (u.id_user)
+          u.id_user AS usuario_id,
+          u.username,
+          u.is_active AS activo,
+          u.created_at,
+          u.updated_at,
+          p.id_person AS persona_id,
+          p.num_identificacion AS documento_identidad,
+          p.tip_identificacion AS tipo_documento,
+          p.nom_largo AS nombre_completo,
+          p.nom_tercero AS primer_nombre,
+          p.pri_apellido AS primer_apellido,
+          p.seg_apellido AS segundo_apellido,
+          p.gen_tercero AS genero,
+          p.fec_nacimiento AS fecha_nacimiento,
+          p.dir_email AS email,
+          p.tel_celular AS telefono,
+          p.id_seccional AS auth_territorial_id,
+          sec.nom_seccional AS auth_territorial,
+          sec.cod_seccional AS auth_territorial_codigo,
+          p.id_sede AS auth_sede_id,
+          sede.nom_sede AS auth_sede,
+          d.id AS docente_id,
+          d."ordenListado" AS orden_listado,
+          d."tipoVinculacion" AS vinculacion_codigo,
+          d."vinculacionDisplay" AS vinculacion,
+          d.dedicacion AS dedicacion_codigo,
+          d."dedicacionDisplay" AS dedicacion,
+          COALESCE(d."territorialId", p.id_seccional::text) AS territorial_id,
+          sec.nom_seccional AS territorial,
+          sec.cod_seccional AS territorial_codigo,
+          COALESCE(d."sedeId", p.id_sede::text) AS sede_id,
+          sede.nom_sede AS sede,
+          d.escalafon AS categoria,
+          d."nucleoTematico" AS nucleo_tematico,
+          d."nivelFormacion" AS nivel_formacion,
+          d."perfilAcademicoPro" AS perfil_academico_pro,
+          d."perfilAcademico" AS perfil_academico,
+          d.pregrado,
+          d.especializacion,
+          d.maestria,
+          d.doctorado,
+          d."posDoctorado" AS posdoctorado,
+          d.investigacion,
+          d."origenVinculacion" AS origen_vinculacion,
+          d."actoAdministrativoVinculacion" AS acto_administrativo_vinculacion,
+          d."correoInstitucional" AS correo_institucional,
+          d."ultimaEvaluacion" AS ultima_evaluacion,
+          d."situacionAdministrativa" AS situacion_administrativa,
+          d."fechaInicioVinculacion" AS inicio_vinculacion,
+          d."fechaFinVinculacion" AS fin_vinculacion,
+          d."puntajeSalarial" AS puntaje_salarial,
+          d."edadReferencia" AS edad_referencia,
+          d."rangoEdad" AS rango_edad,
+          d."horasAsignables" AS horas_programables,
+          ARRAY(
+            SELECT DISTINCT r2.code
+            FROM auth.user_roles ur2
+            INNER JOIN auth.role r2 ON r2.id = ur2.id_rol AND COALESCE(r2.is_active, true) = true
+            WHERE ur2.id_user = u.id_user
+              AND COALESCE(ur2.is_active, true) = true
+            ORDER BY r2.code
+          ) AS roles
+        FROM auth."user" u
+        INNER JOIN auth.personas p ON p.id_person = u.id_person
+        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user AND COALESCE(ur.is_active, true) = true
+        INNER JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
+        LEFT JOIN auth.seccionales sec ON sec.id_seccional = p.id_seccional
+        LEFT JOIN auth.sedes sede ON sede.id_sede = p.id_sede
+        LEFT JOIN academic_work_plan."Docente" d ON d."personaId"::text = p.id_person::text
+        WHERE (UPPER(r.code) = 'DOCENTE' OR UPPER(r.name) = 'DOCENTE')
+        ORDER BY u.id_user, p.nom_largo ASC
+      )
+    `;
+  }
+
+  private buildAuthDocentesFilters(filters: { territorial?: string; dedicacion?: string; estado?: string; search?: string }, params: any[]) {
+    const conditions: string[] = [];
+
+    if (filters.territorial) {
+      params.push(filters.territorial);
+      const idx = params.length;
+      conditions.push(`(
+        auth_territorial_id::text = $${idx}
+        OR territorial_id::text = $${idx}
+        OR auth_territorial ILIKE $${idx}
+        OR territorial ILIKE $${idx}
+      )`);
+    }
+
+    if (filters.dedicacion) {
+      params.push(filters.dedicacion);
+      conditions.push(`dedicacion_codigo = $${params.length}`);
+    }
+
+    if (filters.estado) {
+      params.push(String(filters.estado).toUpperCase() === 'ACTIVO');
+      conditions.push(`activo = $${params.length}`);
+    }
+
+    if (filters.search) {
+      params.push(`%${filters.search}%`);
+      const idx = params.length;
+      conditions.push(`(
+        documento_identidad ILIKE $${idx}
+        OR nombre_completo ILIKE $${idx}
+        OR primer_nombre ILIKE $${idx}
+        OR primer_apellido ILIKE $${idx}
+        OR email ILIKE $${idx}
+        OR username ILIKE $${idx}
+      )`);
+    }
+
+    return conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   }
 
   async list(filters: { territorial?: string; dedicacion?: string; estado?: string; search?: string; page?: number; limit?: number }) {
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(200, Math.max(1, filters.limit || 50));
     const skip = (page - 1) * limit;
+    const params: any[] = [];
+    const where = this.buildAuthDocentesFilters(filters, params);
+    const baseSql = this.authDocentesBaseSql();
 
-    const qb = this.docenteRepo.createQueryBuilder('d')
-      .leftJoinAndSelect('d.persona', 'p')
-      .leftJoinAndSelect('p.usuario', 'u')
-      .leftJoinAndSelect('d.territorial', 't')
-      .leftJoinAndSelect('d.sede', 's')
-      .orderBy('d.ordenListado', 'ASC', 'NULLS LAST')
-      .addOrderBy('p.primer_apellido', 'ASC');
+    const countRows = await this.dataSource.query(
+      `${baseSql} SELECT COUNT(*)::int AS total FROM auth_docentes ${where}`,
+      params,
+    );
+    const total = Number(countRows[0]?.total || 0);
 
-    if (filters.territorial) qb.andWhere('d.territorialId = :tid', { tid: filters.territorial });
-    if (filters.dedicacion) qb.andWhere('d.dedicacion = :ded', { ded: filters.dedicacion });
-    if (filters.estado) qb.andWhere('d.estado = :est', { est: filters.estado });
-    if (filters.search) {
-      qb.andWhere('(p.identificacion ILIKE :q OR p.primer_nombre ILIKE :q OR p.primer_apellido ILIKE :q OR u.nombre ILIKE :q)', { q: `%${filters.search}%` });
-    }
+    params.push(limit, skip);
+    const rows = await this.dataSource.query(
+      `
+      ${baseSql}
+      SELECT *
+      FROM auth_docentes
+      ${where}
+      ORDER BY orden_listado ASC NULLS LAST, nombre_completo ASC
+      LIMIT $${params.length - 1} OFFSET $${params.length}
+      `,
+      params,
+    );
 
-    const [items, total] = await qb.skip(skip).take(limit).getManyAndCount();
-    return { data: items.map(buildBancoDocenteResponse), total, page, limit, pages: Math.ceil(total / limit) };
+    return { data: rows.map(buildAuthBancoDocenteResponse), total, page, limit, pages: Math.ceil(total / limit) };
   }
 
   async getById(id: string) {
-    const d = await this.docenteRepo.findOne({
-      where: { id },
-      relations: ['persona', 'persona.usuario', 'territorial', 'sede'],
-    });
-    if (!d) throw new NotFoundException(`Docente ${id} no encontrado`);
-    return buildBancoDocenteResponse(d as any);
+    const rows = await this.dataSource.query(
+      `
+      ${this.authDocentesBaseSql()}
+      SELECT *
+      FROM auth_docentes
+      WHERE usuario_id::text = $1 OR persona_id::text = $1 OR docente_id::text = $1
+      LIMIT 1
+      `,
+      [id],
+    );
+    if (!rows[0]) throw new NotFoundException(`Docente ${id} no encontrado en auth.personas`);
+    return buildAuthBancoDocenteResponse(rows[0]);
   }
 
   async upsertDocente(rawPayload: any, options: { rejectExisting?: boolean } = {}) {
@@ -417,69 +686,197 @@ export class BancoDocentesService {
     const territorial = territoriales.find((t) => normalizeLookupText(t.nombre) === normalizeLookupText(payload.territorialNombre)) || findTerritorialMatch(territoriales, payload.territorialNombre);
     if (!territorial?.id) throw new BadRequestException(`La territorial "${payload.territorialNombre}" no existe en el catálogo.`);
 
-    return this.dataSource.transaction(async (manager) => {
-      const existingPersona = await manager.findOne(PersonaEntity, {
-        where: { identificacion: payload.documentNumber! },
-        relations: ['usuario'],
-      });
-      const existingDocente = existingPersona ? await manager.findOne(DocenteEntity, { where: { personaId: existingPersona.id } }) : null;
+    const result = await this.dataSource.transaction(async (manager) => {
+      const emailFinal = payload.correoInstitucional!.toLowerCase().trim();
+      const finalFullName = payload.fullName || [payload.primer_nombre, payload.segundo_nombre, payload.primer_apellido, payload.segundo_apellido].filter(Boolean).join(' ').trim();
+      if (!finalFullName) throw new BadRequestException(`No se pudo construir el nombre del docente ${payload.documentNumber}.`);
+
+      const existingPersonaRows = await manager.query(
+        `
+        SELECT *
+        FROM auth.personas
+        WHERE num_identificacion = $1
+        LIMIT 1
+        `,
+        [payload.documentNumber],
+      );
+      let authPersona = existingPersonaRows[0] || null;
+
+      const emailConflictRows = await manager.query(
+        `
+        SELECT owner_id
+        FROM (
+          SELECT p.id_person::text AS owner_id
+          FROM auth.personas p
+          WHERE LOWER(p.dir_email) = LOWER($1)
+          UNION
+          SELECT u.id_person::text AS owner_id
+          FROM auth."user" u
+          WHERE LOWER(u.username) = LOWER($1)
+        ) owners
+        WHERE owner_id IS NULL OR $2::uuid IS NULL OR owner_id::uuid <> $2::uuid
+        LIMIT 1
+        `,
+        [emailFinal, authPersona?.id_person || null],
+      );
+
+      if (emailConflictRows[0]) {
+        throw new BadRequestException(`El correo ${emailFinal} ya está en uso por otra persona o usuario.`);
+      }
+
+      const authSeccionalId = Number(territorial.id);
+      const authPersonId = authPersona?.id_person || randomUUID();
+      const firstName = payload.primer_nombre || splitFullName(finalFullName).primer_nombre || 'Docente';
+      const lastName = payload.primer_apellido || splitFullName(finalFullName).primer_apellido || null;
+      const gender = (payload.genero || 'N').trim().toUpperCase().slice(0, 6);
+
+      if (!authPersona) {
+        const legacyPersonId = await this.getNextAuthLegacyPersonId(manager);
+        const columns = [
+          'id_person',
+          ...(legacyPersonId ? ['id_tercero'] : []),
+          'num_identificacion',
+          'tip_identificacion',
+          'nom_largo',
+          'nom_tercero',
+          'pri_apellido',
+          'seg_apellido',
+          'gen_tercero',
+          'fec_nacimiento',
+          'dir_email',
+          'tel_celular',
+          'id_seccional',
+          'fec_creacion',
+          'fec_modificacion',
+        ];
+        const values = [
+          authPersonId,
+          ...(legacyPersonId ? [legacyPersonId] : []),
+          payload.documentNumber,
+          payload.documentType || 'CC',
+          finalFullName,
+          firstName,
+          lastName,
+          payload.segundo_apellido,
+          gender || 'N',
+          payload.fechaNacimiento,
+          emailFinal,
+          payload.telefono,
+          authSeccionalId,
+        ];
+        const placeholders = values.map((_, idx) => `$${idx + 1}`);
+        await manager.query(
+          `
+          INSERT INTO auth.personas (${columns.slice(0, -2).join(', ')}, fec_creacion, fec_modificacion)
+          VALUES (${placeholders.join(', ')}, CURRENT_DATE, CURRENT_DATE)
+          `,
+          values,
+        );
+        authPersona = { id_person: authPersonId };
+      } else {
+        await manager.query(
+          `
+          UPDATE auth.personas
+          SET
+            tip_identificacion = $2,
+            nom_largo = $3,
+            nom_tercero = $4,
+            pri_apellido = $5,
+            seg_apellido = $6,
+            gen_tercero = $7,
+            fec_nacimiento = $8,
+            dir_email = $9,
+            tel_celular = $10,
+            id_seccional = COALESCE($11, id_seccional),
+            fec_modificacion = CURRENT_DATE
+          WHERE id_person = $1
+          `,
+          [
+            authPersonId,
+            payload.documentType || authPersona.tip_identificacion || 'CC',
+            finalFullName,
+            firstName,
+            lastName,
+            payload.segundo_apellido,
+            gender || authPersona.gen_tercero || 'N',
+            payload.fechaNacimiento || authPersona.fec_nacimiento || null,
+            emailFinal,
+            payload.telefono || authPersona.tel_celular || null,
+            authSeccionalId,
+          ],
+        );
+      }
+
+      const userRows = await manager.query(
+        `SELECT * FROM auth."user" WHERE id_person = $1 LIMIT 1`,
+        [authPersonId],
+      );
+      let authUser = userRows[0] || null;
+      let authUserCreated = false;
+
+      if (!authUser) {
+        const passwordHash = await bcrypt.hash(payload.documentNumber!, 10);
+        const userId = randomUUID();
+        await manager.query(
+          `
+          INSERT INTO auth."user" (
+            id_user,
+            public_id,
+            username,
+            password_hash,
+            id_person,
+            is_active,
+            password_temp,
+            created_at,
+            updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, false, true, now(), now())
+          `,
+          [userId, randomUUID(), emailFinal, passwordHash, authPersonId],
+        );
+        authUser = { id_user: userId };
+        authUserCreated = true;
+      } else {
+        await manager.query(
+          `
+          UPDATE auth."user"
+          SET username = $2, updated_at = now()
+          WHERE id_user = $1
+          `,
+          [authUser.id_user, emailFinal],
+        );
+      }
+
+      const roleRows = await manager.query(
+        `
+        SELECT id
+        FROM auth.role
+        WHERE UPPER(code) = 'DOCENTE' OR UPPER(name) = 'DOCENTE'
+        ORDER BY CASE WHEN UPPER(code) = 'DOCENTE' THEN 0 ELSE 1 END
+        LIMIT 1
+        `,
+      );
+      const docenteRoleId = roleRows[0]?.id;
+      if (!docenteRoleId) throw new BadRequestException('No existe el rol DOCENTE en auth.role.');
+
+      await manager.query(
+        `
+        INSERT INTO auth.user_roles (id_user, id_rol, is_active, created_at, updated_at)
+        VALUES ($1, $2, true, now(), now())
+        ON CONFLICT (id_user, id_rol)
+        DO UPDATE SET is_active = true, updated_at = now()
+        `,
+        [authUser.id_user, docenteRoleId],
+      );
+
+      const existingDocente = await manager.findOne(DocenteEntity, { where: { personaId: authPersonId } });
 
       if (existingDocente && options.rejectExisting) {
         throw new BadRequestException(`El documento ${payload.documentNumber} ya existe en el Banco de Docentes.`);
       }
 
-      const finalFullName = payload.fullName || [payload.primer_nombre, payload.segundo_nombre, payload.primer_apellido, payload.segundo_apellido].filter(Boolean).join(' ').trim();
-      if (!finalFullName) throw new BadRequestException(`No se pudo construir el nombre del docente ${payload.documentNumber}.`);
-
-      if (payload.correoInstitucional) {
-        const ownerUser = await manager.findOne(UsuarioEntity, { where: { email: payload.correoInstitucional.toLowerCase() } });
-        if (ownerUser && ownerUser.id !== existingPersona?.usuarioId) {
-          throw new BadRequestException(`El correo ${payload.correoInstitucional} ya está en uso por otro usuario.`);
-        }
-      }
-
-      const emailBase = payload.correoInstitucional || existingPersona?.usuario?.email || `docente.${payload.documentNumber}@${DEFAULT_EMAIL_DOMAIN}`;
-      const emailFinal = await this.ensureUniqueEmail(emailBase, payload.documentNumber!, existingPersona?.usuarioId);
-
-      let usuario: UsuarioEntity;
-      if (!existingPersona?.usuario) {
-        usuario = manager.create(UsuarioEntity, {
-          email: emailFinal,
-          nombre: finalFullName,
-          password: await this.getDefaultPasswordHash(),
-          activo: true,
-        });
-        usuario = await manager.save(UsuarioEntity, usuario);
-      } else {
-        usuario = await manager.save(UsuarioEntity, { ...existingPersona.usuario, email: emailFinal, nombre: finalFullName, activo: true });
-      }
-
-      const personaData: Partial<PersonaEntity> = {
-        usuarioId: usuario.id,
-        primer_nombre: payload.primer_nombre ?? existingPersona?.primer_nombre ?? null,
-        segundo_nombre: payload.segundo_nombre ?? existingPersona?.segundo_nombre ?? null,
-        primer_apellido: payload.primer_apellido ?? existingPersona?.primer_apellido ?? null,
-        segundo_apellido: payload.segundo_apellido ?? existingPersona?.segundo_apellido ?? null,
-        identificacion: payload.documentNumber!,
-        tipo_identificacion: payload.documentType || existingPersona?.tipo_identificacion || 'CC',
-        genero: payload.genero ?? existingPersona?.genero ?? null,
-        fecha_nacimiento: payload.fechaNacimiento ?? existingPersona?.fecha_nacimiento ?? null,
-        telefono: payload.telefono ?? existingPersona?.telefono ?? null,
-        correo_alternativo: payload.correoAlternativo ?? existingPersona?.correo_alternativo ?? null,
-        direccion: territorial.nombre,
-        tipo_usuario: 'Docente',
-        fecha_fin_contrato: payload.fechaFinVinculacion ?? (existingPersona as any)?.fecha_fin_contrato ?? null,
-      };
-
-      let persona: PersonaEntity;
-      if (!existingPersona) {
-        persona = await manager.save(PersonaEntity, manager.create(PersonaEntity, personaData));
-      } else {
-        persona = await manager.save(PersonaEntity, { ...existingPersona, ...personaData });
-      }
-
       const docenteData: Partial<DocenteEntity> = {
-        personaId: persona.id,
+        personaId: authPersonId,
         territorialId: territorial.id,
         sedeId: existingDocente?.sedeId || null,
         tipoVinculacion: payload.tipoVinculacion,
@@ -502,7 +899,7 @@ export class BancoDocentesService {
         investigacion: payload.investigacion ?? existingDocente?.investigacion ?? null,
         origenVinculacion: payload.origenVinculacion ?? existingDocente?.origenVinculacion ?? null,
         actoAdministrativoVinculacion: payload.actoAdministrativoVinculacion ?? existingDocente?.actoAdministrativoVinculacion ?? null,
-        correoInstitucional: payload.correoInstitucional ?? existingDocente?.correoInstitucional ?? usuario.email ?? null,
+        correoInstitucional: emailFinal,
         ultimaEvaluacion: payload.ultimaEvaluacion ?? existingDocente?.ultimaEvaluacion ?? null,
         situacionAdministrativa: payload.situacionAdministrativa ?? existingDocente?.situacionAdministrativa ?? null,
         fechaInicioVinculacion: payload.fechaInicioVinculacion ?? existingDocente?.fechaInicioVinculacion ?? null,
@@ -524,16 +921,25 @@ export class BancoDocentesService {
         action,
         previewId: rawPayload?.__previewId || null,
         sourceRowNumber: rawPayload?.__sourceRowNumber || null,
-        personaId: persona.id,
+        personaId: authPersonId,
         docenteId: docente.id,
-        usuarioId: usuario.id,
-        documentNumber: payload.documentNumber,
+        usuarioId: authUser.id_user,
+        documentNumber: payload.documentNumber!,
         fullName: finalFullName,
         email: emailFinal,
         territorialNombre: territorial.nombre,
+        authUserCreated,
+        welcomeEmail: { sent: false, skipped: !authUserCreated },
         message: action === 'insert' ? 'Docente creado correctamente.' : 'Docente actualizado correctamente.',
       };
     });
+
+    if (result.authUserCreated) {
+      const welcomeEmail = await this.sendWelcomeEmail(result.email, result.email, result.documentNumber, result.fullName);
+      return { ...result, welcomeEmail };
+    }
+
+    return result;
   }
 
   async bulkUpsert(rows: any[], options: { rejectExisting?: boolean } = {}) {
@@ -561,110 +967,104 @@ export class BancoDocentesService {
   }
 
   async toggleEstado(id: string) {
+    const authRows = await this.dataSource.query(
+      `
+      SELECT u.id_user, u.is_active
+      FROM auth."user" u
+      WHERE u.id_user::text = $1 OR u.id_person::text = $1
+      LIMIT 1
+      `,
+      [id],
+    );
+
+    if (authRows[0]) {
+      const activo = !authRows[0].is_active;
+      await this.dataSource.query(
+        `UPDATE auth."user" SET is_active = $1, updated_at = now() WHERE id_user = $2`,
+        [activo, authRows[0].id_user],
+      );
+      return { id: authRows[0].id_user, estado: activo ? 'ACTIVO' : 'INACTIVO', activo };
+    }
+
     const d = await this.docenteRepo.findOne({ where: { id } });
     if (!d) throw new NotFoundException(`Docente ${id} no encontrado`);
     d.estado = d.estado === 'ACTIVO' ? 'INACTIVO' : 'ACTIVO';
     await this.docenteRepo.save(d);
-    return { id, estado: d.estado };
+    return { id, estado: d.estado, activo: d.estado === 'ACTIVO' };
   }
 
   async updateDocente(id: string, body: any) {
-    const d = await this.docenteRepo.findOne({ where: { id }, relations: ['persona', 'persona.usuario', 'territorial', 'sede'] });
-    if (!d) throw new NotFoundException(`Docente ${id} no encontrado`);
-    const result = await this.upsertDocente({ ...body, documentNumber: body.documentNumber || d.persona?.identificacion }, {});
+    const d = await this.docenteRepo.findOne({ where: { id } });
+    if (d) {
+      const authRows = await this.dataSource.query(
+        `SELECT num_identificacion AS document_number FROM auth.personas WHERE id_person::text = $1 LIMIT 1`,
+        [d.personaId],
+      );
+      const result = await this.upsertDocente({ ...body, documentNumber: body.documentNumber || authRows[0]?.document_number }, {});
+      return result;
+    }
+
+    const authRows = await this.dataSource.query(
+      `
+      SELECT p.num_identificacion AS document_number
+      FROM auth."user" u
+      INNER JOIN auth.personas p ON p.id_person = u.id_person
+      WHERE u.id_user::text = $1 OR p.id_person::text = $1
+      LIMIT 1
+      `,
+      [id],
+    );
+    if (!authRows[0]?.document_number) throw new NotFoundException(`Docente ${id} no encontrado`);
+
+    const result = await this.upsertDocente({ ...body, documentNumber: body.documentNumber || authRows[0].document_number }, {});
     return result;
   }
 
   async getStats() {
-    const total = await this.docenteRepo.count();
-    const activos = await this.docenteRepo.count({ where: { estado: 'ACTIVO' } });
-    const porDedicacion = await this.docenteRepo.createQueryBuilder('d')
-      .select('d.dedicacion', 'dedicacion')
-      .addSelect('COUNT(*)', 'total')
-      .groupBy('d.dedicacion')
-      .getRawMany();
-    const porTerritorial = await this.docenteRepo.createQueryBuilder('d')
-      .leftJoin('d.territorial', 't')
-      .select('t.nombre', 'territorial')
-      .addSelect('COUNT(*)', 'total')
-      .groupBy('t.nombre')
-      .orderBy('total', 'DESC')
-      .getRawMany();
+    const baseSql = this.authDocentesBaseSql();
+    const [summary] = await this.dataSource.query(`
+      ${baseSql}
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE activo = true)::int AS activos
+      FROM auth_docentes
+    `);
+
+    const porDedicacion = await this.dataSource.query(`
+      ${baseSql}
+      SELECT
+        COALESCE(dedicacion_codigo, 'SIN_DEDICACION') AS dedicacion,
+        COUNT(*)::int AS total
+      FROM auth_docentes
+      GROUP BY COALESCE(dedicacion_codigo, 'SIN_DEDICACION')
+      ORDER BY total DESC
+    `);
+
+    const porTerritorial = await this.dataSource.query(`
+      ${baseSql}
+      SELECT
+        COALESCE(territorial, auth_territorial, 'Sin territorial') AS territorial,
+        COUNT(*)::int AS total
+      FROM auth_docentes
+      GROUP BY COALESCE(territorial, auth_territorial, 'Sin territorial')
+      ORDER BY total DESC
+    `);
+
+    const total = Number(summary?.total || 0);
+    const activos = Number(summary?.activos || 0);
     return { total, activos, inactivos: total - activos, por_dedicacion: porDedicacion, por_territorial: porTerritorial };
   }
 
-  async syncToAuthService(authServiceUrl: string) {
-    const docentes = await this.docenteRepo.find({
-      relations: ['persona', 'persona.usuario'],
-    });
-
-    let created = 0;
-    let skipped = 0;
-    let failed = 0;
-    const errors: { email: string; error: string }[] = [];
-
-    for (const docente of docentes) {
-      const persona = docente.persona;
-      const usuario = persona?.usuario;
-      if (!usuario?.email) { skipped++; continue; }
-
-      const firstName = persona?.primer_nombre || usuario.nombre?.split(' ')[0] || 'Docente';
-      const lastName = persona?.primer_apellido || usuario.nombre?.split(' ').slice(1).join(' ') || 'ESAP';
-      const documentNumber = persona?.identificacion || docente.id;
-      const email = usuario.email.toLowerCase().trim();
-
-      try {
-        const res = await fetch(`${authServiceUrl}/new-person`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            firstName,
-            lastName,
-            documentNumber,
-            email,
-            username: email,
-            password: '123456',
-            roles: ['DOCENTE'],
-          }),
-        });
-
-        if (res.ok) {
-          created++;
-        } else {
-          const body = await res.json().catch(() => ({}));
-          const msg = (body as any)?.message || res.statusText;
-          const alreadyExists = res.status === 409 || String(msg).includes('ya existe') || String(msg).includes('already');
-          if (alreadyExists) {
-            // Usuario ya existe: buscar su id y resetear contraseña a 123456
-            try {
-              const findRes = await fetch(`${authServiceUrl}/api/v1/users?search=${encodeURIComponent(email)}&limit=1`, {
-                headers: { 'Content-Type': 'application/json' },
-              });
-              if (findRes.ok) {
-                const findBody = await findRes.json().catch(() => ({}));
-                const userId = findBody?.data?.data?.[0]?.user?.id_user || findBody?.data?.[0]?.user?.id_user;
-                if (userId) {
-                  await fetch(`${authServiceUrl}/api/v1/users/${userId}/password`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ new_password: '123456' }),
-                  });
-                }
-              }
-            } catch { /* best-effort */ }
-            skipped++;
-          } else {
-            failed++;
-            errors.push({ email, error: msg });
-          }
-        }
-      } catch (err: any) {
-        failed++;
-        errors.push({ email, error: err?.message || 'fetch error' });
-      }
-    }
-
-    return { total: docentes.length, created, skipped, failed, errors: errors.slice(0, 20) };
+  async syncToAuthService(_authServiceUrl: string) {
+    const docentes = await this.docenteRepo.count();
+    return {
+      total: docentes,
+      created: 0,
+      skipped: docentes,
+      failed: 0,
+      errors: [],
+      message: 'El Banco de Docentes ya usa auth.personas/auth.user como fuente primaria.',
+    };
   }
 
   async syncFromAuthService(authServiceUrl: string): Promise<{ total: number; created: number; skipped: number; failed: number }> {
@@ -693,12 +1093,12 @@ export class BancoDocentesService {
       if (!email && !identification) { skipped++; continue; }
 
       // ¿Ya existe en banco de docentes?
-      const existing = await this.docenteRepo
-        .createQueryBuilder('d')
-        .innerJoin('d.persona', 'p')
-        .innerJoin('p.usuario', 'u')
-        .where('LOWER(u.email) = LOWER(:email)', { email })
-        .getOne();
+      const existing = await this.docenteRepo.findOne({
+        where: [
+          { personaId: person.id || person.id_person } as any,
+          { correoInstitucional: email } as any,
+        ],
+      });
       if (existing) { skipped++; continue; }
 
       // Crear con datos mínimos

@@ -25,7 +25,7 @@ import { Badge } from '../ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '../ui/sheet';
 import { toast } from 'sonner';
 import { SystemSwitcher } from '../esap/SystemSwitcher';
-import { NotificacionesDropdown } from './NotificacionesDropdown';
+import { PortalNotificationBell } from './PortalNotificationBell';
 
 interface AuthenticatedPortalNavbarProps {
   userName: string;
@@ -225,7 +225,7 @@ export function AuthenticatedPortalNavbar({
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-sm transition-colors duration-300">
-      <div className="w-full max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 xl:px-4">
+      <div className="w-full max-w-[1360px] mx-auto px-4 md:px-6 lg:px-8 xl:px-4">
         <div className="flex items-center justify-between gap-2 sm:gap-3 md:gap-4" style={{ minHeight: 64, height: 64 }}>
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <div className="flex items-center gap-2">
@@ -271,14 +271,7 @@ export function AuthenticatedPortalNavbar({
               />
             )}
 
-            <DropdownMenu open={showNotifications} onOpenChange={setShowNotifications}>
-              <DropdownMenuTrigger asChild>
-                <NotificationButton unreadCount={0} />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[380px] p-0">
-                <NotificacionesDropdown onNavigate={handleNotificationNavigate} />
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <PortalNotificationBell onNavigate={handleNotificationNavigate} />
 
             <button
               type="button"

@@ -438,27 +438,50 @@ export function PortalDocentePTA({ onBack, userPersonId, userName }: PortalDocen
 
   return (
     <div>
-      {/* Environment Banner — Portal Docente */}
-      <div className="flex items-center justify-between px-5 py-3 rounded-2xl mb-5 bg-gradient-to-r from-purple-100/60 to-indigo-50/60 backdrop-blur-md border border-purple-200/50 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="p-1.5 bg-purple-200/60 rounded-lg">
-            <Shield className="w-4 h-4 text-purple-700" />
+      <div className="flex items-start sm:items-center gap-3 sm:gap-4 mb-5">
+        <button onClick={onBack} 
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            border: '1px solid #E5E7EB',
+            background: 'white',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = '#003DA5';
+            e.currentTarget.style.background = '#EFF6FF';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = '#E5E7EB';
+            e.currentTarget.style.background = 'white';
+          }}
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        {/* Environment Banner — Portal Docente */}
+        <div className="flex items-center justify-between px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-100/60 to-indigo-50/60 backdrop-blur-md border border-purple-200/50 shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="p-1.5 bg-purple-200/60 rounded-lg">
+              <Shield className="w-4 h-4 text-purple-700" />
+            </div>
+            <span className="text-[0.7rem] font-black tracking-widest uppercase text-purple-900">
+              Portal Docente
+            </span>
+            <span className="hidden sm:inline text-xs font-semibold text-purple-700/80">
+              — Tablero de Gestión de Plan de Trabajo Académico
+            </span>
           </div>
-          <span className="text-[0.7rem] font-black tracking-widest uppercase text-purple-900">
-            Portal Docente
-          </span>
-          <span className="hidden sm:inline text-xs font-semibold text-purple-700/80">
-            — Tablero de Gestión de Plan de Trabajo Académico (prueba)
-          </span>
         </div>
       </div>
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 sm:mb-6">
         <div className="flex items-start sm:items-center gap-3 sm:gap-4">
-          <button onClick={onBack} className="w-10 h-10 shrink-0 mt-1 sm:mt-0 rounded-xl sm:rounded-2xl border border-gray-200/50 bg-white/80 backdrop-blur shadow-sm text-gray-500 hover:text-gray-900 active:scale-95 transition-all flex items-center justify-center">
-            <ChevronLeft className="w-5 h-5" />
-          </button>
           <div className="min-w-0">
             <h2 className="text-[18px] sm:text-2xl font-black text-gray-900 m-0 flex flex-col sm:flex-row sm:items-center items-start gap-2 sm:gap-3 tracking-tight leading-tight">
               <div className="hidden sm:flex p-2 bg-blue-50/80 rounded-xl shadow-inner shrink-0">

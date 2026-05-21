@@ -83,6 +83,7 @@ export interface NoticiaCompleta {
   id: string;
   numero: string;
   fechaRecepcion: string;
+  fechaQueja?: string;
   origen: string;
   denunciante: any;
   denunciado: any;
@@ -512,7 +513,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
               Cerrar
             </button>
             <span className="text-[10px] text-gray-400">
-              Radicado {n.fechaRegistro ? new Date(n.fechaRegistro).toLocaleDateString('es-CO') : new Date(n.fechaRecepcion).toLocaleDateString('es-CO')}
+              Radicado {n.fechaRegistro ? new Date(n.fechaRegistro).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : new Date(n.fechaRecepcion).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}
               {n.radicador && ` por ${n.radicador}`}
             </span>
           </div>
@@ -700,12 +701,12 @@ function TabGeneral({
           <h3 className="text-xs font-black text-gray-700 uppercase tracking-wider">Datos de Radicación</h3>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
-          {[
-            { label: 'NÚMERO', value: n.numero },
-            { label: 'ORIGEN', value: n.origen || '—' },
-            { label: 'FECHA RECEPCIÓN', value: n.fechaRecepcion ? new Date(n.fechaRecepcion).toLocaleDateString('es-CO') : '—' },
-            { label: 'PRIORIDAD', value: n.prioridad?.toUpperCase() || '—' },
-          ].map(({ label, value }) => (
+           {[
+             { label: 'NÚMERO', value: n.numero },
+             { label: 'ORIGEN', value: n.origen || '—' },
+             { label: 'FECHA RECEPCIÓN', value: n.fechaRecepcion ? new Date(n.fechaRecepcion).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '—' },
+             { label: 'FECHA QUEJA / NOTIFICACIÓN', value: n.fechaQueja ? new Date(n.fechaQueja).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : (n.fechaRecepcion ? new Date(n.fechaRecepcion).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '—') },
+           ].map(({ label, value }) => (
             <div key={label} className="px-4 py-3">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{label}</p>
               <p className="text-sm font-bold text-gray-900">{value}</p>

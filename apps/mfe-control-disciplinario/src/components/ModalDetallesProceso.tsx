@@ -4606,7 +4606,7 @@ export function ModalDetallesProceso({
                                   <div className="flex items-center gap-3 mt-1.5 text-[9px] text-gray-500">
                                     <span className="flex items-center gap-1">
                                       <Calendar className="w-3 h-3" />
-                                      {noticia.fechaRecepcion ? new Date(noticia.fechaRecepcion).toLocaleDateString('es-CO') : 'Sin fecha'}
+                                      {noticia.fechaRecepcion ? new Date(noticia.fechaRecepcion).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : 'Sin fecha'}
                                     </span>
                                     {noticia.prioridad && (
                                       <span className="px-1.5 py-0.5 rounded-full text-[8px] font-bold"

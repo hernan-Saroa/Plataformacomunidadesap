@@ -52,6 +52,7 @@ export class NewsService {
   ): Promise<DisciplinaryNews> {
     try {
       console.log('[DEBUG] NewsService.create - DTO received:', JSON.stringify(createNewsDto, null, 2));
+      console.log('[DEBUG] NewsService.create - fechaQueja en DTO?:', createNewsDto.fechaQueja);
       // Generar radicado único
       const radicado = await this.sequenceService.generateNewsRadicado();
 
@@ -95,6 +96,16 @@ export class NewsService {
         );
       }
 
+      // ✅ FIX FECHA DE RADICACIÓN: Construir fecha segura (sin shift de timezone)
+      let fechaRecepcionValue: Date;
+      if (createNewsDto.fechaQueja) {
+        const [y, m, d] = createNewsDto.fechaQueja.split('-').map(Number);
+        // 12:00 local para que toLocaleDateString muestre exactamente el día elegido por el usuario
+        fechaRecepcionValue = new Date(y, m - 1, d, 12, 0, 0);
+      } else {
+        fechaRecepcionValue = new Date();
+      }
+
       // Crear y guardar noticia
       const noticia = this.newsRepository.create({
         radicado,
@@ -102,6 +113,7 @@ export class NewsService {
         radicadorId: createNewsDto.radicadorId || userId,
         adjuntos,
         fechaCaducidad,
+        fechaRecepcion: fechaRecepcionValue,   // ← también en fechaRecepcion (para compatibilidad actual)
         estado: 'RADICADA',
         kanbanStage: initialStage.id,
         etapaActual: initialStage.etapa,
@@ -139,6 +151,7 @@ export class NewsService {
   async findAll(): Promise<any[]> {
     const news = await this.newsRepository.find({
       where: { estado: Not(NewsStatus.ASOCIADA) },
+      order: { fechaRecepcion: 'DESC' },   // Ordenar por la fecha de radicación/queja elegida por el usuario (no por orden de creación en BD)
     });
 
     // Get unique radicadorIds

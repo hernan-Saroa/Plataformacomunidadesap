@@ -3464,6 +3464,37 @@ export class AuditoriasService {
    * Si hay 5 usuarios diferentes relacionados, se crearán 5 notificaciones (una por usuario).
    * Los duplicados se eliminan automáticamente usando Set.
    */
+  /**
+   * Notifica al auditado que puede formular el plan de mejoramiento (30 días hábiles).
+   */
+  async notificarInformeFinalGenerado(auditoriaId: string): Promise<void> {
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id: auditoriaId } });
+    if (!auditoria?.responsableAreaEmail) {
+      console.warn(
+        `[AuditoriasService] Informe final: sin responsable del área en auditoría ${auditoriaId}`,
+      );
+      return;
+    }
+    try {
+      await this.notificacionesService.notificarAuditadoPortal({
+        responsableAreaEmail: auditoria.responsableAreaEmail,
+        responsableAreaNombre: auditoria.responsableAreaNombre,
+        auditoriaId: auditoria.id,
+        auditoriaCodigo: auditoria.codigo,
+        auditoriaNombre: auditoria.nombre,
+        tipoNotificacion: TipoNotificacion.RECORDATORIO_PLAZO,
+        titulo: `Informe final — formule su plan de mejoramiento (${auditoria.codigo})`,
+        mensaje:
+          `La OCI cerró la etapa de comunicación de la auditoría "${auditoria.nombre}" (${auditoria.codigo}). ` +
+          `Tiene 30 días hábiles para formular y enviar el plan de mejoramiento en el portal transaccional.`,
+        prioridad: PrioridadNotificacion.CRITICA,
+        metadata: { plazoDiasHabiles: 30, informeFinal: true },
+      });
+    } catch (err) {
+      console.error('[AuditoriasService] Error notificando informe final al auditado:', err.message);
+    }
+  }
+
   private async crearNotificacionesAuditoriaCreada(auditoria: Auditoria): Promise<void> {
     console.log(`[AuditoriasService.crearNotificacionesAuditoriaCreada] 🚀 Disparando evento de creación para ${auditoria.codigo}`);
     
@@ -3495,49 +3526,30 @@ export class AuditoriasService {
         console.log(`[AuditoriasService] 📧 Buscando usuario auditado por email: ${auditoria.responsableAreaEmail}`);
 
         // Buscar id_user del responsable por su email en auth.user y auth.personas
-        const userResult = await this.auditoriaRepository.query(
-          `SELECT u.id_user
-           FROM auth."user" u
-           LEFT JOIN auth.personas p ON p.id_person = u.id_person
-           WHERE (
-             LOWER(TRIM(u.email)) = LOWER(TRIM($1))
-             OR LOWER(TRIM(p.dir_email)) = LOWER(TRIM($1))
-           )
-           AND u.is_active = true
-           LIMIT 1`,
-          [auditoria.responsableAreaEmail]
-        );
-
-        if (userResult && userResult[0]?.id_user) {
-          const auditadoUserId = String(userResult[0].id_user);
-          console.log(`[AuditoriasService] ✅ Auditado encontrado: ${auditoria.responsableAreaEmail} → ${auditadoUserId}`);
-
-          // Disparar la notificación personalizada para el auditado
-          await this.notificacionesService.dispararEvento('EVT-AUD-CREATED', {
-            auditoriaId: auditoria.id,
-            auditoriaCodigo: auditoria.codigo,
-            usuarioId: auditadoUserId, // Destinatario explícito
-            responsableAreaEmail: auditoria.responsableAreaEmail,
-            tituloCustom: `🔔 Su área ha sido seleccionada para auditoría: ${auditoria.codigo}`,
-            mensajeCustom:
-              `Estimado/a ${auditoria.responsableAreaNombre || 'Responsable'}, ` +
-              `el Área de Control Interno (OCI) ha iniciado la auditoría "${auditoria.nombre}" ` +
-              `(${auditoria.codigo}) sobre su dependencia. ` +
-              `Por favor acceda al Portal del Auditado para ver los detalles y responder los hallazgos en los plazos establecidos.`,
-            metadata: {
-              auditoriaId: auditoria.id,
-              codigoAuditoria: auditoria.codigo,
-              nombreAuditoria: auditoria.nombre,
-              responsable: auditoria.responsableAreaNombre,
-              esNotificacionAuditado: true,
-            },
-            url_accion: `/portal-auditado`,
-          });
-          console.log(`[AuditoriasService] ✅ Notificación al auditado enviada: ${auditadoUserId}`);
+        const enviada = await this.notificacionesService.notificarAuditadoPortal({
+          responsableAreaEmail: auditoria.responsableAreaEmail,
+          responsableAreaNombre: auditoria.responsableAreaNombre,
+          auditoriaId: auditoria.id,
+          auditoriaCodigo: auditoria.codigo,
+          auditoriaNombre: auditoria.nombre,
+          tipoNotificacion: 'EVT-AUD-CREATED',
+          titulo: `Su área ha sido seleccionada para auditoría: ${auditoria.codigo}`,
+          mensaje:
+            `Estimado/a ${auditoria.responsableAreaNombre || 'Responsable'}, ` +
+            `la OCI ha iniciado la auditoría "${auditoria.nombre}" (${auditoria.codigo}) sobre su dependencia. ` +
+            `Acceda al portal transaccional — Control Interno de Gestión — para ver avances y plazos.`,
+          prioridad: undefined,
+          metadata: {
+            nombreAuditoria: auditoria.nombre,
+            responsable: auditoria.responsableAreaNombre,
+          },
+        });
+        if (enviada) {
+          console.log(`[AuditoriasService] ✅ Notificación al auditado enviada (${auditoria.responsableAreaEmail})`);
         } else {
           console.warn(
             `[AuditoriasService] ⚠️ No se encontró usuario activo con email "${auditoria.responsableAreaEmail}" ` +
-            `(el responsable puede no tener cuenta en el sistema todavía).`
+            `(el responsable puede no tener cuenta en el sistema todavía).`,
           );
         }
       } catch (error) {
