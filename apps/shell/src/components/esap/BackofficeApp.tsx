@@ -74,6 +74,7 @@ function lazyRemote(loader: () => Promise<unknown>, exportNames: string[]) {
 }
 
 // ✅ LAZY LOADING - Módulos cargados bajo demanda
+const DashboardExecutivo = lazy(() => import('./DashboardExecutivo').then(m => ({ default: m.DashboardExecutivo })));
 const UsersPersonsModulePremium = lazyRemote(() => import('gestion_personas/Module'), ['UsersPersonsModulePremium']);
 const CarpetaDigitalModule = lazy(() => import('./CarpetaDigitalModule').then(m => ({ default: m.CarpetaDigitalModule })));
 const ReportsModuleV2 = lazyRemote(() => import('reportes/Module'), ['ReportsModuleV2']);
@@ -477,10 +478,9 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   const renderModule = () => {
     switch (currentModule) {
       case 'dashboard':
-        // Redirigir a Estructura Organizacional como vista principal
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <EstructuraOrganizacionalModule />
+            <DashboardExecutivo onNavigateToModule={(sid) => setCurrentModule(sid as ModuleView)} />
           </Suspense>
         );
 

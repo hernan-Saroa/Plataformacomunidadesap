@@ -23,6 +23,7 @@ import { Button } from '../ui/button';
 import { toast } from 'sonner';
 import { disciplinaryService, DisciplinaryBehavior } from '../../services/api/disciplinary.service';
 import { authService } from '../../services/api/authService';
+import { estructuraService } from '../../services/api/estructura.service';
 
 // ✅ NUEVO: Interface para Apoderado
 interface Apoderado {
@@ -70,36 +71,7 @@ const ORIGENES_NOTICIA = [
   'Remisión por competencia'
 ];
 
-const TERRITORIALES_ESAP = [
-  'Dirección Nacional',
-  'Territorial Amazonas',
-  'Territorial Antioquia',
-  'Territorial Atlántico',
-  'Territorial Bogotá',
-  'Territorial Bolívar',
-  'Territorial Boyacá',
-  'Territorial Caldas',
-  'Territorial Caquetá',
-  'Territorial Casanare',
-  'Territorial Cauca',
-  'Territorial Cesar',
-  'Territorial Chocó',
-  'Territorial Córdoba',
-  'Territorial Cundinamarca',
-  'Territorial Huila',
-  'Territorial La Guajira',
-  'Territorial Magdalena',
-  'Territorial Meta',
-  'Territorial Nariño',
-  'Territorial Norte de Santander',
-  'Territorial Putumayo',
-  'Territorial Quindío',
-  'Territorial Risaralda',
-  'Territorial Santander',
-  'Territorial Sucre',
-  'Territorial Tolima',
-  'Territorial Valle del Cauca'
-];
+
 
 const DEPENDENCIAS_ESAP = [
   'Por determinar',
@@ -111,7 +83,6 @@ const DEPENDENCIAS_ESAP = [
   'Talento Humano',
   'Sistemas de Información',
   'Comunicaciones',
-  ...TERRITORIALES_ESAP
 ];
 
 // Conductas indisciplinarias ahora se cargan desde la API
@@ -143,6 +114,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   const [currentStep, setCurrentStep] = useState(1);
   const [conductasIndisciplinarias, setConductasIndisciplinarias] = useState<DisciplinaryBehavior[]>([]);
   const [loadingConductas, setLoadingConductas] = useState(true);
+  const [territoriales, setTerritoriales] = useState<string[]>([]);
+  const [dependencias, setDependencias] = useState<string[]>(DEPENDENCIAS_ESAP);
 
   // Cargar conductas indisciplinarias desde la API
   useEffect(() => {
@@ -162,6 +135,32 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     };
 
     loadConductas();
+  }, []);
+
+  // Cargar territoriales/seccionales importando estructuraService (auth.seccionales)
+  useEffect(() => {
+    const loadTerritoriales = async () => {
+      try {
+        const [estructuraResponse, statsResponse] = await Promise.all([
+                estructuraService.obtenerEstructura(),
+                estructuraService.obtenerEstadisticas(),
+              ]);
+
+              console.log("estructuraResponse", estructuraResponse);
+              
+              const seccionales = estructuraResponse.data.seccionales;
+        
+        const list = seccionales.map((s: any) => s.nomSeccional).filter(Boolean);
+        setTerritoriales(list);
+
+        // También agregar las seccionales a las dependencias
+        const merged = Array.from(new Set([...DEPENDENCIAS_ESAP, ...list]));
+        setDependencias(merged);
+      } catch (_) {
+        setTerritoriales([]);
+      }
+    };
+    loadTerritoriales();
   }, []);
 
   // En edición, el origen llega como valor de enum (ej: 'ANONIMO'). Lo convertimos a la
@@ -1042,11 +1041,11 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     errors.territorial ? 'border-red-500' : 'border-gray-300'
                   } ${porDeterminar.territorial ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                 >
-                  <option value="">Seleccione territorial...</option>
-                  <option value="Por determinar">Por determinar</option>
-                  {TERRITORIALES_ESAP.map(territorial => (
-                    <option key={territorial} value={territorial}>{territorial}</option>
-                  ))}
+                   <option value="">Seleccione territorial...</option>
+                   <option value="Por determinar">Por determinar</option>
+                   {territoriales.map(territorial => (
+                     <option key={territorial} value={territorial}>{territorial}</option>
+                   ))}
                 </select>
                 {errors.territorial && (
                   <p className="text-xs text-red-600 mt-1 flex items-center gap-1">
@@ -1370,7 +1369,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                       className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${porDeterminar.denunciadoLugarHechos ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
                     >
                       <option value="">Seleccione lugar de los hechos...</option>
-                      {DEPENDENCIAS_ESAP.map(dep => (
+                      {dependencias.map(dep => (
                         <option key={dep} value={dep}>{dep}</option>
                       ))}
                     </select>

@@ -74,6 +74,15 @@ export class NewsController {
     // ✅ DEBUG: Ver qué llega en el DTO
     console.log('🔍 DTO recibido en backend:', JSON.stringify(createNewsDto, null, 2));
 
+    // ✅ FIX FUERTE: Forzar fechaQueja desde el FormData (multipart no siempre hidrata el DTO)
+    const rawBody = (request as any).body || {};
+    if (rawBody.fechaQueja) {
+      (createNewsDto as any).fechaQueja = rawBody.fechaQueja;
+      console.log('✅ [Controller] fechaQueja FORZADA desde rawBody:', rawBody.fechaQueja);
+    } else {
+      console.warn('⚠️ [Controller] No llegó fechaQueja en el FormData (rawBody.fechaQueja está vacío)');
+    }
+
     // Obtener el ID del usuario autenticado del JWT
     const userId = (request as any).user?.userId;
     if (!userId) {

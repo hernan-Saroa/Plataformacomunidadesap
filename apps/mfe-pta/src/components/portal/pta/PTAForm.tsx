@@ -22,7 +22,8 @@ import {
   getCatalogoTerritoriales, getCatalogoCetaps,
   getCatalogoActividadesInvestigacion, getCatalogoActividadesExtension,
   getCatalogoActividadesComplementarias, getCatalogoActividadesAcademicoAdmin,
-  getCatalogoRolesInvestigacion, getConfiguracionPTAGlobal, getCatalogoSeccionesExtension
+  getCatalogoRolesInvestigacion, getConfiguracionPTAGlobal, getCatalogoSeccionesExtension,
+  requestPTAFirmaDocenteCode, verifyPTAFirmaDocenteCode
 } from '../../../services/api/ptaApi';
 import { getPerfilPortal } from '../portalApi';
 import { toast } from 'sonner';
@@ -394,6 +395,9 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const [showFirmaDocente, setShowFirmaDocente] = useState(false);
   const [pendingDocenteAccion, setPendingDocenteAccion] = useState<'via_save' | 'avanzar_sin_cambios' | null>(null);
   const [docenteName, setDocenteName] = useState('');
+  const [requestingFirmaCode, setRequestingFirmaCode] = useState(false);
+  const [firmaVerificationId, setFirmaVerificationId] = useState('');
+  const [firmaCorreoDestino, setFirmaCorreoDestino] = useState('');
   // Legacy — conservados por compatibilidad
   const [isFirmaModalOpen, setIsFirmaModalOpen] = useState(false);
   const [savedPtaIdForSignature, setSavedPtaIdForSignature] = useState('');
@@ -1310,6 +1314,8 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
 
   const handleFirmaDocenteCompleta = async (firmaData: FirmaData) => {
     setShowFirmaDocente(false);
+    setFirmaVerificationId('');
+    setFirmaCorreoDestino('');
     if (currentPtaId) guardarFirmaDigitalPTA(currentPtaId, {
       hash: firmaData.hash,
       firmado_por: firmaData.firmante || userPersonId,
@@ -1335,6 +1341,95 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
   const ESTADOS_REVISION_DOCENTE = ['REVISION_DOCENTE_N1', 'REVISION_DOCENTE_N2', 'REVISION_DOCENTE_N3'];
   const isEnRevisionDocente = ESTADOS_REVISION_DOCENTE.includes(estado) || ESTADOS_REVISION_DOCENTE.includes(originalEstado);
   const isEditable = isAdminEdit || estado === 'Borrador' || originalEstado === 'Devuelto' || isEnRevisionDocente;
+
+  const validateEnvioDocente = useCallback(() => {
+    if (asignaturas.length === 0) {
+      toast.error('Debe incluir al menos una asignatura de docencia.');
+      return false;
+    }
+    if (!asignaturas.some(a => (a.creditos || 0) >= 3)) {
+      toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
+      return false;
+    }
+    if (totalHoras < minHoras) {
+      toast.error(`No puedes enviar. Faltan ${minHoras - totalHoras}h para el mínimo exigido.`);
+      return false;
+    }
+    if (totalHoras > horasAProgramar) {
+      toast.error(`Excedes el tope de ${horasAProgramar}h. Ajusta tus actividades.`);
+      return false;
+    }
+    if (invWarnings?.length > 0) {
+      toast.error('Existen errores en Investigación. Corrígelos antes de enviar.');
+      return false;
+    }
+    if (extWarnings?.length > 0) {
+      toast.error('Existen errores en Extensión. Corrígelos antes de enviar.');
+      return false;
+    }
+    if (compWarnings?.length > 0) {
+      toast.error('Existen errores en Actividades Complementarias. Corrígelos antes de enviar.');
+      return false;
+    }
+    if (acadWarnings?.length > 0) {
+      toast.error('Existen errores en Actividades Académico-Administrativas. Corrígelos antes de enviar.');
+      return false;
+    }
+    return true;
+  }, [acadWarnings, asignaturas, compWarnings, extWarnings, horasAProgramar, invWarnings, minHoras, totalHoras]);
+
+  const getFirmaEtapaLabel = useCallback(() => {
+    if (estado === 'REVISION_DOCENTE_N1') return 'Revisión Docente N1';
+    if (estado === 'REVISION_DOCENTE_N2') return 'Revisión Docente N2';
+    return 'Envío a Aprobación';
+  }, [estado]);
+
+  const resetFirmaDocente = useCallback(() => {
+    setShowFirmaDocente(false);
+    setPendingDocenteAccion(null);
+    setFirmaVerificationId('');
+    setFirmaCorreoDestino('');
+  }, []);
+
+  const solicitarFirmaDocente = useCallback(async (accion: 'via_save' | 'avanzar_sin_cambios') => {
+    if (requestingFirmaCode) return;
+
+    setRequestingFirmaCode(true);
+    try {
+      const etapaLabel = getFirmaEtapaLabel();
+      const res = await requestPTAFirmaDocenteCode({
+        ptaId: currentPtaId,
+        docenteId: isAdminEdit ? (docenteIdFromPta || userPersonId) : userPersonId,
+        periodo,
+        etapaLabel,
+      });
+
+      if (!res.success || !res.data?.verificationId) {
+        throw new Error((res as any).message || 'No se pudo enviar el código de validación.');
+      }
+
+      setFirmaVerificationId(res.data.verificationId);
+      setFirmaCorreoDestino(res.data.email || 'tu correo institucional');
+      setPendingDocenteAccion(accion);
+      setShowFirmaDocente(true);
+      toast.success('Código de validación enviado al correo registrado.');
+    } catch (error: any) {
+      setPendingDocenteAccion(null);
+      setFirmaVerificationId('');
+      setFirmaCorreoDestino('');
+      toast.error(error?.message || 'No se pudo enviar el código de validación.');
+    } finally {
+      setRequestingFirmaCode(false);
+    }
+  }, [currentPtaId, docenteIdFromPta, getFirmaEtapaLabel, isAdminEdit, periodo, requestingFirmaCode, userPersonId]);
+
+  const verificarCodigoFirmaDocente = useCallback(async (codigo: string) => {
+    if (!firmaVerificationId) throw new Error('No hay código activo. Solicita uno nuevo.');
+    const res = await verifyPTAFirmaDocenteCode({ verificationId: firmaVerificationId, code: codigo });
+    if (!res.success) {
+      throw new Error((res as any).message || 'Código incorrecto. Verifica e intenta nuevamente.');
+    }
+  }, [firmaVerificationId]);
 
   // Tick de 1 seg: cronómetro de próximo auto-guardado + dispara el guardado al llegar a 0
   useEffect(() => {
@@ -1461,18 +1556,18 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
               <>
                 {/* Avanzar sin modificar — requiere firma antes de pasar a la siguiente fase */}
                 <button
-                  onClick={() => { setPendingDocenteAccion('avanzar_sin_cambios'); setShowFirmaDocente(true); }}
-                  disabled={saving}
+                  onClick={() => solicitarFirmaDocente('avanzar_sin_cambios')}
+                  disabled={saving || requestingFirmaCode}
                   className="flex items-center justify-center gap-1.5 px-4 py-2 min-h-[36px] rounded-xl border border-gray-200/80 bg-white/80 backdrop-blur-sm text-gray-700 text-xs font-bold shadow-sm hover:shadow hover:bg-gray-50 active:scale-95 transition-all duration-300 disabled:opacity-50"
                 >
                   <Send className="w-3.5 h-3.5" /> Avanzar sin cambios
                 </button>
                 {/* Guardar cambios y re-enviar — requiere firma */}
                 <button
-                  onClick={() => { setPendingDocenteAccion('via_save'); setShowFirmaDocente(true); }}
-                  disabled={saving || totalHoras < minHoras}
+                  onClick={() => solicitarFirmaDocente('via_save')}
+                  disabled={saving || requestingFirmaCode || totalHoras < minHoras}
                   className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: (saving || totalHoras < minHoras) ? '#9CA3AF' : '#7C3AED' }}
+                  style={{ background: (saving || requestingFirmaCode || totalHoras < minHoras) ? '#9CA3AF' : '#7C3AED' }}
                   title={totalHoras < minHoras ? `Faltan ${minHoras - totalHoras}h por programar` : "Firma y re-envía a la misma fase para nueva aprobación"}
                 >
                   <RotateCcw className="w-3.5 h-3.5" /> Corregir y re-enviar
@@ -1490,47 +1585,17 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
                 </button>
                 <button
                   onClick={() => {
-                    if (asignaturas.length === 0) {
-                      toast.error('Debe incluir al menos una asignatura de docencia.');
-                      return;
-                    }
-                    if (!asignaturas.some(a => (a.creditos || 0) >= 3)) {
-                      toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
-                      return;
-                    }
-                    if (totalHoras < minHoras) {
-                      toast.error(`No puedes enviar. Faltan ${minHoras - totalHoras}h para el mínimo exigido.`);
-                      return;
-                    }
-                    if (totalHoras > horasAProgramar) {
-                      toast.error(`Excedes el tope de ${horasAProgramar}h. Ajusta tus actividades.`);
-                      return;
-                    }
-                    if (invWarnings?.length > 0) {
-                      toast.error('Existen errores en Investigación. Corrígelos antes de enviar.');
-                      return;
-                    }
-                    if (extWarnings?.length > 0) {
-                      toast.error('Existen errores en Extensión. Corrígelos antes de enviar.');
-                      return;
-                    }
-                    if (compWarnings?.length > 0) {
-                      toast.error('Existen errores en Actividades Complementarias. Corrígelos antes de enviar.');
-                      return;
-                    }
-                    if (acadWarnings?.length > 0) {
-                      toast.error('Existen errores en Actividades Académico-Administrativas. Corrígelos antes de enviar.');
-                      return;
-                    }
-                    setPendingDocenteAccion('via_save');
-                    setShowFirmaDocente(true);
+                    if (!validateEnvioDocente()) return;
+                    solicitarFirmaDocente('via_save');
                   }}
-                  disabled={saving || totalHoras < minHoras || totalHoras > horasAProgramar}
+                  disabled={saving || requestingFirmaCode || totalHoras < minHoras || totalHoras > horasAProgramar}
                   className="flex items-center justify-center gap-1.5 px-5 py-2 min-h-[36px] rounded-xl border-none text-white text-xs font-bold shadow-[0_4px_14px_0_rgba(0,61,165,0.39)] hover:shadow-[0_6px_20px_rgba(0,61,165,0.23)] hover:bg-[#003185] active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
-                  style={{ background: (saving || totalHoras < minHoras || totalHoras > horasAProgramar) ? '#9CA3AF' : '#003DA5' }}
+                  style={{ background: (saving || requestingFirmaCode || totalHoras < minHoras || totalHoras > horasAProgramar) ? '#9CA3AF' : '#003DA5' }}
                   title={totalHoras < minHoras ? `Faltan horas por programar` : (totalHoras > horasAProgramar ? `Sobrecarga de horas` : "")}
                 >
-                  {originalEstado === 'Devuelto'
+                  {requestingFirmaCode
+                    ? <><Clock className="w-3.5 h-3.5" /> Enviando código...</>
+                    : originalEstado === 'Devuelto'
                     ? <><RotateCcw className="w-3.5 h-3.5" /> Re-enviar</>
                     : <><Send className="w-3.5 h-3.5" /> Enviar a Aprobación</>}
                 </button>
@@ -1540,7 +1605,7 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
         )}
       </div>
 
-      {/* Firma digital del docente — requerida antes de cada envío */}
+      {/* Firma digital del docente — requerida antes de cada envío y enviar código de aprobación por email */}
       {showFirmaDocente && (
         <FirmaDigitalPTA
           ptaId={currentPtaId || ''}
@@ -1549,13 +1614,15 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           totalHoras={totalHoras}
           firmanteNombre={docenteName}
           firmanteCargo="Docente"
+          correoDestino={firmaCorreoDestino}
+          onVerifyCodigo={verificarCodigoFirmaDocente}
           etapaLabel={
             estado === 'REVISION_DOCENTE_N1' ? 'Revisión Docente N1' :
               estado === 'REVISION_DOCENTE_N2' ? 'Revisión Docente N2' :
                 'Envío a Aprobación'
           }
           onFirmaCompleta={handleFirmaDocenteCompleta}
-          onCancelar={() => { setShowFirmaDocente(false); setPendingDocenteAccion(null); }}
+          onCancelar={resetFirmaDocente}
         />
       )}
 
@@ -1581,16 +1648,16 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
           {/* Botones de acción prominentes dentro del banner */}
           <div className="flex flex-col sm:flex-row gap-2 mt-1">
             <button
-              onClick={() => { setPendingDocenteAccion('avanzar_sin_cambios'); setShowFirmaDocente(true); }}
-              disabled={saving}
+              onClick={() => solicitarFirmaDocente('avanzar_sin_cambios')}
+              disabled={saving || requestingFirmaCode}
               className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border-none text-white text-sm font-bold disabled:opacity-50 cursor-pointer"
               style={{ background: '#7C3AED' }}
             >
               <CheckCircle2 className="w-4 h-4" /> Confirmar y avanzar a la siguiente fase
             </button>
             <button
-              onClick={() => { setPendingDocenteAccion('via_save'); setShowFirmaDocente(true); }}
-              disabled={saving}
+              onClick={() => solicitarFirmaDocente('via_save')}
+              disabled={saving || requestingFirmaCode}
               className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-violet-300 bg-white text-violet-700 text-sm font-bold disabled:opacity-50 cursor-pointer hover:bg-violet-50"
             >
               <RotateCcw className="w-4 h-4" /> Corregir y re-enviar al revisor

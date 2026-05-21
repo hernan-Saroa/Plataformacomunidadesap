@@ -1207,8 +1207,8 @@ export class PlanAnual5RolesService {
            FROM auth."user" u
            LEFT JOIN auth.personas p ON p.id_person = u.id_person
            WHERE (
-             LOWER(TRIM(u.email)) = $1
-             OR LOWER(TRIM(p.dir_email)) = $1
+             LOWER(TRIM(u.username)) = $1
+             OR LOWER(TRIM(COALESCE(p.dir_email, ''))) = $1
            )
            AND u.is_active = true
            LIMIT 1`,
