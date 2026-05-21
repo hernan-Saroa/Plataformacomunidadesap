@@ -708,9 +708,12 @@ export function GestionTerminosAlertas() {
             >
               <RefreshCw className="w-4 h-4" />
               <span className="hidden sm:inline">Recalcular</span>
+              
             </button>
             )}
-            {vistaActual === 'terminos' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_FESTIVO_CREATE) && (
+
+            
+            {vistaActual === 'terminos' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_TERMINO_CREATE) && (
               <button
                 onClick={() => setShowModalNuevoTermino(true)}
                 className="px-3 py-2 rounded-lg text-white font-bold hover:shadow-lg transition-all text-xs sm:text-sm flex items-center gap-2"
