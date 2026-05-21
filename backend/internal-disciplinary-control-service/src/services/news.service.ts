@@ -151,6 +151,7 @@ export class NewsService {
   async findAll(): Promise<any[]> {
     const news = await this.newsRepository.find({
       where: { estado: Not(NewsStatus.ASOCIADA) },
+      order: { fechaRecepcion: 'DESC' },   // Ordenar por la fecha de radicación/queja elegida por el usuario (no por orden de creación en BD)
     });
 
     // Get unique radicadorIds

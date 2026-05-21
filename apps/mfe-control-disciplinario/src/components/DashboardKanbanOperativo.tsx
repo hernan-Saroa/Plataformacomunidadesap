@@ -2029,9 +2029,13 @@ function ColumnaKanban({
     return item.tipo === 'proceso' && item.etapaActual === etapa;
   });
 
-  // Ordenar noticias: más reciente primero (fechaRecepcion desc)
+  // Ordenar noticias por la fecha que eligió el usuario al crear (fechaRecepcion/fechaQueja), no por orden de inserción en BD
   const noticias = (itemsFiltrados.filter(i => i.tipo === 'noticia') as Noticia[])
-    .sort((a, b) => new Date(b.fechaRecepcion).getTime() - new Date(a.fechaRecepcion).getTime());
+    .sort((a, b) => {
+      const da = new Date(a.fechaRecepcion || (a as any).fechaQueja || (a as any).createdAt || 0).getTime();
+      const db = new Date(b.fechaRecepcion || (b as any).fechaQueja || (b as any).createdAt || 0).getTime();
+      return db - da;
+    });
 
   // Ordenar procesos: más reciente primero (fechaInicio/fechaCreacion desc)
   const procesos = (itemsFiltrados.filter(i => i.tipo === 'proceso') as Proceso[])
