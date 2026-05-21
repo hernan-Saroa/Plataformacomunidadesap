@@ -89,7 +89,7 @@ export interface ProcesoParaSelect {
 interface FormularioProcesoDafpProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (proceso: FormularioDafpData, procesoId?: string) => void;
+  onSubmit: (proceso: FormularioDafpData, procesoId?: string) => void | Promise<void>;
   procesoInicial?: FormularioDafpData | null;
   mode: 'create' | 'edit';
   procesosCatalog?: ProcesoParaSelect[];
@@ -216,9 +216,23 @@ function buildInitialData(
     }
   }
 
-  // Regla solicitada: solo localStorage; si no existe, usar año actual.
-  const vigencia = vigenciaStorage ?? currentYear;
-  const fechaCorte = fechaCorteStorage || `${vigencia}-12-31`;
+  let vigencia: number;
+  let fechaCorte: string;
+
+  if (procesoInicial?.vigencia) {
+    // Modo EDIT: conservar la vigencia del registro guardado
+    vigencia = procesoInicial.vigencia;
+    fechaCorte = procesoInicial.fechaCorte || `${vigencia}-12-31`;
+  } else if (vigenciaPlan) {
+    // Modo CREATE: usar vigencia que pasa el componente padre
+    vigencia = vigenciaPlan;
+    fechaCorte = fechaCortePlan || `${vigenciaPlan}-12-31`;
+  } else {
+    // Fallback: localStorage o año actual
+    vigencia = vigenciaStorage ?? currentYear;
+    fechaCorte = fechaCorteStorage || `${vigencia}-12-31`;
+  }
+  
   const modoProcesoEspecial = inferirModoEspecial(procesoInicial);
 
   return {
@@ -563,7 +577,7 @@ export function FormularioProcesoDafpVisual({
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!procesoIdSeleccionado) {
@@ -620,9 +634,8 @@ export function FormularioProcesoDafpVisual({
       selectorProcesoCodificado: valorProcesoSeleccionado,
     };
 
-    onSubmit(payload, procesoIdSeleccionado);
-
-    toast.success(mode === 'create' ? 'Proceso agregado al universo auditable.' : 'Evaluación DAFP actualizada.');
+    // ✅ FIX: await onSubmit para que el guardado se complete antes del toast
+    await Promise.resolve(onSubmit(payload, procesoIdSeleccionado));
   };
 
   if (!open) return null;
@@ -824,7 +837,15 @@ export function FormularioProcesoDafpVisual({
                       <input
                         type="number"
                         value={formData.vigencia}
-                        onChange={(e) => handleChange('vigencia', Number(e.target.value) || new Date().getFullYear())}
+                        onChange={(e) => {
+                          const nuevaVigencia = Number(e.target.value) || new Date().getFullYear();
+                          // ✅ FIX: al cambiar vigencia, actualizar fecha de corte al 31/12 de esa vigencia
+                          setFormData((prev) => ({
+                            ...prev,
+                            vigencia: nuevaVigencia,
+                            fechaCorte: `${nuevaVigencia}-12-31`,
+                          }));
+                        }}
                         className="w-full rounded-lg border-2 border-gray-300 px-3 py-2.5 text-center text-sm font-bold outline-none transition-all focus:border-[#2962FF]"
                         required
                       />
