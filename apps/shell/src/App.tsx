@@ -1118,7 +1118,7 @@ export default function App() {
           </div>
         )}
 
-        <Toaster position="top-right" richColors expand={true} />
+      <Toaster position="top-right" richColors expand={true} closeButton />
 
         {/* INDICADOR GLOBAL DE MODO OFFLINE */}
         {!isOnline && (
