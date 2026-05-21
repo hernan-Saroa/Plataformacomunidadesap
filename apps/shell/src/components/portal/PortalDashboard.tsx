@@ -70,7 +70,6 @@ export function PortalDashboard({
     [userData?.roles, userRoles],
   );
   const initialRoleCode = normalizePortalRoleCode(userData?.rol_principal || portalRoleCodes[0] || 'ESTUDIANTE');
-  console.log('🚀 Initial role code:', initialRoleCode, userData);
   const [activeRoleCode, setActiveRoleCode] = useState<string>(initialRoleCode);
   const activeRole = displayPortalRoleFromCode(activeRoleCode);
   const [navbarNavigateTo, setNavbarNavigateTo] = useState<string | null>(null);
