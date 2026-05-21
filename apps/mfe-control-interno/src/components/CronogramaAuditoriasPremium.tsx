@@ -743,7 +743,7 @@ export function CronogramaAuditoriasPremium({
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4 flex-wrap">
             <span className="text-xs font-bold text-gray-600">Estados:</span>
-            {(['planeacion', 'ejecucion', 'comunicacion', 'seguimiento', 'finalizada'] as ColumnaKanban[]).map((col) => {
+            {(['planeacion', 'ejecucion', 'comunicacion'] as ColumnaKanban[]).map((col) => {
               const colores = COLORES_POR_COLUMNA_KANBAN[col];
               return (
                 <div key={col} className="flex items-center gap-2">
