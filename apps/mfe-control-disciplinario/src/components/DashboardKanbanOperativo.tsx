@@ -582,7 +582,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
               <span className="font-semibold">{noticia.diasPendientes} días</span>
             </div>
             <span className="text-gray-400 text-[11px]">
-              {new Date(noticia.fechaRecepcion).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' })}
+              {new Date(noticia.fechaRecepcion).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', timeZone: 'America/Bogota' })}
             </span>
           </div>
 

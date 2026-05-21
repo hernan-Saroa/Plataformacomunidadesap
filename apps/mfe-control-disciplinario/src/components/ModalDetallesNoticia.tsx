@@ -512,7 +512,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
               Cerrar
             </button>
             <span className="text-[10px] text-gray-400">
-              Radicado {n.fechaRegistro ? new Date(n.fechaRegistro).toLocaleDateString('es-CO') : new Date(n.fechaRecepcion).toLocaleDateString('es-CO')}
+              Radicado {n.fechaRegistro ? new Date(n.fechaRegistro).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : new Date(n.fechaRecepcion).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}
               {n.radicador && ` por ${n.radicador}`}
             </span>
           </div>
@@ -703,7 +703,7 @@ function TabGeneral({
           {[
             { label: 'NÚMERO', value: n.numero },
             { label: 'ORIGEN', value: n.origen || '—' },
-            { label: 'FECHA RECEPCIÓN', value: n.fechaRecepcion ? new Date(n.fechaRecepcion).toLocaleDateString('es-CO') : '—' },
+            { label: 'FECHA RECEPCIÓN', value: n.fechaRecepcion ? new Date(n.fechaRecepcion).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '—' },
             { label: 'PRIORIDAD', value: n.prioridad?.toUpperCase() || '—' },
           ].map(({ label, value }) => (
             <div key={label} className="px-4 py-3">

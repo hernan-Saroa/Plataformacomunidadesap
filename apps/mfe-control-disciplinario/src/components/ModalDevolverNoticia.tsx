@@ -109,7 +109,7 @@ export function ModalDevolverNoticia({ noticia, onClose, onConfirm }: Props) {
         etiqueta="NOTICIA A DEVOLVER"
         titulo={noticia.numero}
         subtitulo={`${noticia.denunciado.nombre} ${noticia.denunciado.identificacion ? '(' + noticia.denunciado.identificacion + ')' : ''}`}
-        descripcion={`Origen: ${noticia.origen} · Fecha: ${new Date(noticia.fechaRecepcion).toLocaleDateString('es-CO')}`}
+        descripcion={`Origen: ${noticia.origen} · Fecha: ${new Date(noticia.fechaRecepcion).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}`}
       />
 
       {/* Info box */}

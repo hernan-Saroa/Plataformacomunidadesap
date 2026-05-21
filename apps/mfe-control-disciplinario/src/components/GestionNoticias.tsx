@@ -1113,7 +1113,7 @@ export function GestionNoticias() {
       doc.setFontSize(10);
       doc.setTextColor(0, 0, 0);
       doc.text(`Radicado: ${noticiaToExport.radicado || 'N/A'}`, 14, 30);
-      doc.text(`Fecha Recepción: ${noticiaToExport.fechaRecepcion ? new Date(noticiaToExport.fechaRecepcion).toLocaleDateString() : 'N/A'}`, 14, 35);
+      doc.text(`Fecha Recepción: ${noticiaToExport.fechaRecepcion ? new Date(noticiaToExport.fechaRecepcion).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : 'N/A'}`, 14, 35);
       doc.text(`Origen: ${noticiaToExport.origen}`, 14, 40);
       doc.text(`Estado: ${noticiaToExport.estado}`, 14, 45);
 
@@ -1245,6 +1245,7 @@ export function GestionNoticias() {
         denunciante: denunciantesArray,
         disciplinable: disciplinablesArray,
         fechaHechos: data.fechaHechos || undefined,
+        fechaQueja: data.fechaQueja,           // <-- ahora se envía la fecha elegida por el usuario
         radicadorId: authService.getCurrentUser()?.id,
       };
 

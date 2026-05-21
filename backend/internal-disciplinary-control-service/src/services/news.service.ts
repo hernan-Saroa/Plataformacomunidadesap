@@ -95,6 +95,16 @@ export class NewsService {
         );
       }
 
+      // ✅ FIX FECHA DE RADICACIÓN: Construir fecha segura (sin shift de timezone)
+      let fechaRecepcionValue: Date;
+      if (createNewsDto.fechaQueja) {
+        const [y, m, d] = createNewsDto.fechaQueja.split('-').map(Number);
+        // 12:00 local para que toLocaleDateString muestre exactamente el día elegido por el usuario
+        fechaRecepcionValue = new Date(y, m - 1, d, 12, 0, 0);
+      } else {
+        fechaRecepcionValue = new Date();
+      }
+
       // Crear y guardar noticia
       const noticia = this.newsRepository.create({
         radicado,
@@ -102,6 +112,7 @@ export class NewsService {
         radicadorId: createNewsDto.radicadorId || userId,
         adjuntos,
         fechaCaducidad,
+        fechaRecepcion: fechaRecepcionValue,   // ← ahora controlamos explícitamente la fecha de radicado
         estado: 'RADICADA',
         kanbanStage: initialStage.id,
         etapaActual: initialStage.etapa,

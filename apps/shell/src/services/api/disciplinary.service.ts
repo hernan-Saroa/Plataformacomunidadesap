@@ -544,6 +544,9 @@ class DisciplinaryService {
         if (data.fechaHechos) {
             formData.append('fechaHechos', data.fechaHechos);
         }
+        if (data.fechaQueja) {
+            formData.append('fechaQueja', data.fechaQueja);
+        }
         if (data.adjuntos && data.adjuntos.length > 0) {
             formData.append('adjuntos', JSON.stringify(data.adjuntos));
         }
