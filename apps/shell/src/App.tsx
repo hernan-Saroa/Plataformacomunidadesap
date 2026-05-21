@@ -255,7 +255,7 @@ function resolveDestino(user: any): {
 
   // Nombres de rol para mostrar en el portal/backoffice
   const roleNames = roleObjects
-    .map((r: any) => (typeof r === 'object' ? r?.name : null))
+    .map((r: any) => (typeof r === 'object' ? r?.code : null))
     .filter(Boolean) as string[];
 
   // Módulo principal para backoffice
@@ -1118,7 +1118,7 @@ export default function App() {
           </div>
         )}
 
-        <Toaster position="top-right" richColors expand={true} />
+      <Toaster position="top-right" richColors expand={true} closeButton />
 
         {/* INDICADOR GLOBAL DE MODO OFFLINE */}
         {!isOnline && (

@@ -3,7 +3,7 @@ import { apiClient } from '../../../../shell/src/services/api';
 type ApiResult<T> = { success: boolean; data: T };
 
 const SERVICE_BASE = '/pta/api/v1';
-const PTA_BASE = `${SERVICE_BASE}/pta`;
+const PTA_BASE = SERVICE_BASE;
 
 function normalizeResult<T>(raw: any, fallback: T): ApiResult<T> {
   if (raw !== undefined && raw !== null) {
@@ -357,6 +357,44 @@ export async function guardarFirmaDigitalPTA(
   } catch (error) {
     console.error('[mfe-pta][guardarFirmaDigitalPTA] Error:', error);
     return { success: false };
+  }
+}
+
+export async function requestPTAFirmaDocenteCode(data: {
+  ptaId?: string;
+  docenteId: string;
+  periodo?: string;
+  etapaLabel?: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/firma-docente/request-code`, data);
+    const normalized = normalizeResult<any>(raw, null);
+    return {
+      ...asObject(raw),
+      success: normalized.success,
+      data: normalized.data,
+    };
+  } catch (error) {
+    console.error('[mfe-pta][requestPTAFirmaDocenteCode] Error:', error);
+    return { success: false, data: null };
+  }
+}
+
+export async function verifyPTAFirmaDocenteCode(data: {
+  verificationId: string;
+  code: string;
+}) {
+  try {
+    const raw = await apiClient.post<any>(`${PTA_BASE}/firma-docente/verify-code`, data);
+    const normalized = normalizeResult<any>(raw, null);
+    return {
+      ...asObject(raw),
+      success: normalized.success,
+      data: normalized.data,
+    };
+  } catch (error) {
+    console.error('[mfe-pta][verifyPTAFirmaDocenteCode] Error:', error);
+    return { success: false, data: null };
   }
 }
 

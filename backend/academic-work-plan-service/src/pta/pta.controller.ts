@@ -45,10 +45,13 @@ const buildDiskStorage = (folder: string, prefix: string) =>
  * mientras se implementa la lógica real (DB/Prisma, reglas, workflows, etc).
  *
  * Base URL via Gateway:
- * - Gateway: /pta/api/v1/pta/...  -> service: http://localhost:3003/pta/...
+ * - Gateway: /pta/api/v1/...  -> service: http://localhost:3003/...
+ *
+ * En desarrollo local directo el cliente llama al microservicio sin prefijo:
+ * - Direct: http://localhost:3003/todos
  */
 @Public()
-@Controller('api/v1')
+@Controller()
 export class PtaController {
   constructor(private readonly ptaService: PtaService) {}
 
@@ -276,6 +279,26 @@ export class PtaController {
   // ─────────────────────────────
   // Firma electrónica OTP (legacy)
   // ─────────────────────────────
+  @Post('firma-docente/request-code')
+  async requestFirmaDocenteCode(@Body() body: any) {
+    const data = await this.ptaService.requestFirmaDocenteOtp({
+      ptaId: body?.ptaId,
+      docenteId: body?.docenteId,
+      periodo: body?.periodo,
+      etapaLabel: body?.etapaLabel,
+    });
+    return { success: true, message: 'Código enviado al correo registrado.', data };
+  }
+
+  @Post('firma-docente/verify-code')
+  verifyFirmaDocenteCode(@Body() body: any) {
+    const data = this.ptaService.verifyFirmaDocenteOtp({
+      verificationId: body?.verificationId,
+      code: body?.code,
+    });
+    return { success: true, ...data };
+  }
+
   @Post(':id/generate-otp')
   generateOtp(@Param('id') id: string) {
     const data = this.ptaService.generateOtp(id);

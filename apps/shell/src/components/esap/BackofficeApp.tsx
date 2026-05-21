@@ -74,6 +74,7 @@ function lazyRemote(loader: () => Promise<unknown>, exportNames: string[]) {
 }
 
 // ✅ LAZY LOADING - Módulos cargados bajo demanda
+const DashboardExecutivo = lazy(() => import('./DashboardExecutivo').then(m => ({ default: m.DashboardExecutivo })));
 const UsersPersonsModulePremium = lazyRemote(() => import('gestion_personas/Module'), ['UsersPersonsModulePremium']);
 const CarpetaDigitalModule = lazy(() => import('./CarpetaDigitalModule').then(m => ({ default: m.CarpetaDigitalModule })));
 const ReportsModuleV2 = lazyRemote(() => import('reportes/Module'), ['ReportsModuleV2']);
@@ -477,10 +478,9 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   const renderModule = () => {
     switch (currentModule) {
       case 'dashboard':
-        // Redirigir a Estructura Organizacional como vista principal
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <EstructuraOrganizacionalModule />
+            <DashboardExecutivo onNavigateToModule={(sid) => setCurrentModule(sid as ModuleView)} />
           </Suspense>
         );
 
@@ -636,28 +636,23 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
       case 'pta':
         return (
-          <div className="grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-6">
-            <aside className="hidden lg:block">
-              <div id="portal-left-sidebar-slot" className="space-y-5" />
-            </aside>
-            <div className="min-w-0">
-              <Suspense fallback={<ModuleLoader />}>
-                <PTAModule
-                  userPersonId={currentUser.personId}
-                  userName={currentUser.name}
-                  userEmail={currentUser.email}
-                  userRoles={userRoles || []}
-                  embedded
-                />
-              </Suspense>
-            </div>
-          </div>
+          <Suspense fallback={<ModuleLoader />}>
+            <PTAModule
+              key="pta-gestion"
+              userPersonId={currentUser.personId}
+              userName={currentUser.name}
+              userEmail={currentUser.email}
+              userRoles={userRoles || []}
+              embedded
+            />
+          </Suspense>
         );
 
       case 'banco-docentes-pta':
         return (
           <Suspense fallback={<ModuleLoader />}>
             <PTAModule
+              key="pta-banco-docentes"
               userPersonId={currentUser.personId}
               userName={currentUser.name}
               userEmail={currentUser.email}
@@ -726,53 +721,48 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
   return (
     <NotificationsProvider>
       <TourProvider>
-        {/* ✅ GRID LAYOUT - Mobile First */}
-        <div className="min-h-screen bg-gray-50 grid grid-cols-1 md:grid-cols-[auto_1fr]">
+        {/* ✅ APP LAYOUT - Mobile First */}
+        <div className="backoffice-shell-layout min-h-screen bg-gray-50">
           {/* Sidebar - Ocultar para usuario de procesos (auditado) */}
           {userData?.module !== 'procesos' && (
-            <>
-              {/* Spacer for Fixed Sidebar to prevent content overlap */}
-              <div
-                className={`hidden md:block shrink-0 transition-[width] duration-300 ${sidebarCollapsed
-                    ? 'w-[80px]'
-                    : 'w-[280px] md:w-[260px] lg:w-[220px] xl:w-[240px] 2xl:w-[260px]'
-                  }`}
-              />
-              <SidebarPremium
-                isOpen={sidebarOpen}
-                onClose={() => setSidebarOpen(false)}
-                isCollapsed={sidebarCollapsed}
-                onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-                currentModule={currentModule}
-                currentSidebarModule={currentSidebarModule}
-                onModuleChange={(sidebarModule) => {
-                  const mappedModule = mapSidebarToModule(sidebarModule);
-                  setCurrentSidebarModule(sidebarModule);
-                  setCurrentModule(mappedModule);
-                  setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
-                }}
-                userEmail={currentUser.email}
-                certificatesPendingCount={certificatesPendingCount}
-                assignedModules={computedAssignedModules}
-                restrictedMode={
-                  userData?.module === 'control-interno'
-                    ? 'control-interno'
-                    : userData?.module === 'control-disciplinario'
-                    ? 'control-disciplinario'
-                    : userData?.module === 'registro-academico'
-                    ? 'registro-academico'
-                    : userData?.module === 'certificados-laborales' 
-                    ? 'certificados-laborales' 
-                    : userData?.module === 'gestion-legal'
-                    ? 'gestion-legal'
-                    : undefined
-                }
-              />
-            </>
+            <SidebarPremium
+              isOpen={sidebarOpen}
+              onClose={() => setSidebarOpen(false)}
+              isCollapsed={sidebarCollapsed}
+              onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+              currentModule={currentModule}
+              currentSidebarModule={currentSidebarModule}
+              onModuleChange={(sidebarModule) => {
+                const mappedModule = mapSidebarToModule(sidebarModule);
+                setCurrentSidebarModule(sidebarModule);
+                setCurrentModule(mappedModule);
+                setSidebarOpen(false); // Cerrar sidebar en mobile después de seleccionar módulo
+              }}
+              userEmail={currentUser.email}
+              certificatesPendingCount={certificatesPendingCount}
+              assignedModules={computedAssignedModules}
+              restrictedMode={
+                userData?.module === 'control-interno'
+                  ? 'control-interno'
+                  : userData?.module === 'control-disciplinario'
+                  ? 'control-disciplinario'
+                  : userData?.module === 'registro-academico'
+                  ? 'registro-academico'
+                  : userData?.module === 'certificados-laborales' 
+                  ? 'certificados-laborales' 
+                  : userData?.module === 'gestion-legal'
+                  ? 'gestion-legal'
+                  : undefined
+              }
+            />
           )}
 
           {/* ✅ MAIN CONTENT - Flexbox Column */}
-          <div className="flex flex-col h-screen bg-gray-50 overflow-hidden" style={{marginLeft: sidebarCollapsed ? '70px' : '0'}}>
+          <div
+            className={`backoffice-main-shell flex flex-col h-screen bg-gray-50 overflow-hidden ${
+              sidebarCollapsed ? 'backoffice-main-shell--collapsed' : ''
+            } ${userData?.module === 'procesos' ? 'backoffice-main-shell--no-sidebar' : ''}`}
+          >
             {/* Top Bar - Ocultar para usuario de procesos (auditado) */}
             {userData?.module !== 'procesos' && (
               <TopBar

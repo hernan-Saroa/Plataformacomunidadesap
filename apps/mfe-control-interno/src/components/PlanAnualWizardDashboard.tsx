@@ -10,7 +10,7 @@ import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
   TrendingUp, FileCheck, AlertCircle, AlertTriangle, BookOpen, Download, FileText,
   Paperclip, Upload, Trash2, X, Eye, Plus, CalendarClock, Loader2, FileSpreadsheet, RefreshCw, Settings,
-  ChevronDown, ChevronUp, Calendar, Clock, Search, Edit3, GripVertical, Lock, Save
+  ChevronDown, ChevronUp, Calendar, Clock, Search, Edit3, GripVertical, Lock, Save, Bell
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ModalGestionAdjuntos } from './ModalGestionAdjuntosActividades';
@@ -976,10 +976,11 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
         const profesionales: Auditor[] = response.data
           .filter((config: any) => config.activo)
           .map((config: any) => ({
-            id: config.id, // UUID de configuracion_profesionales_OCI
+            id: config.idTercero || config.id, // id_person de auth.personas (matchea con currentUser.person.id)
             nombre: config.nombre || `Profesional ${config.idTercero}`,
             cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor',
-            email: config.email || ''
+            email: config.email || '',
+            configId: config.id, // UUID interno de configuracion_profesionales_ocig (para operaciones CRUD)
           }));
         
         setAuditores(profesionales);
@@ -1020,7 +1021,13 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
         const jefeDraft = profesionales.find(p => p.id === draft.jefeSeleccionado.id) || draft.jefeSeleccionado;
         setJefeSeleccionado(jefeDraft);
       } else if (planAEditar && planAEditar.jefeOCI) {
-        const jefeEncontrado = profesionales.find(p => p.id === planAEditar.jefeOCI.id) || planAEditar.jefeOCI;
+        const jefeId = String(planAEditar.jefeOCI.id || '');
+        const jefeEncontrado =
+          profesionales.find(
+            (p) =>
+              String(p.id) === jefeId ||
+              String((p as any).idTercero || '') === jefeId,
+          ) || planAEditar.jefeOCI;
         setJefeSeleccionado(jefeEncontrado);
       }
     });
@@ -1261,6 +1268,60 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     if (!hayMultiples) return;
     setRolesConfig((prev) => normalizarResponsables(prev));
   }, [rolesConfig]);
+
+  // Efecto global: Sincronizar automáticamente en el fondo (útil si se carga desde borrador o API)
+  useEffect(() => {
+    if (!jefeSeleccionado) return;
+    setRolesConfig((prev) =>
+      prev.map((rol) => {
+        const validResponsables = (rol.responsables || []).filter(Boolean);
+        if (validResponsables.length > 0) return rol;
+        
+        return {
+          ...rol,
+          responsables: [jefeSeleccionado],
+          actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map((act) => {
+            const actValidResp = (act.responsables || []).filter(Boolean);
+            return actValidResp.length === 0 ? { ...act, responsables: [jefeSeleccionado] } : act;
+          }),
+          actividadesCustom: (rol.actividadesCustom || []).map((act) => {
+            const actValidResp = (act.responsables || []).filter(Boolean);
+            return actValidResp.length === 0 ? { ...act, responsables: [jefeSeleccionado] } : act;
+          }),
+        };
+      })
+    );
+  }, [jefeSeleccionado]);
+
+  // Auto-asignar el Responsable del Plan como Responsable del Rol por defecto (cuando lo cambia el usuario manualmente)
+  const handleJefeChange = (nuevoJefe: Auditor | null) => {
+    setJefeSeleccionado(nuevoJefe);
+    wizardTouchedByUserRef.current = true;
+    
+    if (nuevoJefe) {
+      setRolesConfig((prev) =>
+        prev.map((rol) => {
+          // Solo aplicar si el rol no tiene un responsable válido aún
+          const validResponsables = (rol.responsables || []).filter(Boolean);
+          if (validResponsables.length > 0) return rol;
+          
+          return {
+            ...rol,
+            responsables: [nuevoJefe],
+            // También pre-asignar en actividades que no tengan responsable
+            actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map((act) => {
+              const actValidResp = (act.responsables || []).filter(Boolean);
+              return actValidResp.length === 0 ? { ...act, responsables: [nuevoJefe] } : act;
+            }),
+            actividadesCustom: (rol.actividadesCustom || []).map((act) => {
+              const actValidResp = (act.responsables || []).filter(Boolean);
+              return actValidResp.length === 0 ? { ...act, responsables: [nuevoJefe] } : act;
+            }),
+          };
+        })
+      );
+    }
+  };
 
   const handleRolesChange = (config: RolConfig[]) => {
     wizardTouchedByUserRef.current = true;
@@ -1583,6 +1644,30 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     if (!soloLectura) {
       if (paso === 1 && !validarPaso1()) return;
       if (paso === 2 && !validarPaso2()) return;
+      
+      // Auto-asignar el Responsable del Plan a los roles y actividades vacías 
+      // justo antes de entrar al Paso 2, garantizando que no haya problemas de estado.
+      if (paso === 1 && jefeSeleccionado) {
+        setRolesConfig((prev) =>
+          prev.map((rol) => {
+            const validResponsables = (rol.responsables || []).filter(Boolean);
+            if (validResponsables.length > 0) return rol;
+            
+            return {
+              ...rol,
+              responsables: [jefeSeleccionado],
+              actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map((act) => {
+                const actValidResp = (act.responsables || []).filter(Boolean);
+                return actValidResp.length === 0 ? { ...act, responsables: [jefeSeleccionado] } : act;
+              }),
+              actividadesCustom: (rol.actividadesCustom || []).map((act) => {
+                const actValidResp = (act.responsables || []).filter(Boolean);
+                return actValidResp.length === 0 ? { ...act, responsables: [jefeSeleccionado] } : act;
+              }),
+            };
+          })
+        );
+      }
     }
     setPaso(paso + 1);
   };
@@ -1909,7 +1994,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
                 vigencia={vigencia} 
                 onVigenciaChange={handleVigenciaChange} 
                 jefeOCI={jefeSeleccionado} 
-                onJefeChange={setJefeSeleccionado}
+                onJefeChange={handleJefeChange}
                 fechaInicio={fechaInicio}
                 onFechaInicioChange={setFechaInicio}
                 fechaFin={fechaFin}
@@ -4488,8 +4573,13 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const puedeGestionarEvidencias = puedeEditarPlan || puedeSeguimiento;
   // Tab Gestión: quienes pueden ver el plan O hacer seguimiento
   const puedeVerGestion = puedeVerPlan || puedeSeguimiento || puedeEditarPlan || puedeAsignarActividades || esSuperUsuario;
-  // Tab Aprobación: solo aprobadores
-  const puedeVerAprobacion = puedeAprobarPlan || puedeActivarPlan || esSuperUsuario;
+
+  // Tab Aprobación: aprobadores, activadores y editores (notificar al responsable / enviar al comité)
+  const puedeVerAprobacion =
+    puedeAprobarPlan ||
+    puedeActivarPlan ||
+    esSuperUsuario ||
+    puedeEditarPlan;
 
   useEffect(() => {
     if (!seccionForzada) return;
@@ -4511,12 +4601,15 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           // Mapear profesionales OCI a formato Auditor
           const auditoresMapeados: Auditor[] = response.data
             .filter((p) => p.activo && p.nombre)
-            .map((p) => ({
-              id: p.id, // UUID de configuracion_profesionales_OCI
-              nombre: p.nombre || '',
-              cargo: p.rolOcig || p.rolOCI || p.cargo || 'Profesional OCI',
-              email: p.email || ''
-            }));
+            .map((p) => {
+              const idPersona = String(p.idTercero || p.id_tercero || p.id || '');
+              return {
+                id: idPersona,
+                nombre: p.nombre || '',
+                cargo: p.rolOcig || p.rolOCI || p.cargo || 'Profesional OCI',
+                email: p.email || '',
+              };
+            });
           console.log('[useAuditores] Profesionales mapeados:', auditoresMapeados.map(a => `${a.nombre} (${a.cargo})`));
           setAuditores(auditoresMapeados);
         }
@@ -8791,18 +8884,55 @@ const ESTADO_PLAN_A_BACKEND: Record<EstadoPlan, string> = {
 
 function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan = false, puedeActivarPlan = false, puedeEditarPlan = false, auditores = [] }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; puedeAprobarPlan?: boolean; puedeActivarPlan?: boolean; puedeEditarPlan?: boolean; auditores?: Auditor[] }) {
   const [guardando, setGuardando] = useState(false);
+  const [notificandoResponsable, setNotificandoResponsable] = useState(false);
   const currentUser = (window as any).__esap_auth_cache || null;
 
   const emailSesion = (currentUser?.email || currentUser?.person?.email || currentUser?.usuario?.email || '').trim().toLowerCase();
   const emailResponsablePlan = (plan.jefeOCI?.email || '').trim().toLowerCase();
-  const idsSesion = [currentUser?.idPerson, currentUser?.id, currentUser?.userId, currentUser?.sub]
+  const idsSesion = [currentUser?.idPerson, currentUser?.id, currentUser?.userId, currentUser?.sub, currentUser?.documento, currentUser?.person?.id, currentUser?.usuario?.id]
     .filter((v: unknown) => v != null && String(v).length > 0)
     .map((v: unknown) => String(v));
-  const idResponsablePlan = plan.jefeOCI?.id != null && plan.jefeOCI.id !== '' ? String(plan.jefeOCI.id) : '';
-  const esResponsableDelPlan = !!currentUser && (
-    (idResponsablePlan && idsSesion.some((x) => x === idResponsablePlan))
-    || (emailSesion && emailResponsablePlan && emailSesion === emailResponsablePlan)
+  const idResponsablePlan = plan.jefeOCI?.id != null && plan.jefeOCI.id !== '' && plan.jefeOCI.id !== '1' ? String(plan.jefeOCI.id) : '';
+
+  // Normalizar nombres para comparación (quitar tildes, espacios extra, minúsculas)
+  const normalizarNombre = (n: string) => (n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const nombreSesion = normalizarNombre(
+    currentUser?.nombre || currentUser?.nombre_completo || currentUser?.fullName || currentUser?.full_name
+    || currentUser?.person?.full_name || currentUser?.person?.fullName || currentUser?.person?.nombre
+    || ((currentUser?.person?.first_name || currentUser?.firstName || '') + ' ' + (currentUser?.person?.last_name || currentUser?.lastName || '')).trim()
+    || currentUser?.usuario?.nombre || ''
   );
+  const nombreResponsablePlan = normalizarNombre(plan.jefeOCI?.nombre || '');
+
+
+  const esResponsableDelPlan = !!currentUser && (
+    // 1. Match por ID (responsable_id del plan vs IDs del usuario en sesión)
+    (idResponsablePlan && idsSesion.some((x) => x === idResponsablePlan))
+    // 2. Match por email (si ambos tienen email)
+    || (emailSesion && emailResponsablePlan && emailSesion === emailResponsablePlan)
+    // 3. Fallback: Match por nombre completo normalizado (cuando backend no provee email ni IDs coinciden)
+    || (nombreSesion && nombreResponsablePlan && nombreSesion.length > 3 && nombreSesion === nombreResponsablePlan)
+  );
+
+  // DEBUG: Diagnóstico de por qué no sale el botón de enviar a comité
+  console.log('[SeccionAprobacion] DEBUG responsable:', {
+    esResponsableDelPlan,
+    puedeEditarPlan,
+    estadoPlan: plan.estado,
+    emailSesion,
+    emailResponsablePlan,
+    coincidenEmails: emailSesion === emailResponsablePlan,
+    idsSesion,
+    idResponsablePlan,
+    coincidenIds: idResponsablePlan ? idsSesion.some((x) => x === idResponsablePlan) : 'no hay idResponsable',
+    nombreSesion,
+    nombreResponsablePlan,
+    coincidenNombres: nombreSesion === nombreResponsablePlan,
+    jefeOCI_raw: plan.jefeOCI,
+    currentUser_raw: { email: currentUser?.email, personEmail: currentUser?.person?.email, id: currentUser?.id, idPerson: currentUser?.idPerson, userId: currentUser?.userId, sub: currentUser?.sub, nombre: currentUser?.nombre, fullName: currentUser?.fullName, personFullName: currentUser?.person?.full_name, firstName: currentUser?.person?.first_name, lastName: currentUser?.person?.last_name, personId: currentUser?.person?.id },
+
+  });
+
 
   const [modalObservacion, setModalObservacion] = useState<{ isOpen: boolean, auditorId: string | null, texto: string }>({ isOpen: false, auditorId: null, texto: '' });
   const [modalSubsanar, setModalSubsanar] = useState({ isOpen: false, texto: '' });
@@ -8936,10 +9066,66 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
     });
   };
 
+  const nombreSolicitanteSesion = () => {
+    const u = (window as any).__esap_auth_cache || {};
+    return (
+      u.nombre ||
+      u.nombre_completo ||
+      u.fullName ||
+      u.full_name ||
+      u.person?.full_name ||
+      `${u.person?.first_name || ''} ${u.person?.last_name || ''}`.trim() ||
+      u.email ||
+      'Colaborador OCI'
+    );
+  };
+
+  const handleNotificarResponsable = async () => {
+    if (!plan.jefeOCI?.nombre && !plan.jefeOCI?.email) {
+      toast.error('No hay responsable asignado al plan');
+      return;
+    }
+    if (esResponsableDelPlan) {
+      toast.info('Tú eres el responsable del plan', {
+        description: 'Usa el botón «Enviar a Comité de Aprobación» cuando el plan esté completo.',
+      });
+      return;
+    }
+
+    setNotificandoResponsable(true);
+    try {
+      const res = await planAnualApi.notificarResponsable(plan.id, {
+        solicitanteNombre: nombreSolicitanteSesion(),
+        responsableEmail: plan.jefeOCI?.email?.trim() || undefined,
+      });
+      if (!res.success || !res.data) {
+        toast.error('No se pudo notificar al responsable', {
+          description: res.error || 'Error desconocido',
+        });
+        return;
+      }
+      const { destinatarioNombre, porcentajeAsignacion, listoParaEnvio } = res.data;
+      toast.success(`Notificación enviada a ${destinatarioNombre}`, {
+        description: listoParaEnvio
+          ? 'El plan está al 100% de asignación. El responsable puede enviarlo al comité PAI.'
+          : `Asignación al ${porcentajeAsignacion}%. El responsable debe completar pendientes antes del envío.`,
+        duration: 8000,
+      });
+      onRefetchPlan?.();
+    } catch (e: any) {
+      console.error('Error notificando responsable:', e);
+      toast.error('Error al notificar al responsable', {
+        description: e?.message || 'Intente nuevamente',
+      });
+    } finally {
+      setNotificandoResponsable(false);
+    }
+  };
+
   const handleEnviarComiteOTP = () => {
     if (!esResponsableDelPlan) {
       toast.error('Solo el responsable del plan puede enviar al comité', {
-        description: `Coordina con ${plan.jefeOCI?.nombre || 'el responsable asignado'} o con el comité de aprobación PAI si necesitas continuar el trámite.`,
+        description: `Coordina con ${plan.jefeOCI?.nombre || 'el responsable asignado'} o usa «Notificar al responsable».`,
       });
       return;
     }
@@ -9590,18 +9776,39 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
           )}
 
           {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && !esResponsableDelPlan && (
-            <div className="p-4 bg-amber-50 border-2 border-amber-200 rounded-xl flex items-start gap-3 text-amber-950">
-              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
-              <div className="text-sm leading-relaxed">
-                <p className="font-bold text-amber-900 mb-1">Aún no se envía al comité de aprobación</p>
-                <p className="text-amber-900/90">
-                  El trámite de <strong>envío y firma</strong> ante el comité PAI lo realiza únicamente el <strong>responsable del plan</strong>
-                  {plan.jefeOCI?.nombre ? (
-                    <> (<span className="font-semibold">{plan.jefeOCI.nombre}</span>)</>
-                  ) : null}
-                  . Si debes avanzar la prueba o el flujo, coordina con esa persona o con quien integre el comité de aprobación según corresponda.
-                </p>
+            <div className="p-4 bg-amber-50 border-2 border-amber-200 rounded-xl space-y-4 text-amber-950">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
+                <div className="text-sm leading-relaxed flex-1">
+                  <p className="font-bold text-amber-900 mb-1">Aún no se envía al comité de aprobación</p>
+                  <p className="text-amber-900/90">
+                    El <strong>envío y firma</strong> ante el comité PAI solo lo hace el <strong>responsable del plan</strong>
+                    {plan.jefeOCI?.nombre ? (
+                      <> (<span className="font-semibold">{plan.jefeOCI.nombre}</span>)</>
+                    ) : null}
+                    . Si ya terminaste la formulación, notifícale para que revise y envíe desde esta pestaña.
+                  </p>
+                  {porcentajeAsignacion < 100 && (
+                    <p className="text-xs text-amber-800 mt-2">
+                      Asignación actual: <strong>{actividadesAsignadas}/{totalActividades}</strong> ({porcentajeAsignacion}%).
+                      El responsable no podrá enviar al comité hasta el 100%.
+                    </p>
+                  )}
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => void handleNotificarResponsable()}
+                disabled={notificandoResponsable || guardando}
+                className="w-full px-6 py-3.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm transition-colors"
+              >
+                {notificandoResponsable ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Bell className="w-5 h-5" />
+                )}
+                Notificar al responsable para revisión y envío
+              </button>
             </div>
           )}
           {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && esResponsableDelPlan && (

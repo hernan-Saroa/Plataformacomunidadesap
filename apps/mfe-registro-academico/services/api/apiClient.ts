@@ -257,6 +257,7 @@ export class ApiClient {
       });
 
       xhr.open('POST', url);
+      xhr.withCredentials = CORS_CONFIG.credentials === 'include';
 
       // Set headers
       Object.entries(headers).forEach(([key, value]) => {
