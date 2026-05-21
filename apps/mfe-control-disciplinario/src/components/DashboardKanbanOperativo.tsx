@@ -4112,8 +4112,9 @@ export function DashboardKanbanOperativo({
         hechos: data.hechosSeparados?.length > 0
           ? data.hechosSeparados.map((h: any, idx: number) => `Hecho ${idx + 1}: ${h.descripcion}`).join('\n\n')
           : (data.hechos || data.descripcionHechos || ''),
-        fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : undefined,
-        fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined,
+        fechaHechos: data.fechaHechos ? (data.fechaHechos.length > 10 ? data.fechaHechos.split('T')[0] : data.fechaHechos) : undefined,
+        fechaQueja: data.fechaQueja ? (data.fechaQueja.length > 10 ? data.fechaQueja.split('T')[0] : data.fechaQueja) : undefined,
+        fechaQueja: data.fechaQueja || undefined,  // Enviar como string YYYY-MM-DD para que llegue al backend
         conducta: data.conducta || data.conductaSeleccionada || '',
         conductas: data.conductas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : []),
         radicadorId: currentUser.id

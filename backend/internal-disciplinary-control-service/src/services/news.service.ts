@@ -52,6 +52,7 @@ export class NewsService {
   ): Promise<DisciplinaryNews> {
     try {
       console.log('[DEBUG] NewsService.create - DTO received:', JSON.stringify(createNewsDto, null, 2));
+      console.log('[DEBUG] NewsService.create - fechaQueja en DTO?:', createNewsDto.fechaQueja);
       // Generar radicado único
       const radicado = await this.sequenceService.generateNewsRadicado();
 
@@ -112,7 +113,7 @@ export class NewsService {
         radicadorId: createNewsDto.radicadorId || userId,
         adjuntos,
         fechaCaducidad,
-        fechaRecepcion: fechaRecepcionValue,   // ← ahora controlamos explícitamente la fecha de radicado
+        fechaRecepcion: fechaRecepcionValue,   // ← también en fechaRecepcion (para compatibilidad actual)
         estado: 'RADICADA',
         kanbanStage: initialStage.id,
         etapaActual: initialStage.etapa,

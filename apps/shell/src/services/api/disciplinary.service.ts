@@ -544,8 +544,16 @@ class DisciplinaryService {
         if (data.fechaHechos) {
             formData.append('fechaHechos', data.fechaHechos);
         }
-        if (data.fechaQueja) {
-            formData.append('fechaQueja', data.fechaQueja);
+        // ✅ Robustez para fecha de queja/recepción (soporta Kanban y modal)
+        const fechaQuejaRaw = data.fechaQueja || data.fechaRecepcion;
+        if (fechaQuejaRaw) {
+            const dateOnly = typeof fechaQuejaRaw === 'string' && fechaQuejaRaw.includes('T')
+                ? fechaQuejaRaw.split('T')[0]
+                : fechaQuejaRaw;
+            formData.append('fechaQueja', dateOnly as string);
+            console.log('[radicarNoticia] → Appending fechaQueja to FormData:', dateOnly);
+        } else {
+            console.warn('[radicarNoticia] → NO se encontró fechaQueja ni fechaRecepcion en el payload');
         }
         if (data.adjuntos && data.adjuntos.length > 0) {
             formData.append('adjuntos', JSON.stringify(data.adjuntos));

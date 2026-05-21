@@ -963,6 +963,7 @@ export function GestionNoticias() {
           radicador: (Array.isArray(news.historialAuditoria) ? news.historialAuditoria.find((h: any) => h.tipo === 'creacion')?.usuario : null) || 'Sistema',
           fechaRegistro: news.fechaRecepcion,
           fechaRecepcion: news.fechaRecepcion,
+          fechaQueja: news.fechaQueja,  // Mostrar fecha de queja/notificación si existe
           conductas: news.conductas || [],
           descripcion: news.hechos || 'Sin descripción',
           hechos: news.hechos || '',

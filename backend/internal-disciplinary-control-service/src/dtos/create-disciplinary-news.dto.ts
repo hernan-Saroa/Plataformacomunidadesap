@@ -95,10 +95,25 @@ export class CreateDisciplinaryNewsDto {
 
   @IsOptional()
   @IsDateString()
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    return value;
+  })
   fechaQueja?: string;
 
   @IsOptional()
-  @IsDateString()
+  @IsDateString({ strict: false })
+  @Transform(({ value }) => {
+    if (value === undefined || value === null || value === '') return undefined;
+    if (typeof value === 'string') {
+      // Si viene como date-only (YYYY-MM-DD), convertir a ISO para el validador
+      if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        return value + 'T00:00:00.000Z';
+      }
+      return value;
+    }
+    return value;
+  })
   fechaHechos?: string;
 
   @IsString()
