@@ -377,8 +377,10 @@ export class NotificacionesService {
                 `SELECT u.id_user
                  FROM auth."user" u
                  LEFT JOIN auth.personas p ON p.id_person = u.id_person
-                 WHERE LOWER(TRIM(u.email)) = LOWER(TRIM($1))
-                    OR LOWER(TRIM(p.dir_email)) = LOWER(TRIM($1))
+                 WHERE (
+                   LOWER(TRIM(COALESCE(p.dir_email, ''))) = LOWER(TRIM($1))
+                   OR LOWER(TRIM(u.username)) = LOWER(TRIM($1))
+                 )
                  AND u.is_active = true
                  LIMIT 1`,
                 [emailResponsable]
@@ -402,8 +404,10 @@ export class NotificacionesService {
               `SELECT u.id_user
                FROM auth."user" u
                LEFT JOIN auth.personas p ON p.id_person = u.id_person
-               WHERE LOWER(TRIM(u.email)) = LOWER(TRIM($1))
-                  OR LOWER(TRIM(p.dir_email)) = LOWER(TRIM($1))
+               WHERE (
+                 LOWER(TRIM(COALESCE(p.dir_email, ''))) = LOWER(TRIM($1))
+                 OR LOWER(TRIM(u.username)) = LOWER(TRIM($1))
+               )
                AND u.is_active = true
                LIMIT 1`,
               [context.responsableAreaEmail]
@@ -423,11 +427,13 @@ export class NotificacionesService {
           const res = await this.dataSource.query(`
             SELECT u.id_user 
             FROM control_interno.plan_mejoramiento pm
-            INNER JOIN auth."user" u ON (
-              LOWER(TRIM(u.username)) = LOWER(TRIM(pm.responsable_implementacion))
-              OR LOWER(TRIM(u.email)) = LOWER(TRIM(pm.responsable_implementacion))
-            )
-            WHERE pm.id = $1 AND u.is_active = true
+            INNER JOIN auth."user" u ON u.is_active = true
+            LEFT JOIN auth.personas p ON p.id_person = u.id_person
+            WHERE pm.id = $1
+              AND (
+                LOWER(TRIM(u.username)) = LOWER(TRIM(pm.responsable_implementacion))
+                OR LOWER(TRIM(COALESCE(p.dir_email, ''))) = LOWER(TRIM(pm.responsable_implementacion))
+              )
             LIMIT 1
           `, [context.planId]);
           
@@ -442,11 +448,72 @@ export class NotificacionesService {
   }
 
   /**
+   * PostgreSQL CHECK en control_interno.notificacion solo permite tipos snake_case
+   * (aprobacion_plan, hallazgo_identificado, …), no códigos EVT-*.
+   */
+  private mapTipoNotificacionParaBd(
+    tipo: string,
+    metadata?: Record<string, unknown>,
+  ): TipoNotificacion {
+    const accion = metadata?.accionAuditado as string | undefined;
+    if (accion === 'controversia') return TipoNotificacion.CONTROVERSIA_HALLAZGO;
+    if (accion === 'aceptado') return TipoNotificacion.RECEPCION_DOCUMENTO;
+
+    const map: Record<string, TipoNotificacion> = {
+      'EVT-AUD-001': TipoNotificacion.ANUNCIO_AUDITORIA,
+      'EVT-AUD-002': TipoNotificacion.RECORDATORIO_PLAZO,
+      'EVT-AUD-003': TipoNotificacion.RECORDATORIO_PLAZO,
+      'EVT-AUD-004': TipoNotificacion.OTRO,
+      'EVT-AUD-DEADLINE': TipoNotificacion.ALERTA_VENCIMIENTO,
+      'EVT-AUD-CREATED': TipoNotificacion.ANUNCIO_AUDITORIA,
+      'EVT-AUD-EDITED': TipoNotificacion.OTRO,
+      'EVT-KANBAN-001': TipoNotificacion.OTRO,
+      'EVT-KANBAN-002': TipoNotificacion.ALERTA_VENCIMIENTO,
+      'EVT-KANBAN-003': TipoNotificacion.ALERTA_VENCIMIENTO,
+      'EVT-KANBAN-004': TipoNotificacion.OTRO,
+      'EVT-KANBAN-MOV': TipoNotificacion.OTRO,
+      'EVT-PM-001': TipoNotificacion.APROBACION_PLAN,
+      'EVT-PM-002': TipoNotificacion.RECHAZO_PLAN,
+      'EVT-PM-003': TipoNotificacion.ALERTA_VENCIMIENTO,
+      'EVT-APR-001': TipoNotificacion.APROBACION_PLAN,
+      'EVT-APR-002': TipoNotificacion.RECHAZO_PLAN,
+      'EVT-APR-REQUESTED': TipoNotificacion.APROBACION_PLAN,
+    };
+    const t = String(tipo || '').trim();
+    if (map[t]) return map[t];
+
+    const permitidos = new Set<string>([
+      TipoNotificacion.ANUNCIO_AUDITORIA,
+      TipoNotificacion.RECORDATORIO_PLAZO,
+      TipoNotificacion.ALERTA_VENCIMIENTO,
+      TipoNotificacion.HALLAZGO_IDENTIFICADO,
+      TipoNotificacion.SOLICITUD_EVIDENCIA,
+      TipoNotificacion.RECEPCION_DOCUMENTO,
+      TipoNotificacion.APROBACION_PLAN,
+      TipoNotificacion.RECHAZO_PLAN,
+      TipoNotificacion.CONTROVERSIA_HALLAZGO,
+      TipoNotificacion.VALIDACION_EVIDENCIA,
+      TipoNotificacion.SOLICITUD_AMPLIACION_PLAZO,
+      TipoNotificacion.AMPLIACION_PLAZO_APROBADA,
+      TipoNotificacion.AMPLIACION_PLAZO_RECHAZADA,
+      TipoNotificacion.OTRO,
+    ]);
+    if (permitidos.has(t)) return t as TipoNotificacion;
+    return TipoNotificacion.OTRO;
+  }
+
+  /**
    * Crea una nueva notificación
    */
   async create(createDto: CreateNotificacionDto): Promise<Notificacion> {
+    const tipoOriginal = String(createDto.tipoNotificacion || '');
+    const tipoBd = this.mapTipoNotificacionParaBd(tipoOriginal, createDto.metadata);
+    const metadataConEvento = {
+      ...(createDto.metadata || {}),
+      eventoCode: (createDto.metadata as any)?.eventoCode || tipoOriginal,
+    };
+
     // ✅ NORMALIZACIÓN AGRESIVA: Limpiar caracteres corruptos
-    // Si viene "auditora" o similar por mal encoding, intentamos forzar UTF-8
     const tituloNormalizado = this.normalizarTexto(createDto.titulo);
     const mensajeNormalizado = this.normalizarTexto(createDto.mensaje);
     
@@ -461,7 +528,9 @@ export class NotificacionesService {
       const defaults: Record<string, any> = {
         'EVT-AUD-001': { email: true, sistema: true, activo: true }, // Nueva auditoría
         'EVT-AUD-002': { email: true, sistema: true, activo: true }, // Reunión apertura
-        'EVT-AUD-003': { email: true, sistema: true, activo: true }, // Plazo respuesta
+        'EVT-AUD-003': { email: true, sistema: true, activo: true }, // Plazo respuesta / informe preliminar
+        'EVT-APR-001': { email: true, sistema: true, activo: true },
+        'EVT-APR-002': { email: true, sistema: true, activo: true },
         'EVT-PM-001': { email: true, sistema: true, activo: true },  // Seguimiento PM
         'EVT-KANBAN-001': { email: true, sistema: true, activo: true }
       };
@@ -470,6 +539,10 @@ export class NotificacionesService {
         'anuncio_auditoria': 'EVT-AUD-001',
         'reunion_apertura': 'EVT-AUD-002',
         'recordatorio_plazo': 'EVT-AUD-003',
+        'hallazgo_identificado': 'EVT-AUD-003',
+        'aprobacion_plan': 'EVT-APR-001',
+        'rechazo_plan': 'EVT-APR-002',
+        'controversia_hallazgo': 'EVT-AUD-001',
         'seguimiento_trimestral': 'EVT-PM-001',
         // Mapeo directo para cuando se envía el código directamente
         'EVT-AUD-001': 'EVT-AUD-001',
@@ -483,7 +556,7 @@ export class NotificacionesService {
         'EVT-APR-002': 'EVT-APR-002',
       };
       
-      const evtCode = mapping[createDto.tipoNotificacion] || createDto.tipoNotificacion;
+      const evtCode = mapping[tipoOriginal] || tipoOriginal;
       // Si no hay config en DB, usar el default. Si hay config, usar la de DB.
       const configEvento = (configGlobal?.tiposNotificacion && configGlobal.tiposNotificacion[evtCode]) 
         ? configGlobal.tiposNotificacion[evtCode] 
@@ -492,8 +565,7 @@ export class NotificacionesService {
       if (configEvento && configEvento.activo) {
         // Forzar canales para eventos críticos si no hay configuración
       if (!configEvento) {
-        if (createDto.tipoNotificacion.toString().startsWith('EVT-KANBAN') || 
-            createDto.tipoNotificacion.toString().startsWith('EVT-PM')) {
+        if (tipoOriginal.startsWith('EVT-KANBAN') || tipoOriginal.startsWith('EVT-PM')) {
           canalFinal = CanalNotificacion.AMBOS;
         }
       } else if (configEvento) {
@@ -512,6 +584,8 @@ export class NotificacionesService {
 
     const notificacion = this.notificacionRepository.create({
       ...createDto,
+      tipoNotificacion: tipoBd,
+      metadata: metadataConEvento,
       titulo: tituloNormalizado,
       mensaje: mensajeNormalizado,
       usuarioId: usuarioIdFinal,
@@ -522,7 +596,10 @@ export class NotificacionesService {
       enviadaEmail: false,
     });
 
-    console.log(`[NotificacionesService.create] Creando notificación para usuarioId: ${usuarioIdFinal}, tipo: ${createDto.tipoNotificacion}, titulo: ${tituloNormalizado}`);
+    console.log(
+      `[NotificacionesService.create] Creando notificación para usuarioId: ${usuarioIdFinal}, ` +
+        `tipo: ${tipoBd} (evento: ${tipoOriginal}), titulo: ${tituloNormalizado}`,
+    );
 
     // ✅ BUG 1 FIX: Evitar duplicados idénticos en un corto periodo de tiempo (5 segundos)
     const hacePoco = new Date();
@@ -531,7 +608,7 @@ export class NotificacionesService {
     const duplicada = await this.notificacionRepository.findOne({
       where: {
         usuarioId: usuarioIdFinal,
-        tipoNotificacion: createDto.tipoNotificacion,
+        tipoNotificacion: tipoBd,
         titulo: tituloNormalizado,
         createdAt: MoreThanOrEqual(hacePoco)
       }
@@ -553,7 +630,7 @@ export class NotificacionesService {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           usuarioIdFinal,
-          createDto.tipoNotificacion,
+          tipoBd,
           tituloNormalizado,
           mensajeNormalizado,
           'Media',
@@ -562,7 +639,7 @@ export class NotificacionesService {
           'blue'
         ]
       );
-      console.log(`[Notificaciones] ✅ Sincronizado exitosamente con la campanita global para el usuario ${usuarioIdFinal}`);
+      console.log(`[Notificaciones] ✅ Sincronizado campanita (${tipoBd}) usuario ${usuarioIdFinal}`);
     } catch (err) {
       console.error(`[Notificaciones] ❌ Error sincronizando con la campanita global:`, err.message);
     }
@@ -1196,6 +1273,88 @@ export class NotificacionesService {
         usuarioId: n.usuarioId,
       })),
     };
+  }
+
+  /**
+   * Resuelve auth.user.id_user a partir del correo del responsable del área auditada.
+   */
+  async resolverIdUserPorEmail(email: string): Promise<string | null> {
+    const correo = String(email || '').trim();
+    if (!correo) return null;
+    try {
+      const userResult = await this.dataSource.query(
+        `SELECT u.id_user
+         FROM auth."user" u
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE (
+           LOWER(TRIM(COALESCE(p.dir_email, ''))) = LOWER(TRIM($1))
+           OR LOWER(TRIM(u.username)) = LOWER(TRIM($1))
+         )
+         AND u.is_active = true
+         LIMIT 1`,
+        [correo],
+      );
+      return userResult?.[0]?.id_user ? String(userResult[0].id_user) : null;
+    } catch (err) {
+      console.error('[Notificaciones] Error resolviendo usuario por email:', err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Deep link para el Portal Transaccional (servicio Control Interno de Gestión).
+   */
+  urlPortalControlInterno(auditoriaId?: string): string {
+    return auditoriaId ? `control-interno-gestion::${auditoriaId}` : 'control-interno-gestion';
+  }
+
+  /**
+   * Notifica al responsable del área auditada (portal transaccional + campanita global).
+   */
+  async notificarAuditadoPortal(params: {
+    responsableAreaEmail: string;
+    responsableAreaNombre?: string;
+    auditoriaId: string;
+    auditoriaCodigo: string;
+    auditoriaNombre?: string;
+    tipoNotificacion: TipoNotificacion | string;
+    titulo: string;
+    mensaje: string;
+    prioridad?: PrioridadNotificacion;
+    metadata?: Record<string, unknown>;
+  }): Promise<boolean> {
+    const userId = await this.resolverIdUserPorEmail(params.responsableAreaEmail);
+    if (!userId) {
+      console.warn(
+        `[Notificaciones] Sin usuario activo para auditado (${params.responsableAreaEmail}). ` +
+          `Auditoría ${params.auditoriaCodigo}.`,
+      );
+      return false;
+    }
+    try {
+      await this.create({
+        usuarioId: userId,
+        tipoNotificacion: params.tipoNotificacion as TipoNotificacion,
+        titulo: params.titulo,
+        mensaje: params.mensaje,
+        prioridad: params.prioridad ?? PrioridadNotificacion.ALTA,
+        canal: CanalNotificacion.AMBOS,
+        metadata: {
+          ...params.metadata,
+          auditoriaId: params.auditoriaId,
+          codigoAuditoria: params.auditoriaCodigo,
+          esNotificacionAuditado: true,
+        },
+        accionUrl: this.urlPortalControlInterno(params.auditoriaId),
+      });
+      return true;
+    } catch (err) {
+      console.error(
+        `[Notificaciones] Error notificando auditado (${params.auditoriaCodigo}):`,
+        err.message,
+      );
+      return false;
+    }
   }
 }
 

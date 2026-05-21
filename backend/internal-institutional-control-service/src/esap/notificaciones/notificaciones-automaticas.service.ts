@@ -498,10 +498,12 @@ export class NotificacionesAutomaticasService {
         `
         SELECT u.id_user
         FROM auth."user" u
+        LEFT JOIN auth.personas p ON p.id_person = u.id_person
         WHERE (
-          LOWER(TRIM(u.nombre || ' ' || COALESCE(u.apellido, ''))) = LOWER(TRIM($1))
-          OR LOWER(TRIM(u.nombre)) = LOWER(TRIM($1))
-          OR LOWER(TRIM(u.email)) = LOWER(TRIM($1))
+          LOWER(TRIM(u.username)) = LOWER(TRIM($1))
+          OR LOWER(TRIM(COALESCE(p.dir_email, ''))) = LOWER(TRIM($1))
+          OR p.nom_largo ILIKE $1
+          OR CONCAT(p.nom_tercero, ' ', COALESCE(p.pri_apellido, '')) ILIKE $1
         )
           AND u.is_active = true
         LIMIT 1

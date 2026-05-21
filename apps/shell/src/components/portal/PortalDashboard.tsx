@@ -12,6 +12,7 @@ import { AuthenticatedPortalNavbar } from './AuthenticatedPortalNavbar';
 import { PortalTransaccional } from './PortalTransaccional';
 import { MapPin, Mail, Phone } from 'lucide-react';
 import { ESAPLogo } from '../assets/ESAPLogo';
+import { NotificationsProvider } from '../esap/NotificationsContext';
 
 interface PortalDashboardProps {
   userName: string;
@@ -121,6 +122,7 @@ export function PortalDashboard({
   const portalDisplayRoles = Array.from(new Set(portalRoleCodes.map(displayPortalRoleFromCode)));
 
   return (
+    <NotificationsProvider>
     <div style={{ minHeight: '100vh', background: '#F1F5F9' }}>
       <AuthenticatedPortalNavbar
         userName={userName}
@@ -256,5 +258,6 @@ export function PortalDashboard({
         </div>
       </footer>
     </div>
+    </NotificationsProvider>
   );
 }

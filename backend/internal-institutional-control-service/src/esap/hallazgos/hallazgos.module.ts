@@ -6,11 +6,13 @@ import { Hallazgo } from './entities/hallazgo.entity';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { HistorialAuditoria } from '../auditorias/entities/historial-auditoria.entity';
 import { AuthModule } from '../../auth/auth.module';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Hallazgo, Auditoria, HistorialAuditoria]),
     AuthModule,
+    NotificacionesModule,
   ],
   controllers: [HallazgosController],
   providers: [HallazgosService],
