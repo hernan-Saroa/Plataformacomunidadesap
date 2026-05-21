@@ -870,6 +870,18 @@ class DisciplinaryService {
         return `/files/${filename}`;
     }
 
+    /**
+     * Obtener URL absoluta para fetch/preview de archivos adjuntos (noticias, evidencias, etc.)
+     * Construye la URL completa usando buildApiUrl para que funcione desde el MFE (puerto distinto)
+     */
+    getAbsoluteFileUrl(relativeUrl: string): string {
+        const rel = this.getFileUrl(relativeUrl);
+        if (/^https?:\/\//i.test(rel)) {
+            return rel;
+        }
+        return buildApiUrl('control-disciplinario', rel.startsWith('/') ? rel : `/${rel}`);
+    }
+
     // --- AUTOS ---
 
     async getAllAutos(): Promise<LegalAuto[]> {
