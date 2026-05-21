@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { PlanTrabajoAcademicoEntity } from './entities/plan-trabajo-academico.entity';
@@ -29,6 +29,7 @@ function coalesceString(...values: unknown[]): string | null {
 @Injectable()
 export class PtaService {
   private readonly otpStore = new Map<string, { code: string; expiresAt: Date }>();
+  private readonly logger = new Logger(PtaService.name);
 
   constructor(
     @InjectRepository(PlanTrabajoAcademicoEntity)
@@ -107,7 +108,8 @@ export class PtaService {
     const roleFilter = options?.adminEdit
       ? ''
       : `JOIN auth.user_roles ur ON ur.id_user = u.id_user AND COALESCE(ur.is_active, true) = true
-      JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true AND r.code = 'DOCENTE'`;
+      JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
+        AND (UPPER(COALESCE(r.code, '')) = 'DOCENTE' OR UPPER(COALESCE(r.name, '')) = 'DOCENTE')`;
 
     const sql = `
       SELECT
@@ -1451,6 +1453,210 @@ export class PtaService {
   // ─────────────────────────────
   // OTP (firma electrónica) — migración legacy
   // ─────────────────────────────
+  private resolveNotificationsBaseUrl(): string {
+    const direct = process.env.NOTIFICATIONS_SERVICE_URL || process.env.NOTIFICATION_SERVICE_URL;
+    if (direct) return direct.replace(/\/$/, '');
+    if ((process.env.NODE_ENV || 'development') !== 'production') return 'http://localhost:3009';
+    return 'http://notifications-service:3009';
+  }
+
+  private maskEmail(email: string): string {
+    const [local, domain] = email.split('@');
+    if (!local || !domain) return email;
+    const visible = local.slice(0, Math.min(2, local.length));
+    return `${visible}${'*'.repeat(Math.max(local.length - visible.length, 3))}@${domain}`;
+  }
+
+  private escapeHtml(value: unknown): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private async sendFirmaOtpEmail(input: {
+    to: string;
+    code: string;
+    fullName: string;
+    periodo?: string | null;
+    etapaLabel?: string | null;
+    expiresAt: Date;
+  }): Promise<void> {
+    const baseUrl = this.resolveNotificationsBaseUrl();
+    const subject = 'Código de validación - Plan de Trabajo Académico ESAP';
+    const minutes = Math.max(1, Math.round((input.expiresAt.getTime() - Date.now()) / 60000));
+    const fullName = this.escapeHtml(input.fullName || 'docente');
+    const periodo = input.periodo ? this.escapeHtml(input.periodo) : null;
+    const etapaLabel = input.etapaLabel ? this.escapeHtml(input.etapaLabel) : null;
+    const code = this.escapeHtml(input.code);
+    const text = [
+      `Hola ${input.fullName || 'docente'},`,
+      '',
+      `Tu código de validación para firmar el PTA es: ${input.code}`,
+      input.periodo ? `Periodo: ${input.periodo}` : null,
+      input.etapaLabel ? `Proceso: ${input.etapaLabel}` : null,
+      `Este código vence en ${minutes} minutos.`,
+      '',
+      'Si no solicitaste este código, ignora este mensaje.',
+    ].filter(Boolean).join('\n');
+    const html = `
+      <div style="margin:0;padding:32px 16px;background-color:#eef2f7;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;color:#111827;">
+        <table width="100%" cellspacing="0" cellpadding="0" border="0" role="presentation">
+          <tr>
+            <td align="center">
+              <table width="560" cellspacing="0" cellpadding="0" border="0" role="presentation" style="width:100%;max-width:560px;background-color:#ffffff;border:1px solid #dbe3ef;border-radius:8px;overflow:hidden;">
+                <tr>
+                  <td style="height:6px;background-color:#3b82f6;font-size:0;line-height:0;">&nbsp;</td>
+                </tr>
+                <tr>
+                  <td style="background-color:#0f49b5;padding:26px 28px 22px 28px;">
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0" role="presentation">
+                      <tr>
+                        <td>
+                          <div style="font-size:21px;font-weight:800;line-height:1;color:#ffffff;letter-spacing:0.2px;">ESAP</div>
+                          <div style="margin-top:6px;font-size:10px;letter-spacing:1.4px;text-transform:uppercase;color:#bfdbfe;">Plan de Trabajo Académico</div>
+                        </td>
+                        <td align="right" style="vertical-align:middle;">
+                          <span style="display:inline-block;padding:5px 14px;border-radius:999px;background-color:rgba(255,255,255,0.18);color:#ffffff;font-size:11px;font-weight:700;">Firma PTA</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:32px 28px 10px 28px;">
+                    <h1 style="margin:0 0 10px 0;font-size:22px;line-height:1.25;font-weight:800;color:#111827;">Código de validación</h1>
+                    <p style="margin:0 0 26px 0;font-size:14px;line-height:1.65;color:#667085;">
+                      Hola ${fullName}. Ingresa este código para continuar con la firma de tu Plan de Trabajo Académico. Es de un solo uso y tiene vigencia limitada.
+                    </p>
+
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0" role="presentation">
+                      <tr>
+                        <td align="center">
+                          <div style="display:inline-block;min-width:210px;padding:18px 16px;border-radius:9px;border:2px solid #bfdbfe;background-color:#eff6ff;text-align:center;">
+                            <span style="font-size:30px;line-height:1;font-weight:800;letter-spacing:10px;color:#1d4ed8;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;">${code}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0" role="presentation" style="margin-top:24px;margin-bottom:20px;">
+                      ${periodo ? `
+                      <tr>
+                        <td style="padding:4px 0;font-size:14px;line-height:1.5;color:#374151;">
+                          <strong style="color:#111827;">Periodo:</strong> ${periodo}
+                        </td>
+                      </tr>` : ''}
+                      ${etapaLabel ? `
+                      <tr>
+                        <td style="padding:4px 0;font-size:14px;line-height:1.5;color:#374151;">
+                          <strong style="color:#111827;">Proceso:</strong> ${etapaLabel}
+                        </td>
+                      </tr>` : ''}
+                      <tr>
+                        <td style="padding:4px 0;font-size:14px;line-height:1.5;color:#374151;">
+                          <strong style="color:#111827;">Vigencia:</strong> ${minutes} minutos
+                        </td>
+                      </tr>
+                    </table>
+
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0" role="presentation" style="margin:0 0 24px 0;background-color:#fffbeb;border:1px solid #fcd34d;border-radius:8px;">
+                      <tr>
+                        <td style="padding:12px 16px;font-size:13px;line-height:1.5;color:#92400e;">
+                          <strong>Importante:</strong> Si no solicitaste este código, puedes ignorar este mensaje con seguridad.
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:16px 28px 18px 28px;background-color:#f8fafc;border-top:1px solid #e2e8f0;">
+                    <p style="margin:0;font-size:12px;line-height:1.5;color:#98a2b3;">ESAP — Escuela Superior de Administración Pública</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+
+    try {
+      const response = await fetch(`${baseUrl}/api/v1/emails/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: input.to, subject, text, html }),
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(`notifications-service ${response.status}: ${body}`);
+      }
+    } catch (error: any) {
+      const message = error?.message || String(error);
+      this.logger.warn(`No se pudo enviar OTP de firma PTA a ${input.to}: ${message}`);
+      throw new InternalServerErrorException('No se pudo enviar el código de validación al correo registrado.');
+    }
+  }
+
+  private buildFirmaOtpKey(input: { verificationId?: string | null; ptaId?: string | null; docenteId?: string | null }): string {
+    const verificationId = coalesceString(input.verificationId);
+    if (verificationId) return verificationId;
+
+    const ptaId = coalesceString(input.ptaId);
+    if (ptaId) return `pta:${ptaId}`;
+
+    const docenteId = coalesceString(input.docenteId);
+    if (docenteId) return `docente:${docenteId}`;
+
+    throw new BadRequestException('Se requiere ptaId o docenteId para generar el código de firma.');
+  }
+
+  async requestFirmaDocenteOtp(payload: {
+    ptaId?: string | null;
+    docenteId?: string | null;
+    periodo?: string | null;
+    etapaLabel?: string | null;
+  }) {
+    const docenteId = coalesceString(payload?.docenteId);
+    if (!docenteId) throw new BadRequestException('docenteId es requerido para enviar el código de firma.');
+
+    const docente = await this.fetchAuthDocenteInfo(docenteId);
+    if (!docente.email) {
+      throw new BadRequestException('El docente no tiene correo registrado para enviar el código de validación.');
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const verificationId = this.buildFirmaOtpKey({ ptaId: payload?.ptaId, docenteId });
+
+    await this.sendFirmaOtpEmail({
+      to: docente.email,
+      code,
+      fullName: docente.fullName,
+      periodo: payload?.periodo,
+      etapaLabel: payload?.etapaLabel,
+      expiresAt,
+    });
+
+    this.otpStore.set(verificationId, { code, expiresAt });
+
+    return {
+      verificationId,
+      expiresAt: expiresAt.toISOString(),
+      email: this.maskEmail(docente.email),
+    };
+  }
+
+  verifyFirmaDocenteOtp(payload: { verificationId?: string | null; code?: string | null }) {
+    const verificationId = coalesceString(payload?.verificationId);
+    if (!verificationId) throw new BadRequestException('verificationId es requerido.');
+    this.verifyOtp(verificationId, String(payload?.code || ''), { consume: true });
+    return { verified: true };
+  }
+
   generateOtp(ptaId: string) {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);

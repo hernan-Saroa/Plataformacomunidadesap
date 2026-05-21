@@ -68,10 +68,10 @@ export class AuditadoController {
 
   private getUsuarioFromReq(req: any): { email?: string; username?: string } {
     const u = req?.user || {};
-    return {
-      email: u.email,
-      username: u.username,
-    };
+    const username = u.username ? String(u.username).trim() : undefined;
+    // En ESAP el login suele usar el correo como username; auth.user no tiene columna email.
+    const email = (u.email ? String(u.email).trim() : undefined) || username;
+    return { email, username };
   }
 
   /**
