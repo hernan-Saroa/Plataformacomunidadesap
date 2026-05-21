@@ -81,6 +81,10 @@ export const dashboardService = {
   async mapaCobertura(): Promise<any> {
     return apiClient.get(`${SERVICE_PREFIX}/backoffice/dashboard/mapa-cobertura`);
   },
+
+  async getExecutiveStats(): Promise<any> {
+    return apiClient.get(`${SERVICE_PREFIX}/backoffice/dashboard/executive-stats`);
+  },
 };
 
 export default dashboardService;
