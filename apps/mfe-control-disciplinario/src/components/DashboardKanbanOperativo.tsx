@@ -3627,7 +3627,7 @@ export function DashboardKanbanOperativo({
     return {
       ...raw,
       tipo: raw.tipo || 'noticia',
-      fechaQueja: raw.fechaQueja || raw.fechaRecepcion,
+      fechaQueja: raw.fechaQueja,
       fechaRecepcion: raw.fechaRecepcion,
       territorial: raw.territorial,
       dependenciaDenunciado: raw.dependenciaDenunciado,

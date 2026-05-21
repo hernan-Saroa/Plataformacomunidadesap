@@ -913,7 +913,6 @@ export function GestionNoticias() {
           radicado: news.radicado,
           numeroRadicado: news.radicado,
           origen: news.origen as any,
-          fechaQueja: news.fechaQueja || news.createdAt,
           territorial: news.territorial,
           disciplinable: (Array.isArray(news.disciplinable) ? news.disciplinable : (news.disciplinable ? [news.disciplinable] : [])).map((d: any) => ({
             ...d,
