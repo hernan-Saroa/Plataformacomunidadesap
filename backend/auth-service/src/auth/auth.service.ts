@@ -352,7 +352,8 @@ export class AuthService {
       throw new UnauthorizedException('El usuario no tiene roles asignados');
     }
 
-    // Optimización: Solo incluir códigos de roles en el JWT para reducir tamaño
+    // Los microservicios autorizan con el JWT; por eso incluimos permisos
+    // para roles normales y mantenemos SUPER_ADMIN compacto.
     const rolesCodes = user.roles.map((r) => r.code);
     const permissionCodes: string[] = Array.from(
       new Set(
@@ -366,6 +367,8 @@ export class AuthService {
       ),
     );
 
+    const isSuperAdmin = rolesCodes.includes('SUPER_ADMIN');
+
     const payload = {
       sub: user.id_user,
       username: user.username,
@@ -375,6 +378,7 @@ export class AuthService {
         [user.person?.first_name, user.person?.last_name].filter(Boolean).join(' ') ||
         user.username,
       roles: rolesCodes,
+      permissions: isSuperAdmin ? undefined : permissionCodes,
     };
 
     const accessToken = await this.jwtService.signAsync(payload, {

@@ -4,7 +4,7 @@
  * - Formato de TABLA con columnas igual a Casos Pendientes
  */
 
-import { ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -27,7 +27,11 @@ import {
   MoreVertical,
   Copy,
   Shield,
-  ClipboardCheck
+  ClipboardCheck,
+  UploadCloud,
+  Paperclip,
+  Trash2,
+  FileCheck2
 } from 'lucide-react';
 import { Badge } from '../ui/badge';
 import { Avatar, AvatarFallback } from '../ui/avatar';
@@ -94,6 +98,7 @@ export function ReviewRequestsModule({
     numLibro: '',
   });
   const [approvalFiles, setApprovalFiles] = useState<File[]>([]);
+  const [isApprovalFileDragActive, setIsApprovalFileDragActive] = useState(false);
   const [existingApprovalFiles, setExistingApprovalFiles] = useState<
     NonNullable<ReviewRequest['reviewFiles']>
   >([]);
@@ -554,17 +559,24 @@ export function ReviewRequestsModule({
     'image/jpeg',
     'image/webp',
   ]);
-  const getApprovalFileChipClass = (file: File) => {
-    const name = file.name.toLowerCase();
-    const ext = name.includes('.') ? name.slice(name.lastIndexOf('.') + 1) : '';
-    if (ext === 'pdf') return 'border-red-200 bg-red-50 text-red-700';
-    if (ext === 'doc' || ext === 'docx') return 'border-blue-200 bg-blue-50 text-blue-700';
-    if (ext === 'xls' || ext === 'xlsx') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp') {
-      return 'border-gray-300 bg-gray-100 text-gray-700';
-    }
-    return 'border-gray-300 bg-gray-100 text-gray-700';
+  const getApprovalFileExtension = (fileName: string) => {
+    const normalizedName = fileName.toLowerCase();
+    return normalizedName.includes('.')
+      ? normalizedName.slice(normalizedName.lastIndexOf('.') + 1)
+      : 'file';
   };
+  const getApprovalFileToneClass = (fileName: string) => {
+    const ext = getApprovalFileExtension(fileName);
+    if (ext === 'pdf') return 'border-red-100 bg-red-50 text-red-700';
+    if (ext === 'doc' || ext === 'docx') return 'border-blue-100 bg-blue-50 text-blue-700';
+    if (ext === 'xls' || ext === 'xlsx') return 'border-emerald-100 bg-emerald-50 text-emerald-700';
+    if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp') {
+      return 'border-slate-200 bg-slate-50 text-slate-700';
+    }
+    return 'border-gray-200 bg-gray-50 text-gray-700';
+  };
+  const getApprovalFileKey = (file: File) =>
+    `${file.name.toLowerCase()}-${file.size}-${file.lastModified}`;
   const isAllowedFile = (file: File) => {
     const lowerName = file.name.toLowerCase();
     const ext = lowerName.includes('.') ? lowerName.slice(lowerName.lastIndexOf('.')) : '';
@@ -586,6 +598,62 @@ export function ReviewRequestsModule({
     const message = responseMessage || normalizedError?.message || '';
     const statusCode = normalizedError?.statusCode ?? normalizedError?.response?.status;
     return statusCode === 413 || /413|request entity too large|payload too large/i.test(message);
+  };
+  const addApprovalFiles = (files: File[] | FileList) => {
+    const selected = Array.from(files);
+    if (!selected.length || isLoadingApprovalData) {
+      return;
+    }
+
+    const selectedKeys = new Set(approvalFiles.map(getApprovalFileKey));
+    const uniqueFiles = selected.filter((file) => {
+      const key = getApprovalFileKey(file);
+      if (selectedKeys.has(key)) {
+        return false;
+      }
+      selectedKeys.add(key);
+      return true;
+    });
+
+    if (uniqueFiles.length !== selected.length) {
+      toast.info('Se omitieron archivos duplicados');
+    }
+
+    if (!uniqueFiles.length) {
+      return;
+    }
+
+    const currentTotal = existingApprovalFiles.length + approvalFiles.length;
+    const availableSlots = MAX_APPROVAL_FILES - currentTotal;
+    if (availableSlots <= 0) {
+      toast.error(`Ya alcanzaste el maximo de ${MAX_APPROVAL_FILES} archivos`);
+      return;
+    }
+
+    if (uniqueFiles.length > availableSlots) {
+      toast.error(`Solo puedes adjuntar ${availableSlots} archivo(s) mas`, {
+        description: `La solicitud admite maximo ${MAX_APPROVAL_FILES} archivos en total.`,
+      });
+      return;
+    }
+
+    const invalidFile = uniqueFiles.find((file) => !isAllowedFile(file));
+    if (invalidFile) {
+      toast.error('Solo se permiten archivos PDF, Word, Excel o imagenes', {
+        description: invalidFile.name,
+      });
+      return;
+    }
+
+    const oversizedFile = uniqueFiles.find((file) => file.size > MAX_APPROVAL_FILE_SIZE_BYTES);
+    if (oversizedFile) {
+      toast.error('El archivo es muy pesado', {
+        description: `El archivo "${oversizedFile.name}" supera el limite de ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo.`,
+      });
+      return;
+    }
+
+    setApprovalFiles((prev) => [...prev, ...uniqueFiles]);
   };
   const handleApprovalFilesChange = (event: ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(event.target.files || []);
@@ -615,6 +683,28 @@ export function ReviewRequestsModule({
     }
     setApprovalFiles(nextFiles);
     event.target.value = '';
+  };
+  const handleApprovalFilesInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    addApprovalFiles(event.target.files || []);
+    event.target.value = '';
+  };
+  const handleApprovalFilesDragOver = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    if (!isLoadingApprovalData && existingApprovalFiles.length + approvalFiles.length < MAX_APPROVAL_FILES) {
+      setIsApprovalFileDragActive(true);
+    }
+  };
+  const handleApprovalFilesDragLeave = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    setIsApprovalFileDragActive(false);
+  };
+  const handleApprovalFilesDrop = (event: DragEvent<HTMLLabelElement>) => {
+    event.preventDefault();
+    setIsApprovalFileDragActive(false);
+    if (isLoadingApprovalData || existingApprovalFiles.length + approvalFiles.length >= MAX_APPROVAL_FILES) {
+      return;
+    }
+    addApprovalFiles(event.dataTransfer.files);
   };
   const handleRemoveApprovalFile = (index: number) => {
     setApprovalFiles((prev) => prev.filter((_, idx) => idx !== index));
@@ -920,6 +1010,11 @@ export function ReviewRequestsModule({
     }
     return ordered;
   }, [approvalForm.campus, approvalForm.seccionalName, seccionalBySede, seccionalesOptions]);
+
+  const approvalFileSlotsUsed = existingApprovalFiles.length + approvalFiles.length;
+  const approvalFileSlotsRemaining = Math.max(0, MAX_APPROVAL_FILES - approvalFileSlotsUsed);
+  const isApprovalFilePickerDisabled =
+    isLoadingApprovalData || approvalFileSlotsRemaining <= 0;
 
   useEffect(() => {
     if (!approvalForm.campus || approvalForm.seccionalName) {
@@ -3001,21 +3096,17 @@ export function ReviewRequestsModule({
                   </div>
                 </div>
 
-                <div className="space-y-2 border-t border-dashed border-gray-200 pt-3">
-                  <div className="review-approval-file-header flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-3 border-t border-dashed border-gray-200 pt-3">
+                  <div className="sr-only">
                     <div className="review-approval-file-picker flex items-center gap-2">
                       <input
                         id="approval-files-input"
                         type="file"
                         multiple
                         accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
-                        onChange={handleApprovalFilesChange}
+                        onChange={handleApprovalFilesInputChange}
                         className="sr-only"
-                        disabled={
-                          isLoadingApprovalData ||
-                          existingApprovalFiles.length + approvalFiles.length >=
-                            MAX_APPROVAL_FILES
-                        }
+                        disabled={isApprovalFilePickerDisabled}
                       />
                       <label
                         htmlFor="approval-files-input"
@@ -3037,6 +3128,52 @@ export function ReviewRequestsModule({
                     </div>
                     <label className="text-xs font-medium text-gray-700">
                       {`Archivos del título (opcional, máx. ${MAX_APPROVAL_FILES}, ${MAX_APPROVAL_FILE_SIZE_LABEL} por archivo)`}
+                    </label>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                          <Paperclip className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">
+                            Soportes de revision
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            PDF, Word, Excel o imagenes hasta {MAX_APPROVAL_FILE_SIZE_LABEL}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-700">
+                        {approvalFileSlotsUsed}/{MAX_APPROVAL_FILES} archivos
+                      </span>
+                    </div>
+                    <label
+                      htmlFor="approval-files-input"
+                      onDragOver={handleApprovalFilesDragOver}
+                      onDragLeave={handleApprovalFilesDragLeave}
+                      onDrop={handleApprovalFilesDrop}
+                      aria-disabled={isApprovalFilePickerDisabled}
+                      className={`flex min-h-[112px] w-full cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors ${
+                        isApprovalFilePickerDisabled
+                          ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
+                          : isApprovalFileDragActive
+                            ? 'border-[#003DA5] bg-blue-50 text-[#003DA5]'
+                            : 'border-gray-300 bg-gray-50 text-gray-700 hover:border-[#003DA5] hover:bg-blue-50'
+                      }`}
+                    >
+                      <UploadCloud className="mb-2 h-7 w-7" />
+                      <span className="text-sm font-semibold">
+                        {isApprovalFilePickerDisabled
+                          ? 'Limite de archivos alcanzado'
+                          : 'Seleccionar o soltar archivos'}
+                      </span>
+                      <span className="mt-1 text-xs">
+                        {approvalFileSlotsRemaining > 0
+                          ? `${approvalFileSlotsRemaining} cupo(s) disponible(s)`
+                          : 'Quita un archivo para adjuntar otro'}
+                      </span>
                     </label>
                   </div>
                   {existingApprovalFiles.length > 0 && (
@@ -3066,7 +3203,7 @@ export function ReviewRequestsModule({
                               onClick={() => handleRemoveExistingApprovalFile(file.id)}
                               className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1 font-semibold text-red-600 hover:bg-red-50"
                             >
-                              <X className="h-3.5 w-3.5" />
+                              <Trash2 className="h-3.5 w-3.5" />
                               Quitar
                             </button>
                           </div>
@@ -3083,17 +3220,28 @@ export function ReviewRequestsModule({
                       <p className="text-xs text-gray-600">
                         Archivos seleccionados: <span className="font-semibold">{approvalFiles.length}</span>
                       </p>
-                      <div className="review-approval-files flex flex-wrap gap-2">
+                      <div className="grid gap-2">
                         {approvalFiles.map((file, index) => (
                           <div
                             key={`${file.name}-${index}`}
-                            className={`review-approval-chip flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${getApprovalFileChipClass(file)}`}
+                            className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs shadow-sm"
                           >
-                            <span className="review-approval-chip__name">{file.name}</span>
+                            <div className="flex min-w-0 items-center gap-3">
+                              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${getApprovalFileToneClass(file.name)}`}>
+                                <FileCheck2 className="h-4 w-4" />
+                              </span>
+                              <div className="min-w-0">
+                                <p className="truncate font-semibold text-gray-900">{file.name}</p>
+                                <p className="text-gray-500">
+                                  {getApprovalFileExtension(file.name).toUpperCase()} - {formatBytes(file.size)}
+                                </p>
+                              </div>
+                            </div>
                             <button
                               type="button"
                               onClick={() => handleRemoveApprovalFile(index)}
-                              className="text-gray-400 hover:text-red-500"
+                              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-red-100 text-red-600 hover:bg-red-50"
+                              aria-label={`Quitar ${file.name}`}
                             >
                               ×
                             </button>

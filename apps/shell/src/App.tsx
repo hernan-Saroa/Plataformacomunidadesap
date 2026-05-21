@@ -255,7 +255,7 @@ function resolveDestino(user: any): {
 
   // Nombres de rol para mostrar en el portal/backoffice
   const roleNames = roleObjects
-    .map((r: any) => (typeof r === 'object' ? r?.name : null))
+    .map((r: any) => (typeof r === 'object' ? r?.code : null))
     .filter(Boolean) as string[];
 
   // Módulo principal para backoffice
