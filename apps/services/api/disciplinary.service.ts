@@ -519,8 +519,24 @@ class DisciplinaryService {
         formData.append('disciplinable', JSON.stringify(data.disciplinable));
         formData.append('conducta', data.conducta);
         if (data.fechaHechos) {
-            formData.append('fechaHechos', data.fechaHechos);
+            // Normalizar siempre a ISO 8601 completo para que el DTO del backend lo acepte
+            const fh = data.fechaHechos;
+            const isoValue = fh.includes('T') ? fh : new Date(fh + 'T00:00:00.000Z').toISOString();
+            formData.append('fechaHechos', isoValue);
         }
+
+// ✅ FIX CRÍTICO - fechaQueja (la que faltaba en esta copia local)
+const fechaQuejaRaw = data.fechaQueja || (data as any).fechaRecepcion;
+if (fechaQuejaRaw) {
+    const dateOnly = typeof fechaQuejaRaw === 'string' && fechaQuejaRaw.includes('T')
+        ? fechaQuejaRaw.split('T')[0]
+        : fechaQuejaRaw;
+    formData.append('fechaQueja', dateOnly as string);
+    console.log('[MFE radicarNoticia] → Appending fechaQueja:', dateOnly);
+} else {
+    console.warn('[MFE radicarNoticia] → NO hay fechaQueja en el data');
+}
+
         if (data.adjuntos && data.adjuntos.length > 0) {
             formData.append('adjuntos', JSON.stringify(data.adjuntos));
         }
