@@ -575,9 +575,9 @@ export function GestionTerminosAlertas() {
       startY: 75,
       head: [['Estado', 'Proceso', 'Actuación', 'Responsable', 'Inicio', 'Días', 'Vencimiento', 'Restantes']],
       body: terminosFiltrados.map(t => [
-        t.estado === 'vencido' ? '🔴 Vencido' :
-        t.estado === 'proximo_vencer' ? '🟡 Próximo' :
-        t.estado === 'pendiente' ? '🟢 Pendiente' : '✅ Cumplido',
+        t.estado === 'vencido' ? 'Vencido' :
+        t.estado === 'proximo_vencer' ? 'Próximo' :
+        t.estado === 'pendiente' ? 'Pendiente' : 'Cumplido',
         `${t.numeroProceso}\n${t.proceso}`,
         t.actuacion,
         t.responsable,
