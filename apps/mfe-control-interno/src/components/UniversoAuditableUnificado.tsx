@@ -50,6 +50,7 @@ import { useConfiguracionProfesionales, type ProfesionalOCI } from './services/u
 // ✅ HOOK DE PERMISOS FLEXIBLE
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
 import { ModuleHeaderBar } from './ModuleHeaderBar';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS LOCALES (re-exportados desde hooks)
@@ -123,7 +124,11 @@ interface UniversoAuditableUnificadoProps {
   modoSeguimiento?: boolean;
 }
 
-export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSeguimiento = false }: UniversoAuditableUnificadoProps) {
+export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, modoSeguimiento = false }: UniversoAuditableUnificadoProps) {
+  const vigenciaCtx = usePlanAnualVigenciaContextOptional();
+  const vigencia = vigenciaCtx?.vigencia ?? vigenciaProp ?? new Date().getFullYear();
+  const planAnualId = vigenciaCtx?.planActivoId ?? undefined;
+
   const [tabActiva, setTabActiva] = useState<TabActiva>(modoSeguimiento ? 'programa' : 'universo');
   const [filtroNivelRiesgo, setFiltroNivelRiesgo] = useState<NivelRiesgo | 'TODOS'>('TODOS');
   const [filtroTipoProceso, setFiltroTipoProceso] = useState<TipoProceso | 'TODOS'>('TODOS');
@@ -167,7 +172,7 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
     isOnline: isOnlineAuditorias,
     agregarAuditoria,
     refetch: refetchAuditorias,
-  } = useProgramaAnualData({ vigencia, procesos });
+  } = useProgramaAnualData({ vigencia, planAnualId, procesos });
 
   // ══════════════════════════════════════════════════════════════════════════
   // PROCESAR DATOS PARA LA TABLA (Merge de Procesos + Evaluaciones)
@@ -479,14 +484,16 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
             : 'Gestión integral del universo auditable y programa anual'}
           icon={<Layers className="w-5 h-5 text-white" />}
           color="#003DA5"
-          rightContent={onVolver ? (
-            <button
-              onClick={onVolver}
-              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-semibold transition-colors"
-            >
-              Volver
-            </button>
-          ) : undefined}
+          rightContent={
+            onVolver ? (
+              <button
+                onClick={onVolver}
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg font-semibold transition-colors"
+              >
+                Volver
+              </button>
+            ) : undefined
+          }
         />
       </div>
 
@@ -627,6 +634,11 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
         <FormularioAuditoriaUnificado
           open={mostrarFormulario}
           onClose={() => setMostrarFormulario(false)}
+          initialData={{
+            vinculadaPlanAnual: true,
+            planAnualId: planAnualId ?? '',
+            planAnualAño: vigencia,
+          }}
           onSubmit={async (data: AuditoriaUnificadaFormData) => {
             const auditoriaData: AuditoriaCreateData = {
               tipoAuditoria: data.tipoAuditoria,
@@ -662,9 +674,9 @@ export function UniversoAuditableUnificado({ vigencia = 2026, onVolver, modoSegu
               recursos: data.recursos,
               productosEsperados: data.productosEsperados,
               hitos: data.hitos,
-              vinculadaPlanAnual: data.vinculadaPlanAnual,
-              planAnualId: data.planAnualId,
-              planAnualAño: data.planAnualAño,
+              vinculadaPlanAnual: data.vinculadaPlanAnual ?? true,
+              planAnualId: data.planAnualId ?? planAnualId,
+              planAnualAño: data.planAnualAño ?? vigencia,
               rolDecretoAsociado: data.rolDecretoAsociado,
               estadoKanban: data.estadoKanban || 'Plan Anual',
               incluirHallazgosPreliminares: data.incluirHallazgosPreliminares,

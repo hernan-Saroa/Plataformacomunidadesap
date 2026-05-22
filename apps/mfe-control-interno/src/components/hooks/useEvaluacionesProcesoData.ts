@@ -390,7 +390,7 @@ export function useEvaluacionesProcesoData(
     return () => {
       mountedRef.current = false;
     };
-  }, [autoLoad, fetchEvaluaciones]);
+  }, [autoLoad, fetchEvaluaciones, vigencia]);
 
   return {
     evaluaciones,
