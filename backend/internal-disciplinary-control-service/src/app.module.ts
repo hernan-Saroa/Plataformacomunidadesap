@@ -102,6 +102,8 @@ import { DisciplinaryEmailService } from './services/disciplinary-email.service'
 import { DisciplinaryBehaviorService } from './services/disciplinary-behavior.service';
 import { NotificationClientService } from './services/notification-client.service';
 import { RolesGuard } from './auth/roles.guard';
+import { PermissionsService } from './auth/services/permissions.service';
+import { PermissionsGuard } from './auth/guards/permissions.guard';
 
 @Module({
   imports: [
@@ -205,6 +207,8 @@ import { RolesGuard } from './auth/roles.guard';
     DisciplinaryBehaviorService,
     NotificationClientService,
     RolesGuard,
+    PermissionsService,
+    PermissionsGuard,
   ],
 })
 export class AppModule { }
