@@ -203,12 +203,13 @@ export class AutoController {
   })
   async sendPliegoToJuridica(
     @Param('id') id: string,
-    @Body('enviadoPorId') enviadoPorId: string,
+    @Body() body: { enviadoPorId: string; enviadoPorEmail?: string; enviadoPorNombre?: string },
   ): Promise<void> {
+    const { enviadoPorId, enviadoPorEmail, enviadoPorNombre } = body || {};
     if (!enviadoPorId) {
       throw new Error('enviadoPorId es requerido');
     }
-    return await this.autoService.sendPliegoToJuridica(id, enviadoPorId);
+    return await this.autoService.sendPliegoToJuridica(id, enviadoPorId, enviadoPorEmail, enviadoPorNombre);
   }
 
   /**

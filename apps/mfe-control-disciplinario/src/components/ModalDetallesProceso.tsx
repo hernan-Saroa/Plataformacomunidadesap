@@ -6340,8 +6340,14 @@ export function ModalDetallesProceso({
                         }
                         try {
                           setEnviandoJuridica(true);
-                          const userId = authService.getCurrentUser()?.id || '';
-                          await disciplinaryService.sendJuridica(autoPliego.id, userId);
+                           const currentUser = authService.getCurrentUser();
+                           const userId = currentUser?.id || '';
+                           await disciplinaryService.sendJuridica(
+                               autoPliego.id, 
+                               userId, 
+                               currentUser?.email, 
+                               currentUser?.fullName || currentUser?.firstName
+                           );
                           toast.success('Auto enviado a jurídica exitosamente', {
                             description: `El proceso ${proceso.numeroProceso} ha sido cerrado y archivado`,
                             duration: 5000,

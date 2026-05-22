@@ -1000,9 +1000,16 @@ class DisciplinaryService {
         });
     }
 
-    async sendJuridica(id: string, enviadoPorId: string): Promise<LegalAuto> {
+    async sendJuridica(
+        id: string, 
+        enviadoPorId: string, 
+        enviadoPorEmail?: string, 
+        enviadoPorNombre?: string
+    ): Promise<LegalAuto> {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-juridica`, {
-            enviadoPorId
+            enviadoPorId,
+            enviadoPorEmail,
+            enviadoPorNombre,
         });
     }
 
