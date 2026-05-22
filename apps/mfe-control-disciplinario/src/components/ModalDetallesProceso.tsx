@@ -4392,19 +4392,20 @@ export function ModalDetallesProceso({
 
                       if (!autoPliego) {
                         return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE_PLIEGO) ? (
-                            <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
-                              <button
-                                onClick={() => setMostrarModalPliego(true)}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
-                                style={{ background: '#D97706', color: 'white' }}
-                              >
-                                <FileText className="w-4 h-4" />
-                                Auto Pliego de Cargos
-                              </button>
-                              <p className="text-[10px] text-center mt-1.5" style={{ color: '#92400E' }}>
-                                Cierra el proceso y traslada a Oficina Jurídica
-                              </p>
-                            </div>
+                            // <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
+                            //   <button
+                            //     onClick={() => setMostrarModalPliego(true)}
+                            //     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                            //     style={{ background: '#D97706', color: 'white' }}
+                            //   >
+                            //     <FileText className="w-4 h-4" />
+                            //     Auto Pliego de Cargos
+                            //   </button>
+                            //   <p className="text-[10px] text-center mt-1.5" style={{ color: '#92400E' }}>
+                            //     Cierra el proceso y traslada a Oficina Jurídica
+                            //   </p>
+                            // </div>
+                            null
                         ) : null;
                       }
 
