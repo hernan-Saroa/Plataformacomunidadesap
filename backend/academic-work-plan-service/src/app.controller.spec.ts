@@ -15,8 +15,8 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should return service status', () => {
+      expect(appController.getHello()).toBe('Running Microservice Academic Work Plan Service');
     });
   });
 });

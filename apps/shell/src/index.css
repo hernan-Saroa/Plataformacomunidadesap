@@ -2614,6 +2614,10 @@
     max-width: 1100px;
   }
 
+  .max-w-\[1360px\] {
+    max-width: 1360px;
+  }
+
   .max-w-\[1400px\] {
     max-width: 1400px;
   }
@@ -4202,6 +4206,10 @@
 
   .bg-\[\#003DA5\] {
     background-color: #003da5;
+  }
+
+  .bg-\[\#003DA5\]\/5 {
+    background-color: oklab(40.2373% -.02689 -.174478 / .05);
   }
 
   .bg-\[\#003DA5\]\/10 {

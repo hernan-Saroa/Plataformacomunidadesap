@@ -50,6 +50,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { DISCIPLINARY_MODULE_ACCESS } from '../auth/authorization.constants';
+import { PermissionsService } from '../auth/services/permissions.service';
 
 const MAX_EVIDENCE_FILE_SIZE = 10 * 1024 * 1024 * 1024;
 const MAX_STANDARD_DOCUMENT_SIZE = 50 * 1024 * 1024;
@@ -99,6 +100,7 @@ export class ProcessController {
     private storageService: StorageService,
     private autoService: AutoService,
     private httpService: HttpService,
+    private permissionsService: PermissionsService,
   ) { }
 
   private normalizeRoleCode(role: unknown): string | null {
@@ -141,13 +143,40 @@ export class ProcessController {
     return false;
   }
 
-  private getSensitiveAccessContext(req: AuthenticatedRequest): {
+  /**
+   * Verifica si el usuario tiene el permiso granular que permite ver TODOS los expedientes
+   * (CONTROL_DISCIPLINARIO_EXPEDIENTE_ELECTRONICO_VIEW_ALL).
+   * Consulta real contra la tabla auth.permission usando los roles del token.
+   */
+  private async hasExpedienteViewAllPermission(req: AuthenticatedRequest): Promise<boolean> {
+    const normalizedRoles = Array.from(this.extractNormalizedRoles(req));
+    if (normalizedRoles.length === 0) return false;
+
+    // Fast path para super admins (ya cubierto por roles legacy, pero por si acaso)
+    if (normalizedRoles.some(r => ['SUPER_ADMIN', 'ADMIN'].includes(r))) {
+      return true;
+    }
+
+    const userPermissions = await this.permissionsService.getPermissionsByRoles(normalizedRoles);
+
+    return userPermissions.some(perm =>
+      perm === 'control-disciplinario.expediente-electronico.view_all' ||
+      perm.endsWith('expediente-electronico.view_all'),
+    );
+  }
+
+  private async getSensitiveAccessContext(req: AuthenticatedRequest): Promise<{
     fullAccess: boolean;
+    canViewAllExpedientes: boolean;
     userId?: string;
     email?: string;
-  } {
+  }> {
+    const legacyFullAccess = this.hasFullSensitiveAccess(req);
+    const canViewAll = legacyFullAccess || await this.hasExpedienteViewAllPermission(req);
+
     return {
-      fullAccess: this.hasFullSensitiveAccess(req),
+      fullAccess: legacyFullAccess || canViewAll,
+      canViewAllExpedientes: canViewAll,
       userId: req.user?.userId,
       email: req.user?.email,
     };
@@ -158,7 +187,7 @@ export class ProcessController {
     processId: string,
     includeAutos = false,
   ): Promise<void> {
-    const access = this.getSensitiveAccessContext(req);
+    const access = await this.getSensitiveAccessContext(req);
 
     if (access.fullAccess) {
       return;
@@ -203,7 +232,7 @@ export class ProcessController {
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
   ) {
-    const access = this.getSensitiveAccessContext(req);
+    const access = await this.getSensitiveAccessContext(req);
 
     if (access.fullAccess) {
       return await this.processService.getProcessStatistics(id);
@@ -280,7 +309,7 @@ export class ProcessController {
     @Req() req: AuthenticatedRequest,
     @Param('radicado') radicado: string,
   ): Promise<DisciplinaryProcess> {
-    const access = this.getSensitiveAccessContext(req);
+    const access = await this.getSensitiveAccessContext(req);
 
     if (access.fullAccess) {
       return await this.processService.findByRadicado(radicado);
@@ -1092,7 +1121,7 @@ export class ProcessController {
     @Req() req: AuthenticatedRequest,
     @Query('abogadoId') abogadoId: string,
   ): Promise<DisciplinaryProcess[]> {
-    const access = this.getSensitiveAccessContext(req);
+    const access = await this.getSensitiveAccessContext(req);
 
     if (access.fullAccess) {
       if (!abogadoId) {
@@ -1122,7 +1151,7 @@ export class ProcessController {
     type: [DisciplinaryProcess],
   })
   async getAll(@Req() req: AuthenticatedRequest): Promise<DisciplinaryProcess[]> {
-    const access = this.getSensitiveAccessContext(req);
+    const access = await this.getSensitiveAccessContext(req);
 
     if (access.fullAccess) {
       return await this.processService.findAll();
@@ -1152,7 +1181,7 @@ export class ProcessController {
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
   ): Promise<DisciplinaryProcess> {
-    const access = this.getSensitiveAccessContext(req);
+    const access = await this.getSensitiveAccessContext(req);
 
     if (access.fullAccess) {
       return await this.processService.findById(id, true);

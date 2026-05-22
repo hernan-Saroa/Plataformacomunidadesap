@@ -519,8 +519,24 @@ class DisciplinaryService {
         formData.append('disciplinable', JSON.stringify(data.disciplinable));
         formData.append('conducta', data.conducta);
         if (data.fechaHechos) {
-            formData.append('fechaHechos', data.fechaHechos);
+            // Normalizar siempre a ISO 8601 completo para que el DTO del backend lo acepte
+            const fh = data.fechaHechos;
+            const isoValue = fh.includes('T') ? fh : new Date(fh + 'T00:00:00.000Z').toISOString();
+            formData.append('fechaHechos', isoValue);
         }
+
+// ✅ FIX CRÍTICO - fechaQueja (la que faltaba en esta copia local)
+const fechaQuejaRaw = data.fechaQueja || (data as any).fechaRecepcion;
+if (fechaQuejaRaw) {
+    const dateOnly = typeof fechaQuejaRaw === 'string' && fechaQuejaRaw.includes('T')
+        ? fechaQuejaRaw.split('T')[0]
+        : fechaQuejaRaw;
+    formData.append('fechaQueja', dateOnly as string);
+    console.log('[MFE radicarNoticia] → Appending fechaQueja:', dateOnly);
+} else {
+    console.warn('[MFE radicarNoticia] → NO hay fechaQueja en el data');
+}
+
         if (data.adjuntos && data.adjuntos.length > 0) {
             formData.append('adjuntos', JSON.stringify(data.adjuntos));
         }
@@ -542,13 +558,50 @@ class DisciplinaryService {
         hechos?: string;
         conducta?: string;
         denunciante?: any;
+        denunciantes?: any;
         disciplinable?: any;
+        disciplinables?: any;
         conductas?: string[];
         fechaHechos?: string | null;
         fechaQueja?: string;
         usuario?: string;
+        adjuntosParaEliminar?: string[];
+        archivosAdjuntos?: File[];
     }): Promise<DisciplinaryNews> {
-        return apiClient.put<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`, data);
+        const hasFileChanges =
+            (data.archivosAdjuntos && data.archivosAdjuntos.length > 0) ||
+            (data.adjuntosParaEliminar && data.adjuntosParaEliminar.length > 0);
+
+        if (!hasFileChanges) {
+            const { archivosAdjuntos, adjuntosParaEliminar, ...jsonData } = data;
+            return apiClient.put<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`, jsonData);
+        }
+
+        const formData = new FormData();
+
+        if (data.origen) formData.append('origen', data.origen);
+        if (data.territorial) formData.append('territorial', data.territorial);
+        if (data.dependenciaDenunciado) formData.append('dependenciaDenunciado', data.dependenciaDenunciado);
+        if (data.hechos) formData.append('hechos', data.hechos);
+        if (data.conducta) formData.append('conducta', data.conducta);
+        if (data.fechaHechos) formData.append('fechaHechos', data.fechaHechos);
+        if (data.fechaQueja) formData.append('fechaQueja', data.fechaQueja);
+        if (data.usuario) formData.append('usuario', data.usuario);
+        if (data.conductas) formData.append('conductas', JSON.stringify(data.conductas));
+        if (data.denunciante) formData.append('denunciante', JSON.stringify(data.denunciante));
+        if (data.denunciantes) formData.append('denunciantes', JSON.stringify(data.denunciantes));
+        if (data.disciplinable) formData.append('disciplinable', JSON.stringify(data.disciplinable));
+        if (data.disciplinables) formData.append('disciplinables', JSON.stringify(data.disciplinables));
+        if (data.adjuntosParaEliminar && data.adjuntosParaEliminar.length > 0) {
+            formData.append('adjuntosParaEliminar', JSON.stringify(data.adjuntosParaEliminar));
+        }
+        if (data.archivosAdjuntos && data.archivosAdjuntos.length > 0) {
+            data.archivosAdjuntos.forEach((file) => {
+                formData.append('files', file);
+            });
+        }
+
+        return apiClient.put<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`, formData);
     }
 
     async getNoticiasPendientes(): Promise<DisciplinaryNews[]> {
@@ -942,6 +995,18 @@ class DisciplinaryService {
         // Devolver solo la ruta relativa (sin el host)
         // Esto permite que downloadFileFromUrl construya la URL correctamente
         return `/files/${filename}`;
+    }
+
+    /**
+     * Obtener URL absoluta para fetch/preview de archivos adjuntos (noticias, evidencias, etc.)
+     * Construye la URL completa usando buildApiUrl para que funcione desde el MFE (puerto distinto)
+     */
+    getAbsoluteFileUrl(relativeUrl: string): string {
+        const rel = this.getFileUrl(relativeUrl);
+        if (/^https?:\/\//i.test(rel)) {
+            return rel;
+        }
+        return buildApiUrl('control-disciplinario', rel.startsWith('/') ? rel : `/${rel}`);
     }
 
     // --- AUTOS ---

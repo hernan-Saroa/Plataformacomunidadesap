@@ -313,6 +313,14 @@ export function GraduatesManagementModule() {
     }
     return { borderColor: '#E5E7EB', background: '#F9FAFB', color: '#6B7280' };
   };
+  const getFileTypeIconStyle = (file: { originalName?: string; mimeType?: string }) => {
+    const variant = getFileTypeBadgeVariant(file);
+    if (variant === 'pdf') return { background: '#FEF2F2', color: '#B91C1C' };
+    if (variant === 'word') return { background: '#EFF6FF', color: '#1D4ED8' };
+    if (variant === 'excel') return { background: '#ECFDF5', color: '#047857' };
+    if (variant === 'image') return { background: '#F3F4F6', color: '#4B5563' };
+    return { background: '#F8FAFC', color: '#475569' };
+  };
   const allowedFileExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.webp'];
   const allowedFileMimeTypes = new Set([
     'application/pdf',
@@ -613,11 +621,15 @@ export function GraduatesManagementModule() {
     setIsDeleteFileModalOpen(true);
   };
 
+  const handleCloseDeleteFileModal = () => {
+    setIsDeleteFileModalOpen(false);
+    setFileToDelete(null);
+  };
+
   const handleConfirmDeleteFile = async () => {
     if (!fileToDelete) return;
     await handleDeleteFile(fileToDelete.id);
-    setIsDeleteFileModalOpen(false);
-    setFileToDelete(null);
+    handleCloseDeleteFileModal();
   };
 
   const saveBlobAsFile = (blob: Blob, fileName: string) => {
@@ -2008,24 +2020,33 @@ export function GraduatesManagementModule() {
                           </div>
                         </div>
 
-                        <div className="md:col-span-2 lg:col-span-3">
+                        <div>
                           <p className="text-xs font-medium mb-1" style={{ color: '#6B7280' }}>
                             Archivos
                           </p>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenFilesModal(user)}
-                              className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition hover:bg-slate-100"
-                              style={{ borderColor: '#D1D5DB', color: '#1F2937', background: '#F9FAFB' }}
+                          <button
+                            type="button"
+                            onClick={() => handleOpenFilesModal(user)}
+                            className="inline-flex w-fit max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition hover:bg-blue-50"
+                            style={{ borderColor: '#BFDBFE', color: '#003DA5', background: '#FFFFFF' }}
+                            aria-label={`Gestionar archivos de ${user.firstName} ${user.lastName}`}
+                          >
+                            <span
+                              className="inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md"
+                              style={{ background: '#E0ECFF', color: '#003DA5' }}
                             >
-                              <FileText className="w-3.5 h-3.5" style={{ color: '#2563EB' }} />
-                              Archivos
-                            </button>
-                            <span className="text-xs font-semibold" style={{ color: '#6B7280' }}>
-                              {formatFileCount(user.documentsCount ?? 0)}
+                              <FileText className="h-4 w-4" />
                             </span>
-                          </div>
+                            <span className="min-w-0 text-left">
+                              <span className="block truncate" style={{ color: '#111827' }}>
+                                {formatFileCount(user.documentsCount ?? 0)}
+                              </span>
+                              <span className="block text-[11px] font-medium" style={{ color: '#64748B' }}>
+                                Gestionar archivos
+                              </span>
+                            </span>
+                            <Eye className="h-3.5 w-3.5 flex-shrink-0" />
+                          </button>
                         </div>
                       </div>
                     </motion.div>
@@ -2152,37 +2173,131 @@ export function GraduatesManagementModule() {
           }}
         >
           <div className="flex h-full min-h-0 w-full flex-col gap-4">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5" style={{ color: '#003DA5' }} />
-              Archivos del titulo
-            </DialogTitle>
-            <DialogDescription>
-              {filesModalUser
-                ? `Graduado: ${filesModalUser.firstName} ${filesModalUser.lastName} · Documento: ${filesModalUser.document}`
-                : 'Selecciona un graduado para ver sus archivos.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="graduate-files-body min-h-0 flex-1 overflow-y-auto py-4 pr-1 space-y-4">
-            <div className="grid gap-3 md:grid-cols-[1fr]">
-              <div className="flex items-center justify-between rounded-xl border px-4 py-3 shadow-sm" style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#92400E' }}>
-                    Límite
-                  </p>
-                  <p className="text-sm font-semibold" style={{ color: '#78350F' }}>
-                    Máximo {MAX_FILES_PER_GRADUATE} archivos
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: '#92400E' }}>
-                    Peso máximo por archivo: {MAX_UPLOAD_SIZE_LABEL}
-                  </p>
+            <DialogHeader className="space-y-3">
+            <div
+              className="rounded-2xl border px-4 py-4"
+              style={{
+                borderColor: '#BFDBFE',
+                background: 'linear-gradient(135deg, #F8FAFF 0%, #FFFFFF 55%, #EFF6FF 100%)',
+              }}
+            >
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar className="h-12 w-12 flex-shrink-0">
+                    <AvatarFallback
+                      className="text-white font-semibold text-sm"
+                      style={{ background: 'linear-gradient(135deg, #003DA5 0%, #0052CC 100%)' }}
+                    >
+                      {(filesModalUser?.firstName?.[0] || 'G')}{filesModalUser?.lastName?.[0] || ''}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <DialogTitle className="flex items-center gap-2">
+                      <FileText className="w-5 h-5" style={{ color: '#003DA5' }} />
+                      Archivos del titulo
+                    </DialogTitle>
+                    <DialogDescription>
+                      {filesModalUser
+                        ? `Graduado: ${filesModalUser.firstName} ${filesModalUser.lastName} - Documento: ${filesModalUser.document}`
+                        : 'Selecciona un graduado para ver sus archivos.'}
+                    </DialogDescription>
+                    {filesModalUser?.program && (
+                      <p className="mt-1 truncate text-xs font-semibold" style={{ color: '#475569' }}>
+                        {filesModalUser.program}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <span className="text-xs font-semibold rounded-full px-3 py-1" style={{ background: '#FEF3C7', color: '#92400E' }}>
-                  {totalQueuedFiles}/{MAX_FILES_PER_GRADUATE}
-                </span>
+
+                <div className="grid grid-cols-3 gap-2 md:w-[20rem]">
+                  <div className="rounded-xl border bg-white px-3 py-2 text-center" style={{ borderColor: '#DBEAFE' }}>
+                    <p className="text-lg font-bold leading-none" style={{ color: '#003DA5' }}>
+                      {filesModalItems.length}
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold" style={{ color: '#64748B' }}>
+                      Cargados
+                    </p>
+                  </div>
+                  <div className="rounded-xl border bg-white px-3 py-2 text-center" style={{ borderColor: '#DBEAFE' }}>
+                    <p className="text-lg font-bold leading-none" style={{ color: '#047857' }}>
+                      {Math.max(0, MAX_FILES_PER_GRADUATE - totalQueuedFiles)}
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold" style={{ color: '#64748B' }}>
+                      Libres
+                    </p>
+                  </div>
+                  <div className="rounded-xl border bg-white px-3 py-2 text-center" style={{ borderColor: '#DBEAFE' }}>
+                    <p className="text-lg font-bold leading-none" style={{ color: '#92400E' }}>
+                      {MAX_FILES_PER_GRADUATE}
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold" style={{ color: '#64748B' }}>
+                      Limite
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
+          </DialogHeader>
+
+            <div className="graduate-files-body min-h-0 flex-1 overflow-y-auto py-4 pr-1 space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div
+                  className="rounded-xl border px-4 py-3 shadow-sm"
+                  style={{ borderColor: '#FDE68A', background: '#FFFBEB' }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#92400E' }}>
+                        Capacidad de archivos
+                      </p>
+                      <p className="text-sm font-semibold" style={{ color: '#78350F' }}>
+                        {totalQueuedFiles}/{MAX_FILES_PER_GRADUATE} espacios usados
+                      </p>
+                      <p className="mt-0.5 text-xs" style={{ color: '#92400E' }}>
+                        Peso maximo por archivo: {MAX_UPLOAD_SIZE_LABEL}
+                      </p>
+                    </div>
+                    <span
+                      className="rounded-full px-3 py-1 text-xs font-semibold"
+                      style={{ background: '#FEF3C7', color: '#92400E' }}
+                    >
+                      Limite {MAX_FILES_PER_GRADUATE}
+                    </span>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full" style={{ background: '#FEF3C7' }}>
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${Math.min(100, (totalQueuedFiles / MAX_FILES_PER_GRADUATE) * 100)}%`,
+                        background: '#F59E0B',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div
+                  className="rounded-xl border px-4 py-3 shadow-sm"
+                  style={{ borderColor: '#DBEAFE', background: '#F8FAFF' }}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#2563EB' }}>
+                    Formatos permitidos
+                  </p>
+                  <p className="text-sm font-semibold" style={{ color: '#111827' }}>
+                    Documentos del graduado
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {['PDF', 'Word', 'Excel', 'Imagenes'].map((type) => (
+                      <span
+                        key={type}
+                        className="rounded-full border bg-white px-3 py-1 text-xs font-semibold"
+                        style={{ borderColor: '#BFDBFE', color: '#1D4ED8' }}
+                      >
+                        {type}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
 
             <div className="rounded-xl border px-4 py-4 space-y-3 shadow-sm" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
               <div className="flex items-center justify-between">
@@ -2252,14 +2367,25 @@ export function GraduatesManagementModule() {
                   {filesUploadQueue.map((file, index) => (
                     <div
                       key={`${file.name}-${index}`}
-                      className="flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700"
+                      title={file.name}
+                      className="flex max-w-full items-center gap-2 rounded-full border px-2.5 py-1.5 text-xs shadow-sm"
+                      style={getFileTypeBadgeStyle({ originalName: file.name, mimeType: file.type })}
                     >
-                      <span className="max-w-[200px] truncate">{file.name}</span>
+                      <span
+                        className="max-w-[22rem] font-semibold leading-4 sm:max-w-[28rem]"
+                        style={{ overflowWrap: 'anywhere' }}
+                      >
+                        {file.name}
+                      </span>
+                      <span className="flex-shrink-0 rounded-full bg-white/75 px-2 py-0.5 text-[11px] font-semibold">
+                        {getFileTypeLabel({ originalName: file.name, mimeType: file.type })}
+                      </span>
                       <button
                         type="button"
                         onClick={() => handleRemoveQueuedFile(index)}
                         disabled={isUploadingFiles}
-                        className="text-gray-400 hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label={`Quitar ${file.name}`}
+                        className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-white/75 transition hover:bg-white hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         ×
                       </button>
@@ -2306,69 +2432,103 @@ export function GraduatesManagementModule() {
               </div>
             </div>
 
-            {isLoadingFiles ? (
-              <div className="rounded-lg border border-dashed p-4 text-center" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
-                <p className="text-sm font-medium" style={{ color: '#374151' }}>
-                  Cargando archivos...
-                </p>
-              </div>
-            ) : filesModalItems.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-4 text-center" style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}>
-                <p className="text-sm font-medium" style={{ color: '#374151' }}>
-                  No hay archivos cargados.
-                </p>
-                <p className="text-xs mt-1" style={{ color: '#6B7280' }}>
-                  Aqui se mostraran los archivos del titulo cuando se suban.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {filesModalItems.map((file) => {
-                  const fileUrl = buildServiceAssetUrl(
-                    'registro-academico',
-                    file.url || `/uploads/graduate-files/${file.storedName}`,
-                  );
-                  return (
+              {isLoadingFiles ? (
+                <div
+                  className="rounded-xl border border-dashed p-6 text-center"
+                  style={{ borderColor: '#BFDBFE', background: '#F8FAFF' }}
+                >
+                  <div
+                    className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full"
+                    style={{ background: '#E0ECFF', color: '#003DA5' }}
+                  >
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <p className="text-sm font-semibold" style={{ color: '#1F2937' }}>
+                    Cargando archivos...
+                  </p>
+                </div>
+              ) : filesModalItems.length === 0 ? (
+                <div
+                  className="rounded-xl border border-dashed p-6 text-center"
+                  style={{ borderColor: '#CBD5E1', background: '#F8FAFC' }}
+                >
+                  <div
+                    className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full"
+                    style={{ background: '#E0ECFF', color: '#003DA5' }}
+                  >
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <p className="text-sm font-semibold" style={{ color: '#111827' }}>
+                    No hay archivos cargados
+                  </p>
+                  <p className="mt-1 text-xs" style={{ color: '#64748B' }}>
+                    Aqui se mostraran los documentos asociados al graduado.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold" style={{ color: '#111827' }}>
+                      Archivos cargados
+                    </p>
+                    <span className="rounded-full px-3 py-1 text-xs font-semibold" style={{ background: '#EEF2FF', color: '#3730A3' }}>
+                      {formatFileCount(filesModalItems.length)}
+                    </span>
+                  </div>
+                  {filesModalItems.map((file) => (
                     <div
                       key={file.id}
-                      className="graduate-files-item flex items-center justify-between rounded-lg border px-3 py-2"
+                      className="graduate-files-item flex flex-col gap-3 rounded-xl border px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between"
                       style={{ borderColor: '#E5E7EB', background: '#FFFFFF' }}
                     >
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold truncate" style={{ color: '#1F2937' }}>
-                          {file.originalName}
-                        </p>
-                        <p className="text-xs" style={{ color: '#6B7280' }}>
-                          {formatFileSize(file.sizeBytes)} ·{' '}
-                          <span
-                            className="graduate-files-type-badge inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold"
-                            style={getFileTypeBadgeStyle(file)}
-                          >
-                            {getFileTypeLabel(file)}
-                          </span>
-                        </p>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div
+                          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl"
+                          style={getFileTypeIconStyle(file)}
+                        >
+                          <FileText className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold" style={{ color: '#1F2937' }}>
+                            {file.originalName}
+                          </p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            <span className="text-xs" style={{ color: '#6B7280' }}>
+                              {formatFileSize(file.sizeBytes)}
+                            </span>
+                            <span
+                              className="graduate-files-type-badge inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold"
+                              style={getFileTypeBadgeStyle(file)}
+                            >
+                              {getFileTypeLabel(file)}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
                         <button
                           type="button"
                           onClick={() => handleDownloadFile(file)}
-                          className="graduate-files-action-btn text-xs font-semibold text-blue-600 hover:text-blue-700"
+                          className="graduate-files-action-btn inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition hover:bg-blue-50"
+                          style={{ borderColor: '#BFDBFE', color: '#1D4ED8', background: '#FFFFFF' }}
                         >
+                          <Download className="h-3.5 w-3.5" />
                           Descargar
                         </button>
                         <button
                           type="button"
                           onClick={() => handleRequestDeleteFile(file)}
-                          className="graduate-files-action-btn is-danger text-xs font-semibold text-red-500 hover:text-red-600"
+                          className="graduate-files-action-btn is-danger inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition hover:bg-red-50"
+                          style={{ borderColor: '#FECACA', color: '#DC2626', background: '#FFFFFF' }}
                         >
+                          <Trash2 className="h-3.5 w-3.5" />
                           Eliminar
                         </button>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
           </div>
 
           <DialogFooter>
@@ -2386,50 +2546,82 @@ export function GraduatesManagementModule() {
       </Dialog>
 
       {/* Modal: Confirmar eliminación de archivo */}
-      <Dialog open={isDeleteFileModalOpen} onOpenChange={setIsDeleteFileModalOpen}>
-        <DialogContent
-          className="graduate-files-confirm-dialog w-[92vw] max-w-md"
-          style={{
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-600" />
-              Confirmar eliminación
-            </DialogTitle>
-            <DialogDescription>
-              ¿Seguro que deseas eliminar el archivo{' '}
-              <span className="graduate-files-filename font-semibold text-gray-900">
-                {fileToDelete?.originalName}
-              </span>
-              ?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <button
-              onClick={() => {
-                setIsDeleteFileModalOpen(false);
-                setFileToDelete(null);
+      <AnimatePresence>
+        {isDeleteFileModalOpen && (
+          <motion.div
+            className="pointer-events-auto fixed inset-0 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]"
+            style={{ zIndex: 10040 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.16, ease: 'easeOut' }}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }}
+          >
+            <motion.div
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-file-confirm-title"
+              aria-describedby="delete-file-confirm-description"
+              className="w-full max-w-md overflow-hidden rounded-xl border bg-white ring-1 ring-slate-900/5"
+              style={{
+                borderColor: '#D1D5DB',
+                boxShadow: '0 24px 80px rgba(15, 23, 42, 0.38), 0 4px 18px rgba(15, 23, 42, 0.16)',
               }}
-              className="graduate-files-secondary-btn px-4 py-2 text-sm font-medium rounded-lg border-2"
-              style={{ borderColor: '#D1D5DB', color: '#6B7280' }}
+              initial={{ opacity: 0, y: 10, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+              }}
             >
-              Cancelar
-            </button>
-            <button
-              onClick={handleConfirmDeleteFile}
-              className="graduate-files-danger-btn px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2"
-              style={{ background: '#DC2626', color: '#FFFFFF' }}
+            <div className="flex gap-3 px-5 pb-4 pt-5">
+              <div
+                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full"
+                style={{ background: '#FEF3C7', color: '#B45309' }}
+              >
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 pt-0.5">
+                <h3 id="delete-file-confirm-title" className="text-base font-semibold leading-6" style={{ color: '#111827' }}>
+                  Confirmar eliminacion
+                </h3>
+                <p id="delete-file-confirm-description" className="mt-1 text-sm leading-5" style={{ color: '#6B7280' }}>
+                  Se eliminara permanentemente el archivo{' '}
+                  <span className="graduate-files-filename font-semibold text-gray-900">
+                    {fileToDelete?.originalName}
+                  </span>
+                  .
+                </p>
+              </div>
+            </div>
+            <div
+              className="flex flex-col-reverse gap-2 border-t px-5 py-4 sm:flex-row sm:justify-end"
+              style={{ borderColor: '#E5E7EB', background: '#F9FAFB' }}
             >
-              Eliminar
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
+              <button
+                onClick={handleCloseDeleteFileModal}
+                className="graduate-files-secondary-btn px-4 py-2 text-sm font-medium rounded-lg border-2"
+                style={{ borderColor: '#D1D5DB', color: '#4B5563', background: '#FFFFFF' }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmDeleteFile}
+                className="graduate-files-danger-btn px-4 py-2 text-sm font-medium rounded-lg flex items-center justify-center gap-2"
+                style={{ background: '#DC2626', color: '#FFFFFF' }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Eliminar archivo
+              </button>
+            </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* Modal: Editar Graduado */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="w-[92vw] max-w-xl">

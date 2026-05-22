@@ -52,6 +52,7 @@ export class NewsService {
   ): Promise<DisciplinaryNews> {
     try {
       console.log('[DEBUG] NewsService.create - DTO received:', JSON.stringify(createNewsDto, null, 2));
+      console.log('[DEBUG] NewsService.create - fechaQueja en DTO?:', createNewsDto.fechaQueja);
       // Generar radicado único
       const radicado = await this.sequenceService.generateNewsRadicado();
 
@@ -95,6 +96,16 @@ export class NewsService {
         );
       }
 
+      // ✅ FIX FECHA DE RADICACIÓN: Construir fecha segura (sin shift de timezone)
+      let fechaRecepcionValue: Date;
+      if (createNewsDto.fechaQueja) {
+        const [y, m, d] = createNewsDto.fechaQueja.split('-').map(Number);
+        // 12:00 local para que toLocaleDateString muestre exactamente el día elegido por el usuario
+        fechaRecepcionValue = new Date(y, m - 1, d, 12, 0, 0);
+      } else {
+        fechaRecepcionValue = new Date();
+      }
+
       // Crear y guardar noticia
       const noticia = this.newsRepository.create({
         radicado,
@@ -102,6 +113,7 @@ export class NewsService {
         radicadorId: createNewsDto.radicadorId || userId,
         adjuntos,
         fechaCaducidad,
+        fechaRecepcion: fechaRecepcionValue,   // ← también en fechaRecepcion (para compatibilidad actual)
         estado: 'RADICADA',
         kanbanStage: initialStage.id,
         etapaActual: initialStage.etapa,
@@ -139,6 +151,7 @@ export class NewsService {
   async findAll(): Promise<any[]> {
     const news = await this.newsRepository.find({
       where: { estado: Not(NewsStatus.ASOCIADA) },
+      order: { fechaRecepcion: 'DESC' },   // Ordenar por la fecha de radicación/queja elegida por el usuario (no por orden de creación en BD)
     });
 
     // Get unique radicadorIds
@@ -343,7 +356,7 @@ export class NewsService {
    * Actualiza los datos de una noticia (edición por Profesional)
    * Registra los cambios en el historial de auditoría
    */
-  async update(id: string, data: any): Promise<DisciplinaryNews> {
+  async update(id: string, data: any, files?: FileData[]): Promise<DisciplinaryNews> {
     const noticia = await this.findById(id);
 
     // Rastrear campos modificados para trazabilidad
@@ -364,6 +377,12 @@ export class NewsService {
     }
     if (data.denunciante) cambios.push('Datos de denunciante modificados');
     if (data.disciplinable) cambios.push('Datos de disciplinable modificados');
+    if (data.adjuntosParaEliminar && data.adjuntosParaEliminar.length > 0) {
+      cambios.push(`Documentos eliminados: ${data.adjuntosParaEliminar.length}`);
+    }
+    if (files && files.length > 0) {
+      cambios.push(`Documentos nuevos: ${files.length}`);
+    }
 
     // Aplicar cambios (todos los valores del enum incluido POR_DETERMINAR)
     const validOrigens = Object.values(NewsOrigin);
@@ -386,6 +405,31 @@ export class NewsService {
       noticia.fechaCaducidad = new Date(data.fechaHechos);
       noticia.fechaCaducidad.setFullYear(noticia.fechaCaducidad.getFullYear() + 5);
     }
+
+    // ✅ Gestión de documentos adjuntos en actualización
+    let currentAdjuntos: string[] = Array.isArray((noticia as any).adjuntos) ? [...(noticia as any).adjuntos] : [];
+    if (data.adjuntosParaEliminar && Array.isArray(data.adjuntosParaEliminar)) {
+      for (const toDelete of data.adjuntosParaEliminar) {
+        currentAdjuntos = currentAdjuntos.filter((a) => a !== toDelete);
+        try {
+          await this.storageService.deleteFile(toDelete);
+        } catch (e) {
+          console.warn(`No se pudo eliminar archivo físico ${toDelete}:`, e.message);
+        }
+      }
+    }
+    console.log('[NEWS SERVICE UPDATE] files param length:', files?.length || 0);
+    if (files && files.length > 0) {
+      console.log('[NEWS SERVICE UPDATE] nombres:', files.map(f => f.originalname));
+      try {
+        const storedNew = await this.storageService.saveMultipleFiles(noticia.radicado || 'sin-radicado', files);
+        console.log('[NEWS SERVICE UPDATE] archivos guardados en disco:', storedNew);
+        currentAdjuntos.push(...storedNew);
+      } catch (e) {
+        console.error('Error guardando nuevos adjuntos en update:', e);
+      }
+    }
+    (noticia as any).adjuntos = currentAdjuntos;
 
     // Registrar en historial de auditoría
     const historyEntry = {

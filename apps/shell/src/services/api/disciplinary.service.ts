@@ -544,6 +544,17 @@ class DisciplinaryService {
         if (data.fechaHechos) {
             formData.append('fechaHechos', data.fechaHechos);
         }
+        // ✅ Robustez para fecha de queja/recepción (soporta Kanban y modal)
+        const fechaQuejaRaw = data.fechaQueja || data.fechaRecepcion;
+        if (fechaQuejaRaw) {
+            const dateOnly = typeof fechaQuejaRaw === 'string' && fechaQuejaRaw.includes('T')
+                ? fechaQuejaRaw.split('T')[0]
+                : fechaQuejaRaw;
+            formData.append('fechaQueja', dateOnly as string);
+            console.log('[radicarNoticia] → Appending fechaQueja to FormData:', dateOnly);
+        } else {
+            console.warn('[radicarNoticia] → NO se encontró fechaQueja ni fechaRecepcion en el payload');
+        }
         if (data.adjuntos && data.adjuntos.length > 0) {
             formData.append('adjuntos', JSON.stringify(data.adjuntos));
         }
@@ -982,6 +993,18 @@ class DisciplinaryService {
         // Devolver solo la ruta relativa (sin el host)
         // Esto permite que downloadFileFromUrl construya la URL correctamente
         return `/files/${filename}`;
+    }
+
+    /**
+     * Obtener URL absoluta para fetch/preview de archivos adjuntos (noticias, evidencias, etc.)
+     * Construye la URL completa usando buildApiUrl para que funcione desde el MFE (puerto distinto)
+     */
+    getAbsoluteFileUrl(relativeUrl: string): string {
+        const rel = this.getFileUrl(relativeUrl);
+        if (/^https?:\/\//i.test(rel)) {
+            return rel;
+        }
+        return buildApiUrl('control-disciplinario', rel.startsWith('/') ? rel : `/${rel}`);
     }
 
     // --- AUTOS ---

@@ -60,6 +60,8 @@ export interface AuditoriaProgramadaUI {
   fechaInicioEjecucion?: string;
   fechaFinEjecucion?: string;
   fechaInicioComunicacion?: string;
+  /** Fecha de última modificación del backend (corte de cambio de etapa Kanban) */
+  updatedAt?: string;
 }
 
 export interface Auditor {
@@ -596,6 +598,12 @@ export function useProgramaAnualData(
             planMejoramientoId: a.planMejoramientoId,
             hallazgosCount: a.hallazgosCount || 0,
             territorial: a.territorial,
+            fechaFinPlaneacion: a.fechaFinPlaneacion,
+            fechaInicioEjecucion: a.fechaInicioEjecucion,
+            fechaFinEjecucion: a.fechaFinEjecucion,
+            fechaInicioComunicacion: a.fechaInicioComunicacion,
+            // ✅ Fecha de cambio de estado: usada como corte en el cronograma
+            updatedAt: (a as any).updatedAt,
           }));
           allAuditorias.push(...mapped);
           console.log('[useProgramaAnualData] ✅ Cargadas', auditoriasDirectas.length, 'auditorías de /auditorias');

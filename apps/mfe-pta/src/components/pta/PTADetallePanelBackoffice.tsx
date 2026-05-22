@@ -540,7 +540,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       ref={ref}
       exit={{ opacity: 0, transition: { duration: 0.15 } }}
       style={{
-        position: 'fixed', inset: 0, zIndex: 65, display: 'flex',
+        position: 'fixed', inset: 0, zIndex: 999, display: 'flex',
         justifyContent: isMobile ? 'center' : 'flex-end',
         alignItems: isMobile ? 'flex-end' : 'flex-start',
         pointerEvents: 'none', // Allow clicks to pass through wrapper

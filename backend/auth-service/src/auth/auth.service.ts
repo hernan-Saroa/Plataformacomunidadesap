@@ -352,7 +352,8 @@ export class AuthService {
       throw new UnauthorizedException('El usuario no tiene roles asignados');
     }
 
-    // Optimización: Solo incluir códigos de roles en el JWT para reducir tamaño
+    // El JWT se mantiene compacto; los microservicios resuelven permisos desde
+    // los roles del usuario cuando necesitan autorización granular.
     const rolesCodes = user.roles.map((r) => r.code);
     const permissionCodes: string[] = Array.from(
       new Set(

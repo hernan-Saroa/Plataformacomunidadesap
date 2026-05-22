@@ -669,6 +669,7 @@ export class PlanesMejoramientoService {
     if (updateDto.responsableImplementacion !== undefined)
       plan.responsableImplementacion = updateDto.responsableImplementacion;
       if (updateDto.fechaLimite !== undefined) plan.fechaLimite = this.parseDateOnly(updateDto.fechaLimite);
+    const estadoAnterior = plan.estado;
     if (updateDto.estado !== undefined) plan.estado = updateDto.estado as PlanMejoramientoEstado;
     if (updateDto.observacionesAprobacion !== undefined)
       plan.observacionesAprobacion = updateDto.observacionesAprobacion;
@@ -733,8 +734,6 @@ export class PlanesMejoramientoService {
       }
     }
 
-    // Guardar estado anterior para detectar cambios
-    const estadoAnterior = plan.estado;
     const savedPlan = await this.planRepository.save(plan);
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -768,6 +767,13 @@ export class PlanesMejoramientoService {
       // Obtener el plan completo con relaciones antes de crear la aprobación
       const planCompleto = await this.findOne(savedPlan.id);
       await this.crearAprobacionPendienteParaPlan(planCompleto);
+      if (estadoAnterior === PlanMejoramientoEstado.BORRADOR) {
+        try {
+          await this.notificarPlanEnviadoRevision(planCompleto);
+        } catch (notifErr) {
+          console.error('[PlanesMejoramientoService.update] Error notificando envío a revisión:', notifErr.message);
+        }
+      }
     }
 
     // Serializar fechas para evitar problemas de zona horaria
@@ -1004,6 +1010,12 @@ export class PlanesMejoramientoService {
       console.error('[PlanesMejoramientoService.aprobar] Error al registrar evento:', eventoError);
     }
 
+    try {
+      await this.notificarAuditadoPlanMejoramiento(savedPlan, 'aprobado', observaciones);
+    } catch (notifErr) {
+      console.error('[PlanesMejoramientoService.aprobar] Error notificando al auditado:', notifErr.message);
+    }
+
     return savedPlan;
   }
 
@@ -1036,6 +1048,12 @@ export class PlanesMejoramientoService {
       );
     } catch (eventoError) {
       console.error('[PlanesMejoramientoService.rechazar] Error al registrar evento:', eventoError);
+    }
+
+    try {
+      await this.notificarAuditadoPlanMejoramiento(savedPlan, 'rechazado', motivo);
+    } catch (notifErr) {
+      console.error('[PlanesMejoramientoService.rechazar] Error notificando al auditado:', notifErr.message);
     }
 
     return savedPlan;
@@ -1697,6 +1715,61 @@ export class PlanesMejoramientoService {
     }
 
     console.log(`[PlanesMejoramientoService.crearNotificacionesPlanCreado] Proceso de notificaciones completado para plan ${plan.codigo}`);
+  }
+
+  /**
+   * Notifica al responsable del área (portal) cuando el plan es aprobado o rechazado.
+   */
+  private async notificarAuditadoPlanMejoramiento(
+    plan: PlanMejoramiento,
+    resultado: 'aprobado' | 'rechazado',
+    detalle?: string,
+  ): Promise<void> {
+    if (!plan.auditoriaId) return;
+    const auditoria = await this.auditoriaRepository.findOne({ where: { id: plan.auditoriaId } });
+    if (!auditoria?.responsableAreaEmail) return;
+
+    const esAprobado = resultado === 'aprobado';
+    await this.notificacionesService.notificarAuditadoPortal({
+      responsableAreaEmail: auditoria.responsableAreaEmail,
+      responsableAreaNombre: auditoria.responsableAreaNombre,
+      auditoriaId: auditoria.id,
+      auditoriaCodigo: auditoria.codigo,
+      auditoriaNombre: auditoria.nombre,
+      tipoNotificacion: esAprobado ? TipoNotificacion.APROBACION_PLAN : TipoNotificacion.RECHAZO_PLAN,
+      titulo: esAprobado
+        ? `Plan de mejoramiento aprobado — ${plan.codigo}`
+        : `Plan de mejoramiento devuelto — ${plan.codigo}`,
+      mensaje: esAprobado
+        ? `La OCI aprobó su plan de mejoramiento ${plan.codigo} para la auditoría ${auditoria.codigo}. ` +
+          `${detalle ? `Observaciones: ${detalle}. ` : ''}` +
+          `Puede iniciar la ejecución de las acciones en el portal.`
+        : `La OCI devolvió su plan de mejoramiento ${plan.codigo} con observaciones. ` +
+          `Motivo: ${detalle || 'Ver detalle en el portal'}. ` +
+          `Por favor ajuste y vuelva a enviar a revisión.`,
+      prioridad: PrioridadNotificacion.ALTA,
+      metadata: { planMejoramientoId: plan.id, planCodigo: plan.codigo, resultado },
+    });
+  }
+
+  /**
+   * Notifica al equipo OCI cuando el auditado envía el plan a revisión.
+   */
+  private async notificarPlanEnviadoRevision(plan: PlanMejoramiento): Promise<void> {
+    let auditoriaCodigo = plan.auditoriaId || '';
+    if (plan.auditoriaId) {
+      const auditoria = await this.auditoriaRepository.findOne({ where: { id: plan.auditoriaId } });
+      if (auditoria) auditoriaCodigo = auditoria.codigo;
+    }
+    await this.notificacionesService.dispararEvento('EVT-APR-001', {
+      auditoriaId: plan.auditoriaId ?? undefined,
+      planId: plan.id,
+      tituloCustom: `Plan de mejoramiento en revisión — ${plan.codigo}`,
+      mensajeCustom:
+        `El área auditada envió el plan de mejoramiento ${plan.codigo} (${auditoriaCodigo}) para su revisión y aprobación.`,
+      metadata: { planMejoramientoId: plan.id, planCodigo: plan.codigo },
+      url_accion: `/control-interno/planes-mejoramiento/${plan.id}`,
+    });
   }
 
   /**

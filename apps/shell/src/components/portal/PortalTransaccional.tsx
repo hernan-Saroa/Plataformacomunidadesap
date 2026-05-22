@@ -46,7 +46,6 @@ import {
 import { DndProvider, useDrag, useDrop } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { motion, AnimatePresence } from 'motion/react';
-import esapLogoWhite from '../../assets/bf33c0f2d5f03ef0d7baf88a705a5a66362cd8c4.png';
 import { colors, radius } from '../esap/shared/designTokens';
 import { CardSkeleton, EmptyStateIllustration } from '../ui/CardSkeleton';
 import { PerfilUsuarioEditable } from './PerfilUsuarioEditable';
@@ -56,8 +55,6 @@ import { MisDocumentos } from './gestion-documental/MisDocumentos';
 import { PortalDocentePTA } from './pta/PortalDocentePTA';
 import { MisAuditoriasControlInterno } from './control-interno/MisAuditoriasControlInterno';
 import { toast } from 'sonner';
-import { NotificationsProvider } from '../esap/NotificationsContext';
-import { PortalNotificationBell } from './PortalNotificationBell';
 import { PortalSettings } from './PortalSettings';
 import { AyudaView } from './AyudaView';
 
@@ -66,6 +63,7 @@ interface PortalTransaccionalProps {
   userEmail: string;
   userPersonId: string;
   activeRole: string;
+  activeRoleCode?: string;
   userPermissions?: string[];
   adminData?: {
     area?: string;
@@ -140,18 +138,18 @@ const shimmerStyleId = 'portal-shimmer-style';
 
 const DND_ITEM_TYPE = 'PORTAL_SERVICE';
 
-const normalizeRole = (role?: string | null) =>
+const normalizeRoleCode = (role?: string | null) =>
   String(role || '')
     .trim()
-    .toLowerCase()
+    .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[\s-]+/g, '_');
 
-const roleMatches = (role: string, allowedRoles?: string[]) => {
+const roleCodeMatches = (roleCode: string, allowedRoles?: string[]) => {
   if (!allowedRoles?.length) return false;
-  const normalizedRole = normalizeRole(role);
-  return allowedRoles.some((allowedRole) => normalizeRole(allowedRole) === normalizedRole);
+  const normalizedRole = normalizeRoleCode(roleCode);
+  return allowedRoles.some((allowedRole) => normalizeRoleCode(allowedRole) === normalizedRole);
 };
 
 function moveItem<T>(items: T[], fromIndex: number, toIndex: number) {
@@ -190,6 +188,7 @@ export function PortalTransaccional({
   userEmail,
   userPersonId,
   activeRole,
+  activeRoleCode,
   userPermissions,
   adminData,
   onLogout,
@@ -236,6 +235,7 @@ export function PortalTransaccional({
       pta: { type: 'pta' },
       'mis-auditorias': { type: 'mis-auditorias' },
       'control-interno': { type: 'mis-auditorias' },
+      'control-interno-gestion': { type: 'mis-auditorias' },
     };
     const target = viewMap[section];
     if (target) {
@@ -372,7 +372,7 @@ export function PortalTransaccional({
         ],
         prioridad: 'Media',
         prioridadColor: '#D97706',
-        visiblePara: ['Administrativo', 'SUPER_ADMIN', 'RECTOR', 'SECRETARIO_GENERAL', 'SUBDIRECTOR_ACADEMICO', 'SUBDIRECTOR_PROYECCION', 'SUBDIRECTOR_ALTO_GOBIERNO', 'JEFE_JURIDICA', 'JEFE_PLANEACION'],
+        visiblePara: ['SUPER_ADMIN', 'RECTOR', 'SECRETARIO_GENERAL', 'SUBDIRECTOR_ACADEMICO', 'SUBDIRECTOR_PROYECCION', 'SUBDIRECTOR_ALTO_GOBIERNO', 'JEFE_JURIDICA', 'JEFE_PLANEACION', 'DOCENTE'],
         requierePermiso: 'portal-transaccional.certificado-laboral.view',
       },
       {
@@ -387,7 +387,7 @@ export function PortalTransaccional({
         badges: [{ label: 'Disponible', color: '#059669', bgColor: '#ECFDF5' }],
         prioridad: 'Baja',
         prioridadColor: '#6B7280',
-        visiblePara: ['Administrativo', 'Docente', 'Estudiante', 'Graduado', 'Aspirante', 'USUARIO_AUDITADO', 'SUPER_ADMIN', 'JEFE_OCI', 'AUDITOR_LIDER', 'AUDITOR_SENIOR', 'AUDITOR_JUNIOR', 'PROFESIONAL_OCI', 'ADMIN_CI', 'RECTOR', 'SECRETARIO_GENERAL', 'SUBDIRECTOR_ACADEMICO', 'SUBDIRECTOR_PROYECCION', 'SUBDIRECTOR_ALTO_GOBIERNO', 'JEFE_JURIDICA', 'JEFE_PLANEACION'],
+        visiblePara: ['DOCENTE', 'ESTUDIANTE', 'USUARIO_AUDITADO', 'SUPER_ADMIN', 'JEFE_OCI', 'AUDITOR_LIDER', 'AUDITOR_SENIOR', 'AUDITOR_JUNIOR', 'PROFESIONAL_OCI', 'ADMIN_CI', 'RECTOR', 'SECRETARIO_GENERAL', 'SUBDIRECTOR_ACADEMICO', 'SUBDIRECTOR_PROYECCION', 'SUBDIRECTOR_ALTO_GOBIERNO', 'JEFE_JURIDICA', 'JEFE_PLANEACION'],
         requierePermiso: 'portal-transaccional.carpeta-digital.view',
       },
       {
@@ -405,7 +405,7 @@ export function PortalTransaccional({
         ],
         prioridad: 'Alta',
         prioridadColor: '#DC2626',
-        visiblePara: ['Docente', 'DOCENTE', 'SUPER_ADMIN'],
+        visiblePara: ['DOCENTE', 'SUPER_ADMIN'],
         requierePermiso: 'portal-transaccional.pta.view',
       },
       {
@@ -432,9 +432,9 @@ export function PortalTransaccional({
     const perms = new Set(userPermissions || []);
     const hasPortalPermissions = [...perms].some((permission) => permission.startsWith('portal-transaccional.'));
     const filteredBase = base.filter(s => {
-      if (s.requierePermiso && hasPortalPermissions) return perms.has(s.requierePermiso);
-      if (s.visiblePara) return roleMatches(activeRole, s.visiblePara);
-      return true;
+      if (s.requierePermiso && hasPortalPermissions && perms.has(s.requierePermiso)) return true;
+      if (s.visiblePara) return roleCodeMatches(activeRoleCode || activeRole, s.visiblePara);
+      return !s.requierePermiso || !hasPortalPermissions;
     });
 
     // Merge with persisted ordering
@@ -545,50 +545,38 @@ export function PortalTransaccional({
   ];
 
   const renderLeftPanel = (contactItems: { icon: any; value: string }[]) => (
-    <div className="space-y-5" style={{ flex: '0 0 340px', minWidth: 320 }}>
-      <div className="bg-white rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
-        <div
-          className="relative h-32 overflow-hidden"
-          style={{ background: 'linear-gradient(180deg, #F1F5F9 0%, #FFFFFF 100%)' }}
-        >
-          <div
-            className="absolute left-1/2 -translate-x-1/2 rounded-full"
-            style={{
-              top: '60%',
-              width: 150,
-              height: 150,
-              background: 'rgba(255,255,255,0.45)',
-              border: '2px solid rgba(255,255,255,0.9)',
-            }}
-          />
-        </div>
-        <div className="-mt-12 px-6 pb-6">
+    <div className="lg:flex flex-col w-[280px] xl:w-[300px] shrink-0 gap-6 sticky top-24 h-fit">
+      <div className="relative bg-white rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-32 bg-[#003DA5]/5 pointer-events-none" style={{backgroundColor: ''}} />
+        <div className="relative -mt-12 px-6 pb-6">
+          <div className="relative flex items-center justify-center mx-auto group mb-4 mt-6">
           <button
             type="button"
             onClick={triggerFotoPicker}
-            className="group relative w-24 h-24 rounded-full bg-white border-4 border-white shadow-sm mx-auto flex items-center justify-center overflow-hidden"
+            className="group relative w-24 h-24 rounded-full border-3 border-white shadow-sm bg-[#003DA5]/5"
             title="Cambiar foto"
           >
             {fotoUrl ? (
-              <img src={fotoUrl} alt="" className="w-full h-full object-cover object-center" style={{ transform: 'scale(1.12)' }} />
+              <img src={fotoUrl} alt="" className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full bg-[#F1F5F9] border border-gray-200 flex items-center justify-center text-[#003DA5] text-xl font-black">
+              <div className="w-full h-full flex items-center justify-center text-[#003DA5] text-xl font-black">
                 {iniciales}
               </div>
             )}
-            <div className="absolute bottom-1 right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white" />
             <div
-              className="absolute inset-0 flex items-center justify-center"
+              className="absolute inset-0"
               style={{
-                background: 'rgba(0,0,0,0)',
+                background: 'rgba(255, 255, 255, 0)',
                 transition: 'background 150ms ease',
               }}
             >
-              <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 border border-gray-200 rounded-xl p-2 shadow-sm">
-                <Camera className="w-4 h-4 text-gray-700" />
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity rounded-full w-full h-full flex items-center justify-center" style={{background: '#637aa3'}}>
+                <Camera className="w-5 h-5 text-gray-700 text-white" />
               </div>
             </div>
+            <div className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-emerald-500 border-2 border-white" />
           </button>
+        </div>
 
           <div className="mt-3 text-center">
             <div className="text-[20px] font-black text-[#003DA5] tracking-tight">{userName}</div>
@@ -653,6 +641,7 @@ export function PortalTransaccional({
     const contactItems = buildContactItems();
     return (
       <div
+        id="id-render-with-left-layout"
         style={{
           display: 'flex',
           flexWrap: 'wrap',
@@ -756,109 +745,7 @@ export function PortalTransaccional({
         }}
       >
         {/* Left */}
-        <div className="space-y-5" style={{ flex: '0 0 340px', minWidth: 320 }}>
-          <div className="bg-white rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
-            <div className="relative h-32 bg-gradient-to-b from-gray-50 to-white overflow-hidden">
-              <div
-                className="absolute left-1/2 -translate-x-1/2 rounded-full"
-                style={{
-                  top: '56%',
-                  width: 190,
-                  height: 190,
-                  background: 'rgba(255,255,255,0.65)',
-                  border: '1px solid rgba(255,255,255,0.9)',
-                }}
-              />
-              <div
-                className="absolute left-1/2 -translate-x-1/2 rounded-full"
-                style={{
-                  top: '56%',
-                  width: 140,
-                  height: 140,
-                  background: 'rgba(255,255,255,0.35)',
-                  border: '1px solid rgba(255,255,255,0.85)',
-                }}
-              />
-            </div>
-            <div className="-mt-12 px-6 pb-6">
-              <button
-                type="button"
-                onClick={triggerFotoPicker}
-                className="group relative w-24 h-24 rounded-full bg-white border-4 border-white shadow-sm mx-auto flex items-center justify-center overflow-hidden"
-                title="Cambiar foto"
-              >
-                {fotoUrl ? (
-                  <img src={fotoUrl} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-white border border-gray-200 flex items-center justify-center text-[#003DA5] text-xl font-black">
-                    {iniciales}
-                  </div>
-                )}
-                <div className="absolute bottom-1 right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white" />
-                <div
-                  className="absolute inset-0 flex items-center justify-center"
-                  style={{
-                    background: 'rgba(0,0,0,0)',
-                    transition: 'background 150ms ease',
-                  }}
-                >
-                  <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 border border-gray-200 rounded-xl p-2 shadow-sm">
-                    <Camera className="w-4 h-4 text-gray-700" />
-                  </div>
-                </div>
-              </button>
-
-              <div className="mt-3 text-center">
-                <div className="text-[18px] font-black text-[#003DA5]">{userName}</div>
-                <div className="mt-0.5 text-[13px] font-semibold text-gray-500 flex items-center justify-center gap-1.5">
-                  <Briefcase className="w-3.5 h-3.5 text-gray-400" />
-                  {activeRole}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setCurrentView({ type: 'mi-perfil' })}
-                className="mt-4 w-full h-11 rounded-2xl bg-[#003DA5] hover:bg-[#002868] text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors"
-              >
-                <Users className="w-4 h-4" />
-                Gestionar Perfil
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-3xl border border-gray-200/80 shadow-sm overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setIsContactInfoOpen((p) => !p)}
-              className="w-full px-6 py-4 flex items-center justify-between"
-            >
-              <div className="text-[11px] font-black tracking-widest text-gray-400">INFORMACIÓN DE CONTACTO</div>
-              <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isContactInfoOpen ? 'rotate-180' : ''}`} />
-            </button>
-            <AnimatePresence initial={false}>
-              {isContactInfoOpen && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="px-6 pb-5 overflow-hidden"
-                >
-                  <div className="space-y-3">
-                    {contactItems.map((it) => (
-                      <div key={it.value} className="flex items-center gap-3 text-[13px] font-semibold text-gray-600 rounded-2xl p-2 hover:bg-gray-50 transition-colors">
-                        <div className="w-9 h-9 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center">
-                          {it.icon}
-                        </div>
-                        <div className="min-w-0 truncate">{it.value}</div>
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
+        {renderLeftPanel(contactItems)}
 
         {/* Center */}
         <div className="space-y-5" style={{ flex: '1 1 520px', minWidth: 380 }}>
@@ -1006,13 +893,13 @@ export function PortalTransaccional({
   };
 
   return (
-    <NotificationsProvider>
       <div className="min-h-[calc(100vh-64px)]" style={{ background: '#F3F4F6' }}>
-        <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="w-full max-w-[1360px] mx-auto px-4 md:px-6 lg:px-8 xl:px-4 py-4 md:py-6 lg:py-8 flex justify-center items-start lg:gap-6 xl:gap-8">
           <input ref={fotoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleFotoUpload} />
           <AnimatePresence mode="wait">
             <motion.div
               key={currentView.type}
+              className="w-full"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
@@ -1023,7 +910,6 @@ export function PortalTransaccional({
           </AnimatePresence>
         </div>
       </div>
-    </NotificationsProvider>
   );
 }
 

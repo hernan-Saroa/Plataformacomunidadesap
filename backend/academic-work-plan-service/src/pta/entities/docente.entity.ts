@@ -1,26 +1,15 @@
-import {  Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn , BeforeInsert, BeforeUpdate } from 'typeorm';
-import { PersonaEntity } from './persona.entity';
-import { TerritorialEntity } from './territorial.entity';
-import { SedeEntity } from './sede.entity';
+import {  Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn , BeforeInsert, BeforeUpdate } from 'typeorm';
 
 @Entity({ schema: 'academic_work_plan', name: 'Docente' })
 export class DocenteEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'personaId', type: 'text' })
+  @Column({ name: 'personaId', type: 'uuid' })
   personaId: string;
-
-  @ManyToOne(() => PersonaEntity, { nullable: false })
-  @JoinColumn({ name: 'personaId' })
-  persona: PersonaEntity;
 
   @Column({ name: 'territorialId', type: 'text' })
   territorialId: string;
-
-  @ManyToOne(() => TerritorialEntity, { nullable: false })
-  @JoinColumn({ name: 'territorialId' })
-  territorial: TerritorialEntity;
 
   @Column({ name: 'tipoVinculacion', type: 'text' })
   tipoVinculacion: string;
@@ -36,10 +25,6 @@ export class DocenteEntity {
 
   @Column({ name: 'sedeId', type: 'text', nullable: true })
   sedeId: string | null;
-
-  @ManyToOne(() => SedeEntity, { nullable: true })
-  @JoinColumn({ name: 'sedeId' })
-  sede: SedeEntity | null;
 
   @Column({ name: 'ordenListado', type: 'int', nullable: true })
   ordenListado: number | null;
