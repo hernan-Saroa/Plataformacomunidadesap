@@ -976,10 +976,11 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
         const profesionales: Auditor[] = response.data
           .filter((config: any) => config.activo)
           .map((config: any) => ({
-            id: config.id, // UUID de configuracion_profesionales_OCI
+            id: config.idTercero || config.id, // id_person de auth.personas (matchea con currentUser.person.id)
             nombre: config.nombre || `Profesional ${config.idTercero}`,
             cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor',
-            email: config.email || ''
+            email: config.email || '',
+            configId: config.id, // UUID interno de configuracion_profesionales_ocig (para operaciones CRUD)
           }));
         
         setAuditores(profesionales);
@@ -8795,14 +8796,50 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
 
   const emailSesion = (currentUser?.email || currentUser?.person?.email || currentUser?.usuario?.email || '').trim().toLowerCase();
   const emailResponsablePlan = (plan.jefeOCI?.email || '').trim().toLowerCase();
-  const idsSesion = [currentUser?.idPerson, currentUser?.id, currentUser?.userId, currentUser?.sub]
+  const idsSesion = [currentUser?.idPerson, currentUser?.id, currentUser?.userId, currentUser?.sub, currentUser?.documento, currentUser?.person?.id, currentUser?.usuario?.id]
     .filter((v: unknown) => v != null && String(v).length > 0)
     .map((v: unknown) => String(v));
-  const idResponsablePlan = plan.jefeOCI?.id != null && plan.jefeOCI.id !== '' ? String(plan.jefeOCI.id) : '';
-  const esResponsableDelPlan = !!currentUser && (
-    (idResponsablePlan && idsSesion.some((x) => x === idResponsablePlan))
-    || (emailSesion && emailResponsablePlan && emailSesion === emailResponsablePlan)
+  const idResponsablePlan = plan.jefeOCI?.id != null && plan.jefeOCI.id !== '' && plan.jefeOCI.id !== '1' ? String(plan.jefeOCI.id) : '';
+
+  // Normalizar nombres para comparación (quitar tildes, espacios extra, minúsculas)
+  const normalizarNombre = (n: string) => (n || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const nombreSesion = normalizarNombre(
+    currentUser?.nombre || currentUser?.nombre_completo || currentUser?.fullName || currentUser?.full_name
+    || currentUser?.person?.full_name || currentUser?.person?.fullName || currentUser?.person?.nombre
+    || ((currentUser?.person?.first_name || currentUser?.firstName || '') + ' ' + (currentUser?.person?.last_name || currentUser?.lastName || '')).trim()
+    || currentUser?.usuario?.nombre || ''
   );
+  const nombreResponsablePlan = normalizarNombre(plan.jefeOCI?.nombre || '');
+
+
+  const esResponsableDelPlan = !!currentUser && (
+    // 1. Match por ID (responsable_id del plan vs IDs del usuario en sesión)
+    (idResponsablePlan && idsSesion.some((x) => x === idResponsablePlan))
+    // 2. Match por email (si ambos tienen email)
+    || (emailSesion && emailResponsablePlan && emailSesion === emailResponsablePlan)
+    // 3. Fallback: Match por nombre completo normalizado (cuando backend no provee email ni IDs coinciden)
+    || (nombreSesion && nombreResponsablePlan && nombreSesion.length > 3 && nombreSesion === nombreResponsablePlan)
+  );
+
+  // DEBUG: Diagnóstico de por qué no sale el botón de enviar a comité
+  console.log('[SeccionAprobacion] DEBUG responsable:', {
+    esResponsableDelPlan,
+    puedeEditarPlan,
+    estadoPlan: plan.estado,
+    emailSesion,
+    emailResponsablePlan,
+    coincidenEmails: emailSesion === emailResponsablePlan,
+    idsSesion,
+    idResponsablePlan,
+    coincidenIds: idResponsablePlan ? idsSesion.some((x) => x === idResponsablePlan) : 'no hay idResponsable',
+    nombreSesion,
+    nombreResponsablePlan,
+    coincidenNombres: nombreSesion === nombreResponsablePlan,
+    jefeOCI_raw: plan.jefeOCI,
+    currentUser_raw: { email: currentUser?.email, personEmail: currentUser?.person?.email, id: currentUser?.id, idPerson: currentUser?.idPerson, userId: currentUser?.userId, sub: currentUser?.sub, nombre: currentUser?.nombre, fullName: currentUser?.fullName, personFullName: currentUser?.person?.full_name, firstName: currentUser?.person?.first_name, lastName: currentUser?.person?.last_name, personId: currentUser?.person?.id },
+
+  });
+
 
   const [modalObservacion, setModalObservacion] = useState<{ isOpen: boolean, auditorId: string | null, texto: string }>({ isOpen: false, auditorId: null, texto: '' });
   const [modalSubsanar, setModalSubsanar] = useState({ isOpen: false, texto: '' });

@@ -871,7 +871,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [approvalObs, setApprovalObs] = useState('');
   const [devolucionMotivo, setDevolucionMotivo] = useState('');
   const [procesando, setProcesando] = useState(false);
-  const [moduleView, setModuleView] = useState<ModuleView>((initialView as ModuleView) || 'gestion');
+  const initialModuleView = useMemo<ModuleView>(() => (initialView as ModuleView) || 'gestion', [initialView]);
+  const [moduleView, setModuleView] = useState<ModuleView>(initialModuleView);
   const [concertacionPtaId, setConcertacionPtaId] = useState<string | null>(null);
   const [showFirmaDigital, setShowFirmaDigital] = useState(false);
   const [showReporteR01, setShowReporteR01] = useState(false);
@@ -1165,6 +1166,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   // Dropdown states for navigation groups
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+
+  useEffect(() => {
+    setModuleView(initialModuleView);
+    setOpenDropdown(null);
+    setCurrentPage(1);
+  }, [initialModuleView]);
 
   // ═══ Real-time sync with Portal ═══
   const syncState = usePTARealtimeSync({
@@ -2079,117 +2086,121 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         </motion.div>
       )}
 
-      {/* ─── CLEAN PAGE HEADER & TABS ─── */}
-      <div className="bg-white border-b border-slate-200">
-        {/* Top Bar */}
-        <div className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
-              <FileText className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight leading-tight m-0">
-                Plan de Trabajo Académico
-              </h1>
-              <div className="text-sm text-slate-500 mt-0.5 flex items-center gap-2">
-                <span>Gestión y aprobación de PTAs</span>
-                {estadisticas && (
-                  <>
-                    <span className="text-slate-300">•</span>
-                    <span className="text-blue-600 font-medium">
-                      {ptas.length} PTAs
-                    </span>
-                  </>
-                )}
-                {pendingForApprovalCount > 0 && (
-                  <>
-                    <span className="text-slate-300">•</span>
-                    <span className="text-amber-600 font-medium flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                      {pendingForApprovalCount} pendiente{pendingForApprovalCount > 1 ? 's' : ''}
-                    </span>
-                  </>
-                )}
+      {moduleView !== 'banco_docentes' && (
+        <>
+          {/* ─── CLEAN PAGE HEADER & TABS ─── */}
+          <div className="bg-white border-b border-slate-200">
+            {/* Top Bar */}
+            <div className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight leading-tight m-0">
+                    Plan de Trabajo Académico
+                  </h1>
+                  <div className="text-sm text-slate-500 mt-0.5 flex items-center gap-2">
+                    <span>Gestión y aprobación de PTAs</span>
+                    {estadisticas && (
+                      <>
+                        <span className="text-slate-300">•</span>
+                        <span className="text-blue-600 font-medium">
+                          {ptas.length} PTAs
+                        </span>
+                      </>
+                    )}
+                    {pendingForApprovalCount > 0 && (
+                      <>
+                        <span className="text-slate-300">•</span>
+                        <span className="text-amber-600 font-medium flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                          {pendingForApprovalCount} pendiente{pendingForApprovalCount > 1 ? 's' : ''}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <PTASyncIndicator
+                  syncState={syncState}
+                  sistema="backoffice"
+                  onEventClick={(evt) => {
+                    const ptaMatch = ptas.find(p => p.id === evt.pta_id);
+                    if (ptaMatch) setSelectedPTA(ptaMatch);
+                  }}
+                />
               </div>
             </div>
+
+            {/* Navigation Tabs */}
+            <div className="px-6 flex overflow-x-auto hide-scrollbar gap-1 bg-slate-50/50 pt-2 border-t border-slate-100">
+              {NAV_GROUPS.map((group, gi) => {
+                if (group.type === 'direct') {
+                  return group.items.filter((item: any) => tieneVista(item.key)).map((tab: any) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => { setModuleView(tab.key as ModuleView); setOpenDropdown(null); }}
+                      className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex items-center gap-2 ${
+                        moduleView === tab.key 
+                          ? 'border-blue-600 text-blue-600 bg-white' 
+                          : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/50'
+                      }`}
+                    >
+                      <tab.icon style={{ width: 16, height: 16 }} />
+                      {tab.label}
+                    </button>
+                  ));
+                }
+
+                if (group.type === 'button') {
+                  const btn = group as any;
+                  const reportViews = ['tablero_unificado', 'centro_reportes', 'tablero', 'reporte', 'comparativo', 'indicadores', 'directivo', 'territorial', 'mapa_territorial', 'workflow_visualizer', 'cronograma'];
+                  const isActive = reportViews.includes(moduleView);
+                  return (
+                    <button
+                      key={btn.key}
+                      onClick={() => { setModuleView(btn.key as ModuleView); setOpenDropdown(null); }}
+                      className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex items-center gap-2 ${
+                        isActive
+                          ? 'border-blue-600 text-blue-600 bg-white' 
+                          : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/50'
+                      }`}
+                    >
+                      <btn.icon style={{ width: 16, height: 16 }} />
+                      {btn.label}
+                    </button>
+                  );
+                }
+
+                // Dropdown group
+                const dropGroup = group as any;
+                const visibleItems = dropGroup.items.filter((item: any) => tieneVista(item.key));
+                if (visibleItems.length === 0) return null;
+                const isActive = visibleItems.some((item: any) => item.key === moduleView);
+
+                return (
+                  <NavDropdownPortal
+                    key={dropGroup.id}
+                    id={dropGroup.id}
+                    label={dropGroup.label}
+                    icon={dropGroup.icon}
+                    isActive={isActive}
+                    isOpen={openDropdown === dropGroup.id}
+                    onToggle={() => setOpenDropdown(openDropdown === dropGroup.id ? null : dropGroup.id)}
+                    onClose={() => setOpenDropdown(null)}
+                    items={visibleItems}
+                    moduleView={moduleView}
+                    onSelect={(key: string) => { setModuleView(key as any); setOpenDropdown(null); }}
+                  />
+                );
+              })}
+            </div>
           </div>
-          
-          <div className="flex items-center gap-3">
-            <PTASyncIndicator
-              syncState={syncState}
-              sistema="backoffice"
-              onEventClick={(evt) => {
-                const ptaMatch = ptas.find(p => p.id === evt.pta_id);
-                if (ptaMatch) setSelectedPTA(ptaMatch);
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Navigation Tabs */}
-        <div className="px-6 flex overflow-x-auto hide-scrollbar gap-1 bg-slate-50/50 pt-2 border-t border-slate-100">
-          {NAV_GROUPS.map((group, gi) => {
-            if (group.type === 'direct') {
-              return group.items.filter((item: any) => tieneVista(item.key)).map((tab: any) => (
-                <button
-                  key={tab.key}
-                  onClick={() => { setModuleView(tab.key as ModuleView); setOpenDropdown(null); }}
-                  className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex items-center gap-2 ${
-                    moduleView === tab.key 
-                      ? 'border-blue-600 text-blue-600 bg-white' 
-                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/50'
-                  }`}
-                >
-                  <tab.icon style={{ width: 16, height: 16 }} />
-                  {tab.label}
-                </button>
-              ));
-            }
-
-            if (group.type === 'button') {
-              const btn = group as any;
-              const reportViews = ['tablero_unificado', 'centro_reportes', 'tablero', 'reporte', 'comparativo', 'indicadores', 'directivo', 'territorial', 'mapa_territorial', 'workflow_visualizer', 'cronograma'];
-              const isActive = reportViews.includes(moduleView);
-              return (
-                <button
-                  key={btn.key}
-                  onClick={() => { setModuleView(btn.key as ModuleView); setOpenDropdown(null); }}
-                  className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex items-center gap-2 ${
-                    isActive
-                      ? 'border-blue-600 text-blue-600 bg-white' 
-                      : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/50'
-                  }`}
-                >
-                  <btn.icon style={{ width: 16, height: 16 }} />
-                  {btn.label}
-                </button>
-              );
-            }
-
-            // Dropdown group
-            const dropGroup = group as any;
-            const visibleItems = dropGroup.items.filter((item: any) => tieneVista(item.key));
-            if (visibleItems.length === 0) return null;
-            const isActive = visibleItems.some((item: any) => item.key === moduleView);
-
-            return (
-              <NavDropdownPortal
-                key={dropGroup.id}
-                id={dropGroup.id}
-                label={dropGroup.label}
-                icon={dropGroup.icon}
-                isActive={isActive}
-                isOpen={openDropdown === dropGroup.id}
-                onToggle={() => setOpenDropdown(openDropdown === dropGroup.id ? null : dropGroup.id)}
-                onClose={() => setOpenDropdown(null)}
-                items={visibleItems}
-                moduleView={moduleView}
-                onSelect={(key: string) => { setModuleView(key as any); setOpenDropdown(null); }}
-              />
-            );
-          })}
-        </div>
-      </div>
+        </>
+      )}
 
 
       {/* ═══ Module Views ═══ */}
@@ -4821,4 +4832,3 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     </div>
   );
 }
-
