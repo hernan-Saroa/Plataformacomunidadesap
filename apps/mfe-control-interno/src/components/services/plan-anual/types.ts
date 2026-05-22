@@ -75,9 +75,19 @@ export interface Rol {
   color: string;
   porcentaje_cumplimiento: number;
   total_actividades: number;
+  /** Responsable principal del rol (independiente de las actividades). */
+  responsable?: string;
+  responsable_id?: string;
+  responsables?: Array<{ id: string; nombre: string; cargo?: string; email?: string }>;
   actividades: Actividad[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface UpdateRolPlanAnualDto {
+  responsable?: string;
+  responsable_id?: string;
+  responsables?: Array<{ id: string; nombre: string; cargo?: string; email?: string }>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -114,6 +124,7 @@ export interface CreatePlanAnualDto {
   responsable_id?: string;
   fecha_inicio?: string;
   fecha_fin?: string;
+  estado?: EstadoPlan;
   equipo_aprobacion?: Auditor[];
   orden_aprobacion?: string;
 }
@@ -258,6 +269,10 @@ export interface EstadisticasPlan {
 export interface FiltrosPlanAnual {
   año?: number;
   estado?: EstadoPlan;
+  /** true (default en listados): sin adjuntos en actividades — menor payload */
+  light?: boolean;
+  /** Omite caché en memoria del listado */
+  skipCache?: boolean;
 }
 
 export interface FiltrosActividad {

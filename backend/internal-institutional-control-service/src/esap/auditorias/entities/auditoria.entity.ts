@@ -79,6 +79,8 @@ export enum RiesgoKanban {
 @Index(['estadoKanban'])
 @Index(['auditorLiderId'])
 @Index(['auditorAsignadoId'])
+@Index(['planAnualId'])
+@Index(['planAnualVigencia'])
 export class Auditoria {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -209,6 +211,19 @@ export class Auditoria {
   @Column({ name: 'actividad_plan_anual_id', type: 'uuid', nullable: true })
   actividadPlanAnualId?: string;
 
+  /** Plan Anual 5 roles (documento de trabajo OCI) */
+  @Column({ name: 'plan_anual_id', type: 'uuid', nullable: true })
+  planAnualId?: string | null;
+
+  @Column({ name: 'plan_anual_vigencia', type: 'integer', nullable: true })
+  planAnualVigencia?: number | null;
+
+  @Column({ name: 'vinculada_plan_anual', type: 'boolean', default: false })
+  vinculadaPlanAnual: boolean;
+
+  @Column({ name: 'rol_decreto_asociado', type: 'varchar', length: 255, nullable: true })
+  rolDecretoAsociado?: string | null;
+
   // Foreign Keys a auth.personas (id_person es UUID después de migración 159)
   @Column({ name: 'auditor_lider_id', type: 'uuid', nullable: true })
   auditorLiderId?: string | null;
@@ -255,6 +270,13 @@ export class Auditoria {
       ejecucion?: number;
       comunicacion?: number;
     };
+    /** Legacy / sincronizado con columnas plan_anual_* */
+    vinculado?: boolean;
+    planAnualId?: string;
+    año?: number;
+    ano?: number;
+    rol?: string;
+    actividadPlanAnualId?: string;
   };
 
   // Soft delete / Archivo

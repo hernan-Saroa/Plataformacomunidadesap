@@ -59,6 +59,10 @@ export interface AuditoriaBackendDTO {
   controlesAplicar?: string[];
   equipoAuditores?: string[];
   programaAnualMetadata?: any;
+  planAnualId?: string;
+  planAnualVigencia?: number;
+  vinculadaPlanAnual?: boolean;
+  rolDecretoAsociado?: string;
   estadoKanban?: string; // Para crear auditoria en columna correcta del Kanban
 }
 
@@ -204,6 +208,10 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     riesgosIdentificados: form.riesgosIdentificados,
     controlesAplicar: form.controlesAplicar,
     equipoAuditores: form.equipoAuditores,
+    vinculadaPlanAnual: !!form.vinculadaPlanAnual,
+    planAnualId: form.vinculadaPlanAnual ? form.planAnualId : undefined,
+    planAnualVigencia: form.vinculadaPlanAnual ? form.planAnualAño : undefined,
+    rolDecretoAsociado: form.vinculadaPlanAnual ? form.rolDecretoAsociado : undefined,
     programaAnualMetadata: form.vinculadaPlanAnual ? {
       vinculado: true,
       planAnualId: form.planAnualId,
@@ -475,9 +483,23 @@ export const auditoriaService = {
    * Obtiene todas las auditorías
    * @returns Lista de auditorías en formato UI
    */
-  async listar(): Promise<AuditoriaUI[]> {
+  async listar(filters?: {
+    planAnualId?: string;
+    planAnualVigencia?: number;
+    year?: number;
+    vinculadaPlanAnual?: boolean;
+    fechaDesde?: string;
+    fechaHasta?: string;
+  }): Promise<AuditoriaUI[]> {
     try {
-      const auditorias = await controlInternoService.getAuditorias();
+      const vigencia = filters?.planAnualVigencia ?? filters?.year;
+      const auditorias = await controlInternoService.getAuditorias({
+        ...filters,
+        planAnualVigencia: vigencia,
+        year: filters?.year ?? vigencia,
+        light: true,
+        activasOnly: true,
+      });
       
       if (Array.isArray(auditorias)) {
         return auditorias.map(mapBackendToUI);

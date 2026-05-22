@@ -78,20 +78,12 @@ export const REGLAS_NEGOCIO_OCIG = {
   },
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 2. REGLAS COMITÉ INSTITUCIONAL DE COORDINACIÓN DE CONTROL INTERNO
-  // Ley 648 de 2017: Define quiénes tienen la potestad de "Aprobador PAI" y
-  // cómo deben ser buscados en el sistema de acuerdo al rol otorgado.
+  // 2. COMITÉ DE APROBACIÓN DEL PAI (Decreto 648 / Ley 648 de 2017)
+  // Los miembros del comité se eligen entre usuarios con permiso
+  // control-interno.plan-anual.approve (ver GET aprobadores-plan-anual).
+  // No se usa el rol OCIG "Aprobador PAI" en configuracion_profesionales_ocig.
   // ──────────────────────────────────────────────────────────────────────────
   COMITE_INSTITUCIONAL: {
-    rolesAutorizados: ['aprobador pai'], // Miembros Decreto 648
-    
-    /**
-     * Identifica si un usuario pertenece al Comité Institucional
-     * y por ende tiene la capacidad de Aprobar el Plan Anual.
-     */
-    esAprobadorComite: (cargo: string | undefined | null): boolean => {
-      if (!cargo) return false;
-      return cargo.toLowerCase().includes('aprobador pai');
-    }
-  }
+    permisoRequerido: 'control-interno.plan-anual.approve',
+  },
 };

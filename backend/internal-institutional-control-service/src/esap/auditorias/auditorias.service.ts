@@ -304,6 +304,50 @@ export class AuditoriasService {
   /**
    * Obtiene todas las auditorías con filtros opcionales
    */
+  private readonly uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  /**
+   * Aplica columnas plan_anual_* desde DTO y/o metadata JSON (compatibilidad).
+   */
+  private applyPlanAnualVinculacion(
+    target: Partial<Auditoria>,
+    source: {
+      planAnualId?: string | null;
+      planAnualVigencia?: number | null;
+      vinculadaPlanAnual?: boolean;
+      rolDecretoAsociado?: string | null;
+      programaAnualMetadata?: any;
+    },
+  ): void {
+    const meta = source.programaAnualMetadata;
+    const vinculada =
+      source.vinculadaPlanAnual ??
+      meta?.vinculado ??
+      meta?.vinculada ??
+      false;
+    target.vinculadaPlanAnual = !!vinculada;
+
+    const vigenciaRaw =
+      source.planAnualVigencia ??
+      meta?.año ??
+      meta?.ano ??
+      meta?.vigencia;
+    if (vigenciaRaw != null && !Number.isNaN(Number(vigenciaRaw))) {
+      target.planAnualVigencia = Number(vigenciaRaw);
+    }
+
+    const planId = source.planAnualId ?? meta?.planAnualId;
+    if (planId && typeof planId === 'string' && this.uuidRegex.test(planId)) {
+      target.planAnualId = planId;
+    }
+
+    const rol = source.rolDecretoAsociado ?? meta?.rol;
+    if (rol && String(rol).trim()) {
+      target.rolDecretoAsociado = String(rol).trim();
+    }
+  }
+
   async findAll(filters?: {
     tipo?: string;
     fase?: string;
@@ -312,9 +356,20 @@ export class AuditoriasService {
     search?: string;
     fechaDesde?: string;
     fechaHasta?: string;
+    planAnualId?: string;
+    planAnualVigencia?: number;
+    vinculadaPlanAnual?: boolean;
+    year?: number;
+    light?: boolean;
+    activasOnly?: boolean;
   }): Promise<Auditoria[]> {
     const query = this.auditoriaRepository.createQueryBuilder('auditoria')
       .orderBy('auditoria.createdAt', 'DESC');
+
+    if (filters?.activasOnly !== false) {
+      query.andWhere('auditoria.activa = :activa', { activa: true });
+      query.andWhere('auditoria.archivada = :archivada', { archivada: false });
+    }
 
     if (filters?.tipo) {
       query.andWhere('auditoria.tipo = :tipo', { tipo: filters.tipo });
@@ -347,11 +402,35 @@ export class AuditoriasService {
       query.andWhere('auditoria.fechaFin <= :fechaHasta', { fechaHasta: filters.fechaHasta });
     }
 
-    const auditorias = await query
-      .leftJoinAndSelect('auditoria.objetivos', 'objetivos')
-      .leftJoinAndSelect('auditoria.criterios', 'criterios')
-      .leftJoinAndSelect('auditoria.equipoAuditores', 'equipoAuditores')
-      .getMany();
+    if (filters?.planAnualId && this.uuidRegex.test(filters.planAnualId)) {
+      query.andWhere('auditoria.planAnualId = :planAnualId', {
+        planAnualId: filters.planAnualId,
+      });
+    }
+
+    if (filters?.planAnualVigencia != null && !Number.isNaN(Number(filters.planAnualVigencia))) {
+      query.andWhere('auditoria.planAnualVigencia = :planAnualVigencia', {
+        planAnualVigencia: Number(filters.planAnualVigencia),
+      });
+    } else if (filters?.year != null && Number.isFinite(filters.year)) {
+      query.andWhere('EXTRACT(YEAR FROM auditoria.fechaInicio) = :year', {
+        year: filters.year,
+      });
+    }
+
+    if (filters?.vinculadaPlanAnual === true) {
+      query.andWhere('auditoria.vinculadaPlanAnual = :vinculadaPlanAnual', {
+        vinculadaPlanAnual: true,
+      });
+    }
+
+    query.leftJoinAndSelect('auditoria.objetivos', 'objetivos');
+    if (filters?.light === false) {
+      query.leftJoinAndSelect('auditoria.criterios', 'criterios');
+    }
+    query.leftJoinAndSelect('auditoria.equipoAuditores', 'equipoAuditores');
+
+    const auditorias = await query.getMany();
 
     // ✅ RESOLVER NOMBRES: Recolectar IDs de personas para resolver nombres en lote
     const personaIds = new Set<string>();
@@ -874,11 +953,12 @@ export class AuditoriasService {
     if (createDto.observacionesAdicionales) auditoriaData.observacionesAdicionales = createDto.observacionesAdicionales;
     if (createDto.programaAnualMetadata) auditoriaData.programaAnualMetadata = createDto.programaAnualMetadata;
 
+    this.applyPlanAnualVinculacion(auditoriaData, createDto);
+
     // actividad_plan_anual_id es UUID. auditor_lider_id/auditor_asignado_id/supervisor son BIGINT (idTercero).
     // NUNCA asignar idTercero (100, 12, 24) a actividadPlanAnualId → "invalid input syntax for type uuid"
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     const actividadIdRaw = (createDto as any).actividadPlanAnualId ?? createDto.programaAnualMetadata?.actividadPlanAnualId;
-    if (actividadIdRaw && typeof actividadIdRaw === 'string' && uuidRegex.test(actividadIdRaw)) {
+    if (actividadIdRaw && typeof actividadIdRaw === 'string' && this.uuidRegex.test(actividadIdRaw)) {
       auditoriaData.actividadPlanAnualId = actividadIdRaw;
     } else {
       auditoriaData.actividadPlanAnualId = null; // Explícito: evitar que TypeORM tome valores de otras props
@@ -1155,6 +1235,22 @@ export class AuditoriasService {
       console.log('[AuditoriasService] Actualizando programaAnualMetadata:', updateDto.programaAnualMetadata);
       auditoria.programaAnualMetadata = updateDto.programaAnualMetadata;
       console.log('[AuditoriasService] programaAnualMetadata asignado a auditoría:', auditoria.programaAnualMetadata);
+    }
+
+    if (
+      updateDto.planAnualId !== undefined ||
+      updateDto.planAnualVigencia !== undefined ||
+      updateDto.vinculadaPlanAnual !== undefined ||
+      updateDto.rolDecretoAsociado !== undefined ||
+      updateDto.programaAnualMetadata !== undefined
+    ) {
+      this.applyPlanAnualVinculacion(auditoria, {
+        planAnualId: updateDto.planAnualId,
+        planAnualVigencia: updateDto.planAnualVigencia,
+        vinculadaPlanAnual: updateDto.vinculadaPlanAnual,
+        rolDecretoAsociado: updateDto.rolDecretoAsociado,
+        programaAnualMetadata: updateDto.programaAnualMetadata ?? auditoria.programaAnualMetadata,
+      });
     }
 
     // Actualizar estado de checkboxes de actividades

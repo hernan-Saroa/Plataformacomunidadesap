@@ -13,7 +13,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { controlInternoService } from '@/services/api/controlInternoService';
 import { auditoriaService, mapBackendToUI, type AuditoriaFormData } from '../services/auditoriaService';
@@ -481,6 +481,7 @@ export interface AuditoriaCreateData {
 
 interface UseProgramaAnualDataOptions {
   vigencia?: number;
+  planAnualId?: string;
   procesos?: ProcesoAuditableUI[];
   autoFetch?: boolean;
   showToasts?: boolean;
@@ -507,14 +508,12 @@ interface UseProgramaAnualDataReturn {
 export function useProgramaAnualData(
   options: UseProgramaAnualDataOptions = {}
 ): UseProgramaAnualDataReturn {
-  const { vigencia, procesos = [], autoFetch = true, showToasts = true } = options;
+  const { vigencia, planAnualId, procesos = [], autoFetch = true, showToasts = true } = options;
   
   const [auditorias, setAuditorias] = useState<AuditoriaProgramadaUI[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOnline, setIsOnline] = useState(true);
-  const fetchedRef = useRef(false);
-
   // Crear mapa de procesos para lookup rápido
   const procesosMap = new Map<string, ProcesoAuditableUI>();
   procesos.forEach(p => procesosMap.set(p.id, p));
@@ -549,7 +548,10 @@ export function useProgramaAnualData(
       
       // ✅ 1. Cargar auditorías directamente del endpoint /auditorias
       try {
-        const auditoriasDirectas = await auditoriaService.listar();
+        const auditoriasDirectas = await auditoriaService.listar({
+          planAnualVigencia: vigencia,
+          planAnualId: planAnualId || undefined,
+        });
         if (Array.isArray(auditoriasDirectas) && auditoriasDirectas.length > 0) {
           // Convertir AuditoriaUI a AuditoriaProgramadaUI
           const mapped = auditoriasDirectas.map(a => ({
@@ -612,34 +614,40 @@ export function useProgramaAnualData(
         console.warn('[useProgramaAnualData] No se pudieron cargar auditorías directas:', err);
       }
       
-      // 2. También intentar cargar de programas anuales (si existen)
-      try {
-        const yearStr = vigencia?.toString();
-        const programas = await controlInternoService.getProgramasAnuales(yearStr);
-        
-        if (Array.isArray(programas) && programas.length > 0) {
-          for (const programa of programas) {
-            try {
-              const auds = await controlInternoService.getAuditoriasPrograma(programa.id);
-              if (Array.isArray(auds)) {
-                const mapped = auds.map(a => mapAuditoriaBackendToUI(a, procesosMap));
-                // Evitar duplicados por ID
-                const idsExistentes = new Set(allAuditorias.map(a => a.id));
-                const novedades = mapped.filter(a => !idsExistentes.has(a.id));
-                allAuditorias.push(...novedades);
+      // 2. Solo si /auditorias no devolvió filas, complementar con programas (evita N+1)
+      if (allAuditorias.length === 0) {
+        try {
+          const yearStr = vigencia?.toString();
+          const programas = await controlInternoService.getProgramasAnuales(yearStr);
+
+          if (Array.isArray(programas) && programas.length > 0) {
+            for (const programa of programas) {
+              try {
+                const auds = await controlInternoService.getAuditoriasPrograma(programa.id);
+                if (Array.isArray(auds)) {
+                  const mapped = auds.map(a => mapAuditoriaBackendToUI(a, procesosMap));
+                  const idsExistentes = new Set(allAuditorias.map(a => a.id));
+                  const novedades = mapped.filter(a => !idsExistentes.has(a.id));
+                  allAuditorias.push(...novedades);
+                }
+              } catch {
+                /* siguiente programa */
               }
-            } catch {
-              // Si falla un programa individual, continuar con los demás
             }
           }
+        } catch {
+          /* sin programas anuales */
         }
-      } catch {
-        // Si no hay programas anuales, continuar con las auditorías directas
       }
       
       setIsOnline(true);
       setAuditorias(allAuditorias);
-      console.log('[useProgramaAnualData] Total auditorías cargadas:', allAuditorias.length);
+      console.log(
+        '[useProgramaAnualData] Auditorías cargadas (filtro back plan anual):',
+        allAuditorias.length,
+        'vigencia',
+        vigencia,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Error al cargar auditorías';
       console.warn('[useProgramaAnualData] Error al conectar con backend:', msg);
@@ -648,15 +656,13 @@ export function useProgramaAnualData(
     } finally {
       setLoading(false);
     }
-  }, [vigencia]);
+  }, [vigencia, planAnualId]);
 
-  // ── Auto-fetch al montar ──
+  // ── Auto-fetch al montar y al cambiar vigencia ──
   useEffect(() => {
-    if (autoFetch && !fetchedRef.current) {
-      fetchedRef.current = true;
-      fetchAuditorias();
-    }
-  }, [autoFetch, fetchAuditorias]);
+    if (!autoFetch) return;
+    fetchAuditorias();
+  }, [autoFetch, fetchAuditorias, vigencia, planAnualId]);
 
   // ── Calcular estadísticas ──
   const estadisticas = calcularEstadisticas(procesos, auditorias);

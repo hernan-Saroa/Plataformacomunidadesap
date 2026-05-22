@@ -43,6 +43,7 @@ import { toast } from 'sonner';
 import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/api';
 import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../../../services/api/controlInternoService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -296,6 +297,7 @@ export function FormularioAuditoriaUnificado({
   initialData,
   mode
 }: FormularioAuditoriaUnificadoProps) {
+  const vigenciaPlanCtx = usePlanAnualVigenciaContextOptional();
   const [pasoActual, setPasoActual] = useState(1);
   const [formData, setFormData] = useState<AuditoriaUnificadaFormData>({
     codigo: initialData?.codigo || '',
@@ -341,6 +343,16 @@ export function FormularioAuditoriaUnificado({
     rolDecretoAsociado: initialData?.rolDecretoAsociado || '',
     estadoKanban: initialData?.estadoKanban || 'Plan Anual' // Por defecto crear en Plan Anual
   });
+
+  useEffect(() => {
+    if (!open || !vigenciaPlanCtx) return;
+    setFormData((prev) => ({
+      ...prev,
+      vinculadaPlanAnual: initialData?.vinculadaPlanAnual ?? true,
+      planAnualId: initialData?.planAnualId ?? vigenciaPlanCtx.planActivoId ?? prev.planAnualId,
+      planAnualAño: initialData?.planAnualAño ?? vigenciaPlanCtx.vigencia,
+    }));
+  }, [open, vigenciaPlanCtx?.planActivoId, vigenciaPlanCtx?.vigencia, initialData?.vinculadaPlanAnual, initialData?.planAnualId, initialData?.planAnualAño]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [objetivoTemporal, setObjetivoTemporal] = useState('');
@@ -3207,14 +3219,17 @@ function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
           {formData.vinculadaPlanAnual && (
             <div className="space-y-4 pl-8 border-l-4 border-blue-500">
               {/* Año del Plan */}
-              <FieldWrapper label="Año del Plan Anual">
+              <FieldWrapper label="Vigencia plan anual">
                 <Input
                   type="number"
+                  readOnly
                   value={formData.planAnualAño || ''}
-                  onChange={(e) => onChange('planAnualAño', parseInt(e.target.value))}
-                  placeholder="2025"
-                  className="border-gray-300"
+                  className="border-gray-300 bg-gray-50 cursor-not-allowed"
+                  title="Tomada del selector Vigencia plan anual de la cabecera"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Definida por el plan activo en la cabecera del módulo. Cambie la vigencia allí si necesita otro año.
+                </p>
               </FieldWrapper>
 
               {/* Rol del Decreto 648 */}

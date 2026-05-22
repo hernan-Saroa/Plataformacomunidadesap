@@ -11,7 +11,7 @@ export class CreatePlanAnual5RolesDto {
   responsable: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsUUID('all')
   responsable_id?: string;
 
   @IsOptional()
