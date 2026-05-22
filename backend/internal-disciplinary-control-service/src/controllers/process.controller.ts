@@ -967,8 +967,49 @@ export class ProcessController {
         };
       });
 
+      // Incluir archivos adjuntos originales de la noticia (para que aparezcan en el expediente electrónico)
+      const documentosAdjuntosNoticia: any[] = [];
+      if (proceso.news && Array.isArray((proceso.news as any).adjuntos) && (proceso.news as any).adjuntos.length > 0) {
+        (proceso.news as any).adjuntos.forEach((adjPath: string, index: number) => {
+          const filename = adjPath.includes('/') ? adjPath.split('/').pop()! : adjPath;
+          const tamaño = 'N/A';
+          const fecha = (proceso.news as any).createdAt?.toISOString() || new Date().toISOString();
+          documentosAdjuntosNoticia.push({
+            id: `adj-noticia-${(proceso.news as any).id || id}-${index}`,
+            nombre: filename,
+            archivoNombre: filename,
+            tipo: 'otro',
+            etapa: 'Recepción (Noticia Inicial)',
+            version: 1,
+            tamaño,
+            fechaCarga: fecha,
+            usuarioCarga: 'Radicador',
+            descripcion: 'Archivo adjunto a la noticia disciplinaria original',
+            url: null,
+            urlExterna: null,
+            downloadUrl: `/files/${filename}`,
+            processId: id,
+            fileType: 'application/octet-stream',
+            fileSize: 0,
+            versiones: [{
+              numero: 1,
+              fecha,
+              usuario: 'Radicador',
+              cambios: 'Adjunto de noticia inicial',
+              tamaño,
+              downloadUrl: `/files/${filename}`,
+            }],
+            metadatos: {
+              firmado: false,
+              notificado: false,
+              esAutoDigital: false,
+            },
+          });
+        });
+      }
+
       // Combinar y ordenar por fecha
-      const todosDocumentos = [...documentosEvidencia, ...documentosAutos].sort((a, b) => {
+      const todosDocumentos = [...documentosEvidencia, ...documentosAutos, ...documentosAdjuntosNoticia].sort((a, b) => {
         return new Date(b.fechaCarga).getTime() - new Date(a.fechaCarga).getTime();
       });
 
