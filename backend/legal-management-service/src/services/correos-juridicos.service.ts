@@ -7,6 +7,7 @@ import { CorreoJuridicoHistorial } from '../entities/correo-juridico-historial.e
 import { CorreoTrackingToken } from '../entities/correo-tracking-token.entity';
 import { MicrosoftGraphService, GraphEmail } from './microsoft-graph.service';
 import { SmartClassificationService } from './smart-classification.service';
+import { NotificationClientService } from './notification-client.service';
 import { randomUUID } from 'crypto';
 
 export interface EmailFilters {
@@ -33,6 +34,8 @@ export interface SendEmailDto {
     subject: string;
     body: string;
     attachments?: { name: string; contentBytes: string; contentType: string }[];
+    requestReadReceipt?: boolean;
+    requestDeliveryReceipt?: boolean;
 }
 
 import { ActuacionService } from './actuacion.service';
@@ -53,7 +56,96 @@ export class CorreosJuridicosService {
         private readonly graphService: MicrosoftGraphService,
         private readonly smartService: SmartClassificationService,
         private readonly actuacionService: ActuacionService,
+        private readonly notificationClient: NotificationClientService,
     ) { }
+
+    /**
+     * Notifica al JEFE_GESTION_LEGAL cuando un destinatario externo abre por primera vez
+     * un correo enviado desde la plataforma (acuse de recibido automático).
+     */
+    private async notificarAcuseDeRecibido(correoId: string, destinatarioEmail?: string): Promise<void> {
+        try {
+            const correo = await this.correoRepo.findOne({ where: { id: correoId } });
+            if (!correo) return;
+
+            // Solo notificar para correos ENVIADOS desde la plataforma
+            if (correo.direccion !== 'ENVIADO') return;
+
+            const destinatario = destinatarioEmail || correo.destinatariosTo || 'destinatario externo';
+            const remitente = correo.remitenteNombre || correo.remitenteEmail || 'Oficina Jurídica';
+            const fechaEnvio = correo.fechaRecepcion
+                ? new Date(correo.fechaRecepcion).toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' })
+                : 'N/A';
+            const fechaApertura = new Date().toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
+
+            const urlAccion = `/gestion-legal?modulo=comunicaciones&correoId=${encodeURIComponent(correoId)}`;
+
+            const emailHtml = `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e0e0e0; border-radius: 8px; background: #ffffff;">
+                    <div style="border-left: 4px solid #10B981; padding-left: 16px; margin-bottom: 20px;">
+                        <h2 style="color: #003DA5; margin: 0 0 4px;">📬 Acuse de Recibido</h2>
+                        <p style="color: #6b7280; margin: 0; font-size: 14px;">El destinatario ha abierto el correo enviado desde la plataforma</p>
+                    </div>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px;">
+                        <tr>
+                            <td style="padding: 8px 0; color: #6b7280; font-size: 13px; width: 40%;">Destinatario:</td>
+                            <td style="padding: 8px 0; color: #111827; font-size: 13px; font-weight: 600;">${destinatario}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Asunto:</td>
+                            <td style="padding: 8px 0; color: #111827; font-size: 13px; font-weight: 600;">${correo.asunto || '(Sin asunto)'}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Enviado por:</td>
+                            <td style="padding: 8px 0; color: #111827; font-size: 13px;">${remitente}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Fecha de envío:</td>
+                            <td style="padding: 8px 0; color: #111827; font-size: 13px;">${fechaEnvio}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #6b7280; font-size: 13px;">Fecha de apertura:</td>
+                            <td style="padding: 8px 0; color: #10B981; font-size: 13px; font-weight: 600;">${fechaApertura}</td>
+                        </tr>
+                    </table>
+                    <p style="color: #6b7280; font-size: 12px; margin: 16px 0 0; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+                        Este es un mensaje automático generado por el sistema de Gestión Legal SIGL.
+                    </p>
+                </div>
+            `;
+
+            await this.notificationClient.notifyByRoles(
+                ['JEFE_GESTION_LEGAL'],
+                {
+                    tipo_notificacion: 'ACUSE_RECIBIDO_CORREO',
+                    titulo: '📬 Acuse de recibido',
+                    mensaje: `${destinatario} ha recibido y abierto el correo "${correo.asunto || '(Sin asunto)'}"`,
+                    descripcion_corta: `Correo abierto: ${(correo.asunto || '').substring(0, 60)}`,
+                    icono: 'MailCheck',
+                    color: '#10B981',
+                    prioridad: 'Media',
+                    categoria: 'gestion-legal',
+                    tiene_accion: true,
+                    texto_boton_accion: 'Ver correo',
+                    url_accion: urlAccion,
+                    datos_adicionales: {
+                        correoId,
+                        destinatario,
+                        asunto: correo.asunto,
+                        fechaApertura: new Date().toISOString(),
+                    },
+                },
+                {
+                    subject: `Acuse de recibido: ${correo.asunto || '(Sin asunto)'}`,
+                    html: emailHtml,
+                },
+            );
+
+            this.logger.log(`✅ Acuse de recibido notificado a JEFE_GESTION_LEGAL para correo ${correoId}`);
+        } catch (error: any) {
+            this.logger.error(`Error notificando acuse de recibido para correo ${correoId}: ${error?.message}`);
+        }
+    }
 
     /**
      * Obtiene la URL base para tracking (pixel + links de descarga).
@@ -581,7 +673,11 @@ export class CorreosJuridicosService {
             dto.subject,
             finalBody,
             dto.cc,
-            []  // No inline attachments — everything goes as tracked links
+            [],  // No inline attachments — everything goes as tracked links
+            {
+                requestReadReceipt: !!dto.requestReadReceipt,
+                requestDeliveryReceipt: !!dto.requestDeliveryReceipt,
+            }
         );
 
         if (!sent) {
@@ -1248,6 +1344,11 @@ export class CorreosJuridicosService {
                     { ip, userAgent: userAgent?.substring(0, 200), token }
                 );
                 this.logger.log(`📬 Tracking pixel activado para correo ${tracking.correoId} (IP: ${ip})`);
+
+                // Notificar al JEFE_GESTION_LEGAL (acuse de recibido automático)
+                this.notificarAcuseDeRecibido(tracking.correoId, tracking.destinatarioEmail).catch(err =>
+                    this.logger.warn(`Error enviando acuse de recibido: ${err?.message}`)
+                );
             }
         } catch (error) {
             this.logger.error(`Error procesando tracking pixel ${token}:`, error);

@@ -8,7 +8,7 @@ import { useState, useEffect, useRef, KeyboardEvent } from 'react';
 import { toast } from 'sonner';
 import {
   Mail, FileText, User,
-  Upload, X, Send, Paperclip, Loader2, AlertCircle, ChevronDown, ChevronUp
+  Upload, X, Send, Paperclip, Loader2, AlertCircle, ChevronDown, ChevronUp, CheckCircle2
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
@@ -200,12 +200,14 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData 
   const [enviando, setEnviando] = useState(false);
   const [archivos, setArchivos] = useState<File[]>([]);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [requestReadReceipt, setRequestReadReceipt] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
 
     setArchivos([]);
     setShowCc(false);
+    setRequestReadReceipt(false);
 
     if (initialData?.isForward) {
       setOriginalBody(initialData.cuerpo || '');
@@ -306,6 +308,8 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData 
           body: cuerpo.trim(),
           cc: ccEmails.length > 0 ? ccEmails : undefined,
           attachments: attachmentsBase64.length > 0 ? attachmentsBase64 : undefined,
+          requestReadReceipt,
+          requestDeliveryReceipt: requestReadReceipt,
         });
         isSuccess = result?.success !== false;
       }
@@ -624,6 +628,47 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData 
                   </div>
                 )}
               </Card>
+
+              {/* ── Opciones de envío ── */}
+              {!isReply && !isForward && (
+                <Card className="p-4 bg-white border-gray-200 shadow-sm">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center flex-shrink-0">
+                      <CheckCircle2 className="w-4 h-4 text-violet-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900 text-sm">Opciones de envío</h3>
+                      <p className="text-xs text-gray-500">Configura el seguimiento del correo</p>
+                    </div>
+                  </div>
+
+                  <label
+                    htmlFor="request-receipt"
+                    className={`flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-colors ${
+                      requestReadReceipt
+                        ? 'bg-violet-50 border-violet-300'
+                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    <input
+                      id="request-receipt"
+                      type="checkbox"
+                      checked={requestReadReceipt}
+                      onChange={(e) => setRequestReadReceipt(e.target.checked)}
+                      className="mt-0.5 w-4 h-4 text-violet-600 border-gray-300 rounded focus:ring-violet-500 cursor-pointer"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900">
+                        Solicitar confirmación de entrega y lectura
+                      </p>
+                      <p className="text-xs text-gray-600 mt-0.5">
+                        Recibirás un correo automático cuando el destinatario reciba y abra este mensaje
+                        (equivalente al "acuse de recibido" de Outlook).
+                      </p>
+                    </div>
+                  </label>
+                </Card>
+              )}
 
               {/* Nota informativa */}
               <div className="flex items-start gap-2 px-3 py-2.5 bg-blue-50 rounded-lg border border-blue-100">

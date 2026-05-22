@@ -1255,6 +1255,8 @@ export interface SendCorreoDto {
     subject: string;
     body: string;
     attachments?: { name: string; contentBytes: string; contentType: string }[];
+    requestReadReceipt?: boolean;
+    requestDeliveryReceipt?: boolean;
 }
 
 export interface AdjuntoCorreo {
