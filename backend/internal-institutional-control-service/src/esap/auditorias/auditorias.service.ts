@@ -126,8 +126,8 @@ export class AuditoriasService {
   /**
    * Genera un código único para la auditoría en formato AUD-YYYY-###
    */
-  private async generarCodigo(): Promise<string> {
-    const year = new Date().getFullYear();
+  private async generarCodigo(yearParam?: number): Promise<string> {
+    const year = yearParam || new Date().getFullYear();
     const prefix = `AUD-${year}-`;
 
     // Buscar el último código del año
@@ -856,7 +856,10 @@ export class AuditoriasService {
     }
 
     // Generar código automático
-    const codigo = await this.generarCodigo();
+    const yearForCode = createDto.planAnualVigencia || 
+                        ((createDto as any).planAnualAño) || 
+                        (fechaInicio ? fechaInicio.getFullYear() : new Date().getFullYear());
+    const codigo = (createDto as any).codigo || await this.generarCodigo(yearForCode);
 
     // Verificar que no exista un código duplicado (por si acaso)
     const existente = await this.findByCodigo(codigo);

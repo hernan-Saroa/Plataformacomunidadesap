@@ -96,6 +96,9 @@ export interface AuditoriaKanban {
   criterios?: CriterioAuditoria[];
   // ID del auditor líder asignado
   auditorLiderId?: string | number;
+  // Vigencia asociada
+  planAnualAño?: number;
+  vigencia?: number;
 }
 
 export interface CriterioAuditoria {
@@ -415,7 +418,7 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
 
   return {
     id: auditoriaBackend.id,
-    codigo: auditoriaBackend.codigo || `AUD-${new Date().getFullYear()}-${auditoriaBackend.id?.substring(0, 4) || '001'}`,
+    codigo: auditoriaBackend.codigo || `AUD-${auditoriaBackend.planAnualAño || auditoriaBackend.vigencia || new Date().getFullYear()}-${auditoriaBackend.id?.substring(0, 4) || '001'}`,
     titulo: auditoriaBackend.nombre || 'Auditoría sin título',
     descripcion: auditoriaBackend.descripcion || auditoriaBackend.alcance || '',
     estado,
@@ -483,6 +486,8 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     auditorLiderId: auditoriaBackend.auditorLiderId,
     // ✅ Preservar documento de cierre del backend para pasarlo al Expediente
     documentoCierre: auditoriaBackend.documentoCierre || null,
+    planAnualAño: auditoriaBackend.planAnualAño,
+    vigencia: auditoriaBackend.vigencia
   };
 }
 
