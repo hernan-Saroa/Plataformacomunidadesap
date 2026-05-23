@@ -514,11 +514,13 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
             >
               <Layers className="w-4 h-4" />
               Universo Auditable
-              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
-                tabActiva === 'universo' ? 'bg-white/20' : 'bg-gray-200'
-              }`}>
-                {estadisticasEvaluaciones.totalProcesos}
-              </span>
+              {estadisticasEvaluaciones.totalProcesos > 0 && (
+                <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                  tabActiva === 'universo' ? 'bg-white/20' : 'bg-gray-200'
+                }`}>
+                  {estadisticasEvaluaciones.totalProcesos}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setTabActiva('programa')}
@@ -530,11 +532,13 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
             >
               <CalendarIcon className="w-4 h-4" />
               Programa Anual
-              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
-                tabActiva === 'programa' ? 'bg-white/20' : 'bg-gray-200'
-              }`}>
-                {estadisticas.totalProgramadas}
-              </span>
+              {estadisticas.totalProgramadas > 0 && (
+                <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                  tabActiva === 'programa' ? 'bg-white/20' : 'bg-gray-200'
+                }`}>
+                  {estadisticas.totalProgramadas}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setTabActiva('profesionales')}
@@ -546,11 +550,13 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
             >
               <Users className="w-4 h-4" />
               Profesionales
-              <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
-                tabActiva === 'profesionales' ? 'bg-white/20' : 'bg-gray-200'
-              }`}>
-                {loadingProfesionales ? '...' : profesionalesOCI.length}
-              </span>
+              {(!loadingProfesionales && profesionalesOCI.length > 0) && (
+                <span className={`px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                  tabActiva === 'profesionales' ? 'bg-white/20' : 'bg-gray-200'
+                }`}>
+                  {profesionalesOCI.length}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -616,6 +622,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
                 puedeCrearAuditoria={puedeRealizar('auditorias', 'create')}
                 error={errorAuditorias}
                 onRefresh={refetchAuditorias}
+                vigencia={vigencia}
               />
             )}
             {tabActiva === 'profesionales' && (
@@ -836,6 +843,8 @@ interface TabProgramaAnualProps {
   error?: string | null;
   /** Función para reintentar la carga */
   onRefresh?: () => void;
+  /** Vigencia para el cronograma */
+  vigencia: number;
 }
 
 function TabProgramaAnual({ 
@@ -846,7 +855,8 @@ function TabProgramaAnual({
   puedeCrear = true,
   puedeCrearAuditoria = false,
   error = null,
-  onRefresh
+  onRefresh,
+  vigencia
 }: TabProgramaAnualProps) {
   const [vistaProgramaAnual, setVistaProgramaAnual] = useState<'lista' | 'cronograma'>('cronograma'); // 🆕 Estado para alternar vista
   
@@ -1026,7 +1036,7 @@ function TabProgramaAnual({
             >
               <CronogramaAuditoriasPremium 
                 auditorias={auditorias as any}
-                vigencia={new Date().getFullYear()}
+                vigencia={vigencia}
               />
             </motion.div>
           ) : (

@@ -805,8 +805,14 @@ export function RevisionAprobacionJefe({
                       }
 
                       try {
-                        const userId = authService.getCurrentUser()?.id || '';
-                        await disciplinaryService.sendJuridica(borradorEnvioJuridica.autoId, userId);
+                         const currentUser = authService.getCurrentUser();
+                         const userId = currentUser?.id || '';
+                         await disciplinaryService.sendJuridica(
+                             borradorEnvioJuridica.autoId, 
+                             userId, 
+                             currentUser?.email, 
+                             currentUser?.fullName || currentUser?.firstName
+                         );
 
                         toast.success('Auto enviado a jurídica exitosamente', {
                           description: `El proceso ${borradorEnvioJuridica.numeroProceso} ha sido cerrado y archivado`,

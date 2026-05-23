@@ -21,7 +21,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Calendar as CalendarIcon,
@@ -438,7 +438,20 @@ export function CronogramaAuditoriasPremium({
 }: CronogramaAuditoriasPremiumProps) {
   
   const [vista, setVista] = useState<VistaCalendario>('mes');
-  const [fechaActual, setFechaActual] = useState(new Date());
+  const [fechaActual, setFechaActual] = useState(() => {
+    const hoy = new Date();
+    if (vigencia && vigencia !== hoy.getFullYear()) {
+      return new Date(vigencia, 0, 1); // 1 de Enero de la vigencia
+    }
+    return hoy;
+  });
+
+  // Si cambia la vigencia desde afuera, actualizar la fecha actual del calendario
+  useEffect(() => {
+    if (vigencia && vigencia !== fechaActual.getFullYear()) {
+      setFechaActual(new Date(vigencia, 0, 1));
+    }
+  }, [vigencia]);
   
   // Filtro por columna: solo Planeación / Ejecución / Comunicación (el resto de columnas Kanban se listan en «Todas»)
   const [busqueda, setBusqueda] = useState('');

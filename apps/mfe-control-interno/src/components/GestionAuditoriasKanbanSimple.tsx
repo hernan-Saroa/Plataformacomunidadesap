@@ -2266,6 +2266,17 @@ export function GestionAuditoriasKanbanSimple() {
 
   // Filtrar auditorías
   const auditoriasFiltradas = auditorias.filter(aud => {
+    // ✅ FILTRO DE VIGENCIA: Asegurar que solo se muestran auditorías del plan seleccionado
+    let cumpleVigencia = true;
+    if (vigenciaActiva) {
+      const añoAuditoria = (aud as any).planAnualAño || (aud as any).vigencia;
+      if (añoAuditoria) {
+        cumpleVigencia = String(añoAuditoria) === String(vigenciaActiva);
+      } else if (aud.codigo) {
+        cumpleVigencia = aud.codigo.includes(`AUD-${vigenciaActiva}-`);
+      }
+    }
+
     const terminoBusqueda = String(busqueda || '').toLowerCase();
     const cumpleBusqueda = String(aud.titulo || '').toLowerCase().includes(terminoBusqueda) ||
                            String(aud.codigo || '').toLowerCase().includes(terminoBusqueda);
@@ -2293,7 +2304,7 @@ export function GestionAuditoriasKanbanSimple() {
       cumpleUsuario = !!(isLider || isAsignado || isInEquipo);
     }
     
-    return cumpleBusqueda && cumpleTerritorial && cumpleUsuario;
+    return cumpleVigencia && cumpleBusqueda && cumpleTerritorial && cumpleUsuario;
   });
 
   // Colapsar todas las tarjetas
@@ -2479,6 +2490,11 @@ export function GestionAuditoriasKanbanSimple() {
         ...(fechaInicioComunicacionCalculada && { fechaInicioComunicacion: fechaInicioComunicacionCalculada }),
         // ✅ Estado inicial del Kanban - todas las auditorías nuevas inician en "Plan Anual"
         estadoKanban: 'Plan Anual',
+        // ✅ Vinculación con Plan Anual
+        planAnualId: data.planAnualId || undefined,
+        planAnualAño: data.planAnualAño || undefined,
+        vigencia: data.planAnualAño || undefined,
+        vinculadaPlanAnual: data.vinculadaPlanAnual || false,
       };
       
       const nuevaAuditoriaId = await crearAuditoriaBackend(datosBackend);

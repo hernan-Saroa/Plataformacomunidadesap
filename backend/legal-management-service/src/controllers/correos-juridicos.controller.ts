@@ -21,6 +21,8 @@ export class SendEmailDto {
     subject: string;
     body: string;
     attachments?: { name: string; contentBytes: string; contentType: string }[];
+    requestReadReceipt?: boolean;
+    requestDeliveryReceipt?: boolean;
 }
 
 @Controller('correos')

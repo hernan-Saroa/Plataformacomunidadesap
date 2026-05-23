@@ -392,7 +392,12 @@ export class NewsService {
     if (data.territorial) noticia.territorial = data.territorial;
     if (data.dependenciaDenunciado) noticia.dependenciaDenunciado = data.dependenciaDenunciado;
     if (data.hechos) noticia.hechos = data.hechos;
-    if (data.fechaQueja) noticia.fechaQueja = new Date(data.fechaQueja);
+    if (data.fechaQueja) {
+      const [y, m, d] = (data.fechaQueja as string).split('T')[0].split('-').map(Number);
+      const fechaSegura = new Date(y, m - 1, d, 12, 0, 0);
+      noticia.fechaQueja = fechaSegura;
+      noticia.fechaRecepcion = fechaSegura;
+    }
     if (data.denunciante) noticia.denunciante = data.denunciante;
     if (data.disciplinable) noticia.disciplinable = data.disciplinable;
     if (data.conductas) noticia.conductas = data.conductas;
