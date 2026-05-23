@@ -4,10 +4,10 @@
  * IMPACTO EN TODO EL SISTEMA: Todos los tableros Kanban leen desde aquí
  */
 
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, useRef, ReactNode, useEffect } from 'react';
 import { toast } from 'sonner';
 import { legalService, ocService } from '../../../../services/api/legal.service';
-import { getServiceUrl, API_MODE } from '../../../../config/environment';
+import { expedienteConfigService } from '../../services/api/expediente-config.service';
 
 // ============ TIPOS ============
 
@@ -496,6 +496,8 @@ const ConfiguracionesSIGLContext = createContext<ConfiguracionesSIGLContextType 
 
 export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode }) {
   const [configuraciones, setConfiguraciones] = useState<ConfiguracionModulo[]>(configuracionesIniciales);
+  // Tracks the last-saved { nombre, plazo } per tipoProceso id so we can detect name/plazo changes on save
+  const savedTiposRef = useRef<Record<string, { nombre: string; plazo: number }>>({});
   const [ejesEstrategicos, setEjesEstrategicos] = useState<EjeEstrategico[]>(ejesEstrategicosIniciales);
   const [tiposIndicadores, setTiposIndicadores] = useState<TipoIndicador[]>(tiposIndicadoresIniciales);
   const [tiposRequerimientos, setTiposRequerimientos] = useState<TipoRequerimiento[]>(tiposRequerimientosIniciales);
@@ -548,10 +550,19 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
           });
 
           setConfiguraciones(mergedConfigs);
+
+          // Snapshot loaded tipos so guardarConfiguraciones can detect name/plazo changes later
+          const tiposSnapshot: Record<string, { nombre: string; plazo: number }> = {};
+          mergedConfigs.forEach(m => m.tiposProcesos?.forEach(tp => { tiposSnapshot[tp.id] = { nombre: tp.nombre, plazo: tp.plazo }; }));
+          savedTiposRef.current = tiposSnapshot;
+
           console.log('✅ Configuraciones mezcladas exitosamente (Backend + Defaults):', mergedConfigs.length);
         } else {
           console.log('⚠️ No se encontraron configuraciones en backend, usando defaults completos.');
-          // No necesitamos hacer setConfiguraciones porque ya inicia con configuracionesIniciales
+          // Snapshot defaults so initial save treats them as baseline
+          const tiposSnapshot: Record<string, { nombre: string; plazo: number }> = {};
+          configuracionesIniciales.forEach(m => m.tiposProcesos?.forEach(tp => { tiposSnapshot[tp.id] = { nombre: tp.nombre, plazo: tp.plazo }; }));
+          savedTiposRef.current = tiposSnapshot;
         }
       } catch (error) {
         console.error('❌ Error general al cargar configuraciones:', error);
@@ -730,12 +741,59 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     try {
       console.log('💾 Guardando configuraciones en backend...');
 
+      // Detectar cambios de nombre y plazo en tiposProcesos
+      const nombreCambios: { nombreAnterior: string; nombreNuevo: string }[] = [];
+      const plazoCambios: { nombreAnterior: string; deltaDias: number }[] = [];
+      configuraciones.forEach(modulo => {
+        modulo.tiposProcesos?.forEach(tp => {
+          const anterior = savedTiposRef.current[tp.id];
+          if (anterior === undefined) return;
+          if (anterior.nombre !== tp.nombre) {
+            nombreCambios.push({ nombreAnterior: anterior.nombre, nombreNuevo: tp.nombre });
+          }
+          if (anterior.plazo !== tp.plazo) {
+            // Usar el nombre ANTERIOR para encontrar los expedientes en BD
+            plazoCambios.push({ nombreAnterior: anterior.nombre, deltaDias: tp.plazo - anterior.plazo });
+          }
+        });
+      });
+
       // Guardar cada módulo individualmente en el backend
       await Promise.all(
         configuraciones.map(config =>
           legalService.saveConfiguration(config.id, config)
         )
       );
+
+      // Renombrar tipoProceso en expedientes afectados
+      if (nombreCambios.length > 0) {
+        await Promise.allSettled(
+          nombreCambios.map(({ nombreAnterior, nombreNuevo }) =>
+            expedienteConfigService.renombrarTipoProceso(nombreAnterior, nombreNuevo)
+          )
+        );
+        console.log(`✏️ Renombrados tipos de proceso en expedientes: ${nombreCambios.map(c => `"${c.nombreAnterior}" → "${c.nombreNuevo}"`).join(', ')}`);
+      }
+
+      // Recalcular fechas de vencimiento para expedientes con plazo modificado
+      if (plazoCambios.length > 0) {
+        const resultados = await Promise.allSettled(
+          plazoCambios.map(({ nombreAnterior, deltaDias }) =>
+            expedienteConfigService.recalcularPlazosPorTipoProceso(nombreAnterior, deltaDias)
+          )
+        );
+        const totalActualizados = resultados.reduce((sum, r) => {
+          return sum + (r.status === 'fulfilled' ? (r.value?.updated ?? 0) : 0);
+        }, 0);
+        if (totalActualizados > 0) {
+          console.log(`🔄 Recalculados ${totalActualizados} expedientes por cambio de plazos`);
+        }
+      }
+
+      // Actualizar snapshot con estado actual
+      const nuevoSnapshot: Record<string, { nombre: string; plazo: number }> = {};
+      configuraciones.forEach(m => m.tiposProcesos?.forEach(tp => { nuevoSnapshot[tp.id] = { nombre: tp.nombre, plazo: tp.plazo }; }));
+      savedTiposRef.current = nuevoSnapshot;
 
       // Sincronizar organismos de control al backend
       try {

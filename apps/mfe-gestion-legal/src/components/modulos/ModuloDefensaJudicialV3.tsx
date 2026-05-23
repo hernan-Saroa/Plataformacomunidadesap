@@ -503,11 +503,15 @@ export function ModuloDefensaJudicialV3() {
   // ✅ Primero aplicar filtros globales (búsqueda, tipo de proceso)
   const expedientesFiltrados = expedientes.filter(exp => {
     // Filtro por búsqueda
+    const q = busqueda.toLowerCase();
     const matchBusqueda = busqueda === '' ||
-      exp.id?.toLowerCase().includes(busqueda.toLowerCase()) ||
-      exp.demandante?.toLowerCase().includes(busqueda.toLowerCase()) ||
-      exp.demandado?.toLowerCase().includes(busqueda.toLowerCase()) ||
-      exp.juzgado?.toLowerCase().includes(busqueda.toLowerCase());
+      exp.id?.toLowerCase().includes(q) ||
+      exp.demandante?.toLowerCase().includes(q) ||
+      exp.demandado?.toLowerCase().includes(q) ||
+      exp.juzgado?.toLowerCase().includes(q) ||
+      (exp as any).tipoProceso?.toLowerCase().includes(q) ||
+      exp.tipo?.toLowerCase().includes(q) ||
+      exp.medioControl?.toLowerCase().includes(q);
 
     // Filtro por Tipo de Proceso (Flexible: revisa tipo, medioControl, tipoAccion y tipoProceso)
     // Los IDs del filtro (ej: 'reparacion-directa') no coinciden con los valores del backend

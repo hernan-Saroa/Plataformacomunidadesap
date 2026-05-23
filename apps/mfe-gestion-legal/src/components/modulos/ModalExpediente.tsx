@@ -1601,7 +1601,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                         <span className="text-sm font-bold text-gray-900">{expediente.tipoProceso}</span>
                       </div>
                       {/* Clasificación Penal (solo visible para Proceso Penal) */}
-                      {(expediente.tipoProceso === 'Proceso Penal' || (expediente as any).esDelitoAdminPublica || (expediente as any).esConductaPatrimonioPublico) && (
+                      {(expediente.tipoProceso === 'Proceso Penal' || (expediente as any).esDelitoAdminPublica || (expediente as any).esConductaPatrimonioPublico || (expediente as any).esOtroDelitoPenal) && (
                         <div className="mt-2 p-3 rounded-lg bg-red-50 border border-red-200">
                           <p className="text-xs font-bold text-red-800 mb-2 flex items-center gap-1.5">
                             <Shield className="w-3.5 h-3.5" />
@@ -1620,7 +1620,18 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                             >
                               {(expediente as any).esConductaPatrimonioPublico ? '✅' : '—'} Conductas que afectan el Patrimonio Público
                             </Badge>
+                            <Badge
+                              variant="outline"
+                              className={`text-xs font-semibold ${(expediente as any).esOtroDelitoPenal ? 'border-red-500 text-red-700 bg-red-100' : 'border-gray-300 text-gray-400 bg-gray-50'}`}
+                            >
+                              {(expediente as any).esOtroDelitoPenal ? '✅' : '—'} Otros
+                            </Badge>
                           </div>
+                          {(expediente as any).esOtroDelitoPenal && (expediente as any).otroDelitoPenalDescripcion && (
+                            <p className="mt-2 text-xs text-red-800 bg-red-100 rounded px-2 py-1">
+                              <span className="font-semibold">Descripción:</span> {(expediente as any).otroDelitoPenalDescripcion}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
