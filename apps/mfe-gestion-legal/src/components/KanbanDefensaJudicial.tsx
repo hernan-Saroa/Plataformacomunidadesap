@@ -470,7 +470,17 @@ function ComentariosModal({ expediente, isOpen, onClose }: { expediente: Expedie
     setSaving(true);
     try {
       const u = authService.getCurrentUser() as any;
-      const usuarioNombre = u?.fullName ?? u?.full_name ?? u?.name ?? u?.nombre ?? (u?.person?.first_name ? `${u.person.first_name} ${u.person.last_name ?? ''}`.trim() : null) ?? u?.email ?? u?.person?.email ?? 'Usuario';
+      const usuarioNombre =
+        u?.fullName ??
+        u?.full_name ??
+        u?.name ??
+        u?.person?.full_name ??
+        (u?.person?.first_name || u?.person?.last_name
+          ? `${u.person.first_name ?? ''} ${u.person.last_name ?? ''}`.trim()
+          : undefined) ??
+        u?.email ??
+        u?.person?.email ??
+        'Usuario';
 
       await legalService.createComentarioExpediente(expediente.id, {
         contenido: nuevoComentario.trim(),

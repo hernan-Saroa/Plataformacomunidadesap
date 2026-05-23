@@ -274,6 +274,14 @@ export class LegalService {
         return this.createExpediente(data);
     }
 
+    async recalcularPlazosPorTipoProceso(tipoProceso: string, deltaDias: number): Promise<{ updated: number }> {
+        return apiClient.post<{ updated: number }>(`${SERVICE_PREFIX}/expedientes/recalcular-plazos`, { tipoProceso, deltaDias });
+    }
+
+    async renombrarTipoProceso(nombreAnterior: string, nombreNuevo: string): Promise<{ updated: number }> {
+        return apiClient.post<{ updated: number }>(`${SERVICE_PREFIX}/expedientes/renombrar-tipo-proceso`, { nombreAnterior, nombreNuevo });
+    }
+
     // ==================== CONSULTAS JURÍDICAS ====================
     async getConsultasJuridicas(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/consultas-juridicas`);

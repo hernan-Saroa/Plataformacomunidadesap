@@ -173,6 +173,52 @@ export class ExpedienteService {
         return currentDate;
     }
 
+    private shiftBusinessDays(date: Date, delta: number): Date {
+        const result = new Date(date);
+        if (delta === 0) return result;
+        const step = delta > 0 ? 1 : -1;
+        let remaining = Math.abs(delta);
+        while (remaining > 0) {
+            result.setDate(result.getDate() + step);
+            const day = result.getDay();
+            if (day !== 0 && day !== 6) remaining--;
+        }
+        return result;
+    }
+
+    async renombrarTipoProceso(nombreAnterior: string, nombreNuevo: string): Promise<{ updated: number }> {
+        const result = await this.expedienteRepository
+            .createQueryBuilder()
+            .update()
+            .set({ tipoProceso: nombreNuevo })
+            .where('tipo_proceso = :nombreAnterior', { nombreAnterior })
+            .execute();
+        return { updated: result.affected ?? 0 };
+    }
+
+    async recalcularPlazosPorTipoProceso(tipoProceso: string, deltaDias: number): Promise<{ updated: number }> {
+        if (deltaDias === 0) return { updated: 0 };
+
+        const expedientes = await this.expedienteRepository.find({ where: { tipoProceso } });
+        let updated = 0;
+
+        for (const exp of expedientes) {
+            if (!exp.fechaVencimientoTermino) continue;
+
+            const nuevaFecha = exp.tipoConteoTermino === 'CALENDARIO'
+                ? (() => { const d = new Date(exp.fechaVencimientoTermino); d.setDate(d.getDate() + deltaDias); return d; })()
+                : this.shiftBusinessDays(new Date(exp.fechaVencimientoTermino), deltaDias);
+
+            await this.expedienteRepository.update(exp.id, {
+                fechaVencimientoTermino: nuevaFecha,
+                terminoProcesalDias: Math.max(1, (exp.terminoProcesalDias || 0) + deltaDias),
+            });
+            updated++;
+        }
+
+        return { updated };
+    }
+
     async listarExpedientes(filtros: { estado?: string; jurisdiccion?: string; search?: string; abogadoSustanciadorKeys?: string[] }): Promise<any[]> {
         const queryBuilder = this.expedienteRepository.createQueryBuilder('expediente');
         // queryBuilder.leftJoinAndSelect('expediente.actuaciones', 'actuaciones'); // Removed due to loose coupling

@@ -88,6 +88,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   const canEditProceso =
     !esMonitoreoGestionLegal &&
     authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT);
+  const canCompletarTareas =
+    !esMonitoreoGestionLegal &&
+    authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_TAREA_COMPLETE);
   const canUploadDocumento =
     !esMonitoreoGestionLegal &&
     authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DOC_UPLOAD);

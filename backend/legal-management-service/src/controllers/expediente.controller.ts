@@ -86,6 +86,20 @@ export class ExpedienteController {
         return this.expedienteService.crearExpediente(data, creadoPor);
     }
 
+    @Post('recalcular-plazos')
+    async recalcularPlazos(
+        @Body() body: { tipoProceso: string; deltaDias: number }
+    ): Promise<{ updated: number }> {
+        return this.expedienteService.recalcularPlazosPorTipoProceso(body.tipoProceso, body.deltaDias);
+    }
+
+    @Post('renombrar-tipo-proceso')
+    async renombrarTipoProceso(
+        @Body() body: { nombreAnterior: string; nombreNuevo: string }
+    ): Promise<{ updated: number }> {
+        return this.expedienteService.renombrarTipoProceso(body.nombreAnterior, body.nombreNuevo);
+    }
+
     @Delete(':id')
     async eliminar(@Param('id') id: string): Promise<void> {
         return this.expedienteService.deleteExpediente(id);

@@ -464,6 +464,16 @@ export const API_ENDPOINTS = {
     DOWNLOAD: (id: string) => `/certificados/api/v1/${id}/download`,
     VERIFY: (code: string) => `/certificados/api/v1/verify/${code}`,
   },
+
+  // Gestión Legal (legal-management-service)
+  LEGAL: {
+    BASE: '/legal/api/v1',
+    EXPEDIENTES: '/legal/api/v1/expedientes',
+    EXPEDIENTE_BY_ID: (id: string) => `/legal/api/v1/expedientes/${id}`,
+    RECALCULAR_PLAZOS: '/legal/api/v1/expedientes/recalcular-plazos',
+    RENOMBRAR_TIPO_PROCESO: '/legal/api/v1/expedientes/renombrar-tipo-proceso',
+    CONFIGURATIONS: (key: string) => `/legal/api/v1/configurations/${key}`,
+  },
 };
 
 // Headers comunes para todas las requests.
