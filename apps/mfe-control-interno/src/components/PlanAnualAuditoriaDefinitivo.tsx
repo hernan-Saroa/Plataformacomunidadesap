@@ -16,7 +16,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'motion/react';
 // ═══════════════════════════════════════════════════════════════════════════
 import { usePlanAnualCompleto, useCreatePlanAnual, actividadesApi, planAnualApi, invalidatePlanAnualListCache } from './services/plan-anual';
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 import { esUuidPersona, idPersonaParaPlanAnual } from '../utils/persona-id-plan-anual';
 import {
   Shield, Calendar, Users, FileText, Download, ArrowLeft, ArrowRight,
@@ -1421,6 +1422,8 @@ function mapPuntosControlFechasVigencia(puntos: unknown, vigencia: number): any[
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarModulo?: (seccion: string) => void }) {
+  const vigenciaContext = usePlanAnualVigenciaContextOptional();
+  const cambioPlanDesdeHeaderEnCursoRef = useRef<string | null>(null);
   const [vista, setVista] = useState<'inicio' | 'wizard' | 'dashboard' | 'rol4-integrado'>('inicio');
   const [planAEditar, setPlanAEditar] = useState<PlanAnual | undefined>(undefined);
   /** Fuerza remontaje del wizard solo al iniciar un plan nuevo en blanco. */
@@ -1984,6 +1987,27 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       toast.error(e?.message || 'Error al cargar el plan', { id: toastId });
     }
   };
+
+  useEffect(() => {
+    const planSeleccionadoId = vigenciaContext?.planActivoId;
+    const planEstaDisponible = planesAnteriores.some((plan) => plan.id === planSeleccionadoId);
+    if (
+      vista !== 'dashboard' ||
+      !planSeleccionadoId ||
+      !planEstaDisponible ||
+      planSeleccionadoId === planActual?.id ||
+      cambioPlanDesdeHeaderEnCursoRef.current === planSeleccionadoId
+    ) {
+      return;
+    }
+
+    cambioPlanDesdeHeaderEnCursoRef.current = planSeleccionadoId;
+    void handleCambiarPlan(planSeleccionadoId).finally(() => {
+      if (cambioPlanDesdeHeaderEnCursoRef.current === planSeleccionadoId) {
+        cambioPlanDesdeHeaderEnCursoRef.current = null;
+      }
+    });
+  }, [vigenciaContext?.planActivoId, vista, planActual?.id, planesAnteriores]);
 
   const abrirWizardConPlan = async (plan: PlanAnual, soloLectura: boolean) => {
     setDashboardSeccionForzada(null);

@@ -5884,7 +5884,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
           {/* Derecha: selector de plan + botones de acción */}
           <div className="flex flex-row flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
             {planesDisponibles.length > 0 && onCambiarPlan && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2" style={{display: 'none'}}>
                 <label
                   htmlFor="dashboard-plan-vigencia-select"
                   className="text-xs sm:text-sm font-semibold text-gray-700 whitespace-nowrap"
