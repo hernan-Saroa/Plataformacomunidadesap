@@ -588,7 +588,7 @@ export function useAuditoriasKanban(planFilters?: {
 
       const vigencia = planFilters?.planAnualVigencia;
       const response = await controlInternoService.getAuditorias({
-        planAnualVigencia: vigencia,
+        // planAnualVigencia: vigencia,
         planAnualId: planFilters?.planAnualId,
         year: vigencia,
         light: true,

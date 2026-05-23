@@ -495,7 +495,7 @@ export const auditoriaService = {
       const vigencia = filters?.planAnualVigencia ?? filters?.year;
       const auditorias = await controlInternoService.getAuditorias({
         ...filters,
-        planAnualVigencia: vigencia,
+        // planAnualVigencia: vigencia,
         year: filters?.year ?? vigencia,
         light: true,
         activasOnly: true,

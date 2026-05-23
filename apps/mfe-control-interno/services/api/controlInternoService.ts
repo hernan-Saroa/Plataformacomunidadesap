@@ -1959,9 +1959,9 @@ class ControlInternoService {
     if (filters?.fechaDesde) queryParams.append('fechaDesde', filters.fechaDesde);
     if (filters?.fechaHasta) queryParams.append('fechaHasta', filters.fechaHasta);
     if (filters?.planAnualId) queryParams.append('planAnualId', filters.planAnualId);
-    if (filters?.planAnualVigencia != null) {
-      queryParams.append('planAnualVigencia', String(filters.planAnualVigencia));
-    }
+    // if (filters?.planAnualVigencia != null) {
+    //   queryParams.append('planAnualVigencia', String(filters.planAnualVigencia));
+    // }
     if (filters?.year != null) queryParams.append('year', String(filters.year));
     if (filters?.light !== false) queryParams.append('light', 'true');
     if (filters?.activasOnly !== false) queryParams.append('activasOnly', 'true');
