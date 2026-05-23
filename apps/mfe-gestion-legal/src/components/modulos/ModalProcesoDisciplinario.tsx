@@ -100,8 +100,8 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   const canRegistrarActuacion = canEditProceso;
   // Rol RESUELVE puede marcar tareas como completadas (las que tiene asignadas),
   // aunque no tenga permiso de edición global del expediente.
-  const esRolResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
-  const canCompletarTareas = !esMonitoreoGestionLegal && (canEditProceso || esRolResuelve);
+  // const esRolResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
+  // const canCompletarTareas = !esMonitoreoGestionLegal && (canEditProceso || esRolResuelve);
 
   const [tabActivo, setTabActivo] = useState('general');
   const [hasChanges, setHasChanges] = useState(false);
