@@ -2855,8 +2855,11 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 18, scale: 0.98 }}
               transition={{ type: 'spring', damping: 24, stiffness: 260 }}
-              className="flex max-h-[90vh] w-full max-w-none flex-col overflow-hidden rounded-2xl bg-white shadow-[0_28px_72px_rgba(15,23,42,0.32)]"
-              style={{ width: 'min(96vw, 980px)' }}
+              className="flex w-full max-w-none flex-col overflow-hidden rounded-2xl bg-white shadow-[0_28px_72px_rgba(15,23,42,0.32)]"
+              style={{
+                width: 'min(96vw, 980px)',
+                height: 'min(88vh, 780px)',
+              }}
             >
               <div
                 className="border-b px-5 py-4 sm:px-6"
