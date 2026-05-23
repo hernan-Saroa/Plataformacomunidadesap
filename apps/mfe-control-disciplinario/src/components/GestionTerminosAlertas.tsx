@@ -39,6 +39,7 @@ interface Termino {
   proceso: string;
   numeroProceso: string;
   actuacion: string;
+  responsableId?: string;
   responsable: string;
   emailResponsable: string;
   fechaInicio: string;
@@ -233,6 +234,12 @@ const ALERTAS_MOCK: Alerta[] = [
 // ============================================================================
 
 export function GestionTerminosAlertas() {
+  const currentUser = authService.getCurrentUser();
+  const esProfesional =
+    authService.hasRole('PROFESIONAL') ||
+    authService.hasRole('PROFESIONAL_SUSTANCIADOR') ||
+    authService.hasRole('PROFESIONAL_ASIGNADO');
+
   const [terminos, setTerminos] = useState<Termino[]>([]);
   const [cargandoTerminos, setCargandoTerminos] = useState(false);
   const [diasFestivos, setDiasFestivos] = useState<DiaFestivo[]>(DIAS_FESTIVOS_MOCK);
@@ -379,12 +386,15 @@ export function GestionTerminosAlertas() {
     }
   };
   const terminosFiltrados = terminos.filter(t => {
-    const matchesSearch = 
+    // PROFESIONAL solo ve sus propios términos
+    if (esProfesional && t.responsableId !== currentUser?.id) return false;
+
+    const matchesSearch =
       t.proceso.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.numeroProceso.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.actuacion.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.responsable.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesEstado = filterEstado === 'all' || t.estado === filterEstado;
 
     return matchesSearch && matchesEstado;
@@ -970,7 +980,7 @@ export function GestionTerminosAlertas() {
                           {/* Acciones */}
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-end gap-2">
-                              {termino.estado !== 'cumplido' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_MANAGE) && (
+                              {termino.estado !== 'cumplido' && termino.responsableId === currentUser?.id && (
                                 <button
                                   onClick={() => handleMarcarCompleto(termino.id)}
                                   className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-green-600 hover:bg-green-700 flex items-center gap-1"
