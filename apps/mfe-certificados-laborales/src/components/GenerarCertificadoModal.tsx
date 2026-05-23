@@ -45,6 +45,8 @@ interface CertificadoLaboralListado {
   technical_bonus?: number;
   technical_bonus_category?: string | null;
   technicalBonusCategory?: string | null;
+  technical_bonuses?: any[] | null;
+  technicalBonuses?: any[] | null;
   incluyeSalario?: boolean;
   incluyePrimaTecnica?: boolean;
   templateSnapshot?: any;
@@ -404,6 +406,14 @@ export function GenerarCertificadoModal({ isOpen, onClose, onSuccess, certificad
             cert.technicalBonusCategory ??
             cert.request?.technical_bonus_category ??
             cert.request?.technicalBonusCategory ??
+            null,
+          technical_bonuses:
+            cert.technical_bonuses ??
+            cert.technicalBonuses ??
+            cert.request?.technical_bonuses ??
+            cert.request?.technicalBonuses ??
+            cert.template_snapshot?.technicalBonuses ??
+            cert.templateSnapshot?.technicalBonuses ??
             null,
           incluyeSalario,
           incluyePrimaTecnica,

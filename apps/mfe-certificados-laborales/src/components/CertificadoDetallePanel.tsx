@@ -62,10 +62,14 @@ interface CertificadoDetallePanelProps {
       observations?: string;
       technical_bonus_category?: string | null;
       technicalBonusCategory?: string | null;
+      technical_bonuses?: any[] | null;
+      technicalBonuses?: any[] | null;
     };
     technical_bonus?: number;
     technical_bonus_category?: string | null;
     technicalBonusCategory?: string | null;
+    technical_bonuses?: any[] | null;
+    technicalBonuses?: any[] | null;
     incluyeSalario?: boolean;
     incluyePrimaTecnica?: boolean;
     templateSnapshot?: any;
@@ -1086,6 +1090,14 @@ export function CertificadoDetallePanel({ certificado, isOpen }: CertificadoDeta
                 certificado.technicalBonusCategory ??
                 certificado.request?.technical_bonus_category ??
                 certificado.request?.technicalBonusCategory ??
+                null,
+              technical_bonuses:
+                certificado.technical_bonuses ??
+                certificado.technicalBonuses ??
+                certificado.request?.technical_bonuses ??
+                certificado.request?.technicalBonuses ??
+                certificado.templateSnapshot?.technicalBonuses ??
+                (certificado as any).template_snapshot?.technicalBonuses ??
                 null,
             }}
           />

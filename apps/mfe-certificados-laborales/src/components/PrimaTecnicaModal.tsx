@@ -299,21 +299,6 @@ const categoryContentMotion = {
   },
 };
 
-const findExistingRecordByIdNumber = (
-  recordsByCategory: Record<PrimaTecnicaCategoria, PrimaTecnicaRegistro[]>,
-  idNumber: string,
-): PrimaTecnicaRegistro | null => {
-  if (!idNumber) return null;
-  const categories = Object.keys(recordsByCategory);
-  for (const category of categories) {
-    const match = (recordsByCategory[category] || []).find(
-      (item) => normalizeIdNumber(item.id_number) === idNumber,
-    );
-    if (match) return match;
-  }
-  return null;
-};
-
 const formatBulkServerMessage = (message?: string) => {
   const rawMessage = String(message || '').trim();
   if (!rawMessage) return 'No se pudo procesar la fila.';
@@ -792,9 +777,8 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
 
   const handleSelectCandidate = (candidate: PrimaTecnicaCandidato) => {
     const normalizedCandidateId = normalizeIdNumber(candidate.idNumber);
-    const existingRecord = findExistingRecordByIdNumber(
-      recordsByCategory,
-      normalizedCandidateId,
+    const existingRecord = (recordsByCategory[activeCategory] || []).find(
+      (item) => normalizeIdNumber(item.id_number) === normalizedCandidateId,
     );
 
     if (existingRecord) {

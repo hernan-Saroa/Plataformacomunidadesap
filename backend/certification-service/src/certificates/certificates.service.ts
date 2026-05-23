@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Raw, Repository } from 'typeorm';
+import { In, Raw, Repository } from 'typeorm';
 import { CertificateRequest } from './certificate-request.entity';
 import { Certificate } from './certificate.entity';
 import { Signer } from './signer.entity';
@@ -96,6 +96,16 @@ type TechnicalBonusCategoryPayload = {
   displayOrder?: number;
   display_order?: number;
   updatedBy?: string;
+};
+
+type ResolvedTechnicalBonusItem = {
+  assignmentId: string;
+  category: TechnicalBonusCategory;
+  label: string;
+  percentage: number;
+  value: number;
+  templateText: string;
+  displayOrder: number;
 };
 
 type OracleRequestSyncResult = {
@@ -835,6 +845,9 @@ export class CertificatesService {
     value: number;
     category: TechnicalBonusCategory | null;
     assignmentId: string | null;
+    items: ResolvedTechnicalBonusItem[];
+    totalPercentage: number;
+    totalValue: number;
   }> {
     const idNumber = this.sanitizeIdNumber(request?.id_number || '');
     if (!idNumber) {
@@ -844,10 +857,13 @@ export class CertificatesService {
         value: 0,
         category: null,
         assignmentId: null,
+        items: [],
+        totalPercentage: 0,
+        totalValue: 0,
       };
     }
 
-    const assignment = await this.technicalBonusRepo.findOne({
+    const assignments = await this.technicalBonusRepo.find({
       where: {
         id_number: Raw(
           (alias) =>
@@ -858,32 +874,117 @@ export class CertificatesService {
       order: { updated_at: 'DESC' },
     });
 
-    if (!assignment) {
+    if (!assignments.length) {
       return {
         available: false,
         percentage: 0,
         value: 0,
         category: null,
         assignmentId: null,
+        items: [],
+        totalPercentage: 0,
+        totalValue: 0,
       };
     }
 
-    const percentage = this.roundToTwoDecimals(
-      this.parseNumericValue(assignment.percentage),
+    const categories = Array.from(
+      new Set(assignments.map((item) => item.category).filter(Boolean)),
     );
-    const value = this.resolveTechnicalBonusAmount(
-      request?.monthly_salary,
-      percentage,
+    const templateRecords = categories.length
+      ? await this.technicalBonusTemplateRepo.find({
+          where: { category: In(categories) },
+        })
+      : [];
+    const templateByCategory = new Map(
+      templateRecords.map((item) => [item.category, item]),
     );
-    const available = percentage > 0;
+
+    const items = assignments
+      .map((assignment): ResolvedTechnicalBonusItem | null => {
+        const template = templateByCategory.get(assignment.category);
+        if (template && template.is_active === false) {
+          return null;
+        }
+
+        const percentage = this.roundToTwoDecimals(
+          this.parseNumericValue(assignment.percentage),
+        );
+        const value = this.resolveTechnicalBonusAmount(
+          request?.monthly_salary,
+          percentage,
+        );
+        if (percentage <= 0 || value <= 0) {
+          return null;
+        }
+
+        const category = assignment.category;
+        return {
+          assignmentId: assignment.id,
+          category,
+          label: template?.label || this.getTechnicalBonusDefaultLabel(category),
+          percentage,
+          value,
+          templateText:
+            template?.template_text || this.getTechnicalBonusDefaultTemplate(category),
+          displayOrder: Number(template?.display_order ?? 100),
+        };
+      })
+      .filter((item): item is ResolvedTechnicalBonusItem => Boolean(item))
+      .sort((left, right) => {
+        if (left.displayOrder !== right.displayOrder) {
+          return left.displayOrder - right.displayOrder;
+        }
+        const labelCompare = left.label.localeCompare(right.label, 'es');
+        if (labelCompare !== 0) return labelCompare;
+        return left.category.localeCompare(right.category, 'es');
+      });
+
+    if (!items.length) {
+      return {
+        available: false,
+        percentage: 0,
+        value: 0,
+        category: null,
+        assignmentId: null,
+        items: [],
+        totalPercentage: 0,
+        totalValue: 0,
+      };
+    }
+
+    const totalPercentage = this.roundToTwoDecimals(
+      items.reduce((sum, item) => sum + item.percentage, 0),
+    );
+    const totalValue = this.roundToTwoDecimals(
+      items.reduce((sum, item) => sum + item.value, 0),
+    );
+    const primary = items[0];
 
     return {
-      available,
-      percentage: available ? percentage : 0,
-      value,
-      category: assignment.category,
-      assignmentId: assignment.id,
+      available: true,
+      percentage: totalPercentage,
+      value: totalValue,
+      category: primary.category,
+      assignmentId: primary.assignmentId,
+      items,
+      totalPercentage,
+      totalValue,
     };
+  }
+
+  private serializeTechnicalBonusItems(items: ResolvedTechnicalBonusItem[]) {
+    return items.map((item) => ({
+      assignment_id: item.assignmentId,
+      assignmentId: item.assignmentId,
+      category: item.category,
+      label: item.label,
+      percentage: item.percentage,
+      value: item.value,
+      template_text: item.templateText,
+      templateText: item.templateText,
+      display_order: item.displayOrder,
+      displayOrder: item.displayOrder,
+    }));
   }
 
   private extractExceptionMessage(error: any, fallback: string): string {
@@ -2198,25 +2299,6 @@ export class CertificatesService {
       );
     }
 
-    const existingGlobalAssignment = await this.technicalBonusRepo.findOne({
-      where: { id_number: idNumber },
-      order: { updated_at: 'DESC' },
-    });
-    if (
-      existingGlobalAssignment &&
-      existingGlobalAssignment.category !== category
-    ) {
-      const existingCategory = await this.technicalBonusTemplateRepo.findOne({
-        where: { category: existingGlobalAssignment.category },
-      });
-      const categoryLabel = existingCategory
-        ? this.mapTechnicalBonusCategory(existingCategory).label
-        : this.getTechnicalBonusDefaultLabel(existingGlobalAssignment.category);
-      throw new BadRequestException(
-        `La persona ya tiene Prima Tecnica registrada en ${categoryLabel}.`,
-      );
-    }
-
     const percentage = Number(percentageRaw.toFixed(2));
 
     let request: CertificateRequest | null = null;
@@ -2872,18 +2954,19 @@ export class CertificatesService {
       );
     }
 
-    if (includeTechnicalBonus && technicalBonus.category) {
-      try {
-        const tplRecord = await this.getTechnicalBonusTemplate(technicalBonus.category);
-        templateSnapshot = {
-          ...(templateSnapshot || {}),
-          technicalBonusTemplate: tplRecord.template_text,
-          technicalBonusCategory: tplRecord.category,
-          technicalBonusCategoryLabel: tplRecord.label,
-        };
-      } catch {
-        // Si falla, el PDF service usa el texto hardcoded como fallback
-      }
+    const technicalBonusesSnapshot = includeTechnicalBonus
+      ? this.serializeTechnicalBonusItems(technicalBonus.items)
+      : [];
+
+    if (includeTechnicalBonus && technicalBonusesSnapshot.length) {
+      const primaryBonus = technicalBonusesSnapshot[0];
+      templateSnapshot = {
+        ...(templateSnapshot || {}),
+        technicalBonuses: technicalBonusesSnapshot,
+        technicalBonusTemplate: primaryBonus.template_text,
+        technicalBonusCategory: primaryBonus.category,
+        technicalBonusCategoryLabel: primaryBonus.label,
+      };
     }
 
     const certificate = this.certificateRepo.create({
@@ -2900,6 +2983,7 @@ export class CertificatesService {
       monthly_salary: request.monthly_salary,
       technical_bonus: technicalBonus.value,
       technical_bonus_category: technicalBonus.category,
+      technical_bonuses: technicalBonusesSnapshot,
       include_salary: includeSalary,
       include_technical_bonus: includeTechnicalBonus,
       salary_text: request.salary_text,
@@ -3683,6 +3767,7 @@ export class CertificatesService {
       technical_bonus_value: technicalBonus.value,
       technical_bonus_category: technicalBonus.category,
       technical_bonus_assignment_id: technicalBonus.assignmentId,
+      technical_bonuses: this.serializeTechnicalBonusItems(technicalBonus.items),
     };
 
     // Verificar si ya tiene un certificado generado
@@ -3705,6 +3790,7 @@ export class CertificatesService {
         technical_bonus_percentage: technicalBonus.percentage,
         technical_bonus_value: technicalBonus.value,
         technical_bonus_category: technicalBonus.category,
+        technical_bonuses: this.serializeTechnicalBonusItems(technicalBonus.items),
       };
     }
 
@@ -3719,6 +3805,7 @@ export class CertificatesService {
       technical_bonus_percentage: technicalBonus.percentage,
       technical_bonus_value: technicalBonus.value,
       technical_bonus_category: technicalBonus.category,
+      technical_bonuses: this.serializeTechnicalBonusItems(technicalBonus.items),
     };
   }
 
@@ -3835,6 +3922,8 @@ export class CertificatesService {
         ),
         technical_bonus_category:
           (verificacion.solicitud as any).technical_bonus_category || null,
+        technical_bonuses:
+          (verificacion.solicitud as any).technical_bonuses || [],
       },
     };
   }

@@ -458,6 +458,7 @@ export const certificadosService = {
       technical_bonus_percentage?: number;
       technical_bonus_value?: number;
       technical_bonus_category?: PrimaTecnicaCategoria | null;
+      technical_bonuses?: any[];
       solicitud?: {
         full_name?: string;
         id_number?: string;
@@ -479,6 +480,7 @@ export const certificadosService = {
         technical_bonus_percentage?: number;
         technical_bonus_value?: number;
         technical_bonus_category?: PrimaTecnicaCategoria | null;
+        technical_bonuses?: any[];
         [key: string]: any;
       };
       certificado?: any;
@@ -516,6 +518,7 @@ export const certificadosService = {
         technical_bonus_percentage?: number;
         technical_bonus_value?: number;
         technical_bonus_category?: PrimaTecnicaCategoria | null;
+        technical_bonuses?: any[];
         [key: string]: any;
       };
     }> {
