@@ -39,8 +39,7 @@ export class ConfiguracionesProfesionalesOCIGController {
   }
 
   /**
-   * Obtener roles OCIG disponibles desde la BD
-   * Devuelve los roles backoffice (OCIG) + Aprobador PAI con sus descripciones
+   * Roles OCIG para configurar el equipo operativo (roles auth con permisos del módulo CI).
    */
   @Get('roles-ocig')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -60,8 +59,8 @@ export class ConfiguracionesProfesionalesOCIGController {
   }
 
   /**
-   * Buscar personas candidatas de auth.personas que pueden ser configuradas como profesionales OCIG
-   * Devuelve personas que AÚN NO están en configuracion_profesionales_ocig
+   * Personas candidatas: usuario activo con permiso en el módulo control-interno
+   * que aún no están en configuracion_profesionales_ocig (activos).
    */
   @Get('candidatos')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -79,6 +78,23 @@ export class ConfiguracionesProfesionalesOCIGController {
     ConfiguracionProfesionalOCIGResponseDto[]
   > {
     return this.service.findLideresPotenciales();
+  }
+
+  /**
+   * Comité de aprobación del PAI: personas con permiso plan-anual.approve.
+   */
+  @Get('aprobadores-plan-anual')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(
+    CIP.PLAN_ANUAL_VIEW,
+    CIP.PLAN_ANUAL_CREATE,
+    CIP.PLAN_ANUAL_EDIT,
+    CIP.PLAN_ANUAL_APPROVE,
+  )
+  async buscarAprobadoresPlanAnual(
+    @Query('busqueda') busqueda?: string,
+  ): Promise<any[]> {
+    return this.service.buscarAprobadoresPlanAnual(busqueda);
   }
 
   @Get(':id')

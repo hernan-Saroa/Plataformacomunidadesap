@@ -1,4 +1,5 @@
 import { apiClient } from './apiClient';
+import { authService } from './authService';
 import { API_MODE, MICROSERVICE_URLS, getServiceUrl, buildApiUrl } from '../../config/environment';
 
 // Prefijo del servicio legal en el API Gateway
@@ -219,7 +220,7 @@ export class LegalService {
 
     // ==================== ABOGADOS ====================
     async getAbogados(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/abogados`);
+        return authService.getAbogadosRolResuelve();
     }
 
     // ==================== ARCHIVADO/ELIMINADO DE EXPEDIENTES ====================
@@ -337,7 +338,7 @@ export class LegalService {
 
     // Abogados
     async getAbogadosDashboard(): Promise<any[]> {
-        return apiClient.get<any[]>(`${SERVICE_PREFIX}/abogados`);
+        return authService.getAbogadosRolResuelve();
     }
 
     async getStatsGeneral(): Promise<any> {
@@ -346,9 +347,6 @@ export class LegalService {
 
 
 
-    async createAbogado(data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/abogados`, data);
-    }
 
     // ==================== AUDIENCIAS ====================
     async getAudiencias(filtros?: { start?: string; end?: string; expedienteId?: string }): Promise<Audiencia[]> {

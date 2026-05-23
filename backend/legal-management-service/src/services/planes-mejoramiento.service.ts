@@ -4,7 +4,6 @@ import { Repository, DataSource, In, IsNull, Not } from 'typeorm';
 import { PlanMejoramiento, PlanEvidencia, PlanSeguimiento, PlanComentario } from '../entities/planes-mejoramiento.entity';
 import { PlanHallazgo } from '../entities/plan-hallazgo.entity';
 import { Riesgo } from '../entities/riesgo.entity';
-import { Abogado } from '../entities/abogado.entity';
 
 @Injectable()
 export class PlanesMejoramientoService {
@@ -130,25 +129,22 @@ export class PlanesMejoramientoService {
         // Let's just fetch all risks for now (assuming not millions) or fetch individually.
         // Better: Fetch IDs.
         const riskIds = planes.filter(p => p.origen === 'RIESGO' && p.origenId).map(p => p.origenId);
-        const abogadoIds = planes.filter(p => p.responsableId).map(p => p.responsableId);
-
-        console.log('Fetching names for Abogado IDs:', abogadoIds); // Debug Log
+        const responsableIds = planes.filter(p => p.responsableId).map(p => p.responsableId);
 
         let riskMap = new Map();
-        let abogadoMap = new Map();
+        let responsableMap = new Map<string, string>();
 
         if (riskIds.length > 0) {
             const risks = await this.dataSource.getRepository(Riesgo).findBy({ id: In(riskIds) });
             riskMap = new Map(risks.map(r => [r.id, r.nombre]));
         }
 
-        if (abogadoIds.length > 0) {
-            const abogados = await this.dataSource.getRepository(Abogado).findBy({ id: In(abogadoIds) });
-            abogadoMap = new Map(abogados.map(a => [a.id, a.nombreCompleto]));
+        if (responsableIds.length > 0) {
+            responsableMap = await this.resolveResponsablesDesdeAuth(responsableIds);
         }
 
         return planes.map(p => {
-            const respNombre = abogadoMap.get(p.responsableId);
+            const respNombre = p.responsableId ? responsableMap.get(p.responsableId) : null;
             return {
                 ...p,
                 riesgoTitulo: p.origen === 'RIESGO' ? riskMap.get(p.origenId) : null,
@@ -183,11 +179,11 @@ export class PlanesMejoramientoService {
         });
         if (!plan) throw new NotFoundException(`Plan ${id} no encontrado`);
 
-        // Lookup responsable name - first try abogado, then entity field
+        // Lookup responsable name from auth, then entity field
         let responsableNombre = plan.responsableNombre || 'Sin Asignar';
         if (plan.responsableId) {
-            const abogado = await this.dataSource.getRepository(Abogado).findOneBy({ id: plan.responsableId });
-            if (abogado) responsableNombre = abogado.nombreCompleto;
+            const responsables = await this.resolveResponsablesDesdeAuth([plan.responsableId]);
+            responsableNombre = responsables.get(plan.responsableId) || responsableNombre;
         }
 
         // Attach Risk Info
@@ -209,6 +205,34 @@ export class PlanesMejoramientoService {
             riesgoTitulo,
             seguimientos: seguimientosConFecha
         };
+    }
+
+    private async resolveResponsablesDesdeAuth(ids: string[]): Promise<Map<string, string>> {
+        const filteredIds = [...new Set(ids.filter(Boolean))];
+        if (filteredIds.length === 0) return new Map();
+
+        try {
+            const rows = await this.dataSource.query(
+                `SELECT
+                    u.id_user::text AS id_user,
+                    u.public_id::text AS public_id,
+                    COALESCE(p.nom_largo, u.username, u.id_user::text) AS nombre
+                 FROM auth."user" u
+                 LEFT JOIN auth.personas p ON p.id_person = u.id_person
+                 WHERE u.id_user::text = ANY($1)
+                    OR u.public_id::text = ANY($1)`,
+                [filteredIds],
+            );
+
+            const map = new Map<string, string>();
+            for (const row of rows) {
+                if (row.id_user) map.set(row.id_user, row.nombre);
+                if (row.public_id) map.set(row.public_id, row.nombre);
+            }
+            return map;
+        } catch {
+            return new Map();
+        }
     }
 
     async getDocumentos(planId: string): Promise<PlanEvidencia[]> {

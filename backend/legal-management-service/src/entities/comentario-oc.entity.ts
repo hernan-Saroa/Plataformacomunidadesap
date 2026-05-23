@@ -1,6 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { RequerimientoOC } from './requerimiento-oc.entity';
-import { Abogado } from './abogado.entity';
 
 @Entity({ name: 'comentarios_oc', schema: 'legal_management' })
 export class ComentarioOC {
@@ -22,10 +21,6 @@ export class ComentarioOC {
 
     @Column({ name: 'autor_id', type: 'uuid', nullable: true })
     autorId?: string;
-
-    @ManyToOne(() => Abogado, { nullable: true })
-    @JoinColumn({ name: 'autor_id' })
-    autor?: Abogado;
 
     @Column({ name: 'autor_nombre', type: 'varchar', length: 200, nullable: true })
     autorNombre?: string;

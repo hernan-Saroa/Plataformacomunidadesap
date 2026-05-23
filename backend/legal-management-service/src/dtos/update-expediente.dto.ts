@@ -8,5 +8,9 @@ export class UpdateExpedienteDto {
     provisionContable?: number;
     fechaEstimacionProvision?: string;
     observacionProvision?: string;
+    esDelitoAdminPublica?: boolean;
+    esConductaPatrimonioPublico?: boolean;
+    esOtroDelitoPenal?: boolean;
+    otroDelitoPenalDescripcion?: string;
     // Radicado NO se puede actualizar
 }

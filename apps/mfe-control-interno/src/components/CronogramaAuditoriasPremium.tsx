@@ -21,7 +21,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Calendar as CalendarIcon,
@@ -438,7 +438,20 @@ export function CronogramaAuditoriasPremium({
 }: CronogramaAuditoriasPremiumProps) {
   
   const [vista, setVista] = useState<VistaCalendario>('mes');
-  const [fechaActual, setFechaActual] = useState(new Date());
+  const [fechaActual, setFechaActual] = useState(() => {
+    const hoy = new Date();
+    if (vigencia && vigencia !== hoy.getFullYear()) {
+      return new Date(vigencia, 0, 1); // 1 de Enero de la vigencia
+    }
+    return hoy;
+  });
+
+  // Si cambia la vigencia desde afuera, actualizar la fecha actual del calendario
+  useEffect(() => {
+    if (vigencia && vigencia !== fechaActual.getFullYear()) {
+      setFechaActual(new Date(vigencia, 0, 1));
+    }
+  }, [vigencia]);
   
   // Filtro por columna: solo Planeación / Ejecución / Comunicación (el resto de columnas Kanban se listan en «Todas»)
   const [busqueda, setBusqueda] = useState('');
@@ -743,7 +756,7 @@ export function CronogramaAuditoriasPremium({
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4 flex-wrap">
             <span className="text-xs font-bold text-gray-600">Estados:</span>
-            {(['planeacion', 'ejecucion', 'comunicacion', 'seguimiento', 'finalizada'] as ColumnaKanban[]).map((col) => {
+            {(['planeacion', 'ejecucion', 'comunicacion'] as ColumnaKanban[]).map((col) => {
               const colores = COLORES_POR_COLUMNA_KANBAN[col];
               return (
                 <div key={col} className="flex items-center gap-2">

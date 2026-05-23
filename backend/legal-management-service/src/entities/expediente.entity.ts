@@ -172,6 +172,12 @@ export class Expediente {
     @Column({ name: 'es_conducta_patrimonio_publico', default: false })
     esConductaPatrimonioPublico: boolean;
 
+    @Column({ name: 'es_otro_delito_penal', default: false })
+    esOtroDelitoPenal: boolean;
+
+    @Column({ name: 'otro_delito_penal_descripcion', nullable: true, type: 'varchar', length: 200 })
+    otroDelitoPenalDescripcion: string;
+
     // Campos específicos para Juzgamiento Disciplinario
     @Column({ nullable: true, length: 50 })
     etapa: string;

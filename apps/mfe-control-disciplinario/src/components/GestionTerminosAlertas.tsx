@@ -20,6 +20,7 @@ import { authService } from '../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 
 // ============================================================================
 // INTERFACES
@@ -38,6 +39,7 @@ interface Termino {
   proceso: string;
   numeroProceso: string;
   actuacion: string;
+  responsableId?: string;
   responsable: string;
   emailResponsable: string;
   fechaInicio: string;
@@ -232,6 +234,12 @@ const ALERTAS_MOCK: Alerta[] = [
 // ============================================================================
 
 export function GestionTerminosAlertas() {
+  const currentUser = authService.getCurrentUser();
+  const esProfesional =
+    authService.hasRole('PROFESIONAL') ||
+    authService.hasRole('PROFESIONAL_SUSTANCIADOR') ||
+    authService.hasRole('PROFESIONAL_ASIGNADO');
+
   const [terminos, setTerminos] = useState<Termino[]>([]);
   const [cargandoTerminos, setCargandoTerminos] = useState(false);
   const [diasFestivos, setDiasFestivos] = useState<DiaFestivo[]>(DIAS_FESTIVOS_MOCK);
@@ -378,12 +386,15 @@ export function GestionTerminosAlertas() {
     }
   };
   const terminosFiltrados = terminos.filter(t => {
-    const matchesSearch = 
+    // PROFESIONAL solo ve sus propios términos
+    if (esProfesional && t.responsableId !== currentUser?.id) return false;
+
+    const matchesSearch =
       t.proceso.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.numeroProceso.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.actuacion.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.responsable.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     const matchesEstado = filterEstado === 'all' || t.estado === filterEstado;
 
     return matchesSearch && matchesEstado;
@@ -462,36 +473,81 @@ export function GestionTerminosAlertas() {
   };
 
   const handleExportarExcel = () => {
-    // Crear CSV
-    const headers = ['Estado', 'Proceso', 'Actuación', 'Responsable', 'Email', 'Fecha Inicio', 'Días Hábiles', 'Vencimiento', 'Días Restantes'];
-    const rows = terminosFiltrados.map(t => [
-      t.estado === 'vencido' ? 'Vencido' :
-      t.estado === 'proximo_vencer' ? 'Próximo a Vencer' :
-      t.estado === 'pendiente' ? 'Pendiente' : 'Cumplido',
-      t.numeroProceso,
-      t.proceso,
-      t.actuacion,
-      t.responsable,
-      t.emailResponsable,
-      t.fechaInicio,
-      t.diasHabiles,
-      t.fechaVencimiento,
-      t.diasRestantes
-    ]);
+    // Crear libro de Excel (estructura idéntica al Índice Electrónico del Expediente)
+    const wb = XLSX.utils.book_new();
 
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n');
+    const datosHoja: any[][] = [
+      // ENCABEZADO CORPORATIVO (mismo estilo que exportarIndiceExpedienteExcel)
+      ['ESCUELA SUPERIOR DE ADMINISTRACIÓN PÚBLICA - ESAP'],
+      ['CONTROL INTERNO DISCIPLINARIO'],
+      ['TÉRMINOS PROCESALES'],
+      [],
+      // INFORMACIÓN DE LA EXPORTACIÓN
+      ['INFORMACIÓN DE LA EXPORTACIÓN'],
+      ['Total de Términos:', terminosFiltrados.length.toString()],
+      ['Fecha de Generación:', new Date().toLocaleDateString('es-CO') + ' ' + new Date().toLocaleTimeString('es-CO')],
+      [],
+      // ENCABEZADOS DE LA TABLA (coinciden exactamente con la estructura visual de la tabla)
+      [
+        'Estado',
+        'Código Proceso',
+        'Proceso/Investigado',
+        'Actuación',
+        'Responsable',
+        'Email Responsable',
+        'Fecha Inicio',
+        'Días Hábiles',
+        'Vencimiento',
+        'Días Restantes'
+      ]
+    ];
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `terminos_procesales_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+    // Agregar filas de datos
+    terminosFiltrados.forEach((t) => {
+      const estadoTexto =
+        t.estado === 'vencido' ? 'Vencido' :
+        t.estado === 'proximo_vencer' ? 'Próximo a Vencer' :
+        t.estado === 'pendiente' ? 'Pendiente' : 'Cumplido';
 
-    toast.success('Exportado a Excel/CSV', {
-      description: `${terminosFiltrados.length} términos exportados`
+      datosHoja.push([
+        estadoTexto,
+        t.numeroProceso,
+        t.proceso,
+        t.actuacion,
+        t.responsable,
+        t.emailResponsable,
+        t.fechaInicio,
+        t.diasHabiles,
+        t.fechaVencimiento,
+        t.diasRestantes
+      ]);
+    });
+
+    // Crear hoja de cálculo
+    const ws = XLSX.utils.aoa_to_sheet(datosHoja);
+
+    // Ajustar ancho de columnas (consistente con Índice Electrónico)
+    ws['!cols'] = [
+      { wch: 18 },  // Estado
+      { wch: 18 },  // Código Proceso
+      { wch: 40 },  // Proceso/Investigado
+      { wch: 35 },  // Actuación
+      { wch: 25 },  // Responsable
+      { wch: 35 },  // Email Responsable
+      { wch: 14 },  // Fecha Inicio
+      { wch: 12 },  // Días Hábiles
+      { wch: 14 },  // Vencimiento
+      { wch: 14 },  // Días Restantes
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Términos Procesales');
+
+    // Descargar archivo real .xlsx
+    const nombreArchivo = `Terminos_Procesales_${new Date().toISOString().split('T')[0]}.xlsx`;
+    XLSX.writeFile(wb, nombreArchivo);
+
+    toast.success('Exportado a Excel', {
+      description: `${terminosFiltrados.length} términos exportados correctamente`
     });
   };
 
@@ -529,9 +585,9 @@ export function GestionTerminosAlertas() {
       startY: 75,
       head: [['Estado', 'Proceso', 'Actuación', 'Responsable', 'Inicio', 'Días', 'Vencimiento', 'Restantes']],
       body: terminosFiltrados.map(t => [
-        t.estado === 'vencido' ? '🔴 Vencido' :
-        t.estado === 'proximo_vencer' ? '🟡 Próximo' :
-        t.estado === 'pendiente' ? '🟢 Pendiente' : '✅ Cumplido',
+        t.estado === 'vencido' ? 'Vencido' :
+        t.estado === 'proximo_vencer' ? 'Próximo' :
+        t.estado === 'pendiente' ? 'Pendiente' : 'Cumplido',
         `${t.numeroProceso}\n${t.proceso}`,
         t.actuacion,
         t.responsable,
@@ -708,9 +764,12 @@ export function GestionTerminosAlertas() {
             >
               <RefreshCw className="w-4 h-4" />
               <span className="hidden sm:inline">Recalcular</span>
+              
             </button>
             )}
-            {vistaActual === 'terminos' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_FESTIVO_CREATE) && (
+
+            
+            {vistaActual === 'terminos' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_TERMINO_CREATE) && (
               <button
                 onClick={() => setShowModalNuevoTermino(true)}
                 className="px-3 py-2 rounded-lg text-white font-bold hover:shadow-lg transition-all text-xs sm:text-sm flex items-center gap-2"
@@ -921,7 +980,7 @@ export function GestionTerminosAlertas() {
                           {/* Acciones */}
                           <td className="px-4 py-3">
                             <div className="flex items-center justify-end gap-2">
-                              {termino.estado !== 'cumplido' && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_TERMINOS_MANAGE) && (
+                              {termino.estado !== 'cumplido' && termino.responsableId === currentUser?.id && (
                                 <button
                                   onClick={() => handleMarcarCompleto(termino.id)}
                                   className="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-green-600 hover:bg-green-700 flex items-center gap-1"

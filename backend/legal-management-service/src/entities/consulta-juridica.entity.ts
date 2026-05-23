@@ -1,5 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
-import { Abogado } from './abogado.entity';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity('consultas_juridicas', { schema: 'legal_management' })
 export class ConsultaJuridica {
@@ -45,15 +44,11 @@ export class ConsultaJuridica {
     @Column({ type: 'text', nullable: true })
     antecedentes: string;
 
-    @Column({ name: 'abogado_asignado_id', nullable: true })
-    abogadoAsignadoId: string;
+    @Column({ name: 'abogado_asignado_id', type: 'uuid', nullable: true })
+    abogadoAsignadoId: string | null;
 
     @Column({ name: 'abogado_asignado_nombre', nullable: true, length: 500 })
     abogadoAsignadoNombre: string;
-
-    @ManyToOne(() => Abogado, { nullable: true })
-    @JoinColumn({ name: 'abogado_asignado_id' })
-    abogadoAsignado: Abogado;
 
     @Column({ name: 'fecha_asignacion', type: 'timestamp', nullable: true })
     fechaAsignacion: Date;

@@ -4172,11 +4172,14 @@ export function DashboardKanbanOperativo({
 
   // ✅ NUEVO: Función para guardar edición de noticia
   const handleGuardarEdicion = async (data: any) => {
+    console.log('[KANBAN EDIT HANDLER] Recibido data.archivosAdjuntos.length =', data?.archivosAdjuntos?.length || 0);
     if (!noticiaAEditar) return;
 
     // Determinar si es noticia o proceso
     const itemOriginal = items.find(item => item.id === noticiaAEditar.id);
     const esProceso = itemOriginal?.tipo === 'proceso';
+    console.log('[KANBAN EDIT HANDLER] esProceso =', esProceso, 'itemOriginal.tipo =', itemOriginal?.tipo);
+
     const denunciadosEdit = Array.isArray(data.denunciados)
       ? data.denunciados
       : Array.isArray(data.denunciado)
@@ -4221,14 +4224,17 @@ export function DashboardKanbanOperativo({
 
     const toastId = toast.loading(esProceso ? 'Actualizando proceso...' : 'Actualizando noticia...');
 
+    let finalAdjuntos: any[] | null = null;
+
     try {
       if (esProceso) {
         // ✅ 1. Actualizar la noticia asociada primero
         const newsId = (noticiaAEditar as any).originalNewsId || (itemOriginal as any).originalNewsId;
         
-        if (newsId) {
-          console.log('🔄 Actualizando noticia asociada ID:', newsId);
-          const origenMap: Record<string, string> = {
+          if (newsId) {
+            console.log('🔄 Actualizando noticia asociada ID:', newsId);
+            console.log('[KANBAN] Llamando updateNoticia para NEWS (asociada) con archivosAdjuntos.length =', data?.archivosAdjuntos?.length || 0);
+            const origenMap: Record<string, string> = {
             'AnÃ³nimo': 'ANONIMO',
             'Anonimo': 'ANONIMO',
             'Quejoso': 'QUE_JOSO',
@@ -4239,7 +4245,7 @@ export function DashboardKanbanOperativo({
             'Por determinar': 'POR_DETERMINAR'
           };
 
-          await disciplinaryService.updateNoticia(newsId, {
+          const updatedAssociatedNews = await disciplinaryService.updateNoticia(newsId, {
             origen: origenMap[data.origen] || data.origen || 'POR_DETERMINAR',
             territorial: data.territorial,
             dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
@@ -4251,9 +4257,17 @@ export function DashboardKanbanOperativo({
             disciplinable: disciplinableSingular,
             disciplinables: denunciadosPayload, // ✅ Enviar plural tambiÃ©n
             fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : null,
-            fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined
+            fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined,
+            // ✅ Documentos adjuntos (si hay cambios)
+            adjuntosParaEliminar: data.adjuntosParaEliminar || [],
+            archivosAdjuntos: data.archivosAdjuntos || []
           });
-        }
+          // Actualizamos la referencia local con lo que realmente guardó el backend
+            if (updatedAssociatedNews) {
+              (noticiaAEditar as any).originalNewsAdjuntos = (updatedAssociatedNews as any).adjuntos || [];
+              finalAdjuntos = (updatedAssociatedNews as any)?.adjuntos || null;
+            }
+          }
 
         // ✅ 2. Actualizar el proceso (solo campos permitidos)
         // Usamos solo el primer disciplinable como objeto si hay varios para evitar "must be an object"
@@ -4275,7 +4289,8 @@ export function DashboardKanbanOperativo({
           'Por Determinar': 'POR_DETERMINAR'
         };
 
-        await disciplinaryService.updateNoticia(noticiaAEditar.id, {
+        console.log('[KANBAN] Llamando updateNoticia DIRECTA (noticia) con archivosAdjuntos.length =', data?.archivosAdjuntos?.length || 0);
+        const updatedNoticia = await disciplinaryService.updateNoticia(noticiaAEditar.id, {
           origen: origenMap[data.origen] || data.origen || 'POR_DETERMINAR',
           territorial: data.territorial,
           dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
@@ -4287,8 +4302,15 @@ export function DashboardKanbanOperativo({
           disciplinable: disciplinableSingular,
           disciplinables: denunciadosPayload,
           fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : null,
-          fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined
+          fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined,
+          // ✅ Documentos adjuntos (si hay cambios)
+          adjuntosParaEliminar: data.adjuntosParaEliminar || [],
+          archivosAdjuntos: data.archivosAdjuntos || []
         });
+
+        // Guardamos la lista real que devolvió el backend (sin vistas engañosas locales)
+        finalAdjuntos = (updatedNoticia as any)?.adjuntos || (noticiaAEditar as any)?.adjuntos || [];
+        (noticiaAEditar as any).adjuntos = finalAdjuntos;
       }
     } catch (error: any) {
       console.error('Error al guardar ediciÃ³n:', error);
@@ -4322,6 +4344,15 @@ export function DashboardKanbanOperativo({
         };
       }
       if (item.tipo === 'noticia' && item.id === noticiaAEditar.id) {
+        const adjToUse = finalAdjuntos || (item as any).adjuntos || [];
+        const mappedArchivos = adjToUse.map((path: string) => ({
+          nombre: path.split('/').pop() || path,
+          tipo: path.toLowerCase().includes('pdf') ? 'application/pdf' : path.toLowerCase().includes('jpg') || path.toLowerCase().includes('png') ? 'image' : path.toLowerCase().includes('mp4') || path.toLowerCase().includes('avi') ? 'video' : 'application/octet-stream',
+          tamano: 0,
+          fechaSubida: new Date().toISOString(),
+          url: path,
+          fullUrl: disciplinaryService.getFileUrl(path),
+        }));
         return {
           ...item,
           origen: data.origen,
@@ -4337,7 +4368,9 @@ export function DashboardKanbanOperativo({
           conductaSeleccionada: conductaEdit, // ✅ Actualizado para UI
           conducta: conductaEdit,
           cargo: primerDenunciadoEdit?.cargo,
-          dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos
+          dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos,
+          adjuntos: adjToUse,
+          archivosAdjuntos: mappedArchivos
         };
       }
       return item;

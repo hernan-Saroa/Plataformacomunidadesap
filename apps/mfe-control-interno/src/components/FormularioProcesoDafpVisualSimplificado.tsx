@@ -836,18 +836,10 @@ export function FormularioProcesoDafpVisual({
                       <label className="mb-1.5 block text-xs font-bold text-gray-700">Vigencia <span className="text-red-500">*</span></label>
                       <input
                         type="number"
+                        readOnly
                         value={formData.vigencia}
-                        onChange={(e) => {
-                          const nuevaVigencia = Number(e.target.value) || new Date().getFullYear();
-                          // ✅ FIX: al cambiar vigencia, actualizar fecha de corte al 31/12 de esa vigencia
-                          setFormData((prev) => ({
-                            ...prev,
-                            vigencia: nuevaVigencia,
-                            fechaCorte: `${nuevaVigencia}-12-31`,
-                          }));
-                        }}
-                        className="w-full rounded-lg border-2 border-gray-300 px-3 py-2.5 text-center text-sm font-bold outline-none transition-all focus:border-[#2962FF]"
-                        required
+                        className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 px-3 py-2.5 text-center text-sm font-bold outline-none"
+                        title="La vigencia se hereda automáticamente del Plan Anual seleccionado"
                       />
                     </div>
                     <div>

@@ -1,6 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Expediente } from './expediente.entity';
-import { Abogado } from './abogado.entity';
 
 @Entity('notas_expediente', { schema: 'legal_management' })
 export class NotaExpediente {
@@ -20,12 +19,8 @@ export class NotaExpediente {
     @Column({ default: 'general' })
     tipo: string; // importante, seguimiento, informacion, general, alerta
 
-    @Column({ name: 'autor_id', nullable: true })
-    autorId: string;
-
-    @ManyToOne(() => Abogado, { nullable: true })
-    @JoinColumn({ name: 'autor_id' })
-    autor: Abogado;
+    @Column({ name: 'autor_id', type: 'uuid', nullable: true })
+    autorId: string | null;
 
     @Column({ name: 'autor_nombre', nullable: true })
     autorNombre: string;

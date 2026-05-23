@@ -198,6 +198,16 @@ const normalizeIdNumber = (value?: string | null) => {
   return digits || raw;
 };
 
+const normalizeSearchText = (value?: string | null) => {
+  const base = String(value || '').toLowerCase();
+  const normalized = typeof base.normalize === 'function' ? base.normalize('NFD') : base;
+  return normalized
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 const formatDateTime = (value?: string) => {
   if (!value) return 'Sin fecha';
   const parsed = new Date(value);
@@ -299,21 +309,6 @@ const categoryContentMotion = {
   },
 };
 
-const findExistingRecordByIdNumber = (
-  recordsByCategory: Record<PrimaTecnicaCategoria, PrimaTecnicaRegistro[]>,
-  idNumber: string,
-): PrimaTecnicaRegistro | null => {
-  if (!idNumber) return null;
-  const categories = Object.keys(recordsByCategory);
-  for (const category of categories) {
-    const match = (recordsByCategory[category] || []).find(
-      (item) => normalizeIdNumber(item.id_number) === idNumber,
-    );
-    if (match) return match;
-  }
-  return null;
-};
-
 const formatBulkServerMessage = (message?: string) => {
   const rawMessage = String(message || '').trim();
   if (!rawMessage) return 'No se pudo procesar la fila.';
@@ -357,6 +352,9 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
   const [updatingRecordId, setUpdatingRecordId] = React.useState<string | null>(null);
   const [deletingRecordId, setDeletingRecordId] = React.useState<string | null>(null);
   const [isBulkModalOpen, setIsBulkModalOpen] = React.useState(false);
+  const [isConsultModalOpen, setIsConsultModalOpen] = React.useState(false);
+  const [consultQuery, setConsultQuery] = React.useState('');
+  const [selectedConsultId, setSelectedConsultId] = React.useState<string | null>(null);
   const [isBulkTemplateLoading, setIsBulkTemplateLoading] = React.useState(false);
   const [isBulkUploading, setIsBulkUploading] = React.useState(false);
   const [bulkFileName, setBulkFileName] = React.useState('');
@@ -535,6 +533,9 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       setUpdatingRecordId(null);
       setDeletingRecordId(null);
       setIsBulkModalOpen(false);
+      setIsConsultModalOpen(false);
+      setConsultQuery('');
+      setSelectedConsultId(null);
       setIsBulkTemplateLoading(false);
       setIsBulkUploading(false);
       setBulkFileName('');
@@ -653,6 +654,108 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       ),
     [recordsByCategory],
   );
+  const consultationPeople = React.useMemo(() => {
+    const categoryOrder = new Map(
+      categories.map((item, index) => [
+        item.category,
+        Number(item.display_order ?? index + 1),
+      ]),
+    );
+    const categoryLabel = new Map(
+      categories.map((item) => [item.category, item.label || formatCategoryLabel(item.category)]),
+    );
+    const grouped = new Map<
+      string,
+      {
+        idNumber: string;
+        fullName: string;
+        records: Array<
+          PrimaTecnicaRegistro & {
+            categoryLabel: string;
+            displayOrder: number;
+          }
+        >;
+        searchText: string;
+        latestUpdate: string;
+      }
+    >();
+
+    Object.entries(recordsByCategory).forEach(([category, records]) => {
+      (records || []).forEach((record) => {
+        const idNumber = normalizeIdNumber(record.id_number);
+        if (!idNumber) return;
+        const label = categoryLabel.get(category) || formatCategoryLabel(category);
+        const displayOrder = categoryOrder.get(category) ?? 100;
+        const existing =
+          grouped.get(idNumber) ||
+          {
+            idNumber,
+            fullName: record.full_name,
+            records: [],
+            searchText: '',
+            latestUpdate: record.updated_at,
+          };
+
+        existing.fullName = existing.fullName || record.full_name;
+        existing.records.push({
+          ...record,
+          categoryLabel: label,
+          displayOrder,
+        });
+        if (!existing.latestUpdate || new Date(record.updated_at) > new Date(existing.latestUpdate)) {
+          existing.latestUpdate = record.updated_at;
+        }
+        grouped.set(idNumber, existing);
+      });
+    });
+
+    return Array.from(grouped.values())
+      .map((person) => {
+        const sortedRecords = [...person.records].sort((left, right) => {
+          if (left.displayOrder !== right.displayOrder) {
+            return left.displayOrder - right.displayOrder;
+          }
+          return left.categoryLabel.localeCompare(right.categoryLabel, 'es');
+        });
+        const searchText = normalizeSearchText(
+          `${person.fullName} ${person.idNumber} ${sortedRecords
+            .map((record) => `${record.categoryLabel} ${record.category}`)
+            .join(' ')}`,
+        );
+        return {
+          ...person,
+          records: sortedRecords,
+          searchText,
+        };
+      })
+      .sort((left, right) => {
+        if (right.records.length !== left.records.length) {
+          return right.records.length - left.records.length;
+        }
+        return left.fullName.localeCompare(right.fullName, 'es');
+      });
+  }, [categories, recordsByCategory]);
+  const consultationResults = React.useMemo(() => {
+    const query = normalizeSearchText(consultQuery);
+    const digits = normalizeIdNumber(consultQuery);
+    if (query.length < 2 && digits.length < 2) {
+      return [];
+    }
+
+    return consultationPeople.filter((person) => {
+      const documentMatch = digits.length >= 2 && person.idNumber.includes(digits);
+      const textMatch = query.length >= 2 && person.searchText.includes(query);
+      return documentMatch || textMatch;
+    });
+  }, [consultQuery, consultationPeople]);
+  const visibleConsultationResults = React.useMemo(
+    () => consultationResults.slice(0, 5),
+    [consultationResults],
+  );
+  const selectedConsultPerson = React.useMemo(() => {
+    if (!selectedConsultId) return null;
+    return consultationPeople.find((person) => person.idNumber === selectedConsultId) || null;
+  }, [selectedConsultId, consultationPeople]);
 
   const totalSearchPages = Math.max(
     1,
@@ -792,9 +895,8 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
 
   const handleSelectCandidate = (candidate: PrimaTecnicaCandidato) => {
     const normalizedCandidateId = normalizeIdNumber(candidate.idNumber);
-    const existingRecord = findExistingRecordByIdNumber(
-      recordsByCategory,
-      normalizedCandidateId,
+    const existingRecord = (recordsByCategory[activeCategory] || []).find(
+      (item) => normalizeIdNumber(item.id_number) === normalizedCandidateId,
     );
 
     if (existingRecord) {
@@ -1496,6 +1598,28 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     }
   };
 
+  const openConsultModal = React.useCallback(() => {
+    setConsultQuery('');
+    setSelectedConsultId(null);
+    setIsConsultModalOpen(true);
+  }, []);
+
+  const handleSelectConsultPerson = React.useCallback((idNumber: string) => {
+    setSelectedConsultId(idNumber);
+    setConsultQuery('');
+  }, []);
+
+  const handleChangeConsultSelection = React.useCallback(() => {
+    setSelectedConsultId(null);
+    setConsultQuery('');
+  }, []);
+
+  const closeConsultModal = React.useCallback(() => {
+    setIsConsultModalOpen(false);
+    setConsultQuery('');
+    setSelectedConsultId(null);
+  }, []);
+
   const hasRecordMutationInProgress = Boolean(
     updatingRecordId || deletingRecordId || clearingCategory,
   );
@@ -1507,7 +1631,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
       {isOpen && (
         <div
           className="fixed inset-0 z-[10000] overflow-hidden"
-          style={{ pointerEvents: isBulkModalOpen ? 'none' : 'auto' }}
+          style={{ pointerEvents: isBulkModalOpen || isConsultModalOpen ? 'none' : 'auto' }}
         >
         <motion.div
           initial={{ opacity: 0 }}
@@ -1581,20 +1705,32 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
                     </span>
                   </div>
                 </div>
-                <motion.button
-                  type="button"
-                  onClick={() => {
-                    setIsCreateCategoryOpen((prev) => !prev);
-                    setEditingCategoryDraft(null);
-                    setPendingDeleteCategory(null);
-                  }}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition-all hover:bg-blue-100 sm:flex-shrink-0"
-                  whileHover={{ y: -1 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Nueva prima</span>
-                </motion.button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-shrink-0">
+                  <motion.button
+                    type="button"
+                    onClick={openConsultModal}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-all hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Search className="h-4 w-4" />
+                    <span>Consultar prima</span>
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    onClick={() => {
+                      setIsCreateCategoryOpen((prev) => !prev);
+                      setEditingCategoryDraft(null);
+                      setPendingDeleteCategory(null);
+                    }}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 transition-all hover:bg-blue-100"
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Nueva prima</span>
+                  </motion.button>
+                </div>
               </div>
 
               {isCreateCategoryOpen && (
@@ -2690,6 +2826,406 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
     </AnimatePresence>
   );
 
+  const consultModalContent = (
+    <AnimatePresence>
+      {isConsultModalOpen && (
+        <div
+          className="fixed inset-0 z-[12000] overflow-hidden"
+          style={{ zIndex: 2147482990 }}
+        >
+          <motion.div
+            className="fixed inset-0"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              backgroundColor: 'rgba(15, 23, 42, 0.36)',
+              backdropFilter: 'blur(2px)',
+              WebkitBackdropFilter: 'blur(2px)',
+            }}
+            onClick={closeConsultModal}
+          />
+
+          <div
+            className="fixed inset-0 flex items-center justify-center p-1 sm:p-2"
+            style={{ zIndex: 2147482991 }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.98 }}
+              transition={{ type: 'spring', damping: 24, stiffness: 260 }}
+              className="flex max-h-[90vh] w-full max-w-none flex-col overflow-hidden rounded-2xl bg-white shadow-[0_28px_72px_rgba(15,23,42,0.32)]"
+              style={{ width: 'min(96vw, 980px)' }}
+            >
+              <div
+                className="border-b px-5 py-4 sm:px-6"
+                style={{
+                  borderBottomColor: 'rgba(29, 78, 216, 0.35)',
+                  background:
+                    'linear-gradient(135deg, #0B4CB6 0%, #1E40AF 52%, #2563EB 100%)',
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="mt-0.5 hidden h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-white/20 bg-white/15 text-white sm:flex">
+                      <Search className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="text-lg font-bold text-white sm:text-xl">
+                        Consulta de primas
+                      </h3>
+                      <p className="mt-1 text-sm text-blue-100">
+                        Busca por documento o nombre para ver las primas asignadas a una persona.
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                        <span className="rounded-full border border-white/20 bg-white/15 px-2.5 py-1 font-semibold text-white">
+                          {consultationPeople.length} usuario{consultationPeople.length !== 1 ? 's' : ''}
+                        </span>
+                        <span className="rounded-full border border-white/20 bg-white/10 px-2.5 py-1 font-medium text-blue-50">
+                          {totalAssignedRecords} asignacion{totalAssignedRecords !== 1 ? 'es' : ''}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <motion.button
+                    type="button"
+                    onClick={closeConsultModal}
+                    className="rounded-lg p-2 text-blue-100 transition-colors hover:text-white"
+                    style={{ backgroundColor: 'rgba(255, 255, 255, 0.18)' }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    aria-label="Cerrar consulta de primas"
+                  >
+                    <X className="h-5 w-5" />
+                  </motion.button>
+                </div>
+              </div>
+
+              <div className="flex-1 min-h-0 space-y-4 overflow-y-auto bg-slate-50 p-4 sm:p-6">
+                <section className="rounded-xl border border-slate-300 bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-700">
+                        <UserRound className="h-5 w-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {selectedConsultPerson
+                            ? 'Consulta enfocada'
+                            : 'Personas con primas asignadas'}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {selectedConsultPerson
+                            ? 'Revisando una persona especifica.'
+                            : 'Consulta rapida sobre todas las primas configuradas.'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-semibold text-slate-700">
+                        {categories.length} prima{categories.length !== 1 ? 's' : ''}
+                      </span>
+                      <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-semibold text-blue-700">
+                        {selectedConsultPerson
+                          ? '1 seleccionado'
+                          : `${consultationResults.length} resultado${consultationResults.length !== 1 ? 's' : ''}`}
+                      </span>
+                    </div>
+                  </div>
+
+                  <AnimatePresence mode="wait" initial={false}>
+                    {selectedConsultPerson ? (
+                      <motion.div
+                        key="selected-consult-summary"
+                        className="mt-4 rounded-xl border border-blue-200 bg-blue-50/70 px-3 py-3"
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.18, ease: 'easeOut' }}
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-blue-200 bg-white text-blue-700">
+                              <UserRound className="h-4 w-4" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-slate-900">
+                                {selectedConsultPerson.fullName}
+                              </p>
+                              <p className="text-xs text-slate-600">
+                                CC {selectedConsultPerson.idNumber} · {selectedConsultPerson.records.length} prima{selectedConsultPerson.records.length !== 1 ? 's' : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <motion.button
+                            type="button"
+                            onClick={handleChangeConsultSelection}
+                            className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 transition-all hover:bg-blue-50 sm:flex-shrink-0"
+                            whileHover={{ y: -1 }}
+                            whileTap={{ scale: 0.98 }}
+                          >
+                            <Search className="h-4 w-4" />
+                            <span>Cambiar consulta</span>
+                          </motion.button>
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="consult-search-input"
+                        className="relative mt-4"
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.18, ease: 'easeOut' }}
+                      >
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={consultQuery}
+                          onChange={(event) => {
+                            setConsultQuery(event.target.value);
+                            setSelectedConsultId(null);
+                          }}
+                          placeholder="Escribe nombre o numero de documento..."
+                          className="min-h-11 w-full rounded-lg border-2 border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 sm:text-[15px]"
+                          autoFocus
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </section>
+
+                <div
+                  className={
+                    selectedConsultPerson
+                      ? 'min-h-[360px]'
+                      : 'grid min-h-[360px] grid-cols-1 gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]'
+                  }
+                >
+                  {!selectedConsultPerson && (
+                  <section className="flex min-h-0 flex-col rounded-xl border border-slate-300 bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+                    <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-900">Resultados</p>
+                        <p className="text-xs text-slate-500">
+                          Selecciona una persona para ver el detalle.
+                        </p>
+                      </div>
+                      {isLoadingRecords && (
+                        <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-blue-600" />
+                      )}
+                    </div>
+
+                    {consultQuery.trim().length > 0 &&
+                    normalizeSearchText(consultQuery).length < 2 &&
+                    normalizeIdNumber(consultQuery).length < 2 ? (
+                      <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                        Ingresa al menos 2 caracteres para buscar.
+                      </p>
+                    ) : consultQuery.trim().length === 0 ? (
+                      <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+                        <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500">
+                          <Search className="h-5 w-5" />
+                        </span>
+                        <p className="text-sm font-semibold text-slate-800">
+                          Busca una persona
+                        </p>
+                        <p className="mt-1 max-w-xs text-xs text-slate-500 sm:text-sm">
+                          Puedes escribir el documento, nombre o el nombre de una prima.
+                        </p>
+                      </div>
+                    ) : consultationResults.length === 0 ? (
+                      <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+                        <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500">
+                          <Users className="h-5 w-5" />
+                        </span>
+                        <p className="text-sm font-semibold text-slate-800">
+                          Sin coincidencias
+                        </p>
+                        <p className="mt-1 max-w-xs text-xs text-slate-500 sm:text-sm">
+                          No hay usuarios con primas asignadas que coincidan con la busqueda.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                        <div className="space-y-2">
+                          {visibleConsultationResults.map((person) => {
+                            const selected = selectedConsultId === person.idNumber;
+                            return (
+                              <motion.button
+                                key={`consult-person-${person.idNumber}`}
+                                type="button"
+                                onClick={() => handleSelectConsultPerson(person.idNumber)}
+                                className={`w-full rounded-xl border px-3 py-3 text-left transition-all ${
+                                  selected
+                                    ? 'border-blue-300 bg-blue-50 shadow-[0_8px_18px_rgba(37,99,235,0.10)]'
+                                    : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/50'
+                                }`}
+                                whileHover={{ y: -1 }}
+                                whileTap={{ scale: 0.99 }}
+                              >
+                                <div className="flex min-w-0 items-start gap-3">
+                                  <span
+                                    className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border ${
+                                      selected
+                                        ? 'border-blue-200 bg-white text-blue-700'
+                                        : 'border-slate-200 bg-slate-50 text-slate-500'
+                                    }`}
+                                  >
+                                    <UserRound className="h-5 w-5" />
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-semibold text-slate-900">
+                                      {person.fullName}
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-slate-600">
+                                      CC {person.idNumber}
+                                    </p>
+                                    <div className="mt-2 flex flex-wrap gap-1.5">
+                                      <span className="rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                                        {person.records.length} prima{person.records.length !== 1 ? 's' : ''}
+                                      </span>
+                                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                                        Actualizado {formatDateTime(person.latestUpdate)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.button>
+                            );
+                          })}
+                          {consultationResults.length > visibleConsultationResults.length && (
+                            <div className="rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2 text-xs text-blue-700">
+                              Mostrando 5 de {consultationResults.length} coincidencias. Escribe mas datos para acotar la busqueda.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                  )}
+
+                  <section className="flex min-h-0 flex-col rounded-xl border border-slate-300 bg-white p-4 shadow-[0_1px_3px_rgba(15,23,42,0.06)]">
+                    {selectedConsultPerson ? (
+                      <>
+                        <div className="mb-4 flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700">
+                              <FileText className="h-5 w-5" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                                Primas asignadas
+                              </p>
+                              <p className="text-sm text-slate-600">
+                                Porcentaje por prima en el orden configurado.
+                              </p>
+                            </div>
+                          </div>
+                          <span className="inline-flex w-fit items-center rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                            {selectedConsultPerson.records.length} prima{selectedConsultPerson.records.length !== 1 ? 's' : ''}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                            <p className="text-xs font-semibold text-slate-500">Total asignado</p>
+                            <p className="mt-1 text-2xl font-bold text-slate-900">
+                              {selectedConsultPerson.records.length}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                            <p className="text-xs font-semibold text-slate-500">Suma porcentual</p>
+                            <p className="mt-1 text-2xl font-bold text-blue-700">
+                              {formatPercentage(
+                                selectedConsultPerson.records.reduce(
+                                  (sum, record) => sum + Number(record.percentage || 0),
+                                  0,
+                                ),
+                              )}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
+                          <div className="space-y-2">
+                            {selectedConsultPerson.records.map((record, index) => {
+                              const Icon = getCategoryIcon(record.category);
+                              return (
+                                <motion.div
+                                  key={`consult-record-${record.id}`}
+                                  className="rounded-xl border border-slate-200 bg-white px-3 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+                                  initial={{ opacity: 0, y: 8 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  transition={{ duration: 0.16, delay: index * 0.025 }}
+                                >
+                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="flex min-w-0 items-start gap-3">
+                                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-700">
+                                        <Icon className="h-5 w-5" />
+                                      </span>
+                                      <div className="min-w-0">
+                                        <p className="truncate text-sm font-semibold text-slate-900">
+                                          {record.categoryLabel}
+                                        </p>
+                                        <p className="mt-0.5 text-xs text-slate-500">
+                                          Prima {index + 1} en el orden configurado
+                                        </p>
+                                        <p className="mt-1 text-xs text-slate-500">
+                                          Actualizado: {formatDateTime(record.updated_at)}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <span className="inline-flex w-fit rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
+                                      {formatPercentage(Number(record.percentage || 0))}
+                                    </span>
+                                  </div>
+                                </motion.div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+                        <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500">
+                          <FileText className="h-5 w-5" />
+                        </span>
+                        <p className="text-sm font-semibold text-slate-800">
+                          Selecciona un resultado
+                        </p>
+                        <p className="mt-1 max-w-sm text-xs text-slate-500 sm:text-sm">
+                          Aqui veras cuantas primas tiene la persona, cuales son y el porcentaje de cada una.
+                        </p>
+                      </div>
+                    )}
+                  </section>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <p className="inline-flex items-center gap-2 text-xs text-slate-600 sm:text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  <span>Consulta solo lectura. No modifica ninguna prima registrada.</span>
+                </p>
+                <motion.button
+                  type="button"
+                  onClick={closeConsultModal}
+                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Cerrar
+                </motion.button>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+
   const bulkModalContent = (
     <AnimatePresence>
       {isBulkModalOpen && (
@@ -3165,6 +3701,7 @@ export function PrimaTecnicaModal({ isOpen, onClose }: PrimaTecnicaModalProps) {
   return (
     <>
       {createPortal(modalContent, document.body)}
+      {createPortal(consultModalContent, document.body)}
       {createPortal(bulkModalContent, document.body)}
     </>
   );

@@ -470,7 +470,17 @@ function ComentariosModal({ expediente, isOpen, onClose }: { expediente: Expedie
     setSaving(true);
     try {
       const u = authService.getCurrentUser() as any;
-      const usuarioNombre = u?.fullName ?? u?.full_name ?? u?.name ?? u?.nombre ?? (u?.person?.first_name ? `${u.person.first_name} ${u.person.last_name ?? ''}`.trim() : null) ?? u?.email ?? u?.person?.email ?? 'Usuario';
+      const usuarioNombre =
+        u?.fullName ??
+        u?.full_name ??
+        u?.name ??
+        u?.person?.full_name ??
+        (u?.person?.first_name || u?.person?.last_name
+          ? `${u.person.first_name ?? ''} ${u.person.last_name ?? ''}`.trim()
+          : undefined) ??
+        u?.email ??
+        u?.person?.email ??
+        'Usuario';
 
       await legalService.createComentarioExpediente(expediente.id, {
         contenido: nuevoComentario.trim(),
@@ -829,8 +839,8 @@ export function KanbanDefensaJudicial() {
             juzgado: item.juzgadoConocimiento || 'Por definir',
             medioControl: item.medioControl || 'Nulidad',
             abogadoAsignado: {
-              nombre: abogadoInfo?.nombre || item.abogadoSustanciador || 'Por asignar',
-              identificacion: abogadoInfo?.email || 'N/A'
+              nombre: item.abogadoAsignado?.nombre || abogadoInfo?.nombre || item.abogadoSustanciador || 'Por asignar',
+              identificacion: item.abogadoAsignado?.identificacion || abogadoInfo?.email || 'N/A'
             },
             etapa: mapEtapa(item.etapaProcesal),
             diasRestantes,

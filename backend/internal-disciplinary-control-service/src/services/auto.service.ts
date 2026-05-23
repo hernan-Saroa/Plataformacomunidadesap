@@ -786,7 +786,12 @@ export class AutoService {
   /**
    * Envía el auto pliego de cargos aprobado a la Oficina Jurídica
    */
-  async sendPliegoToJuridica(id: string, enviadoPorId: string): Promise<void> {
+  async sendPliegoToJuridica(
+    id: string, 
+    enviadoPorId: string, 
+    enviadoPorEmail?: string, 
+    enviadoPorNombre?: string
+  ): Promise<void> {
     const auto = await this.findById(id, ['process']);
 
     if (auto.tipo !== AutoType.PLIEGO_CARGOS && auto.tipo !== AutoType.AUTO_FORMULACION_PLIEGO) {
@@ -807,6 +812,8 @@ export class AutoService {
     const datosConsolidados = await this.processService.cerrarPorPliegoCargos(
       auto.processId,
       enviadoPorId,
+      enviadoPorEmail,
+      enviadoPorNombre,
     );
 
     // Marcar el auto como NOTIFICADO para que no reaparezca en la lista de borradores

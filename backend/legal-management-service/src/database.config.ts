@@ -3,7 +3,6 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { Expediente } from './entities/expediente.entity';
 import { Actuacion } from './entities/actuacion.entity';
-import { Abogado } from './entities/abogado.entity';
 import { Audiencia } from './entities/audiencia.entity';
 import { Requerimiento } from './entities/requerimiento.entity';
 import { OrganismoControl } from './entities/organismo-control.entity';
@@ -85,7 +84,7 @@ export const databaseConfig: TypeOrmModuleOptions = {
     // No especificar schema por defecto para permitir múltiples schemas
 
     entities: [
-        Expediente, Actuacion, Abogado, Audiencia, Requerimiento, OrganismoControl,
+        Expediente, Actuacion, Audiencia, Requerimiento, OrganismoControl,
         Auto, Documento, Comentario, Evidencia, Acta, ConsultaJuridica, TerminoProcesal,
         Actor,
         // Órganos de Control

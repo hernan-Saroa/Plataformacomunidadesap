@@ -195,15 +195,38 @@ export class NewsController {
   @Put(':id')
   @ApiOperation({
     summary: 'Editar Noticia Disciplinaria',
-    description: 'Actualiza los datos de una noticia y registra el cambio en el historial de auditoría',
+    description: 'Actualiza los datos de una noticia y registra el cambio en el historial de auditoría. Soporta adjuntar/eliminar documentos vía multipart.',
   })
   @ApiResponse({ status: 200, description: 'Noticia actualizada', type: DisciplinaryNews })
   @ApiResponse({ status: 404, description: 'Noticia no encontrada' })
+  @UseInterceptors(FilesInterceptor('files', 10))
+  @ApiConsumes('multipart/form-data')
   async update(
     @Param('id') id: string,
-    @Body() body: any,
+    @UploadedFiles() files?: FileData[],
+    @Req() request?: Request,
   ): Promise<DisciplinaryNews> {
-    return await this.newsService.update(id, body);
+    // Leemos TODO desde el cuerpo crudo del request (multipart)
+    // Evitamos @Body() porque puede interferir con la carga de archivos en algunas versiones de Nest + multer
+    const rawBody = (request as any)?.body || {};
+
+    const payload: any = { ...rawBody };
+
+    // Parsear campos que viajan como JSON string en FormData
+    if (typeof payload.adjuntosParaEliminar === 'string') {
+      try { payload.adjuntosParaEliminar = JSON.parse(payload.adjuntosParaEliminar); } catch { payload.adjuntosParaEliminar = []; }
+    }
+    ['denunciante', 'denunciantes', 'disciplinable', 'disciplinables', 'conductas'].forEach((k) => {
+      if (typeof payload[k] === 'string') {
+        try { payload[k] = JSON.parse(payload[k]); } catch { /* leave as string */ }
+      }
+    });
+
+    console.log('[NEWS UPDATE] Archivos recibidos por interceptor:', files?.length || 0);
+    console.log('[NEWS UPDATE] Nombres de archivos nuevos:', files?.map(f => f.originalname) || []);
+    console.log('[NEWS UPDATE] adjuntosParaEliminar:', payload.adjuntosParaEliminar);
+
+    return await this.newsService.update(id, payload, files);
   }
 
   /**

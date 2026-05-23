@@ -76,7 +76,7 @@ export class CreateExpedienteDto {
     // Asignación
     @IsOptional()
     @IsString()
-    abogadoSustanciadorId?: string; // Para vincular con la tabla Abogados
+    abogadoSustanciadorId?: string; // Para vincular con auth users
 
     @IsOptional()
     @IsNumber()

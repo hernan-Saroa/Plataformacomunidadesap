@@ -88,6 +88,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   const canEditProceso =
     !esMonitoreoGestionLegal &&
     authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_EDIT);
+  const canCompletarTareas =
+    !esMonitoreoGestionLegal &&
+    authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_TAREA_COMPLETE);
   const canUploadDocumento =
     !esMonitoreoGestionLegal &&
     authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DOC_UPLOAD);
@@ -95,6 +98,10 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
     !esMonitoreoGestionLegal &&
     authService.hasPermission(Permissions.GESTION_LEGAL_JUZGAMIENTO_DISCIPLINARIO_EXPEDIENTE_DECISION);
   const canRegistrarActuacion = canEditProceso;
+  // Rol RESUELVE puede marcar tareas como completadas (las que tiene asignadas),
+  // aunque no tenga permiso de edición global del expediente.
+  const esRolResuelve = authService.hasRole('RESUELVE_GESTION_LEGAL');
+  const canCompletarTareas = !esMonitoreoGestionLegal && (canEditProceso || esRolResuelve);
 
   const [tabActivo, setTabActivo] = useState('general');
   const [hasChanges, setHasChanges] = useState(false);
@@ -806,7 +813,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   };
 
   const handleMarcarTareaCompletada = async (tareaId: string | number) => {
-    if (!canEditProceso) return;
+    if (!canCompletarTareas) return;
     try {
       toast.loading('Actualizando tarea...', { id: 'completar-tarea' });
       await legalService.updateJuzgamientoTarea(proceso.id, String(tareaId), {
@@ -1528,7 +1535,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                   setModalCrearTareaAbierto(true);
                 } : undefined}
                 onEditarTarea={canEditProceso ? handleEditarTarea : undefined}
-                onMarcarCompletada={canEditProceso ? handleMarcarTareaCompletada : undefined}
+                onMarcarCompletada={canCompletarTareas ? handleMarcarTareaCompletada : undefined}
               />
             </TabsContent>
 

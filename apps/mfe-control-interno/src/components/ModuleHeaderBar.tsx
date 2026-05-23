@@ -18,6 +18,7 @@
  */
 
 import type { ReactNode } from 'react';
+import { PlanAnualVigenciaHeaderControl } from './PlanAnualVigenciaContext';
 
 interface ModuleHeaderBarProps {
   /** Título principal del módulo */
@@ -30,6 +31,8 @@ interface ModuleHeaderBarProps {
   color: string;
   /** Contenido derecho (tooltip, badge, botones) */
   rightContent?: ReactNode;
+  /** Selector de vigencia del plan anual con etiqueta (por defecto: true) */
+  showVigenciaSelector?: boolean;
 }
 
 export function ModuleHeaderBar({
@@ -37,8 +40,11 @@ export function ModuleHeaderBar({
   subtitle,
   icon,
   color,
-  rightContent
+  rightContent,
+  showVigenciaSelector = true,
 }: ModuleHeaderBarProps) {
+  const mostrarVigencia = showVigenciaSelector !== false;
+  const tieneDerecha = mostrarVigencia || rightContent;
   return (
     <div
       className="rounded-xl border border-gray-200 overflow-hidden mb-3"
@@ -72,8 +78,9 @@ export function ModuleHeaderBar({
             )}
           </div>
         </div>
-        {rightContent && (
-          <div className="flex items-center gap-2">
+        {tieneDerecha && (
+          <div className="flex flex-row flex-wrap items-center justify-end gap-2 sm:gap-3 ml-2">
+            {mostrarVigencia && <PlanAnualVigenciaHeaderControl />}
             {rightContent}
           </div>
         )}

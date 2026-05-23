@@ -17,6 +17,7 @@ import {
 import type { Response } from 'express';
 import { PlanAnual5RolesService } from './plan-anual-5-roles.service';
 import { CreatePlanAnual5RolesDto } from './dto/create-plan-anual-5-roles.dto';
+import { UpdateRolPlanAnual5Dto } from './dto/update-rol-plan-anual-5.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
 import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -33,9 +34,14 @@ export class PlanAnual5RolesController {
   @Get()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.PLAN_ANUAL_VIEW)
-  async findAll(@Query('year') year?: string) {
+  async findAll(
+    @Query('year') year?: string,
+    /** Por defecto true: listados sin adjuntos (menor payload). Detalle: findByYear / :id */
+    @Query('light') light?: string,
+  ) {
     const yearNum = year ? parseInt(year, 10) : undefined;
-    return this.service.findAll(yearNum);
+    const lightMode = light !== 'false' && light !== '0';
+    return this.service.findAll(yearNum, lightMode);
   }
 
   // Rutas específicas deben ir ANTES de las genéricas
@@ -124,6 +130,21 @@ export class PlanAnual5RolesController {
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createDto: CreatePlanAnual5RolesDto, @Req() req: any) {
     return this.service.create(createDto, req.user?.userId);
+  }
+
+  @Put(':id/roles/:rolId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_EDIT)
+  async updateRol(
+    @Param('id') planId: string,
+    @Param('rolId') rolId: string,
+    @Body() updateDto: UpdateRolPlanAnual5Dto,
+    @Req() req: any,
+  ) {
+    if (!planId || planId === 'undefined' || !rolId || rolId === 'undefined') {
+      throw new BadRequestException('planId y rolId son requeridos');
+    }
+    return this.service.updateRol(planId, rolId, updateDto, req.user?.userId);
   }
 
   // Ruta genérica de actualización debe ir ANTES de las rutas con parámetros dinámicos
