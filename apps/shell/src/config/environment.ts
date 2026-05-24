@@ -130,7 +130,7 @@ export const getApiGatewayBaseUrl = (): string => {
   return API_GATEWAY_URLS[ENV as keyof typeof API_GATEWAY_URLS] || API_GATEWAY_URLS.development;
 };
 
-export const API_MODE = VITE_API_MODE || (isLocalhost ? 'direct' : 'gateway');
+export const API_MODE = VITE_API_MODE || (isLocalhost && import.meta.env.DEV ? 'direct' : 'gateway');
 
 export const ONLYOFFICE_URL = (() => {
   const configuredUrl = VITE_ONLYOFFICE_URL

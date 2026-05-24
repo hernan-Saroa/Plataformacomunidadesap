@@ -249,7 +249,6 @@ services:
     extends:
       file: ./docker-compose.frontend-mfe.yml
       service: frontend-mfe-gestion-legal
-
 networks:
   superapp-net:
     driver: bridge
