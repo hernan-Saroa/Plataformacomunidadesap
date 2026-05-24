@@ -33,6 +33,8 @@ interface ExpedienteReporte {
   otrosActores?: any[];
   esDelitoAdminPublica?: boolean;
   esConductaPatrimonioPublico?: boolean;
+  esOtroDelitoPenal?: boolean;
+  otroDelitoPenalDescripcion?: string;
   ultimaActuacion?: { descripcion?: string; fecha?: string; tipo?: string };
   fechaCreacion?: Date;
   estado?: string;
@@ -126,15 +128,18 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number): string 
   })();
 
   // Clasificación penal
-  const penalHTML = (exp.tipoProceso === 'Proceso Penal' || exp.esDelitoAdminPublica || exp.esConductaPatrimonioPublico) ? `
+  const penalHTML = (exp.tipoProceso === 'Proceso Penal' || exp.esDelitoAdminPublica || exp.esConductaPatrimonioPublico || exp.esOtroDelitoPenal) ? `
     <div style="margin-top:12px;padding:10px 14px;background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;">
       <p style="font-size:11px;font-weight:700;color:#991B1B;margin:0 0 6px 0;">🛡️ CLASIFICACIÓN PENAL (Contraloría / ANDJE)</p>
-      <div style="display:flex;gap:16px;">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">
         <span style="font-size:11px;color:${exp.esDelitoAdminPublica ? '#DC2626' : '#9CA3AF'};">
           ${exp.esDelitoAdminPublica ? '✅' : '—'} Delitos contra la Administración Pública
         </span>
         <span style="font-size:11px;color:${exp.esConductaPatrimonioPublico ? '#DC2626' : '#9CA3AF'};">
           ${exp.esConductaPatrimonioPublico ? '✅' : '—'} Conductas que afectan el Patrimonio Público
+        </span>
+        <span style="font-size:11px;color:${exp.esOtroDelitoPenal ? '#DC2626' : '#9CA3AF'};">
+          ${exp.esOtroDelitoPenal ? '✅' : '—'} Otro delito penal${exp.esOtroDelitoPenal && exp.otroDelitoPenalDescripcion ? ': ' + exp.otroDelitoPenalDescripcion : ''}
         </span>
       </div>
     </div>
