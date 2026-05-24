@@ -384,12 +384,19 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   const isPrevisuable = (doc: any): boolean => {
     const nombre = (doc.nombre || '').toLowerCase();
-    // Word y Excel NO previsuables
-    if (nombre.endsWith('.doc') || nombre.endsWith('.docx') || nombre.endsWith('.xls') || nombre.endsWith('.xlsx')) {
+    // Excel NO previsuable (aún)
+    if (nombre.endsWith('.xls') || nombre.endsWith('.xlsx')) {
       return false;
     }
-    // PDF, Imagenes SI
-    if (nombre.endsWith('.pdf') || nombre.endsWith('.jpg') || nombre.endsWith('.png') || nombre.endsWith('.jpeg')) {
+    // PDF, imágenes y Word (.doc/.docx) SÍ previsuables — Word se renderiza con mammoth.js en el visor
+    if (
+      nombre.endsWith('.pdf') ||
+      nombre.endsWith('.jpg') ||
+      nombre.endsWith('.png') ||
+      nombre.endsWith('.jpeg') ||
+      nombre.endsWith('.doc') ||
+      nombre.endsWith('.docx')
+    ) {
       return true;
     }
     return false;
