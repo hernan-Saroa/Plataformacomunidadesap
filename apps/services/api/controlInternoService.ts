@@ -1915,6 +1915,7 @@ class ControlInternoService {
     search?: string;
     fechaDesde?: string;
     fechaHasta?: string;
+    year?: number;
   }): Promise<any[]> {
     const queryParams = new URLSearchParams();
     if (filters?.tipo) queryParams.append('tipo', filters.tipo);
@@ -1924,6 +1925,7 @@ class ControlInternoService {
     if (filters?.search) queryParams.append('search', filters.search);
     if (filters?.fechaDesde) queryParams.append('fechaDesde', filters.fechaDesde);
     if (filters?.fechaHasta) queryParams.append('fechaHasta', filters.fechaHasta);
+    if (filters?.year) queryParams.append('year', filters.year.toString());
     
     const query = queryParams.toString();
     return client.get<any[]>(`/auditorias${query ? `?${query}` : ''}`);

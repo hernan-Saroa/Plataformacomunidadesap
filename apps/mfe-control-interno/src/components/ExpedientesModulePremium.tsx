@@ -37,6 +37,7 @@ import { notificationsService } from '../../../services/api/notificationsService
 import { ModalSIGL } from '../gestion-legal/design-system/ModalSIGL';
 import { HeaderModulOCIG } from './HeaderModuloCIG';
 import { ModuleHeaderBar } from './ModuleHeaderBar';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 
 // ✅ FASE 1 DÍA 3: Componentes responsive
 import { Container4K } from '@esap-mfe/shared-ui/container-4k';
@@ -275,6 +276,8 @@ export function ExpedientesModulePremium() {
 // ════════════════════════════════════════════════════════════════════════════
 
 function VistaExpedientes() {
+  const vigenciaContext = usePlanAnualVigenciaContextOptional();
+  const vigencia = vigenciaContext?.vigencia;
   const [busqueda, setBusqueda] = useState('');
   const [filtroEstado, setFiltroEstado] = useState<'TODOS' | 'ABIERTO' | 'EN_PROCESO' | 'CERRADO'>('TODOS');
   const [expedienteExpandido, setExpedienteExpandido] = useState<string | null>(null);
@@ -290,8 +293,10 @@ function VistaExpedientes() {
     setError(null);
     
     try {
-      // 1. Obtener todas las auditorías
-      const auditorias = await controlInternoService.getAuditorias();
+      // 1. Obtener auditorías de la vigencia seleccionada en la cabecera
+      const auditorias = await controlInternoService.getAuditorias({
+        year: vigencia,
+      });
       
       // 2. Para cada auditoría, cargar sus documentos
       const expedientesConDocs = await Promise.all(
@@ -338,7 +343,7 @@ function VistaExpedientes() {
     } finally {
       setCargando(false);
     }
-  }, []);
+  }, [vigencia]);
 
   // Cargar al montar
   useEffect(() => {

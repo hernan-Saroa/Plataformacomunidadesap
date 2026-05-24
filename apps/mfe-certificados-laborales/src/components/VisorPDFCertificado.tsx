@@ -33,6 +33,8 @@ interface VisorPDFCertificadoProps {
     technical_bonus?: number;
     technical_bonus_category?: string | null;
     technicalBonusCategory?: string | null;
+    technical_bonuses?: any[] | null;
+    technicalBonuses?: any[] | null;
     templateSnapshot?: any;
     templateType?: 'docente' | 'administrador';
     template_snapshot?: any;
@@ -77,6 +79,14 @@ const CERTIFICATE_WIDTH = 816;
 const CERTIFICATE_HEIGHT = 1056;
 const DEFAULT_CERTIFICATE_FONT = 'Arial Narrow, Arial, sans-serif';
 type PrimaTecnicaCategoria = string;
+type PrimaTecnicaRenderItem = {
+  category?: string | null;
+  label?: string | null;
+  percentage: number;
+  value: number;
+  templateText?: string | null;
+  displayOrder?: number;
+};
 
 const normalizarCategoriaPrimaTecnica = (value: unknown): PrimaTecnicaCategoria | null => {
   const normalized = String(value || '').trim().toUpperCase();
@@ -551,6 +561,161 @@ export function VisorPDFCertificado({
     return resultado.trim();
   };
 
+  const normalizarPorcentajePrimaTecnica = (value: unknown) => {
+    if (value === null || value === undefined || value === '') return 0;
+    const raw = typeof value === 'string'
+      ? value.replace(',', '.').replace(/[^\d.-]/g, '')
+      : value;
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) return 0;
+    return Number(parsed.toFixed(2));
+  };
+
+  const obtenerItemsSnapshotPrimaTecnica = (): any[] => {
+    const cert = certificado as any;
+    const request = cert?.request || {};
+    const snapshot = obtenerSnapshotPlantilla();
+    const direct = Array.isArray(cert?.technical_bonuses)
+      ? cert.technical_bonuses
+      : Array.isArray(cert?.technicalBonuses)
+        ? cert.technicalBonuses
+        : null;
+    if (direct?.length) return direct;
+
+    const requestItems = Array.isArray(request?.technical_bonuses)
+      ? request.technical_bonuses
+      : Array.isArray(request?.technicalBonuses)
+        ? request.technicalBonuses
+        : null;
+    if (requestItems?.length) return requestItems;
+
+    const snapshotItems = Array.isArray(snapshot?.technicalBonuses)
+      ? snapshot.technicalBonuses
+      : Array.isArray(snapshot?.technical_bonuses)
+        ? snapshot.technical_bonuses
+        : null;
+    return snapshotItems || [];
+  };
+
+  const calcularValorPrimaTecnica = (item: any, percentage: number) => {
+    const explicitValue =
+      item?.value ??
+      item?.amount ??
+      item?.technical_bonus_value ??
+      item?.technicalBonusValue;
+    const normalizedValue = normalizarMonto(explicitValue);
+    if (normalizedValue > 0) return normalizedValue;
+    if (salarioBase <= 0 || percentage <= 0) return 0;
+    return normalizarMonto(salarioBase * (percentage / 100));
+  };
+
+  const resolverPrimasTecnicas = (): PrimaTecnicaRenderItem[] => {
+    const incluirPrimaTecnica = incluirSalario && (certificado.incluyePrimaTecnica ?? false);
+    if (!incluirPrimaTecnica) return [];
+
+    const snapshotItems = obtenerItemsSnapshotPrimaTecnica();
+    const mappedItems = snapshotItems
+      .map((item): PrimaTecnicaRenderItem | null => {
+        const percentage = normalizarPorcentajePrimaTecnica(
+          item?.percentage ??
+            item?.porcentaje ??
+            item?.technical_bonus_percentage ??
+            item?.technicalBonusPercentage,
+        );
+        const value = calcularValorPrimaTecnica(item, percentage);
+        const resolvedPercentage = percentage > 0
+          ? percentage
+          : salarioBase > 0 && value > 0
+            ? Number(((value / salarioBase) * 100).toFixed(2))
+            : 0;
+
+        if (resolvedPercentage <= 0 || value <= 0) return null;
+
+        return {
+          category: normalizarCategoriaPrimaTecnica(
+            item?.category ??
+              item?.technical_bonus_category ??
+              item?.technicalBonusCategory,
+          ),
+          label: item?.label || item?.categoryLabel || null,
+          percentage: resolvedPercentage,
+          value,
+          templateText:
+            item?.template_text ||
+            item?.templateText ||
+            item?.technicalBonusTemplate ||
+            null,
+          displayOrder: Number(item?.display_order ?? item?.displayOrder ?? 100),
+        };
+      })
+      .filter((item): item is PrimaTecnicaRenderItem => Boolean(item))
+      .sort((left, right) => {
+        const leftOrder = Number.isFinite(left.displayOrder || 0)
+          ? Number(left.displayOrder || 0)
+          : 100;
+        const rightOrder = Number.isFinite(right.displayOrder || 0)
+          ? Number(right.displayOrder || 0)
+          : 100;
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        const labelCompare = String(left.label || '').localeCompare(String(right.label || ''), 'es');
+        if (labelCompare !== 0) return labelCompare;
+        return String(left.category || '').localeCompare(String(right.category || ''), 'es');
+      });
+
+    if (mappedItems.length) return mappedItems;
+
+    const cert = certificado as any;
+    const primaTecnicaBase = normalizarMonto(
+      cert.technical_bonus ??
+        cert.technicalBonus ??
+        cert.request?.technical_bonus ??
+        cert.request?.technicalBonus,
+    );
+    if (primaTecnicaBase <= 0) return [];
+
+    const porcentajePrimaTecnica = salarioBase > 0
+      ? Number(((primaTecnicaBase / salarioBase) * 100).toFixed(2))
+      : 0;
+    if (porcentajePrimaTecnica <= 0) return [];
+
+    return [
+      {
+        category: normalizarCategoriaPrimaTecnica(
+          cert.technical_bonus_category ??
+            cert.technicalBonusCategory ??
+            cert.request?.technical_bonus_category ??
+            cert.request?.technicalBonusCategory,
+        ),
+        percentage: porcentajePrimaTecnica,
+        value: primaTecnicaBase,
+        templateText: templatePrimaTecnica,
+        displayOrder: 100,
+      },
+    ];
+  };
+
+  const renderPrimaTecnicaParrafo = (prima: PrimaTecnicaRenderItem) => {
+    const porcentajePrimaTexto = prima.percentage.toLocaleString('es-CO', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+    const primaTecnicaEnLetras = numeroALetras(prima.value);
+    const customTemplate = String(prima.templateText || '').trim();
+
+    if (customTemplate) {
+      const rendered = customTemplate
+        .replace(/\{porcentaje\}/g, porcentajePrimaTexto)
+        .replace(/\{valor_letras\}/g, primaTecnicaEnLetras)
+        .replace(/\{valor_numerico\}/g, formatearMonto(prima.value));
+      return `<p>${rendered}</p>`;
+    }
+
+    const conceptoPrimaTecnica = obtenerConceptoPrimaTecnica(
+      normalizarCategoriaPrimaTecnica(prima.category),
+    );
+    return `<p>Percibe una ${conceptoPrimaTecnica} en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignaciÃ³n bÃ¡sica mensual de ${primaTecnicaEnLetras} ($${formatearMonto(prima.value)}) pesos m/cte.</p>`;
+  };
+
   const handleDescargar = async () => {
     if (!certificadoRef.current) {
       if (autoAction === 'email') {
@@ -962,35 +1127,10 @@ export function VisorPDFCertificado({
     : '';
   const salarioParaMostrar = incluirSalario ? salarioBase : 0;
   const salarioEnLetrasParaMostrar = incluirSalario && salarioBase ? numeroALetras(salarioBase) : '';
-  const incluirPrimaTecnica = incluirSalario && (certificado.incluyePrimaTecnica ?? false);
-  const primaTecnicaBase = normalizarMonto(certificado.technical_bonus ?? 0);
-  const primaTecnicaParaMostrar = incluirPrimaTecnica ? primaTecnicaBase : 0;
-  const porcentajePrimaTecnica = salarioBase > 0 && primaTecnicaParaMostrar > 0
-    ? Number(((primaTecnicaParaMostrar / salarioBase) * 100).toFixed(2))
-    : 0;
-  const porcentajePrimaTexto = porcentajePrimaTecnica.toLocaleString('es-CO', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
-  const primaTecnicaEnLetras = primaTecnicaParaMostrar > 0 ? numeroALetras(primaTecnicaParaMostrar) : '';
-  const categoriaPrimaTecnica = normalizarCategoriaPrimaTecnica(
-    (certificado as any).technical_bonus_category ??
-      (certificado as any).technicalBonusCategory ??
-      (certificado as any).request?.technical_bonus_category ??
-      (certificado as any).request?.technicalBonusCategory,
-  );
-  const conceptoPrimaTecnica = obtenerConceptoPrimaTecnica(categoriaPrimaTecnica);
-  const primaTecnicaParrafo = (() => {
-    if (!incluirPrimaTecnica || primaTecnicaParaMostrar <= 0) return '';
-    if (templatePrimaTecnica) {
-      const rendered = templatePrimaTecnica
-        .replace(/\{porcentaje\}/g, porcentajePrimaTexto)
-        .replace(/\{valor_letras\}/g, primaTecnicaEnLetras)
-        .replace(/\{valor_numerico\}/g, formatearMonto(primaTecnicaParaMostrar));
-      return `<p>${rendered}</p>`;
-    }
-    return `<p>Percibe una ${conceptoPrimaTecnica} en un porcentaje igual al (${porcentajePrimaTexto}%) sobre la asignación básica mensual de ${primaTecnicaEnLetras} ($${formatearMonto(primaTecnicaParaMostrar)}) pesos m/cte.</p>`;
-  })();
+  const primaTecnicaParrafos = resolverPrimasTecnicas()
+    .map((prima) => renderPrimaTecnicaParrafo(prima))
+    .filter(Boolean)
+    .join('');
 
   const qrToken =
     certificado.qrCode ||
@@ -1004,24 +1144,40 @@ export function VisorPDFCertificado({
   const qrSize = 99;
 
   const contenidoFinal = (() => {
-    if (!primaTecnicaParrafo) return contenidoNormalizado;
+    if (!primaTecnicaParrafos) return contenidoNormalizado;
     try {
       const parser = new DOMParser();
       const doc = parser.parseFromString(contenidoNormalizado, 'text/html');
-      const primaNode = parser.parseFromString(primaTecnicaParrafo, 'text/html').body.firstChild;
-      if (!primaNode) {
-        return `${contenidoNormalizado}${primaTecnicaParrafo}`;
+      const primaDoc = parser.parseFromString(primaTecnicaParrafos, 'text/html');
+      const primaNodes = Array.from(primaDoc.body.childNodes);
+      if (!primaNodes.length) {
+        return `${contenidoNormalizado}${primaTecnicaParrafos}`;
       }
+
+      Array.from(doc.body.querySelectorAll('p, div, li')).forEach((node) => {
+        const texto = normalizarTexto(node.textContent || '');
+        if (
+          texto.includes('prima') &&
+          /(porcentaje|asignaci|mensual|m cte|pesos)/i.test(texto)
+        ) {
+          node.remove();
+        }
+      });
+
       const nodes = Array.from(doc.body.querySelectorAll('p, div, li'));
       const expideNode = nodes.find((node) => (node.textContent || '').toLowerCase().includes('se expide'));
       if (expideNode) {
-        expideNode.parentNode?.insertBefore(primaNode, expideNode);
+        primaNodes.forEach((node) => {
+          expideNode.parentNode?.insertBefore(doc.importNode(node, true), expideNode);
+        });
         return doc.body.innerHTML;
       }
-      doc.body.appendChild(primaNode);
+      primaNodes.forEach((node) => {
+        doc.body.appendChild(doc.importNode(node, true));
+      });
       return doc.body.innerHTML;
     } catch (error) {
-      return `${contenidoNormalizado}${primaTecnicaParrafo}`;
+      return `${contenidoNormalizado}${primaTecnicaParrafos}`;
     }
   })();
   const contenidoFinalNormalizado = normalizarEstructuraParrafos(contenidoFinal);

@@ -182,7 +182,7 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa', onNav
               : <Layers className="w-5 h-5 text-white" />
             }
             color={vista === 'plan-operativo' ? '#2962FF' : '#003DA5'}
-            showVigenciaSelector={vista !== 'plan-operativo'}
+            // showVigenciaSelector={vista !== 'plan-operativo'}
           />
         </div>
 

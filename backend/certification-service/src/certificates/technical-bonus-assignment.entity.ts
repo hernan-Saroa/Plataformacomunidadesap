@@ -10,8 +10,8 @@ import {
 export type TechnicalBonusCategory = string;
 
 @Entity('technical_bonus_assignments')
-@Index('ux_technical_bonus_id_number', ['id_number'], { unique: true })
 @Index('ux_technical_bonus_category_id_number', ['category', 'id_number'], { unique: true })
+@Index('idx_technical_bonus_id_number', ['id_number'])
 @Index('idx_technical_bonus_category', ['category'])
 export class TechnicalBonusAssignment {
   @PrimaryGeneratedColumn('uuid')

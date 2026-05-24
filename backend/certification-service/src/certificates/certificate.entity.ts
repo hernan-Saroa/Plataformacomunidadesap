@@ -47,6 +47,9 @@ export class Certificate {
   @Column({ type: 'varchar', length: 80, nullable: true })
   technical_bonus_category: TechnicalBonusCategory | null;
 
+  @Column({ type: 'jsonb', nullable: true })
+  technical_bonuses: any[] | null;
+
   @Column({ type: 'boolean', default: true })
   include_salary: boolean;
 

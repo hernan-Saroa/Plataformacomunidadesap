@@ -17,6 +17,9 @@ export class TareasNotasController {
         @Param('expedienteId') expedienteId: string,
         @Body() body: any
     ) {
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const responsableId = uuidRegex.test(body.responsableId) ? body.responsableId : null;
+
         return this.tareasNotasService.createTarea({
             expedienteId,
             titulo: body.titulo,
@@ -24,7 +27,7 @@ export class TareasNotasController {
             fechaVencimiento: body.fechaVencimiento ? new Date(body.fechaVencimiento) : undefined,
             prioridad: body.prioridad || 'media',
             estado: body.estado || 'pendiente',
-            responsableId: body.responsableId || null,
+            responsableId,
             responsableNombre: body.responsableNombre,
             creadoPor: body.creadoPor
         });

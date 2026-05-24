@@ -81,4 +81,42 @@ describe('LaborCertificatePdfService', () => {
 
     expect(cargo).toBe('Jefe de Oficina Codigo 1371 Grado 18');
   });
+
+  it('renderiza varias primas tecnicas en el orden configurado', () => {
+    const certificate = {
+      technical_bonuses: [
+        {
+          category: 'COORDINADORES',
+          percentage: 20,
+          value: 200000,
+          template_text: 'Coordinadores {porcentaje}% {valor_numerico}',
+          display_order: 20,
+        },
+        {
+          category: 'DIRECTIVOS',
+          percentage: 10,
+          value: 100000,
+          template_text: 'Directivos {porcentaje}% {valor_numerico}',
+          display_order: 10,
+        },
+      ],
+      technical_bonus: 300000,
+    } as any;
+
+    const items = service['resolveTechnicalBonusItems'](certificate, 1000000);
+    const html = '<p>Devenga salario mensual.</p><p>Se expide a solicitud.</p>';
+    const result = service['insertTechnicalBonuses'](html, items);
+
+    expect(items.map((item) => item.category)).toEqual([
+      'DIRECTIVOS',
+      'COORDINADORES',
+    ]);
+    expect(result.indexOf('Directivos 10% 100.000')).toBeGreaterThan(-1);
+    expect(result.indexOf('Directivos 10% 100.000')).toBeLessThan(
+      result.indexOf('Coordinadores 20% 200.000'),
+    );
+    expect(result.indexOf('Coordinadores 20% 200.000')).toBeLessThan(
+      result.indexOf('Se expide'),
+    );
+  });
 });

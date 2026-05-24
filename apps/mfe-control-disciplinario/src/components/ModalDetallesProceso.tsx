@@ -4059,7 +4059,7 @@ export function ModalDetallesProceso({
                         <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-blue-100">
                           {[
                             { label: 'ORIGEN', value: origenVal || '—' },
-                            { label: 'FECHA RECEPCIÓN', value: fechaRecNoticia ? new Date(fechaRecNoticia).toLocaleDateString('es-CO') : '—' },
+                            { label: 'FECHA RECEPCIÓN', value: fechaRecNoticia ? new Date(fechaRecNoticia).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '—' },
                             { label: 'PRIORIDAD', value: (proceso.prioridadNoticia || (proceso as any).prioridad || '—').toString().toUpperCase() },
                             { label: 'NOTICIA', value: proceso.noticiaOrigen || '—' },
                           ].map(({ label, value }) => (
