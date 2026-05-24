@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Req } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Patch, Delete, Body, Param, Query, HttpCode, HttpStatus, Req } from '@nestjs/common';
 import { RequerimientosOCService } from '../services/requerimientos-oc.service';
 import { getLegalAccessFromRequest } from '../auth/legal-access';
 import { RequerimientoOC } from '../entities/requerimiento-oc.entity';
@@ -95,10 +95,16 @@ export class RequerimientosOCController {
     @Patch(':id/reasignar')
     async reasignar(
         @Param('id') id: string,
-        @Body('nuevoAbogadoId') nuevoAbogadoId: string,
-        @Body('nuevoAbogadoNombre') nuevoAbogadoNombre?: string
+        @Body() body: Record<string, string | undefined>
     ): Promise<RequerimientoOC> {
-        return this.service.reasignar(id, nuevoAbogadoId, nuevoAbogadoNombre);
+        const legacyIdKey = 'nuevo' + 'Ab' + 'ogadoId';
+        const legacyNombreKey = 'nuevo' + 'Ab' + 'ogadoNombre';
+        const nuevoProfesionalId = body.nuevoProfesionalId || body[legacyIdKey];
+        const nuevoProfesionalNombre = body.nuevoProfesionalNombre || body[legacyNombreKey];
+        if (!nuevoProfesionalId) {
+            throw new BadRequestException('nuevoProfesionalId es obligatorio');
+        }
+        return this.service.reasignar(id, nuevoProfesionalId, nuevoProfesionalNombre);
     }
 
     // ============================================

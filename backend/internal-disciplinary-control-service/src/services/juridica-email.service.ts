@@ -25,10 +25,17 @@ export class JuridicaEmailService {
       hechos: string;
       autosGenerados: number;
       historialEtapas: string;
+      enviadoPorNombre?: string;
+      profesionalEmail?: string;
+      enviadoPorEmail?: string;
     },
   ): Promise<boolean> {
     const destinatario = process.env.JURIDICA_EMAIL || 'juridica@esap.edu.co';
-    const notificationsUrl = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+    // Soporte para ambos nombres de variable de entorno
+    const notificationsUrl =
+      process.env.NOTIFICATIONS_SERVICE_URL ||
+      process.env.NOTIFICATION_SERVICE_URL ||
+      'http://localhost:3009';
 
     const disciplinable = datosConsolidados.disciplinable || {};
     const nombreDisciplinable = disciplinable.nombre || disciplinable.nombreCompleto || 'No registrado';
@@ -58,7 +65,7 @@ export class JuridicaEmailService {
         </div>
         <div class="content">
           <p>Estimada Oficina Jur&iacute;dica,</p>
-          <p>Se informa que el siguiente proceso disciplinario ha sido <strong>cerrado</strong> mediante Auto Pliego de Cargos y se traslada a su despacho para la continuaci&oacute;n del tr&aacute;mite correspondiente.</p>
+          <p>Se informa que el siguiente proceso disciplinario ha sido <strong>cerrado</strong> mediante Auto Pliego de Cargos y se traslada a su despacho para la continuaci&oacute;n del tr&aacute; mite correspondiente.</p>
 
           <h3>Informaci&oacute;n del Proceso</h3>
           <table class="info-table">
@@ -106,9 +113,99 @@ export class JuridicaEmailService {
 
       this.logger.log(`Correo enviado a jurídica para proceso ${processId} vía notifications-service`);
       return true;
-    } catch (error) {
-      this.logger.error(`Error al enviar correo para proceso ${processId}: ${error.message}`);
+    } catch (error: any) {
+      const errorDetails = {
+        message: error?.message,
+        status: error?.response?.status,
+        responseData: error?.response?.data,
+        code: error?.code,
+        url: `${notificationsUrl}/api/v1/emails/send`,
+        to: destinatario,
+      };
+      this.logger.error(
+        `Error al enviar correo para proceso ${processId}: ${JSON.stringify(errorDetails, null, 2)}`,
+      );
+      console.error('[JuridicaEmailService] Full error object:', error);
       return false;
+    }
+  }
+
+  /**
+   * Envía notificación por correo al profesional asignado y al jefe que envía el proceso a Jurídica.
+   * Usa el mensaje solicitado: "el proceso con consecutivo .... ha sido enviado a juridica, por el jefe --> nombre..."
+   */
+  async enviarNotificacionEnvioAJuridica(
+    processId: string,
+    radicado: string,
+    nombreJefe: string,
+    emailProfesional?: string,
+    emailJefe?: string,
+  ): Promise<void> {
+    const notificationsUrl =
+      process.env.NOTIFICATIONS_SERVICE_URL ||
+      process.env.NOTIFICATION_SERVICE_URL ||
+      'http://localhost:3009';
+
+    const destinatarios = [emailProfesional, emailJefe].filter((e): e is string => !!e);
+    if (destinatarios.length === 0) {
+      this.logger.warn(`No hay emails para notificar envío a jurídica del proceso ${radicado}`);
+      return;
+    }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; color: #333; line-height: 1.6; }
+          .header { background: #003DA5; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; }
+          .footer { background: #F9FAFB; padding: 15px 20px; font-size: 12px; color: #6B7280; border-top: 1px solid #E5E7EB; }
+          .badge { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; background: #FEF3C7; color: #92400E; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h2>ESCUELA SUPERIOR DE ADMINISTRACI&Oacute;N P&Uacute;BLICA - ESAP</h2>
+          <h3>Oficina de Control Interno Disciplinario</h3>
+        </div>
+        <div class="content">
+          <p>Estimado(a),</p>
+          <p>El proceso con consecutivo <strong>${radicado}</strong> ha sido enviado a Jur&iacute;dica, por el jefe <strong>${nombreJefe}</strong>.</p>
+          <p>Este correo es una notificaci&oacute;n informativa del cierre y traslado del proceso.</p>
+        </div>
+        <div class="footer">
+          <p>Este correo fue generado autom&aacute;ticamente por el m&oacute;dulo de Control Disciplinario del SIGL - ESAP.</p>
+          <p>Fecha: ${new Date().toLocaleString('es-CO')}</p>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const uniqueDest = Array.from(new Set(destinatarios));
+    for (const to of uniqueDest) {
+      try {
+        await firstValueFrom(
+          this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
+            to,
+            subject: `[ENVÍO A JURÍDICA] Proceso ${radicado} - Enviado por ${nombreJefe}`,
+            html,
+          }),
+        );
+        this.logger.log(`Notificación de envío a jurídica enviada a ${to} para proceso ${radicado}`);
+      } catch (error: any) {
+        const errorDetails = {
+          message: error?.message,
+          status: error?.response?.status,
+          responseData: error?.response?.data,
+          url: `${notificationsUrl}/api/v1/emails/send`,
+          to,
+        };
+        this.logger.error(
+          `Error enviando notificación a ${to} para proceso ${radicado}: ${JSON.stringify(errorDetails)}`,
+        );
+        console.error('[JuridicaEmailService] Full error on internal notification:', error);
+      }
     }
   }
 }

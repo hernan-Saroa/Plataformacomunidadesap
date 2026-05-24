@@ -1123,6 +1123,8 @@ export class ProcessService {
   async cerrarPorPliegoCargos(
     id: string,
     aprobadoPorId: string,
+    enviadoPorEmailParam?: string,
+    enviadoPorNombreParam?: string,
   ): Promise<{
     radicado: string;
     etapaAlCierre: string;
@@ -1134,6 +1136,9 @@ export class ProcessService {
     hechos: string;
     autosGenerados: number;
     historialEtapas: string;
+    enviadoPorNombre: string;
+    profesionalEmail?: string;
+    enviadoPorEmail?: string;
   }> {
     const proceso = await this.processRepository.findOne({
       where: { id },
@@ -1175,6 +1180,29 @@ export class ProcessService {
     const disciplinable = proceso.news?.disciplinable;
     const hechos = proceso.news?.hechos || '';
     const profesionalResponsable = proceso.abogadoAsignado?.nombreCompleto || 'Sin asignar';
+    const profesionalEmail = proceso.abogadoAsignado?.email || undefined;
+
+    // Preferir los datos pasados desde el frontend (email real del usuario logueado)
+    let enviadoPorNombre = enviadoPorNombreParam || 'Jefe de Control Disciplinario';
+    let enviadoPorEmail: string | undefined = enviadoPorEmailParam || undefined;
+
+    // Si no se pasó email por parámetro, intentar resolver desde la tabla de profesionales
+    if (!enviadoPorEmail && aprobadoPorId) {
+      try {
+        const jefe = await this.professionalRepository.findOne({ where: { id: aprobadoPorId } });
+        if (jefe) {
+          enviadoPorNombre = jefe.nombreCompleto || enviadoPorNombre;
+          enviadoPorEmail = jefe.email || undefined;
+        }
+      } catch {
+        // usar valores por defecto
+      }
+    }
+
+    // Si aún no hay nombre pero se pasó uno, usarlo
+    if (enviadoPorNombreParam) {
+      enviadoPorNombre = enviadoPorNombreParam;
+    }
 
     return {
       radicado: proceso.radicadoProceso,
@@ -1187,6 +1215,9 @@ export class ProcessService {
       hechos,
       autosGenerados: proceso.autos?.length || 0,
       historialEtapas: `Etapa al cierre: ${etapaAlCierre}. Tiempo acumulado: ${tiempoAcumuladoDias ?? 'N/A'} día(s) hábil(es).`,
+      enviadoPorNombre,
+      profesionalEmail,
+      enviadoPorEmail,
     };
   }
 

@@ -208,14 +208,16 @@ export function InicioAuditoriaWizardWorldClass({
         </div>
       }
     >
-      {/* Contenido según paso */}
-      <AnimatePresence mode="wait">
-        {paso === 0 && <Paso0ListasChequeo key="paso0" auditoria={auditoria} />}
-        {paso === 1 && <Paso1AuditoriaSeleccionada key="paso1" auditoria={auditoria} />}
-        {paso === 2 && <Paso2ProcesoAuditado key="paso2" auditoria={auditoria} />}
-        {paso === 3 && <Paso3EquipoAuditor key="paso3" auditoria={auditoria} />}
-        {paso === 4 && <Paso4Cronograma key="paso4" auditoria={auditoria} />}
-      </AnimatePresence>
+      {/* Contenido según paso — altura FIJA para que el modal sea idéntico en todos los pasos */}
+      <div style={{ height: '420px', overflowY: 'auto' }}>
+        <AnimatePresence mode="wait">
+          {paso === 0 && <Paso0ListasChequeo key="paso0" auditoria={auditoria} />}
+          {paso === 1 && <Paso1AuditoriaSeleccionada key="paso1" auditoria={auditoria} />}
+          {paso === 2 && <Paso2ProcesoAuditado key="paso2" auditoria={auditoria} />}
+          {paso === 3 && <Paso3EquipoAuditor key="paso3" auditoria={auditoria} />}
+          {paso === 4 && <Paso4Cronograma key="paso4" auditoria={auditoria} />}
+        </AnimatePresence>
+      </div>
     </ModalWorldClass>
   );
 }

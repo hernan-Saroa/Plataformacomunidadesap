@@ -1298,9 +1298,13 @@ export function GestionNoticias() {
         denunciantes: denunciantesArray,
         disciplinable: disciplinablesArray,
         disciplinables: disciplinablesArray,
+        conducta: data.conducta || data.conductaSeleccionada,
         conductas: data.conductasSeleccionadas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : []),
         fechaHechos: data.fechaHechos || null,
         fechaQueja: data.fechaQueja,
+        // ✅ Documentos adjuntos
+        adjuntosParaEliminar: data.adjuntosParaEliminar || [],
+        archivosAdjuntos: data.archivosAdjuntos || [],
       });
       toast.success('Noticia actualizada', { description: 'Los cambios han sido guardados.' });
       setShowEditModal(false);

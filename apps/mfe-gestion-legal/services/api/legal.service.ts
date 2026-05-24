@@ -352,9 +352,6 @@ export class LegalService {
 
 
 
-    async createAbogado(data: any): Promise<any> {
-        return apiClient.post<any>(`${SERVICE_PREFIX}/abogados`, data);
-    }
 
     // ==================== AUDIENCIAS ====================
     async getAudiencias(filtros?: { start?: string; end?: string; expedienteId?: string }): Promise<Audiencia[]> {
@@ -1258,6 +1255,8 @@ export interface SendCorreoDto {
     subject: string;
     body: string;
     attachments?: { name: string; contentBytes: string; contentType: string }[];
+    requestReadReceipt?: boolean;
+    requestDeliveryReceipt?: boolean;
 }
 
 export interface AdjuntoCorreo {

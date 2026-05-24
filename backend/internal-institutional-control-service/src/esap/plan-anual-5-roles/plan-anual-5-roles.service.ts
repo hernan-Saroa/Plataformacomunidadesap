@@ -8,6 +8,7 @@ import { AdjuntoActividadPlanAnual5 } from './entities/adjunto-actividad-plan-an
 import { HistorialPlanAnual, TipoEventoPlanAnual } from './entities/historial-plan-anual.entity';
 import { PlanAnualWizardBorrador } from './entities/plan-anual-wizard-borrador.entity';
 import { CreatePlanAnual5RolesDto } from './dto/create-plan-anual-5-roles.dto';
+import { UpdateRolPlanAnual5Dto } from './dto/update-rol-plan-anual-5.dto';
 import { CreateActividadDto } from './dto/create-actividad.dto';
 import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
@@ -30,6 +31,15 @@ export class PlanAnual5RolesService {
     'en-ejecucion',
     'completado',
   ]);
+
+  /** YYYY-MM-DD → Date en hora local (evita corrimiento de día por UTC). */
+  private fechaSoloDia(valor?: string): Date | undefined {
+    if (!valor?.trim()) return undefined;
+    const base = valor.trim().split('T')[0];
+    const m = base.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return undefined;
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
 
   private normalizarEstadoPlan(estado?: string): 'borrador' | 'en-revision' | 'aprobado' | 'en-ejecucion' | 'completado' {
     const estadoNormalizado = (estado || 'borrador').trim().toLowerCase().replace(/_/g, '-');
@@ -65,16 +75,19 @@ export class PlanAnual5RolesService {
     private readonly notificacionesService: NotificacionesService,
   ) {}
 
-  async findAll(year?: number): Promise<PlanAnual5Roles[]> {
+  async findAll(year?: number, light = true): Promise<PlanAnual5Roles[]> {
     const query = this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
       .leftJoinAndSelect('roles.actividades', 'actividades')
-      .leftJoinAndSelect('actividades.adjuntos', 'adjuntos')
       .where('plan.año > 0')
       .orderBy('plan.año', 'DESC')
       .addOrderBy('roles.rol_numero', 'ASC')
       .addOrderBy('actividades.created_at', 'ASC');
+
+    if (!light) {
+      query.leftJoinAndSelect('actividades.adjuntos', 'adjuntos');
+    }
 
     if (year) {
       query.andWhere('plan.año = :year', { year });
@@ -128,8 +141,8 @@ export class PlanAnual5RolesService {
       año: createDto.año,
       responsable: createDto.responsable,
       responsable_id: createDto.responsable_id,
-      fecha_inicio: createDto.fecha_inicio ? new Date(createDto.fecha_inicio) : undefined,
-      fecha_fin: createDto.fecha_fin ? new Date(createDto.fecha_fin) : undefined,
+      fecha_inicio: this.fechaSoloDia(createDto.fecha_inicio),
+      fecha_fin: this.fechaSoloDia(createDto.fecha_fin),
       estado: this.normalizarEstadoPlan(createDto.estado),
       fecha_creacion: new Date(),
       equipo_aprobacion: createDto.equipo_aprobacion || [],
@@ -242,14 +255,14 @@ export class PlanAnual5RolesService {
       const newVal = updateDto.fecha_inicio;
       if (newVal !== oldFechaInicio) {
         cambios.push({ campo: 'fecha_inicio', valorAnterior: oldFechaInicio || '', valorNuevo: newVal });
-        plan.fecha_inicio = new Date(newVal);
+        plan.fecha_inicio = this.fechaSoloDia(newVal);
       }
     }
     if (updateDto.fecha_fin !== undefined) {
       const newVal = updateDto.fecha_fin;
       if (newVal !== oldFechaFin) {
         cambios.push({ campo: 'fecha_fin', valorAnterior: oldFechaFin || '', valorNuevo: newVal });
-        plan.fecha_fin = new Date(newVal);
+        plan.fecha_fin = this.fechaSoloDia(newVal);
       }
     }
 
@@ -832,6 +845,68 @@ export class PlanAnual5RolesService {
     return { roles: rolesOrdenados };
   }
 
+  /**
+   * Actualiza el responsable del rol (independiente del responsable de cada actividad).
+   */
+  async updateRol(
+    planId: string,
+    rolId: string,
+    updateDto: UpdateRolPlanAnual5Dto,
+    usuarioId?: string,
+  ): Promise<RolPlanAnual5> {
+    const rol = await this.rolRepository.findOne({
+      where: { id: rolId, planId },
+    });
+    if (!rol) {
+      throw new NotFoundException(`Rol ${rolId} no encontrado en el plan ${planId}`);
+    }
+
+    const cambios: Array<{ campo: string; valorAnterior: string; valorNuevo: string }> = [];
+
+    if (updateDto.responsable !== undefined && updateDto.responsable !== rol.responsable) {
+      cambios.push({
+        campo: 'responsable_rol',
+        valorAnterior: rol.responsable || '',
+        valorNuevo: updateDto.responsable,
+      });
+      rol.responsable = updateDto.responsable;
+    }
+
+    if (updateDto.responsable_id !== undefined && updateDto.responsable_id !== rol.responsable_id) {
+      cambios.push({
+        campo: 'responsable_id_rol',
+        valorAnterior: rol.responsable_id || '',
+        valorNuevo: updateDto.responsable_id || '',
+      });
+      rol.responsable_id = updateDto.responsable_id;
+    }
+
+    if (updateDto.responsables !== undefined) {
+      rol.responsables = updateDto.responsables;
+      if (!rol.responsable && updateDto.responsables.length > 0) {
+        rol.responsable = updateDto.responsables[0].nombre;
+        rol.responsable_id = updateDto.responsables[0].id || rol.responsable_id;
+      }
+    }
+
+    const saved = await this.rolRepository.save(rol);
+
+    if (cambios.length > 0) {
+      await this.registrarHistorial(
+        planId,
+        TipoEventoPlanAnual.ACTUALIZACION,
+        'Actualización responsable de rol',
+        `Rol ${rol.rol_numero}: responsable actualizado`,
+        usuarioId,
+        undefined,
+        undefined,
+        cambios,
+      );
+    }
+
+    return saved;
+  }
+
   private async recalcularRol(rolId: string): Promise<void> {
     const actividades = await this.actividadRepository.find({
       where: { rolId, activo: true },
@@ -1295,7 +1370,7 @@ export class PlanAnual5RolesService {
     }).length;
     const porcentajeAsignacion =
       total > 0 ? Math.round((asignadas / total) * 100) : 0;
-    const comiteConfigurado = (plan.equipo_aprobacion || []).length >= 5;
+    const comiteConfigurado = (plan.equipo_aprobacion || []).length >= 1;
     const listoParaEnvio = porcentajeAsignacion === 100 && comiteConfigurado;
 
     const solicitante = (solicitanteNombre || 'Un colaborador').trim();
@@ -1305,7 +1380,7 @@ export class PlanAnual5RolesService {
     let mensaje = `${solicitante} indica que el Plan Anual ${plan.año} está listo para tu revisión. `;
     mensaje += `Estado: ${estadoLabel}. Asignación de responsables: ${porcentajeAsignacion}%`;
     if (!comiteConfigurado) {
-      mensaje += '. Falta configurar el comité de aprobación (5 miembros)';
+      mensaje += '. Falta configurar al menos un miembro del comité de aprobación';
     } else if (!listoParaEnvio) {
       mensaje += '. Revisa actividades pendientes antes de enviar al comité';
     } else {

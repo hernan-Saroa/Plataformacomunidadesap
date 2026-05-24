@@ -373,7 +373,7 @@ export function ModuloDefensaJudicialV3() {
             if (exp.abogado?.nombreCompleto) return exp.abogado.nombreCompleto;
 
             // 3. Fallback a string si no parece UUID
-            if (typeof exp.abogadoSustanciador === 'string' && exp.abogadoSustanciador.length < 30 && !exp.abogadoSustanciador.includes('-')) {
+            if (typeof exp.abogadoSustanciador === 'string' && exp.abogadoSustanciador.trim() !== '' && exp.abogadoSustanciador.length < 30 && !exp.abogadoSustanciador.includes('-')) {
               return exp.abogadoSustanciador;
             }
 
@@ -503,11 +503,15 @@ export function ModuloDefensaJudicialV3() {
   // ✅ Primero aplicar filtros globales (búsqueda, tipo de proceso)
   const expedientesFiltrados = expedientes.filter(exp => {
     // Filtro por búsqueda
+    const q = busqueda.toLowerCase();
     const matchBusqueda = busqueda === '' ||
-      exp.id?.toLowerCase().includes(busqueda.toLowerCase()) ||
-      exp.demandante?.toLowerCase().includes(busqueda.toLowerCase()) ||
-      exp.demandado?.toLowerCase().includes(busqueda.toLowerCase()) ||
-      exp.juzgado?.toLowerCase().includes(busqueda.toLowerCase());
+      exp.id?.toLowerCase().includes(q) ||
+      exp.demandante?.toLowerCase().includes(q) ||
+      exp.demandado?.toLowerCase().includes(q) ||
+      exp.juzgado?.toLowerCase().includes(q) ||
+      (exp as any).tipoProceso?.toLowerCase().includes(q) ||
+      exp.tipo?.toLowerCase().includes(q) ||
+      exp.medioControl?.toLowerCase().includes(q);
 
     // Filtro por Tipo de Proceso (Flexible: revisa tipo, medioControl, tipoAccion y tipoProceso)
     // Los IDs del filtro (ej: 'reparacion-directa') no coinciden con los valores del backend
@@ -541,9 +545,11 @@ export function ModuloDefensaJudicialV3() {
       ((exp as any).tipoProceso && normalize((exp as any).tipoProceso).includes(filtroNorm));
 
     // Filtro por Abogado (solo visible para Jefe/Secretariado)
+    const esSinAsignar = !exp.abogadoAsignado || exp.abogadoAsignado === 'Sin asignar' || exp.abogadoAsignado === 'No asignado';
     const matchAbogado = filtroAbogado === 'TODOS' ||
       exp.abogadoAsignado === filtroAbogado ||
-      exp.abogadoResponsable === filtroAbogado;
+      exp.abogadoResponsable === filtroAbogado ||
+      (filtroAbogado === 'Sin asignar' && esSinAsignar);
 
     return matchBusqueda && matchTipo && matchAbogado;
   });

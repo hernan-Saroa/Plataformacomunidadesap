@@ -413,11 +413,17 @@ export class AuthService {
       modules.push('all');
     }
 
+    const fullName =
+      user.person?.full_name ||
+      [user.person?.first_name, user.person?.last_name].filter(Boolean).join(' ') ||
+      user.username;
+
     return {
       accessToken,
       user: {
         id: user.id_user,
         username: user.username,
+        fullName,
         roles: user.roles,
         person: user.person,
         modules,

@@ -488,13 +488,71 @@ class DisciplinaryService {
         dependenciaDenunciado?: string;
         hechos?: string;
         denunciante?: any;
+        denunciantes?: any;
         disciplinable?: any;
+        disciplinables?: any;
         conductas?: string[];
+        conducta?: string;
         fechaHechos?: string | null;
         fechaQueja?: string;
         usuario?: string;
+        // ✅ Soporte para gestión de documentos adjuntos
+        adjuntosParaEliminar?: string[];
+        archivosAdjuntos?: File[];
     }): Promise<DisciplinaryNews> {
-        return apiClient.put<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`, data);
+        console.log('[DISCIPLINARY SERVICE] updateNoticia CALLED - id:', id, 'archivosAdjuntos en data:', data?.archivosAdjuntos?.length || 0, 'paraEliminar:', data?.adjuntosParaEliminar?.length || 0);
+        const hasFileChanges = (data.archivosAdjuntos && data.archivosAdjuntos.length > 0) ||
+                               (data.adjuntosParaEliminar && data.adjuntosParaEliminar.length > 0);
+
+        if (hasFileChanges) {
+            console.log('[DISCIPLINARY SERVICE] updateNoticia - hasFileChanges=true, archivosAdjuntos:', data.archivosAdjuntos?.length || 0, 'paraEliminar:', data.adjuntosParaEliminar?.length || 0);
+            const formData = new FormData();
+            // Campos simples
+            if (data.origen) formData.append('origen', data.origen);
+            if (data.territorial) formData.append('territorial', data.territorial);
+            if (data.dependenciaDenunciado) formData.append('dependenciaDenunciado', data.dependenciaDenunciado);
+            if (data.hechos) formData.append('hechos', data.hechos);
+            if (data.fechaHechos) formData.append('fechaHechos', String(data.fechaHechos));
+            if (data.fechaQueja) formData.append('fechaQueja', data.fechaQueja);
+            if (data.usuario) formData.append('usuario', data.usuario);
+            if (data.conducta) formData.append('conducta', data.conducta);
+            if (data.conductas) formData.append('conductas', JSON.stringify(data.conductas));
+            if (data.denunciante) formData.append('denunciante', JSON.stringify(data.denunciante));
+            if (data.denunciantes) formData.append('denunciantes', JSON.stringify(data.denunciantes));
+            if (data.disciplinable) formData.append('disciplinable', JSON.stringify(data.disciplinable));
+            if (data.disciplinables) formData.append('disciplinables', JSON.stringify(data.disciplinables));
+            // Gestión documentos
+            if (data.adjuntosParaEliminar && data.adjuntosParaEliminar.length > 0) {
+                formData.append('adjuntosParaEliminar', JSON.stringify(data.adjuntosParaEliminar));
+            }
+            if (data.archivosAdjuntos && data.archivosAdjuntos.length > 0) {
+                console.log('[DISCIPLINARY SERVICE] appending', data.archivosAdjuntos.length, 'files to FormData');
+                data.archivosAdjuntos.forEach((file) => formData.append('files', file));
+            } else {
+                console.warn('[DISCIPLINARY SERVICE] hasFileChanges=true but no archivosAdjuntos to append!');
+            }
+            // Envío directo con fetch para garantizar que los archivos multipart lleguen (el apiClient wrapper a veces tiene problemas con PUT + FormData)
+            const fullUrl = buildApiUrl('control-disciplinario', `/disciplinary-news/${id}`);
+            const token = (window as any).__esap_access_token__ 
+              || localStorage.getItem('accessToken') 
+              || localStorage.getItem('token') 
+              || '';
+            return fetch(fullUrl, {
+              method: 'PUT',
+              body: formData,
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+            }).then(async (res) => {
+              if (!res.ok) {
+                const text = await res.text().catch(() => 'Error en actualización con archivos');
+                throw new Error(text);
+              }
+              return res.json();
+            });
+        }
+
+        // Sin cambios de archivos: JSON tradicional (limpiar campos extra)
+        const { archivosAdjuntos, adjuntosParaEliminar, ...jsonData } = data as any;
+        return apiClient.put<DisciplinaryNews>(`${SERVICE_PREFIX}/disciplinary-news/${id}`, jsonData);
     }
 
     async getNoticiasPendientes(): Promise<DisciplinaryNews[]> {
@@ -942,9 +1000,16 @@ class DisciplinaryService {
         });
     }
 
-    async sendJuridica(id: string, enviadoPorId: string): Promise<LegalAuto> {
+    async sendJuridica(
+        id: string, 
+        enviadoPorId: string, 
+        enviadoPorEmail?: string, 
+        enviadoPorNombre?: string
+    ): Promise<LegalAuto> {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-juridica`, {
-            enviadoPorId
+            enviadoPorId,
+            enviadoPorEmail,
+            enviadoPorNombre,
         });
     }
 

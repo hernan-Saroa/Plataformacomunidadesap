@@ -173,6 +173,22 @@ export class CreateAuditoriaDto {
   @IsOptional()
   programaAnualMetadata?: any;
 
+  @IsOptional()
+  @IsUUID()
+  planAnualId?: string;
+
+  @IsOptional()
+  @IsInt()
+  planAnualVigencia?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  vinculadaPlanAnual?: boolean;
+
+  @IsOptional()
+  @IsString()
+  rolDecretoAsociado?: string;
+
   /** ID de la actividad del plan anual (UUID). Si se envía valor no-UUID, se ignora. */
   @IsOptional()
   actividadPlanAnualId?: string;

@@ -39,6 +39,7 @@ import { ModuleHeaderBar } from './ModuleHeaderBar';
 // ✅ INTEGRACIÓN BACKEND: Hook para obtener estadísticas reales
 import { useUniversoAuditableData } from './hooks/useUniversoAuditableData';
 import { useProgramaAnualData, calcularEstadisticas } from './hooks/useProgramaAnualData';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -88,9 +89,16 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa', onNav
     busqueda: ''
   });
 
+  const vigenciaCtx = usePlanAnualVigenciaContextOptional();
+
   // ✅ INTEGRACIÓN BACKEND: Obtener datos reales para estadísticas
   const { procesos, loading: loadingProcesos } = useUniversoAuditableData({ showToasts: false });
-  const { auditorias, loading: loadingAuditorias } = useProgramaAnualData({ procesos, showToasts: false });
+  const { auditorias, loading: loadingAuditorias } = useProgramaAnualData({
+    procesos,
+    showToasts: false,
+    vigencia: vigenciaCtx?.vigencia,
+    planAnualId: vigenciaCtx?.planActivoId ?? undefined,
+  });
   const stats = calcularEstadisticas(procesos, auditorias);
 
   const estadisticas: EstadisticasGlobales = useMemo(() => ({
@@ -174,6 +182,7 @@ export function PlanificacionModuleRediseno({ vista = 'universo-programa', onNav
               : <Layers className="w-5 h-5 text-white" />
             }
             color={vista === 'plan-operativo' ? '#2962FF' : '#003DA5'}
+            // showVigenciaSelector={vista !== 'plan-operativo'}
           />
         </div>
 

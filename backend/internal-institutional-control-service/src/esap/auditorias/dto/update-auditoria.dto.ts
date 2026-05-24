@@ -224,6 +224,22 @@ export class UpdateAuditoriaDto {
   @IsOptional()
   programaAnualMetadata?: any;
 
+  @IsOptional()
+  @IsUUID()
+  planAnualId?: string;
+
+  @IsOptional()
+  @IsInt()
+  planAnualVigencia?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  vinculadaPlanAnual?: boolean;
+
+  @IsOptional()
+  @IsString()
+  rolDecretoAsociado?: string;
+
   // Campos de archivo
   @IsBoolean()
   @IsOptional()

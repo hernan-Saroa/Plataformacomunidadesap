@@ -568,7 +568,7 @@ export function TabUniversoAuditableResponsive({
               onClick={(e) => {
                 e.stopPropagation();
                 if (confirm(`¿Eliminar la evaluación de "${proceso.nombre}"?`)) {
-                  onEliminarProceso(proceso.id);
+                  onEliminarProceso((proceso as any).idEvaluacion || proceso.id);
                 }
               }}
               className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors"
@@ -669,7 +669,7 @@ export function TabUniversoAuditableResponsive({
           <button
             onClick={() => {
               if (confirm(`¿Eliminar "${proceso.nombre}"?`)) {
-                onEliminarProceso(proceso.id);
+                onEliminarProceso((proceso as any).idEvaluacion || proceso.id);
               }
             }}
             className="flex-1 px-4 py-3 bg-red-600 text-white rounded-lg font-semibold min-h-[44px] hover:bg-red-700 transition-colors flex items-center justify-center gap-2"

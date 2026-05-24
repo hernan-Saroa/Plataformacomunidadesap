@@ -694,7 +694,7 @@ export const informesLeyApi = {
 export interface ConfiguracionProfesionalOCI {
   id: string;
   idTercero: string;
-  rolOcig: 'Jefe OCIG' | 'Auditor Sénior' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
+  rolOcig: 'Jefe OCIG' | 'Auditor Líder' | 'Auditor' | 'Auditor Júnior' | 'Apoyo Técnico';
   /** @deprecated use rolOcig */ rolOCI?: string;
   especialidades: string[];
   capacidadMaximaAuditorias: number;
@@ -783,6 +783,14 @@ export const configuracionesProfesionalesOCIApi = {
    */
   getLideresPotenciales: async (): Promise<ApiResponse<ConfiguracionProfesionalOCI[]>> => {
     return apiRequest<ConfiguracionProfesionalOCI[]>('/configuraciones/profesionales-ocig/lideres');
+  },
+
+  /**
+   * Comité de aprobación del PAI: usuarios con permiso control-interno.plan-anual.approve
+   */
+  getAprobadoresPlanAnual: async (busqueda?: string): Promise<ApiResponse<any[]>> => {
+    const params = busqueda ? `?busqueda=${encodeURIComponent(busqueda)}` : '';
+    return apiRequest<any[]>(`/configuraciones/profesionales-ocig/aprobadores-plan-anual${params}`);
   },
 
   /**

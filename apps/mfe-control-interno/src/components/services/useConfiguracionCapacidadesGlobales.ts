@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { normalizarRolOcigOperativo } from '../../config/roles-ocig-operativos';
 
 export interface CapacidadRol {
   rol: string;
@@ -7,12 +8,11 @@ export interface CapacidadRol {
 }
 
 export const CAPACIDADES_POR_DEFECTO: CapacidadRol[] = [
-  { rol: 'Jefe OCI', capacidadMaximaAuditorias: 2, horasMensualesDisponibles: 80 },
-  { rol: 'Auditor Sénior', capacidadMaximaAuditorias: 4, horasMensualesDisponibles: 150 },
+  { rol: 'Jefe OCIG', capacidadMaximaAuditorias: 2, horasMensualesDisponibles: 80 },
+  { rol: 'Auditor Líder', capacidadMaximaAuditorias: 4, horasMensualesDisponibles: 150 },
   { rol: 'Auditor', capacidadMaximaAuditorias: 3, horasMensualesDisponibles: 120 },
   { rol: 'Auditor Júnior', capacidadMaximaAuditorias: 2, horasMensualesDisponibles: 100 },
   { rol: 'Apoyo Técnico', capacidadMaximaAuditorias: 1, horasMensualesDisponibles: 60 },
-  { rol: 'Aprobador PAI', capacidadMaximaAuditorias: 1, horasMensualesDisponibles: 20 },
   { rol: 'Profesional OCI', capacidadMaximaAuditorias: 3, horasMensualesDisponibles: 120 },
 ];
 
@@ -27,14 +27,7 @@ export function useConfiguracionCapacidadesGlobales() {
     try {
       const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (stored) {
-        let parsed: CapacidadRol[] = JSON.parse(stored);
-        // Ensure Aprobador PAI has at least capacity 1 to satisfy DB constraints
-        parsed = parsed.map(p => {
-          if (p.rol === 'Aprobador PAI' && p.capacidadMaximaAuditorias < 1) {
-            return { ...p, capacidadMaximaAuditorias: 1 };
-          }
-          return p;
-        });
+        const parsed: CapacidadRol[] = JSON.parse(stored);
         setCapacidadesRoles(parsed);
       } else {
         setCapacidadesRoles(CAPACIDADES_POR_DEFECTO);
@@ -59,8 +52,12 @@ export function useConfiguracionCapacidadesGlobales() {
   };
 
   const getCapacidadPorRol = (rolName: string): CapacidadRol => {
-    return capacidadesRoles.find(c => c.rol === rolName) || 
-           CAPACIDADES_POR_DEFECTO.find(c => c.rol === 'Auditor')!;
+    const rol = String(normalizarRolOcigOperativo(rolName));
+    return (
+      capacidadesRoles.find((c) => c.rol === rol) ||
+      CAPACIDADES_POR_DEFECTO.find((c) => c.rol === rol) ||
+      CAPACIDADES_POR_DEFECTO.find((c) => c.rol === 'Auditor')!
+    );
   };
 
   return {

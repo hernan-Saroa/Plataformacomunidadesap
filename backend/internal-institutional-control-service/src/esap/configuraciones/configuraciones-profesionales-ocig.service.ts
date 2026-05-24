@@ -12,6 +12,12 @@ import {
   UpdateConfiguracionProfesionalOCIGDto,
   ConfiguracionProfesionalOCIGResponseDto,
 } from './dto/configuracion-profesional-ocig.dto';
+import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
+import {
+  ROLES_OCIG_OPERATIVOS,
+  esRolOcigOperativo,
+  normalizarRolOcigOperativo,
+} from './roles-ocig-operativos.constants';
 
 @Injectable()
 export class ConfiguracionesProfesionalesOCIGService {
@@ -97,7 +103,7 @@ export class ConfiguracionesProfesionalesOCIGService {
       } else {
         // Reactivar y actualizar la configuración existente
         existe.activo = true;
-        existe.rolOcig = createDto.rolOcig;
+        existe.rolOcig = this.validarRolOcigOperativo(createDto.rolOcig);
         if (createDto.especialidades) {
           existe.especialidades = createDto.especialidades;
         }
@@ -122,7 +128,7 @@ export class ConfiguracionesProfesionalesOCIGService {
 
     const config = this.configRepository.create({
       idTercero: createDto.idTercero,
-      rolOcig: createDto.rolOcig,
+      rolOcig: this.validarRolOcigOperativo(createDto.rolOcig),
       especialidades: createDto.especialidades,
       capacidadMaximaAuditorias: createDto.capacidadMaximaAuditorias ?? 4,
       horasMensualesDisponibles: createDto.horasMensualesDisponibles ?? 150,
@@ -158,7 +164,7 @@ export class ConfiguracionesProfesionalesOCIGService {
 
     // Actualizar campos
     if (updateDto.rolOcig !== undefined) {
-      config.rolOcig = updateDto.rolOcig;
+      config.rolOcig = this.validarRolOcigOperativo(updateDto.rolOcig);
     }
     if (updateDto.especialidades !== undefined) {
       if (updateDto.especialidades.length === 0) {
@@ -263,28 +269,20 @@ export class ConfiguracionesProfesionalesOCIGService {
   }
 
   /**
-   * Obtener roles OCIG disponibles desde la BD (auth.role con category 'backoffice')
-   * Obtener roles OCIG disponibles desde la BD (auth.role con category 'control_interno')
-   * + rol especial 'Aprobador PAI' para miembros del Comité Institucional
+   * Catálogo fijo de roles operativos OCIG (no depende de auth.role).
    */
   async getRolesOCIG(): Promise<Array<{ name: string; description: string }>> {
-    try {
-      const roles: Array<{ name: string; description: string | null }> =
-        await this.configRepository.query(
-          `SELECT name, description FROM auth.role
-           WHERE (category = 'backoffice' OR name LIKE '%Aprobador PAI%')
-             AND is_active = true
-           ORDER BY name ASC`,
-        );
+    return [...ROLES_OCIG_OPERATIVOS];
+  }
 
-      return roles.map((r) => ({
-        name: r.name ? r.name.trim() : '',
-        description: r.description || '',
-      }));
-    } catch (error) {
-      console.error('[getRolesOCIG] Error:', error);
-      return [];
+  private validarRolOcigOperativo(rol?: string): string {
+    const normalizado = normalizarRolOcigOperativo(rol);
+    if (!esRolOcigOperativo(normalizado)) {
+      throw new BadRequestException(
+        `Rol OCIG no válido. Use uno de: ${ROLES_OCIG_OPERATIVOS.map((r) => r.name).join(', ')}`,
+      );
     }
+    return normalizado;
   }
 
   /**
@@ -336,8 +334,8 @@ export class ConfiguracionesProfesionalesOCIGService {
         idsConfigurados,
       );
 
-      // Query: usuarios del sistema CON roles de Control Interno, excluyendo los ya configurados.
-      // Solo muestra personas que tengan al menos un rol con categoría 'control_interno' o 'sistema'
+      // Candidatos: usuario activo con al menos un permiso del módulo control-interno
+      // (vía cualquier rol asignado), y que aún no esté en configuracion_profesionales_ocig activo.
       let query = `
         SELECT DISTINCT
           p.id_person,
@@ -346,20 +344,17 @@ export class ConfiguracionesProfesionalesOCIGService {
           p.num_identificacion
         FROM auth.personas p
         INNER JOIN auth."user" u ON u.id_person = p.id_person
-        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
-        INNER JOIN auth.role r ON r.id = ur.id_rol
         WHERE p.nom_largo IS NOT NULL
           AND u.is_active = true
-          AND (
-            r.category IN ('control_interno', 'sistema', 'backoffice', 'Control Interno') 
-            OR r.name LIKE '%Aprobador PAI%'
-            OR r.id IN (
-              SELECT rp.id_rol 
-              FROM auth.role_permissions rp
-              INNER JOIN auth.permission perm ON perm.id_permission = rp.id_permission
-              INNER JOIN auth.module m ON m.id_module = perm.id_module
-              WHERE m.name ILIKE '%Control Interno%' OR m.category IN ('control_interno', 'backoffice', 'Control Interno')
-            )
+          AND EXISTS (
+            SELECT 1
+            FROM auth.user_roles ur
+            INNER JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
+            INNER JOIN auth.permission perm ON perm.id_permission = rp.id_permission
+            INNER JOIN auth.module m ON m.id_module = perm.id_module
+            WHERE ur.id_user = u.id_user
+              AND COALESCE(ur.is_active, true) = true
+              AND m.code = 'control-interno'
           )
       `;
 
@@ -433,6 +428,97 @@ export class ConfiguracionesProfesionalesOCIGService {
       }));
     } catch (error) {
       console.error('[buscarPersonasCandidatas] Error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Personas que pueden integrar el comité de aprobación del PAI:
+   * usuarios activos con permiso control-interno.plan-anual.approve (sin rol OCIG "Aprobador PAI").
+   */
+  async buscarAprobadoresPlanAnual(busqueda?: string): Promise<
+    Array<{
+      id: string;
+      idTercero: string;
+      nombre: string;
+      email: string;
+      identificacion: string;
+      cargo?: string;
+      roles: string[];
+    }>
+  > {
+    try {
+      const params: string[] = [CIP.PLAN_ANUAL_APPROVE];
+      let query = `
+        SELECT DISTINCT
+          p.id_person,
+          p.nom_largo,
+          p.dir_email,
+          p.num_identificacion,
+          cfg.rol_ocig AS cargo_ocig
+        FROM auth.personas p
+        INNER JOIN auth."user" u ON u.id_person = p.id_person
+        LEFT JOIN control_interno.configuracion_profesionales_ocig cfg
+          ON cfg.id_tercero = p.id_person::text AND cfg.activo = true
+        WHERE p.nom_largo IS NOT NULL
+          AND u.is_active = true
+          AND EXISTS (
+            SELECT 1
+            FROM auth.user_roles ur
+            INNER JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
+            INNER JOIN auth.permission perm ON perm.id_permission = rp.id_permission
+            WHERE ur.id_user = u.id_user
+              AND COALESCE(ur.is_active, true) = true
+              AND perm.code = $1
+          )
+      `;
+
+      if (busqueda?.trim()) {
+        params.push(`%${busqueda.trim()}%`);
+        query += ` AND (p.nom_largo ILIKE $2 OR p.dir_email ILIKE $2)`;
+      }
+
+      query += ` ORDER BY p.nom_largo ASC LIMIT 500`;
+
+      const personas: Array<{
+        id_person: string;
+        nom_largo: string | null;
+        dir_email: string | null;
+        num_identificacion: string | null;
+        cargo_ocig: string | null;
+      }> = await this.configRepository.query(query, params);
+
+      const personaIds = personas.map((p) => p.id_person);
+      const rolesMap = new Map<string, string[]>();
+
+      if (personaIds.length > 0) {
+        const rolesRows: Array<{ id_person: string; role_name: string }> =
+          await this.configRepository.query(
+            `SELECT u.id_person, r.name AS role_name
+             FROM auth."user" u
+             INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+             INNER JOIN auth.role r ON r.id = ur.id_rol
+             WHERE u.id_person = ANY($1::uuid[]) AND COALESCE(ur.is_active, true) = true`,
+            [personaIds],
+          );
+        for (const row of rolesRows) {
+          const existing = rolesMap.get(row.id_person) || [];
+          existing.push(row.role_name);
+          rolesMap.set(row.id_person, existing);
+        }
+      }
+
+      return personas.map((p) => ({
+        id: p.id_person,
+        idTercero: p.id_person,
+        nombre: p.nom_largo || 'Sin Nombre',
+        email: p.dir_email || '',
+        identificacion: p.num_identificacion || '',
+        cargo: p.cargo_ocig || rolesMap.get(p.id_person)?.[0] || 'Aprobador plan anual',
+        roles: rolesMap.get(p.id_person) || [],
+      }));
+    } catch (error) {
+      console.error('[buscarAprobadoresPlanAnual] Error:', error);
       return [];
     }
   }

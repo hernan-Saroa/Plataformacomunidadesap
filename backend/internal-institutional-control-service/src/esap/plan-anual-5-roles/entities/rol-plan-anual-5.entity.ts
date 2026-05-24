@@ -45,6 +45,15 @@ export class RolPlanAnual5 {
   @Column({ type: 'integer', default: 0 })
   total_actividades: number;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  responsable?: string;
+
+  @Column({ type: 'uuid', nullable: true, name: 'responsable_id' })
+  responsable_id?: string;
+
+  @Column({ type: 'jsonb', name: 'responsables', default: [] })
+  responsables: Array<{ id: string; nombre: string; cargo?: string; email?: string }>;
+
   @OneToMany(() => ActividadPlanAnual5, (actividad) => actividad.rol, { cascade: true })
   actividades: ActividadPlanAnual5[];
 

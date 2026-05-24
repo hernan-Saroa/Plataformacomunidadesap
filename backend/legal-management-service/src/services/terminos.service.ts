@@ -596,7 +596,7 @@ export class TerminosService {
             const hasDias = (exp.terminoProcesalDias && exp.terminoProcesalDias > 0);
 
             if ((hasVencimiento || hasDias) && exp.estado !== 'FALLO' && exp.estado !== 'ARCHIVADO') {
-                this.logger.debug(`[DEFENSA] Sincronizando ${exp.radicado}: Abogado=${abogadoNombre}`);
+                this.logger.debug(`[DEFENSA] Sincronizando ${exp.radicado}: Profesional=${abogadoNombre}`);
 
                 // Calculate vencimiento if missing
                 let fechaVenc: Date | undefined = exp.fechaVencimientoTermino;
@@ -646,7 +646,7 @@ export class TerminosService {
                     // fechaVenc undefined = createAutomatico calculará basado en fechaBase + dias
                 }
 
-                this.logger.debug(`[JUZGAMIENTO] Sincronizando ${exp.radicado}: Etapa=${exp.etapa}, Abogado=${abogadoNombre}, Dias=${diasDefault}`);
+                this.logger.debug(`[JUZGAMIENTO] Sincronizando ${exp.radicado}: Etapa=${exp.etapa}, Profesional=${abogadoNombre}, Dias=${diasDefault}`);
 
                 await this.createAutomatico(
                     'JUZGAMIENTO',
@@ -686,7 +686,7 @@ export class TerminosService {
                     fechaLimite = undefined;
                 }
 
-                this.logger.debug(`[ASESORIA] Sincronizando ${cons.numeroRadicado}: Abogado=${responsableNombre}, Dias=${cons.terminoLegalDias}`);
+                this.logger.debug(`[ASESORIA] Sincronizando ${cons.numeroRadicado}: Profesional=${responsableNombre}, Dias=${cons.terminoLegalDias}`);
 
                 await this.createAutomatico(
                     'ASESORIA',

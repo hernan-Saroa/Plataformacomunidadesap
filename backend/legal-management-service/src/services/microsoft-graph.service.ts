@@ -244,7 +244,8 @@ export class MicrosoftGraphService {
         subject: string,
         body: string,
         cc?: string[],
-        attachments?: { name: string; contentBytes: string; contentType: string }[]
+        attachments?: { name: string; contentBytes: string; contentType: string }[],
+        options?: { requestReadReceipt?: boolean; requestDeliveryReceipt?: boolean }
     ): Promise<boolean> {
         const toList = Array.isArray(to) ? to : [to];
         // MOCK FOR DEV: Si no hay credenciales configuradas, simular envío exitoso
@@ -293,6 +294,8 @@ export class MicrosoftGraphService {
                     })),
                     ...(ccRecipients.length > 0 && { ccRecipients }),
                     ...(graphAttachments.length > 0 && { attachments: graphAttachments }),
+                    ...(options?.requestReadReceipt && { isReadReceiptRequested: true }),
+                    ...(options?.requestDeliveryReceipt && { isDeliveryReceiptRequested: true }),
                     from: {
                         emailAddress: {
                             address: this.emailAccount,

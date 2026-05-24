@@ -1205,7 +1205,7 @@ class ControlInternoService {
    * Actualiza un rol de un plan anual
    */
   async actualizarRolPlanAnual(id: string, rolId: string, datosRol: any): Promise<any> {
-    return client.put(`/plan-anual/${id}/roles/${rolId}`, datosRol);
+    return client.put(`/plan-anual-5-roles/${id}/roles/${rolId}`, datosRol);
   }
 
   // ==========================================================================
@@ -1943,6 +1943,12 @@ class ControlInternoService {
     search?: string;
     fechaDesde?: string;
     fechaHasta?: string;
+    planAnualId?: string;
+    planAnualVigencia?: number;
+    year?: number;
+    light?: boolean;
+    activasOnly?: boolean;
+    vinculadaPlanAnual?: boolean;
   }): Promise<any[]> {
     const queryParams = new URLSearchParams();
     if (filters?.tipo) queryParams.append('tipo', filters.tipo);
@@ -1952,6 +1958,14 @@ class ControlInternoService {
     if (filters?.search) queryParams.append('search', filters.search);
     if (filters?.fechaDesde) queryParams.append('fechaDesde', filters.fechaDesde);
     if (filters?.fechaHasta) queryParams.append('fechaHasta', filters.fechaHasta);
+    if (filters?.planAnualId) queryParams.append('planAnualId', filters.planAnualId);
+    // if (filters?.planAnualVigencia != null) {
+    //   queryParams.append('planAnualVigencia', String(filters.planAnualVigencia));
+    // }
+    if (filters?.year != null) queryParams.append('year', String(filters.year));
+    if (filters?.light !== false) queryParams.append('light', 'true');
+    if (filters?.activasOnly !== false) queryParams.append('activasOnly', 'true');
+    if (filters?.vinculadaPlanAnual) queryParams.append('vinculadaPlanAnual', 'true');
     
     const query = queryParams.toString();
     return client.get<any[]>(`/auditorias${query ? `?${query}` : ''}`);

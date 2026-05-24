@@ -150,7 +150,21 @@ export class AuditoriasController {
     @Query('search') search?: string,
     @Query('fechaDesde') fechaDesde?: string,
     @Query('fechaHasta') fechaHasta?: string,
+    @Query('planAnualId') planAnualId?: string,
+    @Query('planAnualVigencia') planAnualVigencia?: string,
+    @Query('vinculadaPlanAnual') vinculadaPlanAnual?: string,
+    @Query('year') year?: string,
+    @Query('light') light?: string,
+    @Query('activasOnly') activasOnly?: string,
   ) {
+    const vigenciaNum =
+      planAnualVigencia && planAnualVigencia !== 'undefined'
+        ? parseInt(planAnualVigencia, 10)
+        : undefined;
+    const yearNum =
+      year && year !== 'undefined' ? parseInt(year, 10) : undefined;
+    const lightMode = light !== 'false' && light !== '0';
+    const soloActivas = activasOnly !== 'false' && activasOnly !== '0';
     return this.auditoriasService.findAll({
       tipo,
       fase,
@@ -159,6 +173,12 @@ export class AuditoriasController {
       search,
       fechaDesde,
       fechaHasta,
+      planAnualId,
+      planAnualVigencia: vigenciaNum != null && !Number.isNaN(vigenciaNum) ? vigenciaNum : undefined,
+      vinculadaPlanAnual: vinculadaPlanAnual === 'true' || vinculadaPlanAnual === '1',
+      year: yearNum != null && !Number.isNaN(yearNum) ? yearNum : undefined,
+      light: lightMode,
+      activasOnly: soloActivas,
     });
   }
 

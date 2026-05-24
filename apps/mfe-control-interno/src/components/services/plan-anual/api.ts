@@ -26,6 +26,7 @@ import {
   EstadisticasPlan,
   CreatePlanAnualDto,
   UpdatePlanAnualDto,
+  UpdateRolPlanAnualDto,
   CreateActividadDto,
   UpdateActividadDto,
   ApiResponse,
@@ -44,6 +45,13 @@ const API_BASE_URL = API_MODE === 'gateway'
   ? `${BASE_URL}/control-institucional/api/v1` 
   : BASE_URL;
 const PLAN_ANUAL_ENDPOINT = '/plan-anual-5-roles';
+
+const PLANES_LIST_CACHE_TTL_MS = 45_000;
+let planesListCache: { key: string; data: PlanAnual[]; ts: number } | null = null;
+
+export function invalidatePlanAnualListCache(): void {
+  planesListCache = null;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPER PARA REQUESTS
@@ -106,9 +114,27 @@ export const planAnualApi = {
     const params = new URLSearchParams();
     if (filtros?.año) params.append('year', String(filtros.año));
     if (filtros?.estado) params.append('estado', filtros.estado);
-    
+    const light = filtros?.light !== false;
+    if (light) params.append('light', 'true');
+
     const query = params.toString();
-    return apiRequest<PlanAnual[]>(`${PLAN_ANUAL_ENDPOINT}${query ? `?${query}` : ''}`);
+    const cacheKey = query || 'all';
+    if (
+      !filtros?.skipCache &&
+      planesListCache &&
+      planesListCache.key === cacheKey &&
+      Date.now() - planesListCache.ts < PLANES_LIST_CACHE_TTL_MS
+    ) {
+      return { success: true, data: planesListCache.data };
+    }
+
+    const response = await apiRequest<PlanAnual[]>(
+      `${PLAN_ANUAL_ENDPOINT}${query ? `?${query}` : ''}`,
+    );
+    if (response.success && response.data) {
+      planesListCache = { key: cacheKey, data: response.data, ts: Date.now() };
+    }
+    return response;
   },
 
   /**
@@ -129,6 +155,7 @@ export const planAnualApi = {
    * Crear nuevo plan anual
    */
   create: async (data: CreatePlanAnualDto): Promise<ApiResponse<PlanAnual>> => {
+    invalidatePlanAnualListCache();
     return apiRequest<PlanAnual>(PLAN_ANUAL_ENDPOINT, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -139,6 +166,7 @@ export const planAnualApi = {
    * Actualizar plan anual (estado, responsable)
    */
   update: async (id: string, data: UpdatePlanAnualDto): Promise<ApiResponse<PlanAnual>> => {
+    invalidatePlanAnualListCache();
     return apiRequest<PlanAnual>(`${PLAN_ANUAL_ENDPOINT}/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -149,8 +177,20 @@ export const planAnualApi = {
    * Eliminar plan anual
    */
   delete: async (id: string): Promise<ApiResponse<void>> => {
+    invalidatePlanAnualListCache();
     return apiRequest<void>(`${PLAN_ANUAL_ENDPOINT}/${id}`, {
       method: 'DELETE',
+    });
+  },
+
+  deleteWizardBorrador: async (): Promise<void> => {
+    await apiRequest<void>(`${PLAN_ANUAL_ENDPOINT}/wizard-borrador/me`, { method: 'DELETE' });
+  },
+
+  saveWizardBorrador: async (payload: Record<string, unknown>): Promise<ApiResponse<{ ok: boolean; savedAt: string }>> => {
+    return apiRequest(`${PLAN_ANUAL_ENDPOINT}/wizard-borrador/me`, {
+      method: 'PUT',
+      body: JSON.stringify({ payload }),
     });
   },
 
@@ -159,6 +199,20 @@ export const planAnualApi = {
    */
   getRoles: async (planId: string): Promise<ApiResponse<Rol[]>> => {
     return apiRequest<Rol[]>(`${PLAN_ANUAL_ENDPOINT}/${planId}/roles`);
+  },
+
+  /**
+   * Actualizar responsable del rol (no modifica actividades).
+   */
+  updateRol: async (
+    planId: string,
+    rolId: string,
+    data: UpdateRolPlanAnualDto,
+  ): Promise<ApiResponse<Rol>> => {
+    return apiRequest<Rol>(`${PLAN_ANUAL_ENDPOINT}/${planId}/roles/${rolId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   },
 
   /**
