@@ -107,6 +107,8 @@ interface SeccionListasChequeoExpedienteProps {
   auditoriaId: string;
   etapaActual: EtapaKanban;
   readOnly?: boolean; // ✅ Modo solo lectura (deshabilita edición)
+  /** Documentos de auditoría ya cargados por el expediente (evita GET duplicado) */
+  documentosAuditoriaPrecargados?: DocumentoAuditoriaSubido[];
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -238,7 +240,8 @@ function mapApiListaToExpediente(
 export function SeccionListasChequeoExpediente({
   auditoriaId,
   etapaActual,
-  readOnly = false
+  readOnly = false,
+  documentosAuditoriaPrecargados,
 }: SeccionListasChequeoExpedienteProps) {
   const [listas, setListas] = useState<ListaChequeo[]>([]);
   const [listaExpandida, setListaExpandida] = useState<string | null>(null);
@@ -261,8 +264,9 @@ export function SeccionListasChequeoExpediente({
       const listasApi = await controlInternoService.getListasAplicadas(auditoriaId);
 
       // Cruzar con documentos ya subidos para marcar plantillas diligenciadas
-      const documentosAuditoria = await controlInternoService.getDocumentosByAuditoria(auditoriaId)
-        .catch(() => []) as DocumentoAuditoriaSubido[];
+      const documentosAuditoria = documentosAuditoriaPrecargados !== undefined
+        ? documentosAuditoriaPrecargados
+        : ((await controlInternoService.getDocumentosByAuditoria(auditoriaId).catch(() => [])) as DocumentoAuditoriaSubido[]);
 
       const documentosSubidosPorBiblioteca = (documentosAuditoria || []).reduce((acc, doc) => {
         if (!doc.documentoBibliotecaId) return acc;
@@ -294,7 +298,7 @@ export function SeccionListasChequeoExpediente({
     } finally {
       setIsLoading(false);
     }
-  }, [auditoriaId]);
+  }, [auditoriaId, documentosAuditoriaPrecargados]);
 
   useEffect(() => {
     cargarListasAuditoria();

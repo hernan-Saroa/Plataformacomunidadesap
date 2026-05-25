@@ -45,6 +45,8 @@ import { useIntegracionAuditoriaPlanes } from './IntegracionAuditoriasPlanesCont
 // ✅ Hook de backend para planes de mejoramiento
 import { usePlanesMejoramiento, PlanMejoramientoKanban } from './services/usePlanesMejoramiento';
 import { controlInternoService } from '../../services/api/controlInternoService';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
+import { auditoriaCoincideVigenciaPlan } from './services/useAuditoriasKanban';
 
 // Validaciones
 import { validarPlanParaAuditoriaCompleta, mostrarErroresValidacion } from './utils/validaciones';
@@ -369,6 +371,9 @@ const COLUMNAS_KANBAN = [
 // ════════════════════════════════════════════════════════════════════════════
 
 export function PlanesMejoramientoModuleRediseno() {
+  const vigenciaCtx = usePlanAnualVigenciaContextOptional();
+  const vigenciaActiva = vigenciaCtx?.vigencia;
+
   // ✅ HOOK DE BACKEND - Planes de mejoramiento
   const {
     planes,
@@ -379,7 +384,9 @@ export function PlanesMejoramientoModuleRediseno() {
     actualizarEstadoPlan,
     aprobarPlan,
     rechazarPlan
-  } = usePlanesMejoramiento();
+  } = usePlanesMejoramiento(
+    vigenciaActiva != null ? { planAnualVigencia: vigenciaActiva } : undefined,
+  );
 
   const [modalCrearPlanOpen, setModalCrearPlanOpen] = useState(false);
   const [auditoriasElegiblesBackend, setAuditoriasElegiblesBackend] = useState<any[]>([]);
@@ -450,12 +457,25 @@ export function PlanesMejoramientoModuleRediseno() {
 
   const cargarAuditoriasElegibles = useCallback(async () => {
     try {
+      const filtrosVigencia =
+        vigenciaActiva != null
+          ? { planAnualVigencia: vigenciaActiva, year: vigenciaActiva }
+          : undefined;
       const [auditoriasResp, planesResp] = await Promise.all([
-        controlInternoService.getAuditorias(),
-        controlInternoService.getPlanesMejoramiento().catch(() => []),
+        controlInternoService.getAuditorias(filtrosVigencia),
+        controlInternoService
+          .getPlanesMejoramiento(
+            vigenciaActiva != null ? { planAnualVigencia: vigenciaActiva } : undefined,
+          )
+          .catch(() => []),
       ]);
 
-      const auditorias = Array.isArray(auditoriasResp) ? auditoriasResp : [];
+      let auditorias = Array.isArray(auditoriasResp) ? auditoriasResp : [];
+      if (vigenciaActiva != null) {
+        auditorias = auditorias.filter((a: any) =>
+          auditoriaCoincideVigenciaPlan(a, vigenciaActiva),
+        );
+      }
       const planesExistentes = Array.isArray(planesResp) ? planesResp : [];
       const idsConPlan = new Set(
         planesExistentes
@@ -506,7 +526,7 @@ export function PlanesMejoramientoModuleRediseno() {
       console.error('[PlanesMejoramiento] Error cargando auditorias elegibles:', err);
       setAuditoriasElegiblesBackend([]);
     }
-  }, []);
+  }, [vigenciaActiva]);
 
   // Auto-abrir modal CREAR solo si viene desde auditorías para crear (no para ver)
   useEffect(() => {
@@ -690,7 +710,7 @@ export function PlanesMejoramientoModuleRediseno() {
       <div className="min-h-screen bg-gray-50">
         <ModuleHeaderBar
           title="Planes de Mejoramiento"
-          subtitle="Formulación, seguimiento y cierre de acciones correctivas"
+          subtitle={`Formulación, seguimiento y cierre de acciones correctivas${vigenciaActiva ? ` · Vigencia ${vigenciaActiva}` : ''}`}
           icon={<AlertTriangle className="w-5 h-5 text-white" />}
           color="#EF4444"
         />

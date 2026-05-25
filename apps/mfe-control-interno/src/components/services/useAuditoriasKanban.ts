@@ -486,9 +486,43 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     auditorLiderId: auditoriaBackend.auditorLiderId,
     // ✅ Preservar documento de cierre del backend para pasarlo al Expediente
     documentoCierre: auditoriaBackend.documentoCierre || null,
-    planAnualAño: auditoriaBackend.planAnualAño,
-    vigencia: auditoriaBackend.vigencia
+    planAnualAño:
+      auditoriaBackend.planAnualAño ??
+      auditoriaBackend.planAnualVigencia ??
+      auditoriaBackend.plan_anual_vigencia,
+    vigencia:
+      auditoriaBackend.vigencia ??
+      auditoriaBackend.planAnualVigencia ??
+      auditoriaBackend.plan_anual_vigencia,
+    planAnualVigencia:
+      auditoriaBackend.planAnualVigencia ?? auditoriaBackend.plan_anual_vigencia,
+    planAnualId: auditoriaBackend.planAnualId ?? auditoriaBackend.plan_anual_id,
   };
+}
+
+/** Filtro estricto por vigencia del plan anual (cliente) */
+export function auditoriaCoincideVigenciaPlan(
+  aud: {
+    planAnualAño?: number;
+    vigencia?: number;
+    planAnualVigencia?: number;
+    codigo?: string;
+    fechaInicio?: string;
+  },
+  vigencia: number,
+): boolean {
+  const v = aud.planAnualAño ?? aud.vigencia ?? aud.planAnualVigencia;
+  if (v != null && !Number.isNaN(Number(v))) {
+    return Number(v) === vigencia;
+  }
+  if (aud.fechaInicio) {
+    const y = new Date(aud.fechaInicio).getFullYear();
+    if (!Number.isNaN(y) && y === vigencia) return true;
+  }
+  if (aud.codigo) {
+    return aud.codigo.includes(`AUD-${vigencia}-`);
+  }
+  return false;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -588,8 +622,7 @@ export function useAuditoriasKanban(planFilters?: {
 
       const vigencia = planFilters?.planAnualVigencia;
       const response = await controlInternoService.getAuditorias({
-        // planAnualVigencia: vigencia,
-        planAnualId: planFilters?.planAnualId,
+        planAnualVigencia: vigencia,
         year: vigencia,
         light: true,
         activasOnly: true,
