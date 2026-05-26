@@ -100,7 +100,7 @@ export interface ResponsableArea {
 export interface AuditoriaUnificadaFormData {
   // 1. INFORMACIÓN BÁSICA
   codigo?: string;
-  tipoAuditoria: 'regular' | 'territorial' | 'especial' | 'seguimiento';
+  tipoAuditoria: string; // Ahora es completamente dinámico
   titulo: string;
   descripcion: string;
   
@@ -301,7 +301,7 @@ export function FormularioAuditoriaUnificado({
   const [pasoActual, setPasoActual] = useState(1);
   const [formData, setFormData] = useState<AuditoriaUnificadaFormData>({
     codigo: initialData?.codigo || '',
-    tipoAuditoria: initialData?.tipoAuditoria || 'regular',
+    tipoAuditoria: initialData?.tipoAuditoria || '',
     titulo: initialData?.titulo || '',
     descripcion: initialData?.descripcion || '',
     territorial: initialData?.territorial || '',
@@ -769,6 +769,13 @@ export function FormularioAuditoriaUnificado({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validar tipo de auditoría
+    if (!formData.tipoAuditoria) {
+      toast.error('Debe seleccionar un tipo de auditoría');
+      setPasoActual(1);
+      return;
+    }
 
     // Validaciones básicas - titulo contiene el proceso seleccionado
     if (!formData.titulo || formData.titulo.length < 5) {
@@ -1403,32 +1410,33 @@ function Paso1InformacionBasica({
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {(tiposAuditoria.length > 0 ? tiposAuditoria : [
-                  { id: 'regular', codigo: 'regular', nombre: 'Regular', color: undefined },
-                  { id: 'territorial', codigo: 'territorial', nombre: 'Territorial', color: undefined },
-                  { id: 'especial', codigo: 'especial', nombre: 'Especial', color: undefined },
-                  { id: 'seguimiento', codigo: 'seguimiento', nombre: 'Seguimiento', color: undefined }
-                ]).map(tipo => (
-                  <button
-                    key={tipo.id}
-                    type="button"
-                    onClick={() => onChange('tipoAuditoria', tipo.codigo.toLowerCase() as any)}
-                    className={`
-                      px-4 py-3 rounded-lg border-2 transition-all duration-200
-                      flex flex-col items-center justify-center gap-2 font-medium
-                      ${
-                        formData.tipoAuditoria === tipo.codigo.toLowerCase()
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
-                      }
-                    `}
-                  >
-                    {tipo.color && (
-                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tipo.color }} />
-                    )}
-                    <span className="text-sm">{tipo.nombre}</span>
-                  </button>
-                ))}
+                {tiposAuditoria.length > 0 ? (
+                  tiposAuditoria.map(tipo => (
+                    <button
+                      key={tipo.id}
+                      type="button"
+                      onClick={() => onChange('tipoAuditoria', tipo.codigo.toLowerCase() as any)}
+                      className={`
+                        px-4 py-3 rounded-lg border-2 transition-all duration-200
+                        flex flex-col items-center justify-center gap-2 font-medium
+                        ${
+                          formData.tipoAuditoria === tipo.codigo.toLowerCase()
+                            ? 'border-blue-600 bg-blue-50 text-blue-700'
+                            : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
+                        }
+                      `}
+                    >
+                      {tipo.color && (
+                        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: tipo.color }} />
+                      )}
+                      <span className="text-sm">{tipo.nombre}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="col-span-full py-4 text-center text-sm text-amber-600 bg-amber-50 rounded-lg border border-amber-200">
+                    No hay tipos de auditoría configurados. Por favor, créelos en la sección de Configuraciones.
+                  </div>
+                )}
               </div>
             )}
           </FieldWrapper>
