@@ -1870,7 +1870,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
               id: planBackend.id,
               vigencia: planBackend.año || planBackend.vigencia || new Date().getFullYear(),
               version: planBackend.version || 1,
-              estado: (planBackend.estado?.toUpperCase().replace(/-/g, '_') || 'BORRADOR') as EstadoPlan,
+              estado: mapearEstadoPlan(planBackend.estado || 'borrador'),
               nombrePlan:
                 planBackend.nombre
                 || planBackend.nombre_plan
@@ -2008,6 +2008,69 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
       }
     });
   }, [vigenciaContext?.planActivoId, vista, planActual?.id, planesAnteriores]);
+
+  const prioridadPlanTrasEliminar = (estado: EstadoPlan): number => {
+    if (estado === 'VIGENTE') return 0;
+    if (estado === 'APROBADO') return 1;
+    if (estado === 'EN_REVISION') return 2;
+    if (estado === 'BORRADOR') return 3;
+    return 4;
+  };
+
+  const handlePlanEliminado = async (planIdEliminado: string) => {
+    invalidatePlanAnualListCache();
+
+    try {
+      const stored = localStorage.getItem('esap:plan_anual_activo');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.id === planIdEliminado) {
+          localStorage.removeItem('esap:plan_anual_activo');
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
+    const vigenciaEliminada = planesAnteriores.find((p) => p.id === planIdEliminado)?.vigencia;
+    const restantes = planesAnteriores.filter((p) => p.id !== planIdEliminado);
+    setPlanesAnteriores(restantes);
+    setPlanesListVersion((v) => v + 1);
+
+    if (planActual?.id !== planIdEliminado) {
+      toast.success('Plan en borrador eliminado', {
+        description: vigenciaEliminada
+          ? `Vigencia ${vigenciaEliminada} — sigues en el plan que tenías abierto.`
+          : 'Sigues en el plan que tenías abierto.',
+        duration: 5000,
+      });
+      return;
+    }
+
+    const candidatos = [...restantes].sort((a, b) => {
+      const pa = prioridadPlanTrasEliminar(a.estado);
+      const pb = prioridadPlanTrasEliminar(b.estado);
+      if (pa !== pb) return pa - pb;
+      return (b.vigencia ?? 0) - (a.vigencia ?? 0);
+    });
+
+    if (candidatos.length > 0) {
+      const siguiente = candidatos[0];
+      toast.info(`Se abrió el plan ${siguiente.vigencia}`, {
+        description: 'El plan eliminado ya no está disponible.',
+        duration: 6000,
+      });
+      await handleCambiarPlan(siguiente.id);
+      return;
+    }
+
+    setPlanActual(null);
+    setVista('inicio');
+    toast.success('Plan eliminado', {
+      description: 'No quedan otros planes registrados. Puedes crear uno nuevo.',
+      duration: 6000,
+    });
+  };
 
   const abrirWizardConPlan = async (plan: PlanAnual, soloLectura: boolean) => {
     setDashboardSeccionForzada(null);
@@ -2776,6 +2839,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
             planesAnteriores={planesAnteriores}
             planesDisponibles={planesAnteriores}
             onCambiarPlan={handleCambiarPlan}
+            onPlanEliminado={handlePlanEliminado}
           />
         )}
 

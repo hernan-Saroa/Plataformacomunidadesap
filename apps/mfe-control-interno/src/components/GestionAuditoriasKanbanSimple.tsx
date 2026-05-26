@@ -66,7 +66,12 @@ import { useHallazgos } from './HallazgosContext';
 import { useTareas } from './TareasContext';
 
 // ✅ INTEGRACIÓN: Hook para cargar auditorías y auditores del backend
-import { useAuditoriasKanban, type AuditoriaKanban, type AuditorDisponible } from './services/useAuditoriasKanban';
+import {
+  useAuditoriasKanban,
+  auditoriaCoincideVigenciaPlan,
+  type AuditoriaKanban,
+  type AuditorDisponible,
+} from './services/useAuditoriasKanban';
 
 // ✅ PERMISOS: Hook de control de acceso
 import { useControlInternoPermissions } from './hooks/useControlInternoPermissions';
@@ -1868,9 +1873,9 @@ export function GestionAuditoriasKanbanSimple() {
   } = useAuditoriasKanban(
     vigenciaCtx
       ? {
-        planAnualVigencia: vigenciaCtx.vigencia,
-        planAnualId: vigenciaCtx.planActivoId ?? undefined,
-      }
+          planAnualVigencia: vigenciaCtx.vigencia,
+          planAnualId: vigenciaCtx.planActivoId ?? undefined,
+        }
       : undefined,
   );
 
@@ -2241,16 +2246,9 @@ export function GestionAuditoriasKanbanSimple() {
 
   // Filtrar auditorías
   const auditoriasFiltradas = auditorias.filter(aud => {
-    // ✅ FILTRO DE VIGENCIA: Asegurar que solo se muestran auditorías del plan seleccionado
-    let cumpleVigencia = true;
-    if (vigenciaActiva) {
-      const añoAuditoria = (aud as any).planAnualAño || (aud as any).vigencia;
-      if (añoAuditoria) {
-        cumpleVigencia = String(añoAuditoria) === String(vigenciaActiva);
-      } else if (aud.codigo) {
-        cumpleVigencia = aud.codigo.includes(`AUD-${vigenciaActiva}-`);
-      }
-    }
+    const cumpleVigencia = vigenciaActiva
+      ? auditoriaCoincideVigenciaPlan(aud as AuditoriaKanban, vigenciaActiva)
+      : true;
 
     const terminoBusqueda = String(busqueda || '').toLowerCase();
     const cumpleBusqueda = String(aud.titulo || '').toLowerCase().includes(terminoBusqueda) ||
@@ -2466,10 +2464,11 @@ export function GestionAuditoriasKanbanSimple() {
         // ✅ Estado inicial del Kanban - todas las auditorías nuevas inician en "Plan Anual"
         estadoKanban: 'Plan Anual',
         // ✅ Vinculación con Plan Anual
-        planAnualId: data.planAnualId || undefined,
-        planAnualAño: data.planAnualAño || undefined,
-        vigencia: data.planAnualAño || undefined,
-        vinculadaPlanAnual: data.vinculadaPlanAnual || false,
+        planAnualId: data.planAnualId || vigenciaCtx?.planActivoId || undefined,
+        planAnualAño: data.planAnualAño || vigenciaActiva || undefined,
+        planAnualVigencia: data.planAnualAño || vigenciaActiva || undefined,
+        vigencia: data.planAnualAño || vigenciaActiva || undefined,
+        vinculadaPlanAnual: data.vinculadaPlanAnual ?? Boolean(vigenciaCtx?.planActivoId),
       };
 
       const nuevaAuditoriaId = await crearAuditoriaBackend(datosBackend);

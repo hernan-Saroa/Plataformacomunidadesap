@@ -53,8 +53,13 @@ const AREAS_ESAP = [
 interface Props {
   auditoriaId: string;
   auditoriaNombre: string;
+  /** Tras subir evidencias, refrescar tab Documentación del expediente */
+  onEvidenciasActualizadas?: () => void;
   /** Si true, muestra selector Tipo (Preliminar/Identificado). Preliminar oculta el bloque de evidencia */
   permitirTipoPreliminar?: boolean;
+  /** Datos ya cargados por el expediente (evita GET hallazgos + N×evidencias) */
+  hallazgosPrecargados?: Hallazgo[];
+  evidenciasPorHallazgoPrecargadas?: Record<string, any[]>;
 }
 
 // Tipo para personas disponibles
@@ -64,10 +69,20 @@ interface PersonaDisponible {
   cargo?: string;
 }
 
-export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permitirTipoPreliminar }: Props) {
+export function SeccionHallazgosExpediente({
+  auditoriaId,
+  auditoriaNombre,
+  permitirTipoPreliminar,
+  onEvidenciasActualizadas,
+  hallazgosPrecargados,
+  evidenciasPorHallazgoPrecargadas,
+}: Props) {
+  const precargaHallazgos = hallazgosPrecargados !== undefined;
+  const precargaEvidencias = evidenciasPorHallazgoPrecargadas !== undefined;
+
   // Estados para datos
-  const [hallazgos, setHallazgos] = useState<Hallazgo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [hallazgos, setHallazgos] = useState<Hallazgo[]>(hallazgosPrecargados ?? []);
+  const [loading, setLoading] = useState(!precargaHallazgos);
   const [error, setError] = useState<string | null>(null);
   const [personasDisponibles, setPersonasDisponibles] = useState<PersonaDisponible[]>([]);
   const [cargandoPersonas, setCargandoPersonas] = useState(false);
@@ -87,7 +102,9 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
   const [cargandoEvidencias, setCargandoEvidencias] = useState(false);
   
   // Estado para evidencias de TODOS los hallazgos (para mostrar en tarjetas)
-  const [evidenciasPorHallazgo, setEvidenciasPorHallazgo] = useState<Record<string, any[]>>({});
+  const [evidenciasPorHallazgo, setEvidenciasPorHallazgo] = useState<Record<string, any[]>>(
+    evidenciasPorHallazgoPrecargadas ?? {},
+  );
   
   // Estado para edición (null = creando nuevo, string = editando ese ID)
   const [hallazgoEditandoId, setHallazgoEditandoId] = useState<string | null>(null);
@@ -147,33 +164,48 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
   }, [auditoriaId]);
 
   useEffect(() => {
+    if (precargaHallazgos) return;
     cargarHallazgos();
-  }, [cargarHallazgos]);
+  }, [cargarHallazgos, precargaHallazgos]);
 
-  // Cargar evidencias de todos los hallazgos para mostrar en tarjetas
   useEffect(() => {
+    if (hallazgosPrecargados !== undefined) {
+      setHallazgos(hallazgosPrecargados);
+      setLoading(false);
+    }
+  }, [hallazgosPrecargados]);
+
+  useEffect(() => {
+    if (evidenciasPorHallazgoPrecargadas !== undefined) {
+      setEvidenciasPorHallazgo(evidenciasPorHallazgoPrecargadas);
+    }
+  }, [evidenciasPorHallazgoPrecargadas]);
+
+  // Cargar evidencias por hallazgo si no vienen precargadas del expediente
+  useEffect(() => {
+    if (precargaEvidencias) return;
+
     const cargarTodasEvidencias = async () => {
       if (hallazgos.length === 0) return;
-      
+
       const evidenciasMap: Record<string, any[]> = {};
-      
-      // Cargar evidencias de cada hallazgo en paralelo
+
       await Promise.all(
         hallazgos.map(async (hallazgo) => {
           try {
             const evidencias = await controlInternoService.getEvidenciasByHallazgo(hallazgo.id);
             evidenciasMap[hallazgo.id] = evidencias || [];
-          } catch (err) {
+          } catch {
             evidenciasMap[hallazgo.id] = [];
           }
-        })
+        }),
       );
-      
+
       setEvidenciasPorHallazgo(evidenciasMap);
     };
-    
+
     cargarTodasEvidencias();
-  }, [hallazgos]);
+  }, [hallazgos, precargaEvidencias]);
 
   // Cargar personas disponibles
   useEffect(() => {
@@ -292,6 +324,7 @@ export function SeccionHallazgosExpediente({ auditoriaId, auditoriaNombre, permi
           }
         }
         toast.success('Archivos subidos correctamente');
+        onEvidenciasActualizadas?.();
       }
       
       setMostrarFormulario(false);
