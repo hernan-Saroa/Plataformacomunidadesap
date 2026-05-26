@@ -28,7 +28,7 @@ type EstadoAuditoria =
 
 type RiesgoAuditoria = 'Alto' | 'Medio' | 'Bajo';
 type SemaforoColor = 'verde' | 'amarillo' | 'rojo';
-type TipoAuditoria = 'regular' | 'territorial' | 'especial';
+type TipoAuditoria = string; // Ahora es dinámico y soporta cualquier string
 type Prioridad = 'crítica' | 'alta' | 'media' | 'baja';
 
 interface Persona {
@@ -317,15 +317,11 @@ function formatearFecha(fecha: string): string {
 }
 
 /**
- * Mapea tipo del backend
+ * Mapea tipo del backend (respeta el tipo dinámico configurado)
  */
 function mapearTipo(tipo?: string): TipoAuditoria {
   if (!tipo) return 'regular';
-  
-  const tipoNorm = tipo.toLowerCase();
-  if (tipoNorm.includes('territorial')) return 'territorial';
-  if (tipoNorm.includes('especial')) return 'especial';
-  return 'regular';
+  return tipo.toLowerCase();
 }
 
 /**
@@ -471,7 +467,7 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     documentos: (auditoriaBackend.totalDocumentos || auditoriaBackend.documentosCount || 0) + (auditoriaBackend.documentoCierre?.url ? 1 : 0),
     informes: auditoriaBackend.totalInformes || auditoriaBackend.informesCount || 0,
     tareas: auditoriaBackend.totalTareas || auditoriaBackend.tareasCount || 0,
-    tipo: (auditoriaBackend.tipoKanban as TipoAuditoria) || mapearTipo(auditoriaBackend.tipo),
+    tipo: mapearTipo(auditoriaBackend.tipo),
     prioridad: (auditoriaBackend.prioridadKanban as Prioridad) || mapearPrioridad(auditoriaBackend.prioridad, auditoriaBackend.nivelRiesgo),
     areaObjetivo: auditoriaBackend.areaObjetivo || auditoriaBackend.procesoAuditado || '',
     permiteCambiarObjetivos: auditoriaBackend.permiteCambiarObjetivos ?? true,
