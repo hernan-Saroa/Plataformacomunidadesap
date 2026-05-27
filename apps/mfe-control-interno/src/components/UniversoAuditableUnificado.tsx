@@ -188,47 +188,45 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
       'EXTREMO': 'Crítico', 'ALTO': 'Alto', 'MODERADO': 'Medio', 'BAJO': 'Bajo', 'MUY BAJO': 'Bajo',
     };
 
-    const evMap = new Map<string, EvaluacionProcesoUI>();
-    evaluaciones.forEach(ev => {
-      if (!evMap.has(ev.procesoId)) {
-        evMap.set(ev.procesoId, ev);
-      }
-    });
+    return evaluaciones.map(ev => {
+      const p = procesosMap.get(ev.procesoId);
+      if (!p) return null;
 
-    return procesos
-      .filter(p => evMap.has(p.id))
-      .map(p => {
-      const ev = evMap.get(p.id);
-      const nivelRiesgo = ev ? (nivelRiesgoMap[ev.nivelCriticidadDafp || ''] || mapPonderacion[ev.ponderacionRiesgo || ''] || 'Medio') : 'Bajo';
-      const scoreCalculado = ev?.ponderacionFinalDafp ? +(ev.ponderacionFinalDafp * 20).toFixed(0) : (ev?.scoreRiesgo || 0);
-      const frecuencia = ev?.cicloRotacionDafp || ev?.planRotacion || 'Anual';
+      const nivelRiesgo = (nivelRiesgoMap[ev.nivelCriticidadDafp || ''] || mapPonderacion[ev.ponderacionRiesgo || ''] || 'Medio');
+      const scoreCalculado = ev.ponderacionFinalDafp ? +(ev.ponderacionFinalDafp * 20).toFixed(0) : (ev.scoreRiesgo || 0);
+      const frecuencia = ev.cicloRotacionDafp || ev.planRotacion || 'Anual';
       
       // ✅ Calcular horas estimadas desde evaluación o nivel de riesgo
-      const horasEst = ev?.horasEstimadas ?? calcHorasEstimadas(ev?.nivelCriticidadDafp, ev?.cicloRotacionDafp);
+      const horasEst = ev.horasEstimadas ?? calcHorasEstimadas(ev.nivelCriticidadDafp, ev.cicloRotacionDafp);
+
+      // Extraer la dependencia y unidad auditable (macroproceso) si están concatenados
+      let dep = p.dependencia || ev.dependenciaResponsable || '';
+      let mac = p.macroproceso || '';
+      if (ev.dependenciaResponsable && ev.dependenciaResponsable.includes('||')) {
+        const parts = ev.dependenciaResponsable.split('||');
+        dep = parts[0].trim();
+        mac = parts[1].trim();
+      }
 
       return {
-        id: p.id,
-        idEvaluacion: ev?.id,
-        _backendId: p.id, // ✅ Crucial para que onEditarProceso funcione
+        id: ev.id, // ✅ Usar idEvaluacion como ID de la fila para permitir múltiples evaluaciones del mismo proceso
+        idEvaluacion: ev.id,
+        _backendId: p.id, // ✅ Crucial para que onEditarProceso funcione (ID del proceso maestro)
         codigo: p.codigo,
         nombre: p.nombre,
         tipo: p.tipo,
-        // ✅ Campo que la tabla busca con key: 'tipoProceso'
         tipoProceso: p.tipoProceso || p.tipo,
-        macroproceso: p.macroproceso,
-        dependencia: p.dependencia,
-        dependenciaResponsable: p.dependencia || ev?.dependenciaResponsable || '', // ✅ Crucial para búsqueda
+        macroproceso: mac, // Unidad Auditable extraída
+        dependencia: dep,
+        dependenciaResponsable: dep, // ✅ Crucial para búsqueda
         responsable: p.responsable,
         nivelRiesgo,
         puntajeRiesgo: scoreCalculado,
-        // ✅ Campo que la tabla busca con key: 'scoreRiesgo'
         scoreRiesgo: scoreCalculado,
-        // ✅ Campo que la tabla busca con key: 'horasEstimadas'
         horasEstimadas: horasEst,
-        // ✅ Campo que la tabla busca con key: 'frecuenciaSugerida'
         frecuenciaSugerida: frecuencia,
         frecuenciaAuditoria: frecuencia as any,
-        _evaluacionRiesgo: ev ? {
+        _evaluacionRiesgo: {
           ponderacionFinalDafp: ev.ponderacionFinalDafp,
           nivelCriticidadDafp: ev.nivelCriticidadDafp,
           cicloRotacionDafp: ev.cicloRotacionDafp,
@@ -241,14 +239,14 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
           decisionFinal: ev.decisionFinal,
           vigencia: ev.vigencia,
           fechaCorte: ev.fechaCorte,
-        } as any : undefined,
-        auditable: ev?.decisionFinal === 'INCLUIR_PLAN_ANUAL' || ev?.decisionFinal === 'INCLUIR PLAN ANUAL' || (ev as any)?.priorizacionAnos?.length > 0,
-        activo: ev?.activo ?? p.activo,
-        createdAt: ev?.createdAt || p.createdAt,
-        updatedAt: ev?.updatedAt || p.updatedAt,
+        } as any,
+        auditable: ev.decisionFinal === 'INCLUIR_PLAN_ANUAL' || ev.decisionFinal === 'INCLUIR PLAN ANUAL' || (ev as any).priorizacionAnos?.length > 0,
+        activo: ev.activo ?? p.activo,
+        createdAt: ev.createdAt || p.createdAt,
+        updatedAt: ev.updatedAt || p.updatedAt,
       } as ProcesoAuditable;
-    });
-  }, [evaluaciones, procesos]);
+    }).filter(Boolean) as ProcesoAuditable[];
+  }, [evaluaciones, procesos, procesosMap]);
 
   // ══════════════════════════════════════════════════════════════════════════
   // ESTADOS Y UI
@@ -353,7 +351,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
       procesoId,
       vigencia: Number(datos.vigencia) || new Date().getFullYear(),
       fechaCorte: datos.fechaCorte || new Date().toISOString().split('T')[0],
-      dependenciaResponsable: datos.dependenciaResponsable || 'Sin dependencia',
+      dependenciaResponsable: `${datos.dependenciaResponsable || 'Sin dependencia'} || ${datos.macroproceso || 'Sin unidad'}`,
       riesgosExtremos: Number(riesgoExt),
       riesgosAltos: Number(riesgoAlt),
       riesgosModerados: Number(riesgoMod),
@@ -418,7 +416,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
     const evaluacionData: Partial<EvaluacionProcesoUI> = {
       vigencia: datos.vigencia || new Date().getFullYear(),
       fechaCorte: datos.fechaCorte,
-      dependenciaResponsable: datos.dependenciaResponsable || '',
+      dependenciaResponsable: `${datos.dependenciaResponsable || 'Sin dependencia'} || ${datos.macroproceso || 'Sin unidad'}`,
       riesgosExtremos: riesgoExt,
       riesgosAltos: riesgoAlt,
       riesgosModerados: riesgoMod,
