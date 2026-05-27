@@ -998,7 +998,6 @@ export function TabActuacionesExpediente({
                     </Button>
                   </div>
                 </div>
-                </div>
               </div>
             </motion.div>
             </motion.div>
