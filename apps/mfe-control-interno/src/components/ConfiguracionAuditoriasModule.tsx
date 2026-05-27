@@ -329,10 +329,18 @@ function SeccionTiposAuditoria({ tipos, onCrear, onActualizar, onEliminar }: Sec
 
         {/* Mensaje si no hay tipos */}
         {tipos.length === 0 && (
-          <div className="text-center py-8 text-gray-500">
-            <Target className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>No hay tipos de auditoría configurados</p>
-            <p className="text-sm">Crea el primer tipo para empezar</p>
+          <div className="text-center py-10 bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl mt-4">
+            <Target className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+            <h4 className="text-lg font-bold text-gray-700 mb-2">No hay tipos de auditoría configurados</h4>
+            <p className="text-sm text-gray-500 mb-6 max-w-md mx-auto">
+              Crea el primer tipo de auditoría manualmente para habilitar la creación y edición de auditorías en el sistema.
+            </p>
+            <div className="flex justify-center gap-4">
+              <Button onClick={handleNuevoTipo} style={{ background: '#003DA5' }}>
+                <Plus className="w-4 h-4 mr-2" />
+                Crear Nuevo Tipo
+              </Button>
+            </div>
           </div>
         )}
       </Card>

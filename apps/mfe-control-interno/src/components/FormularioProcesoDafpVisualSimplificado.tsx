@@ -7,6 +7,8 @@ import {
   Info,
   Layers,
   Save,
+  Search,
+  ChevronDown,
   Sparkles,
   X,
 } from 'lucide-react';
@@ -387,6 +389,26 @@ export function FormularioProcesoDafpVisual({
   const [unidadDropdownOpen, setUnidadDropdownOpen] = useState(false);
   const unidadDropdownRef = useRef<HTMLDivElement>(null);
 
+  // ── Searchable Select para Proceso ──
+  const [procesoDropdownOpen, setProcesoDropdownOpen] = useState(false);
+  const [procesoSearchTerm, setProcesoSearchTerm] = useState('');
+  const procesoDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (unidadDropdownRef.current && !unidadDropdownRef.current.contains(event.target as Node)) {
+        setUnidadDropdownOpen(false);
+      }
+      if (procesoDropdownRef.current && !procesoDropdownRef.current.contains(event.target as Node)) {
+        setProcesoDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   const prevOpenRef = useRef(false);
   const prevProcesoIdRef = useRef<string | undefined>(undefined);
 
@@ -712,23 +734,86 @@ export function FormularioProcesoDafpVisual({
                         className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 px-3 py-2.5 text-sm"
                       />
                     ) : (
-                      <select
-                        value={valorProcesoSeleccionado}
-                        onChange={(e) => handleSeleccionProceso(e.target.value)}
-                        className="w-full rounded-lg border-2 border-gray-300 bg-white px-3 py-2.5 text-sm outline-none transition-all focus:border-[#2962FF] focus:ring-2 focus:ring-[#2962FF]/20"
-                        required
-                      >
-                        <option value="">-- Seleccione un proceso del catálogo --</option>
-                        {procesosAgrupados.map((group) => (
-                          <optgroup key={group.groupLabel} label={group.groupLabel}>
-                            {group.items.map((proceso) => (
-                              <option key={proceso.id} value={proceso.encodedValue}>
-                                {proceso.codigo} · {proceso.nombre}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
+                      <div className="relative" ref={procesoDropdownRef}>
+                        <button
+                          type="button"
+                          onClick={() => setProcesoDropdownOpen(!procesoDropdownOpen)}
+                          className={`w-full rounded-lg border-2 px-3 py-2.5 text-sm text-left flex items-center justify-between transition-all ${
+                            procesoDropdownOpen ? 'border-[#2962FF] ring-2 ring-[#2962FF]/20 bg-white' : 'border-gray-300 bg-white hover:border-[#2962FF]/50'
+                          }`}
+                        >
+                          <span className="truncate pr-4 text-gray-700">
+                            {valorProcesoSeleccionado ? 
+                              (() => {
+                                const p = catalogoProcesos.find(c => c.encodedValue === valorProcesoSeleccionado);
+                                return p ? `${p.codigo} · ${p.nombre}` : '-- Seleccione un proceso del catálogo --';
+                              })()
+                              : '-- Seleccione un proceso del catálogo --'}
+                          </span>
+                          <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform flex-shrink-0 ${procesoDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        
+                        {procesoDropdownOpen && (
+                          <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg flex flex-col">
+                            <div className="p-2 border-b border-gray-100 sticky top-0 bg-white rounded-t-lg">
+                              <div className="flex items-center w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 focus-within:border-[#2962FF] focus-within:ring-1 focus-within:ring-[#2962FF] transition-all">
+                                <Search className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  placeholder="Buscar proceso, proyecto o procedimiento..."
+                                  value={procesoSearchTerm}
+                                  onChange={(e) => setProcesoSearchTerm(e.target.value)}
+                                  className="w-full bg-transparent text-sm outline-none text-gray-700 placeholder-gray-400"
+                                />
+                              </div>
+                            </div>
+                            <div className="max-h-60 overflow-y-auto p-1">
+                              {procesosAgrupados.map((group) => {
+                                const filteredItems = group.items.filter((proceso) => 
+                                  `${proceso.codigo} ${proceso.nombre}`.toLowerCase().includes(procesoSearchTerm.toLowerCase())
+                                );
+                                
+                                if (filteredItems.length === 0) return null;
+
+                                return (
+                                  <div key={group.groupLabel} className="mb-2">
+                                    <div className="px-2 py-1 text-xs font-bold text-gray-500 bg-gray-50/80 sticky top-0 backdrop-blur-sm z-10">
+                                      {group.groupLabel}
+                                    </div>
+                                    {filteredItems.map((proceso) => (
+                                      <button
+                                        key={proceso.id}
+                                        type="button"
+                                        className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors flex items-start gap-2 ${
+                                          valorProcesoSeleccionado === proceso.encodedValue 
+                                            ? 'bg-blue-50 text-blue-700 font-medium' 
+                                            : 'text-gray-700 hover:bg-gray-50'
+                                        }`}
+                                        onClick={() => {
+                                          handleSeleccionProceso(proceso.encodedValue);
+                                          setProcesoDropdownOpen(false);
+                                          setProcesoSearchTerm('');
+                                        }}
+                                      >
+                                        <span className="font-mono text-xs text-gray-500 mt-0.5">{proceso.codigo}</span>
+                                        <span>{proceso.nombre}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                );
+                              })}
+                              {procesosAgrupados.every(group => 
+                                group.items.filter(p => `${p.codigo} ${p.nombre}`.toLowerCase().includes(procesoSearchTerm.toLowerCase())).length === 0
+                              ) && (
+                                <div className="p-4 text-center text-sm text-gray-500">
+                                  No se encontraron resultados para "{procesoSearchTerm}"
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     )}
                     <p className="mt-1.5 text-[11px] text-gray-500">
                       Valor codificado: <code>{valorProcesoSeleccionado || 'código | nombre | tipo | dependencia | macroproceso'}</code>

@@ -66,9 +66,20 @@ export class ListasChequeoController {
   @Get()
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_VIEW)
-  findAll(@Query('includeInactive') includeInactive?: string) {
+  findAll(
+    @Query('includeInactive') includeInactive?: string,
+    @Query('planAnualVigencia') planAnualVigencia?: string,
+    @Query('planAnualId') planAnualId?: string,
+  ) {
     const includeInactiveBool = includeInactive === 'true';
-    return this.listasChequeoService.findAll(includeInactiveBool);
+    const vigenciaNum =
+      planAnualVigencia != null && planAnualVigencia !== ''
+        ? parseInt(planAnualVigencia, 10)
+        : undefined;
+    return this.listasChequeoService.findAll(includeInactiveBool, {
+      planAnualId,
+      planAnualVigencia: Number.isNaN(vigenciaNum) ? undefined : vigenciaNum,
+    });
   }
 
   /**

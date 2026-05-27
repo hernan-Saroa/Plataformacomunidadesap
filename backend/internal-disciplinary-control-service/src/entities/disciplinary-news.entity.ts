@@ -111,6 +111,9 @@ export class DisciplinaryNews {
   @Column({ type: 'uuid', nullable: true })
   kanbanStage: string | null;
 
+  @CreateDateColumn({ name: 'created_at', nullable: true })
+  createdAt: Date;
+
   @UpdateDateColumn()
   updatedAt: Date;
 

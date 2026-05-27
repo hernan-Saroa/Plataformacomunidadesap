@@ -386,7 +386,7 @@ export function ModalFormularioAuditoria({
       
       const newFormData = {
         codigo: initialData.codigo || '',
-        tipo: initialData.tipo || 'Gestión',
+        tipo: initialData.tipo || '',
         titulo: initialData.titulo || '',
         descripcion: initialData.descripcion || '',
         territorial: initialData.territorial || '',
@@ -400,6 +400,11 @@ export function ModalFormularioAuditoria({
         procesoAuditadoId: (initialData as any)?.procesoAuditadoId || '',
         procesoAuditadoNombre: (initialData as any)?.procesoAuditadoNombre || ''
       };
+      
+      console.log('[ModalFormularioAuditoria] Actualizando formData con initialData:', {
+        tipoForm: newFormData.tipo,
+        initialDataTipo: initialData.tipo
+      });
       
       console.log('[ModalFormularioAuditoria] Actualizando formData con initialData:', {
         auditorLider: newFormData.auditorLider,
@@ -645,14 +650,14 @@ export function ModalFormularioAuditoria({
                                 key={tipo.id}
                                 type="button"
                                 onClick={() => {
-                                  handleChange('tipo', tipo.nombre);
+                                  handleChange('tipo', tipo.codigo.toLowerCase());
                                   handleBlur('tipo');
                                 }}
                                 className={`
                                   px-4 py-3 rounded-lg border-2 transition-all duration-200
                                   flex flex-col items-center justify-center gap-2 font-medium
                                   ${
-                                    formData.tipo === tipo.nombre
+                                    formData.tipo === tipo.codigo.toLowerCase()
                                       ? 'border-blue-600 bg-blue-50 text-blue-700'
                                       : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400'
                                   }
@@ -674,9 +679,9 @@ export function ModalFormularioAuditoria({
                         ) : (
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                             {[
-                              { value: 'Regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
-                              { value: 'Territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
-                              { value: 'Especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> }
+                              { value: 'regular', label: 'Regular', icono: <Shield className="w-5 h-5" /> },
+                              { value: 'territorial', label: 'Territorial', icono: <MapPin className="w-5 h-5" /> },
+                              { value: 'especial', label: 'Especial', icono: <Zap className="w-5 h-5" /> }
                             ].map(tipo => (
                               <button
                                 key={tipo.value}
@@ -708,7 +713,7 @@ export function ModalFormularioAuditoria({
                         )}
                         {/* Descripción contextual del tipo seleccionado */}
                         {formData.tipo && (() => {
-                          const tipoSel = tiposAuditoria.find(t => t.nombre === formData.tipo);
+                          const tipoSel = tiposAuditoria.find(t => t.codigo.toLowerCase() === formData.tipo);
                           if (tipoSel?.descripcion) {
                             return (
                               <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">

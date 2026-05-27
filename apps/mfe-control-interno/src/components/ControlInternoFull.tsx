@@ -26,6 +26,7 @@ import { useControlInternoPermissions } from './hooks/useControlInternoPermissio
 
 // ✅ HOOK DE BACKEND - Planes de mejoramiento para badge
 import { usePlanesMejoramiento } from './services/usePlanesMejoramiento';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 
 // ━━━━━━━━━━━ MÓDULOS CONSOLIDADOS ━━━━━━━━━━━
 import { GestionAuditoriasKanbanSimple } from "./GestionAuditoriasKanbanSimple";  // DASHBOARD PRINCIPAL
@@ -113,8 +114,13 @@ function ControlInternoContent({
   // ✅ HOOK DE PERMISOS - Para filtrar submódulos
   const { puedeAcceder, esSuperUsuario } = useControlInternoPermissions();
   
-  // ✅ HOOK DE BACKEND - Total de planes para badge
-  const { planes: planesBackend, loading: loadingPlanes } = usePlanesMejoramiento();
+  const vigenciaCtxBadge = usePlanAnualVigenciaContextOptional();
+  // ✅ HOOK DE BACKEND - Total de planes para badge (filtrado por vigencia activa)
+  const { planes: planesBackend, loading: loadingPlanes } = usePlanesMejoramiento(
+    vigenciaCtxBadge?.vigencia != null
+      ? { planAnualVigencia: vigenciaCtxBadge.vigencia }
+      : undefined,
+  );
 
   // ✅ HOOK DE NOTIFICACIONES - Bell icon con conteo
   const {

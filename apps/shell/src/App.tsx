@@ -341,7 +341,7 @@ function DemoNoDisponible({ title }: { title: string }) {
       <div className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
         <p className="mt-3 text-sm text-slate-600">
-          Esta vista demo no fue migrada al shell. Revise el MFE correspondiente o `_src_legacy_backup`.
+          Esta vista demo no fue migrada al shell. Revise el MFE correspondiente.
         </p>
       </div>
     </div>

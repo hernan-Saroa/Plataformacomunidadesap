@@ -5,12 +5,9 @@ import { Notificacion, EstadoNotificacion, TipoNotificacion, CanalNotificacion, 
 import { PreferenciaNotificacion } from './entities/preferencia-notificacion.entity';
 import { CreateNotificacionDto } from './dto/create-notificacion.dto';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class NotificacionesService {
-  private transporter: nodemailer.Transporter;
-
   constructor(
     @InjectRepository(Notificacion)
     private readonly notificacionRepository: Repository<Notificacion>,
@@ -18,27 +15,7 @@ export class NotificacionesService {
     private readonly preferenciaRepository: Repository<PreferenciaNotificacion>,
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
-  ) {
-    // Configurar transportador de correo
-    const smtpUser = this.configService.get<string>('SMTP_USER');
-    const smtpPass = this.configService.get<string>('SMTP_PASS');
-
-    const transportConfig: any = {
-      host: this.configService.get<string>('SMTP_HOST', 'smtp.gmail.com'),
-      port: this.configService.get<number>('SMTP_PORT', 587),
-      secure: this.configService.get<boolean>('SMTP_SECURE', false),
-    };
-
-    // Solo añadir autenticación si hay usuario y clave definidos
-    if (smtpUser && smtpPass) {
-      transportConfig.auth = {
-        user: smtpUser,
-        pass: smtpPass,
-      };
-    }
-
-    this.transporter = nodemailer.createTransport(transportConfig);
-  }
+  ) {}
 
   /**
    * Obtiene el identificador del usuario (UUID)
@@ -719,8 +696,8 @@ export class NotificacionesService {
             notificacion.enviadaEmail = true;
             notificacion.fechaEnvioEmail = new Date();
             notificacion.estado = EstadoNotificacion.ENVIADA;
-          } catch (smtpError) {
-            console.error(`[Notificaciones] ❌ Error aisaldo de SMTP al enviar a ${emailDestino}. La notificación de sistema seguirá activa. Detalles:`, smtpError.message);
+          } catch (emailError) {
+            console.error(`[Notificaciones] ❌ Error aislado al solicitar correo para ${emailDestino}. La notificación de sistema seguirá activa. Detalles:`, emailError.message);
           }
         } else {
           console.warn(`[Notificaciones] ⚠️ Abortando email: Usuario ${notificacion.usuarioId} no tiene correo registrado.`);
@@ -777,14 +754,31 @@ export class NotificacionesService {
     }
   }
 
+  private resolveNotificationsBaseUrl(): string {
+    const configuredUrl =
+      this.configService.get<string>('NOTIFICATIONS_SERVICE_URL') ||
+      this.configService.get<string>('NOTIFICATION_SERVICE_URL');
+
+    if (configuredUrl) {
+      return configuredUrl.replace(/\/$/, '');
+    }
+
+    if (this.configService.get<string>('NODE_ENV', 'development') !== 'production') {
+      return 'http://localhost:3009';
+    }
+
+    return 'http://notifications-service:3009';
+  }
+
   /**
-   * Envía el correo real usando nodemailer
+   * Solicita el envío de correo al microservicio central de notificaciones.
    */
   private async enviarCorreoReal(notificacion: Notificacion, emailDestino: string): Promise<void> {
-    console.log(`[Notificaciones] 🚀 Intentando enviar email a: ${emailDestino} para la notificación: ${notificacion.titulo}`);
+    const notificationsBaseUrl = this.resolveNotificationsBaseUrl();
+
+    console.log(`[Notificaciones] 🚀 Solicitando envío de email a ${emailDestino} mediante ${notificationsBaseUrl}: ${notificacion.titulo}`);
     
     try {
-      const from = this.configService.get<string>('SMTP_FROM', '"Plataforma ESAP" <noreply@esap.edu.co>');
       const appUrl = this.configService.get<string>('APP_URL', 'http://localhost:3000');
       
       const html = `
@@ -811,17 +805,26 @@ export class NotificacionesService {
         </div>
       `;
 
-      await this.transporter.sendMail({
-        from,
-        to: emailDestino,
-        subject: notificacion.titulo,
-        html,
+      const response = await fetch(`${notificationsBaseUrl}/api/v1/emails/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: emailDestino,
+          subject: notificacion.titulo,
+          text: notificacion.mensaje,
+          html,
+        }),
       });
 
-      console.log(`[Notificaciones] ✅ ¡ÉXITO! Correo entregado a ${emailDestino}`);
+      if (!response.ok) {
+        const errorBody = await response.text().catch(() => '');
+        throw new Error(`notifications-service ${response.status}: ${errorBody || 'sin detalle'}`);
+      }
+
+      console.log(`[Notificaciones] ✅ Solicitud de correo aceptada para ${emailDestino}`);
     } catch (error) {
-      console.error(`[Notificaciones] ❌ ERROR CRÍTICO SMTP al enviar a ${emailDestino}:`, error.message);
-      // Opcionalmente podrías relanzar el error o manejarlo según política
+      const errorMessage = error.cause?.message || error.message;
+      console.error(`[Notificaciones] ❌ Error enviando email mediante ${notificationsBaseUrl} a ${emailDestino}:`, errorMessage);
       throw error;
     }
   }
@@ -1357,5 +1360,3 @@ export class NotificacionesService {
     }
   }
 }
-
-
