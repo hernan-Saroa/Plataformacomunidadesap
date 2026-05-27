@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { planAnualApi, invalidatePlanAnualListCache } from '../services/plan-anual/api';
 import type { PlanAnual } from '../services/plan-anual/types';
+import { useControlInternoPermissions } from './useControlInternoPermissions';
 
 export const PLAN_ANUAL_STORAGE_KEY = 'esap:plan_anual_activo';
 
@@ -92,6 +93,12 @@ export function usePlanAnualVigencia() {
   );
   const [loading, setLoading] = useState(true);
 
+  const { puedeRealizar, esSuperUsuario } = useControlInternoPermissions();
+  const puedeAprobar = puedeRealizar('plan-anual', 'approve');
+  const puedeEditar = puedeRealizar('plan-anual', 'edit');
+  const puedeActivar = puedeRealizar('plan-anual', 'activate');
+  const esSoloComite = puedeAprobar && !puedeEditar && !puedeActivar && !esSuperUsuario;
+
   const cargarPlanes = useCallback(async (forzarRecarga = false) => {
     setLoading(true);
     try {
@@ -100,9 +107,15 @@ export function usePlanAnualVigencia() {
       }
       const resp = await planAnualApi.getAll({ light: true, skipCache: forzarRecarga });
       if (resp.success && Array.isArray(resp.data) && resp.data.length > 0) {
-        const lista = resp.data
+        let lista = resp.data
           .map(mapPlanBackend)
           .sort((a, b) => b.vigencia - a.vigencia);
+
+        // Bugfix: un usuario que solo firma en comité no debe “navegar” por borradores/otros estados.
+        // Evita confusión y accesos indebidos en módulos que usan la vigencia activa como contexto global.
+        if (esSoloComite) {
+          lista = lista.filter((p) => p.estado === 'EN_REVISION');
+        }
         setPlanes(lista);
 
         const storedNow = leerPlanAnualActivoStorage();
@@ -125,7 +138,7 @@ export function usePlanAnualVigencia() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [esSoloComite]);
 
   useEffect(() => {
     cargarPlanes();

@@ -168,7 +168,7 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
 
   const [formData, setFormData] = useState<Auditoria>({
     nombre: '',
-    tipo: 'SEDE',
+    tipo: '',
     responsable: '',
     // Etapa 1: Planeación
     fechaInicioPlaneacion: '',
@@ -241,7 +241,7 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
       // Reset al cerrar
       setFormData({
         nombre: '',
-        tipo: 'SEDE',
+        tipo: '',
         responsable: '',
         // Etapa 1: Planeación
         fechaInicioPlaneacion: '',
@@ -311,7 +311,7 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
         const tipos = await cargarTiposAuditoria(false);
 
         if (tipos && tipos.length > 0) {
-          setTiposDisponibles(tipos.map(t => ({ codigo: t.codigo, nombre: t.nombre })));
+          setTiposDisponibles(tipos.map(t => ({ codigo: t.codigo.toLowerCase(), nombre: t.nombre })));
         }
       } catch (error) {
         console.error('[ModalesAuditorias] Error al cargar tipos:', error);
@@ -576,25 +576,15 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                   Tipo de Auditoría <span className="text-red-500">*</span>
                 </label>
                 <select
-                  value={formData.tipo}
+                  value={formData.tipo?.toLowerCase() || ''}
                   onChange={(e) => setFormData({ ...formData, tipo: e.target.value })}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] transition-all text-base bg-white"
-                  disabled={cargandoTipos}
+                  disabled={cargandoTipos || tiposDisponibles.length === 0}
                 >
-                  <option value="">{cargandoTipos ? 'Cargando tipos...' : 'Seleccione un tipo...'}</option>
-                  {tiposDisponibles.length > 0 ? (
-                    tiposDisponibles.map(t => (
-                      <option key={t.codigo} value={t.codigo}>{t.nombre}</option>
-                    ))
-                  ) : (
-                    // Fallback si no se cargaron tipos del backend
-                    <>
-                      <option value="SEDE">SEDE CENTRAL</option>
-                      <option value="TERRITORIAL">TERRITORIAL</option>
-                      <option value="ESPECIAL">ESPECIAL</option>
-                      <option value="SEGUIMIENTO">SEGUIMIENTO</option>
-                    </>
-                  )}
+                  <option value="">{cargandoTipos ? 'Cargando tipos...' : tiposDisponibles.length === 0 ? 'No hay tipos configurados' : 'Seleccione un tipo...'}</option>
+                  {tiposDisponibles.map(t => (
+                    <option key={t.codigo} value={t.codigo}>{t.nombre}</option>
+                  ))}
                 </select>
               </div>
 
@@ -698,7 +688,6 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                     Fecha de Inicio <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
                       type="date"
                       value={formData.fechaInicioPlaneacion || formData.fechaInicio || ''}
@@ -707,7 +696,7 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                         fechaInicioPlaneacion: e.target.value,
                         fechaInicio: e.target.value // Compatibilidad
                       })}
-                      className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-base"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-base"
                       required
                     />
                   </div>
@@ -719,13 +708,12 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                     Fecha de Fin <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
                       type="date"
                       value={formData.fechaFinPlaneacion || ''}
                       onChange={(e) => setFormData({ ...formData, fechaFinPlaneacion: e.target.value })}
                       min={formData.fechaInicioPlaneacion || formData.fechaInicio || undefined}
-                      className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-base"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-base"
                       required
                     />
                   </div>
@@ -774,14 +762,13 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                     Fecha de Inicio
                   </label>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
                       type="date"
                       value={formData.fechaInicioEjecucion || ''}
                       onChange={(e) => setFormData({ ...formData, fechaInicioEjecucion: e.target.value })}
                       min={formData.fechaFinPlaneacion || undefined}
                       disabled={!(formData.fechaInicioPlaneacion && formData.fechaFinPlaneacion)}
-                      className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all text-base disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all text-base disabled:bg-gray-100 disabled:cursor-not-allowed"
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">Inicio del trabajo de campo</p>
@@ -792,14 +779,13 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                     Fecha de Fin
                   </label>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
                       type="date"
                       value={formData.fechaFinEjecucion || ''}
                       onChange={(e) => setFormData({ ...formData, fechaFinEjecucion: e.target.value })}
                       min={formData.fechaInicioEjecucion || formData.fechaFinPlaneacion || undefined}
                       disabled={!(formData.fechaInicioPlaneacion && formData.fechaFinPlaneacion)}
-                      className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all text-base disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all text-base disabled:bg-gray-100 disabled:cursor-not-allowed"
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">Finalización del trabajo de campo</p>
@@ -847,14 +833,13 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                     Fecha de Inicio
                   </label>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
                       type="date"
                       value={formData.fechaInicioComunicacion || ''}
                       onChange={(e) => setFormData({ ...formData, fechaInicioComunicacion: e.target.value })}
                       min={formData.fechaFinEjecucion || undefined}
                       disabled={!(formData.fechaInicioEjecucion && formData.fechaFinEjecucion)}
-                      className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-base disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-base disabled:bg-gray-100 disabled:cursor-not-allowed"
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">Inicio elaboración de informes</p>
@@ -865,7 +850,6 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                     Fecha de Fin
                   </label>
                   <div className="relative">
-                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
                       type="date"
                       value={formData.fechaFinComunicacion || formData.fechaFin || ''}
@@ -876,7 +860,7 @@ export function ModalFormularioAuditoria({ isOpen, onClose, auditoria, onSave }:
                       })}
                       min={formData.fechaInicioComunicacion || formData.fechaFinEjecucion || undefined}
                       disabled={!(formData.fechaInicioEjecucion && formData.fechaFinEjecucion)}
-                      className="w-full pl-12 pr-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-base disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all text-base disabled:bg-gray-100 disabled:cursor-not-allowed"
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">Fin de la auditoría</p>
