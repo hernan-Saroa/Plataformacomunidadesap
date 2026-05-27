@@ -27,6 +27,7 @@ import {
 import { toast } from 'sonner';
 import { HeaderModulOCIG } from './HeaderModuloCIG';
 import { ModuleHeaderBar } from './ModuleHeaderBar';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 import { controlInternoService, ListaChequeo as ListaChequeoService } from '../../../services/api/controlInternoService';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 import { useConfiguracionKanban } from './services/useConfiguracionKanban';
@@ -86,6 +87,18 @@ const getMimeTypeLabel = (mimeType: string): string => {
 // ════════════════════════════════════════════════════════════════════════════
 // TIPOS
 // ════════════════════════════════════════════════════════════════════════════
+
+/** Excluye registros legacy sin vigencia y los de otro año */
+function filtrarRegistrosPorVigencia<T extends Record<string, unknown>>(
+  items: T[],
+  vigencia: number,
+): T[] {
+  return items.filter((item) => {
+    const v = item.planAnualVigencia ?? item.plan_anual_vigencia;
+    if (v == null || v === '') return false;
+    return Number(v) === vigencia;
+  });
+}
 
 type EtapaKanban = 'PLANEACION' | 'EJECUCION' | 'COMUNICACION' | 'SEGUIMIENTO' | 'CIERRE';
 
@@ -193,6 +206,28 @@ function normalizarEtapaTexto(s: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim();
+}
+
+/** Plantilla de biblioteca aplicable a la etapa seleccionada (por UUID o nombre) */
+function documentoAplicaEtapa(
+  doc: DocumentoBiblioteca,
+  etapaId: string,
+  etapas: { value: string; label: string }[],
+): boolean {
+  if (!etapaId) return true;
+  if (doc.etapaKanbanId && doc.etapaKanbanId === etapaId) return true;
+  const etapaSel = etapas.find((e) => e.value === etapaId);
+  const nombreFiltro = normalizarEtapaTexto(etapaSel?.label || '');
+  if (!nombreFiltro) return true;
+  const candidatos = [doc.etapaNombreKanban, doc.etapaKanban].filter(Boolean) as string[];
+  return candidatos.some((nombre) => {
+    const n = normalizarEtapaTexto(nombre);
+    return (
+      n === nombreFiltro ||
+      n.includes(nombreFiltro) ||
+      nombreFiltro.includes(n)
+    );
+  });
 }
 
 /** Solo Planeación, Ejecución, Comunicación (listas de chequeo no aplican a Plan Anual, Seguimiento ni Finalizada) */
@@ -406,6 +441,10 @@ export interface ListasChequeoModuleProps {
 }
 
 export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tabInicial, auditoriaIdFoco, onNavegacionAplicada }: ListasChequeoModuleProps = {}) {
+  const vigenciaCtx = usePlanAnualVigenciaContextOptional();
+  const vigenciaPlan = vigenciaCtx?.vigencia ?? new Date().getFullYear();
+  const planAnualId = vigenciaCtx?.planActivoId ?? undefined;
+
   const [tabActivaInterno, setTabActivaInterno] = useState<TabActiva>('BIBLIOTECA');
   const esControlado = tabActivaProp !== undefined && onTabChange !== undefined;
   const tabActiva = esControlado ? tabActivaProp : tabActivaInterno;
@@ -436,24 +475,30 @@ export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tab
       setIsLoading(true);
       setLoadError(null);
       try {
+        const filtrosVigencia = { planAnualVigencia: vigenciaPlan };
         const [docsApi, listasApi, auditoriasApi] = await Promise.all([
-          controlInternoService.getDocumentos(),
-          controlInternoService.getListasChequeo(),
-          controlInternoService.getAuditorias()
+          controlInternoService.getDocumentos({
+            bibliotecaOnly: true,
+            ...filtrosVigencia,
+          }),
+          controlInternoService.getListasChequeo(filtrosVigencia),
+          controlInternoService.getAuditorias({
+            year: vigenciaPlan,
+            light: true,
+            activasOnly: true,
+          }),
         ]);
         if (cancelled) return;
 
-        if (Array.isArray(docsApi) && docsApi.length > 0) {
-          const soloPlantillas = docsApi.filter((d: any) => !d.auditoriaId && !d.auditoria_id);
-          setDocumentosBiblioteca(soloPlantillas.map(mapApiDocumentoToBiblioteca));
-        } else {
-          setDocumentosBiblioteca([]);
-        }
-        if (Array.isArray(listasApi) && listasApi.length > 0) {
-          setListasBackend(listasApi.map(mapApiListaToUI));
-        } else {
-          setListasBackend([]);
-        }
+        const docsFiltrados = Array.isArray(docsApi)
+          ? filtrarRegistrosPorVigencia(docsApi, vigenciaPlan)
+          : [];
+        setDocumentosBiblioteca(docsFiltrados.map(mapApiDocumentoToBiblioteca));
+
+        const listasFiltradas = Array.isArray(listasApi)
+          ? filtrarRegistrosPorVigencia(listasApi, vigenciaPlan)
+          : [];
+        setListasBackend(listasFiltradas.map(mapApiListaToUI));
         if (Array.isArray(auditoriasApi)) {
           setAuditorias(auditoriasApi);
         } else {
@@ -475,7 +520,7 @@ export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tab
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [vigenciaPlan, planAnualId]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -533,6 +578,8 @@ export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tab
               isLoading={isLoading}
               loadError={loadError}
               etapasDisponibles={etapasParaListas}
+              planAnualVigencia={vigenciaPlan}
+              planAnualId={planAnualId}
             />
           )}
           {tabActiva === 'LISTAS_CHEQUEO' && (
@@ -544,6 +591,8 @@ export function ListasChequeoModule({ tabActiva: tabActivaProp, onTabChange, tab
               isLoading={isLoading}
               loadError={loadError}
               auditoriaIdFoco={auditoriaIdFoco}
+              planAnualVigencia={vigenciaPlan}
+              planAnualId={planAnualId}
             />
           )}
         </motion.div>
@@ -565,6 +614,8 @@ interface BibliotecaDocumentosProps {
   loadError: string | null;
   /** Etapas dinámicas desde configuración Kanban */
   etapasDisponibles?: { value: string; label: string }[];
+  planAnualVigencia?: number;
+  planAnualId?: string;
 }
 
 const ETAPAS_ORDEN: EtapaKanban[] = ['PLANEACION', 'EJECUCION', 'COMUNICACION', 'SEGUIMIENTO', 'CIERRE'];
@@ -576,7 +627,16 @@ const ETAPA_LABEL: Record<string, string> = {
   CIERRE: 'Cierre',
 };
 
-function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLoading, loadError, etapasDisponibles }: BibliotecaDocumentosProps) {
+function BibliotecaDocumentos({
+  documentos,
+  setDocumentos,
+  auditorias = [],
+  isLoading,
+  loadError,
+  etapasDisponibles,
+  planAnualVigencia,
+  planAnualId,
+}: BibliotecaDocumentosProps) {
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState<string>('TODOS');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODOS');
@@ -774,6 +834,8 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
         etapaNombreKanban: nuevoDocumento.etapaNombreKanban, // ✅ SNAPSHOT del nombre
         subidoPor: nuevoDocumento.subidoPor,
         ...(nuevoDocumento.auditoriaId && { visibleAuditoriaId: nuevoDocumento.auditoriaId }),
+        ...(planAnualVigencia != null ? { planAnualVigencia } : {}),
+        ...(planAnualId ? { planAnualId } : {}),
       });
       const documentoCompleto: DocumentoBiblioteca = mapApiDocumentoToBiblioteca(creado);
       setDocumentos(prev => [documentoCompleto, ...prev]);
@@ -792,7 +854,9 @@ function BibliotecaDocumentos({ documentos, setDocumentos, auditorias = [], isLo
         <div className="flex items-start justify-between mb-3">
           <div>
             <h2 className="text-sm font-bold text-gray-900">Biblioteca de Plantillas</h2>
-            <p className="text-[11px] text-gray-500">Repositorio centralizado de plantillas, oficios y documentos oficiales para auditoría</p>
+            <p className="text-[11px] text-gray-500">
+              Repositorio de plantillas y documentos oficiales · vigencia {planAnualVigencia ?? '—'}
+            </p>
           </div>
           <button
             onClick={() => setMostrarModalSubir(true)}
@@ -1164,9 +1228,21 @@ interface GestionListasChequeoProps {
   auditoriaIdFoco?: string;
   /** ✅ Etapas dinámicas desde configuración de Kanban */
   etapasDisponibles?: { value: string; label: string }[];
+  planAnualVigencia?: number;
+  planAnualId?: string;
 }
 
-function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciales, isLoading, loadError, auditoriaIdFoco, etapasDisponibles }: GestionListasChequeoProps) {
+function GestionListasChequeo({
+  documentosBiblioteca,
+  auditorias,
+  listasIniciales,
+  isLoading,
+  loadError,
+  auditoriaIdFoco,
+  etapasDisponibles,
+  planAnualVigencia,
+  planAnualId,
+}: GestionListasChequeoProps) {
   const [listas, setListas] = useState<ListaChequeo[]>(listasIniciales || []);
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODOS');
   const [mostrarModalCrear, setMostrarModalCrear] = useState(false);
@@ -1406,6 +1482,8 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
         tipo,
         categoria: 'biblioteca',
         activa: true,
+        ...(planAnualVigencia != null ? { planAnualVigencia } : {}),
+        ...(planAnualId ? { planAnualId } : {}),
         items: (listaCompleta.items || []).map((item, idx) => ({
           texto: String(item.texto || ''),
           categoria: 'General',
@@ -1483,7 +1561,7 @@ function GestionListasChequeo({ documentosBiblioteca, auditorias, listasIniciale
               Gestión de Listas de Chequeo
             </h1>
             <p className="text-sm sm:text-base text-gray-600">
-              Crea y administra listas de verificación vinculadas a las etapas del Kanban
+              Crea y administra listas vinculadas al Kanban · vigencia {planAnualVigencia ?? '—'}
             </p>
           </div>
           <button
@@ -2238,29 +2316,23 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
 
   const etapaKanbanBloqueada = false;
 
-  // Al elegir auditoría: mantener las 3 etapas permitidas y preseleccionar una etapa válida.
   useEffect(() => {
     if (!auditoriaSeleccionada) {
       setEtapaKanbanId('');
       setFiltroEtapaModal('');
-      return;
+      setPlantillaItemActual('');
     }
-    const aud = auditorias.find((a) => a.id === auditoriaSeleccionada);
-    if (!aud || !auditoriaPermiteListaChequeo(aud)) return;
-    const match = resolverEtapaOpcionParaAuditoria(
-      etapasListaChequeo,
-      estadoAuditoriaOCIG(aud),
-    );
-    const etapaInicial =
-      etapasListaChequeo.find((e) => e.value === etapaKanbanId)?.value ||
-      match?.value ||
-      etapasListaChequeo[0]?.value ||
-      '';
-    if (etapaInicial) {
-      setEtapaKanbanId(etapaInicial);
-      setFiltroEtapaModal(etapaInicial);
-    }
-  }, [auditoriaSeleccionada, auditorias, etapasListaChequeo]);
+  }, [auditoriaSeleccionada]);
+
+  const etapaFiltroPlantillas = filtroEtapaModal || etapaKanbanId;
+
+  const plantillasParaItems = useMemo(
+    () =>
+      documentosBiblioteca.filter((doc) =>
+        documentoAplicaEtapa(doc, etapaFiltroPlantillas, etapasListaChequeo),
+      ),
+    [documentosBiblioteca, etapaFiltroPlantillas, etapasListaChequeo],
+  );
 
   const handleAgregarItem = () => {
     if (!nuevoItemTexto.trim()) return;
@@ -2545,7 +2617,12 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
             </label>
             <select
               value={etapaKanbanId}
-              onChange={(e) => setEtapaKanbanId(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                setEtapaKanbanId(v);
+                setFiltroEtapaModal(v);
+                setPlantillaItemActual('');
+              }}
               disabled={!auditoriaSeleccionada || etapaKanbanBloqueada}
               className="w-full px-4 py-3 text-sm border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none bg-white font-semibold text-gray-800 disabled:bg-slate-100 disabled:text-slate-700"
             >
@@ -2558,11 +2635,8 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
             <p className="text-xs text-gray-500 mt-1">
               {!auditoriaSeleccionada
                 ? 'Seleccione primero la auditoría para habilitar las etapas permitidas (Planeación, Ejecución o Comunicación).'
-                : etapaAcordeAuditoria
-                  ? '✅ Puede elegir libremente entre Planeación, Ejecución y Comunicación.'
-                  : modoEdicion
-                    ? 'Etapa registrada para esta lista (auditoría en una fase distinta a las permitidas para nuevas listas).'
-                    : 'Seleccione una de las 3 etapas permitidas para la lista de chequeo.'}
+                : 'Puede elegir Planeación, Ejecución o Comunicación (no tiene que coincidir con la fase actual del Kanban).'
+              }
             </p>
           </div>
 
@@ -2572,8 +2646,13 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
               Items de Verificación
             </label>
             <p className="text-xs text-gray-600 mb-3">
-              Cada ítem puede tener una plantilla asociada (opcional)
+              Cada ítem puede tener una plantilla asociada (opcional), filtrada por etapa y vigencia del plan anual.
             </p>
+            {plantillasParaItems.length === 0 && etapaFiltroPlantillas && (
+              <p className="text-xs text-amber-700 mb-3">
+                No hay plantillas en biblioteca para esta etapa y vigencia. Suba plantillas en la pestaña Biblioteca.
+              </p>
+            )}
 
             {/* Agregar nuevo item */}
             <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 mb-4 space-y-3">
@@ -2593,11 +2672,13 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
                   <div className="flex items-center gap-2">
                     <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
                     <select
-                      value={filtroEtapaModal}
-                      onChange={(e) => { setFiltroEtapaModal(e.target.value); setPlantillaItemActual(''); }}
+                      value={filtroEtapaModal || etapaKanbanId}
+                      onChange={(e) => {
+                        setFiltroEtapaModal(e.target.value);
+                        setPlantillaItemActual('');
+                      }}
                       className="flex-1 px-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none bg-white text-gray-600"
                     >
-                      <option value="">Todas las etapas (lista chequeo)</option>
                       {etapasListaChequeo.map((etapa) => (
                         <option key={etapa.value} value={etapa.value}>{etapa.label}</option>
                       ))}
@@ -2613,24 +2694,7 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
                     className="flex-1 px-3 py-2 text-xs border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none bg-white"
                   >
                     <option value="">Sin plantilla asociada</option>
-                    {documentosBiblioteca
-                      .filter((doc) => {
-                        if (!filtroEtapaModal) return true;
-                        // Buscar nombre de la etapa seleccionada
-                        const etapaSelec = etapasListaChequeo.find(e => e.value === filtroEtapaModal);
-                        const nombreEtapaFiltro = etapaSelec?.label;
-                        
-                        // ✅ COMPARAR POR MÚLTIPLES CRITERIOS
-                        // 1. Por ID de etapa (más confiable)
-                        if (doc.etapaKanbanId === filtroEtapaModal) return true;
-                        
-                        // 2. Por nombre de etapa guardado o etapaKanban directamente
-                        if (doc.etapaNombreKanban === nombreEtapaFiltro) return true;
-                        if (doc.etapaKanban === nombreEtapaFiltro) return true;
-                        
-                        return false;
-                      })
-                      .map((doc) => (
+                    {plantillasParaItems.map((doc) => (
                         <option key={doc.id} value={doc.id}>
                           📄 {doc.nombre} ({doc.categoria})
                         </option>
@@ -2675,7 +2739,7 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
                               className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded focus:border-blue-500 focus:outline-none bg-white"
                             >
                               <option value="">Sin plantilla</option>
-                              {documentosBiblioteca.map((doc) => (
+                              {plantillasParaItems.map((doc) => (
                                 <option key={doc.id} value={doc.id}>
                                   📄 {doc.nombre} {doc.etapaNombreKanban || doc.etapaKanban ? `• ${doc.etapaNombreKanban || doc.etapaKanban}` : ''} ({doc.categoria})
                                 </option>

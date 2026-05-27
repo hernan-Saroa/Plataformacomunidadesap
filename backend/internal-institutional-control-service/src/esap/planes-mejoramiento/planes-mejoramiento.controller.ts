@@ -63,8 +63,18 @@ export class PlanesMejoramientoController {
   findAll(
     @Query('estado') estado?: string,
     @Query('area') area?: string,
+    @Query('planAnualVigencia') planAnualVigencia?: string,
   ) {
-    return this.planesMejoramientoService.findAll({ estado, area });
+    const vigenciaNum =
+      planAnualVigencia != null && planAnualVigencia !== ''
+        ? parseInt(planAnualVigencia, 10)
+        : undefined;
+    return this.planesMejoramientoService.findAll({
+      estado,
+      area,
+      planAnualVigencia:
+        vigenciaNum != null && !Number.isNaN(vigenciaNum) ? vigenciaNum : undefined,
+    });
   }
 
   /**

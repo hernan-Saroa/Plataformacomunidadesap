@@ -152,6 +152,18 @@ export interface ExpedienteJudicial {
   fechaAdmision?: Date;
   fechaVencimientoTerminos?: Date;
   fechaUltimaActuacion?: Date;
+
+  // Riesgo y provisión
+  nivelRiesgo?: string;
+  provisionContable?: number;
+  observacionProvision?: string;
+  fechaEstimacionProvision?: string;
+
+  // Clasificación penal (solo aplica cuando tipoProceso = 'Proceso Penal')
+  esDelitoAdminPublica?: boolean;
+  esConductaPatrimonioPublico?: boolean;
+  esOtroDelitoPenal?: boolean;
+  otroDelitoPenalDescripcion?: string;
 }
 
 // ============================================================================

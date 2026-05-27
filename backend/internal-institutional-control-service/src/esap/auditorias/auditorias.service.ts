@@ -409,9 +409,15 @@ export class AuditoriasService {
     }
 
     if (filters?.planAnualVigencia != null && !Number.isNaN(Number(filters.planAnualVigencia))) {
-      query.andWhere('auditoria.planAnualVigencia = :planAnualVigencia', {
-        planAnualVigencia: Number(filters.planAnualVigencia),
-      });
+      const vigencia = Number(filters.planAnualVigencia);
+      query.andWhere(
+        `(auditoria.planAnualVigencia = :planAnualVigencia OR (
+          auditoria.planAnualVigencia IS NULL
+          AND auditoria.fechaInicio IS NOT NULL
+          AND EXTRACT(YEAR FROM auditoria.fechaInicio) = :planAnualVigencia
+        ))`,
+        { planAnualVigencia: vigencia },
+      );
     } else if (filters?.year != null && Number.isFinite(filters.year)) {
       query.andWhere('EXTRACT(YEAR FROM auditoria.fechaInicio) = :year', {
         year: filters.year,

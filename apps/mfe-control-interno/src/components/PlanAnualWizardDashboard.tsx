@@ -47,6 +47,7 @@ import { idPersonaParaPlanAnual, type ReferenciaPersonaPlan } from '../utils/per
 
 // Tipos re-exportados (deben coincidir con el archivo principal)
 type EstadoPlan = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'VIGENTE' | 'CERRADO' | 'DEVUELTO';
+
 type EstadoActividad = 'PENDIENTE' | 'EN_EJECUCION' | 'COMPLETADA';
 
 interface Auditor {
@@ -2000,6 +2001,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
   const [cargandoPlanBorrador, setCargandoPlanBorrador] = useState(false);
 
   const handleVigenciaChange = (nuevaVigencia: number) => {
+    if (planAEditar?.id) return;
     if (nuevaVigencia === vigencia) return;
 
     if (!wizardHydrationCompletedRef.current) {
@@ -2030,13 +2032,17 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     if (!planBorradorVigenciaActual || !onCargarPlanBorrador || cargandoPlanBorrador) return;
     setCargandoPlanBorrador(true);
     try {
-      await Promise.resolve(onCargarPlanBorrador(planBorradorVigenciaActual));
+      await onCargarPlanBorrador(planBorradorVigenciaActual);
     } catch {
       toast.error('No se pudo cargar el borrador');
     } finally {
       setCargandoPlanBorrador(false);
     }
   };
+
+  /** Misma regla que «Editar plan»: vigencia fija al editar un plan ya guardado (incl. borrador en BD). */
+  const vigenciaSoloLecturaEdicion =
+    Boolean(planAEditar?.id) || cargandoPlanBorrador;
 
   /** Al abrir/editar un plan guardado, sincronizar paso 1 con datos del backend (el estado inicial no se recalcula solo). */
   useEffect(() => {
@@ -2791,6 +2797,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
                     : undefined
                 }
                 soloLectura={enModoSoloConsulta}
+                vigenciaSoloLecturaEdicion={vigenciaSoloLecturaEdicion}
               />
             )}
             {paso === 2 && (
@@ -2924,7 +2931,8 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
 }
 
 // Paso 1: Configuración básica
-function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores, vigenciasExistentes = [], vigenciasDisponibles = [], planBorradorVigencia, cargandoPlanBorrador = false, onContinuarBorrador, soloLectura = false }: any) {
+function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores, vigenciasExistentes = [], vigenciasDisponibles = [], planBorradorVigencia, cargandoPlanBorrador = false, onContinuarBorrador, soloLectura = false, vigenciaSoloLecturaEdicion = false }: any) {
+  const vigenciaCampoSoloLectura = soloLectura || vigenciaSoloLecturaEdicion;
   const anioFechaInicio = fechaInicio ? parseInt(fechaInicio.split('-')[0], 10) : vigencia;
   const anioFechaFin = fechaFin ? parseInt(fechaFin.split('-')[0], 10) : vigencia;
   const errorFechaFinAnterior = fechaFin && fechaInicio && fechaFin < fechaInicio;
@@ -2936,6 +2944,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
   };
 
   const handleVigenciaSelect = (nuevaVigencia: number) => {
+    if (vigenciaCampoSoloLectura) return;
     if (isNaN(nuevaVigencia)) return;
     onVigenciaChange(nuevaVigencia);
     if (nuevaVigencia >= 2020 && nuevaVigencia <= 2100) {
@@ -2972,6 +2981,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
   useEffect(() => { setInputText(String(vigencia)); }, [vigencia]);
 
   const handleInputChange = (val: string) => {
+    if (vigenciaCampoSoloLectura) return;
     setInputText(val);
     setShowDropdown(true);
     const num = parseInt(val, 10);
@@ -3002,11 +3012,21 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
       <div className="bg-white rounded-xl border-2 border-gray-200 p-8 space-y-6">
         <div>
           <label className="block text-sm font-semibold text-gray-900 mb-2">Vigencia <span className="text-red-500">*</span></label>
-          {soloLectura ? (
+          {vigenciaCampoSoloLectura ? (
             <div className="rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Vigencia del plan (solo consulta)</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
+                {soloLectura ? 'Vigencia del plan (solo consulta)' : 'Vigencia del plan'}
+              </p>
               <p className="text-3xl font-black text-slate-900 tabular-nums">{vigencia}</p>
-              <p className="text-xs text-slate-600 mt-2">No puede modificarse en modo consulta. Use <strong>Siguiente</strong> para ver roles y actividades.</p>
+              <p className="text-xs text-slate-600 mt-2">
+                {soloLectura ? (
+                  <>No puede modificarse en modo consulta. Use <strong>Siguiente</strong> para ver roles y actividades.</>
+                ) : cargandoPlanBorrador ? (
+                  <>Cargando borrador… La vigencia quedará fijada al del plan guardado.</>
+                ) : (
+                  <>No puede modificarse al editar un plan existente. Para otra vigencia, cree un plan nuevo desde inicio.</>
+                )}
+              </p>
             </div>
           ) : (
           <>
@@ -3054,7 +3074,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               </div>
             )}
           </div>
-          {vigenciaConBorrador ? (
+          {!vigenciaCampoSoloLectura && vigenciaConBorrador ? (
             <div className="mt-2 p-3 rounded-lg border border-amber-200 bg-amber-50/80 space-y-2">
               <p className="text-xs text-amber-900 font-medium">
                 Ya hay un plan en borrador para {vigencia}. Puede continuar editándolo (no se creará un duplicado).
@@ -5316,11 +5336,13 @@ interface DashboardPlanProps {
   /** Tras volver del asistente en solo lectura: abrir esta pestaña una vez. */
   seccionForzada?: 'gestion' | 'aprobar' | null;
   onSeccionForzadaAplicada?: () => void;
+  /** Tras eliminar un plan: el padre decide a qué plan / pantalla ir. */
+  onPlanEliminado?: (planId: string) => void | Promise<void>;
 }
 
 const PLAN_ANUAL_STORAGE_KEY = 'esap:plan_anual_activo';
 
-export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan, onEditarPlan, onVerDefinicionPlan, seccionForzada, onSeccionForzadaAplicada }: DashboardPlanProps) {
+export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onAbrirRol4, onCrearNuevo, planesAnteriores = [], planesDisponibles = [], onCambiarPlan, onEditarPlan, onVerDefinicionPlan, seccionForzada, onSeccionForzadaAplicada, onPlanEliminado }: DashboardPlanProps) {
   const [seccion, setSeccion] = useState<'gestion' | 'asignar' | 'aprobar'>('gestion');
   const [mostrarModalExportacion, setMostrarModalExportacion] = useState(false);
   const [exportando, setExportando] = useState<'excel' | 'pdf' | null>(null);
@@ -5328,7 +5350,9 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
     () => COLUMNAS_DISPONIBLES.filter(c => c.defaultVisible).map(c => c.key)
   );
   const [mostrarModalEliminar, setMostrarModalEliminar] = useState(false);
+  const [modalOTPEliminar, setModalOTPEliminar] = useState(false);
   const [eliminandoPlan, setEliminandoPlan] = useState(false);
+  const [planObjetivoEliminar, setPlanObjetivoEliminar] = useState<{ id: string; vigencia: number } | null>(null);
   
   // Estado para auditores cargados desde backend
   const [auditores, setAuditores] = useState<Auditor[]>([]);
@@ -5370,6 +5394,8 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   const puedeExportarPlan = puedeRealizar('plan-anual', 'export');
   const puedeSeguimiento = puedeRealizar('plan-anual', 'follow-up');
   const puedeEliminarPlan = puedeRealizar('plan-anual', 'delete');
+  /** Backend permite DELETE con permiso edit o delete; la UI debe coincidir. */
+  const puedeEliminarPlanEnUI = puedeEliminarPlan || puedeEditarPlan || esSuperUsuario;
   const puedeVerPlan = puedeRealizar('plan-anual', 'view');
   // Permiso compuesto: editar O seguimiento para gestionar evidencias
   const puedeGestionarEvidencias = puedeEditarPlan || puedeSeguimiento;
@@ -5449,21 +5475,50 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
 
 
 
-  const handleEliminarPlan = async () => {
+  const cerrarFlujoEliminar = () => {
+    if (eliminandoPlan) return;
+    setMostrarModalEliminar(false);
+    setModalOTPEliminar(false);
+    setPlanObjetivoEliminar(null);
+  };
+
+  const solicitarEliminarPlan = (planObjetivo: PlanAnual) => {
+    if (!esEstadoPlanBorrador(planObjetivo.estado)) {
+      toast.error('Solo se pueden eliminar planes en borrador');
+      return;
+    }
+    setPlanObjetivoEliminar({ id: planObjetivo.id, vigencia: planObjetivo.vigencia });
     setMostrarModalEliminar(true);
   };
 
+  const abrirVerificacionEliminar = () => {
+    setMostrarModalEliminar(false);
+    setModalOTPEliminar(true);
+  };
+
+  const handleOTPEliminacionExitosa = (_metadata: FirmaElectronicaMetadata) => {
+    setModalOTPEliminar(false);
+    void ejecutarEliminacionPlan();
+  };
+
   const ejecutarEliminacionPlan = async () => {
+    const idEliminar = planObjetivoEliminar?.id;
+    if (!idEliminar) return;
+
     setEliminandoPlan(true);
     try {
       const { planAnualApi } = await import('./services/plan-anual/api');
-      const res = await planAnualApi.delete(plan.id);
+      const res = await planAnualApi.delete(idEliminar);
       if (res.success) {
-        toast.success('Plan eliminado exitosamente', { description: 'Los registros han sido borrados de la base de datos.'});
-        setMostrarModalEliminar(false);
-        if (onActualizar) {
-          onActualizar(null as any); // Devuelve a la vista inicial
-          window.location.reload(); 
+        const vig = planObjetivoEliminar?.vigencia ?? plan.vigencia;
+        toast.success('Plan eliminado exitosamente', {
+          description: `Plan de vigencia ${vig} eliminado de la base de datos.`,
+        });
+        cerrarFlujoEliminar();
+        if (onPlanEliminado) {
+          await onPlanEliminado(idEliminar);
+        } else if (idEliminar === plan.id) {
+          onActualizar(null as any);
         }
       } else {
         toast.error('Error al eliminar', { description: res.error || 'No se pudo eliminar el plan' });
@@ -5941,16 +5996,6 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
             </button>
             )}
 
-            {plan.estado === 'BORRADOR' && (
-              <button
-                type="button"
-                onClick={handleEliminarPlan}
-                className="flex items-center justify-center p-2.5 bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 rounded-lg transition-colors border border-red-200 shadow-sm"
-                title="Eliminar permanentemente este plan en borrador"
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
-            )}
           </div>
         </div>
 
@@ -6123,7 +6168,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4 backdrop-blur-sm"
-            onClick={() => !eliminandoPlan && setMostrarModalEliminar(false)}
+            onClick={cerrarFlujoEliminar}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0, y: 10 }}
@@ -6139,41 +6184,54 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
                 <h3 className="text-xl font-bold text-gray-900 mb-2">
                   ¿Eliminar este Plan Anual?
                 </h3>
-                <p className="text-sm text-gray-600 mb-6">
-                  Estás a punto de eliminar permanentemente el Plan Anual de Auditoría <strong>{plan.vigencia}</strong>. 
+                <p className="text-sm text-gray-600 mb-2">
+                  Estás a punto de eliminar permanentemente el Plan Anual de Auditoría <strong>{planObjetivoEliminar?.vigencia ?? plan.vigencia}</strong>.
                   Esta acción no tiene marcha atrás y eliminará todas sus actividades configuradas.
+                </p>
+                <p className="text-xs text-gray-500 mb-6">
+                  Deberás validar tu identidad con el código OTP enviado a tu correo institucional (mismo proceso que al aprobar).
                 </p>
                 
                 <div className="flex gap-3 mt-8">
                   <button
-                    onClick={() => setMostrarModalEliminar(false)}
+                    onClick={cerrarFlujoEliminar}
                     disabled={eliminandoPlan}
                     className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors disabled:opacity-50"
                   >
                     Mantener plan
                   </button>
                   <button
-                    onClick={ejecutarEliminacionPlan}
+                    onClick={abrirVerificacionEliminar}
                     disabled={eliminandoPlan}
                     className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl transition-colors shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {eliminandoPlan ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Eliminando...
-                      </>
-                    ) : (
-                      <>
-                        <Trash2 className="w-4 h-4" />
-                        Sí, eliminar
-                      </>
-                    )}
+                    <Shield className="w-4 h-4" />
+                    Continuar y verificar
                   </button>
                 </div>
               </div>
             </motion.div>
           </motion.div>
         )}
+
+        <ModalFirmaOTP
+          isOpen={modalOTPEliminar}
+          onClose={() => !eliminandoPlan && cerrarFlujoEliminar()}
+          onSuccess={handleOTPEliminacionExitosa}
+          userName={
+            currentUser?.nombre
+            || currentUser?.fullName
+            || currentUser?.name
+            || 'Usuario OCI'
+          }
+          userEmail={
+            currentUser?.email
+            || currentUser?.person?.email
+            || currentUser?.usuario?.email
+            || ''
+          }
+          accionDetalle={`Eliminación del Plan Anual de Auditoría ${planObjetivoEliminar?.vigencia ?? plan.vigencia}`}
+        />
 
         {/* KPIs */}
         <div className="grid grid-cols-5 gap-4 mb-6">
@@ -6242,7 +6300,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
       <div className="flex-1 overflow-y-auto bg-gray-50 px-8 py-6">
         <div className="max-w-7xl mx-auto">
           <AnimatePresence mode="wait">
-            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} cargandoAuditores={cargandoAuditores} onEditarPlan={onEditarPlan} onVerDefinicionPlan={onVerDefinicionPlan} />}
+            {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} cargandoAuditores={cargandoAuditores} onEditarPlan={onEditarPlan} onVerDefinicionPlan={onVerDefinicionPlan} onSolicitarEliminarPlan={solicitarEliminarPlan} puedeEliminarPlan={puedeEliminarPlanEnUI} />}
             {seccion === 'aprobar' && <SeccionAprobacion key="aprobar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} puedeAprobarPlan={puedeAprobarPlan} puedeActivarPlan={puedeActivarPlan} puedeEditarPlan={puedeEditarPlan} aprobadoresComite={aprobadoresComite} />}
           </AnimatePresence>
         </div>
@@ -6266,7 +6324,9 @@ function SeccionGestionYSeguimiento({
   auditores,
   cargandoAuditores = false,
   onEditarPlan,
-  onVerDefinicionPlan
+  onVerDefinicionPlan,
+  onSolicitarEliminarPlan,
+  puedeEliminarPlan = false,
 }: { 
   plan: PlanAnual; 
   planesAnteriores?: PlanAnual[]; 
@@ -6277,6 +6337,8 @@ function SeccionGestionYSeguimiento({
   cargandoAuditores?: boolean;
   onEditarPlan?: (plan: PlanAnual) => void | Promise<void>;
   onVerDefinicionPlan?: (plan: PlanAnual) => void | Promise<void>;
+  onSolicitarEliminarPlan?: (planObjetivo: PlanAnual) => void;
+  puedeEliminarPlan?: boolean;
 }) {
 
   // Estados para el seguimiento
@@ -6648,8 +6710,31 @@ function SeccionGestionYSeguimiento({
     if (plan?.roles) plan.roles.forEach(r => estado[r.numero] = true);
     return estado;
   });
-  // Estado para colapsar el historial de planes anteriores (inicia cerrado)
+  // Historial: expandido si hay algún borrador (acción eliminar por fila)
   const [historialColapsado, setHistorialColapsado] = useState(true);
+
+  const planesEnHistorial = useMemo(() => {
+    const porId = new Map<string, PlanAnual>();
+    for (const p of planesAnteriores) {
+      porId.set(p.id, p);
+    }
+    if (!porId.has(plan.id)) {
+      porId.set(plan.id, plan);
+    }
+    return Array.from(porId.values()).sort((a, b) => (b.vigencia ?? 0) - (a.vigencia ?? 0));
+  }, [planesAnteriores, plan]);
+
+  const hayBorradoresEnLista = useMemo(
+    () => planesEnHistorial.some((p) => esEstadoPlanBorrador(p.estado)),
+    [planesEnHistorial],
+  );
+
+  useEffect(() => {
+    if (hayBorradoresEnLista) {
+      setHistorialColapsado(false);
+    }
+  }, [hayBorradoresEnLista]);
+
   const [formulario, setFormulario] = useState({
     control: '',
     evaluacion: '',
@@ -6669,7 +6754,6 @@ function SeccionGestionYSeguimiento({
   const { puedeRealizar, esSuperUsuario } = useControlInternoPermissions();
   const puedeEditarPlan = puedeRealizar('plan-anual', 'edit');
   const puedeSeguimiento = puedeRealizar('plan-anual', 'follow-up');
-  const puedeEliminarPlan = puedeRealizar('plan-anual', 'delete');
   const puedeAprobarPlan = puedeRealizar('plan-anual', 'approve');
   const puedeAsignarActividades = puedeRealizar('plan-anual', 'assign');
   const puedeVerPlan = puedeRealizar('plan-anual', 'view') || esSuperUsuario;
@@ -7405,16 +7489,29 @@ function SeccionGestionYSeguimiento({
         </div>
       </details>
 
-      {/* Historial de Planes Anteriores */}
-      {planesAnteriores.length > 0 && (
+      {/* Planes registrados (historial + plan actual) */}
+      {planesEnHistorial.length > 0 && (
         <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
+          {hayBorradoresEnLista && !puedeEliminarPlan && (
+            <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900">
+              Hay planes en borrador, pero tu usuario no tiene permiso <code className="text-[10px]">control-interno.plan-anual.delete</code> ni <code className="text-[10px]">.edit</code>. Pide al administrador que te asigne uno de esos permisos para ver el botón eliminar.
+            </div>
+          )}
           <div className="flex flex-wrap items-center justify-between mb-4 gap-4">
-            <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <FileText className="w-5 h-5 text-gray-600" />
-              Historial de Planes Anteriores
-            </h3>
+            <div>
+              <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-gray-600" />
+                Planes registrados
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                El plan que estás viendo está marcado. Cada fila en <strong>borrador</strong> puede eliminarse (verificación OTP por correo).
+                {historialColapsado && hayBorradoresEnLista && (
+                  <span className="block mt-1 text-amber-700 font-medium">Expande el historial para ver el botón eliminar.</span>
+                )}
+              </p>
+            </div>
             <div className="flex items-center gap-4 flex-wrap">
-              <span className="text-sm text-gray-500 font-medium">{planesAnteriores.length} plan(es) completado(s)</span>
+              <span className="text-sm text-gray-500 font-medium">{planesEnHistorial.length} plan(es)</span>
               <button
                 onClick={() => setHistorialColapsado(!historialColapsado)}
                 className="px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 rounded-md font-semibold text-xs flex items-center gap-2 transition-all shadow-sm"
@@ -7436,21 +7533,40 @@ function SeccionGestionYSeguimiento({
           
           {!historialColapsado && (
           <div className="space-y-3">
-            {planesAnteriores.map((planAnterior) => (
+            {planesEnHistorial.map((planAnterior) => {
+              const esPlanActual = planAnterior.id === plan.id;
+              const puedeEliminarEste =
+                esEstadoPlanBorrador(planAnterior.estado)
+                && puedeEliminarPlan
+                && !!onSolicitarEliminarPlan;
+              return (
               <div 
                 key={planAnterior.id}
-                className="flex items-center justify-between p-4 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors"
+                className={`flex items-center justify-between p-4 border rounded-lg transition-colors ${
+                  esPlanActual
+                    ? 'bg-blue-50 border-blue-300 ring-1 ring-blue-200'
+                    : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                }`}
               >
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-gray-500 to-gray-600 flex items-center justify-center">
+                  <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                    esPlanActual
+                      ? 'bg-gradient-to-br from-blue-600 to-blue-700'
+                      : 'bg-gradient-to-br from-gray-500 to-gray-600'
+                  }`}>
                     <Shield className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-gray-900">
-                      {(planAnterior as any).nombrePlan || `Plan Anual de Auditoría ${planAnterior.vigencia}`}
+                    <h4 className="font-semibold text-gray-900 flex flex-wrap items-center gap-2">
+                      <span>{(planAnterior as any).nombrePlan || `Plan Anual de Auditoría ${planAnterior.vigencia}`}</span>
+                      {esPlanActual && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-600 text-white">
+                          Viendo ahora
+                        </span>
+                      )}
                     </h4>
                     <p className="text-sm text-gray-600">
-                      {planAnterior.id} • Jefe OCI: {planAnterior.jefeOCI.nombre}
+                      Vigencia {planAnterior.vigencia} • Jefe OCI: {planAnterior.jefeOCI?.nombre || '—'}
                     </p>
                   </div>
                 </div>
@@ -7461,7 +7577,7 @@ function SeccionGestionYSeguimiento({
                       ? 'bg-amber-100 text-amber-700'
                       : 'bg-green-100 text-green-700'
                   }`}>
-                    {planAnterior.estado}
+                    {esEstadoPlanBorrador(planAnterior.estado) ? 'Borrador' : planAnterior.estado === 'EN_REVISION' ? 'En revisión' : planAnterior.estado}
                   </span>
                   <div className="text-right text-xs text-gray-500">
                     <p>Aprobado: {planAnterior.fechaAprobacion || 'N/A'}</p>
@@ -7482,7 +7598,7 @@ function SeccionGestionYSeguimiento({
                         <Eye className="w-4 h-4" />
                       </button>
                     )}
-                    {planAnterior.estado === 'BORRADOR' && onEditarPlan && (
+                    {esEstadoPlanBorrador(planAnterior.estado) && onEditarPlan && (
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); onEditarPlan(planAnterior); }}
@@ -7492,10 +7608,24 @@ function SeccionGestionYSeguimiento({
                         <Edit3 className="w-4 h-4 group-hover:scale-110 transition-transform" />
                       </button>
                     )}
+                    {puedeEliminarEste && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSolicitarEliminarPlan!(planAnterior);
+                        }}
+                        className="p-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg transition-colors flex items-center justify-center border border-red-200"
+                        title="Eliminar este plan en borrador (verificación por correo)"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
           )}
         </div>

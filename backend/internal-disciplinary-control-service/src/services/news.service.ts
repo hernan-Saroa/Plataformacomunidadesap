@@ -151,7 +151,7 @@ export class NewsService {
   async findAll(): Promise<any[]> {
     const news = await this.newsRepository.find({
       where: { estado: Not(NewsStatus.ASOCIADA) },
-      order: { fechaRecepcion: 'DESC' },   // Ordenar por la fecha de radicación/queja elegida por el usuario (no por orden de creación en BD)
+      order: { createdAt: 'DESC' },
     });
 
     // Get unique radicadorIds
@@ -320,7 +320,7 @@ export class NewsService {
   async findPendingAssignment(): Promise<DisciplinaryNews[]> {
     return await this.newsRepository.find({
       where: { estado: NewsStatus.RADICADA },
-      order: { fechaRecepcion: 'DESC' },
+      order: { createdAt: 'DESC' },
     });
   }
 
@@ -346,9 +346,8 @@ export class NewsService {
       }
     }
 
-    // Ordenar por fecha de recepción descendente
-    return noticias.sort((a, b) => 
-      new Date(b.fechaRecepcion).getTime() - new Date(a.fechaRecepcion).getTime()
+    return noticias.sort((a, b) =>
+      new Date(b.createdAt || b.fechaRecepcion).getTime() - new Date(a.createdAt || a.fechaRecepcion).getTime()
     );
   }
 
@@ -578,7 +577,7 @@ export class NewsService {
   async findByRadicadorId(radicadorId: string): Promise<DisciplinaryNews[]> {
     return await this.newsRepository.find({
       where: { radicadorId },
-      order: { fechaRecepcion: 'DESC' },
+      order: { createdAt: 'DESC' },
     });
   }
 

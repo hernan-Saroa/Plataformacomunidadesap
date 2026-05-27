@@ -46,6 +46,16 @@ export interface Expediente {
     demandadoDireccion?: string;
     demandadoTelefono?: string;
     demandadoEmail?: string;
+    // Riesgo y provisión
+    nivelRiesgo?: string;
+    provisionContable?: number;
+    observacionProvision?: string;
+    fechaEstimacionProvision?: string;
+    // Clasificación penal
+    esDelitoAdminPublica?: boolean;
+    esConductaPatrimonioPublico?: boolean;
+    esOtroDelitoPenal?: boolean;
+    otroDelitoPenalDescripcion?: string;
     createdAt: string;
     updatedAt: string;
 }
