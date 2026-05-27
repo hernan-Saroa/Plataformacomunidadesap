@@ -4,7 +4,7 @@
  * v2.0 - Con soporte para puntos de control
  */
 
-import { useState, useEffect, useRef, useMemo, useCallback, type MouseEvent } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, useId, type MouseEvent, type WheelEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
@@ -915,6 +915,93 @@ function resolverFechaCorteActividad(act: ActividadBase, vigencia: number): stri
   return `${vigencia}-12-31`;
 }
 
+function esFechaIso(valor: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(valor);
+}
+
+/**
+ * Tabla de cortes oficiales según el formato ESAP/Decreto 648.
+ * Cada entrada: [fechaProgramada (fin del período), fechaSeguimiento (entrega del informe)].
+ * Mes en base 1. Usa año+1 cuando el mes de seguimiento es enero/feb/mar del año siguiente.
+ */
+function generarCortesOficiales(
+  frecuencia: string,
+  año: number,
+): Array<{ fechaProgramada: string; fechaSeguimiento: string }> {
+  const fmt = (y: number, m: number, d: number) =>
+    `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const mesUltimoDia = (y: number, m: number) => new Date(y, m, 0).getDate();
+
+  const ctrl = frecuencia.toLowerCase();
+
+  if (ctrl.includes('semestral')) {
+    return [
+      { fechaProgramada: fmt(año, 6, 30),  fechaSeguimiento: fmt(año,   7, 31) },
+      { fechaProgramada: fmt(año, 12, 31), fechaSeguimiento: fmt(año+1, 1, 31) },
+    ];
+  }
+  if (ctrl.includes('cuatrimestral')) {
+    return [
+      { fechaProgramada: fmt(año, 4, 30),  fechaSeguimiento: fmt(año,   5, 31) },
+      { fechaProgramada: fmt(año, 8, 31),  fechaSeguimiento: fmt(año,   9, 30) },
+      { fechaProgramada: fmt(año, 12, 31), fechaSeguimiento: fmt(año+1, 1, 31) },
+    ];
+  }
+  if (ctrl.includes('trimestral')) {
+    return [
+      { fechaProgramada: fmt(año, 3, 31),  fechaSeguimiento: fmt(año,  4, 30) },
+      { fechaProgramada: fmt(año, 6, 30),  fechaSeguimiento: fmt(año,  7, 31) },
+      { fechaProgramada: fmt(año, 9, 30),  fechaSeguimiento: fmt(año, 10, 31) },
+      { fechaProgramada: fmt(año, 12, 31), fechaSeguimiento: fmt(año+1, 1, 31) },
+    ];
+  }
+  if (ctrl.includes('anual')) {
+    return [
+      { fechaProgramada: fmt(año, 12, 31), fechaSeguimiento: fmt(año+1, 2, mesUltimoDia(año+1, 2)) },
+    ];
+  }
+  if (ctrl.includes('mensual')) {
+    return Array.from({ length: 12 }, (_, i) => {
+      const m = i + 1;
+      const ld = mesUltimoDia(año, m);
+      const nextM = m === 12 ? 1 : m + 1;
+      const nextY = m === 12 ? año + 1 : año;
+      const nextLd = mesUltimoDia(nextY, nextM);
+      return {
+        fechaProgramada: fmt(año, m, ld),
+        fechaSeguimiento: fmt(nextY, nextM, nextLd),
+      };
+    });
+  }
+  return [];
+}
+
+function alinearCortesConFechasOficiales(
+  puntos: PuntoControl[],
+  actividad: ActividadBase,
+  añoOverride?: number,
+): PuntoControl[] {
+  const ctrl = actividad.control || '';
+  const año = añoOverride
+    ?? (actividad.fechaInicio ? parseInt(actividad.fechaInicio.slice(0, 4), 10) : new Date().getFullYear());
+  if (isNaN(año)) return puntos;
+
+  const oficiales = generarCortesOficiales(ctrl, año);
+  if (oficiales.length === 0) return puntos;
+
+  // Preferir las fechas oficiales sobre las calculadas por periodicidad genérica.
+  // Si hay más puntos que entradas oficiales, los sobrantes conservan sus fechas.
+  return puntos.map((pc, idx) => {
+    const oficial = oficiales[idx];
+    if (!oficial) return pc;
+    return {
+      ...pc,
+      fechaProgramada: oficial.fechaProgramada,
+      fechaSeguimiento: oficial.fechaSeguimiento,
+    };
+  });
+}
+
 function contarActividadesIncluidas(rol: RolConfig): number {
   return rol.actividadesSeleccionadas.filter(actividadIncluidaEnPlan).length;
 }
@@ -1154,27 +1241,45 @@ function SelectorProfesional({
   const [isOpen, setIsOpen] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const popupId = useId().replace(/:/g, '');
 
-  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0, listMaxHeight: 260 });
 
   const updatePosition = useCallback(() => {
-    if (isOpen && containerRef.current) {
+    if (containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
+      const listMax = 260;
+      const headerApprox = 56;
+      const gap = 4;
+      const spaceBelow = window.innerHeight - rect.bottom - gap;
+      const spaceAbove = rect.top - gap;
+      const openAbove = spaceBelow < listMax + headerApprox && spaceAbove > spaceBelow;
+      const available = Math.max(120, openAbove ? spaceAbove : spaceBelow) - headerApprox;
+      const listHeight = Math.min(listMax, Math.max(100, available));
+
       setCoords({
-        top: rect.bottom + 4,
+        top: openAbove ? rect.top - gap - headerApprox - listHeight : rect.bottom + gap,
         left: rect.left,
-        width: rect.width
+        width: rect.width,
+        listMaxHeight: listHeight,
       });
     }
-  }, [isOpen]);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (isOpen) updatePosition();
+  }, [isOpen, updatePosition]);
 
   useEffect(() => {
     if (isOpen) {
-      updatePosition();
-      const handleScroll = () => {
-        setIsOpen(false); // Close on external scroll to prevent floating away
+      const handleScroll = (e: Event) => {
+        const popup = document.getElementById(popupId);
+        if (popup && e.target instanceof Node && popup.contains(e.target)) {
+          return;
+        }
+        updatePosition();
       };
-      // Capture true to catch scroll events from any nested container
       document.addEventListener('scroll', handleScroll, true);
       window.addEventListener('resize', updatePosition);
       return () => {
@@ -1182,12 +1287,22 @@ function SelectorProfesional({
         window.removeEventListener('resize', updatePosition);
       };
     }
-  }, [isOpen, updatePosition]);
+  }, [isOpen, updatePosition, popupId]);
+
+  const handleListWheel = (e: WheelEvent<HTMLDivElement>) => {
+    const el = listRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const canScrollUp = scrollTop > 0;
+    const canScrollDown = scrollTop + clientHeight < scrollHeight - 1;
+    if ((e.deltaY < 0 && canScrollUp) || (e.deltaY > 0 && canScrollDown)) {
+      e.stopPropagation();
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      // Allow clicks within the portal dropdown (prevent closing)
-      const popup = document.getElementById('selector-profesional-popup');
+      const popup = document.getElementById(popupId);
       if (popup && popup.contains(e.target as Node)) return;
       
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -1198,7 +1313,7 @@ function SelectorProfesional({
       setTimeout(() => document.addEventListener('mousedown', handleClickOutside), 0);
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen]);
+  }, [isOpen, popupId]);
 
   const filtrados = auditores.filter(a => 
     a.nombre.toLowerCase().includes(busqueda.toLowerCase()) || 
@@ -1223,7 +1338,16 @@ function SelectorProfesional({
       <button
         type="button"
         disabled={disabled}
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setIsOpen(!isOpen); }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!isOpen) {
+            updatePosition();
+            setIsOpen(true);
+          } else {
+            setIsOpen(false);
+          }
+        }}
         className={`w-full px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 text-sm text-gray-500 bg-white text-left flex justify-between items-center transition-colors hover:border-blue-400 hover:bg-blue-50 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
       >
         <span className="truncate">{placeholder}</span>
@@ -1233,7 +1357,7 @@ function SelectorProfesional({
       {isOpen && createPortal(
         <AnimatePresence>
           <motion.div 
-            id="selector-profesional-popup"
+            id={popupId}
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -5 }}
@@ -1243,11 +1367,11 @@ function SelectorProfesional({
               top: coords.top,
               left: coords.left,
               width: coords.width,
-              zIndex: 99999
+              zIndex: 99999,
             }}
-            className="bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[320px]"
+            className="bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden flex flex-col"
           >
-            <div className="p-2 border-b border-gray-100 sticky top-0 bg-gray-50 shadow-sm z-10 flex gap-2 items-center">
+            <div className="p-2 border-b border-gray-100 shrink-0 bg-gray-50 shadow-sm z-10 flex gap-2 items-center relative">
               <Search className="w-4 h-4 text-gray-400 absolute left-4" />
               <input
                 type="text"
@@ -1267,7 +1391,12 @@ function SelectorProfesional({
                 }}
               />
             </div>
-            <div className="overflow-y-auto flex-1 divide-y divide-gray-50 py-1">
+            <div
+              ref={listRef}
+              onWheel={handleListWheel}
+              style={{ maxHeight: coords.listMaxHeight }}
+              className="overflow-y-auto overscroll-contain divide-y divide-gray-50 py-1"
+            >
               {filtrados.length === 0 ? (
                 <div className="p-6 text-center text-sm text-gray-500">
                   <AlertCircle className="w-8 h-8 mx-auto mb-2 text-amber-400" />
@@ -1809,7 +1938,9 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
             mkPC(`pc-${uniqueId}-1`, 1, act.fechaInicio || `${año}-01-01`, act.fechaFin || `${año}-12-31`),
           ];
         }
-        // Auto-asignar tareas al corte correspondiente (tarea N   corte N)
+        puntosDefault = alinearCortesConFechasOficiales(puntosDefault, act, año);
+
+        // Auto-asignar tareas al corte correspondiente (tarea N -> corte N)
         const tareasConCorte = (act.tareasSeguimiento || []).map((t, tIdx) => ({
           ...t,
           puntoControlId: puntosDefault[tIdx % puntosDefault.length]?.id,
@@ -1886,13 +2017,22 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
         actividadesSeleccionadas: rol.actividadesSeleccionadas.map((act) => {
           const año = vigencia;
           const puntos = act.puntosControl || [];
-          const nuevosPuntos = puntos.map((pc) => ({
-            ...pc,
-            fechaProgramada: reemplazarAnioEnFechaIso(pc.fechaProgramada, año),
-            fechaSeguimiento: pc.fechaSeguimiento
-              ? reemplazarAnioEnFechaIso(pc.fechaSeguimiento, año)
-              : pc.fechaSeguimiento,
-          }));
+          // Para actividades con periodicidad definida regeneramos cortes oficiales
+          // para no romper fechas que caen en año+1 (p.ej. 31/01 del año siguiente).
+          const cortesRegenerados = generarCortesOficiales(act.control || '', año);
+          const nuevosPuntos = cortesRegenerados.length > 0 && cortesRegenerados.length === puntos.length
+            ? puntos.map((pc, i) => ({
+                ...pc,
+                fechaProgramada: cortesRegenerados[i].fechaProgramada,
+                fechaSeguimiento: cortesRegenerados[i].fechaSeguimiento,
+              }))
+            : puntos.map((pc) => ({
+                ...pc,
+                fechaProgramada: reemplazarAnioEnFechaIso(pc.fechaProgramada, año),
+                fechaSeguimiento: pc.fechaSeguimiento
+                  ? reemplazarAnioEnFechaIso(pc.fechaSeguimiento, año)
+                  : pc.fechaSeguimiento,
+              }));
           const ultimoSeg =
             nuevosPuntos.length > 0
               ? nuevosPuntos[nuevosPuntos.length - 1].fechaSeguimiento
@@ -3058,7 +3198,17 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded-full border border-red-300">Ya existe</span>
             )}
             {showDropdown && (
-              <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+              <div
+                className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto overscroll-contain"
+                onWheel={(e) => {
+                  const el = e.currentTarget;
+                  const canScrollUp = el.scrollTop > 0;
+                  const canScrollDown = el.scrollTop + el.clientHeight < el.scrollHeight - 1;
+                  if ((e.deltaY < 0 && canScrollUp) || (e.deltaY > 0 && canScrollDown)) {
+                    e.stopPropagation();
+                  }
+                }}
+              >
                 {filteredOptions.length > 0 ? filteredOptions.map((y: number) => (
                   <button key={y} type="button" onClick={() => handleOptionClick(y)}
                     className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${
@@ -3340,6 +3490,7 @@ function Paso2({
         frecuencia = 'anual';
         puntosDefault = [mkPC(`pc-${actId}-1`, 1, actividadBase.fechaInicio || `${año}-01-01`, actividadBase.fechaFin || `${año}-12-31`)];
       }
+      puntosDefault = alinearCortesConFechasOficiales(puntosDefault, actividadBase, año);
       const tareasConCorte = (actividadBase.tareasSeguimiento || []).map((t, tIdx) => ({ ...t, puntoControlId: puntosDefault[tIdx % puntosDefault.length]?.id }));
       return {
         ...rol,
@@ -5984,7 +6135,24 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               </button>
             )}
 
-        
+            <button
+              type="button"
+              onClick={async () => {
+                if (onVerDefinicionPlan) {
+                  await onVerDefinicionPlan(plan);
+                  return;
+                }
+                // Fallback: si no hay handler de solo-consulta, abrir edición.
+                if (onEditarPlan) {
+                  await onEditarPlan(plan);
+                }
+              }}
+              className="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg font-bold flex items-center justify-center gap-2 transition-all hover:bg-blue-100 text-xs sm:text-sm whitespace-nowrap"
+            >
+              <Eye className="w-4 h-4" />
+              Ver Plan Anual
+            </button>
+
             {(puedeExportarPlan || puedeSeguimiento || esSuperUsuario) && (
             <button
               type="button"
@@ -9803,7 +9971,7 @@ const ESTADO_PLAN_A_BACKEND: Record<EstadoPlan, string> = {
   DEVUELTO: 'borrador', // Backend doesn't have devuelto yet, fallback to borrador
 };
 
-function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan = false, puedeActivarPlan = false, puedeEditarPlan = false, aprobadoresComite = [] }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; puedeAprobarPlan?: boolean; puedeActivarPlan?: boolean; puedeEditarPlan?: boolean; aprobadoresComite?: Auditor[] }) {
+function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan = false, puedeActivarPlan = false, puedeEditarPlan = false, aprobadoresComite = [] }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; puedeAprobarPlan?: boolean; puedeActivarPlan?: boolean; puedeEditarPlan?: boolean; aprobadoresComite?: Auditor[]; }) {
   const [guardando, setGuardando] = useState(false);
   const [notificandoResponsable, setNotificandoResponsable] = useState(false);
   const currentUser = (window as any).__esap_auth_cache || null;
@@ -9825,6 +9993,26 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   );
   const nombreResponsablePlan = normalizarNombre(plan.jefeOCI?.nombre || '');
 
+  const textoPerfilSesion = [
+    currentUser?.cargo,
+    currentUser?.rol,
+    currentUser?.role,
+    currentUser?.perfil,
+    currentUser?.profile,
+    currentUser?.person?.cargo,
+    currentUser?.person?.rol,
+    currentUser?.usuario?.cargo,
+    currentUser?.usuario?.rol,
+  ]
+    .filter((v: unknown) => typeof v === 'string' && String(v).trim().length > 0)
+    .map((v: unknown) => String(v).toLowerCase())
+    .join(' | ');
+  const esUsuarioJefeOCI = puedeActivarPlan
+    || textoPerfilSesion.includes('jefe oci')
+    || textoPerfilSesion.includes('jefe ocig')
+    || textoPerfilSesion.includes('jefe')
+    || textoPerfilSesion.includes('director');
+
 
   const esResponsableDelPlan = !!currentUser && (
     // 1. Match por ID (responsable_id del plan vs IDs del usuario en sesión)
@@ -9834,6 +10022,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
     // 3. Fallback: Match por nombre completo normalizado (cuando backend no provee email ni IDs coinciden)
     || (nombreSesion && nombreResponsablePlan && nombreSesion.length > 3 && nombreSesion === nombreResponsablePlan)
   );
+  const puedeEnviarComiteComoResponsable = esResponsableDelPlan && esUsuarioJefeOCI;
 
   // DEBUG: Diagnóstico de por qué no sale el botón de enviar a comité
   console.log('[SeccionAprobacion] DEBUG responsable:', {
@@ -9882,6 +10071,23 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   // Aplicar el comité real o usar vacío
   const equipo = plan.equipoAprobacion || [];
   
+  const currentUserIsMember = equipo.some(a => {
+    const emA = (a.email || '').trim().toLowerCase();
+    if (emailSesion && emA && emailSesion === emA) return true;
+    const aid = a.id != null ? String(a.id) : '';
+    return !!(aid && idsSesion.some((id) => id === aid));
+  });
+  const esComitePuro = puedeAprobarPlan && !puedeEditarPlan;
+
+  if (esComitePuro && !currentUserIsMember && plan.estado === 'EN_REVISION') {
+    return (
+      <div className="p-8 text-center text-gray-500 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 m-6 mt-2">
+        <Shield className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+        <h3 className="text-lg font-bold text-gray-900 mb-2">Sin asignación pendiente</h3>
+        <p>Este plan se encuentra en revisión, pero no has sido designado como miembro del comité de aprobación para esta vigencia.</p>
+      </div>
+    );
+  }
   const historial = (plan.equipoAprobacion || []).map(a => ({
     ...a,
     auditorId: a.id || a.auditorId,
@@ -10006,7 +10212,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
       toast.error('No hay responsable asignado al plan');
       return;
     }
-    if (esResponsableDelPlan) {
+    if (puedeEnviarComiteComoResponsable) {
       toast.info('Tú eres el responsable del plan', {
         description: 'Usa el botón «Enviar a Comité de Aprobación» cuando el plan esté completo.',
       });
@@ -10044,8 +10250,8 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
   };
 
   const handleEnviarComiteOTP = () => {
-    if (!esResponsableDelPlan) {
-      toast.error('Solo el responsable del plan puede enviar al comité', {
+    if (!puedeEnviarComiteComoResponsable) {
+      toast.error('Solo el Jefe OCI responsable puede enviar al comité', {
         description: `Coordina con ${plan.jefeOCI?.nombre || 'el responsable asignado'} o usa «Notificar al responsable».`,
       });
       return;
@@ -10659,7 +10865,10 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
 
       {/* Botoneras Generales */}
       <div className="bg-white rounded-xl border-2 border-gray-200 p-6 relative z-0">
-        <h2 className="text-xl font-bold text-gray-900 mb-4">Acciones de Flujo</h2>
+        <div className="flex items-center justify-between mb-4 gap-3">
+          <h2 className="text-xl font-bold text-gray-900 m-0">Acciones de Flujo</h2>
+          <div />
+        </div>
         
         <div className="space-y-3 relative z-0">
           {plan.estado === 'EN_REVISION' && puedeAprobarPlan && esMiTurnoComoAprobador && aprobadorMiTurno && (
@@ -10694,14 +10903,14 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
             </div>
           )}
 
-          {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && !esResponsableDelPlan && (
+          {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && !puedeEnviarComiteComoResponsable && (
             <div className="p-4 bg-amber-50 border-2 border-amber-200 rounded-xl space-y-4 text-amber-950">
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
                 <div className="text-sm leading-relaxed flex-1">
                   <p className="font-bold text-amber-900 mb-1">Aún no se envía al comité de aprobación</p>
                   <p className="text-amber-900/90">
-                    El <strong>envío y firma</strong> ante el comité PAI solo lo hace el <strong>responsable del plan</strong>
+                    El <strong>envío y firma</strong> ante el comité PAI solo lo hace el <strong>Jefe OCI responsable del plan</strong>
                     {plan.jefeOCI?.nombre ? (
                       <> (<span className="font-semibold">{plan.jefeOCI.nombre}</span>)</>
                     ) : null}
@@ -10730,7 +10939,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
               </button>
             </div>
           )}
-          {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && esResponsableDelPlan && (
+          {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && puedeEnviarComiteComoResponsable && (
             <button onClick={handleEnviarComiteOTP} disabled={!puedeEnviarRevision || guardando} className="w-full px-6 py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
               {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <Shield className="w-5 h-5" />}
               {fueDevuelto ? 'Subsanar y Re-enviar a Comité de Aprobación (Firma)' : 'Enviar a Comité de Aprobación (Firma)'}
