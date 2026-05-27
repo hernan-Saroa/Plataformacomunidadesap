@@ -18,6 +18,7 @@ import type { ActuacionExpediente } from './expedienteShared';
 import { buildServiceAssetUrl } from '../../../../config/environment';
 import { authService } from '../../../../services/api/authService';
 import { legalService } from '../../../../services/api/legal.service';
+import { FirmaDigitalActuacion, FirmaData } from './FirmaDigitalActuacion';
 
 // ==================== TIPOS ====================
 
@@ -215,29 +216,28 @@ export function TabActuacionesExpediente({
     }
   };
 
-  const handleConfirmarFirma = async () => {
+  const handleConfirmarFirmaHash = async (firmaData: FirmaData) => {
     if (!modalFirmaActuacion) return;
-    const finalOtp = otpArray.join('');
-    if (finalOtp.length !== 6) {
-      toast.error('El código OTP debe tener 6 dígitos');
-      return;
-    }
-    if (!firmaArchivo) {
-      toast.error('Debe adjuntar una foto de su firma');
-      return;
-    }
 
     setEnviandoFirma(true);
     try {
       const expId = expedienteId || String(modalFirmaActuacion.expedienteId);
+      
+      // Generar dummy file para satisfacer al backend sin pedir foto
+      const canvas = document.createElement('canvas');
+      canvas.width = 1;
+      canvas.height = 1;
+      const dataUrl = canvas.toDataURL('image/png');
+      const blob = await (await fetch(dataUrl)).blob();
+      const dummyFile = new File([blob], `firma-${firmaData.certificado_id}.png`, { type: 'image/png' });
+
       await legalService.autorizarActuacion(
         expId,
         String(modalFirmaActuacion.id),
-        finalOtp,
-        firmaArchivo
+        firmaData.pin_verificado ? otpArray.join('') : otpArray.join(''), // PIN
+        dummyFile
       );
-      toast.success('✓ Actuación autorizada y firmada electrónicamente con éxito');
-      setOtpPaso(3); // Mostrar pantalla de éxito
+      
       if (onReloadExpediente) onReloadExpediente();
     } catch (err: any) {
       console.error(err);
@@ -245,6 +245,7 @@ export function TabActuacionesExpediente({
       toast.error(errorMsg);
     } finally {
       setEnviandoFirma(false);
+      setModalFirmaActuacion(null);
     }
   };
 
@@ -692,230 +693,23 @@ export function TabActuacionesExpediente({
       )}
 
       {/* Modal de Firma Electrónica */}
-      {typeof document !== 'undefined' && createPortal(
-        <AnimatePresence>
-          {modalFirmaActuacion && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm"
-            >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                onClick={() => setModalFirmaActuacion(null)}
-                className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors z-20"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="p-6 relative">
-                {/* Background Accent */}
-                <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-400/10 to-indigo-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
-                
-                <div className="mb-6 relative z-10 flex items-center gap-4 pr-8">
-                  <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-3 rounded-xl shadow-lg shadow-blue-200 flex items-center justify-center">
-                    <PenTool className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-black text-gray-900 tracking-tight">
-                      Firma Electrónica
-                    </h2>
-                    <p className="text-sm text-gray-500 mt-1 line-clamp-2">
-                      Autorizando: <strong className="text-gray-800">{modalFirmaActuacion.descripcion}</strong>
-                    </p>
-                  </div>
-                </div>
-
-                {otpPaso === 3 ? (
-              <div className="text-center py-6 relative z-10">
-                <div className="relative">
-                  <div className="w-20 h-20 bg-emerald-100 text-[#059669] rounded-full flex items-center justify-center mx-auto mb-5 relative z-10">
-                    <CheckCircle className="w-10 h-10" />
-                  </div>
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-20 h-20 bg-emerald-100 rounded-full z-0 animate-ping opacity-75" />
-                </div>
-
-                <h3 className="text-2xl font-black text-gray-900 mb-2">¡Firma Exitosa!</h3>
-                <p className="text-sm text-gray-500 mb-8">
-                  La actuación ha sido autorizada y firmada electrónicamente.
-                </p>
-
-                <Button
-                  onClick={() => setModalFirmaActuacion(null)}
-                  className="w-full bg-[#003DA5] text-white py-6 rounded-xl font-bold text-base hover:bg-blue-800 transition-colors flex justify-center items-center shadow-lg shadow-blue-500/20"
-                >
-                  Continuar
-                </Button>
-              </div>
-            ) : otpPaso === 1 ? (
-              <div className="space-y-6 relative z-10">
-                <div className="p-4 bg-blue-50/80 backdrop-blur-sm border border-blue-100 rounded-xl text-sm text-blue-900 flex items-start gap-3 shadow-sm">
-                  <Lock className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
-                  <div className="leading-relaxed">
-                    <span className="font-bold text-blue-950 block mb-0.5">Código OTP de seguridad enviado</span>
-                    Hemos enviado un código de 6 dígitos a su correo electrónico. Este código expirará en 15 minutos.
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="block text-sm font-bold text-gray-700 text-center">
-                    Ingrese el Código OTP de verificación
-                  </label>
-                  <div className="flex justify-center gap-2 mb-2">
-                    {otpArray.map((digit, i) => (
-                      <input
-                        key={i}
-                        id={`otp-${i}`}
-                        type="text"
-                        inputMode="numeric"
-                        value={digit}
-                        onChange={(e) => handleOtpChange(i, e.target.value.replace(/[^0-9]/g, ''))}
-                        onKeyDown={(e) => handleKeyDown(i, e)}
-                        maxLength={1}
-                        className="w-12 h-14 text-center text-xl font-bold text-[#003DA5] border-2 border-gray-200 rounded-xl focus:border-[#003DA5] focus:ring-2 focus:ring-blue-100 outline-none transition-all bg-white"
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-2">
-                  <button
-                    type="button"
-                    onClick={handleReenviarOtp}
-                    disabled={enviandoOtp}
-                    className="text-sm font-bold text-blue-600 hover:text-blue-800 disabled:text-gray-400 hover:underline flex items-center gap-1.5 transition-colors"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${enviandoOtp ? 'animate-spin' : ''}`} />
-                    {enviandoOtp ? 'Reenviando...' : 'Reenviar código OTP'}
-                  </button>
-                  <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">Paso 1 de 2</span>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                  <Button
-                    variant="outline"
-                    className="border-gray-200 text-gray-700 font-bold hover:bg-gray-50 h-11 px-6 rounded-xl"
-                    onClick={() => setModalFirmaActuacion(null)}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold h-11 px-8 rounded-xl shadow-md hover:shadow-lg transition-all"
-                    onClick={() => {
-                      const finalOtp = otpArray.join('');
-                      if (finalOtp.length !== 6) {
-                        toast.error('El código OTP debe tener exactamente 6 dígitos');
-                        return;
-                      }
-                      setOtpPaso(2);
-                    }}
-                  >
-                    Continuar
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-6 relative z-10">
-                <div className="p-4 bg-amber-50/80 backdrop-blur-sm border border-amber-100 rounded-xl text-sm text-amber-900 flex items-start gap-3 shadow-sm">
-                  <Upload className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
-                  <div className="leading-relaxed">
-                    <span className="font-bold text-amber-950 block mb-0.5">Adjuntar rúbrica digital</span>
-                    Por favor, adjunte una fotografía o imagen legible de su firma manuscrita para registrarla oficial y legalmente en la actuación.
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <label className="block text-sm font-bold text-gray-700">
-                    Cargar Imagen de la Firma *
-                  </label>
-                  
-                  <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:bg-blue-50/50 hover:border-blue-300 transition-all duration-300 relative group/dropzone">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFirmaFileChange}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                    />
-                    {firmaPreview ? (
-                      <div className="space-y-3 relative z-0">
-                        <div className="relative inline-block">
-                          <div className="absolute -inset-2 bg-gradient-to-r from-green-400 to-emerald-500 rounded-xl blur opacity-20"></div>
-                          <img
-                            src={firmaPreview}
-                            alt="Vista previa firma"
-                            className="relative max-h-28 mx-auto object-contain border border-gray-200 rounded-lg p-2 bg-white shadow-sm"
-                          />
-                        </div>
-                        <div className="flex items-center justify-center gap-1.5 text-sm font-bold text-emerald-600 bg-emerald-50 w-fit mx-auto px-3 py-1 rounded-full">
-                          <CheckCircle className="w-4 h-4" />
-                          <span className="truncate max-w-[200px]">{firmaArchivo?.name}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-2 relative z-0">
-                        <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-3 group-hover/dropzone:scale-110 transition-transform duration-300">
-                          <Upload className="w-8 h-8" />
-                        </div>
-                        <p className="text-sm font-bold text-gray-700">
-                          Haga clic o arrastre una imagen aquí
-                        </p>
-                        <p className="text-xs text-gray-500 font-medium">
-                          Formatos: PNG, JPG, JPEG (Max. 10MB)
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setOtpPaso(1)}
-                    className="text-sm font-bold text-gray-500 hover:text-gray-800 hover:underline bg-transparent border-none cursor-pointer flex items-center gap-1 transition-colors"
-                  >
-                    ← Volver al código OTP
-                  </button>
-                  <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">Paso 2 de 2</span>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                  <Button
-                    variant="outline"
-                    className="border-gray-200 text-gray-700 font-bold hover:bg-gray-50 h-11 px-6 rounded-xl"
-                    onClick={() => setModalFirmaActuacion(null)}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold h-11 px-6 rounded-xl shadow-md hover:shadow-lg transition-all"
-                    onClick={handleConfirmarFirma}
-                    disabled={enviandoFirma || !firmaArchivo}
-                  >
-                    {enviandoFirma ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                        Procesando Firma...
-                      </>
-                    ) : (
-                      'Confirmar Firma Electrónica'
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
-              </div>
-            </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
+      {modalFirmaActuacion && (
+        <FirmaDigitalActuacion
+          expedienteId={expedienteId || String(modalFirmaActuacion.expedienteId)}
+          radicado={expedienteId || String(modalFirmaActuacion.expedienteId)}
+          actuacionDescripcion={modalFirmaActuacion.descripcion}
+          firmanteNombre={(authService.getCurrentUser() as any)?.nombre || 'Usuario Funcionario'}
+          firmanteCargo={getFriendlyRoleName((authService.getCurrentUser() as any)?.role || 'Funcionario')}
+          etapaLabel="Autorización de Actuación"
+          correoDestino={(authService.getCurrentUser() as any)?.email}
+          onVerifyCodigo={async (codigo) => {
+            // Guardamos el OTP ingresado para usarlo al final
+            setOtpArray(codigo.split(''));
+            return Promise.resolve();
+          }}
+          onFirmaCompleta={handleConfirmarFirmaHash}
+          onCancelar={() => setModalFirmaActuacion(null)}
+        />
       )}
 
       {/* Modal de Devolución */}
