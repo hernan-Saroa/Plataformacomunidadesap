@@ -178,6 +178,11 @@ function sanitizeCatalogValue(value?: string): string {
   return (value || '').replace(/\|/g, '/').trim() || 'Sin dato';
 }
 
+function parseUnidades(macroproceso?: string): string[] {
+  if (!macroproceso) return [];
+  return macroproceso.split(';').map(u => u.trim()).filter(Boolean);
+}
+
 function buildEncodedValue(proceso: ProcesoParaSelect): string {
   return [
     sanitizeCatalogValue(proceso.codigo || proceso.id),
@@ -384,8 +389,13 @@ export function FormularioProcesoDafpVisual({
   const [valorProcesoSeleccionado, setValorProcesoSeleccionado] = useState<string>(procesoInicial?.selectorProcesoCodificado || '');
 
   // ── Multi-select para Unidades Auditables ──
-  const [unidadesDisponibles, setUnidadesDisponibles] = useState<string[]>([]);
-  const [unidadesSeleccionadas, setUnidadesSeleccionadas] = useState<Set<string>>(new Set());
+  const [unidadesDisponibles, setUnidadesDisponibles] = useState<string[]>(() => {
+    const selectedFromCatalog = procesosCatalog?.find(p => p.id === procesoInicial?.id) || procesosCatalog?.find(p => p.nombre === procesoInicial?.nombre);
+    return parseUnidades(selectedFromCatalog?.macroproceso || procesoInicial?.macroproceso);
+  });
+  const [unidadesSeleccionadas, setUnidadesSeleccionadas] = useState<Set<string>>(() => {
+    return new Set(parseUnidades(procesoInicial?.macroproceso));
+  });
   const [unidadDropdownOpen, setUnidadDropdownOpen] = useState(false);
   const unidadDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -554,6 +564,13 @@ export function FormularioProcesoDafpVisual({
     }));
     setProcesoIdSeleccionado(selectedFromCatalog?.id || nextForm.id || '');
     setValorProcesoSeleccionado(selectedFromCatalog?.encodedValue || nextForm.selectorProcesoCodificado || '');
+
+    // Inicializar el dropdown de unidades auditables en modo edición
+    const disponibles = parseUnidades(selectedFromCatalog?.macroproceso || nextForm.macroproceso);
+    setUnidadesDisponibles(disponibles);
+
+    const seleccionadas = parseUnidades(nextForm.macroproceso);
+    setUnidadesSeleccionadas(new Set(seleccionadas));
   }, [catalogoProcesos, fechaCortePlan, open, procesoInicial, vigenciaPlan]);
 
   const handleChange = <K extends keyof FormularioDafpData>(field: K, value: FormularioDafpData[K]) => {
@@ -573,7 +590,7 @@ export function FormularioProcesoDafpVisual({
 
     setProcesoIdSeleccionado(proceso.id);
     // Parse unidades auditables y auto-seleccionar todas
-    const unidadesParsed = macroproceso.split(';').map(u => u.trim()).filter(Boolean);
+    const unidadesParsed = parseUnidades(macroproceso);
     setUnidadesDisponibles(unidadesParsed);
     setUnidadesSeleccionadas(new Set(unidadesParsed));
     setFormData((prev) => ({
