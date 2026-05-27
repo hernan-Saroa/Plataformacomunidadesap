@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ModalExpediente - Modal COMPLETO de visualización del expediente judicial
  * ✅ Nuevo diseño corporativo ESAP 2025 premium
  * ✅ Estilo moderno con header destacado y métricas visuales
@@ -51,6 +51,7 @@ import { TabActuacionesExpediente } from '../core/TabActuacionesExpediente';
 import { TabTareasExpediente } from '../core/TabTareasExpediente';
 import { TabNotasExpediente } from '../core/TabNotasExpediente';
 import { TabDocumentosExpediente } from '../core/TabDocumentosExpediente';
+import { TabTrazabilidadExpediente } from '../core/TabTrazabilidadExpediente';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
 
 interface ModalExpedienteProps {
@@ -64,6 +65,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('TODOS');
   const [tabActivo, setTabActivo] = useState('general');
+  const [comunicacionesTab, setComunicacionesTab] = useState('trazabilidad');
 
   // Estados para modales
   // Estados para modales
@@ -74,6 +76,7 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   const [modalEditarTareaAbierto, setModalEditarTareaAbierto] = useState(false);
   const [modalGestionDocumentosAbierto, setModalGestionDocumentosAbierto] = useState(false);
   const [modalRegistrarActuacionAbierto, setModalRegistrarActuacionAbierto] = useState(false);
+  const [modoAprobacion, setModoAprobacion] = useState(false);
   const [modalProgramarAudienciaAbierto, setModalProgramarAudienciaAbierto] = useState(false);
   const [modalAnexarAbierto, setModalAnexarAbierto] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -133,6 +136,18 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       }
     }
   }, [isOpen, expediente]);
+
+  const handleNavigateToAction = (type: string, id: string) => {
+    if (type === 'ACTUACION') {
+      setTabActivo('actuaciones');
+    } else if (type === 'TAREA') {
+      setTabActivo('comunicaciones');
+      setComunicacionesTab('tareas-sub');
+    } else if (type === 'COMENTARIO') {
+      setTabActivo('comunicaciones');
+      setComunicacionesTab('notas-sub');
+    }
+  };
 
   // Cargar abogados al abrir modal reasignar o programar audiencia
   useEffect(() => {
@@ -893,12 +908,37 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   // ==================== HANDLERS DE ACTUACIONES Y AUDIENCIAS ====================
 
+  const { estadosActivos } = useConfiguracionModulo(expediente.modulo || 'defensa-judicial');
+
+  const handleAprobarEtapaKanban = () => {
+    // Validar que no haya actuaciones en estado PENDIENTE de autorizacion
+    const actuacionesPendientes = actuaciones.filter(a => a.metadata?.estadoAutorizacion === 'PENDIENTE');
+    
+    if (actuacionesPendientes.length > 0) {
+      toast.error('No se puede avanzar la etapa. Existen actuaciones pendientes de aprobación.', {
+        description: `Falta aprobar ${actuacionesPendientes.length} actuación(es).`
+      });
+      return;
+    }
+
+    // Avanzar etapa
+    const etapaActual = expediente.etapa || '';
+    const currentIndex = estadosActivos.findIndex(e => e.id === etapaActual || e.nombre === etapaActual);
+    
+    if (currentIndex !== -1 && currentIndex < estadosActivos.length - 1) {
+      const nuevaEtapa = estadosActivos[currentIndex + 1].id;
+      handleCambiarEtapa(nuevaEtapa);
+      toast.success('✅ Etapa aprobada. Avanzando al siguiente paso del proceso.');
+    } else {
+      toast.info('El expediente ya se encuentra en la última etapa del proceso.');
+    }
+  };
+
   const handleGuardarActuacion = async (data: any, file?: File) => {
     try {
       const id = expediente.uuid || expediente.id;
-      // data viene del ModalRegistrarActuacion
-      // Mapear a lo que espera el servicio
-      await legalService.createActuacion({
+      
+      const actuacionData = {
         expedienteId: id,
         tipoActuacion: data.tipo,
         descripcion: data.descripcion,
@@ -906,12 +946,23 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
         responsable: data.responsable,
         estado: data.estado,
         observaciones: data.observaciones,
-        file: file
-      });
+        file: file,
+        documentosAsociados: data.documentosAsociados,
+        // Al crear, la marcamos como pendiente de autorización para el flujo Kanban
+        metadata: {
+          estadoAutorizacion: 'PENDIENTE',
+          aprobacionTipo: 'rol',
+          aprobacionRol: 'SUPER_ADMIN' // o APROBADOR_KANBAN
+        }
+      };
 
-      toast.success('✅ Actuación registrada');
+      await legalService.createActuacion(actuacionData);
+
+      toast.success('⚖️ Actuación registrada (Pendiente de Autorización)');
+      
       loadActuaciones(id);
       setModalRegistrarActuacionAbierto(false);
+      setModoAprobacion(false);
     } catch (error) {
       console.error('Error creando actuacion', error);
       toast.error('Error al registrar actuación');
@@ -1390,7 +1441,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl !max-h-[82vh] flex flex-col p-0">
+        <DialogContent 
+          hideCloseButton 
+          className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col p-0"
+          style={{ width: '80vw', maxWidth: '80vw' }}
+        >
           <DialogTitle className="sr-only">
             Expediente Judicial {expediente.id} - Vista Completa
           </DialogTitle>
@@ -1437,11 +1492,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
                   <Button
                     variant="outline"
-                    size="sm"
                     onClick={() => setIsEditModalOpen(true)}
-                    className="text-blue-600 border-blue-600 hover:bg-blue-50 bg-white shadow-sm flex-shrink-0"
+                    className="font-semibold text-blue-700 border-blue-200 hover:bg-blue-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
+                    style={{ height: '24px', padding: '0 8px', fontSize: '10px' }}
                   >
-                    <Edit className="w-4 h-4 mr-2" />
+                    <Edit className="w-3 h-3 mr-1" />
                     Editar Proceso
                   </Button>
                 )}
@@ -1457,13 +1512,13 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   return (
                     <Button
                       variant="outline"
-                      size="sm"
                       onClick={() => setIsProvisionModalOpen(true)}
                       disabled={!esAbogadoResponsable}
                       title={!esAbogadoResponsable ? 'Solo el abogado responsable puede registrar la provisión contable' : 'Registrar valoración y provisión contable'}
-                      className="text-amber-600 border-amber-600 hover:bg-amber-50 bg-white shadow-sm flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="font-semibold text-amber-700 border-amber-200 hover:bg-amber-50 bg-white shadow-none rounded-md transition-all flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ height: '24px', padding: '0 8px', fontSize: '10px' }}
                     >
-                      <DollarSign className="w-4 h-4 mr-2" />
+                      <DollarSign className="w-3 h-3 mr-1" />
                       Provisión Contable
                     </Button>
                   );
@@ -1471,11 +1526,11 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && !(expediente as any).procesoPrincipalId && (!(expediente as any).procesosAnexados || (expediente as any).procesosAnexados.length === 0) && (
                   <Button
                     variant="outline"
-                    size="sm"
                     onClick={() => setModalAnexarAbierto(true)}
-                    className="text-indigo-600 border-indigo-600 hover:bg-indigo-50 bg-white shadow-sm flex-shrink-0"
+                    className="font-semibold text-indigo-700 border-indigo-200 hover:bg-indigo-50 bg-white shadow-none rounded-md transition-all flex-shrink-0"
+                    style={{ height: '24px', padding: '0 8px', fontSize: '10px' }}
                   >
-                    <LinkIcon className="w-4 h-4 mr-2" />
+                    <LinkIcon className="w-3 h-3 mr-1" />
                     Asociado
                   </Button>
                 )}
@@ -1505,11 +1560,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 <TabsTrigger value="actuaciones" className="text-xs font-bold">
                   ⚖️ Actuaciones
                 </TabsTrigger>
-                <TabsTrigger value="tareas" className="text-xs font-bold">
-                  ✅ Tareas
-                </TabsTrigger>
-                <TabsTrigger value="notas" className="text-xs font-bold">
-                  📝 Notas
+
+                <TabsTrigger value="comunicaciones" className="text-xs font-bold">
+                  ⏱️ Trazabilidad
                 </TabsTrigger>
                 <TabsTrigger value="anexos" className="text-xs font-bold">
                   🔗 Anexos
@@ -1989,12 +2042,20 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 <TabActuacionesExpediente
                   actuaciones={actuaciones}
                   botonesAccion={[
-                    ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_CREATE) ? [{
-                      label: 'Registrar',
-                      icono: <Plus className="w-3 h-3 mr-1" />,
-                      onClick: () => setModalRegistrarActuacionAbierto(true),
-                      color: '#003DA5'
-                    }] : []),
+                    ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_CREATE) ? [
+                      {
+                        label: 'Registrar',
+                        icono: <Plus className="w-3 h-3 mr-1" />,
+                        onClick: () => { setModoAprobacion(false); setModalRegistrarActuacionAbierto(true); },
+                        color: '#003DA5'
+                      },
+                      {
+                        label: 'Aprobar Etapa (Kanban)',
+                          icono: <CheckCircle className="w-3 h-3 mr-1" />,
+                          onClick: handleAprobarEtapaKanban,
+                          color: '#10B981'
+                      }
+                    ] : []),
                     ...(authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_AUDIENCIA_CREATE) ? [{
                       label: 'Programar Audiencia',
                       icono: <Calendar className="w-3 h-3 mr-1" />,
@@ -2012,28 +2073,76 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   } : undefined}
                   onEliminarAudiencia={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_AUDIENCIA_DELETE) ? (id) => handleEliminarAudiencia(id.toString()) : undefined}
                   labelRegistrar="Registrar Primera Actuación"
-                  onRegistrarPrimera={() => setModalRegistrarActuacionAbierto(true)}
+                  onRegistrarPrimera={() => { setModoAprobacion(false); setModalRegistrarActuacionAbierto(true); }}
                 />
               </TabsContent>
 
-              {/* ==================== TAB: TAREAS ==================== */}
-              <TabsContent value="tareas" className="space-y-3">
-                <TabTareasExpediente
-                  tareas={tareas}
-                  setTareas={setTareas}
-                  expedienteId={String(expediente.uuid || expediente.id)}
-                  onCrearTarea={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_CREATE) ? () => setModalCrearTareaAbierto(true) : undefined}
-                  onEditarTarea={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_TAREA_EDIT) ? handleEditarTarea : undefined}
-                  onMarcarCompletada={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_TAREA_COMPLETE) ? (id) => handleMarcarCompletada(String(id)) : undefined}
-                />
-              </TabsContent>
 
-              {/* ==================== TAB: NOTAS ==================== */}
-              <TabsContent value="notas" className="space-y-3">
-                <TabNotasExpediente
-                  notas={notas}
-                  onAgregarNota={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_CREATE) ? () => setModalAgregarNotaAbierto(true) : undefined}
-                />
+
+              {/* ==================== TAB: TRAZABILIDAD (COMUNICACIONES) ==================== */}
+              <TabsContent value="comunicaciones" className="space-y-4">
+                <Tabs value={comunicacionesTab} onValueChange={setComunicacionesTab} className="w-full">
+                  <div className="relative mb-4 flex justify-center items-center">
+                    <TabsList className="grid w-full grid-cols-3 bg-gray-100/80 p-0.5 rounded-md h-8 max-w-lg border border-gray-200 shadow-sm">
+                      <TabsTrigger value="trazabilidad" className="font-bold text-xs py-1 px-2 rounded">Línea de Tiempo</TabsTrigger>
+                      <TabsTrigger value="tareas-sub" className="font-bold text-xs py-1 px-2 rounded">Tareas y Asignaciones</TabsTrigger>
+                      <TabsTrigger value="notas-sub" className="font-bold text-xs py-1 px-2 rounded">Bitácora</TabsTrigger>
+                    </TabsList>
+                    
+                    <div className="absolute right-0 top-0 bottom-0 flex items-center">
+                      {comunicacionesTab === 'tareas-sub' && authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_CREATE) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 text-[10px] px-2 font-medium text-orange-700 border border-orange-200 hover:bg-orange-100 hover:text-orange-900 focus:bg-orange-100 focus:text-orange-900 bg-white shadow-none rounded-sm transition-colors"
+                          onClick={() => setModalCrearTareaAbierto(true)}
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Nueva Tarea
+                        </Button>
+                      )}
+                      {comunicacionesTab === 'notas-sub' && authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_NOTA_CREATE) && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 text-[10px] px-2 font-medium text-yellow-700 border border-yellow-200 hover:bg-yellow-100 hover:text-yellow-900 focus:bg-yellow-100 focus:text-yellow-900 bg-white shadow-none rounded-sm transition-colors"
+                          onClick={() => setModalAgregarNotaAbierto(true)}
+                        >
+                          <Plus className="w-3 h-3 mr-1" />
+                          Agregar Nota
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <TabsContent value="trazabilidad" className="mt-0">
+                    <TabTrazabilidadExpediente
+                      expedienteId={String(expediente.uuid || expediente.id)}
+                      actuaciones={actuaciones}
+                      tareas={tareas}
+                      notas={notas}
+                      profesionalAsignado={expediente.abogadoAsignado || 'Sin asignar'}
+                      onActionClick={handleNavigateToAction}
+                      readOnly={true}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="tareas-sub" className="mt-0">
+                    <TabTareasExpediente
+                      tareas={tareas}
+                      setTareas={setTareas}
+                      expedienteId={String(expediente.uuid || expediente.id)}
+                      onEditarTarea={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_TAREA_EDIT) ? handleEditarTarea : undefined}
+                      onMarcarCompletada={authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_TAREA_COMPLETE) ? (id) => handleMarcarCompletada(String(id)) : undefined}
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="notas-sub" className="mt-0">
+                    <TabNotasExpediente
+                      notas={notas}
+                    />
+                  </TabsContent>
+                </Tabs>
               </TabsContent>
 
               {/* ==================== TAB: ANEXOS ==================== */}
@@ -2126,8 +2235,8 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
           <div className="flex-shrink-0 bg-gradient-to-r from-gray-50 to-white border-t-2 border-gray-200 px-6 py-4">
             <div className="flex flex-col md:flex-row items-center justify-between gap-3">
               <div className="flex items-center gap-3 w-full md:w-auto">
-                <Button variant="outline" onClick={onClose} className="font-bold">
-                  <X className="w-3.5 h-3.5 mr-1.5" />
+                <Button variant="outline" size="sm" onClick={onClose} className="h-7 text-[10px] px-3 font-semibold text-gray-700 border-gray-200 hover:bg-gray-50 bg-white shadow-none rounded-md transition-all">
+                  <X className="w-3 h-3 mr-1" />
                   Cerrar
                 </Button>
                 <div className="text-xs text-gray-600 hidden md:block">
@@ -2142,9 +2251,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                   variant="outline"
                   size="sm"
                   onClick={() => setModalNotificarAbierto(true)}
-                  className="font-bold text-xs"
+                  className="h-7 text-[10px] px-3 font-semibold text-gray-700 border-gray-200 hover:bg-gray-50 bg-white shadow-none rounded-md transition-all"
                 >
-                  <Bell className="w-3.5 h-3.5 mr-1" />
+                  <Bell className="w-3 h-3 mr-1" />
                   Notificar
                 </Button>
                 {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ARCHIVAR) && (
@@ -2152,9 +2261,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     variant="outline"
                     size="sm"
                     onClick={handleArchivar}
-                    className="font-bold text-xs text-orange-600 border-orange-300 hover:bg-orange-50"
+                    className="h-7 text-[10px] px-3 font-semibold text-orange-700 border-orange-200 hover:bg-orange-50 bg-white shadow-none rounded-md transition-all"
                   >
-                    <Archive className="w-3.5 h-3.5 mr-1" />
+                    <Archive className="w-3 h-3 mr-1" />
                     Archivar
                   </Button>
                 )}
@@ -2163,9 +2272,9 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                     variant="outline"
                     size="sm"
                     onClick={handleEliminar}
-                    className="font-bold text-xs text-red-600 border-red-300 hover:bg-red-50"
+                    className="h-7 text-[10px] px-3 font-semibold text-red-700 border-red-200 hover:bg-red-50 bg-white shadow-none rounded-md transition-all"
                   >
-                    <Trash2 className="w-3.5 h-3.5 mr-1" />
+                    <Trash2 className="w-3 h-3 mr-1" />
                     Eliminar
                   </Button>
                 )}
@@ -2411,10 +2520,12 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
       }
       <ModalRegistrarActuacion
         isOpen={modalRegistrarActuacionAbierto}
-        onClose={() => setModalRegistrarActuacionAbierto(false)}
+        onClose={() => { setModalRegistrarActuacionAbierto(false); setModoAprobacion(false); }}
         onGuardar={handleGuardarActuacion}
         expedienteId={(expediente.uuid || expediente.id).toString()}
         radicado={expediente.radicado}
+        documentosDelExpediente={documentos}
+        isApprovalMode={modoAprobacion}
       />
       <ModalProgramarAudiencia
         isOpen={modalProgramarAudienciaAbierto}
@@ -2665,3 +2776,4 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
     </>
   );
 }
+

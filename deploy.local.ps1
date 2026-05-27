@@ -153,6 +153,9 @@ function Resolve-MfeService ($name) {
         "gestion-legal" { return "frontend-mfe-gestion-legal" }
         "mfe-gestion-legal" { return "frontend-mfe-gestion-legal" }
         "frontend-mfe-gestion-legal" { return "frontend-mfe-gestion-legal" }
+        "pta" { return "frontend-mfe-pta" }
+        "mfe-pta" { return "frontend-mfe-pta" }
+        "frontend-mfe-pta" { return "frontend-mfe-pta" }
         default { return $null }
     }
 }
@@ -284,7 +287,7 @@ switch ($Command) {
                               "frontend-mfe-programas-academicos", "frontend-mfe-gestion-personas", "frontend-mfe-auditoria", 
                               "frontend-mfe-reportes", "frontend-mfe-registro-academico", "frontend-mfe-certificados-laborales", 
                               "frontend-mfe-firma-electronica", "frontend-mfe-control-interno", "frontend-mfe-control-disciplinario", 
-                              "frontend-mfe-gestion-legal")
+                              "frontend-mfe-gestion-legal", "frontend-mfe-pta")
         Invoke-ComposeLocal (@("up", "-d", "--build") + $frontendServices)
     }
 

@@ -84,12 +84,15 @@ export class CreateExpedienteDto {
 
     @IsOptional()
     @IsString()
-    tipoConteoTermino?: 'HABILES' | 'CALENDARIO';
+    tipoConteoTermino?: 'HABILES' | 'CALENDARIO' | 'HORAS';
 
     @IsOptional()
     @IsArray()
     @IsString({ each: true })
     documentosInicialesUrls?: string[];
+
+    @IsOptional()
+    camposAdicionales?: Record<string, any>;
 
     @IsOptional()
     @IsArray()

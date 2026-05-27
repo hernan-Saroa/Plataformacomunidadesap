@@ -279,7 +279,7 @@ function ControlInternoContent({
 
   return (
     <>
-    <Toaster position="top-right" richColors />
+    <Toaster position="bottom-right" richColors />
     <ModuleLayout
       moduleName="CONTROL INTERNO DE GESTIÓN"
       moduleDescription="Sistema de Gestión"

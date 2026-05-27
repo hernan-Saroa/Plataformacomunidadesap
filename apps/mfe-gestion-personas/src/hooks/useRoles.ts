@@ -7,10 +7,11 @@ import { useState, useEffect, useCallback } from 'react';
 // import { rolesService } from '../services/api';
 import type { Role, Permission, CreateRoleDTO, UpdateRoleDTO, FilterParams } from '../types';
 import { toast } from 'sonner';
+import { ROLES_SISTEMA } from '../components/admin/RolesYPermisosActualizado';
 
 // Mock data temporal hasta que el backend esté listo
 const mockRolesService = {
-  getRoles: async (filters: any) => ({ data: [] }),
+  getRoles: async (filters: any) => ({ data: ROLES_SISTEMA }),
   getAllPermissions: async () => [],
   getPermissionsByCategory: async () => ({}),
   createRole: async (data: any) => ({ id: '1', displayName: data.displayName }),

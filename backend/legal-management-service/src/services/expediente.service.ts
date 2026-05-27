@@ -110,6 +110,10 @@ export class ExpedienteService {
                 const vencimiento = new Date(fechaNotif);
                 vencimiento.setDate(vencimiento.getDate() + Number(data.terminoProcesalDias));
                 data.fechaVencimientoTermino = vencimiento;
+            } else if (tipoConteo === 'HORAS') {
+                const vencimiento = new Date(fechaNotif);
+                vencimiento.setHours(vencimiento.getHours() + Number(data.terminoProcesalDias));
+                data.fechaVencimientoTermino = vencimiento;
             } else {
                 data.fechaVencimientoTermino = this.addBusinessDays(fechaNotif, Number(data.terminoProcesalDias));
             }
@@ -207,6 +211,8 @@ export class ExpedienteService {
 
             const nuevaFecha = exp.tipoConteoTermino === 'CALENDARIO'
                 ? (() => { const d = new Date(exp.fechaVencimientoTermino); d.setDate(d.getDate() + deltaDias); return d; })()
+                : exp.tipoConteoTermino === 'HORAS'
+                ? (() => { const d = new Date(exp.fechaVencimientoTermino); d.setHours(d.getHours() + deltaDias); return d; })()
                 : this.shiftBusinessDays(new Date(exp.fechaVencimientoTermino), deltaDias);
 
             await this.expedienteRepository.update(exp.id, {

@@ -10,7 +10,7 @@ import {
   Gavel, FileText, Users, Clock, AlertTriangle, CheckCircle, X,
   Calendar, User, Building, Phone, Mail, MapPin, Briefcase,
   Eye, Download, Upload, Plus, Edit, Trash2, Send,
-  FileDown, Scale, Link as LinkIcon, Unlink, Archive
+  FileDown, Scale, Link as LinkIcon, Unlink, Archive, MessageSquare
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import type { ProcesoDisciplinario, DecisionDisciplinaria } from '../core/types';
@@ -40,6 +40,7 @@ import { TabDocumentosExpediente } from '../core/TabDocumentosExpediente';
 import { TabActuacionesExpediente } from '../core/TabActuacionesExpediente';
 import { TabTareasExpediente } from '../core/TabTareasExpediente';
 import { TabNotasExpediente } from '../core/TabNotasExpediente';
+import { TabTrazabilidadExpediente } from '../core/TabTrazabilidadExpediente';
 import type {
   DocumentoExpediente,
   ActuacionExpediente,
@@ -1226,18 +1227,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                   Actuaciones
                 </TabsTrigger>
                 <TabsTrigger
-                  value="tareas"
+                  value="comunicaciones"
                   className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
                 >
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Tareas
-                </TabsTrigger>
-                <TabsTrigger
-                  value="notas"
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
-                >
-                  <Edit className="w-4 h-4 mr-2" />
-                  Notas
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Comunicaciones
                 </TabsTrigger>
                 <TabsTrigger
                   value="anexos"
@@ -1522,31 +1516,70 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                 }))}
                 labelRegistrar="Registrar Primera Actuación"
                 onRegistrarPrimera={canRegistrarActuacion ? () => setModalNuevaActuacionOpen(true) : undefined}
-              />
-            </TabsContent>
-
-            {/* ==================== TAB: TAREAS ==================== */}
-            <TabsContent value="tareas" className="flex-1 overflow-y-auto p-6 space-y-4">
-              <TabTareasExpediente
-                tareas={tareas}
-                setTareas={setTareas}
                 expedienteId={proceso.id}
-                onCrearTarea={canEditProceso ? () => {
-                  setModalCrearTareaAbierto(true);
-                } : undefined}
-                onEditarTarea={canEditProceso ? handleEditarTarea : undefined}
-                onMarcarCompletada={canCompletarTareas ? handleMarcarTareaCompletada : undefined}
+                onReloadExpediente={() => {
+                  legalService.getJuzgamientoActuaciones(proceso.id)
+                    .then(data => {
+                      setActuaciones(Array.isArray(data) ? data : []);
+                    })
+                    .catch(err => {
+                      console.error('Error reloading actuaciones:', err);
+                    });
+                  if (onRefresh) {
+                    onRefresh();
+                  }
+                }}
               />
             </TabsContent>
 
-            {/* ==================== TAB: NOTAS ==================== */}
-            <TabsContent value="notas" className="flex-1 overflow-y-auto p-6 space-y-4">
-              <TabNotasExpediente
-                notas={notasInternas}
-                onAgregarNota={canEditProceso ? () => {
-                  setModalAgregarNotaAbierto(true);
-                } : undefined}
-              />
+            {/* ==================== TAB: COMUNICACIONES ==================== */}
+            <TabsContent value="comunicaciones" className="flex-1 overflow-y-auto p-6 space-y-4">
+              <Tabs defaultValue="trazabilidad" className="w-full">
+                <TabsList className="grid grid-cols-3 w-[360px] mb-4 bg-gray-100 p-0.5 rounded-lg">
+                  <TabsTrigger value="trazabilidad" className="text-xs font-bold">
+                    ⏱️ Trazabilidad
+                  </TabsTrigger>
+                  <TabsTrigger value="tareas-sub" className="text-xs font-bold">
+                    ✅ Tareas
+                  </TabsTrigger>
+                  <TabsTrigger value="notas-sub" className="text-xs font-bold">
+                    📝 Notas
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="trazabilidad" className="space-y-3">
+                  <TabTrazabilidadExpediente
+                    expedienteId={proceso.id}
+                    profesionalAsignado={proceso.abogadoAsignado}
+                    tareas={tareas}
+                    actuaciones={actuaciones}
+                    notas={notas}
+                    readOnly={readOnly}
+                  />
+                </TabsContent>
+
+                <TabsContent value="tareas-sub" className="space-y-3">
+                  <TabTareasExpediente
+                    tareas={tareas}
+                    setTareas={setTareas}
+                    expedienteId={proceso.id}
+                    onCrearTarea={canEditProceso ? () => {
+                      setModalCrearTareaAbierto(true);
+                    } : undefined}
+                    onEditarTarea={canEditProceso ? handleEditarTarea : undefined}
+                    onMarcarCompletada={canCompletarTareas ? handleMarcarTareaCompletada : undefined}
+                  />
+                </TabsContent>
+
+                <TabsContent value="notas-sub" className="space-y-3">
+                  <TabNotasExpediente
+                    notas={notasInternas}
+                    onAgregarNota={canEditProceso ? () => {
+                      setModalAgregarNotaAbierto(true);
+                    } : undefined}
+                  />
+                </TabsContent>
+              </Tabs>
             </TabsContent>
 
             {/* ==================== TAB: ANEXOS ==================== */}

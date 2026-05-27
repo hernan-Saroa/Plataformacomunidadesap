@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, NotFoundException, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, NotFoundException, UseInterceptors, UploadedFile, BadRequestException, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -9,6 +9,7 @@ import { LegalNotificationsService } from '../services/legal-notifications.servi
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('expedientes/:id/actuaciones')
 export class ActuacionController {
@@ -116,6 +117,64 @@ export class ActuacionController {
         }
 
         return result;
+    }
+
+    @Post(':actuacionId/enviar-otp')
+    async enviarOtp(
+        @Param('actuacionId') actuacionId: string,
+        @Req() req?: any
+    ) {
+        const access = getLegalAccessFromRequest(req);
+        const email = access.userEmail || 'sistema@esap.edu.co';
+        const name = access.userName || 'Usuario';
+        return this.actuacionService.enviarOtp(actuacionId, email, name);
+    }
+
+    @Post(':actuacionId/autorizar')
+    @UseInterceptors(FileInterceptor('file', {
+        storage: diskStorage({
+            destination: (req, file, cb) => {
+                const dir = './uploads/signatures';
+                if (!existsSync(dir)) {
+                    mkdirSync(dir, { recursive: true });
+                }
+                cb(null, dir);
+            },
+            filename: (req, file, cb) => {
+                const randomName = Array.from(Array(32)).map(() => Math.round(Math.random() * 16).toString(16)).join('');
+                return cb(null, `${randomName}${extname(file.originalname)}`);
+            }
+        }),
+        limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+        fileFilter: (req, file, cb) => {
+            if (!file.mimetype.startsWith('image/')) {
+                return cb(new BadRequestException('Solo se permiten archivos de imagen para la firma'), false);
+            }
+            cb(null, true);
+        }
+    }))
+    async autorizar(
+        @Param('actuacionId') actuacionId: string,
+        @Body('otp') otp: string,
+        @UploadedFile() file: any,
+        @Req() req?: any
+    ) {
+        const access = getLegalAccessFromRequest(req);
+        const email = access.userEmail || 'sistema@esap.edu.co';
+        const name = access.userName || 'Usuario';
+        return this.actuacionService.autorizarActuacion(actuacionId, otp, file, email, name);
+    }
+
+    @Post(':actuacionId/devolver')
+    async devolver(
+        @Param('actuacionId') actuacionId: string,
+        @Body('observaciones') observaciones: string,
+        @Req() req?: any
+    ) {
+        const access = getLegalAccessFromRequest(req);
+        const email = access.userEmail || 'sistema@esap.edu.co';
+        const name = access.userName || 'Usuario';
+        return this.actuacionService.devolverActuacion(actuacionId, observaciones, email, name);
     }
 }
 

@@ -5,7 +5,7 @@ export class ConsultaJuridica {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ name: 'numero_radicado', unique: true })
+    @Column({ name: 'numero_radicado', unique: true, nullable: true })
     numeroRadicado: string;
 
     @Column({ name: 'fecha_recepcion', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })

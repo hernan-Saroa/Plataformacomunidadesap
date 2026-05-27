@@ -29,7 +29,6 @@ import { ModalNuevaDemanda, NuevaDemandaData } from './ModalNuevaDemanda';
 import { generarReporteExpedientesPDF } from './generarReporteExpedientes';
 import { ModalFiltrosReporte } from './ModalFiltrosReporte';
 import { ModalExpediente } from './ModalExpediente';
-import { ModalComunicaciones } from './ModalComunicaciones';
 import { ModalAutos } from './ModalAutos';
 import { ModalEvidencias } from './ModalEvidencias';
 import { ModalOficios } from './ModalOficios';
@@ -75,7 +74,28 @@ const ItemTypes = {
 
 export function ModuloDefensaJudicialV3() {
   // ✅ Obtener configuraciones desde el Context API
-  const { estadosActivos, tiposProcesosActivos } = useConfiguracionModulo('defensa-judicial');
+  const { estadosActivos, tiposProcesosActivos: allTiposProcesos } = useConfiguracionModulo('defensa-judicial');
+
+  // Filtrar los tipos de procesos activos según los roles del usuario (o si no tiene rol asociado)
+  const tiposProcesosActivos = (allTiposProcesos || []).filter((tp: any) => {
+    if (!tp.rolAsociado) return true;
+    return authService.hasRole(tp.rolAsociado) || authService.isSuperAdmin();
+  });
+
+  // Selector de tablero (por tipo de proceso)
+  const [tableroSeleccionado, setTableroSeleccionado] = useState<string>('');
+
+  // Sincronizar tableroSeleccionado con el primer tipo de proceso activo al cargar
+  useEffect(() => {
+    if (tiposProcesosActivos.length > 0 && !tableroSeleccionado) {
+      setTableroSeleccionado(tiposProcesosActivos[0].id);
+    }
+  }, [tiposProcesosActivos, tableroSeleccionado]);
+
+  const procesoSeleccionado = (allTiposProcesos || []).find((tp: any) => tp.id === tableroSeleccionado);
+  const columnasTablero = (procesoSeleccionado?.estados && procesoSeleccionado.estados.length > 0)
+    ? procesoSeleccionado.estados.filter((e: any) => e.activo).sort((a: any, b: any) => a.orden - b.orden)
+    : estadosActivos;
 
   // ✅ Obtener permisos del usuario actual
   const { usuario } = usePermisos();
@@ -92,6 +112,7 @@ export function ModuloDefensaJudicialV3() {
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
   const [filtroAbogado, setFiltroAbogado] = useState<string>('TODOS');
+  const [filtroFecha, setFiltroFecha] = useState<string>('');
   const [abogadosList, setAbogadosList] = useState<{ id: string; nombre: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -311,6 +332,9 @@ export function ModuloDefensaJudicialV3() {
           diasTotales: (() => {
             const inicio = new Date(exp.fechaNotificacion || Date.now());
             const fin = new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
+            if (exp.tipoConteoTermino === 'HORAS') {
+              return exp.terminoProcesalDias || Math.ceil((fin.getTime() - inicio.getTime()) / (1000 * 60 * 60));
+            }
             if (exp.tipoConteoTermino === 'Dias Calendario' || exp.tipoConteoTermino === 'CALENDARIO') {
               return calcularDiasTotales(inicio, fin);
             }
@@ -330,6 +354,10 @@ export function ModuloDefensaJudicialV3() {
           diasRestantes: (() => {
             const hoy = new Date();
             const venc = new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
+            if (exp.tipoConteoTermino === 'HORAS') {
+              const diffMs = venc.getTime() - hoy.getTime();
+              return Math.ceil(diffMs / (1000 * 60 * 60)); // Devuelve horas restantes
+            }
             if (exp.tipoConteoTermino === 'Dias Calendario' || exp.tipoConteoTermino === 'CALENDARIO') {
               return calcularDiasRestantes(venc);
             }
@@ -363,6 +391,11 @@ export function ModuloDefensaJudicialV3() {
           tiempoRestante: (() => {
             // Optional property just in case it's used
             const venc = new Date(exp.fechaVencimientoTermino || new Date(Date.now() + 90 * 24 * 60 * 60 * 1000));
+            if (exp.tipoConteoTermino === 'HORAS') {
+              const diffMs = venc.getTime() - new Date().getTime();
+              const hours = Math.ceil(diffMs / (1000 * 60 * 60));
+              return hours < 0 ? `Vencido` : `${hours} horas`;
+            }
             return calcularDiasRestantes(venc) < 0 ? `Vencido` : `${calcularDiasRestantes(venc)} días`;
           })(),
           // Para abogado, buscar el nombre en el mapa o usar valor directo si no es UUID
@@ -438,6 +471,33 @@ export function ModuloDefensaJudicialV3() {
     // Si la etapa es la misma, no hacer nada
     if (expediente.etapa === nuevaEtapa) return;
 
+    // Validar reglas de aprobación de la etapa destino
+    const colDestino = columnasTablero.find((col: any) => col.id === nuevaEtapa);
+    if (colDestino) {
+      const { aprobacionTipo, aprobacionRol, aprobacionUsuario } = colDestino;
+      if (aprobacionTipo === 'rol' && aprobacionRol) {
+        const hasRol = authService.hasRole(aprobacionRol) || authService.isSuperAdmin();
+        if (!hasRol) {
+          toast.error('Movimiento bloqueado por regla de aprobación', {
+            description: `Se requiere el rol "${aprobacionRol}" para mover expedientes a la etapa "${colDestino.nombre}".`
+          });
+          return;
+        }
+      } else if (aprobacionTipo === 'usuario' && aprobacionUsuario) {
+        const currentUser = authService.getCurrentUser();
+        const currentUserId = currentUser?.id || currentUser?.id_user || (currentUser as any)?.uuid;
+        const isAuthorizedUser = currentUserId === aprobacionUsuario || authService.isSuperAdmin();
+        if (!isAuthorizedUser) {
+          const abogadoReq = abogadosList.find((a) => a.id === aprobacionUsuario);
+          const nameDisplay = abogadoReq ? abogadoReq.nombre : 'un abogado específico';
+          toast.error('Movimiento bloqueado por regla de aprobación', {
+            description: `Solo el usuario asignado/autorizado "${nameDisplay}" puede mover expedientes a la etapa "${colDestino.nombre}".`
+          });
+          return;
+        }
+      }
+    }
+
     // Validar tareas pendientes antes de cambiar etapa
     try {
       const idToCheck = expediente.uuid || expediente.id;
@@ -504,21 +564,90 @@ export function ModuloDefensaJudicialV3() {
 
   // ✅ Primero aplicar filtros globales (búsqueda, tipo de proceso)
   const expedientesFiltrados = expedientes.filter(exp => {
+    // Filtro por Tablero Seleccionado (tipo de proceso de la vista actual)
+    const normalize = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[_\s]+/g, '-').trim();
+    const boardNorm = normalize(tableroSeleccionado);
+    const boardNombreNorm = procesoSeleccionado ? normalize(procesoSeleccionado.nombre) : '';
+
+    const matchesBoard = !tableroSeleccionado ||
+      exp.tipo === tableroSeleccionado ||
+      exp.tipoAccion === tableroSeleccionado ||
+      (exp as any).tipoProceso === tableroSeleccionado ||
+      normalize(exp.tipo) === boardNorm ||
+      normalize(exp.tipoAccion) === boardNorm ||
+      normalize((exp as any).tipoProceso) === boardNorm ||
+      (boardNombreNorm && (
+        normalize(exp.tipo) === boardNombreNorm ||
+        normalize(exp.tipoAccion) === boardNombreNorm ||
+        normalize((exp as any).tipoProceso) === boardNombreNorm
+      ));
+
+    if (!matchesBoard) return false;
+
+    // Filtro de Seguridad por Rol de Proceso
+    const norm = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[_\s]+/g, '-').trim();
+    const tipoProcesoObj = (allTiposProcesos || []).find((t: any) => {
+      const normName = norm(t.nombre || t.name);
+      return norm(t.id) === norm(exp.tipo) ||
+             norm(t.id) === norm((exp as any).tipoProceso) ||
+             normName === norm(exp.tipo) ||
+             normName === norm((exp as any).tipoProceso);
+    });
+
+    if (tipoProcesoObj && tipoProcesoObj.rolAsociado) {
+      const hasAssociatedRole = authService.hasRole(tipoProcesoObj.rolAsociado);
+      const isSuperAdmin = authService.isSuperAdmin();
+      if (!hasAssociatedRole && !isSuperAdmin) {
+        return false;
+      }
+    }
+
     // Filtro por búsqueda
     const q = busqueda.toLowerCase();
     const matchBusqueda = busqueda === '' ||
       exp.id?.toLowerCase().includes(q) ||
+      exp.radicado?.toLowerCase().includes(q) ||
       exp.demandante?.toLowerCase().includes(q) ||
       exp.demandado?.toLowerCase().includes(q) ||
+      exp.apoderado?.toLowerCase().includes(q) ||
       exp.juzgado?.toLowerCase().includes(q) ||
+      exp.juzgadoConocimiento?.toLowerCase().includes(q) ||
       (exp as any).tipoProceso?.toLowerCase().includes(q) ||
       exp.tipo?.toLowerCase().includes(q) ||
-      exp.medioControl?.toLowerCase().includes(q);
+      exp.tipoAccion?.toLowerCase().includes(q) ||
+      exp.medioControl?.toLowerCase().includes(q) ||
+      exp.abogadoAsignado?.toLowerCase().includes(q) ||
+      exp.abogadoResponsable?.toLowerCase().includes(q) ||
+      exp.hechos?.toLowerCase().includes(q) ||
+      exp.pretensiones?.toLowerCase().includes(q) ||
+      exp.pretensionDemandante?.toLowerCase().includes(q) ||
+      exp.demandantes?.some(d => 
+        d.nombre?.toLowerCase().includes(q) || 
+        d.identificacion?.toLowerCase().includes(q) || 
+        d.email?.toLowerCase().includes(q) || 
+        d.apoderado?.toLowerCase().includes(q)
+      ) ||
+      exp.demandados?.some(d => 
+        d.nombre?.toLowerCase().includes(q) || 
+        d.identificacion?.toLowerCase().includes(q) || 
+        d.email?.toLowerCase().includes(q) || 
+        d.apoderado?.toLowerCase().includes(q)
+      ) ||
+      exp.otrosActores?.some(d => 
+        d.nombre?.toLowerCase().includes(q) || 
+        d.identificacion?.toLowerCase().includes(q) || 
+        d.email?.toLowerCase().includes(q) || 
+        d.apoderado?.toLowerCase().includes(q)
+      ) ||
+      exp.actuaciones?.some(a => 
+        a.descripcion?.toLowerCase().includes(q) || 
+        a.tipoActuacion?.toLowerCase().includes(q) ||
+        (a as any).tipo?.toLowerCase().includes(q)
+      );
 
     // Filtro por Tipo de Proceso (Flexible: revisa tipo, medioControl, tipoAccion y tipoProceso)
     // Los IDs del filtro (ej: 'reparacion-directa') no coinciden con los valores del backend
     // (ej: 'Reparación Directa'), así que normalizamos ambos lados para comparar.
-    const normalize = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[_\s]+/g, '-').trim();
     const filtroNorm = normalize(filtroTipo);
     // También buscar el nombre legible del tipo seleccionado en la configuración
     const tipoConfigSeleccionado = tiposProcesosActivos.find((t: any) => t.id === filtroTipo);
@@ -553,7 +682,19 @@ export function ModuloDefensaJudicialV3() {
       exp.abogadoResponsable === filtroAbogado ||
       (filtroAbogado === 'Sin asignar' && esSinAsignar);
 
-    return matchBusqueda && matchTipo && matchAbogado;
+    // Filtro por rango de fecha de creación del proceso
+    let matchFecha = true;
+    if (filtroFecha) {
+      const [fromStr, toStr] = filtroFecha.split(':');
+      if (fromStr && toStr) {
+        const fromDate = new Date(fromStr + 'T00:00:00');
+        const toDate = new Date(toStr + 'T23:59:59');
+        const itemDate = exp.fechaCreacion instanceof Date ? exp.fechaCreacion : new Date(exp.fechaCreacion);
+        matchFecha = itemDate >= fromDate && itemDate <= toDate;
+      }
+    }
+
+    return matchBusqueda && matchTipo && matchAbogado && matchFecha;
   });
 
   // Función para normalizar strings (quitar acentos, mojibake y convertir a minúsculas)
@@ -579,7 +720,7 @@ export function ModuloDefensaJudicialV3() {
   };
 
   // Agrupar expedientes filtrados por etapa de forma dinámica
-  const expedientesPorEtapa = estadosActivos.reduce((acc: any, estado: any, index: number) => {
+  const expedientesPorEtapa = columnasTablero.reduce((acc: any, estado: any, index: number) => {
     if (!estado?.id) return acc;
 
     // Inicializar array para este estado
@@ -619,7 +760,7 @@ export function ModuloDefensaJudicialV3() {
   const expedientesCriticos = expedientesVisibles.filter((e: ExpedienteJudicial) => e.diasRestantes <= 5).length;
   const expedientesEnTermino = expedientesVisibles.filter((e: ExpedienteJudicial) => e.diasRestantes > 15).length;
 
-  const etapas = estadosActivos.map((estado: any) => ({
+  const etapas = columnasTablero.map((estado: any) => ({
     nombre: estado.nombre,
     valor: estado.id, // Usamos el ID del estado como valor para mover
     color: estado.color,
@@ -656,8 +797,9 @@ export function ModuloDefensaJudicialV3() {
         pretensionDemandante: demandaData.pretensiones,
         fechaNotificacion: demandaData.fechaNotificacion,
         fechaVencimientoTermino: demandaData.fechaVencimiento,
-        etapaProcesal: demandaData.etapa || (estadosActivos.length > 0 ? estadosActivos[0].id : 'RADICACION'),
+        etapaProcesal: demandaData.etapa || (columnasTablero.length > 0 ? columnasTablero[0].id : 'RADICACION'),
         ultimaActuacion: undefined, // Backend manages initial state or assumes created
+        camposAdicionales: demandaData.camposAdicionales,
 
         // Mapeo unificado de actores
         actors: [
@@ -713,7 +855,35 @@ export function ModuloDefensaJudicialV3() {
         esConductaPatrimonioPublico: demandaData.esConductaPatrimonioPublico || false,
       };
 
-      await legalService.crearExpediente(expedienteData);
+      const created = await legalService.crearExpediente(expedienteData);
+
+      // Subir documentos de campos adicionales dinámicos si son nuevos
+      const id = created?.uuid || created?.id || created?.radicado || demandaData.numeroRadicado;
+      if (id && demandaData.camposAdicionales) {
+        for (const [key, val] of Object.entries(demandaData.camposAdicionales)) {
+          if (val && typeof val === 'object' && val.base64 && val.nombre && val.esNuevo) {
+            try {
+              const res = await fetch(val.base64);
+              const blob = await res.blob();
+              const file = new File([blob], val.nombre, { type: val.tipoMime || blob.type });
+
+              const formDataDoc = new FormData();
+              formDataDoc.append('archivo', file);
+              formDataDoc.append('expedienteId', id);
+              formDataDoc.append('nombre', val.nombre);
+              formDataDoc.append('tipo', 'DATO_ADICIONAL');
+              formDataDoc.append('origen', 'CARGA_DIRECTA');
+              formDataDoc.append('categoria', 'documentos');
+              formDataDoc.append('subidoPor', 'Sistema (Campo Dinámico)');
+
+              await legalService.crearDocumento(formDataDoc);
+            } catch (err) {
+              console.error('Error uploading dynamic document:', err);
+            }
+          }
+        }
+      }
+
       toast.success('Demanda registrada exitosamente', {
         description: `Radicado: ${demandaData.numeroRadicado}`
       });
@@ -733,13 +903,15 @@ export function ModuloDefensaJudicialV3() {
     if (authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_CREATE)) {
       btns.push({
         label: 'Nueva Demanda',
+        labelMobile: 'Demanda',
         icon: <Plus className="w-4 h-4 mr-1" />,
         onClick: () => setModalNuevaDemandaOpen(true),
-        className: 'bg-orange-600 hover:bg-orange-700 text-white font-bold'
+        className: 'bg-[#003DA5] hover:bg-[#002e7d] text-white font-bold transition-all shadow-sm'
       });
     }
     btns.push({
       label: 'Descargar Reporte',
+      labelMobile: 'Reporte',
       icon: <Download className="w-4 h-4 mr-1" />,
       onClick: () => {
         if (expedientesVisibles.length === 0) {
@@ -750,7 +922,7 @@ export function ModuloDefensaJudicialV3() {
         }
         setModalFiltrosReporteOpen(true);
       },
-      className: 'bg-blue-600 hover:bg-blue-700 text-white font-bold'
+      className: 'bg-white hover:bg-gray-50 border border-gray-300 text-[#003DA5] hover:text-[#002e7d] font-bold transition-all shadow-sm'
     });
     return btns;
   };
@@ -781,6 +953,25 @@ export function ModuloDefensaJudicialV3() {
                 { label: 'Archivados', icon: <Archive className="w-4 h-4" /> }
               ]
             }}
+            customActions={
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider hidden md:inline">
+                  Tablero:
+                </span>
+                <select
+                  value={tableroSeleccionado}
+                  onChange={(e) => setTableroSeleccionado(e.target.value)}
+                  className="px-3 py-2 bg-white hover:bg-gray-50 border-2 border-gray-200 hover:border-blue-400 text-blue-700 font-bold rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm cursor-pointer"
+                  style={{ minHeight: isMobile ? '40px' : '44px' }}
+                >
+                  {tiposProcesosActivos.map((tp: any) => (
+                    <option key={tp.id} value={tp.id}>
+                      Tablero: {tp.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            }
           />
         </div>
 
@@ -835,36 +1026,20 @@ export function ModuloDefensaJudicialV3() {
         </div>
       </div>
 
-      {/* Métricas - IGUAL A DISCIPLINARIO */}
-      <ModuleMetrics
-        metrics={[
-          {
-            value: totalExpedientes,
-            label: 'Expedientes',
-            icon: <FileText className="w-5 h-5" />,
-            color: 'orange'
-          },
-          {
-            value: expedientesCriticos,
-            label: 'Críticos',
-            icon: <AlertCircle className="w-5 h-5" />,
-            color: 'red'
-          },
-          {
-            value: expedientesEnTermino,
-            label: 'En Término',
-            labelMobile: 'En término',
-            icon: <CheckCircle className="w-5 h-5" />,
-            color: 'green'
-          }
-        ]}
-      />
+
 
       {/* Filtros */}
       <ModuleFilters
         searchValue={busqueda}
         onSearchChange={setBusqueda}
         filters={[
+          {
+            type: 'date-range',
+            label: 'Fecha de Creación',
+            value: filtroFecha,
+            onChange: setFiltroFecha,
+            placeholder: 'Fecha Creación'
+          },
           {
             type: 'select',
             label: 'Etapa Procesal',
@@ -906,11 +1081,9 @@ export function ModuloDefensaJudicialV3() {
           setFiltroEtapa('TODAS');
           setFiltroTipo('TODOS');
           setFiltroAbogado('TODOS');
+          setFiltroFecha('');
         }}
       />
-
-      {/* ✅ Banner de Días Hábiles - Indicador prominente */}
-      <IndicadorDiasHabiles className="animate-fade-in" />
 
       {/* Tablero Kanban - Diseño migrado desde SuperApp Gestión Legal */}
       {tipoVista === 'kanban' && (
@@ -1069,10 +1242,6 @@ function ColumnaKanban({
                 <h3 className="font-black text-xs text-gray-800 truncate">
                   {etapa.nombre}
                 </h3>
-                <p className="text-[10px] text-gray-500 flex items-center gap-1">
-                  <Clock className="w-2.5 h-2.5" />
-                  {etapa.diasEstimados} días hábiles
-                </p>
               </div>
             </div>
             <Badge className="font-semibold text-xs px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 flex-shrink-0 ml-1">
@@ -1126,12 +1295,11 @@ interface TarjetaExpedienteProps {
   isCompact?: boolean;
   onRefresh?: () => void;
   onMoverExpediente: (expedienteId: string, nuevaEtapa: string) => void;
-  etapaActual: 'NOTIFICADA' | 'CONTESTACIÓN' | 'PROBATORIA' | 'ALEGATOS';
+  etapaActual: string;
 }
 
 function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh, onMoverExpediente, etapaActual }: TarjetaExpedienteProps) {
   const [modalExpedienteOpen, setModalExpedienteOpen] = useState(false);
-  const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
   const [showEliminarModal, setShowEliminarModal] = useState(false);
   const [motivoEliminar, setMotivoEliminar] = useState('');
   const [eliminando, setEliminando] = useState(false);
@@ -1210,7 +1378,10 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
                   }}
                 />
                 <span className="font-bold" style={{ color: semaforo.color }}>
-                  {expediente.diasRestantes < 0 ? `${Math.abs(expediente.diasRestantes)}d` : `${expediente.diasRestantes}d`}
+                  {(() => {
+                    const unit = expediente.tipoConteoTermino === 'HORAS' ? 'h' : 'd';
+                    return expediente.diasRestantes < 0 ? `${Math.abs(expediente.diasRestantes)}${unit}` : `${expediente.diasRestantes}${unit}`;
+                  })()}
                 </span>
               </div>
               {authService.hasPermission(Permissions.GESTION_LEGAL_DEFENSA_JUDICIAL_ESTADOS_EDIT) && (
@@ -1269,9 +1440,12 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
               icon: <Clock className="w-3.5 h-3.5" />,
               // Si no hay días totales (ej. sin fecha límite clara) o ya se venció, 
               // mostrar simplemente los días absolutos transcurridos o restantes con sentido lógico.
-              label: expediente.diasRestantes < 0
-                ? `${Math.abs(expediente.diasRestantes)}d`
-                : `${Math.max(0, expediente.diasTotales - expediente.diasRestantes)}d`,
+              label: (() => {
+                const unit = expediente.tipoConteoTermino === 'HORAS' ? 'h' : 'd';
+                return expediente.diasRestantes < 0
+                  ? `${Math.abs(expediente.diasRestantes)}${unit}`
+                  : `${Math.max(0, expediente.diasTotales - expediente.diasRestantes)}${unit}`;
+              })(),
               color: ESAP_TOKENS.colors.text.secondary,
             },
             {
@@ -1285,7 +1459,7 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
 
         {!isCompact && (
           <div
-            className="mb-2.5 p-2 rounded-lg border"
+            className="mt-3 mb-2.5 p-2 rounded-lg border"
             style={{
               backgroundColor: ESAP_TOKENS.colors.primaryLight,
               borderColor: '#BFDBFE'
@@ -1306,15 +1480,10 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
             <KanbanButtonPrimary
               icon={<FolderOpen className="w-3.5 h-3.5" />}
               onClick={handleAbrirExpediente}
+              className="w-full"
             >
               Expediente
             </KanbanButtonPrimary>
-            <KanbanButtonSecondary
-              icon={<MessageSquare className="w-3.5 h-3.5" />}
-              onClick={() => setModalComunicacionesOpen(true)}
-            >
-              Comunic.
-            </KanbanButtonSecondary>
           </KanbanActionRowPrimary>
 
         </KanbanActionSection>
@@ -1325,12 +1494,6 @@ function TarjetaExpediente({ expediente, isMobile, isCompact = false, onRefresh,
         onClose={() => setModalExpedienteOpen(false)}
         expediente={expediente}
         onUpdate={onRefresh}
-      />
-
-      <ModalComunicaciones
-        isOpen={modalComunicacionesOpen}
-        onClose={() => setModalComunicacionesOpen(false)}
-        expediente={expediente}
       />
 
       {/* Modal de confirmación eliminar */}

@@ -209,7 +209,7 @@ export function GestionUsuariosPasswordTracking() {
 
   return (
     <>
-      <Toaster position="top-right" richColors />
+      <Toaster position="bottom-right" richColors />
       <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex items-center justify-between">

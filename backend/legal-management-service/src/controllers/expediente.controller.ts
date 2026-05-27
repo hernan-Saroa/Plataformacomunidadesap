@@ -74,6 +74,22 @@ export class ExpedienteController {
         if (data.cuantia) data.cuantia = Number(data.cuantia);
         if (data.terminoProcesalDias) data.terminoProcesalDias = Number(data.terminoProcesalDias);
 
+        if (typeof data.camposAdicionales === 'string') {
+            try {
+                data.camposAdicionales = JSON.parse(data.camposAdicionales);
+            } catch (error) {
+                data.camposAdicionales = undefined;
+            }
+        }
+
+        if (typeof data.actors === 'string') {
+            try {
+                data.actors = JSON.parse(data.actors);
+            } catch (error) {
+                data.actors = undefined;
+            }
+        }
+
         const access = getLegalAccessFromRequest(req);
 
         if (access.esResuelveSolo && access.userId) {

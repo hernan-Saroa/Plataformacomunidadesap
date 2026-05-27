@@ -359,7 +359,7 @@ export default function App() {
       <>
         <DemoNoDisponible title="Demo de Control Disciplinario" />
         <Toaster
-          position="top-right"
+          position="bottom-right"
           richColors
           closeButton
           duration={4000}
@@ -996,27 +996,29 @@ export default function App() {
         <style>{`
         [data-sonner-toaster] { 
           position: fixed !important; 
-          top: 20px !important; 
+          bottom: 20px !important; 
           right: 20px !important; 
-          bottom: auto !important;
+          top: auto !important;
           left: auto !important;
           z-index: 100010 !important; 
         }
         [data-sonner-toast] { 
           background: white !important; 
           border: 1px solid #e5e7eb !important; 
-          border-radius: 12px !important; 
-          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important; 
-          padding: 16px !important; 
-          animation: slideIn 0.3s ease-out !important;
+          border-radius: 8px !important; 
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important; 
+          padding: 10px 14px !important; 
+          width: 320px !important;
+          max-width: 100% !important;
+          animation: slideInBottom 0.25s cubic-bezier(0.16, 1, 0.3, 1) !important;
         }
-        @keyframes slideIn {
+        @keyframes slideInBottom {
           from {
-            transform: translateX(100%);
+            transform: translateY(20px);
             opacity: 0;
           }
           to {
-            transform: translateX(0);
+            transform: translateY(0);
             opacity: 1;
           }
         }
@@ -1024,8 +1026,8 @@ export default function App() {
         [data-sonner-toast][data-type=\"error\"] { border-left: 4px solid #ef4444 !important; }
         [data-sonner-toast][data-type=\"warning\"] { border-left: 4px solid #f59e0b !important; }
         [data-sonner-toast][data-type=\"info\"] { border-left: 4px solid #3b82f6 !important; }
-        [data-title] { font-weight: 600 !important; color: #111827 !important; font-size: 14px !important; }
-        [data-description] { color: #6b7280 !important; font-size: 13px !important; margin-top: 4px !important; }
+        [data-title] { font-weight: 600 !important; color: #111827 !important; font-size: 12px !important; }
+        [data-description] { color: #4b5563 !important; font-size: 11px !important; margin-top: 2px !important; }
       `}</style>
 
         <Routes>
@@ -1118,7 +1120,7 @@ export default function App() {
           </div>
         )}
 
-      <Toaster position="top-right" richColors expand={true} closeButton />
+      <Toaster position="bottom-right" richColors expand={true} closeButton />
 
         {/* INDICADOR GLOBAL DE MODO OFFLINE */}
         {!isOnline && (

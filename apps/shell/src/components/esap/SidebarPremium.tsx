@@ -229,7 +229,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     return (
       <motion.button
         onClick={() => toggleSectionExpansion(sectionId)}
-        className={`w-full flex items-center gap-2 px-2 py-2.5 mb-2 transition-all group relative rounded-lg ${isExpanded ? 'text-white bg-white/8' : 'text-white/80 hover:text-white hover:bg-white/5'
+        className={`w-full flex items-center gap-2 px-2 py-2.5 mb-2 transition-colors group relative rounded-lg ${isExpanded ? 'text-white bg-white/8' : 'text-white/80 hover:text-white hover:bg-white/5'
           }`}
         whileHover={{ x: 1 }}
         whileTap={{ scale: 0.99 }}
@@ -279,7 +279,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
     const buttonContent = (
       <motion.button
         onClick={() => handleModuleClick(module)}
-        className={`w-full flex items-center gap-2 px-2 md:px-2.5 py-1.5 md:py-2 rounded-xl mb-1.5 transition-all duration-200 relative overflow-hidden group ${isActive
+        className={`w-full flex items-center gap-2 px-2 md:px-2.5 py-1.5 md:py-2 rounded-xl mb-1.5 transition-colors duration-200 relative overflow-hidden group ${isActive
             ? 'text-white font-semibold shadow-lg'
             : 'text-white/80 hover:text-white'
           } ${effectiveCollapsed ? 'justify-center px-2' : ''}`}
@@ -437,7 +437,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
           <TooltipTrigger asChild>
             <motion.button
               onClick={() => handleModuleClick(module)}
-              className={`w-full flex items-center justify-center px-2 py-2.5 rounded-xl mb-1.5 transition-all duration-200 relative overflow-hidden ${isActive
+              className={`w-full flex items-center justify-center px-2 py-2.5 rounded-xl mb-1.5 transition-colors duration-200 relative overflow-hidden ${isActive
                   ? 'text-white font-semibold'
                   : 'text-white/80 hover:bg-white/8 hover:text-white'
                 }`}
@@ -533,7 +533,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
         <div className="relative flex items-stretch gap-0.5">
           <motion.button
             onClick={() => handleModuleClick(module)}
-            className={`flex-1 flex items-center gap-3 px-3 py-2.5 transition-all duration-200 relative overflow-hidden group ${currentModule === module
+            className={`flex-1 flex items-center gap-3 px-3 py-2.5 transition-colors duration-200 relative overflow-hidden group ${currentModule === module
                 ? 'text-white font-semibold'
                 : 'text-white/80 hover:text-white'
               } ${hasSubmenu ? 'rounded-l-xl' : 'rounded-xl'}`}
@@ -584,7 +584,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
           {hasSubmenu && (
             <motion.button
               onClick={() => toggleMenuExpansion(menuId)}
-              className={`flex-shrink-0 px-2.5 transition-all duration-200 rounded-r-xl ${isActive
+              className={`flex-shrink-0 px-2.5 transition-colors duration-200 rounded-r-xl ${isActive
                   ? 'text-white bg-white/8'
                   : 'text-white/70 hover:bg-white/8 hover:text-white'
                 }`}
@@ -620,7 +620,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                     <motion.button
                       key={idx}
                       onClick={() => handleModuleClick(item.module)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-200 relative group ${isSubmenuActive
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-colors duration-200 relative group ${isSubmenuActive
                           ? 'text-white font-semibold bg-white/8'
                           : 'text-white/70 hover:text-white'
                         }`}
@@ -681,13 +681,21 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
 
   return (
     <>
-
+      {/* Backdrop para móviles */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-[998] md:hidden transition-opacity duration-300"
+          onClick={onClose}
+        />
+      )}
 
       {/* Sidebar */}
       <aside
         id="sidebar-navigation"
-        className={`fixed left-0 top-0 h-screen z-[100] transition-all duration-300 flex flex-col translate-x-0 ${
-          effectiveCollapsed ? 'w-[80px]' : 'w-[280px] md:w-[260px] lg:w-[220px] xl:w-[240px] 2xl:w-[260px]'
+        className={`fixed left-0 top-0 h-screen transition-all duration-300 flex flex-col ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        } md:translate-x-0 ${
+          effectiveCollapsed ? 'w-[80px]' : 'w-[280px] md:w-[260px]'
         }`}
         style={{
           background: 'linear-gradient(to bottom, #1e5da8 0%, #154a85 100%)',
@@ -699,6 +707,17 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
       >
         {/* Header */}
         <div className="border-b border-white/10 p-3 relative flex-shrink-0">
+          {/* Botón Cerrar en Mobile */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="absolute right-3 top-3 p-1.5 rounded-lg text-white/80 hover:text-white hover:bg-white/10 md:hidden z-20"
+              aria-label="Cerrar menú"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+
           <motion.div 
             className="flex flex-col items-center gap-2"
             animate={{ gap: effectiveCollapsed ? 0 : 8 }}
@@ -746,7 +765,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
           {/* Botón Toggle Premium */}
           <motion.button
             onClick={onToggleCollapse}
-            className="flex absolute -right-3 w-7 h-7 bg-white rounded-full items-center justify-center shadow-xl border-2 border-[#1e5da8] z-10 overflow-hidden"
+            className="hidden md:flex absolute -right-3 w-7 h-7 bg-white rounded-full items-center justify-center shadow-xl border-2 border-[#1e5da8] z-10 overflow-hidden"
             style={{ top: '50%', transform: 'translateY(-50%)', color: '#1e5da8' }}
             whileHover={{ 
               scale: 1.15,
@@ -759,7 +778,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
             <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-white opacity-0 hover:opacity-100 transition-opacity" />
             
             <motion.div
-              animate={{ rotate: isCollapsed ? 0 : 180 }}
+              animate={{ rotate: isCollapsed ? 180 : 0 }}
               transition={springTransition}
               className="relative z-10"
             >

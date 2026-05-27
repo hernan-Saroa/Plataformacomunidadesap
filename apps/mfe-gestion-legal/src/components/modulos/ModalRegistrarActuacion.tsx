@@ -25,6 +25,8 @@ interface ModalRegistrarActuacionProps {
   onGuardar: (actuacion: any, file?: File) => Promise<void> | void;
   expedienteId: string;
   radicado?: string; // Display-friendly identifier
+  documentosDelExpediente?: any[];
+  isApprovalMode?: boolean;
 }
 
 const TIPOS_ACTUACION = [
@@ -56,7 +58,9 @@ export function ModalRegistrarActuacion({
   onClose,
   onGuardar,
   expedienteId,
-  radicado
+  radicado,
+  documentosDelExpediente = [],
+  isApprovalMode = false
 }: ModalRegistrarActuacionProps) {
 
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
@@ -69,6 +73,7 @@ export function ModalRegistrarActuacion({
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [guardando, setGuardando] = useState(false);
   const [archivo, setArchivo] = useState<File | null>(null);
+  const [documentosAsociados, setDocumentosAsociados] = useState<string[]>([]);
   const [mostrarConfirmCancelar, setMostrarConfirmCancelar] = useState(false);
 
   /**
@@ -90,7 +95,7 @@ export function ModalRegistrarActuacion({
   /**
    * Guardar actuación
    */
-  const handleGuardar = async () => {
+  const handleGuardar = async (accionAprobacion?: 'aprobar' | 'devolver') => {
     if (!validarFormulario()) {
       toast.error('❌ Formulario incompleto', {
         description: 'Por favor corrige los errores marcados'
@@ -113,7 +118,9 @@ export function ModalRegistrarActuacion({
         estado,
         observaciones,
         expedienteId,
-        registradoPor: 'funcionario@esap.edu.co'
+        registradoPor: 'funcionario@esap.edu.co',
+        documentosAsociados,
+        accionAprobacion
       };
 
       await onGuardar(nuevaActuacion, archivo || undefined);
@@ -144,6 +151,7 @@ export function ModalRegistrarActuacion({
     setObservaciones('');
     setErrores({});
     setArchivo(null);
+    setDocumentosAsociados([]);
   };
 
   /**
@@ -355,9 +363,55 @@ export function ModalRegistrarActuacion({
             {/* Documento Adjunto */}
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-2">
-                📎 Documento Adjunto (Opcional)
+                📎 Documentos Asociados (Opcional)
               </label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-400 transition-colors">
+
+              {documentosDelExpediente.length > 0 && (
+                <div className="border border-gray-300 rounded-lg overflow-hidden mb-4 bg-white">
+                  <div className="bg-blue-50 px-3 py-2 border-b border-blue-100 text-xs font-bold text-blue-800 flex justify-between items-center">
+                    <span>Seleccionar documentos ya cargados en el expediente</span>
+                    <Badge variant="outline" className="bg-white">{documentosDelExpediente.length} docs</Badge>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto p-2 space-y-1">
+                    {documentosDelExpediente.map(doc => {
+                      const idStr = doc.id?.toString();
+                      const isSelected = documentosAsociados.includes(idStr);
+                      return (
+                        <label 
+                          key={idStr} 
+                          className={`flex items-start gap-2 p-2 rounded-md cursor-pointer transition-colors border ${
+                            isSelected ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50 border-transparent'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setDocumentosAsociados(prev => [...prev, idStr]);
+                              } else {
+                                setDocumentosAsociados(prev => prev.filter(id => id !== idStr));
+                              }
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm font-semibold truncate ${isSelected ? 'text-blue-900' : 'text-gray-700'}`}>
+                              {doc.nombre}
+                            </p>
+                            <p className="text-xs text-gray-500">{doc.categoria} • {doc.fecha}</p>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">
+                O subir nuevo archivo (PDF)
+              </div>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-blue-400 transition-colors bg-gray-50">
                 <input
                   type="file"
                   id="archivo-actuacion"
@@ -427,24 +481,50 @@ export function ModalRegistrarActuacion({
             <X className="w-4 h-4 mr-2" />
             Cancelar
           </Button>
-          <Button
-            onClick={handleGuardar}
-            disabled={guardando}
-            style={{ background: '#003DA5', color: '#FFFFFF' }}
-            className="font-bold"
-          >
-            {guardando ? (
-              <>
-                <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Guardando...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Guardar Actuación
-              </>
-            )}
-          </Button>
+
+          {isApprovalMode ? (
+            <div className="flex gap-2">
+              <Button
+                onClick={() => handleGuardar('devolver')}
+                disabled={guardando}
+                className="bg-red-600 hover:bg-red-700 text-white font-bold"
+              >
+                {guardando ? (
+                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : <X className="w-4 h-4 mr-2" />}
+                Devolver
+              </Button>
+              <Button
+                onClick={() => handleGuardar('aprobar')}
+                disabled={guardando}
+                className="bg-green-600 hover:bg-green-700 text-white font-bold"
+              >
+                {guardando ? (
+                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : <CheckCircle className="w-4 h-4 mr-2" />}
+                Aprobar
+              </Button>
+            </div>
+          ) : (
+            <Button
+              onClick={() => handleGuardar()}
+              disabled={guardando}
+              style={{ background: '#003DA5', color: '#FFFFFF' }}
+              className="font-bold"
+            >
+              {guardando ? (
+                <>
+                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Guardar Actuación
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>

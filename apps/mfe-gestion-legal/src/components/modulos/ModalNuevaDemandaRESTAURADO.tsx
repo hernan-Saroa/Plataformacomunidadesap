@@ -30,11 +30,12 @@ import { toast } from 'sonner';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { estructuraService } from '../../../../services/api/estructura.service';
 import { legalService } from '../../../../services/api/legal.service';
+import { authService } from '../../../../services/api/authService';
 import {
   Scale, FileText, Users, Building2, User, MapPin, Calendar,
   ChevronRight, ChevronLeft, Plus, Trash2, Check, AlertCircle,
   DollarSign, Clock, Star, Info, Sparkles, Save, X, CheckCircle,
-  Shield, Zap
+  Shield, Zap, Upload, Download
 } from 'lucide-react';
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
@@ -111,7 +112,7 @@ export interface NuevaDemandaData {
   juzgadoTribunal: string;
   departamento: string;
   ciudad: string;
-  tipoPlazo: 'Dias Habiles' | 'Dias Calendario';
+  tipoPlazo: 'Dias Habiles' | 'Dias Calendario' | 'Horas';
   termino: number;
   fechaNotificacion: string;
   fechaVencimiento: string;
@@ -123,6 +124,7 @@ export interface NuevaDemandaData {
   esConductaPatrimonioPublico: boolean;
   esOtroDelitoPenal: boolean;
   otroDelitoPenalDescripcion: string;
+  camposAdicionales?: Record<string, any>;
 }
 
 interface ModalNuevaDemandaRESTAURADOProps {
@@ -145,7 +147,32 @@ const soloDigitos = (v: string) => v.replace(/[^0-9]/g, '');
 const soloLetrasEspacios = (v: string) => v.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s]/g, '');
 const nitFormato = (v: string) => v.replace(/[^0-9.\-]/g, '');
 
-// Abogados se cargan dinámicamente desde legal_management.abogados
+/**
+ * Formatea una fecha local (datetime-local YYYY-MM-DDTHH:mm o ISO) al formato visual: DD/MM/YYYY hh:mm a. m. / p. m.
+ */
+function formatFechaLocal(fechaStr: string): string {
+  if (!fechaStr) return '';
+  try {
+    const normalizada = fechaStr.includes('T') ? fechaStr : fechaStr.replace(' ', 'T');
+    const fecha = new Date(normalizada);
+    if (isNaN(fecha.getTime())) return fechaStr;
+    
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const dia = pad(fecha.getDate());
+    const mes = pad(fecha.getMonth() + 1);
+    const anio = fecha.getFullYear();
+    
+    let horas = fecha.getHours();
+    const minutos = pad(fecha.getMinutes());
+    const ampm = horas >= 12 ? 'p. m.' : 'a. m.';
+    horas = horas % 12;
+    horas = horas ? horas : 12;
+    
+    return `${dia}/${mes}/${anio} ${pad(horas)}:${minutos} ${ampm}`;
+  } catch (e) {
+    return fechaStr;
+  }
+}
 
 // ==================== FUNCIONES DE CÁLCULO ====================
 
@@ -222,14 +249,31 @@ function toLocalISO(d: Date): string {
 function calcularFechaVencimiento(
   fechaNotificacion: string,
   termino: number,
-  tipoPlazo: 'Dias Habiles' | 'Dias Calendario'
+  tipoPlazo: 'Dias Habiles' | 'Dias Calendario',
+  horaEspecial?: string,
+  unidadTermino: 'dias' | 'horas' = 'dias'
 ): string {
   if (!fechaNotificacion || !termino) return '';
 
   const fecha = new Date(fechaNotificacion);
 
+  if (unidadTermino === 'horas') {
+    fecha.setHours(fecha.getHours() + termino);
+    return toLocalISO(fecha);
+  }
+  
+  // Parsear hora especial (ej: "14:30") o usar 17:00 por defecto
+  let horas = 17;
+  let minutos = 0;
+  if (horaEspecial && horaEspecial.includes(':')) {
+    const parts = horaEspecial.split(':');
+    horas = parseInt(parts[0], 10) || 17;
+    minutos = parseInt(parts[1], 10) || 0;
+  }
+
   if (tipoPlazo === 'Dias Calendario') {
     fecha.setDate(fecha.getDate() + termino);
+    fecha.setHours(horas, minutos, 0, 0);
   } else {
     // Días Hábiles: contar solo lun-vie (el día de notificación cuenta como día 1)
     let diasAgregados = 1;
@@ -239,8 +283,7 @@ function calcularFechaVencimiento(
         diasAgregados++;
       }
     }
-    // Siempre vence a las 5:00 PM para días hábiles
-    fecha.setHours(17, 0, 0, 0);
+    fecha.setHours(horas, minutos, 0, 0);
   }
 
   return toLocalISO(fecha);
@@ -250,7 +293,13 @@ function calcularFechaVencimiento(
 
 export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedienteEdit }: ModalNuevaDemandaRESTAURADOProps) {
   // Obtener datos dinámicos del submódulo de configuración
-  const { mediosControlActivos, tiposProcesosActivos, estadosActivos } = useConfiguracionModulo('defensa-judicial');
+  const { mediosControlActivos, tiposProcesosActivos: allTiposProcesos, estadosActivos } = useConfiguracionModulo('defensa-judicial');
+
+  // Filtrar tipos de procesos activos según los roles del usuario (o si no tiene rol asociado)
+  const tiposProcesosActivos = (allTiposProcesos || []).filter((tp: any) => {
+    if (!tp.rolAsociado) return true;
+    return authService.hasRole(tp.rolAsociado) || authService.isSuperAdmin();
+  });
 
   const [pasoActual, setPasoActual] = useState(1);
   const totalPasos = 7;
@@ -282,8 +331,220 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     esDelitoAdminPublica: false,
     esConductaPatrimonioPublico: false,
     esOtroDelitoPenal: false,
-    otroDelitoPenalDescripcion: ''
+    otroDelitoPenalDescripcion: '',
+    camposAdicionales: {}
   });
+
+  const activeTipoProceso = tiposProcesosActivos.find(tp => tp.nombre === formData.tipoProcesoJudicial);
+  const etapasDelProceso = (activeTipoProceso?.estados && activeTipoProceso.estados.length > 0)
+    ? activeTipoProceso.estados.filter((e: any) => e.activo).sort((a: any, b: any) => a.orden - b.orden)
+    : estadosActivos;
+
+  const isFieldVisible = (fieldName: string, defaultVisible: boolean): boolean => {
+    if (activeTipoProceso && activeTipoProceso.camposVisibles) {
+      const configured = activeTipoProceso.camposVisibles[fieldName];
+      if (configured !== undefined) return configured;
+    }
+    return defaultVisible;
+  };
+
+  const isFieldRequired = (fieldName: string, defaultRequired: boolean): boolean => {
+    if (!isFieldVisible(fieldName, true)) return false;
+
+    if (activeTipoProceso && activeTipoProceso.camposObligatorios) {
+      const configured = activeTipoProceso.camposObligatorios[fieldName];
+      if (configured !== undefined) return configured;
+    }
+    return defaultRequired;
+  };
+
+  const renderCamposAdicionales = (stepNum: number) => {
+    if (!activeTipoProceso?.camposAdicionalesConfig) return null;
+    const campos = activeTipoProceso.camposAdicionalesConfig.filter(c => (c.paso || 1) === stepNum);
+    if (campos.length === 0) return null;
+
+    return (
+      <Card className="p-4 sm:p-6 border border-blue-100 bg-gradient-to-br from-blue-50/20 to-white shadow-sm mt-6">
+        <div className="flex items-center gap-2 mb-4 border-b border-blue-50 pb-2">
+          <Sparkles className="w-4 h-4 text-blue-600" />
+          <h3 className="text-sm font-bold text-gray-900">Información Específica del Proceso</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {campos.map((c) => {
+            const fieldId = c.id;
+            const currentVal = formData.camposAdicionales?.[fieldId] ?? '';
+
+            const handleValueChange = (val: any) => {
+              setFormData(prev => ({
+                ...prev,
+                camposAdicionales: {
+                  ...(prev.camposAdicionales || {}),
+                  [fieldId]: val
+                }
+              }));
+            };
+
+            return (
+              <div key={fieldId} className="space-y-2">
+                <Label htmlFor={fieldId} className="text-sm font-bold text-gray-700 flex items-center">
+                  {c.nombre}
+                  {c.obligatorio && <span className="text-red-500 ml-1">*</span>}
+                </Label>
+
+                {(c.tipo === 'texto' || c.tipo === 'alfanumerico' || c.tipo === 'unico') && (
+                  <div className="space-y-1 w-full">
+                    <Input
+                      id={fieldId}
+                      type="text"
+                      placeholder={`Ingrese ${c.nombre.toLowerCase()}...`}
+                      value={currentVal}
+                      onChange={(e) => handleValueChange(e.target.value)}
+                      className="bg-white"
+                    />
+                    {c.tipo === 'alfanumerico' && (
+                      <p className="text-[10px] text-gray-400 font-medium ml-1">Solo se permiten letras y números.</p>
+                    )}
+                    {c.tipo === 'unico' && (
+                      <p className="text-[10px] text-gray-400 font-medium ml-1">Este valor debe ser único en el sistema.</p>
+                    )}
+                  </div>
+                )}
+
+                {c.tipo === 'numero' && (
+                  <Input
+                    id={fieldId}
+                    type="number"
+                    placeholder="0"
+                    value={currentVal}
+                    onChange={(e) => handleValueChange(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="bg-white"
+                  />
+                )}
+
+                {c.tipo === 'fecha' && (
+                  <Input
+                    id={fieldId}
+                    type="date"
+                    value={currentVal}
+                    onChange={(e) => handleValueChange(e.target.value)}
+                    className="bg-white"
+                  />
+                )}
+
+                {c.tipo === 'booleano' && (
+                  <div className="flex items-center gap-2 pt-2 h-[38px]">
+                    <input
+                      id={fieldId}
+                      type="checkbox"
+                      checked={!!currentVal}
+                      onChange={(e) => handleValueChange(e.target.checked)}
+                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                    />
+                    <label htmlFor={fieldId} className="text-xs text-gray-600 font-medium cursor-pointer select-none">
+                      {c.nombre}
+                    </label>
+                  </div>
+                )}
+
+                {c.tipo === 'documento' && (
+                  <div className="space-y-2 w-full">
+                    {currentVal && typeof currentVal === 'object' && currentVal.nombre ? (
+                      <div className="flex items-center justify-between p-3 rounded-lg border border-blue-200 bg-blue-50/30">
+                        <div className="flex items-center gap-2 overflow-hidden mr-2">
+                          <FileText className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                          <div className="text-xs truncate">
+                            <span className="font-semibold text-gray-800 block truncate" title={currentVal.nombre}>
+                              {currentVal.nombre}
+                            </span>
+                            {currentVal.tamano && (
+                              <span className="text-gray-500 text-[10px]">
+                                {(currentVal.tamano / 1024).toFixed(1)} KB
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          {currentVal.base64 && (
+                            <a
+                              href={currentVal.base64}
+                              download={currentVal.nombre}
+                              className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100/50 rounded transition-colors"
+                              title="Descargar documento"
+                            >
+                              <Download className="w-4 h-4" />
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleValueChange(null)}
+                            className="p-1 text-red-500 hover:text-red-700 hover:bg-red-100/50 rounded transition-colors"
+                            title="Eliminar documento"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-full">
+                        <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-xl bg-white hover:bg-blue-50/10 hover:border-blue-300 transition-all cursor-pointer group">
+                          <div className="flex flex-col items-center justify-center pt-5 pb-6 px-4 text-center">
+                            <Upload className="w-8 h-8 text-gray-400 group-hover:text-blue-500 transition-colors mb-2" />
+                            <p className="text-xs font-bold text-gray-700 group-hover:text-blue-600 transition-colors">
+                              Haga clic para cargar documento
+                            </p>
+                            <p className="text-[10px] text-gray-400 mt-1 font-medium">
+                              {c.tiposDocumento && c.tiposDocumento.length > 0
+                                ? `Formatos permitidos: ${c.tiposDocumento.map(ext => ext.toUpperCase()).join(', ')}`
+                                : 'Cualquier formato de archivo permitido'}
+                            </p>
+                          </div>
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept={c.tiposDocumento && c.tiposDocumento.length > 0 ? c.tiposDocumento.join(',') : '*'}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+
+                              if (c.tiposDocumento && c.tiposDocumento.length > 0) {
+                                const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+                                if (!c.tiposDocumento.includes(ext)) {
+                                  toast.error('⚠️ Archivo no permitido', {
+                                    description: `El tipo de archivo "${ext}" no está permitido. Formatos admitidos: ${c.tiposDocumento.join(', ')}`
+                                  });
+                                  e.target.value = '';
+                                  return;
+                                }
+                              }
+
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                handleValueChange({
+                                  nombre: file.name,
+                                  base64: reader.result as string,
+                                  tamano: file.size,
+                                  tipoMime: file.type,
+                                  esNuevo: true
+                                });
+                              };
+                              reader.onerror = () => {
+                                toast.error('Error al leer el archivo');
+                              };
+                              reader.readAsDataURL(file);
+                            }}
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    );
+  };
 
   const [ciudadesDisponibles, setCiudadesDisponibles] = useState<string[]>([]);
   const [departamentosAPI, setDepartamentosAPI] = useState<{ id: number; nombre: string }[]>([]);
@@ -291,10 +552,20 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   const [abogadosAPI, setAbogadosAPI] = useState<{ id: string; nombre: string }[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [todosLosExpedientes, setTodosLosExpedientes] = useState<any[]>([]);
 
   // Resetear o pre-llenar el formulario al abrir el modal
   useEffect(() => {
     if (isOpen) {
+      // Cargar expedientes para validación de campos únicos
+      legalService.getExpedientes()
+        .then(res => {
+          setTodosLosExpedientes(res || []);
+        })
+        .catch(err => {
+          console.error('Error al cargar expedientes para validación única:', err);
+        });
+
       if (expedienteEdit) {
         setPasoActual(1);
 
@@ -353,8 +624,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           juzgadoTribunal: expedienteEdit.juzgadoConocimiento || expedienteEdit.juzgado || '',
           departamento: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[1].trim() : '') : '',
           ciudad: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[0].trim() : expedienteEdit.ubicacionFisica) : '',
-          tipoPlazo: expedienteEdit.tipoConteoTermino === 'CALENDARIO' ? 'Dias Calendario' : 'Dias Habiles',
-          termino: expedienteEdit.diasTotales || (tiposProcesosActivos.find(tp => tp.nombre === (expedienteEdit.tipoProceso || expedienteEdit.tipo || ''))?.plazo) || 30,
+          tipoPlazo: expedienteEdit.tipoConteoTermino === 'HORAS' ? 'Horas' : expedienteEdit.tipoConteoTermino === 'CALENDARIO' ? 'Dias Calendario' : 'Dias Habiles',
+          termino: expedienteEdit.terminoProcesalDias || expedienteEdit.diasTotales || (tiposProcesosActivos.find(tp => tp.nombre === (expedienteEdit.tipoProceso || expedienteEdit.tipo || ''))?.plazo) || 30,
           fechaNotificacion: expedienteEdit.fechaNotificacion ?
             (typeof expedienteEdit.fechaNotificacion === 'string' ? new Date(expedienteEdit.fechaNotificacion).toISOString().slice(0, 16) :
               toLocalISO(expedienteEdit.fechaNotificacion)) : '',
@@ -368,7 +639,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           esDelitoAdminPublica: (expedienteEdit as any).esDelitoAdminPublica || false,
           esConductaPatrimonioPublico: (expedienteEdit as any).esConductaPatrimonioPublico || false,
           esOtroDelitoPenal: (expedienteEdit as any).esOtroDelitoPenal || false,
-          otroDelitoPenalDescripcion: (expedienteEdit as any).otroDelitoPenalDescripcion || ''
+          otroDelitoPenalDescripcion: (expedienteEdit as any).otroDelitoPenalDescripcion || '',
+          camposAdicionales: expedienteEdit.camposAdicionales || {}
         });
         setCiudadesDisponibles([]);
       } else {
@@ -400,34 +672,48 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           esDelitoAdminPublica: false,
           esConductaPatrimonioPublico: false,
           esOtroDelitoPenal: false,
-          otroDelitoPenalDescripcion: ''
+          otroDelitoPenalDescripcion: '',
+          camposAdicionales: {}
         });
         setCiudadesDisponibles([]);
       }
     }
   }, [isOpen, expedienteEdit]);
 
-  // Auto-poblar termino desde el plazo configurado al seleccionar tipo de proceso (solo en creación)
+  // Auto-poblar termino y etapa inicial desde el plazo configurado al seleccionar tipo de proceso (solo en creación)
   useEffect(() => {
     if (expedienteEdit) return;
     if (!formData.tipoProcesoJudicial) return;
     const tp = tiposProcesosActivos.find(t => t.nombre === formData.tipoProcesoJudicial);
-    if (tp && tp.plazo) {
-      setFormData(prev => ({ ...prev, termino: tp.plazo }));
+    if (tp) {
+      const customStages = (tp.estados && tp.estados.length > 0)
+        ? tp.estados.filter((e: any) => e.activo).sort((a: any, b: any) => a.orden - b.orden)
+        : estadosActivos;
+      const firstStage = customStages.length > 0 ? customStages[0].id : 'RADICACION';
+
+      setFormData(prev => ({
+        ...prev,
+        termino: tp.plazo ?? 30,
+        tipoPlazo: tp.unidadTermino === 'horas' ? 'Horas' : 'Dias Habiles',
+        etapaProcesal: firstStage
+      }));
     }
-  }, [formData.tipoProcesoJudicial]);
+  }, [formData.tipoProcesoJudicial, tiposProcesosActivos, estadosActivos]);
 
   // Calcular fecha de vencimiento automáticamente
   useEffect(() => {
     if (formData.fechaNotificacion && formData.termino) {
+      const activeTipo = tiposProcesosActivos.find(t => t.nombre === formData.tipoProcesoJudicial);
       const fechaVenc = calcularFechaVencimiento(
         formData.fechaNotificacion,
         formData.termino,
-        formData.tipoPlazo
+        formData.tipoPlazo === 'Horas' ? 'Dias Calendario' : formData.tipoPlazo,
+        activeTipo?.horaEspecial,
+        formData.tipoPlazo === 'Horas' ? 'horas' : 'dias'
       );
       setFormData(prev => ({ ...prev, fechaVencimiento: fechaVenc }));
     }
-  }, [formData.fechaNotificacion, formData.termino, formData.tipoPlazo]);
+  }, [formData.fechaNotificacion, formData.termino, formData.tipoPlazo, formData.tipoProcesoJudicial, tiposProcesosActivos]);
 
   // Cargar departamentos desde auth.geopolitica al montar
   useEffect(() => {
@@ -594,20 +880,80 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   // ==================== VALIDACIONES POR PASO ====================
 
   const validarPasoActual = (): boolean => {
+    // Validar campos adicionales dinámicos para el paso actual
+    if (activeTipoProceso?.camposAdicionalesConfig) {
+      const camposDelPaso = activeTipoProceso.camposAdicionalesConfig.filter(c => (c.paso || 1) === pasoActual);
+      for (const campo of camposDelPaso) {
+        const val = formData.camposAdicionales?.[campo.id];
+        
+        // 1. Validar obligatoriedad
+        if (campo.obligatorio) {
+          if (val === undefined || val === null || val === '' || val === false) {
+            toast.error('⚠️ Campo obligatorio incompleto', {
+              description: `El campo "${campo.nombre}" es obligatorio.`
+            });
+            return false;
+          }
+        }
+
+        // 2. Validar formato alfanumérico (solo si hay un valor ingresado)
+        if (campo.tipo === 'alfanumerico' && val) {
+          const alphanumericRegex = /^[a-zA-Z0-9áéíóúÁÉÍÓÚñÑüÜ\s]*$/;
+          if (!alphanumericRegex.test(String(val))) {
+            toast.error('⚠️ Formato inválido', {
+              description: `El campo "${campo.nombre}" debe ser alfanumérico (solo letras y números).`
+            });
+            return false;
+          }
+        }
+
+        // 3. Validar valor único (solo si hay un valor ingresado)
+        if (campo.tipo === 'unico' && val) {
+          const isEdit = !!expedienteEdit;
+          const currentId = expedienteEdit?.uuid || expedienteEdit?.id;
+          const duplicado = todosLosExpedientes.some(exp => {
+            const expId = exp.uuid || exp.id;
+            if (isEdit && expId === currentId) return false;
+            
+            const expCampos = exp.camposAdicionales || {};
+            return String(expCampos[campo.id]).trim().toLowerCase() === String(val).trim().toLowerCase();
+          });
+          if (duplicado) {
+            toast.error('⚠️ Valor duplicado', {
+              description: `El valor "${val}" ya existe para el campo único "${campo.nombre}".`
+            });
+            return false;
+          }
+        }
+      }
+    }
+
     switch (pasoActual) {
-      case 1:
-        if (!formData.numeroRadicado || !formData.medioControl || !formData.tipoProcesoJudicial || !formData.etapaProcesal) {
+      case 1: {
+        const medioControlReq = isFieldRequired('medioControl', true);
+        const cuantiaReq = isFieldRequired('cuantia', false);
+
+        if (!formData.numeroRadicado || (medioControlReq && !formData.medioControl) || !formData.tipoProcesoJudicial || !formData.etapaProcesal) {
           toast.error('⚠️ Campos incompletos', {
             description: 'Complete todos los campos obligatorios del proceso judicial'
           });
           return false;
         }
+
         if (formData.numeroRadicado.length !== 23) {
           toast.error('⚠️ Radicado inválido', {
             description: 'El número de radicado debe tener exactamente 23 dígitos'
           });
           return false;
         }
+
+        if (cuantiaReq && (formData.cuantia === undefined || formData.cuantia === null || formData.cuantia === 0)) {
+          toast.error('⚠️ Cuantía requerida', {
+            description: 'El campo Cuantía es obligatorio y debe ser mayor a 0.'
+          });
+          return false;
+        }
+
         if (formData.tipoProcesoJudicial === 'Proceso Penal' && !formData.esDelitoAdminPublica && !formData.esConductaPatrimonioPublico && !(formData as any).esOtroDelitoPenal) {
           toast.error('⚠️ Clasificación penal requerida', {
             description: 'Debe seleccionar al menos una clasificación penal'
@@ -621,24 +967,45 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           return false;
         }
         return true;
+      }
 
-      case 2:
+      case 2: {
         if (formData.demandantes.length === 0) {
           toast.error('⚠️ Demandantes requeridos', {
             description: 'Debe agregar al menos un demandante'
           });
           return false;
         }
+
+        const demTipoPersonaReq = isFieldRequired('demandanteTipoPersona', true);
+        const demIdentificacionReq = isFieldRequired('demandanteIdentificacion', true);
+        const demNombreReq = isFieldRequired('demandanteNombre', true);
+        const demTelefonoReq = isFieldRequired('demandanteTelefono', false);
+        const demCorreoReq = isFieldRequired('demandanteCorreo', true);
+        const demDireccionReq = isFieldRequired('demandanteDireccion', false);
+
         for (const dem of formData.demandantes) {
-          if (!dem.nombreCompleto) {
-            toast.error('⚠️ Información incompleta', {
-              description: 'El nombre completo es obligatorio para los demandantes'
+          if (demTipoPersonaReq && !dem.tipoPersona) {
+            toast.error('⚠️ Tipo de persona obligatorio', {
+              description: 'El tipo de persona es obligatorio para todos los demandantes.'
             });
             return false;
           }
-          if (dem.correo && !EMAIL_REGEX.test(dem.correo)) {
-            toast.error('⚠️ Correo inválido', {
-              description: `El correo "${dem.correo}" del demandante ${dem.nombreCompleto || ''} no es válido`
+          if (demIdentificacionReq && !dem.cedula) {
+            toast.error('⚠️ Identificación obligatoria', {
+              description: `La identificación es obligatoria para el demandante ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (demNombreReq && !dem.nombreCompleto) {
+            toast.error('⚠️ Nombre obligatorio', {
+              description: 'El nombre o razón social es obligatorio para todos los demandantes.'
+            });
+            return false;
+          }
+          if (demTelefonoReq && !dem.telefono) {
+            toast.error('⚠️ Teléfono obligatorio', {
+              description: `El teléfono es obligatorio para el demandante ${dem.nombreCompleto || ''}.`
             });
             return false;
           }
@@ -648,26 +1015,72 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             });
             return false;
           }
+          if (demCorreoReq && !dem.correo) {
+            toast.error('⚠️ Correo obligatorio', {
+              description: `El correo electrónico es obligatorio para el demandante ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (dem.correo && !EMAIL_REGEX.test(dem.correo)) {
+            toast.error('⚠️ Correo inválido', {
+              description: `El correo "${dem.correo}" del demandante ${dem.nombreCompleto || ''} no es válido`
+            });
+            return false;
+          }
+          if (demDireccionReq && !dem.direccion) {
+            toast.error('⚠️ Dirección obligatoria', {
+              description: `La dirección es obligatoria para el demandante ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
         }
         return true;
+      }
 
-      case 3:
+      case 3: {
         if (formData.demandados.length === 0) {
           toast.error('⚠️ Demandados requeridos', {
             description: 'Debe agregar al menos un demandado'
           });
           return false;
         }
+
+        const ddTipoPersonaReq = isFieldRequired('demandadoTipoPersona', true);
+        const ddIdentificacionReq = isFieldRequired('demandadoIdentificacion', true);
+        const ddNombreReq = isFieldRequired('demandadoNombre', true);
+        const ddCargoReq = isFieldRequired('demandadoCargo', false);
+        const ddTelefonoReq = isFieldRequired('demandadoTelefono', false);
+        const ddCorreoReq = isFieldRequired('demandadoCorreo', true);
+        const ddDireccionReq = isFieldRequired('demandadoDireccion', false);
+
         for (const dem of formData.demandados) {
-          if (!dem.nombreCompleto) {
-            toast.error('⚠️ Información incompleta', {
-              description: 'El nombre completo es obligatorio para los demandados'
+          if (ddTipoPersonaReq && !dem.tipoPersona) {
+            toast.error('⚠️ Tipo de persona obligatorio', {
+              description: 'El tipo de persona es obligatorio para todos los demandados.'
             });
             return false;
           }
-          if (dem.correo && !EMAIL_REGEX.test(dem.correo)) {
-            toast.error('⚠️ Correo inválido', {
-              description: `El correo "${dem.correo}" del demandado ${dem.nombreCompleto || ''} no es válido`
+          if (ddIdentificacionReq && !dem.cedula) {
+            toast.error('⚠️ Identificación obligatoria', {
+              description: `La identificación es obligatoria para el demandado ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (ddNombreReq && !dem.nombreCompleto) {
+            toast.error('⚠️ Nombre obligatorio', {
+              description: 'El nombre o razón social es obligatorio para todos los demandados.'
+            });
+            return false;
+          }
+          if (ddCargoReq && !dem.cargoFuncion) {
+            toast.error('⚠️ Cargo obligatorio', {
+              description: `El cargo es obligatorio para el demandado ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (ddTelefonoReq && !dem.telefono) {
+            toast.error('⚠️ Teléfono obligatorio', {
+              description: `El teléfono es obligatorio para el demandado ${dem.nombreCompleto || ''}.`
             });
             return false;
           }
@@ -677,51 +1090,120 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
             });
             return false;
           }
+          if (ddCorreoReq && !dem.correo) {
+            toast.error('⚠️ Correo obligatorio', {
+              description: `El correo electrónico es obligatorio para el demandado ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (dem.correo && !EMAIL_REGEX.test(dem.correo)) {
+            toast.error('⚠️ Correo inválido', {
+              description: `El correo "${dem.correo}" del demandado ${dem.nombreCompleto || ''} no es válido`
+            });
+            return false;
+          }
+          if (ddDireccionReq && !dem.direccion) {
+            toast.error('⚠️ Dirección obligatoria', {
+              description: `La dirección es obligatoria para el demandado ${dem.nombreCompleto || ''}.`
+            });
+            return false;
+          }
         }
         return true;
+      }
 
-      case 4:
+      case 4: {
+        const oaTipoPersonaReq = isFieldRequired('otroActorTipoPersona', false);
+        const oaIdentificacionReq = isFieldRequired('otroActorIdentificacion', false);
+        const oaNombreReq = isFieldRequired('otroActorNombre', true);
+        const oaRolReq = isFieldRequired('otroActorRol', true);
+        const oaTelefonoReq = isFieldRequired('otroActorTelefono', false);
+        const oaCorreoReq = isFieldRequired('otroActorCorreo', false);
+        const oaDireccionReq = isFieldRequired('otroActorDireccion', false);
+
         for (const actor of formData.otrosActores) {
-          if (!actor.nombreCompleto) {
-            toast.error('⚠️ Información incompleta', {
+          if (oaTipoPersonaReq && !actor.tipoPersona) {
+            toast.error('⚠️ Tipo de persona obligatorio', {
+              description: `El tipo de persona es obligatorio para el actor ${actor.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (oaIdentificacionReq && !actor.cedula) {
+            toast.error('⚠️ Identificación obligatoria', {
+              description: `La identificación es obligatoria para el actor ${actor.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (oaNombreReq && !actor.nombreCompleto) {
+            toast.error('⚠️ Nombre obligatorio', {
               description: 'El nombre completo o razón social es obligatorio para los otros actores'
             });
             return false;
           }
-          if (!actor.rol) {
-            toast.error('⚠️ Información incompleta', {
-              description: `Debe especificar el rol para el actor ${actor.nombreCompleto}`
+          if (oaRolReq && !actor.rol) {
+            toast.error('⚠️ Rol obligatorio', {
+              description: `Debe especificar el rol para el actor ${actor.nombreCompleto || ''}`
             });
             return false;
           }
-          if (actor.correo && !EMAIL_REGEX.test(actor.correo)) {
-            toast.error('⚠️ Correo inválido', {
-              description: `El correo "${actor.correo}" de ${actor.nombreCompleto} no es válido`
+          if (oaTelefonoReq && !actor.telefono) {
+            toast.error('⚠️ Teléfono obligatorio', {
+              description: `El teléfono es obligatorio para el actor ${actor.nombreCompleto || ''}.`
             });
             return false;
           }
           if (actor.telefono && actor.telefono.length < 7) {
             toast.error('⚠️ Teléfono inválido', {
-              description: `El teléfono de ${actor.nombreCompleto} debe tener al menos 7 dígitos`
+              description: `El teléfono de ${actor.nombreCompleto || ''} debe tener al menos 7 dígitos`
+            });
+            return false;
+          }
+          if (oaCorreoReq && !actor.correo) {
+            toast.error('⚠️ Correo obligatorio', {
+              description: `El correo electrónico es obligatorio para el actor ${actor.nombreCompleto || ''}.`
+            });
+            return false;
+          }
+          if (actor.correo && !EMAIL_REGEX.test(actor.correo)) {
+            toast.error('⚠️ Correo inválido', {
+              description: `El correo "${actor.correo}" de ${actor.nombreCompleto || ''} no es válido`
+            });
+            return false;
+          }
+          if (oaDireccionReq && !actor.direccion) {
+            toast.error('⚠️ Dirección obligatoria', {
+              description: `La dirección es obligatoria para el actor ${actor.nombreCompleto || ''}.`
             });
             return false;
           }
         }
         return true;
+      }
 
-      case 5:
-        if (!formData.juzgadoTribunal || !formData.departamento || !formData.ciudad) {
-          toast.error('⚠️ Ubicación incompleta', {
-            description: 'Complete todos los campos de juzgado y ubicación'
+      case 5: {
+        const juzgadoReq = isFieldRequired('juzgadoTribunal', true);
+        const ubicacionReq = isFieldRequired('departamentoCiudad', true);
+
+        if (juzgadoReq && !formData.juzgadoTribunal) {
+          toast.error('⚠️ Juzgado obligatorio', {
+            description: 'El campo Juzgado / Tribunal es obligatorio.'
+          });
+          return false;
+        }
+        if (ubicacionReq && (!formData.departamento || !formData.ciudad)) {
+          toast.error('⚠️ Ubicación obligatoria', {
+            description: 'Debe seleccionar Departamento y Ciudad.'
           });
           return false;
         }
         return true;
+      }
 
-      case 6:
-        if (!formData.fechaNotificacion) {
-          toast.error('⚠️ Fechas incompletas', {
-            description: 'Verifique los campos obligatorios de fechas'
+      case 6: {
+        const abogadoReq = isFieldRequired('abogadoResponsable', false);
+        if (!formData.fechaNotificacion || (abogadoReq && (!formData.abogadoResponsable || formData.abogadoResponsable === 'Sin asignar (Temporal)'))) {
+          toast.error('⚠️ Información obligatoria incompleta', {
+            description: 'Verifique los campos obligatorios del paso de fechas y asignación'
           });
           return false;
         }
@@ -735,15 +1217,19 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
         }
 
         return true;
+      }
 
-      case 7:
-        if (!formData.pretensiones || formData.pretensiones.length < 20) {
-          toast.error('⚠️ Pretensiones requeridas', {
-            description: 'Las pretensiones son obligatorias (mínimo 20 caracteres)'
+      case 7: {
+        const pretensionesReq = isFieldRequired('pretensiones', true);
+        const hechosReq = isFieldRequired('hechos', false);
+        if ((pretensionesReq && (!formData.pretensiones || formData.pretensiones.length < 20)) || (hechosReq && !formData.hechos)) {
+          toast.error('⚠️ Detalles del proceso obligatorios', {
+            description: 'Complete todos los campos obligatorios de la sección detalles del proceso'
           });
           return false;
         }
         return true;
+      }
 
       default:
         return true;
@@ -804,13 +1290,14 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           abogadoSustanciador: formData.abogadoResponsable === 'Sin asignar (Temporal)' ? null : (formData.abogadoResponsable || undefined),
           pretensionDemandante: formData.pretensiones || undefined,
           hechos: formData.hechos || undefined,
-          tipoConteoTermino: formData.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
+          tipoConteoTermino: formData.tipoPlazo === 'Horas' ? 'HORAS' : formData.tipoPlazo === 'Dias Calendario' ? 'CALENDARIO' : 'HABILES',
           terminoProcesalDias: formData.termino || undefined,
           // Clasificación penal
           esDelitoAdminPublica: formData.esDelitoAdminPublica || false,
           esConductaPatrimonioPublico: formData.esConductaPatrimonioPublico || false,
           esOtroDelitoPenal: (formData as any).esOtroDelitoPenal || false,
           otroDelitoPenalDescripcion: (formData as any).otroDelitoPenalDescripcion || undefined,
+          camposAdicionales: formData.camposAdicionales || undefined,
           // Demandantes, Demandados, and Otros Actores arrays are NOT saved sequentially by updateExpediente
         };
       } else {
@@ -866,7 +1353,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-5xl h-[90vh] flex flex-col p-0">
+      <DialogContent hideCloseButton className="w-[80vw] max-w-[80vw] h-[95vh] max-h-[95vh] flex flex-col p-0 overflow-hidden">
         <DialogTitle className="sr-only">{expedienteEdit ? "Editar Proceso Judicial" : "Nuevo Proceso Judicial"}</DialogTitle>
         <DialogDescription className="sr-only">
           Wizard para {expedienteEdit ? 'edición' : 'registro'} de proceso judicial - Paso {pasoActual} de {totalPasos}
@@ -975,24 +1462,26 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="medioControl" className="text-sm font-bold text-gray-700">
-                          Medio de Control <span className="text-red-500">*</span>
-                        </Label>
-                        <Select
-                          value={formData.medioControl}
-                          onValueChange={(value: string) => setFormData({ ...formData, medioControl: value })}
-                        >
-                          <SelectTrigger id="medioControl" className="bg-white">
-                            <SelectValue placeholder="Seleccione medio de control..." />
-                          </SelectTrigger>
-                          <SelectContent className="z-[100000]">
-                            {mediosControlActivos.map(mc => (
-                              <SelectItem key={mc.id} value={mc.nombre}>{mc.nombre}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      {isFieldVisible('medioControl', true) && (
+                        <div className="space-y-2">
+                          <Label htmlFor="medioControl" className="text-sm font-bold text-gray-700">
+                            Medio de Control {isFieldRequired('medioControl', true) && <span className="text-red-500">*</span>}
+                          </Label>
+                          <Select
+                            value={formData.medioControl}
+                            onValueChange={(value: string) => setFormData({ ...formData, medioControl: value })}
+                          >
+                            <SelectTrigger id="medioControl" className="bg-white">
+                              <SelectValue placeholder="Seleccione medio de control..." />
+                            </SelectTrigger>
+                            <SelectContent className="z-[100000]">
+                              {mediosControlActivos.map(mc => (
+                                <SelectItem key={mc.id} value={mc.nombre}>{mc.nombre}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
 
                       <div className="space-y-2">
                         <Label htmlFor="tipoProcesoJudicial" className="text-sm font-bold text-gray-700">
@@ -1092,46 +1581,48 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                             <SelectValue placeholder="Seleccione etapa procesal..." />
                           </SelectTrigger>
                           <SelectContent className="z-[100000]">
-                            {estadosActivos.map(estado => (
+                            {etapasDelProceso.map(estado => (
                               <SelectItem key={estado.id} value={estado.id}>{estado.nombre}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </div>
 
-                      <div className="space-y-2">
-                        <Label htmlFor="cuantia" className="text-sm font-bold text-gray-700">
-                          Cuantía (COP)
-                          <span className="text-xs font-normal text-gray-400 ml-1">(máx. 12 dígitos)</span>
-                        </Label>
-                        <Input
-                          id="cuantia"
-                          type="text"
-                          inputMode="numeric"
-                          placeholder="0"
-                          value={formData.cuantia === 0 ? '' : String(formData.cuantia)}
-                          onChange={(e) => {
-                            const raw = e.target.value.replace(/[^0-9]/g, '');
-                            // Si está vacío, poner 0
-                            if (!raw) {
-                              setFormData({ ...formData, cuantia: 0 });
-                              return;
-                            }
-                            // Si empieza con 0, solo permitir "0" exacto
-                            if (raw.startsWith('0')) {
-                              setFormData({ ...formData, cuantia: 0 });
-                              return;
-                            }
-                            // Máximo 12 dígitos
-                            const limitado = raw.slice(0, 12);
-                            setFormData({ ...formData, cuantia: parseInt(limitado, 10) });
-                          }}
-                        />
-                      </div>
+                      {isFieldVisible('cuantia', true) && (
+                        <div className="space-y-2">
+                          <Label htmlFor="cuantia" className="text-sm font-bold text-gray-700">
+                            Cuantía (COP) {isFieldRequired('cuantia', false) && <span className="text-red-500">*</span>}
+                            <span className="text-xs font-normal text-gray-400 ml-1">(máx. 12 dígitos)</span>
+                          </Label>
+                          <Input
+                            id="cuantia"
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="0"
+                            value={formData.cuantia === 0 ? '' : String(formData.cuantia)}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^0-9]/g, '');
+                              // Si está vacío, poner 0
+                              if (!raw) {
+                                setFormData({ ...formData, cuantia: 0 });
+                                return;
+                              }
+                              // Si empieza con 0, solo permitir "0" exacto
+                              if (raw.startsWith('0')) {
+                                setFormData({ ...formData, cuantia: 0 });
+                                return;
+                              }
+                              // Máximo 12 dígitos
+                              const limitado = raw.slice(0, 12);
+                              setFormData({ ...formData, cuantia: parseInt(limitado, 10) });
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 </Card>
-
+                {renderCamposAdicionales(1)}
               </>
             )}
 
@@ -1180,102 +1671,120 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              Tipo de Persona <span className="text-red-500">*</span>
-                            </Label>
-                            <Select
-                              value={demandante.tipoPersona}
-                              onValueChange={(value: 'Natural' | 'Juridica') => actualizarDemandante(demandante.id, 'tipoPersona', value)}
-                            >
-                              <SelectTrigger className="bg-white">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="z-[100000]">
-                                <SelectItem value="Natural">Natural</SelectItem>
-                                <SelectItem value="Juridica">Jurídica</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              {demandante.tipoPersona === 'Natural' ? 'Cédula' : 'NIT'} <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              placeholder={demandante.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
-                              value={demandante.cedula}
-                              maxLength={demandante.tipoPersona === 'Natural' ? 10 : 15}
-                              onChange={(e) => {
-                                const val = demandante.tipoPersona === 'Natural'
-                                  ? soloDigitos(e.target.value)
-                                  : nitFormato(e.target.value);
-                                actualizarDemandante(demandante.id, 'cedula', val);
-                              }}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              {demandante.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              placeholder={demandante.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
-                              value={demandante.nombreCompleto}
-                              onChange={(e) => {
-                                const val = demandante.tipoPersona === 'Natural'
-                                  ? soloLetrasEspacios(e.target.value)
-                                  : e.target.value;
-                                actualizarDemandante(demandante.id, 'nombreCompleto', val);
-                              }}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Teléfono</Label>
-                            <Input
-                              placeholder="3001234567"
-                              value={demandante.telefono}
-                              maxLength={10}
-                              onChange={(e) => actualizarDemandante(demandante.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              Correo Electrónico <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              type="email"
-                              placeholder="correo@ejemplo.com"
-                              value={demandante.correo}
-                              onChange={(e) => actualizarDemandante(demandante.id, 'correo', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Dirección</Label>
-                            <Input
-                              placeholder="Calle 123 #45-67"
-                              value={demandante.direccion}
-                              onChange={(e) => actualizarDemandante(demandante.id, 'direccion', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2">
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                id={`apoderado-dem-${demandante.id}`}
-                                checked={demandante.tieneApoderado}
-                                onChange={(e) => actualizarDemandante(demandante.id, 'tieneApoderado', e.target.checked)}
-                                className="w-4 h-4"
-                              />
-                              <Label htmlFor={`apoderado-dem-${demandante.id}`} className="text-sm font-bold text-gray-700 cursor-pointer">
-                                Tiene Apoderado
+                          {isFieldVisible('demandanteTipoPersona', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Tipo de Persona {isFieldRequired('demandanteTipoPersona', true) && <span className="text-red-500">*</span>}
                               </Label>
+                              <Select
+                                value={demandante.tipoPersona}
+                                onValueChange={(value: 'Natural' | 'Juridica') => actualizarDemandante(demandante.id, 'tipoPersona', value)}
+                              >
+                                <SelectTrigger className="bg-white">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="z-[100000]">
+                                  <SelectItem value="Natural">Natural</SelectItem>
+                                  <SelectItem value="Juridica">Jurídica</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
-                          </div>
+                          )}
+
+                          {isFieldVisible('demandanteIdentificacion', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                {demandante.tipoPersona === 'Natural' ? 'Cédula' : 'NIT'} {isFieldRequired('demandanteIdentificacion', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder={demandante.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
+                                value={demandante.cedula}
+                                maxLength={demandante.tipoPersona === 'Natural' ? 10 : 15}
+                                onChange={(e) => {
+                                  const val = demandante.tipoPersona === 'Natural'
+                                    ? soloDigitos(e.target.value)
+                                    : nitFormato(e.target.value);
+                                  actualizarDemandante(demandante.id, 'cedula', val);
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandanteNombre', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                {demandante.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} {isFieldRequired('demandanteNombre', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder={demandante.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
+                                value={demandante.nombreCompleto}
+                                onChange={(e) => {
+                                  const val = demandante.tipoPersona === 'Natural'
+                                    ? soloLetrasEspacios(e.target.value)
+                                    : e.target.value;
+                                  actualizarDemandante(demandante.id, 'nombreCompleto', val);
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandanteTelefono', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Teléfono {isFieldRequired('demandanteTelefono', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="3001234567"
+                                value={demandante.telefono}
+                                maxLength={10}
+                                onChange={(e) => actualizarDemandante(demandante.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandanteCorreo', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Correo Electrónico {isFieldRequired('demandanteCorreo', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                type="email"
+                                placeholder="correo@ejemplo.com"
+                                value={demandante.correo}
+                                onChange={(e) => actualizarDemandante(demandante.id, 'correo', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandanteDireccion', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Dirección {isFieldRequired('demandanteDireccion', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="Calle 123 #45-67"
+                                value={demandante.direccion}
+                                onChange={(e) => actualizarDemandante(demandante.id, 'direccion', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandanteTieneApoderado', true) && (
+                            <div className="md:col-span-2">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  id={`apoderado-dem-${demandante.id}`}
+                                  checked={demandante.tieneApoderado}
+                                  onChange={(e) => actualizarDemandante(demandante.id, 'tieneApoderado', e.target.checked)}
+                                  className="w-4 h-4"
+                                />
+                                <Label htmlFor={`apoderado-dem-${demandante.id}`} className="text-sm font-bold text-gray-700 cursor-pointer">
+                                  Tiene Apoderado
+                                </Label>
+                              </div>
+                            </div>
+                          )}
 
                           {demandante.tieneApoderado && (
                             <div className="md:col-span-2 bg-blue-50 p-3 rounded border border-blue-200">
@@ -1339,6 +1848,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                     ))}
                   </div>
                 </Card>
+                {renderCamposAdicionales(2)}
               </>
             )}
 
@@ -1387,111 +1897,133 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              Tipo de Persona <span className="text-red-500">*</span>
-                            </Label>
-                            <Select
-                              value={demandado.tipoPersona}
-                              onValueChange={(value: 'Natural' | 'Juridica') => actualizarDemandado(demandado.id, 'tipoPersona', value)}
-                            >
-                              <SelectTrigger className="bg-white">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="z-[100000]">
-                                <SelectItem value="Natural">Natural</SelectItem>
-                                <SelectItem value="Juridica">Jurídica</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              {demandado.tipoPersona === 'Natural' ? 'Cédula' : 'NIT'} <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              placeholder={demandado.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
-                              value={demandado.cedula}
-                              maxLength={demandado.tipoPersona === 'Natural' ? 10 : 15}
-                              onChange={(e) => {
-                                const val = demandado.tipoPersona === 'Natural'
-                                  ? soloDigitos(e.target.value)
-                                  : nitFormato(e.target.value);
-                                actualizarDemandado(demandado.id, 'cedula', val);
-                              }}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              {demandado.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              placeholder={demandado.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
-                              value={demandado.nombreCompleto}
-                              onChange={(e) => {
-                                const val = demandado.tipoPersona === 'Natural'
-                                  ? soloLetrasEspacios(e.target.value)
-                                  : e.target.value;
-                                actualizarDemandado(demandado.id, 'nombreCompleto', val);
-                              }}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Cargo / Función (Opcional)</Label>
-                            <Input
-                              placeholder="Director, Gerente, etc."
-                              value={demandado.cargoFuncion || ''}
-                              onChange={(e) => actualizarDemandado(demandado.id, 'cargoFuncion', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Teléfono</Label>
-                            <Input
-                              placeholder="3001234567"
-                              value={demandado.telefono}
-                              maxLength={10}
-                              onChange={(e) => actualizarDemandado(demandado.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              Correo Electrónico <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              type="email"
-                              placeholder="correo@ejemplo.com"
-                              value={demandado.correo}
-                              onChange={(e) => actualizarDemandado(demandado.id, 'correo', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Dirección</Label>
-                            <Input
-                              placeholder="Calle 123 #45-67"
-                              value={demandado.direccion}
-                              onChange={(e) => actualizarDemandado(demandado.id, 'direccion', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2">
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                id={`apoderado-dema-${demandado.id}`}
-                                checked={demandado.tieneApoderado}
-                                onChange={(e) => actualizarDemandado(demandado.id, 'tieneApoderado', e.target.checked)}
-                                className="w-4 h-4"
-                              />
-                              <Label htmlFor={`apoderado-dema-${demandado.id}`} className="text-sm font-bold text-gray-700 cursor-pointer">
-                                Tiene Apoderado
+                          {isFieldVisible('demandadoTipoPersona', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Tipo de Persona {isFieldRequired('demandadoTipoPersona', true) && <span className="text-red-500">*</span>}
                               </Label>
+                              <Select
+                                value={demandado.tipoPersona}
+                                onValueChange={(value: 'Natural' | 'Juridica') => actualizarDemandado(demandado.id, 'tipoPersona', value)}
+                              >
+                                <SelectTrigger className="bg-white">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="z-[100000]">
+                                  <SelectItem value="Natural">Natural</SelectItem>
+                                  <SelectItem value="Juridica">Jurídica</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
-                          </div>
+                          )}
+
+                          {isFieldVisible('demandadoIdentificacion', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                {demandado.tipoPersona === 'Natural' ? 'Cédula' : 'NIT'} {isFieldRequired('demandadoIdentificacion', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder={demandado.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
+                                value={demandado.cedula}
+                                maxLength={demandado.tipoPersona === 'Natural' ? 10 : 15}
+                                onChange={(e) => {
+                                  const val = demandado.tipoPersona === 'Natural'
+                                    ? soloDigitos(e.target.value)
+                                    : nitFormato(e.target.value);
+                                  actualizarDemandado(demandado.id, 'cedula', val);
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandadoNombre', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                {demandado.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} {isFieldRequired('demandadoNombre', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder={demandado.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
+                                value={demandado.nombreCompleto}
+                                onChange={(e) => {
+                                  const val = demandado.tipoPersona === 'Natural'
+                                    ? soloLetrasEspacios(e.target.value)
+                                    : e.target.value;
+                                  actualizarDemandado(demandado.id, 'nombreCompleto', val);
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandadoCargo', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Cargo / Función {isFieldRequired('demandadoCargo', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="Director, Gerente, etc."
+                                value={demandado.cargoFuncion || ''}
+                                onChange={(e) => actualizarDemandado(demandado.id, 'cargoFuncion', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandadoTelefono', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Teléfono {isFieldRequired('demandadoTelefono', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="3001234567"
+                                value={demandado.telefono}
+                                maxLength={10}
+                                onChange={(e) => actualizarDemandado(demandado.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandadoCorreo', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Correo Electrónico {isFieldRequired('demandadoCorreo', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                type="email"
+                                placeholder="correo@ejemplo.com"
+                                value={demandado.correo}
+                                onChange={(e) => actualizarDemandado(demandado.id, 'correo', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandadoDireccion', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Dirección {isFieldRequired('demandadoDireccion', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="Calle 123 #45-67"
+                                value={demandado.direccion}
+                                onChange={(e) => actualizarDemandado(demandado.id, 'direccion', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('demandadoTieneApoderado', true) && (
+                            <div className="md:col-span-2">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  id={`apoderado-dema-${demandado.id}`}
+                                  checked={demandado.tieneApoderado}
+                                  onChange={(e) => actualizarDemandado(demandado.id, 'tieneApoderado', e.target.checked)}
+                                  className="w-4 h-4"
+                                />
+                                <Label htmlFor={`apoderado-dema-${demandado.id}`} className="text-sm font-bold text-gray-700 cursor-pointer">
+                                  Tiene Apoderado
+                                </Label>
+                              </div>
+                            </div>
+                          )}
 
                           {demandado.tieneApoderado && (
                             <div className="md:col-span-2 bg-blue-50 p-3 rounded border border-blue-200">
@@ -1555,6 +2087,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                     ))}
                   </div>
                 </Card>
+                {renderCamposAdicionales(3)}
               </>
             )}
 
@@ -1603,107 +2136,133 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Tipo de Persona</Label>
-                            <Select
-                              value={actor.tipoPersona}
-                              onValueChange={(value: 'Natural' | 'Juridica') => actualizarOtroActor(actor.id, 'tipoPersona', value)}
-                            >
-                              <SelectTrigger className="bg-white">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent className="z-[100000]">
-                                <SelectItem value="Natural">Natural</SelectItem>
-                                <SelectItem value="Juridica">Jurídica</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              {actor.tipoPersona === 'Natural' ? 'Cédula' : 'NIT'}
-                            </Label>
-                            <Input
-                              placeholder={actor.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
-                              value={actor.cedula}
-                              maxLength={actor.tipoPersona === 'Natural' ? 10 : 15}
-                              onChange={(e) => {
-                                const val = actor.tipoPersona === 'Natural'
-                                  ? soloDigitos(e.target.value)
-                                  : nitFormato(e.target.value);
-                                actualizarOtroActor(actor.id, 'cedula', val);
-                              }}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">
-                              {actor.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} <span className="text-red-500">*</span>
-                            </Label>
-                            <Input
-                              placeholder={actor.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
-                              value={actor.nombreCompleto}
-                              onChange={(e) => {
-                                const val = actor.tipoPersona === 'Natural'
-                                  ? soloLetrasEspacios(e.target.value)
-                                  : e.target.value;
-                                actualizarOtroActor(actor.id, 'nombreCompleto', val);
-                              }}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Rol <span className="text-red-500">*</span></Label>
-                            <Input
-                              placeholder="Ej: Tercero interviniente, Litisconsorte, etc."
-                              value={actor.rol}
-                              onChange={(e) => actualizarOtroActor(actor.id, 'rol', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Teléfono</Label>
-                            <Input
-                              placeholder="3001234567"
-                              value={actor.telefono}
-                              maxLength={10}
-                              onChange={(e) => actualizarOtroActor(actor.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
-                            />
-                          </div>
-
-                          <div className="space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Correo Electrónico</Label>
-                            <Input
-                              type="email"
-                              placeholder="correo@ejemplo.com"
-                              value={actor.correo}
-                              onChange={(e) => actualizarOtroActor(actor.id, 'correo', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2 space-y-2">
-                            <Label className="text-sm font-bold text-gray-700">Dirección</Label>
-                            <Input
-                              placeholder="Calle 123 #45-67"
-                              value={actor.direccion}
-                              onChange={(e) => actualizarOtroActor(actor.id, 'direccion', e.target.value)}
-                            />
-                          </div>
-
-                          <div className="md:col-span-2">
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                id={`apoderado-actor-${actor.id}`}
-                                checked={actor.tieneApoderado}
-                                onChange={(e) => actualizarOtroActor(actor.id, 'tieneApoderado', e.target.checked)}
-                                className="w-4 h-4"
-                              />
-                              <Label htmlFor={`apoderado-actor-${actor.id}`} className="text-sm font-bold text-gray-700 cursor-pointer">
-                                Tiene Apoderado
+                          {isFieldVisible('otroActorTipoPersona', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Tipo de Persona {isFieldRequired('otroActorTipoPersona', false) && <span className="text-red-500">*</span>}
                               </Label>
+                              <Select
+                                value={actor.tipoPersona}
+                                onValueChange={(value: 'Natural' | 'Juridica') => actualizarOtroActor(actor.id, 'tipoPersona', value)}
+                              >
+                                <SelectTrigger className="bg-white">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="z-[100000]">
+                                  <SelectItem value="Natural">Natural</SelectItem>
+                                  <SelectItem value="Juridica">Jurídica</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </div>
-                          </div>
+                          )}
+
+                          {isFieldVisible('otroActorIdentificacion', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                {actor.tipoPersona === 'Natural' ? 'Cédula' : 'NIT'} {isFieldRequired('otroActorIdentificacion', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder={actor.tipoPersona === 'Natural' ? '1234567890' : '900123456-7'}
+                                value={actor.cedula}
+                                maxLength={actor.tipoPersona === 'Natural' ? 10 : 15}
+                                onChange={(e) => {
+                                  const val = actor.tipoPersona === 'Natural'
+                                    ? soloDigitos(e.target.value)
+                                    : nitFormato(e.target.value);
+                                  actualizarOtroActor(actor.id, 'cedula', val);
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('otroActorNombre', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                {actor.tipoPersona === 'Natural' ? 'Nombre Completo' : 'Razón Social'} {isFieldRequired('otroActorNombre', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder={actor.tipoPersona === 'Natural' ? 'Juan Pérez García' : 'Empresa S.A.S.'}
+                                value={actor.nombreCompleto}
+                                onChange={(e) => {
+                                  const val = actor.tipoPersona === 'Natural'
+                                    ? soloLetrasEspacios(e.target.value)
+                                    : e.target.value;
+                                  actualizarOtroActor(actor.id, 'nombreCompleto', val);
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('otroActorRol', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Rol {isFieldRequired('otroActorRol', true) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="Ej: Tercero interviniente, Litisconsorte, etc."
+                                value={actor.rol}
+                                onChange={(e) => actualizarOtroActor(actor.id, 'rol', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('otroActorTelefono', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Teléfono {isFieldRequired('otroActorTelefono', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="3001234567"
+                                value={actor.telefono}
+                                maxLength={10}
+                                onChange={(e) => actualizarOtroActor(actor.id, 'telefono', soloDigitos(e.target.value).slice(0, 10))}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('otroActorCorreo', true) && (
+                            <div className="space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Correo Electrónico {isFieldRequired('otroActorCorreo', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                type="email"
+                                placeholder="correo@ejemplo.com"
+                                value={actor.correo}
+                                onChange={(e) => actualizarOtroActor(actor.id, 'correo', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('otroActorDireccion', true) && (
+                            <div className="md:col-span-2 space-y-2">
+                              <Label className="text-sm font-bold text-gray-700">
+                                Dirección {isFieldRequired('otroActorDireccion', false) && <span className="text-red-500">*</span>}
+                              </Label>
+                              <Input
+                                placeholder="Calle 123 #45-67"
+                                value={actor.direccion}
+                                onChange={(e) => actualizarOtroActor(actor.id, 'direccion', e.target.value)}
+                              />
+                            </div>
+                          )}
+
+                          {isFieldVisible('otroActorTieneApoderado', true) && (
+                            <div className="md:col-span-2">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  id={`apoderado-actor-${actor.id}`}
+                                  checked={actor.tieneApoderado}
+                                  onChange={(e) => actualizarOtroActor(actor.id, 'tieneApoderado', e.target.checked)}
+                                  className="w-4 h-4"
+                                />
+                                <Label htmlFor={`apoderado-actor-${actor.id}`} className="text-sm font-bold text-gray-700 cursor-pointer">
+                                  Tiene Apoderado
+                                </Label>
+                              </div>
+                            </div>
+                          )}
 
                           {actor.tieneApoderado && (
                             <div className="md:col-span-2 bg-blue-50 p-3 rounded border border-blue-200">
@@ -1767,6 +2326,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                     ))}
                   </div>
                 </Card>
+                {renderCamposAdicionales(4)}
               </>
             )}
 
@@ -1783,63 +2343,68 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                   </div>
 
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="juzgadoTribunal" className="text-sm font-bold text-gray-700">
-                        Juzgado / Tribunal <span className="text-red-500">*</span>
-                      </Label>
-                      <Input
-                        id="juzgadoTribunal"
-                        placeholder="Ej: Tribunal Administrativo de Cundinamarca"
-                        value={formData.juzgadoTribunal}
-                        onChange={(e) => setFormData({ ...formData, juzgadoTribunal: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {isFieldVisible('juzgadoTribunal', true) && (
                       <div className="space-y-2">
-                        <Label htmlFor="departamento" className="text-sm font-bold text-gray-700">
-                          Departamento <span className="text-red-500">*</span>
+                        <Label htmlFor="juzgadoTribunal" className="text-sm font-bold text-gray-700">
+                          Juzgado / Tribunal {isFieldRequired('juzgadoTribunal', true) && <span className="text-red-500">*</span>}
                         </Label>
-                        <Select
-                          value={formData.departamento}
-                          onValueChange={(value: string) => setFormData({ ...formData, departamento: value })}
-                        >
-                          <SelectTrigger id="departamento" className="bg-white">
-                            <SelectValue placeholder="Seleccione departamento..." />
-                          </SelectTrigger>
-                          <SelectContent className="z-[100000]">
-                            {departamentosAPI.map(dep => (
-                              <SelectItem key={dep.id} value={dep.nombre}>{dep.nombre}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Input
+                          id="juzgadoTribunal"
+                          placeholder="Ej: Tribunal Administrativo de Cundinamarca"
+                          value={formData.juzgadoTribunal}
+                          onChange={(e) => setFormData({ ...formData, juzgadoTribunal: e.target.value })}
+                        />
                       </div>
+                    )}
 
-                      <div className="space-y-2">
-                        <Label htmlFor="ciudad" className="text-sm font-bold text-gray-700">
-                          Ciudad <span className="text-red-500">*</span>
-                        </Label>
-                        <Select
-                          value={formData.ciudad}
-                          onValueChange={(value: string) => setFormData({ ...formData, ciudad: value })}
-                          disabled={!formData.departamento || cargandoCiudades}
-                        >
-                          <SelectTrigger id="ciudad" className="bg-white">
-                            <SelectValue placeholder={cargandoCiudades ? 'Cargando ciudades...' : 'Seleccione ciudad...'} />
-                          </SelectTrigger>
-                          <SelectContent className="z-[100000]">
-                            {ciudadesDisponibles.map(ciudad => (
-                              <SelectItem key={ciudad} value={ciudad}>{ciudad}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {!formData.departamento && (
-                          <p className="text-xs text-gray-500 mt-1">Primero seleccione un departamento</p>
-                        )}
+                    {isFieldVisible('departamentoCiudad', true) && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="departamento" className="text-sm font-bold text-gray-700">
+                            Departamento {isFieldRequired('departamentoCiudad', true) && <span className="text-red-500">*</span>}
+                          </Label>
+                          <Select
+                            value={formData.departamento}
+                            onValueChange={(value: string) => setFormData({ ...formData, departamento: value })}
+                          >
+                            <SelectTrigger id="departamento" className="bg-white">
+                              <SelectValue placeholder="Seleccione departamento..." />
+                            </SelectTrigger>
+                            <SelectContent className="z-[100000]">
+                              {departamentosAPI.map(dep => (
+                                <SelectItem key={dep.id} value={dep.nombre}>{dep.nombre}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="ciudad" className="text-sm font-bold text-gray-700">
+                            Ciudad {isFieldRequired('departamentoCiudad', true) && <span className="text-red-500">*</span>}
+                          </Label>
+                          <Select
+                            value={formData.ciudad}
+                            onValueChange={(value: string) => setFormData({ ...formData, ciudad: value })}
+                            disabled={!formData.departamento || cargandoCiudades}
+                          >
+                            <SelectTrigger id="ciudad" className="bg-white">
+                              <SelectValue placeholder={cargandoCiudades ? 'Cargando ciudades...' : 'Seleccione ciudad...'} />
+                            </SelectTrigger>
+                            <SelectContent className="z-[100000]">
+                              {ciudadesDisponibles.map(ciudad => (
+                                <SelectItem key={ciudad} value={ciudad}>{ciudad}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {!formData.departamento && (
+                            <p className="text-xs text-gray-500 mt-1">Primero seleccione un departamento</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 </Card>
+                {renderCamposAdicionales(5)}
               </>
             )}
 
@@ -1864,7 +2429,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         <Select
                           value={formData.tipoPlazo}
                           onValueChange={(value: string) => {
-                            const nuevoTipo = value as 'Dias Habiles' | 'Dias Calendario';
+                            const nuevoTipo = value as 'Dias Habiles' | 'Dias Calendario' | 'Horas';
                             // Si se cambia a Días Hábiles, normalizamos la fecha existente si la hay
                             const nuevaFechaNotificacion = (nuevoTipo === 'Dias Habiles' && formData.fechaNotificacion)
                               ? normalizarAHorarioHabil(formData.fechaNotificacion)
@@ -1878,22 +2443,24 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           <SelectContent className="z-[100000]">
                             <SelectItem value="Dias Habiles">Días Hábiles</SelectItem>
                             <SelectItem value="Dias Calendario">Días Calendario</SelectItem>
+                            <SelectItem value="Horas">Horas</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
 
                       <div className="space-y-2">
                         <Label htmlFor="termino" className="text-sm font-bold text-gray-700">
-                          Término (Días)
+                          {formData.tipoPlazo === 'Horas' ? 'Término (Horas)' : 'Término (Días)'}
                         </Label>
                         <Input
                           id="termino"
-                          type="text"
-                          readOnly
+                          type="number"
                           value={formData.termino === 0 ? '' : String(formData.termino)}
-                          className="bg-gray-100 cursor-not-allowed text-gray-600"
+                          onChange={(e) => setFormData({ ...formData, termino: parseInt(e.target.value) || 0 })}
+                          className="bg-white"
+                          min="1"
                         />
-                        <p className="text-xs text-gray-500">Definido por el tipo de proceso en Configuraciones</p>
+                        <p className="text-xs text-gray-500">Por defecto cargado del tipo de proceso, pero puede ser editado</p>
                       </div>
 
                       <div className="space-y-2">
@@ -1905,7 +2472,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           type="datetime-local"
                           value={formData.fechaNotificacion}
                           onChange={(e) => {
-                            const normalizada = formData.tipoPlazo === 'Dias Habiles'
+                            const normalizada = (activeTipoProceso?.unidadTermino !== 'horas' && formData.tipoPlazo === 'Dias Habiles')
                               ? normalizarAHorarioHabil(e.target.value)
                               : e.target.value;
                             setFormData({ ...formData, fechaNotificacion: normalizada });
@@ -1925,32 +2492,36 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           className="bg-gray-100"
                         />
                         <p className="text-xs text-gray-500 mt-1">
-                          {formData.tipoPlazo === 'Dias Habiles'
+                          {formData.tipoPlazo === 'Horas'
+                            ? 'Se calcula exactamente sumando las horas a partir de la notificación.'
+                            : formData.tipoPlazo === 'Dias Habiles'
                             ? 'Se calcula automáticamente (8:00 AM a 5:00 PM)'
                             : 'Se calcula exactamente desde la hora de notificación'}
                         </p>
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="abogadoResponsable" className="text-sm font-bold text-gray-700">
-                        Abogado Defensor <span className="text-gray-400 font-normal ml-1">(Opcional)</span>
-                      </Label>
-                      <Select
-                        value={formData.abogadoResponsable}
-                        onValueChange={(value: string) => setFormData({ ...formData, abogadoResponsable: value })}
-                      >
-                        <SelectTrigger id="abogadoResponsable" className="bg-white">
-                          <SelectValue placeholder="Seleccione abogado..." />
-                        </SelectTrigger>
-                        <SelectContent className="z-[100000]">
-                          <SelectItem value="Sin asignar (Temporal)" className="text-gray-500 italic">Sin asignar (Temporal)</SelectItem>
-                          {abogadosAPI.map(abog => (
-                            <SelectItem key={abog.id} value={abog.id}>{abog.nombre}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {isFieldVisible('abogadoResponsable', true) && (
+                      <div className="space-y-2">
+                        <Label htmlFor="abogadoResponsable" className="text-sm font-bold text-gray-700">
+                          Abogado Defensor {isFieldRequired('abogadoResponsable', false) ? <span className="text-red-500">*</span> : <span className="text-gray-400 font-normal ml-1">(Opcional)</span>}
+                        </Label>
+                        <Select
+                          value={formData.abogadoResponsable}
+                          onValueChange={(value: string) => setFormData({ ...formData, abogadoResponsable: value })}
+                        >
+                          <SelectTrigger id="abogadoResponsable" className="bg-white">
+                            <SelectValue placeholder="Seleccione abogado..." />
+                          </SelectTrigger>
+                          <SelectContent className="z-[100000]">
+                            <SelectItem value="Sin asignar (Temporal)" className="text-gray-500 italic">Sin asignar (Temporal)</SelectItem>
+                            {abogadosAPI.map(abog => (
+                              <SelectItem key={abog.id} value={abog.id}>{abog.nombre}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
 
                     {formData.fechaVencimiento && (
                       <div className="p-3 bg-blue-50 border border-blue-200 rounded">
@@ -1959,9 +2530,26 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                           <div className="flex-1">
                             <h4 className="text-sm font-bold text-blue-900 mb-1">Cálculo Automático de Vencimiento</h4>
                             <div className="text-xs text-blue-800 space-y-1">
-                              <p>• Tipo de plazo: <strong>{formData.tipoPlazo}</strong></p>
-                              <p>• Término: <strong>{formData.termino} días</strong></p>
-                              <p>• Vencimiento calculado a las: <strong>5:00 PM</strong></p>
+                              {formData.tipoPlazo === 'Horas' ? (
+                                <>
+                                  <p>• Unidad de término: <strong>Horas</strong></p>
+                                  <p>• Término: <strong>{formData.termino} horas</strong></p>
+                                </>
+                              ) : (
+                                <>
+                                  <p>• Tipo de plazo: <strong>{formData.tipoPlazo === 'Dias Habiles' ? 'Días Hábiles' : 'Días Calendario'}</strong></p>
+                                  <p>• Término: <strong>{formData.termino} días</strong></p>
+                                </>
+                              )}
+                              {formData.fechaNotificacion && (
+                                <p>• Fecha de notificación: <strong>{formatFechaLocal(formData.fechaNotificacion)}</strong></p>
+                              )}
+                              {formData.fechaVencimiento && (
+                                <p>• Fecha de vencimiento: <strong>{formatFechaLocal(formData.fechaVencimiento)}</strong></p>
+                              )}
+                              {formData.tipoPlazo !== 'Horas' && (
+                                <p>• Vencimiento calculado a las: <strong>{activeTipoProceso?.horaEspecial || '17:00'}</strong></p>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1969,6 +2557,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                     )}
                   </div>
                 </Card>
+                {renderCamposAdicionales(6)}
               </>
             )}
 
@@ -1985,57 +2574,66 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                   </div>
 
                   <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="pretensiones" className="text-sm font-bold text-gray-700">
-                        Pretensiones <span className="text-red-500">*</span>
-                      </Label>
-                      <Textarea
-                        id="pretensiones"
-                        placeholder="Descripción detallada de las pretensiones del demandante..."
-                        value={formData.pretensiones}
-                        onChange={(e) => setFormData({ ...formData, pretensiones: e.target.value })}
-                        rows={6}
-                        className="resize-none"
-                      />
-                      <div className="flex items-center justify-between mt-2">
-                        <p className={`text-xs font-bold ${formData.pretensiones.length < 20 ? 'text-gray-400' : 'text-green-600'
-                          }`}>
-                          {formData.pretensiones.length} caracteres {formData.pretensiones.length < 20 && '(mínimo 20)'}
-                        </p>
-                        {formData.pretensiones.length >= 20 && (
-                          <p className="text-xs text-green-600 font-bold flex items-center gap-1">
-                            <CheckCircle className="w-3.5 h-3.5" />
-                            Pretensiones válidas
+                    {isFieldVisible('pretensiones', true) && (
+                      <div className="space-y-2">
+                        <Label htmlFor="pretensiones" className="text-sm font-bold text-gray-700">
+                          Pretensiones {isFieldRequired('pretensiones', true) && <span className="text-red-500">*</span>}
+                        </Label>
+                        <Textarea
+                          id="pretensiones"
+                          placeholder="Descripción detallada de las pretensiones del demandante..."
+                          value={formData.pretensiones}
+                          onChange={(e) => setFormData({ ...formData, pretensiones: e.target.value })}
+                          rows={6}
+                          className="resize-none"
+                        />
+                        <div className="flex items-center justify-between mt-2">
+                          <p className={`text-xs font-bold ${formData.pretensiones.length < 20 ? 'text-gray-400' : 'text-green-600'
+                            }`}>
+                            {formData.pretensiones.length} caracteres {formData.pretensiones.length < 20 && '(mínimo 20)'}
                           </p>
-                        )}
+                          {formData.pretensiones.length >= 20 && (
+                            <p className="text-xs text-green-600 font-bold flex items-center gap-1">
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              Pretensiones válidas
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
-                    <div className="space-y-2">
-                      <Label htmlFor="hechos" className="text-sm font-bold text-gray-700">Hechos</Label>
-                      <Textarea
-                        id="hechos"
-                        placeholder="Descripción de los hechos que originaron la demanda..."
-                        value={formData.hechos}
-                        onChange={(e) => setFormData({ ...formData, hechos: e.target.value })}
-                        rows={5}
-                        className="resize-none"
-                      />
-                    </div>
+                    {isFieldVisible('hechos', true) && (
+                      <div className="space-y-2">
+                        <Label htmlFor="hechos" className="text-sm font-bold text-gray-700">
+                          Hechos {isFieldRequired('hechos', false) && <span className="text-red-500">*</span>}
+                        </Label>
+                        <Textarea
+                          id="hechos"
+                          placeholder="Descripción de los hechos que originaron la demanda..."
+                          value={formData.hechos}
+                          onChange={(e) => setFormData({ ...formData, hechos: e.target.value })}
+                          rows={5}
+                          className="resize-none"
+                        />
+                      </div>
+                    )}
 
-                    <div className="space-y-2">
-                      <Label htmlFor="observaciones" className="text-sm font-bold text-gray-700">Observaciones Adicionales</Label>
-                      <Textarea
-                        id="observaciones"
-                        placeholder="Cualquier información adicional relevante..."
-                        value={formData.observaciones}
-                        onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
-                        rows={4}
-                        className="resize-none"
-                      />
-                    </div>
+                    {isFieldVisible('observaciones', true) && (
+                      <div className="space-y-2">
+                        <Label htmlFor="observaciones" className="text-sm font-bold text-gray-700">Observaciones Adicionales</Label>
+                        <Textarea
+                          id="observaciones"
+                          placeholder="Cualquier información adicional relevante..."
+                          value={formData.observaciones}
+                          onChange={(e) => setFormData({ ...formData, observaciones: e.target.value })}
+                          rows={4}
+                          className="resize-none"
+                        />
+                      </div>
+                    )}
                   </div>
                 </Card>
+                {renderCamposAdicionales(7)}
               </>
             )}
           </div>

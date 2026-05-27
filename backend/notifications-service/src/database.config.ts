@@ -28,6 +28,6 @@ export const databaseConfig: TypeOrmModuleOptions = {
   database: process.env.DB_NAME ?? 'esap_db',
   schema: process.env.DB_SCHEMA ?? 'notifications',
   entities: [Notification],
-  synchronize: parseBooleanEnv(process.env.TYPEORM_SYNCHRONIZE, false),
+  synchronize: parseBooleanEnv(process.env.TYPEORM_SYNCHRONIZE, false) || process.env.TYPEORM_SYNC === 'true',
   logging: parseBooleanEnv(process.env.TYPEORM_LOGGING, false),
 };

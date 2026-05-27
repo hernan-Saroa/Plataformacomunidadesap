@@ -236,7 +236,7 @@ export function ProgramasAcademicosModule() {
 
   return (
     <>
-    <Toaster position="top-right" richColors />
+    <Toaster position="bottom-right" richColors />
     <Container4K className="space-y-6">
       {/* Header - DÍA 5: ResponsiveHeader */}
       <ResponsiveHeader

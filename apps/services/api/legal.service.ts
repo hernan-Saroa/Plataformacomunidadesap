@@ -356,6 +356,21 @@ export class LegalService {
         return apiClient.post<Actuacion>(`${SERVICE_PREFIX}/expedientes/${data.expedienteId}/actuaciones`, data);
     }
 
+    async enviarOtpActuacion(expedienteId: string, actuacionId: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/enviar-otp`, {});
+    }
+
+    async autorizarActuacion(expedienteId: string, actuacionId: string, otp: string, file: File): Promise<any> {
+        const formData = new FormData();
+        formData.append('otp', otp);
+        formData.append('file', file);
+        return apiClient.upload<any>(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/autorizar`, formData);
+    }
+
+    async devolverActuacion(expedienteId: string, actuacionId: string, observaciones: string): Promise<any> {
+        return apiClient.post(`${SERVICE_PREFIX}/expedientes/${expedienteId}/actuaciones/${actuacionId}/devolver`, { observaciones });
+    }
+
     // Abogados
     async getAbogadosDashboard(): Promise<any[]> {
         return authService.getAbogadosRolResuelve();
@@ -1031,6 +1046,22 @@ class OCService {
     // Catálogo de organismos
     async getOrganismosControl(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`);
+    }
+
+    async createOrganismoControl(data: any): Promise<any> {
+        return apiClient.post<any>(`${SERVICE_PREFIX}/requerimientos-oc/organismos`, data);
+    }
+
+    async updateOrganismoControl(id: number | string, data: any): Promise<any> {
+        return apiClient.patch<any>(`${SERVICE_PREFIX}/requerimientos-oc/organismos/${id}`, data);
+    }
+
+    async deleteOrganismoControl(id: number | string): Promise<void> {
+        return apiClient.delete(`${SERVICE_PREFIX}/requerimientos-oc/organismos/${id}`);
+    }
+
+    async syncOrganismosControl(organismos: any[]): Promise<any[]> {
+        return apiClient.post<any[]>(`${SERVICE_PREFIX}/requerimientos-oc/organismos/sync`, organismos);
     }
 
     // Catálogo de tipos de requerimiento

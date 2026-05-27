@@ -12,5 +12,6 @@ export class UpdateExpedienteDto {
     esConductaPatrimonioPublico?: boolean;
     esOtroDelitoPenal?: boolean;
     otroDelitoPenalDescripcion?: string;
+    camposAdicionales?: Record<string, any>;
     // Radicado NO se puede actualizar
 }

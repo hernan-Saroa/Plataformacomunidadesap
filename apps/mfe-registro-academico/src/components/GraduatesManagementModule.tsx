@@ -1447,7 +1447,7 @@ export function GraduatesManagementModule() {
 
   return (
     <>
-      <Toaster position="top-right" richColors />
+      <Toaster position="bottom-right" richColors />
       <Container4K className="space-y-6">
       {/* ✅ Modal de Validador de Certificados */}
       <ValidarCertificadoGrado 
