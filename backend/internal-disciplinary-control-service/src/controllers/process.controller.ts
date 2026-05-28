@@ -1163,11 +1163,15 @@ export class ProcessController {
     @Query('abogadoId') abogadoId: string,
   ): Promise<DisciplinaryProcess[]> {
     const access = await this.getSensitiveAccessContext(req);
+    
+    console.log('abogadoId',abogadoId);
+    
 
     if (access.fullAccess) {
       if (!abogadoId) {
         throw new HttpException('abogadoId es requerido', HttpStatus.BAD_REQUEST);
       }
+      console.log('resultados',await this.processService.findByAbogadoId(abogadoId));
 
       return await this.processService.findByAbogadoId(abogadoId);
     }

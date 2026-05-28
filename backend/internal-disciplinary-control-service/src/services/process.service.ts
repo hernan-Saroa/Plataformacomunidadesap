@@ -473,13 +473,28 @@ export class ProcessService {
           abogadoNombre: createProcessDto.abogadoNombre
         });
 
+        const emailProfesional = `${createProcessDto.abogadoNombre?.toLowerCase().replace(/\s+/g, '.')}@esap.edu.co`;
+        let idUser = null;
+        try {
+          const result = await this.processRepository.manager.query(
+            'SELECT id_user FROM auth.user WHERE username = $1',
+            [emailProfesional]
+          );
+          if (result.length > 0) {
+            idUser = result[0].id_user;
+          }
+        } catch (error) {
+          console.warn('Could not fetch id_user from auth.user for email:', emailProfesional, error);
+        }
+
         abogado = this.professionalRepository.create({
           id: createProcessDto.abogadoId, // Usar el mismo ID del candidato
           nombreCompleto: createProcessDto.abogadoNombre || 'Profesional Asignado',
-          email: `${createProcessDto.abogadoNombre?.toLowerCase().replace(/\s+/g, '.')}@esap.edu.co`,
+          email: emailProfesional,
           cargo: 'Profesional Universitario',
           estado: 'ACTIVO',
           capacidadMaxima: 10,
+          idUser: idUser,
         });
 
         try {
@@ -855,11 +870,30 @@ export class ProcessService {
    * Obtiene procesos asignados a un abogado específico
    */
   async findByAbogadoId(abogadoId: string): Promise<any[]> {
-    const processes = await this.processRepository.find({
+    let processes = await this.processRepository.find({
       where: { abogadoAsignadoId: abogadoId },
       relations: ['news', 'evidence', 'autos'],
       order: { createdAt: 'DESC' },
     });
+
+    
+    
+
+    if (processes.length == 0) {
+      
+      const profesional = await this.professionalRepository.findOne({where: {idUser: abogadoId}});
+
+      console.log("profesional", profesional);
+      console.log("abogadoId", profesional?.id);
+      
+      
+      processes = await this.processRepository.find({
+      where: { abogadoAsignadoId: profesional?.id },
+      relations: ['news', 'evidence', 'autos'],
+      order: { createdAt: 'DESC' },
+    });
+      console.log("processes", processes);
+    }
 
     // Calcular estadísticas dinámicas para cada proceso
     const actuacionesResumen = await this.buildActuacionesResumen(
