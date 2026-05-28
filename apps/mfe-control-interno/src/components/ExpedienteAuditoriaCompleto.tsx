@@ -59,6 +59,7 @@ import { SeccionHallazgosExpediente } from './SeccionHallazgosExpediente';
 import { ModalReunionApertura, ModalReunionCierre } from './ModalReunionAperturaCierre';
 import { SeccionTareasExpediente } from './SeccionTareasExpediente';
 import { SeccionListasChequeoExpediente } from './SeccionListasChequeoExpediente';
+import { SeccionDocumentosPorEtapa } from './SeccionDocumentosPorEtapa';
 
 // Servicio API
 import { controlInternoService, type Hallazgo } from '../../../services/api/controlInternoService';
@@ -2034,6 +2035,10 @@ function TabPlaneacion({
           </div>
         </div>
       </Card>
+      <SeccionDocumentosPorEtapa
+        auditoriaId={auditoria.id}
+        etapa="planeacion"
+      />
       <SeccionListasChequeoExpediente
         auditoriaId={auditoria.id}
         etapaActual="Planeación"
@@ -2126,15 +2131,7 @@ function TabEjecucion({
         </div>
       </div>
 
-      {/* 2. LISTAS DE CHEQUEO DE EJECUCIÓN */}
-      <SeccionListasChequeoExpediente
-        auditoriaId={auditoria.id}
-        etapaActual="Ejecución"
-        readOnly={readOnly}
-        documentosAuditoriaPrecargados={documentosAuditoriaBackend}
-      />
-
-      {/* 3. REUNIÓN DE CIERRE */}
+      {/* 2. REUNIÓN DE CIERRE */}
       <div className="bg-white border-2 border-emerald-200 rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
@@ -2165,7 +2162,7 @@ function TabEjecucion({
         </div>
       </div>
 
-      {/* 4. HALLAZGOS (Preliminar e Identificados) */}
+      {/* 3. HALLAZGOS (Preliminar e Identificados) */}
       <div className="bg-white border-2 border-red-200 rounded-lg p-5">
         <SeccionHallazgosExpediente
           auditoriaId={auditoria.id}
@@ -2177,11 +2174,24 @@ function TabEjecucion({
         />
       </div>
 
+      {/* 4. TAREAS Y ACTIVIDADES */}
       <div className="bg-white border-2 border-blue-200 rounded-lg p-4">
         <SeccionTareasExpediente auditoriaId={auditoria.id} />
       </div>
 
-      {/* DOCUMENTOS DE EJECUCIÓN (al final) */}
+      {/* 5. DOCUMENTOS DE EJECUCIÓN */}
+      <SeccionDocumentosPorEtapa
+        auditoriaId={auditoria.id}
+        etapa="ejecucion"
+      />
+
+      {/* 6. LISTAS DE CHEQUEO DE EJECUCIÓN (al final) */}
+      <SeccionListasChequeoExpediente
+        auditoriaId={auditoria.id}
+        etapaActual="Ejecución"
+        readOnly={readOnly}
+        documentosAuditoriaPrecargados={documentosAuditoriaBackend}
+      />
 
       <ModalReunionApertura
         isOpen={modalAperturaOpen}
@@ -2222,14 +2232,6 @@ function TabComunicacion({
         </div>
       </Card>
 
-      {/* LISTAS DE CHEQUEO DE COMUNICACIÓN */}
-      <SeccionListasChequeoExpediente
-        auditoriaId={auditoria.id}
-        etapaActual="Comunicación"
-        readOnly={readOnly}
-        documentosAuditoriaPrecargados={documentosAuditoriaBackend}
-      />
-
       {/* MÓDULO DE COMUNICACIÓN */}
       <div className="bg-white border-2 border-green-200 rounded-lg p-4">
         <ComunicacionAuditoriaModule
@@ -2241,7 +2243,18 @@ function TabComunicacion({
           readOnly={readOnly}
         />
       </div>
-      {/* DOCUMENTOS DE COMUNICACIÓN (al final) */}
+      {/* DOCUMENTOS DE COMUNICACIÓN */}
+      <SeccionDocumentosPorEtapa
+        auditoriaId={auditoria.id}
+        etapa="comunicacion"
+      />
+      {/* LISTAS DE CHEQUEO DE COMUNICACIÓN (al final) */}
+      <SeccionListasChequeoExpediente
+        auditoriaId={auditoria.id}
+        etapaActual="Comunicación"
+        readOnly={readOnly}
+        documentosAuditoriaPrecargados={documentosAuditoriaBackend}
+      />
     </div>
   );
 }
