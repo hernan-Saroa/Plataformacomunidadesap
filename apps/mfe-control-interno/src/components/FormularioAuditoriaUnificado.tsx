@@ -43,6 +43,7 @@ import { toast } from 'sonner';
 import { configuracionesProfesionalesOCIApi, auditoriasApi } from './services/api';
 import { controlInternoService, type ProcesoAuditable, type EvaluacionProceso } from '../../../services/api/controlInternoService';
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TIPOS
@@ -296,6 +297,7 @@ export function FormularioAuditoriaUnificado({
   initialData,
   mode
 }: FormularioAuditoriaUnificadoProps) {
+  const vigenciaPlanCtx = usePlanAnualVigenciaContextOptional();
   const [pasoActual, setPasoActual] = useState(1);
   const [formData, setFormData] = useState<AuditoriaUnificadaFormData>({
     codigo: initialData?.codigo || '',
@@ -341,6 +343,16 @@ export function FormularioAuditoriaUnificado({
     rolDecretoAsociado: initialData?.rolDecretoAsociado || '',
     estadoKanban: initialData?.estadoKanban || 'Plan Anual' // Por defecto crear en Plan Anual
   });
+
+  useEffect(() => {
+    if (!open || !vigenciaPlanCtx) return;
+    setFormData((prev) => ({
+      ...prev,
+      vinculadaPlanAnual: initialData?.vinculadaPlanAnual ?? true,
+      planAnualId: initialData?.planAnualId ?? vigenciaPlanCtx.planActivoId ?? prev.planAnualId,
+      planAnualAño: initialData?.planAnualAño ?? vigenciaPlanCtx.vigencia,
+    }));
+  }, [open, vigenciaPlanCtx?.planActivoId, vigenciaPlanCtx?.vigencia, initialData?.vinculadaPlanAnual, initialData?.planAnualId, initialData?.planAnualAño]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [objetivoTemporal, setObjetivoTemporal] = useState('');
@@ -2081,6 +2093,11 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
   const planeacionCompleta = !!(formData.fechaInicioPlaneacion && formData.fechaFinPlaneacion);
   const ejecucionCompleta = !!(formData.fechaInicioEjecucion && formData.fechaFinEjecucion);
 
+  // Limitar el calendario al año de la vigencia seleccionada
+  const añoVigencia = formData.planAnualAño || new Date().getFullYear();
+  const minDate = `${añoVigencia}-01-01`;
+  const maxDate = `${añoVigencia}-12-31`;
+
   // Calcular días de cada etapa
   const calcularDias = (inicio: string, fin: string) => {
     if (!inicio || !fin) return 0;
@@ -2150,6 +2167,8 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
                 onChange('fechaInicio', e.target.value);
               }}
               className="border-gray-300"
+              min={minDate}
+              max={maxDate}
             />
           </FieldWrapper>
 
@@ -2163,7 +2182,8 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               value={formData.fechaFinPlaneacion || ''}
               onChange={(e) => onChange('fechaFinPlaneacion', e.target.value)}
               className="border-gray-300"
-              min={formData.fechaInicioPlaneacion || undefined}
+              min={formData.fechaInicioPlaneacion || minDate}
+              max={maxDate}
             />
           </FieldWrapper>
         </div>
@@ -2209,7 +2229,8 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               onChange={(e) => onChange('fechaInicioEjecucion', e.target.value)}
               className="border-gray-300"
               disabled={!planeacionCompleta}
-              min={formData.fechaFinPlaneacion || undefined}
+              min={formData.fechaFinPlaneacion || minDate}
+              max={maxDate}
             />
           </FieldWrapper>
 
@@ -2224,7 +2245,8 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               onChange={(e) => onChange('fechaFinEjecucion', e.target.value)}
               className="border-gray-300"
               disabled={!planeacionCompleta}
-              min={formData.fechaInicioEjecucion || formData.fechaFinPlaneacion || undefined}
+              min={formData.fechaInicioEjecucion || formData.fechaFinPlaneacion || minDate}
+              max={maxDate}
             />
           </FieldWrapper>
         </div>
@@ -2270,7 +2292,8 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               onChange={(e) => onChange('fechaInicioComunicacion', e.target.value)}
               className="border-gray-300"
               disabled={!ejecucionCompleta}
-              min={formData.fechaFinEjecucion || undefined}
+              min={formData.fechaFinEjecucion || minDate}
+              max={maxDate}
             />
           </FieldWrapper>
 
@@ -2289,7 +2312,8 @@ function Paso4Programacion({ formData, onChange }: PasoProps) {
               }}
               className="border-gray-300"
               disabled={!ejecucionCompleta}
-              min={formData.fechaInicioComunicacion || formData.fechaFinEjecucion || undefined}
+              min={formData.fechaInicioComunicacion || formData.fechaFinEjecucion || minDate}
+              max={maxDate}
             />
           </FieldWrapper>
         </div>
@@ -3177,6 +3201,24 @@ function Paso8Hallazgos({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
+  const ctx = usePlanAnualVigenciaContextOptional();
+  
+  // Sincronizar automáticamente el formulario con el plan activo de la cabecera
+  useEffect(() => {
+    if (ctx?.planActivo) {
+      // Solo actualizamos si es diferente para evitar renderizados infinitos
+      if (formData.planAnualId !== ctx.planActivo.id || formData.planAnualAño !== ctx.planActivo.vigencia) {
+        onChange('planAnualId', ctx.planActivo.id);
+        onChange('planAnualAño', ctx.planActivo.vigencia);
+      }
+    }
+  }, [ctx?.planActivo, formData.planAnualId, formData.planAnualAño, onChange]);
+
+  // Texto a mostrar en el input de solo lectura
+  const planDisplay = ctx?.planActivo 
+    ? `${ctx.planActivo.vigencia} - ${ctx.planActivo.estado} (v${ctx.planActivo.version})` 
+    : formData.planAnualAño || '';
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="text-center mb-6">
@@ -3207,14 +3249,17 @@ function Paso9VinculacionPlan({ formData, onChange }: PasoProps) {
           {formData.vinculadaPlanAnual && (
             <div className="space-y-4 pl-8 border-l-4 border-blue-500">
               {/* Año del Plan */}
-              <FieldWrapper label="Año del Plan Anual">
+              <FieldWrapper label="Vigencia plan anual">
                 <Input
-                  type="number"
-                  value={formData.planAnualAño || ''}
-                  onChange={(e) => onChange('planAnualAño', parseInt(e.target.value))}
-                  placeholder="2025"
-                  className="border-gray-300"
+                  type="text"
+                  readOnly
+                  value={planDisplay}
+                  className="border-gray-300 bg-gray-50 cursor-not-allowed font-medium text-blue-900"
+                  title="Tomada del selector Vigencia plan anual de la cabecera"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Definida automáticamente por el plan activo en la cabecera del módulo. Cambie la vigencia allí si necesita otro año.
+                </p>
               </FieldWrapper>
 
               {/* Rol del Decreto 648 */}

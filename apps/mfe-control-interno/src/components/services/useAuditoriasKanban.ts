@@ -9,7 +9,7 @@
  * También carga los auditores disponibles para asignación.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { controlInternoService } from '../../../../services/api/controlInternoService';
 import { auditoresApi } from './plan-anual/api';
@@ -96,6 +96,9 @@ export interface AuditoriaKanban {
   criterios?: CriterioAuditoria[];
   // ID del auditor líder asignado
   auditorLiderId?: string | number;
+  // Vigencia asociada
+  planAnualAño?: number;
+  vigencia?: number;
 }
 
 export interface CriterioAuditoria {
@@ -415,7 +418,7 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
 
   return {
     id: auditoriaBackend.id,
-    codigo: auditoriaBackend.codigo || `AUD-${new Date().getFullYear()}-${auditoriaBackend.id?.substring(0, 4) || '001'}`,
+    codigo: auditoriaBackend.codigo || `AUD-${auditoriaBackend.planAnualAño || auditoriaBackend.vigencia || new Date().getFullYear()}-${auditoriaBackend.id?.substring(0, 4) || '001'}`,
     titulo: auditoriaBackend.nombre || 'Auditoría sin título',
     descripcion: auditoriaBackend.descripcion || auditoriaBackend.alcance || '',
     estado,
@@ -483,6 +486,8 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     auditorLiderId: auditoriaBackend.auditorLiderId,
     // ✅ Preservar documento de cierre del backend para pasarlo al Expediente
     documentoCierre: auditoriaBackend.documentoCierre || null,
+    planAnualAño: auditoriaBackend.planAnualAño,
+    vigencia: auditoriaBackend.vigencia
   };
 }
 
@@ -531,11 +536,16 @@ interface UseAuditoriasKanbanResult {
   ) => Promise<boolean>;
 }
 
-export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
+export function useAuditoriasKanban(planFilters?: {
+  planAnualVigencia?: number;
+  planAnualId?: string;
+}): UseAuditoriasKanbanResult {
   const [auditorias, setAuditorias] = useState<AuditoriaKanban[]>([]);
   const [auditores, setAuditores] = useState<AuditorDisponible[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const auditoresCacheRef = useRef<AuditorDisponible[]>([]);
+  const auditoresLoadedRef = useRef(false);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Cargar auditores del backend (se ejecuta primero)
@@ -553,30 +563,41 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
           iniciales: generarIniciales(a.nombre)
         }));
         setAuditores(auditoresTransformados);
+        auditoresCacheRef.current = auditoresTransformados;
         return auditoresTransformados;
       }
-      return [];
+      return auditoresCacheRef.current;
     } catch (err) {
       console.warn('[useAuditoriasKanban] Error cargando auditores:', err);
-      return [];
+      return auditoresCacheRef.current;
     }
   }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Cargar auditorías del backend (usa auditores para resolver nombres)
   // ─────────────────────────────────────────────────────────────────────────
-  const fetchAuditorias = useCallback(async (auditoresDisponibles?: AuditorDisponible[]) => {
+  const fetchAuditorias = useCallback(async (
+    auditoresDisponibles?: AuditorDisponible[],
+    options?: { silent?: boolean },
+  ) => {
     try {
-      setLoading(true);
-      setError(null);
+      if (!options?.silent) {
+        setLoading(true);
+        setError(null);
+      }
 
-      // Obtener auditorías del backend
-      const response = await controlInternoService.getAuditorias();
+      const vigencia = planFilters?.planAnualVigencia;
+      const response = await controlInternoService.getAuditorias({
+        // planAnualVigencia: vigencia,
+        planAnualId: planFilters?.planAnualId,
+        year: vigencia,
+        light: true,
+        activasOnly: true,
+      });
       
       if (Array.isArray(response)) {
-        // ✅ MEJORADO: Pasar auditores disponibles para resolver nombres
         const auditoriasTransformadas = response.map(aud => 
-          transformarAuditoria(aud, auditoresDisponibles)
+          transformarAuditoria(aud, auditoresDisponibles ?? auditoresCacheRef.current)
         );
         setAuditorias(auditoriasTransformadas);
       } else {
@@ -586,20 +607,27 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
     } catch (err) {
       const mensaje = err instanceof Error ? err.message : 'Error al cargar auditorías';
       console.error('[useAuditoriasKanban] Error:', mensaje, err);
-      setError(mensaje);
-      setAuditorias([]);
+      if (!options?.silent) {
+        setError(mensaje);
+        setAuditorias([]);
+      }
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
-  }, []); // ✅ FIX: Sin dependencias para evitar bucle infinito
+  }, [planFilters?.planAnualVigencia, planFilters?.planAnualId]);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // Refetch (recargar datos) - Primero auditores, luego auditorías
+  // Refetch (recargar datos) - Auditores una vez; auditorías por vigencia
   // ─────────────────────────────────────────────────────────────────────────
-  const refetch = useCallback(async () => {
-    // ✅ MEJORADO: Cargar auditores primero, luego auditorías con esos auditores
-    const auditoresCargados = await fetchAuditores();
-    await fetchAuditorias(auditoresCargados);
+  const refetch = useCallback(async (options?: { silent?: boolean }) => {
+    let auditoresCargados = auditoresCacheRef.current;
+    if (!auditoresLoadedRef.current) {
+      auditoresCargados = await fetchAuditores();
+      auditoresLoadedRef.current = true;
+    }
+    await fetchAuditorias(auditoresCargados, options);
   }, [fetchAuditorias, fetchAuditores]);
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -611,7 +639,8 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
       
       if (resultado && resultado.id) {
         toast.success('Auditoría creada exitosamente');
-        await fetchAuditorias(); // Recargar lista
+        const nueva = transformarAuditoria(resultado, auditoresCacheRef.current);
+        setAuditorias(prev => [nueva, ...prev]);
         return resultado.id;
       }
       
@@ -621,16 +650,21 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
       toast.error(mensaje);
       return null;
     }
-  }, [fetchAuditorias]);
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Actualizar auditoría
   // ─────────────────────────────────────────────────────────────────────────
   const actualizarAuditoria = useCallback(async (id: string, data: any): Promise<boolean> => {
     try {
-      await controlInternoService.updateAuditoria(id, data);
+      const updated = await controlInternoService.updateAuditoria(id, data);
       toast.success('Auditoría actualizada correctamente');
-      await fetchAuditorias();
+      if (updated?.id) {
+        const mapped = transformarAuditoria(updated, auditoresCacheRef.current);
+        setAuditorias(prev => prev.map(a => (a.id === id ? mapped : a)));
+      } else {
+        await fetchAuditorias(auditoresCacheRef.current, { silent: true });
+      }
       return true;
     } catch (err: any) {
       const mensaje = err?.message || 'Error al actualizar auditoría';
@@ -646,13 +680,13 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
     try {
       await controlInternoService.deleteAuditoria(id);
       toast.success('Auditoría eliminada');
-      await fetchAuditorias();
+      setAuditorias(prev => prev.filter(a => a.id !== id));
       return true;
     } catch (err) {
       toast.error('Error al eliminar auditoría');
       return false;
     }
-  }, [fetchAuditorias]);
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Cambiar estado Kanban de auditoría (para drag & drop)
@@ -662,15 +696,18 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
     try {
       // ✅ MEJORADO: Usar endpoint de estado Kanban que soporta todos los estados
       await controlInternoService.updateEstadoKanbanAuditoria(id, estadoKanban);
+      const nuevoEstado = mapearFaseAEstado(estadoKanban);
+      setAuditorias(prev =>
+        prev.map(a => (a.id === id ? { ...a, estado: nuevoEstado } : a)),
+      );
       toast.success(`Estado actualizado a: ${estadoKanban}`);
-      await fetchAuditorias();
       return true;
     } catch (err) {
       console.error('[useAuditoriasKanban] Error al cambiar estado:', err);
       toast.error('Error al cambiar estado');
       return false;
     }
-  }, [fetchAuditorias]);
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
   // ✅ NUEVO: Obtener notas de una auditoría
@@ -741,7 +778,7 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
     try {
       await controlInternoService.aprobarAuditoria(id, { comentarios });
       toast.success('Auditoría aprobada exitosamente');
-      await fetchAuditorias();
+      await fetchAuditorias(auditoresCacheRef.current, { silent: true });
       return true;
     } catch (err) {
       toast.error('Error al aprobar auditoría');
@@ -756,7 +793,7 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
     try {
       await controlInternoService.rechazarAuditoria(id, justificacion);
       toast.success('Auditoría rechazada');
-      await fetchAuditorias();
+      await fetchAuditorias(auditoresCacheRef.current, { silent: true });
       return true;
     } catch (err) {
       toast.error('Error al rechazar auditoría');
@@ -803,14 +840,18 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
       toast.success('Hallazgo registrado exitosamente');
       // Incrementar contador de hallazgos
       await controlInternoService.incrementarHallazgosAuditoria(auditoriaId);
-      await fetchAuditorias();
+      setAuditorias(prev =>
+        prev.map(a =>
+          a.id === auditoriaId ? { ...a, hallazgos: (a.hallazgos || 0) + 1 } : a,
+        ),
+      );
       return true;
     } catch (err) {
       console.error('[useAuditoriasKanban] Error al crear hallazgo:', err);
       toast.error('Error al registrar hallazgo');
       return false;
     }
-  }, [auditorias, fetchAuditorias]);
+  }, [auditorias]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // ✅ NUEVO: Finalizar auditoría con documento de cierre
@@ -831,22 +872,27 @@ export function useAuditoriasKanban(): UseAuditoriasKanbanResult {
         finalizadaPorId
       );
       toast.success('Auditoría finalizada exitosamente');
-      await fetchAuditorias();
+      setAuditorias(prev =>
+        prev.map(a =>
+          a.id === id
+            ? { ...a, estado: 'Finalizada' as EstadoAuditoria, progreso: 100 }
+            : a,
+        ),
+      );
       return true;
     } catch (err: any) {
       console.error('[useAuditoriasKanban] Error al finalizar auditoría:', err);
       toast.error(err.message || 'Error al finalizar auditoría');
       return false;
     }
-  }, [fetchAuditorias]);
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Cargar datos al montar (solo una vez)
   // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     refetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // ✅ FIX: Solo ejecutar al montar, no cuando refetch cambie
+  }, [refetch, planFilters?.planAnualVigencia, planFilters?.planAnualId]);
 
   return {
     auditorias,

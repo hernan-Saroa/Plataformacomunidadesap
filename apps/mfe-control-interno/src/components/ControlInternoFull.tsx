@@ -36,6 +36,7 @@ import { ExpedientesModulePremium } from "./ExpedientesModulePremium";  // RF013
 import { ConfiguracionesModulePremium } from "./ConfiguracionesModulePremium";  // VERSIÓN PREMIUM
 import { ListasChequeoModule } from "./ListasChequeoModule";  // RF007 - Biblioteca (vista 18_feb)
 import { UniversoAuditableUnificado } from "./UniversoAuditableUnificado";  // ✨ NUEVO: Programa de Auditoría (incluye Universo Auditable)
+import { PlanAnualVigenciaProvider } from "./PlanAnualVigenciaContext";
 
 type SeccionActiva =
   | "dashboard"                      // KANBAN DASHBOARD - CENTRO DE COMANDO
@@ -58,12 +59,14 @@ export function ControlInternoFull() {
           <ListasChequeoProvider>
             <HallazgosProvider>
               <TareasProvider>
-                <ControlInternoContent
-                  seccionActiva={seccionActiva}
-                  setSeccionActiva={setSeccionActiva}
-                  navegacionManual={navegacionManual}
-                  setNavegacionManual={setNavegacionManual}
-                />
+                <PlanAnualVigenciaProvider>
+                  <ControlInternoContent
+                    seccionActiva={seccionActiva}
+                    setSeccionActiva={setSeccionActiva}
+                    navegacionManual={navegacionManual}
+                    setNavegacionManual={setNavegacionManual}
+                  />
+                </PlanAnualVigenciaProvider>
               </TareasProvider>
             </HallazgosProvider>
           </ListasChequeoProvider>
@@ -240,7 +243,7 @@ function ControlInternoContent({
         return <GestionAuditoriasKanbanSimple />;
       
       case "universo-auditable":
-        return <UniversoAuditableUnificado vigencia={new Date().getFullYear()} />;
+        return <UniversoAuditableUnificado />;
       
       case "plan-operativo":
         return <PlanificacionModuleRediseno vista="plan-operativo" onNavegarModulo={(seccion) => setSeccionActiva(seccion as SeccionActiva)} />;

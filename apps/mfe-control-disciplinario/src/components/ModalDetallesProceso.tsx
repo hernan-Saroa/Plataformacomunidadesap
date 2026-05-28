@@ -4059,7 +4059,7 @@ export function ModalDetallesProceso({
                         <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-blue-100">
                           {[
                             { label: 'ORIGEN', value: origenVal || '—' },
-                            { label: 'FECHA RECEPCIÓN', value: fechaRecNoticia ? new Date(fechaRecNoticia).toLocaleDateString('es-CO') : '—' },
+                            { label: 'FECHA RECEPCIÓN', value: fechaRecNoticia ? new Date(fechaRecNoticia).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '—' },
                             { label: 'PRIORIDAD', value: (proceso.prioridadNoticia || (proceso as any).prioridad || '—').toString().toUpperCase() },
                             { label: 'NOTICIA', value: proceso.noticiaOrigen || '—' },
                           ].map(({ label, value }) => (
@@ -4392,19 +4392,20 @@ export function ModalDetallesProceso({
 
                       if (!autoPliego) {
                         return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE_PLIEGO) ? (
-                            <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
-                              <button
-                                onClick={() => setMostrarModalPliego(true)}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
-                                style={{ background: '#D97706', color: 'white' }}
-                              >
-                                <FileText className="w-4 h-4" />
-                                Auto Pliego de Cargos
-                              </button>
-                              <p className="text-[10px] text-center mt-1.5" style={{ color: '#92400E' }}>
-                                Cierra el proceso y traslada a Oficina Jurídica
-                              </p>
-                            </div>
+                            // <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#D97706', background: '#FFFBEB' }}>
+                            //   <button
+                            //     onClick={() => setMostrarModalPliego(true)}
+                            //     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-bold text-sm transition-all hover:opacity-90"
+                            //     style={{ background: '#D97706', color: 'white' }}
+                            //   >
+                            //     <FileText className="w-4 h-4" />
+                            //     Auto Pliego de Cargos
+                            //   </button>
+                            //   <p className="text-[10px] text-center mt-1.5" style={{ color: '#92400E' }}>
+                            //     Cierra el proceso y traslada a Oficina Jurídica
+                            //   </p>
+                            // </div>
+                            null
                         ) : null;
                       }
 
@@ -6339,8 +6340,14 @@ export function ModalDetallesProceso({
                         }
                         try {
                           setEnviandoJuridica(true);
-                          const userId = authService.getCurrentUser()?.id || '';
-                          await disciplinaryService.sendJuridica(autoPliego.id, userId);
+                           const currentUser = authService.getCurrentUser();
+                           const userId = currentUser?.id || '';
+                           await disciplinaryService.sendJuridica(
+                               autoPliego.id, 
+                               userId, 
+                               currentUser?.email, 
+                               currentUser?.fullName || currentUser?.firstName
+                           );
                           toast.success('Auto enviado a jurídica exitosamente', {
                             description: `El proceso ${proceso.numeroProceso} ha sido cerrado y archivado`,
                             duration: 5000,

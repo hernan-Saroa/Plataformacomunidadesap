@@ -49,6 +49,7 @@ import type { AuditoriaFormData } from '../../../utils/validation';
 import { TooltipGuia } from './TooltipGuia';
 import { TOOLTIPS_CONTROL_INTERNO } from './tooltips-config';
 import { ModuleHeaderBar } from './ModuleHeaderBar';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 
 // ✅ FASE 1 DÍA 2: Componentes responsive
 import { useResponsive } from '@/hooks/useResponsive';
@@ -1825,6 +1826,9 @@ function ColumnaKanban({
 // ============ COMPONENTE PRINCIPAL ============
 
 export function GestionAuditoriasKanbanSimple() {
+  const vigenciaCtx = usePlanAnualVigenciaContextOptional();
+  const vigenciaActiva = vigenciaCtx?.vigencia;
+
   // ✅ CONTEXTOS GLOBALES
   const { contarHallazgos, contarHallazgosCriticos } = useHallazgos();
   const { contarTareas, contarTareasPendientes, contarTareasCompletadas, verificarFaseCompleta, contarTareasPendientesPorFase, cargarTareas } = useTareas();
@@ -1886,7 +1890,14 @@ export function GestionAuditoriasKanbanSimple() {
     getHallazgos,
     // ✅ FINALIZACIÓN: Método para finalizar auditoría con documento
     finalizarAuditoria: finalizarAuditoriaBackend
-  } = useAuditoriasKanban();
+  } = useAuditoriasKanban(
+    vigenciaCtx
+      ? {
+          planAnualVigencia: vigenciaCtx.vigencia,
+          planAnualId: vigenciaCtx.planActivoId ?? undefined,
+        }
+      : undefined,
+  );
 
   // Estado local para auditorías (sincronizado con backend)
   const [auditorias, setAuditorias] = useState<Auditoria[]>([]);
@@ -2255,6 +2266,17 @@ export function GestionAuditoriasKanbanSimple() {
 
   // Filtrar auditorías
   const auditoriasFiltradas = auditorias.filter(aud => {
+    // ✅ FILTRO DE VIGENCIA: Asegurar que solo se muestran auditorías del plan seleccionado
+    let cumpleVigencia = true;
+    if (vigenciaActiva) {
+      const añoAuditoria = (aud as any).planAnualAño || (aud as any).vigencia;
+      if (añoAuditoria) {
+        cumpleVigencia = String(añoAuditoria) === String(vigenciaActiva);
+      } else if (aud.codigo) {
+        cumpleVigencia = aud.codigo.includes(`AUD-${vigenciaActiva}-`);
+      }
+    }
+
     const terminoBusqueda = String(busqueda || '').toLowerCase();
     const cumpleBusqueda = String(aud.titulo || '').toLowerCase().includes(terminoBusqueda) ||
                            String(aud.codigo || '').toLowerCase().includes(terminoBusqueda);
@@ -2282,7 +2304,7 @@ export function GestionAuditoriasKanbanSimple() {
       cumpleUsuario = !!(isLider || isAsignado || isInEquipo);
     }
     
-    return cumpleBusqueda && cumpleTerritorial && cumpleUsuario;
+    return cumpleVigencia && cumpleBusqueda && cumpleTerritorial && cumpleUsuario;
   });
 
   // Colapsar todas las tarjetas
@@ -2468,6 +2490,11 @@ export function GestionAuditoriasKanbanSimple() {
         ...(fechaInicioComunicacionCalculada && { fechaInicioComunicacion: fechaInicioComunicacionCalculada }),
         // ✅ Estado inicial del Kanban - todas las auditorías nuevas inician en "Plan Anual"
         estadoKanban: 'Plan Anual',
+        // ✅ Vinculación con Plan Anual
+        planAnualId: data.planAnualId || undefined,
+        planAnualAño: data.planAnualAño || undefined,
+        vigencia: data.planAnualAño || undefined,
+        vinculadaPlanAnual: data.vinculadaPlanAnual || false,
       };
       
       const nuevaAuditoriaId = await crearAuditoriaBackend(datosBackend);
@@ -3393,7 +3420,7 @@ export function GestionAuditoriasKanbanSimple() {
       <div className="space-y-3 w-full">
         <ModuleHeaderBar
           title="Auditorías OCI"
-          subtitle={`${auditoriasFiltradas.length} auditorías · Sistema de Gestión`}
+          subtitle={`${auditoriasFiltradas.length} auditorías${vigenciaActiva ? ` · Vigencia ${vigenciaActiva}` : ''} · Sistema de Gestión`}
           icon={<ClipboardCheck className="w-5 h-5 text-white" />}
           color="#F97316"
           rightContent={<TooltipGuia {...TOOLTIPS_CONTROL_INTERNO['auditorias-kanban']} />}

@@ -29,5 +29,5 @@ export class AudienciaDTO {
     nombreInvestigado: string;
 
     abogadoId: string;
-    nombreAbogado: string;
+    nombreProfesional: string;
 }

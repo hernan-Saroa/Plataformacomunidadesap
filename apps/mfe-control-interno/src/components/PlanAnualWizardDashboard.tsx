@@ -4,7 +4,7 @@
  * v2.0 - Con soporte para puntos de control
  */
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, type MouseEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ArrowRight, Check, Shield, Users, CheckCircle2, 
@@ -43,6 +43,7 @@ import {
 // S& NUEVO: Exportación Excel con logo
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
+import { idPersonaParaPlanAnual, type ReferenciaPersonaPlan } from '../utils/persona-id-plan-anual';
 
 // Tipos re-exportados (deben coincidir con el archivo principal)
 type EstadoPlan = 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'VIGENTE' | 'CERRADO' | 'DEVUELTO';
@@ -53,6 +54,151 @@ interface Auditor {
   nombre: string;
   cargo: string;
   email: string;
+  /** id_person (auth.personas); igual que id cuando viene de profesionales OCI */
+  idPerson?: string;
+  idTercero?: string;
+  configId?: string;
+}
+
+const NOMBRES_PERSONA_INVALIDOS = new Set(['usuario sin nombre', 'sin nombre']);
+
+/** Plan en estado borrador (editable en el wizard; no bloquea la vigencia). */
+export function esEstadoPlanBorrador(estado?: string | null): boolean {
+  const e = String(estado ?? '')
+    .toLowerCase()
+    .replace(/_/g, '-')
+    .trim();
+  return e === 'borrador';
+}
+
+function nombreProfesionalOCIVisible(nombre?: string | null): boolean {
+  const n = String(nombre || '').trim();
+  if (!n) return false;
+  return !NOMBRES_PERSONA_INVALIDOS.has(n.toLowerCase());
+}
+
+function inicialesDesdeNombre(nombre: string): string {
+  return nombre
+    .split(' ')
+    .filter(Boolean)
+    .map((n: string) => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function BotonQuitarResponsable({
+  onClick,
+  soloLectura = false,
+}: {
+  onClick: (e: MouseEvent) => void;
+  soloLectura?: boolean;
+}) {
+  if (soloLectura) return null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-[10px] font-semibold text-red-700 bg-white border border-red-200 rounded px-1.5 py-0.5 hover:bg-red-50 transition-colors flex-shrink-0"
+    >
+      Quitar
+    </button>
+  );
+}
+
+/** Mismo chip que antes; solo «Quitar» va fuera, al final de la fila. */
+function FilaResponsableAsignado({
+  nombre,
+  rolColor,
+  onQuitar,
+  className = '',
+  soloLectura = false,
+}: {
+  nombre: string;
+  rolColor?: string;
+  onQuitar: () => void;
+  className?: string;
+  soloLectura?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-1.5 w-full ${className}`}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 flex-1 min-w-0 ${
+        soloLectura ? 'bg-slate-100 border border-slate-300' : 'bg-blue-50 border border-blue-200'
+      }`}>
+        <div
+          className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+          style={{ backgroundColor: rolColor || '#2563eb' }}
+        >
+          {inicialesDesdeNombre(nombre)}
+        </div>
+        <span className="text-sm font-medium text-gray-900 truncate flex-1">{nombre}</span>
+      </div>
+      <BotonQuitarResponsable
+        soloLectura={soloLectura}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onQuitar();
+        }}
+      />
+    </div>
+  );
+}
+
+function filtrarAuditoresParaAsignacion(auditores: Auditor[]): Auditor[] {
+  return auditores.filter((a) => nombreProfesionalOCIVisible(a.nombre));
+}
+
+function mapearAprobadoresPlanAnualDesdeApi(data: any[]): Auditor[] {
+  const seen = new Set<string>();
+  const result: Auditor[] = [];
+  for (const p of data) {
+    const id = String(p.idTercero || p.id || '').trim();
+    if (!id || seen.has(id)) continue;
+    const nombre = String(p.nombre || '').trim();
+    if (!nombreProfesionalOCIVisible(nombre)) continue;
+    seen.add(id);
+    result.push({
+      id,
+      nombre,
+      cargo: p.cargo || p.roles?.[0] || 'Aprobador plan anual',
+      email: p.email || '',
+    });
+  }
+  return result;
+}
+
+async function cargarListaAprobadoresComite(): Promise<Auditor[]> {
+  const response = await configuracionesProfesionalesOCIApi.getAprobadoresPlanAnual();
+  if (response.success && response.data?.length) {
+    return mapearAprobadoresPlanAnualDesdeApi(response.data);
+  }
+  return [];
+}
+
+function mapearProfesionalesOCIGDesdeApi(data: any[]): Auditor[] {
+  const seen = new Set<string>();
+  const result: Auditor[] = [];
+  for (const config of data) {
+    if (config?.activo === false) continue;
+    if (!nombreProfesionalOCIVisible(config.nombre)) continue;
+    const id = String(config.idTercero || config.id_tercero || '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    result.push({
+      id,
+      idPerson: id,
+      idTercero: id,
+      nombre: String(config.nombre).trim(),
+      cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor',
+      email: config.email || '',
+      configId: config.id,
+    });
+  }
+  return result;
 }
 
 // Tarea de seguimiento estructurada
@@ -346,6 +492,103 @@ function reemplazarAnioEnFechaIso(iso: string | undefined | null, año: number):
   return `${año}${iso.slice(4)}`;
 }
 
+/** DATE del backend / ISO → YYYY-MM-DD de calendario (UTC en Date de PostgreSQL; sin corrimiento de día). */
+function fechaCalendarioParaInput(
+  fechaRaw: string | Date | undefined | null,
+  fallback: string,
+): string {
+  if (fechaRaw == null || fechaRaw === '') return fallback;
+  if (typeof fechaRaw === 'string') {
+    const trimmed = fechaRaw.trim();
+    const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    const dt = new Date(trimmed.includes('T') ? trimmed : `${trimmed.slice(0, 10)}T12:00:00`);
+    if (!Number.isNaN(dt.getTime())) {
+      return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+    }
+    return fallback;
+  }
+  if (fechaRaw instanceof Date && !Number.isNaN(fechaRaw.getTime())) {
+    return `${fechaRaw.getUTCFullYear()}-${String(fechaRaw.getUTCMonth() + 1).padStart(2, '0')}-${String(fechaRaw.getUTCDate()).padStart(2, '0')}`;
+  }
+  return fallback;
+}
+
+/** Autorización Jefe OCI: el wizard usa `requiereAutorizacionJefeOCI`; la BD usa `requiere_verificacion_director`. */
+function leerRequiereAutorizacionJefeOCIDesdeActividad(act: any): boolean {
+  return !!(
+    act?.requiereAutorizacionJefeOCI
+    ?? act?.requiere_verificacion_director
+    ?? act?.requiereVerificacionDirector
+  );
+}
+
+function aplicarFlagsAutorizacionJefeOCI<T extends Record<string, unknown>>(act: T, valor: boolean): T {
+  return {
+    ...act,
+    requiereAutorizacionJefeOCI: valor,
+    requiereVerificacionDirector: valor,
+  };
+}
+
+/** Estilos del área de pasos en solo consulta (icono ojo del listado o «Vista previa»). */
+const WRAPPER_PASOS_SOLO_LECTURA =
+  'pointer-events-none select-none grayscale-[0.92] saturate-[0.15] contrast-[0.98] ' +
+  '[&_input]:!bg-gray-100 [&_input]:!border-gray-300 [&_textarea]:!bg-gray-100 ' +
+  '[&_button]:!cursor-default [&_label]:!cursor-default ' +
+  '[&_.border-blue-400]:!border-gray-400 [&_.border-blue-200]:!border-gray-300 ' +
+  '[&_.bg-blue-50]:!bg-gray-100 [&_.from-blue-50]:!from-gray-100 [&_.to-indigo-50]:!to-gray-100 ' +
+  '[&_.bg-blue-600]:!bg-gray-500 [&_.text-blue-600]:!text-gray-600 [&_.text-blue-700]:!text-gray-600 ' +
+  '[&_.text-blue-900]:!text-gray-700 [&_.text-indigo-800]:!text-gray-700 ' +
+  '[&_.text-orange-600]:!text-gray-500 [&_.text-orange-900]:!text-gray-700 ' +
+  '[&_.text-red-700]:!text-gray-600 [&_.border-red-200]:!border-gray-300 [&_.bg-green-100]:!bg-gray-200';
+
+function enriquecerActividadDesdeBackend(act: any, vigencia: number) {
+  const puntosControlActividad = ((act as any).puntosControl || (act as any).puntos_control || []) as any[];
+  const tareasOriginales = ((act as any).tareasSeguimiento || (act as any).tareas_seguimiento || []) as any[];
+  const tareasConCorte = tareasOriginales.map((t: any, tIdx: number) => ({
+    ...t,
+    puntoControlId:
+      t.puntoControlId
+      || t.punto_control_id
+      || puntosControlActividad[tIdx % Math.max(puntosControlActividad.length, 1)]?.id
+      || null,
+  }));
+  const actBase = act as ActividadBase & { fecha_corte?: string };
+  const reqAuth = leerRequiereAutorizacionJefeOCIDesdeActividad(act);
+  return {
+    ...act,
+    tareasSeguimiento: tareasConCorte,
+    tipoEvidencia: inferirTipoEvidenciaParaWizard(act as ActividadBase & { configuracionEvidencias?: any }),
+    fechaCorte: resolverFechaCorteActividad(
+      { ...actBase, puntosControl: puntosControlActividad },
+      vigencia,
+    ),
+    requiereAutorizacionJefeOCI: reqAuth,
+    requiereVerificacionDirector: reqAuth,
+    autorizadaPorJefeOCI: !!(
+      act.verificada_por_director
+      || act.verificadaPorDirector
+      || act.autorizadaPorJefeOCI
+    ),
+  };
+}
+
+/** Alinea fechas del paso 1 al año de vigencia (corrige legacy y desfase UTC). */
+function alinearFechaPlanConVigencia(
+  iso: string,
+  vigencia: number,
+  tipo: 'inicio' | 'fin',
+): string {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const año = parseInt(iso.slice(0, 4), 10);
+  if (año === vigencia) return iso;
+  if (tipo === 'inicio' && iso === `${vigencia - 1}-12-31`) {
+    return `${vigencia}-01-01`;
+  }
+  return reemplazarAnioEnFechaIso(iso, vigencia);
+}
+
 function sumarAniosIso(iso: string, años: number): string {
   const parts = iso.split('-').map(Number);
   if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return iso;
@@ -389,6 +632,286 @@ function fechaCorteDisplayDesdeActividad(act: ActividadBase): string | undefined
     return ult.fechaSeguimiento || ult.fechaProgramada;
   }
   return act.fechaCorte;
+}
+
+/** Resuelve fecha de corte para validación y guardado (campo, puntos de control o fin de vigencia). */
+function normalizarArrayResponsablesBackend(raw: unknown): unknown[] {
+  if (raw == null) return [];
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(raw) ? raw : [];
+}
+
+function inferirResponsablesRolDesdeActividades(rol: any): Auditor[] {
+  const acts = rol?.actividades || [];
+  for (const act of acts) {
+    const list = normalizarArrayResponsablesBackend(act?.responsables);
+    if (list.length > 0) {
+      const r = list[0] as any;
+      return [
+        {
+          id: String(r.id || r.idPerson || r.id_person || ''),
+          idPerson: String(r.idPerson || r.id_person || r.id || '').trim() || undefined,
+          nombre: String(r.nombre || r.name || ''),
+          cargo: r.cargo || 'Auditor',
+          email: r.email || '',
+        },
+      ].filter((a) => a.nombre);
+    }
+    const respObj = act?.responsable;
+    if (respObj && typeof respObj === 'object' && respObj.nombre) {
+      return [
+        {
+          id: String(respObj.id || respObj.idPerson || ''),
+          idPerson: String(respObj.idPerson || respObj.id || '').trim() || undefined,
+          nombre: String(respObj.nombre),
+          cargo: respObj.cargo || 'Auditor',
+          email: respObj.email || '',
+        },
+      ];
+    }
+    if (typeof act?.responsable === 'string' && act.responsable !== 'Por asignar') {
+      return [
+        {
+          id: `temp-${act.responsable}`,
+          nombre: act.responsable,
+          cargo: 'Auditor',
+          email: '',
+        },
+      ];
+    }
+  }
+  return [];
+}
+
+/** Responsable del rol desde BD (jsonb, varchar o actividades del mismo rol). */
+function mapResponsablesRolDesdeBackend(rol: any): Auditor[] {
+  const list = normalizarArrayResponsablesBackend(rol?.responsables);
+  if (list.length > 0) {
+    const mapped = list.slice(0, 1).map((r: any) => ({
+      id: String(r.id || r.idPerson || r.id_person || ''),
+      idPerson: String(r.idPerson || r.id_person || r.id || '').trim() || undefined,
+      idTercero: String(r.idTercero || r.id_tercero || r.idPerson || r.id || '').trim() || undefined,
+      nombre: String(r.nombre || r.name || ''),
+      cargo: r.cargo || 'Auditor',
+      email: r.email || '',
+    }));
+    if (mapped[0]?.nombre) return mapped;
+  }
+  if (rol?.responsable && rol.responsable !== 'Por asignar') {
+    const rid = String(rol.responsable_id || '').trim();
+    return [
+      {
+        id: rid || `temp-${rol.responsable}`,
+        idPerson: rid || undefined,
+        idTercero: rid || undefined,
+        nombre: String(rol.responsable),
+        cargo: rol.responsable_cargo || 'Auditor',
+        email: rol.responsable_email || '',
+      },
+    ];
+  }
+  const ridSolo = String(rol?.responsable_id || '').trim();
+  if (ridSolo) {
+    return [
+      {
+        id: ridSolo,
+        idPerson: ridSolo,
+        idTercero: ridSolo,
+        nombre: String(rol.responsable || rol.responsable_nombre || 'Responsable asignado'),
+        cargo: 'Auditor',
+        email: '',
+      },
+    ];
+  }
+  return inferirResponsablesRolDesdeActividades(rol);
+}
+
+function resolverResponsablesRolDesdeProfesionales(rol: any, profesionales: Auditor[]): Auditor[] {
+  const refs = mapResponsablesRolDesdeBackend(rol);
+  if (refs.length === 0) return [];
+  const ref = refs[0];
+  const encontrado = profesionales.find((p) => coincideAuditorConReferencia(p, ref));
+  if (encontrado) return [encontrado];
+  const rid = idPersonaParaPlanAnual(ref as ReferenciaPersonaPlan) || String(ref.id || '').trim();
+  if (!ref.nombre) return [];
+  return [
+    {
+      ...ref,
+      id: rid || ref.id,
+      idPerson: rid || ref.idPerson,
+      idTercero: rid || ref.idTercero || ref.id,
+    },
+  ];
+}
+
+function mergeRolesConfigResponsablesFromDraft(base: RolConfig[], draft: RolConfig[]): RolConfig[] {
+  const draftByNum = new Map(draft.map((r) => [r.numero, r]));
+  return base.map((rol) => {
+    const d = draftByNum.get(rol.numero);
+    const draftResp = (d?.responsables || []).filter((r): r is Auditor => Boolean(r?.nombre));
+    const baseResp = (rol.responsables || []).filter((r): r is Auditor => Boolean(r?.nombre));
+    return {
+      ...rol,
+      responsables: draftResp.length > 0 ? draftResp.slice(0, 1) : baseResp,
+    };
+  });
+}
+
+/** Reconstruye roles del paso 2 desde un plan ya guardado (edición / borrador cargado). */
+function buildRolesConfigFromPlanAnual(plan: PlanAnual): RolConfig[] {
+  if (!plan?.roles?.length) {
+    return ROLES_DECRETO_648.map((rolDef) => ({
+      ...rolDef,
+      actividadesSeleccionadas: getActividadesPorRol(rolDef.numero).map((act, idx) => ({
+        ...act,
+        id: `rol-${rolDef.numero}-act-${idx}`,
+        tipoEvidencia: 'SOLO_CHECK' as const,
+        fechaCorte: `${plan.vigencia}-09-30`,
+        puntosControl: [],
+        frecuenciaPuntosControl: 'trimestral' as const,
+      })),
+      actividadesCustom: [],
+      responsables: [],
+    }));
+  }
+
+  return ROLES_DECRETO_648.map((rolDef) => {
+    const rolEdit = plan.roles.find((r) => r.numero === rolDef.numero);
+    if (!rolEdit) {
+      const actividades = getActividadesPorRol(rolDef.numero);
+      return {
+        ...rolDef,
+        actividadesSeleccionadas: actividades.map((act, idx) => ({
+          ...act,
+          id: `rol-${rolDef.numero}-act-${idx}`,
+          tipoEvidencia: 'SOLO_CHECK' as const,
+          fechaCorte: `${plan.vigencia}-09-30`,
+          puntosControl: [],
+          frecuenciaPuntosControl: 'trimestral' as const,
+        })),
+        actividadesCustom: [],
+        responsables: [],
+      };
+    }
+
+    const actividadesConfiguradas = rolEdit.actividades.map((act) =>
+      enriquecerActividadDesdeBackend(act, plan.vigencia),
+    );
+
+    const actividadesTemplate = getActividadesPorRol(rolDef.numero);
+    const nombresTemplate = actividadesTemplate.map((a) => a.nombre);
+    const actividadesSeleccionadas = actividadesConfiguradas.filter((a) => nombresTemplate.includes(a.nombre));
+    const actividadesCustom = actividadesConfiguradas.filter((a) => !nombresTemplate.includes(a.nombre));
+
+    return {
+      ...rolDef,
+      id: rolEdit.id,
+      actividadesSeleccionadas: actividadesSeleccionadas as any,
+      actividadesCustom: actividadesCustom as any,
+      responsables: mapResponsablesRolDesdeBackend(rolEdit),
+    };
+  });
+}
+
+function coincideAuditorConReferencia(a: Auditor, ref: Auditor | null | undefined): boolean {
+  if (!ref) return false;
+  const idRef = idPersonaParaPlanAnual(ref) || String(ref.id || '').trim();
+  const idA = idPersonaParaPlanAnual(a) || String(a.id || '').trim();
+  if (idRef && idA && idRef === idA) return true;
+  return String(a.id) === String(ref.id) || String(a.idTercero || '') === String(ref.id);
+}
+
+/** Sustituye responsable del rol/actividad solo si coincidía con el responsable del plan anterior. */
+function reemplazarResponsableSiEraAnterior(
+  responsables: Auditor[] | undefined,
+  anterior: Auditor,
+  nuevo: Auditor,
+): Auditor[] {
+  const lista = (responsables || []).filter(Boolean);
+  if (lista.length === 0) return lista;
+  if (lista.some((r) => coincideAuditorConReferencia(r, anterior))) return [nuevo];
+  return lista;
+}
+
+function aplicarCambioResponsablePlanEnRoles(
+  roles: RolConfig[],
+  anterior: Auditor | null,
+  nuevo: Auditor,
+  modo: 'rellenar-vacios' | 'solo-reemplazar-anterior',
+): RolConfig[] {
+  return roles.map((rol) => {
+    if (modo === 'rellenar-vacios') {
+      const validResponsables = (rol.responsables || []).filter(Boolean);
+      if (validResponsables.length > 0) return rol;
+      return {
+        ...rol,
+        responsables: [nuevo],
+        actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map((act) => {
+          const actValidResp = (act.responsables || []).filter(Boolean);
+          return actValidResp.length === 0 ? { ...act, responsables: [nuevo] } : act;
+        }),
+        actividadesCustom: (rol.actividadesCustom || []).map((act) => {
+          const actValidResp = (act.responsables || []).filter(Boolean);
+          return actValidResp.length === 0 ? { ...act, responsables: [nuevo] } : act;
+        }),
+      };
+    }
+
+    if (!anterior) return rol;
+    return {
+      ...rol,
+      responsables: reemplazarResponsableSiEraAnterior(rol.responsables, anterior, nuevo),
+      actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map((act) => ({
+        ...act,
+        responsables: reemplazarResponsableSiEraAnterior(act.responsables, anterior, nuevo),
+      })),
+      actividadesCustom: (rol.actividadesCustom || []).map((act) => ({
+        ...act,
+        responsables: reemplazarResponsableSiEraAnterior(act.responsables, anterior, nuevo),
+      })),
+    };
+  });
+}
+
+function resolverJefePlanDesdeProfesionales(plan: PlanAnual, profesionales: Auditor[]): Auditor | null {
+  if (!plan.jefeOCI) return null;
+  const encontrado = profesionales.find((p) => coincideAuditorConReferencia(p, plan.jefeOCI));
+  if (encontrado) return encontrado;
+  if (plan.jefeOCI.nombre) {
+    const rid = idPersonaParaPlanAnual(plan.jefeOCI as ReferenciaPersonaPlan) || String(plan.jefeOCI.id || '').trim();
+    return {
+      ...plan.jefeOCI,
+      id: rid || plan.jefeOCI.id,
+      idPerson: rid || plan.jefeOCI.idPerson,
+      idTercero: rid || plan.jefeOCI.idTercero || plan.jefeOCI.id,
+    };
+  }
+  return null;
+}
+
+function resolverFechaCorteActividad(act: ActividadBase, vigencia: number): string {
+  const raw = act.fechaCorte || (act as { fecha_corte?: string }).fecha_corte;
+  if (raw != null && String(raw).trim() !== '') {
+    const s = String(raw).includes('T') ? String(raw).split('T')[0] : String(raw).slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  }
+  const desdePuntos = fechaCorteDisplayDesdeActividad(act);
+  if (desdePuntos) {
+    const s = desdePuntos.includes('T') ? desdePuntos.split('T')[0] : desdePuntos.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  }
+  if (act.fechaFin) {
+    const s = act.fechaFin.split('T')[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  }
+  return `${vigencia}-12-31`;
 }
 
 function contarActividadesIncluidas(rol: RolConfig): number {
@@ -785,6 +1308,98 @@ function SelectorProfesional({
   );
 }
 
+/** Mismo patrón que «Responsables del rol»: chip con × o selector para asignar. */
+function ResponsableActividadPicker({
+  responsable,
+  auditores,
+  rolColor,
+  onAsignar,
+  onQuitar,
+  soloLectura = false,
+}: {
+  responsable?: Auditor | null;
+  auditores: Auditor[];
+  rolColor?: string;
+  onAsignar: (auditor: Auditor) => void;
+  onQuitar: () => void;
+  soloLectura?: boolean;
+}) {
+  const resp = responsable?.id ? responsable : null;
+  const auditoresFiltrados = filtrarAuditoresParaAsignacion(auditores);
+
+  return (
+    <div className="w-full mt-2 pt-2 border-t border-gray-100" onClick={(e) => e.stopPropagation()}>
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+        <Users className="w-3.5 h-3.5" />
+        Responsable de la actividad
+      </p>
+      <div className="flex flex-col gap-1.5">
+        {resp ? (
+          <FilaResponsableAsignado
+            nombre={resp.nombre}
+            rolColor={rolColor}
+            soloLectura={soloLectura}
+            onQuitar={onQuitar}
+          />
+        ) : soloLectura ? (
+          <p className="text-xs text-slate-500 italic">Sin responsable asignado</p>
+        ) : (
+          <SelectorProfesional
+            auditores={auditoresFiltrados}
+            placeholder="+ Asignar responsable…"
+            onSelect={(id) => {
+              if (!id) return;
+              const auditor = auditoresFiltrados.find((a) => a.id === id);
+              if (auditor) onAsignar(auditor);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Responsable de tarea de seguimiento (mismo chip + selector; guarda nombre en tarea.responsables). */
+function ResponsableTareaPicker({
+  responsablesNombres,
+  auditores,
+  rolColor,
+  onAsignar,
+  onQuitar,
+  soloLectura = false,
+}: {
+  responsablesNombres?: string[];
+  auditores: Auditor[];
+  rolColor?: string;
+  onAsignar: (auditor: Auditor) => void;
+  onQuitar: () => void;
+  soloLectura?: boolean;
+}) {
+  const nombreAsignado = (responsablesNombres || []).filter(Boolean)[0];
+  const auditoresFiltrados = filtrarAuditoresParaAsignacion(auditores);
+
+  return (
+    <div className="mt-1.5" onClick={(e) => e.stopPropagation()}>
+      {nombreAsignado ? (
+        <FilaResponsableAsignado nombre={nombreAsignado} rolColor={rolColor} soloLectura={soloLectura} onQuitar={onQuitar} />
+      ) : soloLectura ? (
+        <p className="text-xs text-slate-500 italic">Sin responsable</p>
+      ) : (
+        <SelectorProfesional
+          auditores={auditoresFiltrados}
+          placeholder="+ Asignar responsable…"
+          className="max-w-xs"
+          onSelect={(id) => {
+            if (!id) return;
+            const auditor = auditoresFiltrados.find((a) => a.id === id);
+            if (auditor) onAsignar(auditor);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
 // """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
 // WIZARD DE CREACIN
 // """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
@@ -807,11 +1422,23 @@ interface WizardCreacionProps {
     comiteAprobacion?: Auditor[],
     ordenAprobacion?: 'secuencial' | 'paralelo',
   ) => Promise<boolean>;
+  /** Guarda el plan en BD como borrador y permanece en el asistente (sin modal de éxito). */
+  onGuardarBorrador?: (
+    vigencia: number,
+    jefeOCI: Auditor,
+    rolesConfig: RolConfig[],
+    fechaInicio: string,
+    fechaFin: string,
+    comiteAprobacion?: Auditor[],
+    ordenAprobacion?: 'secuencial' | 'paralelo',
+  ) => Promise<boolean>;
   onTerminado?: () => void;
   planesExistentes?: PlanAnual[];
+  /** Si la vigencia ya tiene plan en borrador, abrirlo para edición (no crear duplicado). */
+  onCargarPlanBorrador?: (plan: PlanAnual) => void | Promise<void>;
 }
 
-export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprobacion = false, onIrAAprobacion, onCancelar, onCrear, onTerminado, planesExistentes = [] }: WizardCreacionProps) {
+export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprobacion = false, onIrAAprobacion, onCancelar, onCrear, onGuardarBorrador, onTerminado, planesExistentes = [], onCargarPlanBorrador }: WizardCreacionProps) {
   // x Cargar borrador de localStorage
   const draftKey = planAEditar ? `esap:wizard_plan_anual_edit_${planAEditar.id}` : 'esap:wizard_plan_anual_draft';
   const draftStr = typeof window !== 'undefined' ? localStorage.getItem(draftKey) : null;
@@ -873,44 +1500,64 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
       await apiClient.delete('/control-institucional/api/v1/plan-anual-5-roles/wizard-borrador/me');
     },
   };
-  // Calcular años disponibles (no usados por planes existentes, excluyendo el plan en edición)
-  const vigenciasOcupadas = (planesExistentes || [])
-    .filter((p: any) => !planAEditar || p.id !== planAEditar.id)
-    .map((p: any) => p.vigencia);
+  const planesOtros = useMemo(
+    () => (planesExistentes || []).filter((p) => !planAEditar || p.id !== planAEditar.id),
+    [planesExistentes, planAEditar],
+  );
+  /** Vigencias con plan ya formalizado (no borrador): no se puede crear otro. */
+  const vigenciasBloqueadas = useMemo(
+    () =>
+      planesOtros
+        .filter((p) => !esEstadoPlanBorrador(p.estado))
+        .map((p) => p.vigencia),
+    [planesOtros],
+  );
+  const vigenciaEstaBloqueada = useCallback(
+    (anio: number) => vigenciasBloqueadas.includes(anio),
+    [vigenciasBloqueadas],
+  );
   const anioActual = new Date().getFullYear();
-  // Mismo rango que la validación de vigencia en el wizard (20202100)
+  // Mismo rango que la validación de vigencia en el wizard (2020–2100)
   const vigenciasDisponibles = Array.from({ length: 2100 - 2020 + 1 }, (_, i) => 2020 + i)
-    .filter(y => !vigenciasOcupadas.includes(y));
+    .filter((y) => !vigenciasBloqueadas.includes(y));
 
   const [vigencia, setVigencia] = useState(() => {
     if (planAEditar?.vigencia) return planAEditar.vigencia;
     // Si hay draft, usarlo SOLO si la vigencia sigue disponible
-    if (draft?.vigencia && !vigenciasOcupadas.includes(draft.vigencia)) return draft.vigencia;
+    if (draft?.vigencia && !vigenciasBloqueadas.includes(draft.vigencia)) return draft.vigencia;
     
     // Auto-seleccionar el primer año disponible
     return vigenciasDisponibles[0] || anioActual;
   });
   
-  // Extraer fechas del plan a editar si existen, asegurando formato YYYY-MM-DD
-  const getInitialFecha = (fechaStr: string | undefined, defaultDate: string) => {
-    if (!fechaStr) return defaultDate;
-    try {
-      // Si la fecha viene en formato ISO, cortamos la parte de la hora
-      if (fechaStr.includes('T')) return fechaStr.split('T')[0];
-      // Si viene como Date string parseable, formateamos
-      const d = new Date(fechaStr);
-      if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-    } catch (e) {}
-    return defaultDate;
+  const vigenciaInicial = planAEditar?.vigencia ?? vigencia;
+  const defaultFechaInicio = `${vigenciaInicial}-01-01`;
+  const defaultFechaFin = `${vigenciaInicial}-12-31`;
+
+  const resolverFechaPaso1 = (
+    fechaRaw: string | Date | undefined,
+    defaultDate: string,
+    tipo: 'inicio' | 'fin',
+  ) => {
+    const parsed = fechaCalendarioParaInput(fechaRaw, defaultDate);
+    const v = planAEditar?.vigencia ?? vigenciaInicial;
+    return v ? alinearFechaPlanConVigencia(parsed, v, tipo) : parsed;
   };
-  
-  // Buscar fecha inicio mínima y fin máxima en las actividades, o usar defaults
+
   const [fechaInicio, setFechaInicio] = useState(() => {
-    return draft?.fechaInicio || planAEditar?.fecha_inicio || planAEditar?.fechaInicio || `${planAEditar?.vigencia || vigencia}-01-01`;
+    return resolverFechaPaso1(
+      draft?.fechaInicio || planAEditar?.fecha_inicio || planAEditar?.fechaInicio,
+      defaultFechaInicio,
+      'inicio',
+    );
   });
-  
+
   const [fechaFin, setFechaFin] = useState(() => {
-    return draft?.fechaFin || planAEditar?.fecha_fin || planAEditar?.fechaFin || `${planAEditar?.vigencia || vigencia}-12-31`;
+    return resolverFechaPaso1(
+      draft?.fechaFin || planAEditar?.fecha_fin || planAEditar?.fechaFin,
+      defaultFechaFin,
+      'fin',
+    );
   });
 
   const [comiteAprobacion, setComiteAprobacion] = useState<Auditor[]>(() => {
@@ -923,21 +1570,46 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
   
   // Estado para auditores cargados desde backend (profesionales OCI configurados)
   const [auditores, setAuditores] = useState<Auditor[]>(AUDITORES_DEFAULT);
+  const [aprobadoresComite, setAprobadoresComite] = useState<Auditor[]>([]);
   const [jefesOCI, setJefesOCI] = useState<Auditor[]>([]);
   const [cargandoAuditores, setCargandoAuditores] = useState(true);
-  const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor | null>(draft?.jefeSeleccionado || null);
+  const [jefeSeleccionado, setJefeSeleccionado] = useState<Auditor | null>(() => {
+    if (draft?.jefeSeleccionado) return draft.jefeSeleccionado as Auditor;
+    if (planAEditar?.jefeOCI?.nombre) {
+      const rid =
+        idPersonaParaPlanAnual(planAEditar.jefeOCI as ReferenciaPersonaPlan)
+        || String(planAEditar.jefeOCI.id || '').trim();
+      return {
+        ...planAEditar.jefeOCI,
+        id: rid || planAEditar.jefeOCI.id,
+        idPerson: rid || planAEditar.jefeOCI.idPerson,
+        idTercero: rid || planAEditar.jefeOCI.idTercero || planAEditar.jefeOCI.id,
+      };
+    }
+    return null;
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   /** Modal de solo lectura: resumen del plan en el asistente (no confundir con «Ver» del listado inicial). */
   const [mostrarVistaPrevia, setMostrarVistaPrevia] = useState(false);
+  /** «Vista previa»: recorre pasos 1–3 en gris sin editar (distinto del ojo del listado = soloLectura). */
+  const [vistaPreviaActiva, setVistaPreviaActiva] = useState(false);
+  const enModoSoloConsulta = soloLectura || vistaPreviaActiva;
 
   const { puedeRealizar: puedeRealizarWizard, esSuperUsuario: esSuperUsuarioWizard } = useControlInternoPermissions();
   const puedeVerPlanAnual = puedeRealizarWizard('plan-anual', 'view');
   const puedeMostrarVistaPrevia = puedeVerPlanAnual || esSuperUsuarioWizard;
 
   useEffect(() => {
-    if (!puedeMostrarVistaPrevia) setMostrarVistaPrevia(false);
+    if (!puedeMostrarVistaPrevia) {
+      setMostrarVistaPrevia(false);
+      setVistaPreviaActiva(false);
+    }
   }, [puedeMostrarVistaPrevia]);
+
+  useEffect(() => {
+    if (soloLectura) setVistaPreviaActiva(false);
+  }, [soloLectura]);
   
   const [draggedAprobadorIndex, setDraggedAprobadorIndex] = useState<number | null>(null);
   
@@ -973,15 +1645,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
       
       if (response.success && response.data && response.data.length > 0) {
         // Transformar a formato Auditor
-        const profesionales: Auditor[] = response.data
-          .filter((config: any) => config.activo)
-          .map((config: any) => ({
-            id: config.idTercero || config.id, // id_person de auth.personas (matchea con currentUser.person.id)
-            nombre: config.nombre || `Profesional ${config.idTercero}`,
-            cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor',
-            email: config.email || '',
-            configId: config.id, // UUID interno de configuracion_profesionales_ocig (para operaciones CRUD)
-          }));
+        const profesionales = mapearProfesionalesOCIGDesdeApi(response.data);
         
         setAuditores(profesionales);
         
@@ -1013,6 +1677,10 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     }
   };
   
+  useEffect(() => {
+    void cargarListaAprobadoresComite().then(setAprobadoresComite);
+  }, []);
+
   // Cargar profesionales OCI configurados al montar el componente
   useEffect(() => {
     cargarAuditores().then((profesionales) => {
@@ -1020,18 +1688,19 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
       if (draft && draft.jefeSeleccionado) {
         const jefeDraft = profesionales.find(p => p.id === draft.jefeSeleccionado.id) || draft.jefeSeleccionado;
         setJefeSeleccionado(jefeDraft);
-      } else if (planAEditar && planAEditar.jefeOCI) {
-        const jefeId = String(planAEditar.jefeOCI.id || '');
-        const jefeEncontrado =
-          profesionales.find(
-            (p) =>
-              String(p.id) === jefeId ||
-              String((p as any).idTercero || '') === jefeId,
-          ) || planAEditar.jefeOCI;
-        setJefeSeleccionado(jefeEncontrado);
+      } else if (planAEditar) {
+        const jefe = resolverJefePlanDesdeProfesionales(planAEditar, profesionales);
+        if (jefe) setJefeSeleccionado(jefe);
       }
     });
-  }, [planAEditar]); // draft no está como dependencia para que evalúe el closure inicial
+  }, [planAEditar?.id]); // draft no está como dependencia para que evalúe el closure inicial
+
+  // Tras cargar profesionales OCI, re-vincular responsable guardado en BD (id_person).
+  useEffect(() => {
+    if (!planAEditar?.jefeOCI || auditores.length === 0 || cargandoAuditores) return;
+    const jefe = resolverJefePlanDesdeProfesionales(planAEditar, auditores);
+    if (jefe) setJefeSeleccionado(jefe);
+  }, [planAEditar?.id, planAEditar?.jefeOCI?.id, auditores, cargandoAuditores]);
 
   const [rolesConfig, setRolesConfig] = useState<RolConfig[]>(() => {
     // 1. Si existe un borrador, recuperar configuracion de roles (PRIORIDAD: progreso más reciente)
@@ -1062,25 +1731,9 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
         }
 
         // Mapear actividades del plan existente
-        const actividadesConfiguradas = rolEdit.actividades.map((act) => {
-          const puntosControlActividad = ((act as any).puntosControl || (act as any).puntos_control || []) as any[];
-          const tareasOriginales = ((act as any).tareasSeguimiento || (act as any).tareas_seguimiento || []) as any[];
-          const tareasConCorte = tareasOriginales.map((t, tIdx) => ({
-            ...t,
-            // Compatibilidad con datos antiguos en BD: si una tarea no trae puntoControlId,
-            // se asigna por índice para que aparezca en su corte en paso 2.
-            puntoControlId:
-              (t as any).puntoControlId
-              || (t as any).punto_control_id
-              || puntosControlActividad[tIdx % Math.max(puntosControlActividad.length, 1)]?.id
-              || null,
-          }));
-          return {
-            ...act,
-            tareasSeguimiento: tareasConCorte,
-            tipoEvidencia: inferirTipoEvidenciaParaWizard(act as ActividadBase & { configuracionEvidencias?: any }),
-          };
-        });
+        const actividadesConfiguradas = rolEdit.actividades.map((act) =>
+          enriquecerActividadDesdeBackend(act, planAEditar.vigencia),
+        );
 
         // Separar entre seleccionadas (del template) y custom (creadas manualmente)
         const actividadesTemplate = getActividadesPorRol(rolDef.numero);
@@ -1089,29 +1742,12 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
         const actividadesSeleccionadas = actividadesConfiguradas.filter(a => nombresTemplate.includes(a.nombre));
         const actividadesCustom = actividadesConfiguradas.filter(a => !nombresTemplate.includes(a.nombre));
 
-        // Tomar responsable del rol solo desde el propio rol (nunca desde actividades)
-        // para evitar mezclar "responsable de actividad" con "responsable del rol".
-        const responsablesDelRolBackend = Array.isArray((rolEdit as any).responsables)
-          ? (rolEdit as any).responsables
-          : ((rolEdit as any).responsable ? [(rolEdit as any).responsable] : []);
-        const responsablesDelRolPorActividad = (() => {
-          const primeraActividadConResponsables = actividadesConfiguradas.find((a: any) =>
-            Array.isArray(a.responsables) ? a.responsables.length > 0 : !!a.responsable
-          );
-          if (!primeraActividadConResponsables) return [];
-          if (Array.isArray((primeraActividadConResponsables as any).responsables) && (primeraActividadConResponsables as any).responsables.length > 0) {
-            return (primeraActividadConResponsables as any).responsables;
-          }
-          return (primeraActividadConResponsables as any).responsable ? [(primeraActividadConResponsables as any).responsable] : [];
-        })();
-        // Regla de negocio: solo un responsable principal por rol.
-        const responsablesRol = (responsablesDelRolBackend.length > 0 ? responsablesDelRolBackend : responsablesDelRolPorActividad).slice(0, 1);
-
         return {
           ...rolDef,
+          id: rolEdit.id,
           actividadesSeleccionadas: actividadesSeleccionadas as any,
           actividadesCustom: actividadesCustom as any,
-          responsables: responsablesRol
+          responsables: mapResponsablesRolDesdeBackend(rolEdit),
         };
       });
     }
@@ -1199,12 +1835,49 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     })
   });
 
-  // Sincronizar vigencia con cortes (puntos de control), fecha de corte y fechas de entrega de tareas.
+  // Re-vincular responsables de cada rol con profesionales OCI al editar (id_person vs config OCI).
+  useEffect(() => {
+    if (!planAEditar?.roles?.length || auditores.length === 0 || cargandoAuditores) return;
+    setRolesConfig((prev) =>
+      prev.map((rolCfg) => {
+        const rolPlan = planAEditar.roles.find((r) => r.numero === rolCfg.numero);
+        const fuente = rolPlan || rolCfg;
+        const resolved = resolverResponsablesRolDesdeProfesionales(fuente, auditores);
+        if (resolved.length === 0) return rolCfg;
+        return { ...rolCfg, responsables: resolved.slice(0, 1) };
+      }),
+    );
+  }, [planAEditar?.id, planAEditar?.roles, auditores, cargandoAuditores]);
+
+  // Sincronizar fechas solo cuando el usuario cambia la vigencia (no al abrir edición/creación).
+  const vigenciaPrevRef = useRef<number | null>(null);
+  const omitirSyncVigenciaInicialRef = useRef(true);
+
   useEffect(() => {
     if (!vigencia || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100) return;
 
-    setFechaInicio(`${vigencia}-01-01`);
-    setFechaFin(`${vigencia}-12-31`);
+    if (omitirSyncVigenciaInicialRef.current) {
+      omitirSyncVigenciaInicialRef.current = false;
+      vigenciaPrevRef.current = vigencia;
+      return;
+    }
+    if (vigenciaPrevRef.current === vigencia) return;
+    vigenciaPrevRef.current = vigencia;
+
+    // Solo ajustar el año de las fechas del paso 1 (conservar mes/día elegidos por el usuario).
+    setFechaInicio((prevInicio) => {
+      const fi = prevInicio
+        ? reemplazarAnioEnFechaIso(prevInicio, vigencia)
+        : `${vigencia}-01-01`;
+      setFechaFin((prevFin) => {
+        let ff = prevFin
+          ? reemplazarAnioEnFechaIso(prevFin, vigencia)
+          : `${vigencia}-12-31`;
+        if (ff < fi) ff = fi;
+        return ff;
+      });
+      return fi;
+    });
 
     setRolesConfig((prev) =>
       prev.map((rol) => ({
@@ -1225,9 +1898,16 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
               : undefined;
           return {
             ...act,
-            fechaInicio: `${año}-01-01`,
-            fechaFin: `${año}-12-31`,
-            fechaCorte: ultimoSeg || `${año}-12-31`,
+            fechaInicio: act.fechaInicio
+              ? reemplazarAnioEnFechaIso(act.fechaInicio, año)
+              : act.fechaInicio,
+            fechaFin: act.fechaFin
+              ? reemplazarAnioEnFechaIso(act.fechaFin, año)
+              : act.fechaFin,
+            fechaCorte:
+              ultimoSeg ||
+              act.fechaCorte ||
+              resolverFechaCorteActividad(act, vigencia),
             puntosControl: nuevosPuntos.length > 0 ? nuevosPuntos : act.puntosControl,
             tareasSeguimiento: alinearTareasFechasEntregaAVigencia(act.tareasSeguimiento, vigencia),
           };
@@ -1247,9 +1927,16 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
               : undefined;
           return {
             ...act,
-            fechaInicio: `${vigencia}-01-01`,
-            fechaFin: `${vigencia}-12-31`,
-            fechaCorte: ultimoSeg || `${vigencia}-12-31`,
+            fechaInicio: act.fechaInicio
+              ? reemplazarAnioEnFechaIso(act.fechaInicio, vigencia)
+              : act.fechaInicio,
+            fechaFin: act.fechaFin
+              ? reemplazarAnioEnFechaIso(act.fechaFin, vigencia)
+              : act.fechaFin,
+            fechaCorte:
+              ultimoSeg ||
+              act.fechaCorte ||
+              resolverFechaCorteActividad(act, vigencia),
             puntosControl: nuevosPuntos.length > 0 ? nuevosPuntos : act.puntosControl,
             tareasSeguimiento: alinearTareasFechasEntregaAVigencia(act.tareasSeguimiento, vigencia),
           };
@@ -1269,71 +1956,52 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     setRolesConfig((prev) => normalizarResponsables(prev));
   }, [rolesConfig]);
 
-  // Efecto global: Sincronizar automáticamente en el fondo (útil si se carga desde borrador o API)
+  // Plan nuevo: pre-asignar responsable del plan solo en roles/actividades aún sin responsable.
   useEffect(() => {
-    if (!jefeSeleccionado) return;
+    if (!jefeSeleccionado || planAEditar) return;
     setRolesConfig((prev) =>
-      prev.map((rol) => {
-        const validResponsables = (rol.responsables || []).filter(Boolean);
-        if (validResponsables.length > 0) return rol;
-        
-        return {
-          ...rol,
-          responsables: [jefeSeleccionado],
-          actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map((act) => {
-            const actValidResp = (act.responsables || []).filter(Boolean);
-            return actValidResp.length === 0 ? { ...act, responsables: [jefeSeleccionado] } : act;
-          }),
-          actividadesCustom: (rol.actividadesCustom || []).map((act) => {
-            const actValidResp = (act.responsables || []).filter(Boolean);
-            return actValidResp.length === 0 ? { ...act, responsables: [jefeSeleccionado] } : act;
-          }),
-        };
-      })
+      aplicarCambioResponsablePlanEnRoles(prev, null, jefeSeleccionado, 'rellenar-vacios'),
     );
-  }, [jefeSeleccionado]);
+  }, [jefeSeleccionado, planAEditar]);
 
-  // Auto-asignar el Responsable del Plan como Responsable del Rol por defecto (cuando lo cambia el usuario manualmente)
+  /**
+   * Paso 1 → Paso 2:
+   * - Primera vez: rellena roles/actividades vacíos con el responsable del plan.
+   * - Si vuelve al paso 1 y cambia el responsable: solo sustituye donde estaba el anterior;
+   *   no pisa asignaciones manuales a otra persona.
+   */
   const handleJefeChange = (nuevoJefe: Auditor | null) => {
+    const responsableAnterior = jefeSeleccionado;
     setJefeSeleccionado(nuevoJefe);
     wizardTouchedByUserRef.current = true;
-    
-    if (nuevoJefe) {
-      setRolesConfig((prev) =>
-        prev.map((rol) => {
-          // Solo aplicar si el rol no tiene un responsable válido aún
-          const validResponsables = (rol.responsables || []).filter(Boolean);
-          if (validResponsables.length > 0) return rol;
-          
-          return {
-            ...rol,
-            responsables: [nuevoJefe],
-            // También pre-asignar en actividades que no tengan responsable
-            actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map((act) => {
-              const actValidResp = (act.responsables || []).filter(Boolean);
-              return actValidResp.length === 0 ? { ...act, responsables: [nuevoJefe] } : act;
-            }),
-            actividadesCustom: (rol.actividadesCustom || []).map((act) => {
-              const actValidResp = (act.responsables || []).filter(Boolean);
-              return actValidResp.length === 0 ? { ...act, responsables: [nuevoJefe] } : act;
-            }),
-          };
-        })
-      );
-    }
+
+    if (!nuevoJefe) return;
+
+    const esCambioDeResponsable =
+      !!responsableAnterior
+      && !coincideAuditorConReferencia(responsableAnterior, nuevoJefe);
+
+    setRolesConfig((prev) =>
+      aplicarCambioResponsablePlanEnRoles(
+        prev,
+        esCambioDeResponsable ? responsableAnterior : null,
+        nuevoJefe,
+        esCambioDeResponsable ? 'solo-reemplazar-anterior' : 'rellenar-vacios',
+      ),
+    );
   };
 
   const handleRolesChange = (config: RolConfig[]) => {
+    if (enModoSoloConsulta) return;
     wizardTouchedByUserRef.current = true;
     setRolesConfig(normalizarResponsables(config));
   };
 
+  const [cargandoPlanBorrador, setCargandoPlanBorrador] = useState(false);
+
   const handleVigenciaChange = (nuevaVigencia: number) => {
-    // Si el usuario re-selecciona la misma vigencia, no tocar borradores ni estado.
     if (nuevaVigencia === vigencia) return;
 
-    // Mientras el borrador remoto aún no termina de hidratar, no marcar interacción
-    // ni borrar el draft del servidor para evitar perder la data recién recuperada.
     if (!wizardHydrationCompletedRef.current) {
       setVigencia(nuevaVigencia);
       return;
@@ -1342,7 +2010,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     wizardTouchedByUserRef.current = true;
     setVigencia(nuevaVigencia);
 
-    // En "Nuevo plan", al cambiar vigencia se descarta el borrador anterior para no arrastrar datos.
+    // En "Nuevo plan", al cambiar vigencia se descarta el borrador temporal del wizard (no el plan en BD).
     if (!planAEditar) {
       localStorage.removeItem(draftKey);
       setServerDraftSynced(false);
@@ -1350,9 +2018,104 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     }
   };
 
+  const planBorradorVigenciaActual = useMemo(() => {
+    if (planAEditar?.vigencia === vigencia) return undefined;
+    if (planAEditar) return undefined;
+    return planesOtros.find(
+      (p) => p.vigencia === vigencia && esEstadoPlanBorrador(p.estado),
+    );
+  }, [planesOtros, planAEditar, vigencia]);
+
+  const handleContinuarBorrador = async () => {
+    if (!planBorradorVigenciaActual || !onCargarPlanBorrador || cargandoPlanBorrador) return;
+    setCargandoPlanBorrador(true);
+    try {
+      await Promise.resolve(onCargarPlanBorrador(planBorradorVigenciaActual));
+    } catch {
+      toast.error('No se pudo cargar el borrador');
+    } finally {
+      setCargandoPlanBorrador(false);
+    }
+  };
+
+  /** Al abrir/editar un plan guardado, sincronizar paso 1 con datos del backend (el estado inicial no se recalcula solo). */
+  useEffect(() => {
+    if (!planAEditar?.id) return;
+    const v = planAEditar.vigencia;
+    if (v && !isNaN(v)) {
+      setVigencia(v);
+      vigenciaPrevRef.current = v;
+      omitirSyncVigenciaInicialRef.current = true;
+    }
+    const vigenciaPlan = v || vigencia;
+    const fi = alinearFechaPlanConVigencia(
+      fechaCalendarioParaInput(
+        (planAEditar as any).fecha_inicio ?? planAEditar.fechaInicio,
+        `${vigenciaPlan}-01-01`,
+      ),
+      vigenciaPlan,
+      'inicio',
+    );
+    let ff = alinearFechaPlanConVigencia(
+      fechaCalendarioParaInput(
+        (planAEditar as any).fecha_fin ?? planAEditar.fechaFin,
+        `${vigenciaPlan}-12-31`,
+      ),
+      vigenciaPlan,
+      'fin',
+    );
+    if (ff < fi) ff = fi;
+    setFechaInicio(fi);
+    setFechaFin(ff);
+    if (planAEditar.jefeOCI && auditores.length > 0) {
+      const jefe = resolverJefePlanDesdeProfesionales(planAEditar, auditores);
+      if (jefe) setJefeSeleccionado(jefe);
+    } else if (planAEditar.jefeOCI) {
+      setJefeSeleccionado(planAEditar.jefeOCI);
+    }
+    if (planAEditar.equipoAprobacion) {
+      setComiteAprobacion(planAEditar.equipoAprobacion);
+    }
+    if (planAEditar.ordenAprobacion) {
+      setOrdenAprobacion(planAEditar.ordenAprobacion);
+    }
+  }, [
+    planAEditar?.id,
+    planAEditar?.vigencia,
+    planAEditar?.fechaInicio,
+    planAEditar?.fechaFin,
+    (planAEditar as any)?.fecha_inicio,
+    (planAEditar as any)?.fecha_fin,
+    auditores,
+  ]);
+
+  useEffect(() => {
+    if (!planAEditar?.id || !Array.isArray(planAEditar.roles) || planAEditar.roles.length === 0) return;
+    let config = buildRolesConfigFromPlanAnual(planAEditar);
+    try {
+      const editRaw = localStorage.getItem(`esap:wizard_plan_anual_edit_${planAEditar.id}`);
+      if (editRaw) {
+        const editDraft = JSON.parse(editRaw);
+        if (
+          editDraft?.vigencia === planAEditar.vigencia &&
+          Array.isArray(editDraft.rolesConfig)
+        ) {
+          config = mergeRolesConfigResponsablesFromDraft(config, editDraft.rolesConfig as RolConfig[]);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    setRolesConfig(normalizarResponsables(config));
+    mergeWizardDesdeServidorHecho.current = true;
+  }, [planAEditar?.id, planAEditar?.vigencia, planAEditar?.roles?.length]);
+
   // Al abrir «Nuevo plan»: fusionar borrador del servidor con localStorage (gana el más reciente por timestamp).
   useEffect(() => {
-    if (planAEditar) return;
+    if (planAEditar) {
+      wizardHydrationCompletedRef.current = true;
+      return;
+    }
     if (mergeWizardDesdeServidorHecho.current) return;
     mergeWizardDesdeServidorHecho.current = true;
     console.log('[WizardDraft][Hydration] inicio hidratacion Nuevo Plan');
@@ -1404,7 +2167,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
           winnerPaso: (winner as any)?.paso,
         });
 
-        const ocupadas = (planesExistentes || []).map((p: any) => p.vigencia);
+        const ocupadas = vigenciasBloqueadas;
 
         if (typeof winner.paso === 'number') setPaso(winner.paso);
         if (typeof winner.vigencia === 'number' && !ocupadas.includes(winner.vigencia)) {
@@ -1512,14 +2275,22 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
 
   // Validación del Paso 1: Fechas y vigencia
   const validarPaso1 = () => {
-    // Validar que la vigencia no exista ya (excepto si estamos editando ese mismo plan)
-    const vigenciasExistentes = (planesExistentes || [])
-      .filter((p: any) => !planAEditar || p.id !== planAEditar.id)
-      .map((p: any) => p.vigencia);
-      
-    if (vigenciasExistentes.includes(vigencia)) {
+    const planBorrador = planesOtros.find(
+      (p) => p.vigencia === vigencia && esEstadoPlanBorrador(p.estado),
+    );
+    if (planBorrador && !planAEditar) {
+      toast.info(`Ya hay un borrador para ${vigencia}`, {
+        description: 'Use el botón «Continuar editando borrador» para cargar el plan antes de continuar.',
+      });
+      return false;
+    }
+
+    if (vigenciaEstaBloqueada(vigencia)) {
+      const planFormal = planesOtros.find((p) => p.vigencia === vigencia);
       toast.error(`Ya existe un plan para la vigencia ${vigencia}`, {
-        description: 'Seleccione otra vigencia o elimine el plan existente desde la pantalla de inicio.'
+        description: planFormal
+          ? `Estado: ${planFormal.estado}. Elija otra vigencia o consulte ese plan desde inicio.`
+          : 'Seleccione otra vigencia.',
       });
       return false;
     }
@@ -1580,38 +2351,16 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
       return false;
     }
 
-    // Validar que cada actividad tenga al menos un responsable
-    const actividadesSinResponsable: string[] = [];
-    for (const rol of rolesConActividades) {
-      for (const act of (rol.actividadesSeleccionadas || []).filter(actividadIncluidaEnPlan)) {
-        if (!act.responsables || act.responsables.length === 0) {
-          actividadesSinResponsable.push(`"${act.nombre.slice(0, 40)}" (Rol ${rol.numero})`);
-        }
-      }
-      for (const act of (rol.actividadesCustom || [])) {
-        if (!act.responsables || act.responsables.length === 0) {
-          actividadesSinResponsable.push(`"${act.nombre.slice(0, 40)}" (Rol ${rol.numero} personalizada)`);
-        }
-      }
-    }
-    if (actividadesSinResponsable.length > 0) {
-      toast.error('Responsable requerido por actividad', {
-        description: `Las siguientes actividades no tienen responsable: ${actividadesSinResponsable.slice(0, 3).join(', ')}${actividadesSinResponsable.length > 3 ? ` y ${actividadesSinResponsable.length - 3} más` : ''}.`,
-        duration: 7000
-      });
-      return false;
-    }
-
-    // Validar que cada actividad tenga fecha de corte
+    // Validar que cada actividad tenga fecha de corte (campo o último punto de control)
     const actividadesSinFechaCorte: string[] = [];
     for (const rol of rolesConActividades) {
       for (const act of (rol.actividadesSeleccionadas || []).filter(actividadIncluidaEnPlan)) {
-        if (!act.fechaCorte) {
+        if (!resolverFechaCorteActividad(act, vigencia)) {
           actividadesSinFechaCorte.push(`"${act.nombre.slice(0, 40)}" (Rol ${rol.numero})`);
         }
       }
       for (const act of (rol.actividadesCustom || [])) {
-        if (!act.fechaCorte) {
+        if (!resolverFechaCorteActividad(act, vigencia)) {
           actividadesSinFechaCorte.push(`"${act.nombre.slice(0, 40)}" (Rol ${rol.numero} personalizada)`);
         }
       }
@@ -1640,40 +2389,37 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     return true;
   };
 
+  const validarComiteParaGuardar = () => {
+    if (comiteAprobacion.length > 0) return true;
+    toast.error('Comité de aprobación requerido', {
+      description:
+        'Agregue al menos un miembro al comité aprobador del plan (paso 3) antes de guardar.',
+      duration: 6000,
+    });
+    if (paso !== 3) setPaso(3);
+    return false;
+  };
+
   const avanzarPaso = () => {
-    if (!soloLectura) {
+    if (!enModoSoloConsulta) {
       if (paso === 1 && !validarPaso1()) return;
       if (paso === 2 && !validarPaso2()) return;
-      
-      // Auto-asignar el Responsable del Plan a los roles y actividades vacías 
-      // justo antes de entrar al Paso 2, garantizando que no haya problemas de estado.
-      if (paso === 1 && jefeSeleccionado) {
-        setRolesConfig((prev) =>
-          prev.map((rol) => {
-            const validResponsables = (rol.responsables || []).filter(Boolean);
-            if (validResponsables.length > 0) return rol;
-            
-            return {
-              ...rol,
-              responsables: [jefeSeleccionado],
-              actividadesSeleccionadas: (rol.actividadesSeleccionadas || []).map((act) => {
-                const actValidResp = (act.responsables || []).filter(Boolean);
-                return actValidResp.length === 0 ? { ...act, responsables: [jefeSeleccionado] } : act;
-              }),
-              actividadesCustom: (rol.actividadesCustom || []).map((act) => {
-                const actValidResp = (act.responsables || []).filter(Boolean);
-                return actValidResp.length === 0 ? { ...act, responsables: [jefeSeleccionado] } : act;
-              }),
-            };
-          })
-        );
-      }
     }
     setPaso(paso + 1);
   };
 
+  /** Flecha del encabezado: paso anterior; en paso 1 sale del asistente (como Cancelar). */
+  const handleAtrasEncabezado = () => {
+    if (paso > 1) {
+      setPaso(paso - 1);
+      return;
+    }
+    onCancelar();
+  };
+
     const handleFinalizar = async () => {
     if (soloLectura) return;
+    if (!validarComiteParaGuardar()) return;
     // Validación final de seguridad antes de crear el plan
     const rolesConActividades = rolesConfig.filter(rol => 
       contarActividadesIncluidas(rol) + (rol.actividadesCustom?.length || 0) > 0
@@ -1693,14 +2439,6 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
     // Validación de seguridad para TypeScript (ya se validó en validarPaso1)
     if (!jefeSeleccionado) {
       toast.error('Debe seleccionar un responsable del Plan');
-      return;
-    }
-
-    if (comiteAprobacion.length !== 5) {
-      toast.error('Flujo de aprobación incompleto', {
-        description: 'Debe seleccionar los 5 miembros del comité de aprobación antes de continuar.',
-        duration: 5000
-      });
       return;
     }
     
@@ -1833,9 +2571,11 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
                 </ul>
               </div>
               <div className="p-3 rounded-xl bg-amber-50/90 border border-amber-100">
-                <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide mb-1">Comité de aprobación (paso 3)</p>
+                <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide mb-1">Comité de aprobación (obligatorio al finalizar)</p>
                 <p className="text-gray-800">
-                  {comiteAprobacion.length} de 5 miembros · orden <strong>{ordenAprobacion === 'paralelo' ? 'paralelo' : 'secuencial'}</strong>
+                  {comiteAprobacion.length === 0
+                    ? 'Sin comité configurado'
+                    : `${comiteAprobacion.length} miembro(s) · orden ${ordenAprobacion === 'paralelo' ? 'paralelo' : 'secuencial'}`}
                 </p>
               </div>
             </div>
@@ -1854,37 +2594,14 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
       )}
       {/* Header */}
       <div className="border-b-2 border-gray-200 px-8 py-6">
-        {soloLectura && (
-          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-            <strong className="font-semibold">Solo consulta.</strong>{' '}
-            No tiene permiso para modificar la definición del plan; puede revisar los tres pasos del asistente y volver al panel.
-            {planAEditar && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={onCancelar}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-slate-300 bg-white text-slate-800 text-sm font-semibold hover:bg-slate-50 transition-colors"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  Volver al panel
-                </button>
-                {puedeIrAAprobacion && typeof onIrAAprobacion === 'function' && (
-                  <button
-                    type="button"
-                    onClick={onIrAAprobacion}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold shadow-sm transition-colors"
-                  >
-                    <FileCheck className="w-4 h-4 shrink-0" />
-                    Ir a aprobación
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div className="flex items-center gap-3">
-            <button onClick={onCancelar} className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors">
+            <button
+              type="button"
+              onClick={handleAtrasEncabezado}
+              title={paso > 1 ? `Volver al paso ${paso - 1}` : 'Salir del asistente'}
+              className="w-10 h-10 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center justify-center transition-colors"
+            >
               <ArrowLeft className="w-5 h-5 text-gray-700" />
             </button>
             <div>
@@ -1903,12 +2620,23 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
             {puedeMostrarVistaPrevia && !soloLectura && (
               <button
                 type="button"
-                onClick={() => setMostrarVistaPrevia(true)}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors"
-                title="Ver resumen del plan sin salir del asistente (solo lectura). Requiere permiso de consulta del plan anual."
+                onClick={() => {
+                  setVistaPreviaActiva((v) => !v);
+                  setMostrarVistaPrevia(false);
+                }}
+                className={`flex items-center gap-2 px-3 py-2 text-sm font-semibold rounded-lg border transition-colors ${
+                  vistaPreviaActiva
+                    ? 'text-gray-800 bg-gray-200 border-gray-400 ring-2 ring-gray-300'
+                    : 'text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border-indigo-200'
+                }`}
+                title={
+                  vistaPreviaActiva
+                    ? 'Salir de vista previa y volver a editar'
+                    : 'Recorrer los 3 pasos en solo lectura (escala de grises, sin editar)'
+                }
               >
-                <BookOpen className="w-4 h-4 shrink-0" />
-                Vista previa
+                <Eye className="w-4 h-4 shrink-0" />
+                {vistaPreviaActiva ? 'Salir de vista previa' : 'Vista previa'}
               </button>
             )}
 
@@ -1923,14 +2651,38 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-700 bg-green-50 rounded-md border border-green-200"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  {!planAEditar && serverDraftSynced
-                    ? `Guardado local y en servidor (${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
-                    : `Guardado (${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
+                  {planAEditar
+                    ? `Plan en borrador (${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+                    : !planAEditar && serverDraftSynced
+                      ? `Borrador temporal (${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+                      : `Guardado (${lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
                 </motion.div>
               )}
             </AnimatePresence>
             <button 
               onClick={async () => {
+                if (!jefeSeleccionado || !fechaInicio || !fechaFin) {
+                  toast.error('Complete el paso 1', {
+                    description: 'Indique vigencia, responsable del plan y fechas antes de guardar.',
+                  });
+                  return;
+                }
+                // Guardar borrador: no exige comité (se valida al finalizar / Crear).
+                if (onGuardarBorrador) {
+                  setIsSubmitting(true);
+                  const ok = await onGuardarBorrador(
+                    vigencia,
+                    jefeSeleccionado,
+                    rolesConfig,
+                    fechaInicio,
+                    fechaFin,
+                    comiteAprobacion,
+                    ordenAprobacion,
+                  );
+                  setIsSubmitting(false);
+                  if (ok) setLastSaved(new Date());
+                  return;
+                }
                 const borradorActual = {
                   idPlan: planAEditar?.id,
                   vigencia,
@@ -1945,19 +2697,17 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
                 };
                 localStorage.setItem(draftKey, JSON.stringify(borradorActual));
                 setLastSaved(new Date());
-
                 if (!planAEditar) {
                   try {
                     await wizardBorradorApi.save(borradorActual);
                     setServerDraftSynced(true);
-                    setLastSaved(new Date());
                     toast.success('Borrador guardado', {
                       description: 'Guardado en este equipo y en el servidor.',
                     });
                   } catch (e: any) {
                     setServerDraftSynced(false);
                     toast.warning('Borrador guardado solo en el equipo', {
-                      description: e?.message || 'No se pudo sincronizar con el servidor. Revisa tu conexión.',
+                      description: e?.message || 'No se pudo sincronizar con el servidor.',
                     });
                   }
                 } else {
@@ -1966,8 +2716,13 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
                   });
                 }
               }}
-              title="Guardar borrador"
+              title={
+                onGuardarBorrador
+                  ? 'Guardar plan en borrador (base de datos). No requiere comité configurado.'
+                  : 'Guardar borrador local'
+              }
               className="p-2 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+              disabled={isSubmitting}
             >
               <Save className="w-5 h-5" />
             </button>
@@ -1976,17 +2731,41 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
           </div>
         </div>
 
+        {vistaPreviaActiva && !soloLectura && (
+          <div className="mb-4 rounded-xl border border-slate-400 bg-slate-200 px-4 py-2.5 text-sm text-slate-800 flex items-start gap-2">
+            <Eye className="w-4 h-4 shrink-0 mt-0.5 text-slate-600" />
+            <p>
+              <strong className="font-semibold">Vista previa activa.</strong> Los pasos se muestran en gris y no se
+              pueden editar. Use <strong>Salir de vista previa</strong> o los botones Anterior/Siguiente para revisar;
+              luego desactive para seguir editando.
+            </p>
+          </div>
+        )}
+
         {/* Progress */}
         <div className="flex items-center gap-2">
           {[1, 2, 3].map((num) => (
-            <div key={num} className={`flex-1 h-2 rounded-full ${num <= paso ? 'bg-blue-600' : 'bg-gray-200'}`} />
+            <div
+              key={num}
+              className={`flex-1 h-2 rounded-full ${
+                num <= paso
+                  ? enModoSoloConsulta
+                    ? 'bg-gray-500'
+                    : 'bg-blue-600'
+                  : 'bg-gray-200'
+              }`}
+            />
           ))}
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto bg-gray-50 p-8">
-        <div className={`max-w-7xl mx-auto ${soloLectura ? 'pointer-events-none select-none opacity-[0.97]' : ''}`}>
+      <div
+        className={`flex-1 overflow-y-auto p-8 transition-colors ${
+          enModoSoloConsulta ? 'bg-slate-200' : 'bg-gray-50'
+        }`}
+      >
+        <div className={`max-w-7xl mx-auto ${enModoSoloConsulta ? WRAPPER_PASOS_SOLO_LECTURA : ''}`}>
           <AnimatePresence mode="wait">
             {paso === 1 && (
               <Paso1 
@@ -2002,19 +2781,38 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
                 auditores={auditores}
                 cargandoAuditores={cargandoAuditores}
                 onRecargarAuditores={cargarAuditores}
-                vigenciasExistentes={planesExistentes.filter(p => !planAEditar || p.id !== planAEditar.id).map(p => p.vigencia)}
+                vigenciasExistentes={vigenciasBloqueadas}
                 vigenciasDisponibles={vigenciasDisponibles}
-                soloLectura={soloLectura}
+                planBorradorVigencia={planBorradorVigenciaActual}
+                cargandoPlanBorrador={cargandoPlanBorrador}
+                onContinuarBorrador={
+                  planBorradorVigenciaActual && onCargarPlanBorrador
+                    ? handleContinuarBorrador
+                    : undefined
+                }
+                soloLectura={enModoSoloConsulta}
               />
             )}
-            {paso === 2 && <Paso2 key="paso2" rolesConfig={rolesConfig} onRolesChange={handleRolesChange} fechaInicio={fechaInicio} fechaFin={fechaFin} auditores={auditores} jefeOCI={jefeSeleccionado} />}
+            {paso === 2 && (
+              <Paso2
+                key="paso2"
+                rolesConfig={rolesConfig}
+                onRolesChange={handleRolesChange}
+                fechaInicio={fechaInicio}
+                fechaFin={fechaFin}
+                auditores={auditores}
+                jefeOCI={jefeSeleccionado}
+                soloLectura={enModoSoloConsulta}
+              />
+            )}
             {paso === 3 && (
               <Paso3 
                 key="paso3" 
                 vigencia={vigencia} 
                 jefeOCI={jefeSeleccionado} 
-                rolesConfig={rolesConfig} 
-                auditores={auditores}
+                rolesConfig={rolesConfig}
+                soloLectura={enModoSoloConsulta}
+                aprobadoresComite={aprobadoresComite}
                 comiteAprobacion={comiteAprobacion}
                 setComiteAprobacion={setComiteAprobacion}
                 ordenAprobacion={ordenAprobacion}
@@ -2031,23 +2829,40 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
       </div>
 
       {/* Footer */}
-      <div className="border-t-2 border-gray-200 px-8 py-4 flex justify-between items-center bg-white">
+      <div className="border-t-2 border-gray-200 px-8 py-4 bg-white">
+        {soloLectura && (
+          <p className="mb-3 text-sm text-amber-950 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">
+            <strong className="font-semibold">Solo consulta.</strong>{' '}
+            No puede modificar la definición del plan; revise los tres pasos y use los botones de abajo para salir o ir a aprobación.
+          </p>
+        )}
+        <div className="flex justify-between items-center gap-4">
         <div className="flex items-center gap-4">
           <button type="button" onClick={onCancelar} className="px-6 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium">
             {soloLectura ? 'Volver' : 'Cancelar'}
           </button>
         </div>
         
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           {soloLectura ? (
             <>
+              {puedeIrAAprobacion && typeof onIrAAprobacion === 'function' && (
+                <button
+                  type="button"
+                  onClick={onIrAAprobacion}
+                  className="inline-flex items-center gap-2 px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm transition-colors"
+                >
+                  <FileCheck className="w-4 h-4 shrink-0" />
+                  Ir a aprobación
+                </button>
+              )}
               {paso > 1 && (
                 <button type="button" onClick={() => setPaso(paso - 1)} className="px-6 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
                   Anterior
                 </button>
               )}
               {paso < 3 ? (
-                <button type="button" onClick={avanzarPaso} className="px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors bg-blue-600 hover:bg-blue-700 text-white cursor-pointer">
+                <button type="button" onClick={avanzarPaso} className="px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors bg-gray-600 hover:bg-gray-700 text-white cursor-pointer">
                   Siguiente <ArrowRight className="w-4 h-4" />
                 </button>
               ) : (
@@ -2068,11 +2883,11 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
                   type="button"
                   onClick={avanzarPaso} 
                   disabled={
-                    (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
+                    (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || vigenciaEstaBloqueada(vigencia) || (!!planBorradorVigenciaActual && !planAEditar) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
                     (paso === 2 && rolesConfig.some(r => (contarActividadesIncluidas(r) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
                   }
                   className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${
-                    (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || planesExistentes.some(p => p.vigencia === vigencia && (!planAEditar || p.id !== planAEditar.id)) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
+                    (paso === 1 && (!jefeSeleccionado || !fechaInicio || !fechaFin || fechaFin < fechaInicio || parseInt(fechaInicio.split('-')[0], 10) !== vigencia || parseInt(fechaFin.split('-')[0], 10) !== vigencia || vigenciaEstaBloqueada(vigencia) || (!!planBorradorVigenciaActual && !planAEditar) || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100)) ||
                     (paso === 2 && rolesConfig.some(r => (contarActividadesIncluidas(r) + (r.actividadesCustom?.length || 0) > 0) && (r.responsables?.length || 0) === 0))
                       ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
                       : 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer'
@@ -2084,8 +2899,7 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
                 <button 
                   type="button"
                   onClick={handleFinalizar} 
-                  disabled={isSubmitting || comiteAprobacion.length !== 5}
-                  title={comiteAprobacion.length !== 5 ? 'Seleccione los 5 miembros del comité de aprobación' : undefined}
+                  disabled={isSubmitting}
                   className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSubmitting ? (
@@ -2103,13 +2917,14 @@ export function WizardCreacion({ planAEditar, soloLectura = false, puedeIrAAprob
             </>
           )}
         </div>
+        </div>
       </div>
     </motion.div>
   );
 }
 
 // Paso 1: Configuración básica
-function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores, vigenciasExistentes = [], vigenciasDisponibles = [], soloLectura = false }: any) {
+function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio, onFechaInicioChange, fechaFin, onFechaFinChange, auditores, cargandoAuditores, vigenciasExistentes = [], vigenciasDisponibles = [], planBorradorVigencia, cargandoPlanBorrador = false, onContinuarBorrador, soloLectura = false }: any) {
   const anioFechaInicio = fechaInicio ? parseInt(fechaInicio.split('-')[0], 10) : vigencia;
   const anioFechaFin = fechaFin ? parseInt(fechaFin.split('-')[0], 10) : vigencia;
   const errorFechaFinAnterior = fechaFin && fechaInicio && fechaFin < fechaInicio;
@@ -2124,8 +2939,18 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
     if (isNaN(nuevaVigencia)) return;
     onVigenciaChange(nuevaVigencia);
     if (nuevaVigencia >= 2020 && nuevaVigencia <= 2100) {
-      onFechaInicioChange(`${nuevaVigencia}-01-01`);
-      onFechaFinChange(`${nuevaVigencia}-12-31`);
+      const anioActual = fechaInicio ? parseInt(fechaInicio.split('-')[0], 10) : nuevaVigencia;
+      // Solo ajustar mes/día si cambió el año; no pisar fechas ya elegidas en la misma vigencia.
+      if (anioActual !== nuevaVigencia) {
+        const fi = fechaInicio
+          ? reemplazarAnioEnFechaIso(fechaInicio, nuevaVigencia)
+          : `${nuevaVigencia}-01-01`;
+        const ff = fechaFin
+          ? reemplazarAnioEnFechaIso(fechaFin, nuevaVigencia)
+          : `${nuevaVigencia}-12-31`;
+        onFechaInicioChange(fi);
+        onFechaFinChange(ff < fi ? fi : ff);
+      }
     }
   };
 
@@ -2149,8 +2974,11 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
   const handleInputChange = (val: string) => {
     setInputText(val);
     setShowDropdown(true);
-    const num = parseInt(val);
-    if (!isNaN(num)) handleVigenciaSelect(num);
+    const num = parseInt(val, 10);
+    // Solo aplicar vigencia con año completo (evita 2 → 20 → 204 → 2043 mientras escribe).
+    if (!isNaN(num) && val.trim().length === 4 && num >= 2020 && num <= 2100) {
+      handleVigenciaSelect(num);
+    }
   };
 
   const handleOptionClick = (y: number) => {
@@ -2160,8 +2988,9 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
   };
 
   const vigenciaInvalida = !vigencia || isNaN(vigencia) || vigencia < 2020 || vigencia > 2100;
+  const vigenciaConBorrador = !vigenciaInvalida && !!planBorradorVigencia;
   const vigenciaOcupada = !vigenciaInvalida && vigenciasExistentes.includes(vigencia);
-  const vigenciaDisponible = !vigenciaInvalida && !vigenciaOcupada;
+  const vigenciaDisponible = !vigenciaInvalida && !vigenciaOcupada && !vigenciaConBorrador;
 
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
@@ -2191,6 +3020,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               placeholder="Escribe o selecciona un año..."
               className={`w-full px-4 py-3 border-2 rounded-lg text-lg font-bold focus:outline-none pr-32 ${
                 vigenciaOcupada ? 'border-red-500 bg-red-50 focus:border-red-500'
+                : vigenciaConBorrador ? 'border-amber-500 bg-amber-50 focus:border-amber-500'
                 : vigenciaDisponible ? 'border-green-500 bg-green-50 focus:border-green-500'
                 : 'border-gray-300 focus:border-blue-500'
               }`}
@@ -2199,10 +3029,13 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               <svg className={`w-5 h-5 transition-transform ${showDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             </button>
             {vigenciaDisponible && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded-full border border-green-300">S& Disponible</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-green-100 text-green-700 text-xs font-semibold px-2 py-1 rounded-full border border-green-300">Disponible</span>
+            )}
+            {vigenciaConBorrador && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-1 rounded-full border border-amber-300">Borrador</span>
             )}
             {vigenciaOcupada && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded-full border border-red-300">⚠️ Ya existe</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-2 py-1 rounded-full border border-red-300">Ya existe</span>
             )}
             {showDropdown && (
               <div className="absolute z-50 w-full mt-1 bg-white border-2 border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto">
@@ -2221,8 +3054,25 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               </div>
             )}
           </div>
-          {vigenciaOcupada ? (
-            <p className="text-xs text-red-600 mt-1 font-medium">Ya existe un plan para {vigencia}. Selecciona otro año del listado.</p>
+          {vigenciaConBorrador ? (
+            <div className="mt-2 p-3 rounded-lg border border-amber-200 bg-amber-50/80 space-y-2">
+              <p className="text-xs text-amber-900 font-medium">
+                Ya hay un plan en borrador para {vigencia}. Puede continuar editándolo (no se creará un duplicado).
+              </p>
+              {onContinuarBorrador && (
+                <button
+                  type="button"
+                  disabled={cargandoPlanBorrador}
+                  onClick={() => void onContinuarBorrador()}
+                  className="text-xs font-bold text-amber-900 bg-white border border-amber-300 hover:bg-amber-100 disabled:opacity-60 disabled:cursor-wait px-3 py-1.5 rounded-lg inline-flex items-center gap-1.5"
+                >
+                  {cargandoPlanBorrador && <Loader2 className="w-3 h-3 animate-spin" />}
+                  Continuar editando borrador {vigencia}
+                </button>
+              )}
+            </div>
+          ) : vigenciaOcupada ? (
+            <p className="text-xs text-red-600 mt-1 font-medium">Ya existe un plan formalizado para {vigencia}. Selecciona otro año del listado.</p>
           ) : vigenciaDisponible ? (
             <p className="text-xs text-green-600 mt-1 font-medium">✅ Año {vigencia} disponible. Las fechas se ajustan automáticamente.</p>
           ) : (
@@ -2317,23 +3167,36 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             </div>
           ) : (() => {
             // Solo mostrar profesionales con base en las reglas de negocio y perfil normativo
-            const responsablesAutorizados = auditores.filter((a: any) => 
+            const responsablesAutorizados = auditores.filter((a: any) =>
+              nombreProfesionalOCIVisible(a.nombre) &&
               REGLAS_NEGOCIO_OCIG.ROLES_RESPONSABLES_PLAN_ANUAL.esAutorizadoParaResponsablePlan(a.cargo)
             );
-            return responsablesAutorizados.length === 0 ? (
+            const opcionesResponsable = [...responsablesAutorizados];
+            if (
+              jefeOCI?.nombre
+              && !opcionesResponsable.some((a) => coincideAuditorConReferencia(a, jefeOCI))
+            ) {
+              opcionesResponsable.unshift(jefeOCI);
+            }
+            const valorSelect = jefeOCI
+              ? (opcionesResponsable.find((a) => coincideAuditorConReferencia(a, jefeOCI))?.id
+                || jefeOCI.id
+                || '')
+              : '';
+            return opcionesResponsable.length === 0 ? (
               <div className="flex items-center gap-2 px-4 py-3 border-2 border-orange-300 rounded-lg bg-orange-50">
                 <AlertCircle className="w-5 h-5 text-orange-600" />
                 <span className="text-orange-700">No hay profesionales con rol Jefe OCIG o Auditor Líder configurados. Configure uno en Profesionales OCI.</span>
               </div>
             ) : (
               <select 
-                value={jefeOCI?.id || ''} 
+                value={valorSelect} 
                 disabled={soloLectura}
-                onChange={(e) => onJefeChange(responsablesAutorizados.find((a: any) => a.id === e.target.value))} 
+                onChange={(e) => onJefeChange(opcionesResponsable.find((a: any) => a.id === e.target.value))} 
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               >
                 <option value="">Seleccionar responsable...</option>
-                {responsablesAutorizados.map((a: any) => (
+                {opcionesResponsable.map((a: any) => (
                   <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Jefe OCIG'}</option>
                 ))}
               </select>
@@ -2353,7 +3216,8 @@ function Paso2({
   fechaInicio,
   fechaFin,
   auditores,
-  jefeOCI
+  jefeOCI,
+  soloLectura = false,
 }: { 
   rolesConfig: RolConfig[]; 
   onRolesChange: (config: RolConfig[]) => void;
@@ -2361,6 +3225,7 @@ function Paso2({
   fechaFin: string;
   auditores: Auditor[];
   jefeOCI?: Auditor | null;
+  soloLectura?: boolean;
 }) {
   const [rolExpandido, setRolExpandido] = useState<number | string | null>(1);
   const [mostrarFormActividad, setMostrarFormActividad] = useState<number | string | null>(null);
@@ -2390,6 +3255,7 @@ function Paso2({
   const [editandoActividadBase, setEditandoActividadBase] = useState<{rolNumero: number, actId: string} | null>(null);
 
   const toggleActividad = (numeroRol: number, actId: string, nombreActividad: string) => {
+    if (soloLectura) return;
     const nuevaConfig = rolesConfig.map(rol => {
       if (rol.numero !== numeroRol) return rol;
 
@@ -2407,10 +3273,17 @@ function Paso2({
           };
         }
         // Reactivar entrada existente
+        const añoVig = Number(fechaInicio ? fechaInicio.split('-')[0] : new Date().getFullYear());
         return {
           ...rol,
           actividadesSeleccionadas: rol.actividadesSeleccionadas.map((a, i) =>
-            i === idx ? { ...a, incluidaEnPlan: true } : a
+            i === idx
+              ? {
+                  ...a,
+                  incluidaEnPlan: true,
+                  fechaCorte: a.fechaCorte || resolverFechaCorteActividad(a, añoVig),
+                }
+              : a
           ),
         };
       }
@@ -2419,7 +3292,6 @@ function Paso2({
       const actividadBase = getActividadesPorRol(numeroRol)?.find(a => a.nombre === nombreActividad);
       if (!actividadBase) return rol;
 
-      const primerResponsable = rol.responsables?.[0];
       const año = Number(fechaInicio ? fechaInicio.split('-')[0] : new Date().getFullYear());
       const mkPC = (pcId: string, orden: number, fi: string, ff: string): PuntoControl => ({
         id: pcId, orden, nombre: `Corte ${orden}`, descripcion: '',
@@ -2457,7 +3329,7 @@ function Paso2({
           incluidaEnPlan: true,
           tipoEvidencia: 'SOLO_CHECK' as const,
           fechaCorte: puntosDefault[puntosDefault.length - 1]?.fechaSeguimiento || `${año}-12-31`,
-          responsables: primerResponsable ? [primerResponsable] : [],
+          responsables: [],
           puntosControl: puntosDefault,
           frecuenciaPuntosControl: frecuencia,
           tareasSeguimiento: tareasConCorte,
@@ -2483,10 +3355,8 @@ function Paso2({
         ...rol,
         actividadesSeleccionadas: rol.actividadesSeleccionadas.map(act => {
           if (act.id === actId) {
-            return {
-              ...act,
-              requiereAutorizacionJefeOCI: !act.requiereAutorizacionJefeOCI
-            };
+            const nuevo = !leerRequiereAutorizacionJefeOCIDesdeActividad(act);
+            return aplicarFlagsAutorizacionJefeOCI(act, nuevo);
           }
           return act;
         })
@@ -2568,10 +3438,8 @@ function Paso2({
           ...rol,
           actividadesCustom: rol.actividadesCustom.map((act, i) => {
             if (i === index) {
-              return {
-                ...act,
-                requiereAutorizacionJefeOCI: !act.requiereAutorizacionJefeOCI
-              };
+              const nuevo = !leerRequiereAutorizacionJefeOCIDesdeActividad(act);
+              return aplicarFlagsAutorizacionJefeOCI(act, nuevo);
             }
             return act;
           })
@@ -2689,6 +3557,7 @@ function Paso2({
 
   // S& NUEVO: Funciones para configurar puntos de control
   const abrirConfiguracionPuntosControl = (numeroRol: number, nombreActividad: string, esCustom: boolean, indexCustom?: number) => {
+    if (soloLectura) return;
     setActividadConfigurando({ numeroRol, nombreActividad, esCustom, indexCustom });
     setModalPuntosControlAbierto(true);
   };
@@ -2749,18 +3618,37 @@ function Paso2({
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
       <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-3">Configuración de roles y actividades</h2>
-        <p className="text-gray-600">Selecciona las actividades del Decreto 648/2017 y asigna los responsables para cada rol estratégico</p>
+        <h2 className={`text-3xl font-bold mb-3 ${soloLectura ? 'text-slate-800' : 'text-gray-900'}`}>
+          Configuración de roles y actividades
+        </h2>
+        <p className={soloLectura ? 'text-slate-600' : 'text-gray-600'}>
+          {soloLectura
+            ? 'Solo consulta: revise actividades, responsables y cortes de seguimiento sin modificar datos.'
+            : 'Selecciona las actividades del Decreto 648/2017 y asigna los responsables para cada rol estratégico'}
+        </p>
       </div>
 
+      {soloLectura && (
+        <div className="rounded-xl border-2 border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-800">
+          <strong className="font-semibold">Modo solo consulta.</strong> No puede marcar actividades, asignar responsables ni configurar cortes.
+          Use <strong>Anterior</strong> / <strong>Siguiente</strong> para revisar el plan completo.
+        </div>
+      )}
+
       {/* Resumen */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-6">
+      <div className={`rounded-xl p-6 border-2 ${
+        soloLectura
+          ? 'bg-slate-100 border-slate-300'
+          : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'
+      }`}>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-blue-700 mb-1">Total de actividades configuradas</p>
-            <p className="text-3xl font-bold text-blue-900">{totalActividades}</p>
+            <p className={`text-sm mb-1 ${soloLectura ? 'text-slate-600' : 'text-blue-700'}`}>
+              Total de actividades configuradas
+            </p>
+            <p className={`text-3xl font-bold ${soloLectura ? 'text-slate-900' : 'text-blue-900'}`}>{totalActividades}</p>
           </div>
-          <CheckCircle2 className="w-12 h-12 text-blue-600" />
+          <CheckCircle2 className={`w-12 h-12 ${soloLectura ? 'text-slate-500' : 'text-blue-600'}`} />
         </div>
       </div>
 
@@ -2849,37 +3737,33 @@ function Paso2({
                         <div className="flex flex-col gap-1.5">
                           {/* Chips de responsables asignados */}
                           {(responsablePrincipal ? [responsablePrincipal] : []).map((auditor: Auditor) => (
-                            <div key={auditor.id} className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-full px-3 py-1">
-                              <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ backgroundColor: rol.color }}>
-                                {auditor.nombre.split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                              </div>
-                              <span className="text-sm font-medium text-gray-900 flex-1">{auditor.nombre}</span>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  const nuevaConfig = rolesConfig.map(r => {
-                                    if (r.numero === rol.numero) {
-                                      return {
-                                        ...r,
-                                        responsables: r.responsables.filter((resp: any) => resp.id !== auditor.id)
-                                      };
-                                    }
-                                    return r;
-                                  });
-                                  onRolesChange(nuevaConfig);
-                                }}
-                                className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-red-100 text-gray-400 hover:text-red-600 text-xs transition-colors flex-shrink-0"
-                              >
-                                ×
-                              </button>
-                            </div>
+                            <FilaResponsableAsignado
+                              key={auditor.id}
+                              nombre={auditor.nombre}
+                              rolColor={rol.color}
+                              soloLectura={soloLectura}
+                              onQuitar={() => {
+                                const nuevaConfig = rolesConfig.map((r) => {
+                                  if (r.numero === rol.numero) {
+                                    return {
+                                      ...r,
+                                      responsables: r.responsables.filter(
+                                        (resp: any) => resp.id !== auditor.id,
+                                      ),
+                                    };
+                                  }
+                                  return r;
+                                });
+                                onRolesChange(nuevaConfig);
+                              }}
+                            />
                           ))}
                           {/* Dropdown para agregar  solo si no hay responsables */}
-                          {!responsablePrincipal && (
+                          {!soloLectura && !responsablePrincipal && (
                             <SelectorProfesional
-                              auditores={auditores.filter(a => !responsablesRol.some((r: any) => r.id === a.id) && !(a.cargo || '').toLowerCase().includes('aprobador pai'))}
+                              auditores={filtrarAuditoresParaAsignacion(auditores).filter(
+                                (a) => !responsablesRol.some((r: any) => r.id === a.id),
+                              )}
                               onSelect={(id) => {
                                 if (!id) return;
                                 const auditor = auditores.find(a => a.id === id);
@@ -2887,20 +3771,9 @@ function Paso2({
                                   const nuevaConfig = rolesConfig.map(r => {
                                     if (r.numero === rol.numero) {
                                       // Regla: el rol conserva solo un responsable principal
-                                      const nuevosResponsables = [auditor];
                                       return {
                                         ...r,
-                                        responsables: nuevosResponsables,
-                                        actividadesSeleccionadas: r.actividadesSeleccionadas.map(act => (
-                                          (!act.responsables || act.responsables.length === 0)
-                                            ? { ...act, responsables: [auditor] }
-                                            : act
-                                        )),
-                                        actividadesCustom: r.actividadesCustom.map(act => (
-                                          (!act.responsables || act.responsables.length === 0)
-                                            ? { ...act, responsables: [auditor] }
-                                            : act
-                                        ))
+                                        responsables: [auditor],
                                       };
                                     }
                                     return r;
@@ -2935,17 +3808,24 @@ function Paso2({
                                 style={{ contentVisibility: 'auto', containIntrinsicSize: '150px' }}
                                 className={`border-2 rounded-lg transition-colors ${
                                   seleccionada
-                                    ? 'border-blue-400 bg-blue-50'
+                                    ? soloLectura
+                                      ? 'border-slate-400 bg-slate-100'
+                                      : 'border-blue-400 bg-blue-50'
                                     : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                                 }`}
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <label className="flex items-start gap-3 p-3 cursor-pointer">
+                                <label className={`flex items-start gap-3 p-3 ${soloLectura ? 'cursor-default' : 'cursor-pointer'}`}>
                                   <input
                                     type="checkbox"
                                     checked={seleccionada}
+                                    disabled={soloLectura}
                                     onChange={() => toggleActividad(rol.numero, actId, actividad.nombre)}
-                                    className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-2 focus:ring-blue-500 mt-0.5 flex-shrink-0"
+                                    className={`w-5 h-5 rounded border-gray-300 mt-0.5 flex-shrink-0 ${
+                                      soloLectura
+                                        ? 'text-slate-500 accent-slate-500'
+                                        : 'text-blue-600 focus:ring-2 focus:ring-blue-500'
+                                    }`}
                                   />
                                   <div className="flex-1 min-w-0">
                                     {editandoActividadBase?.rolNumero === rol.numero && editandoActividadBase?.actId === idActividadEnEstado ? (
@@ -3019,17 +3899,6 @@ function Paso2({
                                     )}
                                     {seleccionada && actividadData && (
                                       <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                                        {/* Responsable inline */}
-                                        {(actividadData.responsables && actividadData.responsables.length > 0) ? (
-                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-medium">
-                                            x {actividadData.responsables[0].nombre}
-                                            {actividadData.responsables.length > 1 && ` +${actividadData.responsables.length - 1}`}
-                                          </span>
-                                        ) : (
-                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-medium">
-                                            ⚠ Sin responsable
-                                          </span>
-                                        )}
                                         {(actividadData.tipoEvidencia === 'OBSERVACIONES' || actividadData.tipoEvidencia === 'COMPLETO') && (
                                           <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-[10px] font-medium">
                                             <FileText className="w-2.5 h-2.5" />
@@ -3055,52 +3924,36 @@ function Paso2({
                                             📅 Corte: {fechaCorteMostrar}
                                           </span>
                                         )}
-                                        <div className="w-full mt-1.5 p-2 bg-indigo-50/60 border border-indigo-100 rounded-lg" onClick={(e) => e.stopPropagation()}>
-                                          <p className="text-[10px] font-semibold text-indigo-800 mb-1">Responsable de esta actividad</p>
-                                          <div className="flex items-center gap-2">
-                                            <SelectorProfesional
-                                              auditores={auditores}
-                                              placeholder={(actividadData.responsables && actividadData.responsables.length > 0) ? 'Cambiar responsable…' : '+ Asignar responsable…'}
-                                              onSelect={(id) => {
-                                                if (!id) return;
-                                                const auditor = auditores.find(a => a.id === id);
-                                                if (!auditor) return;
-                                                const nuevaConfig = rolesConfig.map(r => {
-                                                  if (r.numero !== rol.numero) return r;
-                                                  return {
-                                                    ...r,
-                                                    actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                      a.id === idActividadEnEstado ? { ...a, responsables: [auditor] } : a
-                                                    )
-                                                  };
-                                                });
-                                                onRolesChange(nuevaConfig);
-                                              }}
-                                            />
-                                            {(actividadData.responsables && actividadData.responsables.length > 0) && (
-                                              <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                  e.preventDefault();
-                                                  e.stopPropagation();
-                                                  const nuevaConfig = rolesConfig.map(r => {
-                                                    if (r.numero !== rol.numero) return r;
-                                                    return {
-                                                      ...r,
-                                                      actividadesSeleccionadas: r.actividadesSeleccionadas.map(a =>
-                                                        a.id === idActividadEnEstado ? { ...a, responsables: [] } : a
-                                                      )
-                                                    };
-                                                  });
-                                                  onRolesChange(nuevaConfig);
-                                                }}
-                                                className="px-2 py-1 text-[10px] font-semibold rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 transition-colors"
-                                              >
-                                                Quitar
-                                              </button>
-                                            )}
-                                          </div>
-                                        </div>
+                                        <ResponsableActividadPicker
+                                          responsable={actividadData.responsables?.[0]}
+                                          auditores={auditores}
+                                          rolColor={rol.color}
+                                          soloLectura={soloLectura}
+                                          onAsignar={(auditor) => {
+                                            const nuevaConfig = rolesConfig.map((r) => {
+                                              if (r.numero !== rol.numero) return r;
+                                              return {
+                                                ...r,
+                                                actividadesSeleccionadas: r.actividadesSeleccionadas.map((a) =>
+                                                  a.id === idActividadEnEstado ? { ...a, responsables: [auditor] } : a,
+                                                ),
+                                              };
+                                            });
+                                            onRolesChange(nuevaConfig);
+                                          }}
+                                          onQuitar={() => {
+                                            const nuevaConfig = rolesConfig.map((r) => {
+                                              if (r.numero !== rol.numero) return r;
+                                              return {
+                                                ...r,
+                                                actividadesSeleccionadas: r.actividadesSeleccionadas.map((a) =>
+                                                  a.id === idActividadEnEstado ? { ...a, responsables: [] } : a,
+                                                ),
+                                              };
+                                            });
+                                            onRolesChange(nuevaConfig);
+                                          }}
+                                        />
                                       </div>
                                     )}
                                   </div>
@@ -3113,7 +3966,7 @@ function Paso2({
                                     <label className="flex items-start gap-2 cursor-pointer p-2 hover:bg-blue-100/50 rounded-lg transition-colors">
                                       <input
                                         type="checkbox"
-                                        checked={actividadData?.requiereAutorizacionJefeOCI || false}
+                                        checked={leerRequiereAutorizacionJefeOCIDesdeActividad(actividadData)}
                                         onChange={(e) => {
                                           e.stopPropagation();
                                           toggleAutorizacionJefeOCI(idActividadEnEstado);
@@ -3246,14 +4099,20 @@ function Paso2({
                                           )}
                                         </div>
                                         <button
+                                          type="button"
+                                          disabled={soloLectura}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, false);
                                           }}
-                                          className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-semibold transition-colors"
+                                          className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-colors ${
+                                            soloLectura
+                                              ? 'bg-slate-400 text-slate-100 cursor-default'
+                                              : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                          }`}
                                         >
                                           <Settings className="w-3 h-3" />
-                                          Configurar
+                                          {soloLectura ? 'Ver cortes' : 'Configurar'}
                                         </button>
                                       </div>
 
@@ -3359,35 +4218,16 @@ function Paso2({
                                                                 </div>
                                                                 <div className="flex-1 min-w-0">
                                                                   <p className="text-xs font-medium text-gray-900 leading-snug">{tarea.descripcion}</p>
-                                                                  {(tarea.responsables || []).length > 0 && (
-                                                                    <div className="flex flex-wrap gap-1 mt-1">
-                                                                      {(tarea.responsables || []).map((resp, ri) => (
-                                                                        <span key={ri} className="inline-flex items-center gap-0.5 pl-0.5 pr-1 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[9px]">
-                                                                          <span className="w-3 h-3 rounded-full bg-blue-600 text-white flex items-center justify-center text-[6px] font-bold">
-                                                                            {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                                                                          </span>
-                                                                          <span className="text-blue-800 font-medium">{resp.split(' ').slice(0, 2).join(' ')}</span>
-                                                                          <button
-                                                                            type="button"
-                                                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateTareaCorte({ responsables: (tarea.responsables || []).filter((_, idx) => idx !== ri) }); }}
-                                                                            className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[7px] flex items-center justify-center transition-colors"
-                                                                          ></button>
-                                                                        </span>
-                                                                      ))}
-                                                                    </div>
-                                                                  )}
+                                                                  <ResponsableTareaPicker
+                                                soloLectura={soloLectura}
+                                                                    responsablesNombres={tarea.responsables}
+                                                                    auditores={auditores}
+                                                                    rolColor={rol.color}
+                                                                    onAsignar={(aud) => updateTareaCorte({ responsables: [aud.nombre] })}
+                                                                    onQuitar={() => updateTareaCorte({ responsables: [] })}
+                                                                  />
                                                                 </div>
                                                                 <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                                                                  {(tarea.responsables || []).length === 0 && (
-                                                                    <select
-                                                                      className="text-[9px] border border-gray-300 rounded px-0.5 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
-                                                                      value=""
-                                                                      onChange={(e) => { if (!e.target.value) return; const aud = auditores.find(a => a.id === e.target.value); if (!aud) return; updateTareaCorte({ responsables: [aud.nombre] }); }}
-                                                                    >
-                                                                      <option value="">+ Asignar</option>
-                                                                      {auditores.filter(a => !(tarea.responsables || []).includes(a.nombre)).map(a => (<option key={a.id} value={a.id}>{a.nombre}</option>))}
-                                                                    </select>
-                                                                  )}
                                                                   <button
                                                                     onClick={() => {
                                                                       const nuevaConfig = rolesConfig.map(r => ({ ...r, actividadesSeleccionadas: r.actividadesSeleccionadas.map(a => a.id === idActividadEnEstado ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a) }));
@@ -3508,17 +4348,6 @@ function Paso2({
                                     <p className="font-semibold text-gray-900 text-sm">{actividad.nombre}</p>
                                     <p className="text-xs text-gray-600 mt-1">{actividad.descripcion}</p>
                                     <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                                      {/* Responsable inline */}
-                                      {(actividad.responsables && actividad.responsables.length > 0) ? (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-[10px] font-medium">
-                                          x {actividad.responsables[0].nombre}
-                                          {actividad.responsables.length > 1 && ` +${actividad.responsables.length - 1}`}
-                                        </span>
-                                      ) : (
-                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 text-red-700 rounded-full text-[10px] font-medium">
-                                          ⚠ Sin responsable
-                                        </span>
-                                      )}
                                       {(actividad.tipoEvidencia === 'OBSERVACIONES' || actividad.tipoEvidencia === 'COMPLETO') && (
                                         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-[10px] font-medium">
                                           <FileText className="w-2.5 h-2.5" />
@@ -3544,52 +4373,36 @@ function Paso2({
                                           📅 Corte: {fechaCorteCustom}
                                         </span>
                                       )}
-                                      <div className="w-full mt-1.5 p-2 bg-indigo-50/60 border border-indigo-100 rounded-lg" onClick={(e) => e.stopPropagation()}>
-                                        <p className="text-[10px] font-semibold text-indigo-800 mb-1">Responsable de esta actividad</p>
-                                        <div className="flex items-center gap-2">
-                                          <SelectorProfesional
-                                            auditores={auditores}
-                                            placeholder={(actividad.responsables && actividad.responsables.length > 0) ? 'Cambiar responsable…' : '+ Asignar responsable…'}
-                                            onSelect={(id) => {
-                                              if (!id) return;
-                                              const auditor = auditores.find(a => a.id === id);
-                                              if (!auditor) return;
-                                              const nuevaConfig = rolesConfig.map(r => {
-                                                if (r.numero !== rol.numero) return r;
-                                                return {
-                                                  ...r,
-                                                  actividadesCustom: r.actividadesCustom.map((act, i) =>
-                                                    i === index ? { ...act, responsables: [auditor] } : act
-                                                  )
-                                                };
-                                              });
-                                              onRolesChange(nuevaConfig);
-                                            }}
-                                          />
-                                          {(actividad.responsables && actividad.responsables.length > 0) && (
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                const nuevaConfig = rolesConfig.map(r => {
-                                                  if (r.numero !== rol.numero) return r;
-                                                  return {
-                                                    ...r,
-                                                    actividadesCustom: r.actividadesCustom.map((act, i) =>
-                                                      i === index ? { ...act, responsables: [] } : act
-                                                    )
-                                                  };
-                                                });
-                                                onRolesChange(nuevaConfig);
-                                              }}
-                                              className="px-2 py-1 text-[10px] font-semibold rounded border border-red-200 text-red-600 bg-white hover:bg-red-50 transition-colors"
-                                            >
-                                              Quitar
-                                            </button>
-                                          )}
-                                        </div>
-                                      </div>
+                                      <ResponsableActividadPicker
+                                        responsable={actividad.responsables?.[0]}
+                                        auditores={auditores}
+                                        rolColor={rol.color}
+                                        soloLectura={soloLectura}
+                                        onAsignar={(auditor) => {
+                                          const nuevaConfig = rolesConfig.map((r) => {
+                                            if (r.numero !== rol.numero) return r;
+                                            return {
+                                              ...r,
+                                              actividadesCustom: r.actividadesCustom.map((act, i) =>
+                                                i === index ? { ...act, responsables: [auditor] } : act,
+                                              ),
+                                            };
+                                          });
+                                          onRolesChange(nuevaConfig);
+                                        }}
+                                        onQuitar={() => {
+                                          const nuevaConfig = rolesConfig.map((r) => {
+                                            if (r.numero !== rol.numero) return r;
+                                            return {
+                                              ...r,
+                                              actividadesCustom: r.actividadesCustom.map((act, i) =>
+                                                i === index ? { ...act, responsables: [] } : act,
+                                              ),
+                                            };
+                                          });
+                                          onRolesChange(nuevaConfig);
+                                        }}
+                                      />
                                     </div>
                                   </div>
                                   <button
@@ -3613,7 +4426,7 @@ function Paso2({
                                   <label className="flex items-start gap-2 cursor-pointer p-2 hover:bg-green-100/50 rounded-lg transition-colors">
                                     <input
                                       type="checkbox"
-                                      checked={actividad.requiereAutorizacionJefeOCI || false}
+                                      checked={leerRequiereAutorizacionJefeOCIDesdeActividad(actividad)}
                                       onChange={(e) => {
                                         e.stopPropagation();
                                         toggleAutorizacionCustom(rol.numero, index);
@@ -3711,14 +4524,20 @@ function Paso2({
                                         )}
                                       </div>
                                       <button
+                                        type="button"
+                                        disabled={soloLectura}
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, true, index);
                                         }}
-                                        className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-semibold transition-colors"
+                                        className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-colors ${
+                                          soloLectura
+                                            ? 'bg-slate-400 text-slate-100 cursor-default'
+                                            : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                        }`}
                                       >
                                         <Settings className="w-3 h-3" />
-                                        Configurar
+                                        {soloLectura ? 'Ver cortes' : 'Configurar'}
                                       </button>
                                     </div>
 
@@ -3825,35 +4644,16 @@ function Paso2({
                                                                 </div>
                                                                 <div className="flex-1 min-w-0">
                                                                   <p className="text-[11px] font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
-                                                                  {(tarea.responsables || []).length > 0 && (
-                                                                    <div className="flex flex-wrap gap-1 mt-1">
-                                                                      {(tarea.responsables || []).map((resp, ri) => (
-                                                                        <span key={ri} className="inline-flex items-center gap-0.5 pl-0.5 pr-1 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[9px]">
-                                                                          <span className="w-3 h-3 rounded-full bg-blue-600 text-white flex items-center justify-center text-[6px] font-bold">
-                                                                            {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                                                                          </span>
-                                                                          <span className="text-blue-800 font-medium">{resp.split(' ').slice(0, 2).join(' ')}</span>
-                                                                          <button
-                                                                            type="button"
-                                                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); updateTareaCorteCustom({ responsables: (tarea.responsables || []).filter((_, idx) => idx !== ri) }); }}
-                                                                            className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[7px] flex items-center justify-center transition-colors"
-                                                                          ></button>
-                                                                        </span>
-                                                                      ))}
-                                                                    </div>
-                                                                  )}
+                                                                  <ResponsableTareaPicker
+                                                soloLectura={soloLectura}
+                                                                    responsablesNombres={tarea.responsables}
+                                                                    auditores={auditores}
+                                                                    rolColor={rol.color}
+                                                                    onAsignar={(aud) => updateTareaCorteCustom({ responsables: [aud.nombre] })}
+                                                                    onQuitar={() => updateTareaCorteCustom({ responsables: [] })}
+                                                                  />
                                                                 </div>
                                                                 <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                                                                  {(tarea.responsables || []).length === 0 && (
-                                                                    <select
-                                                                      className="text-[9px] border border-gray-300 rounded px-0.5 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
-                                                                      value=""
-                                                                      onChange={(e) => { if (!e.target.value) return; const aud = auditores.find(a => a.id === e.target.value); if (!aud) return; updateTareaCorteCustom({ responsables: [aud.nombre] }); }}
-                                                                    >
-                                                                      <option value="">+ Asignar</option>
-                                                                      {auditores.filter(a => !(tarea.responsables || []).includes(a.nombre)).map(a => (<option key={a.id} value={a.id}>{a.nombre}</option>))}
-                                                                    </select>
-                                                                  )}
                                                                   <button
                                                                     onClick={() => {
                                                                       const nuevaConfig = rolesConfig.map(r => { if (r.numero !== rol.numero) return r; return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) => i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).filter(t => t.id !== tarea.id) } : a) }; });
@@ -3981,53 +4781,17 @@ function Paso2({
                                             </div>
                                             <div className="flex-1 min-w-0">
                                               <p className="text-sm font-medium text-gray-900 leading-tight">{tarea.descripcion}</p>
-                                              {(tarea.responsables || []).length > 0 && (
-                                                <div className="flex flex-wrap gap-1 mt-1.5">
-                                                  {(tarea.responsables || []).map((resp, ri) => (
-                                                    <span key={ri} className="inline-flex items-center gap-1 pl-0.5 pr-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-[10px]">
-                                                      <span className="w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[7px] font-bold">
-                                                        {resp.split(' ').filter(Boolean).map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                                                      </span>
-                                                      <span className="text-blue-800 font-medium">{resp.split(' ').slice(0, 2).join(' ')}</span>
-                                                      <button
-                                                        onClick={() => {
-                                                          const nuevaConfig = rolesConfig.map(r => {
-                                                            if (r.numero !== rol.numero) return r;
-                                                            return { ...r, actividadesCustom: r.actividadesCustom.map((a, i) =>
-                                                              i === index ? { ...a, tareasSeguimiento: (a.tareasSeguimiento || []).map(t => t.id === tarea.id ? { ...t, responsables: (t.responsables || []).filter((_, idx) => idx !== ri) } : t) } : a
-                                                            )};
-                                                          });
-                                                          onRolesChange(nuevaConfig);
-                                                        }}
-                                                        className="w-3 h-3 rounded-full hover:bg-red-200 text-blue-400 hover:text-red-600 text-[8px] flex items-center justify-center transition-colors"
-                                                      ></button>
-                                                    </span>
-                                                  ))}
-                                                </div>
-                                              )}
+                                              <ResponsableTareaPicker
+                                                soloLectura={soloLectura}
+                                                responsablesNombres={tarea.responsables}
+                                                auditores={auditores}
+                                                rolColor={rol.color}
+                                                onAsignar={(aud) => updateTareaCustom({ responsables: [aud.nombre] })}
+                                                onQuitar={() => updateTareaCustom({ responsables: [] })}
+                                              />
                                             </div>
                                             {/* Acciones */}
                                             <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                                              {(tarea.responsables || []).length === 0 && (
-                                                <select
-                                                  className="text-[10px] border border-gray-300 rounded-md px-1 py-0.5 text-gray-500 bg-white hover:border-blue-400 cursor-pointer"
-                                                  value=""
-                                                  onChange={(e) => {
-                                                    if (!e.target.value) return;
-                                                    const aud = auditores.find(a => a.id === e.target.value);
-                                                    if (!aud) return;
-                                                    // Solo permitir un responsable por tarea personalizada
-                                                    updateTareaCustom({ responsables: [aud.nombre] });
-                                                  }}
-                                                >
-                                                  <option value="">+ Asignar</option>
-                                                  {auditores
-                                                    .filter(a => !(tarea.responsables || []).includes(a.nombre))
-                                                    .map(a => (
-                                                      <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Profesional'}</option>
-                                                    ))}
-                                                </select>
-                                              )}
                                               <button
                                                 onClick={() => {
                                                   const nuevaConfig = rolesConfig.map(r => {
@@ -4280,7 +5044,8 @@ function Paso3({
   vigencia, 
   jefeOCI, 
   rolesConfig,
-  auditores = [],
+  soloLectura = false,
+  aprobadoresComite = [],
   comiteAprobacion = [],
   setComiteAprobacion,
   ordenAprobacion,
@@ -4303,14 +5068,26 @@ function Paso3({
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
       <div className="text-center mb-8">
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
-          <Check className="w-8 h-8 text-green-600" />
+        <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${
+          soloLectura ? 'bg-slate-200' : 'bg-green-100'
+        }`}>
+          <Check className={`w-8 h-8 ${soloLectura ? 'text-slate-600' : 'text-green-600'}`} />
         </div>
-        <h2 className="text-3xl font-bold text-gray-900 mb-3">Confirmación</h2>
-        <p className="text-gray-600">Revisa la información antes de crear el plan</p>
+        <h2 className={`text-3xl font-bold mb-3 ${soloLectura ? 'text-slate-800' : 'text-gray-900'}`}>Confirmación</h2>
+        <p className={soloLectura ? 'text-slate-600' : 'text-gray-600'}>
+          {soloLectura
+            ? 'Solo consulta: resumen del plan y comité aprobador (sin modificar).'
+            : 'Revisa la información antes de crear el plan'}
+        </p>
       </div>
 
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-8">
+      {soloLectura && (
+        <div className="rounded-xl border-2 border-slate-300 bg-slate-100 px-4 py-3 text-sm text-slate-800">
+          <strong className="font-semibold">Modo solo consulta.</strong> El comité aprobador y el orden de firma se muestran únicamente para revisión.
+        </div>
+      )}
+
+      <div className={`rounded-xl border-2 p-8 ${soloLectura ? 'bg-slate-50 border-slate-300' : 'bg-white border-gray-200'}`}>
         <h3 className="font-bold text-gray-900 mb-4">Resumen del plan</h3>
         <div className="space-y-3 text-sm">
           <div className="flex justify-between py-2 border-b border-gray-200">
@@ -4353,14 +5130,19 @@ function Paso3({
           <div className="flex items-center justify-between mb-4">
             <div>
               <h4 className="font-bold text-gray-900 flex items-center gap-2">
-                <Users className="w-5 h-5 text-blue-600" />
+                <Users className={`w-5 h-5 ${soloLectura ? 'text-slate-600' : 'text-blue-600'}`} />
                 Comité Aprobador del Plan
               </h4>
-              <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                <Shield className="w-3 h-3 text-blue-400" /> Numeral 648 de 2017: Selecciona hasta 5 miembros aprobadores.
+              <p className="text-xs text-gray-500 mt-1">
+                Solo usuarios con permiso <strong>Aprobar plan anual</strong> (<code className="text-[10px]">control-interno.plan-anual.approve</code>). No es el equipo operativo de auditorías.
               </p>
             </div>
             
+            {soloLectura ? (
+              <span className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-200 text-slate-800 border border-slate-300">
+                Orden: {ordenAprobacion === 'paralelo' ? 'Paralelo' : 'Secuencial'}
+              </span>
+            ) : (
             <div className="flex bg-gray-100 p-1 rounded-lg">
               <button
                 type="button"
@@ -4377,45 +5159,51 @@ function Paso3({
                 ⚡ Paralelo
               </button>
             </div>
+            )}
           </div>
 
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-5 shadow-inner">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className={`rounded-xl p-5 shadow-inner border ${
+            soloLectura ? 'bg-slate-100 border-slate-300' : 'bg-blue-50 border-blue-100'
+          }`}>
+            <div className={`grid grid-cols-1 gap-8 ${soloLectura ? '' : 'md:grid-cols-2'}`}>
               
               {/* Buscador */}
+              {!soloLectura && (
               <div className="space-y-3">
                 <label className="text-xs font-bold text-blue-900 uppercase tracking-wider">Agregar Miembro</label>
                 <div className="relative">
                   <SelectorProfesional
-                    auditores={auditores.filter((a: any) => {
-                      // Filtrar exclusivamente para mostrar el perfil OCID Aprobador PAI
-                      const esAprobador = /aprobador pai/i.test(a.cargo || '');
+                    auditores={aprobadoresComite.filter((a: any) => {
                       const yaSeleccionado = comiteAprobacion.find((c: any) => String(c.id) === String(a.id));
-                      return esAprobador && !yaSeleccionado;
+                      return !yaSeleccionado;
                     })}
                     onSelect={(id) => {
-                      if (!id || comiteAprobacion.length >= 5) return;
-                      const auditor = auditores.find((a: any) => String(a.id) === String(id));
+                      if (!id) return;
+                      const auditor = aprobadoresComite.find((a: any) => String(a.id) === String(id));
                       if (auditor && setComiteAprobacion) {
                         setComiteAprobacion([...comiteAprobacion, auditor]);
                       }
                     }}
-                    placeholder={comiteAprobacion.length >= 5 ? "Límite de 5 miembros alcanzado" : "+ Buscar Aprobador PAI..."}
-                    disabled={comiteAprobacion.length >= 5}
+                    placeholder="+ Agregar miembro del comité..."
                     className="w-full bg-white shadow-sm"
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 leading-tight bg-white/50 p-2 rounded border border-blue-100">
-                  <span className="font-semibold text-blue-600">Tip:</span> Dependiendo de la jerarquía de la ESAP, elige estratégicamente el orden si optaste por modalidad secuencial.
+                  <span className="font-semibold text-blue-600">Tip:</span> Solo aparecen usuarios con permiso <code className="text-[9px]">control-interno.plan-anual.approve</code>. El orden importa si el flujo es secuencial.
                 </p>
               </div>
+              )}
 
               {/* Lista Seleccionada */}
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <label className="text-xs font-bold text-blue-900 uppercase tracking-wider">Flujo de Aprobación</label>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${comiteAprobacion.length === 5 ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                    {comiteAprobacion.length} / 5
+                  <label className={`text-xs font-bold uppercase tracking-wider ${soloLectura ? 'text-slate-700' : 'text-blue-900'}`}>
+                    Flujo de Aprobación
+                  </label>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    soloLectura ? 'bg-slate-200 text-slate-700' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {comiteAprobacion.length} miembro(s)
                   </span>
                 </div>
                 
@@ -4446,14 +5234,24 @@ function Paso3({
                       return (
                         <div 
                           key={miembro.id} 
-                          draggable
-                          onDragStart={(e) => handleDragStartAprobador(e, index)}
-                          onDragOver={handleDragOverAprobador}
-                          onDrop={(e) => handleDropAprobador(e, index)}
-                          onDragEnd={() => setDraggedAprobadorIndex(null)}
-                          className={`relative flex items-center gap-3 p-2.5 bg-white border rounded-xl shadow-sm group transition-all z-10 cursor-grab active:cursor-grabbing ${draggedAprobadorIndex === index ? 'opacity-50 border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}`}
+                          draggable={!soloLectura}
+                          onDragStart={soloLectura ? undefined : (e) => handleDragStartAprobador(e, index)}
+                          onDragOver={soloLectura ? undefined : handleDragOverAprobador}
+                          onDrop={soloLectura ? undefined : (e) => handleDropAprobador(e, index)}
+                          onDragEnd={soloLectura ? undefined : () => setDraggedAprobadorIndex(null)}
+                          className={`relative flex items-center gap-3 p-2.5 bg-white border rounded-xl shadow-sm group transition-all z-10 ${
+                            soloLectura
+                              ? 'border-slate-200 cursor-default'
+                              : `cursor-grab active:cursor-grabbing ${draggedAprobadorIndex === index ? 'opacity-50 border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}`
+                          }`}
                         >
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${ordenAprobacion === 'secuencial' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-100 text-blue-700'}`}>
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                            soloLectura
+                              ? 'bg-slate-500 text-white'
+                              : ordenAprobacion === 'secuencial'
+                                ? 'bg-blue-600 text-white shadow-sm'
+                                : 'bg-blue-100 text-blue-700'
+                          }`}>
                             {ordenAprobacion === 'secuencial' ? index + 1 : '•'}
                           </div>
                           
@@ -4470,17 +5268,20 @@ function Paso3({
                             {miembro.cargo || 'Funcionario'}
                           </span>
 
-                          <button
-                            type="button"
-                            onClick={() => setComiteAprobacion && setComiteAprobacion(comiteAprobacion.filter((c: any) => c.id !== miembro.id))}
-                            className="w-7 h-7 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all ml-1"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                          </button>
-                          
-                          <div className="text-gray-300 cursor-grab active:cursor-grabbing hover:text-blue-500">
-                            <GripVertical className="w-5 h-5" />
-                          </div>
+                          {!soloLectura && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setComiteAprobacion && setComiteAprobacion(comiteAprobacion.filter((c: any) => c.id !== miembro.id))}
+                                className="w-7 h-7 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all ml-1"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                              <div className="text-gray-300 cursor-grab active:cursor-grabbing hover:text-blue-500">
+                                <GripVertical className="w-5 h-5" />
+                              </div>
+                            </>
+                          )}
                         </div>
                       );
                     })}
@@ -4531,6 +5332,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
   
   // Estado para auditores cargados desde backend
   const [auditores, setAuditores] = useState<Auditor[]>([]);
+  const [aprobadoresComite, setAprobadoresComite] = useState<Auditor[]>([]);
   const [cargandoAuditores, setCargandoAuditores] = useState(true);
 
   // Cargar usuario actual para filtros de visibilidad
@@ -4599,17 +5401,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         const response = await configuracionesProfesionalesOCIApi.getAll();
         if (response.success && response.data) {
           // Mapear profesionales OCI a formato Auditor
-          const auditoresMapeados: Auditor[] = response.data
-            .filter((p) => p.activo && p.nombre)
-            .map((p) => {
-              const idPersona = String(p.idTercero || p.id_tercero || p.id || '');
-              return {
-                id: idPersona,
-                nombre: p.nombre || '',
-                cargo: p.rolOcig || p.rolOCI || p.cargo || 'Profesional OCI',
-                email: p.email || '',
-              };
-            });
+          const auditoresMapeados = mapearProfesionalesOCIGDesdeApi(response.data);
           console.log('[useAuditores] Profesionales mapeados:', auditoresMapeados.map(a => `${a.nombre} (${a.cargo})`));
           setAuditores(auditoresMapeados);
         }
@@ -4621,6 +5413,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
     };
     
     cargarAuditores();
+    void cargarListaAprobadoresComite().then(setAprobadoresComite);
   }, []);
 
   // Sincronizar plan activo en localStorage cuando el plan cambia
@@ -5090,31 +5883,40 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
 
           {/* Derecha: selector de plan + botones de acción */}
           <div className="flex flex-row flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
-            {planesDisponibles.length > 1 && onCambiarPlan && (
-              <select
-                value={plan.id}
-                onChange={(e) => {
-                  const planSeleccionado = planesDisponibles.find(p => p.id === e.target.value);
-                  if (planSeleccionado) {
-                    localStorage.setItem(PLAN_ANUAL_STORAGE_KEY, JSON.stringify({
-                      id: planSeleccionado.id,
-                      vigencia: planSeleccionado.vigencia,
-                      estado: planSeleccionado.estado,
-                      version: planSeleccionado.version,
-                      jefeOCINombre: planSeleccionado.jefeOCI?.nombre ?? '',
-                      fechaCorte: `${planSeleccionado.vigencia}-12-31`
-                    }));
-                  }
-                  onCambiarPlan(e.target.value);
-                }}
-                className="px-3 py-1.5 sm:py-2 border-2 border-blue-300 rounded-lg text-sm font-medium bg-blue-50 text-blue-900 focus:outline-none focus:border-blue-500"
-              >
-                {planesDisponibles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.vigencia} - {p.estado} (v{p.version})
-                  </option>
-                ))}
-              </select>
+            {planesDisponibles.length > 0 && onCambiarPlan && (
+              <div className="flex items-center gap-2" style={{display: 'none'}}>
+                <label
+                  htmlFor="dashboard-plan-vigencia-select"
+                  className="text-xs sm:text-sm font-semibold text-gray-700 whitespace-nowrap"
+                >
+                  Vigencia plan anual
+                </label>
+                <select
+                  id="dashboard-plan-vigencia-select"
+                  value={plan.id}
+                  onChange={(e) => {
+                    const planSeleccionado = planesDisponibles.find(p => p.id === e.target.value);
+                    if (planSeleccionado) {
+                      localStorage.setItem(PLAN_ANUAL_STORAGE_KEY, JSON.stringify({
+                        id: planSeleccionado.id,
+                        vigencia: planSeleccionado.vigencia,
+                        estado: planSeleccionado.estado,
+                        version: planSeleccionado.version,
+                        jefeOCINombre: planSeleccionado.jefeOCI?.nombre ?? '',
+                        fechaCorte: `${planSeleccionado.vigencia}-12-31`
+                      }));
+                    }
+                    onCambiarPlan(e.target.value);
+                  }}
+                  className="px-3 py-1.5 sm:py-2 border-2 border-blue-300 rounded-lg text-sm font-medium bg-blue-50 text-blue-900 focus:outline-none focus:border-blue-500 min-w-[140px]"
+                >
+                  {planesDisponibles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.vigencia} - {p.estado} (v{p.version})
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
 
             {onCrearNuevo && (
@@ -5127,18 +5929,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
               </button>
             )}
 
-            {onVerDefinicionPlan && (
-              <button
-                type="button"
-                onClick={() => onVerDefinicionPlan(plan)}
-                className="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-white border-2 border-slate-300 hover:bg-slate-50 text-slate-800 rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-sm text-xs sm:text-sm whitespace-nowrap"
-                title="Abrir el mismo asistente de definición del plan, solo para consulta"
-              >
-                <BookOpen className="w-4 h-4 shrink-0" />
-                Ver definición
-              </button>
-            )}
-
+        
             {(puedeExportarPlan || puedeSeguimiento || esSuperUsuario) && (
             <button
               type="button"
@@ -5452,7 +6243,7 @@ export function DashboardPlan({ plan, onActualizar, onRefetchPlan, onVolver, onA
         <div className="max-w-7xl mx-auto">
           <AnimatePresence mode="wait">
             {seccion === 'gestion' && <SeccionGestionYSeguimiento key="gestion" plan={plan} planesAnteriores={planesAnteriores} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} onAbrirRol4={onAbrirRol4} auditores={auditores} cargandoAuditores={cargandoAuditores} onEditarPlan={onEditarPlan} onVerDefinicionPlan={onVerDefinicionPlan} />}
-            {seccion === 'aprobar' && <SeccionAprobacion key="aprobar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} puedeAprobarPlan={puedeAprobarPlan} puedeActivarPlan={puedeActivarPlan} puedeEditarPlan={puedeEditarPlan} auditores={auditores} />}
+            {seccion === 'aprobar' && <SeccionAprobacion key="aprobar" plan={plan} onActualizar={onActualizar} onRefetchPlan={onRefetchPlan} puedeAprobarPlan={puedeAprobarPlan} puedeActivarPlan={puedeActivarPlan} puedeEditarPlan={puedeEditarPlan} aprobadoresComite={aprobadoresComite} />}
           </AnimatePresence>
         </div>
       </div>
@@ -8882,7 +9673,7 @@ const ESTADO_PLAN_A_BACKEND: Record<EstadoPlan, string> = {
   DEVUELTO: 'borrador', // Backend doesn't have devuelto yet, fallback to borrador
 };
 
-function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan = false, puedeActivarPlan = false, puedeEditarPlan = false, auditores = [] }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; puedeAprobarPlan?: boolean; puedeActivarPlan?: boolean; puedeEditarPlan?: boolean; auditores?: Auditor[] }) {
+function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan = false, puedeActivarPlan = false, puedeEditarPlan = false, aprobadoresComite = [] }: { plan: PlanAnual; onActualizar: (plan: PlanAnual) => void; onRefetchPlan?: () => void; puedeAprobarPlan?: boolean; puedeActivarPlan?: boolean; puedeEditarPlan?: boolean; aprobadoresComite?: Auditor[] }) {
   const [guardando, setGuardando] = useState(false);
   const [notificandoResponsable, setNotificandoResponsable] = useState(false);
   const currentUser = (window as any).__esap_auth_cache || null;
@@ -9358,7 +10149,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
           <div className="flex items-center justify-between mb-3 border-b pb-2 border-gray-100">
             <h3 className="font-bold text-gray-800 text-sm uppercase tracking-wider flex items-center gap-2">
               <Users className="w-5 h-5 text-gray-400" />
-              Comité Aprobador PAI ({equipo.length})
+              Comité de aprobación del PAI ({equipo.length})
             </h3>
             {(plan.estado === 'BORRADOR' || plan.estado === 'DEVUELTO') && puedeEditarPlan && esResponsableDelPlan && !isEditingCommittee && (
               <button 
@@ -9379,7 +10170,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <h4 className="font-bold text-gray-900">Configuración del Comité</h4>
-                  <p className="text-xs text-gray-500">Añade o remueve miembros y establece el orden de flujo.</p>
+                  <p className="text-xs text-gray-500">Usuarios con permiso <code className="text-[10px]">control-interno.plan-anual.approve</code>. Añade los miembros que participarán en la aprobación.</p>
                 </div>
                 <div className="flex bg-gray-100 p-1 rounded-lg">
                   <button onClick={() => setOrdenDraft('secuencial')} className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${ordenDraft === 'secuencial' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>Secuencial</button>
@@ -9390,18 +10181,16 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
               {/* Autocomplete para añadir (simplificado) */}
               <div className="mb-4">
                 <SelectorProfesional
-                  auditores={auditores.filter((a: any) => {
-                    const esAprobador = /aprobador/i.test(a.cargo || '');
+                  auditores={aprobadoresComite.filter((a: any) => {
                     const yaSeleccionado = comiteDraft.find(c => String(c.id) === String(a.id));
-                    return esAprobador && !yaSeleccionado;
+                    return !yaSeleccionado;
                   })}
                   onSelect={(id) => {
-                    if (!id || comiteDraft.length >= 5) return;
-                    const auditor = auditores.find(a => String(a.id) === String(id));
+                    if (!id) return;
+                    const auditor = aprobadoresComite.find(a => String(a.id) === String(id));
                     if (auditor) setComiteDraft([...comiteDraft, auditor]);
                   }}
-                  placeholder={comiteDraft.length >= 5 ? "Límite de 5 miembros alcanzado" : "+ Agregar Aprobador PAI..."}
-                  disabled={comiteDraft.length >= 5}
+                  placeholder="+ Agregar miembro del comité..."
                 />
               </div>
 
@@ -9639,7 +10428,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
                             isAprobado ? 'bg-green-50 text-green-700 border border-green-100' :
                             'bg-gray-50 text-gray-500 border border-gray-100'
                           }`}>
-                            {aprobador.cargo || 'Aprobador PAI'}
+                            {aprobador.cargo || 'Aprobador plan anual'}
                           </span>
                         </div>
                       </div>

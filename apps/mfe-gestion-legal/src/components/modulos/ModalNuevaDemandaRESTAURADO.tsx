@@ -121,6 +121,8 @@ export interface NuevaDemandaData {
   observaciones: string;
   esDelitoAdminPublica: boolean;
   esConductaPatrimonioPublico: boolean;
+  esOtroDelitoPenal: boolean;
+  otroDelitoPenalDescripcion: string;
 }
 
 interface ModalNuevaDemandaRESTAURADOProps {
@@ -278,7 +280,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
     hechos: '',
     observaciones: '',
     esDelitoAdminPublica: false,
-    esConductaPatrimonioPublico: false
+    esConductaPatrimonioPublico: false,
+    esOtroDelitoPenal: false,
+    otroDelitoPenalDescripcion: ''
   });
 
   const [ciudadesDisponibles, setCiudadesDisponibles] = useState<string[]>([]);
@@ -350,7 +354,7 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           departamento: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[1].trim() : '') : '',
           ciudad: expedienteEdit.ubicacionFisica ? (expedienteEdit.ubicacionFisica.includes('-') ? expedienteEdit.ubicacionFisica.split('-')[0].trim() : expedienteEdit.ubicacionFisica) : '',
           tipoPlazo: expedienteEdit.tipoConteoTermino === 'CALENDARIO' ? 'Dias Calendario' : 'Dias Habiles',
-          termino: expedienteEdit.diasTotales || 30,
+          termino: expedienteEdit.diasTotales || (tiposProcesosActivos.find(tp => tp.nombre === (expedienteEdit.tipoProceso || expedienteEdit.tipo || ''))?.plazo) || 30,
           fechaNotificacion: expedienteEdit.fechaNotificacion ?
             (typeof expedienteEdit.fechaNotificacion === 'string' ? new Date(expedienteEdit.fechaNotificacion).toISOString().slice(0, 16) :
               toLocalISO(expedienteEdit.fechaNotificacion)) : '',
@@ -362,7 +366,9 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           hechos: expedienteEdit.hechos || '',
           observaciones: '',
           esDelitoAdminPublica: (expedienteEdit as any).esDelitoAdminPublica || false,
-          esConductaPatrimonioPublico: (expedienteEdit as any).esConductaPatrimonioPublico || false
+          esConductaPatrimonioPublico: (expedienteEdit as any).esConductaPatrimonioPublico || false,
+          esOtroDelitoPenal: (expedienteEdit as any).esOtroDelitoPenal || false,
+          otroDelitoPenalDescripcion: (expedienteEdit as any).otroDelitoPenalDescripcion || ''
         });
         setCiudadesDisponibles([]);
       } else {
@@ -392,12 +398,24 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           hechos: '',
           observaciones: '',
           esDelitoAdminPublica: false,
-          esConductaPatrimonioPublico: false
+          esConductaPatrimonioPublico: false,
+          esOtroDelitoPenal: false,
+          otroDelitoPenalDescripcion: ''
         });
         setCiudadesDisponibles([]);
       }
     }
   }, [isOpen, expedienteEdit]);
+
+  // Auto-poblar termino desde el plazo configurado al seleccionar tipo de proceso (solo en creación)
+  useEffect(() => {
+    if (expedienteEdit) return;
+    if (!formData.tipoProcesoJudicial) return;
+    const tp = tiposProcesosActivos.find(t => t.nombre === formData.tipoProcesoJudicial);
+    if (tp && tp.plazo) {
+      setFormData(prev => ({ ...prev, termino: tp.plazo }));
+    }
+  }, [formData.tipoProcesoJudicial]);
 
   // Calcular fecha de vencimiento automáticamente
   useEffect(() => {
@@ -590,9 +608,15 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           });
           return false;
         }
-        if (formData.tipoProcesoJudicial === 'Proceso Penal' && !formData.esDelitoAdminPublica && !formData.esConductaPatrimonioPublico) {
+        if (formData.tipoProcesoJudicial === 'Proceso Penal' && !formData.esDelitoAdminPublica && !formData.esConductaPatrimonioPublico && !(formData as any).esOtroDelitoPenal) {
           toast.error('⚠️ Clasificación penal requerida', {
-            description: 'Debe seleccionar al menos una clasificación: Delitos contra la Administración Pública y/o Conductas que afectan el Patrimonio Público'
+            description: 'Debe seleccionar al menos una clasificación penal'
+          });
+          return false;
+        }
+        if (formData.tipoProcesoJudicial === 'Proceso Penal' && (formData as any).esOtroDelitoPenal && !((formData as any).otroDelitoPenalDescripcion || '').trim()) {
+          toast.error('⚠️ Descripción requerida', {
+            description: 'Debe describir el tipo de delito en el campo "Otros"'
           });
           return false;
         }
@@ -785,6 +809,8 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
           // Clasificación penal
           esDelitoAdminPublica: formData.esDelitoAdminPublica || false,
           esConductaPatrimonioPublico: formData.esConductaPatrimonioPublico || false,
+          esOtroDelitoPenal: (formData as any).esOtroDelitoPenal || false,
+          otroDelitoPenalDescripcion: (formData as any).otroDelitoPenalDescripcion || undefined,
           // Demandantes, Demandados, and Otros Actores arrays are NOT saved sequentially by updateExpediente
         };
       } else {
@@ -974,7 +1000,10 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                         </Label>
                         <Select
                           value={formData.tipoProcesoJudicial}
-                          onValueChange={(value: string) => setFormData({ ...formData, tipoProcesoJudicial: value })}
+                          onValueChange={(value: string) => {
+                            const tp = tiposProcesosActivos.find(t => t.nombre === value);
+                            setFormData({ ...formData, tipoProcesoJudicial: value, ...(tp?.plazo ? { termino: tp.plazo } : {}) });
+                          }}
                         >
                           <SelectTrigger id="tipoProcesoJudicial" className="bg-white">
                             <SelectValue placeholder="Seleccione tipo de proceso..." />
@@ -1023,6 +1052,29 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
                                   <p className="text-xs text-gray-500">El asunto involucra conductas que comprometen recursos o bienes del Estado</p>
                                 </div>
                               </label>
+                              <label className="flex items-start gap-3 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={(formData as any).esOtroDelitoPenal || false}
+                                  onChange={(e) => setFormData({ ...formData, esOtroDelitoPenal: e.target.checked } as any)}
+                                  className="mt-0.5 w-4 h-4 rounded border-red-300 text-red-600 focus:ring-red-500"
+                                />
+                                <div className="flex-1">
+                                  <span className="text-sm font-semibold text-gray-800 group-hover:text-red-800">Otros</span>
+                                  <p className="text-xs text-gray-500">Proceso penal que no corresponde a las categorías anteriores</p>
+                                </div>
+                              </label>
+                              {(formData as any).esOtroDelitoPenal && (
+                                <div className="ml-7">
+                                  <Input
+                                    placeholder="Describa el tipo de delito..."
+                                    value={(formData as any).otroDelitoPenalDescripcion || ''}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, otroDelitoPenalDescripcion: e.target.value } as any)}
+                                    className="bg-white border-red-200 focus:border-red-400 text-sm"
+                                    maxLength={200}
+                                  />
+                                </div>
+                              )}
                             </div>
                           </Card>
                         </div>
@@ -1832,19 +1884,16 @@ export function ModalNuevaDemandaRESTAURADO({ isOpen, onClose, onSave, expedient
 
                       <div className="space-y-2">
                         <Label htmlFor="termino" className="text-sm font-bold text-gray-700">
-                          Término (Días) <span className="text-red-500">*</span>
+                          Término (Días)
                         </Label>
                         <Input
                           id="termino"
                           type="text"
-                          inputMode="numeric"
-                          placeholder="30"
+                          readOnly
                           value={formData.termino === 0 ? '' : String(formData.termino)}
-                          onChange={(e) => {
-                            const raw = soloDigitos(e.target.value).slice(0, 4);
-                            setFormData({ ...formData, termino: parseInt(raw, 10) || 0 });
-                          }}
+                          className="bg-gray-100 cursor-not-allowed text-gray-600"
                         />
+                        <p className="text-xs text-gray-500">Definido por el tipo de proceso en Configuraciones</p>
                       </div>
 
                       <div className="space-y-2">

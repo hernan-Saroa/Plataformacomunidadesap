@@ -356,7 +356,7 @@ export class NewsService {
    * Actualiza los datos de una noticia (edición por Profesional)
    * Registra los cambios en el historial de auditoría
    */
-  async update(id: string, data: any): Promise<DisciplinaryNews> {
+  async update(id: string, data: any, files?: FileData[]): Promise<DisciplinaryNews> {
     const noticia = await this.findById(id);
 
     // Rastrear campos modificados para trazabilidad
@@ -377,6 +377,12 @@ export class NewsService {
     }
     if (data.denunciante) cambios.push('Datos de denunciante modificados');
     if (data.disciplinable) cambios.push('Datos de disciplinable modificados');
+    if (data.adjuntosParaEliminar && data.adjuntosParaEliminar.length > 0) {
+      cambios.push(`Documentos eliminados: ${data.adjuntosParaEliminar.length}`);
+    }
+    if (files && files.length > 0) {
+      cambios.push(`Documentos nuevos: ${files.length}`);
+    }
 
     // Aplicar cambios (todos los valores del enum incluido POR_DETERMINAR)
     const validOrigens = Object.values(NewsOrigin);
@@ -386,7 +392,12 @@ export class NewsService {
     if (data.territorial) noticia.territorial = data.territorial;
     if (data.dependenciaDenunciado) noticia.dependenciaDenunciado = data.dependenciaDenunciado;
     if (data.hechos) noticia.hechos = data.hechos;
-    if (data.fechaQueja) noticia.fechaQueja = new Date(data.fechaQueja);
+    if (data.fechaQueja) {
+      const [y, m, d] = (data.fechaQueja as string).split('T')[0].split('-').map(Number);
+      const fechaSegura = new Date(y, m - 1, d, 12, 0, 0);
+      noticia.fechaQueja = fechaSegura;
+      noticia.fechaRecepcion = fechaSegura;
+    }
     if (data.denunciante) noticia.denunciante = data.denunciante;
     if (data.disciplinable) noticia.disciplinable = data.disciplinable;
     if (data.conductas) noticia.conductas = data.conductas;
@@ -399,6 +410,31 @@ export class NewsService {
       noticia.fechaCaducidad = new Date(data.fechaHechos);
       noticia.fechaCaducidad.setFullYear(noticia.fechaCaducidad.getFullYear() + 5);
     }
+
+    // ✅ Gestión de documentos adjuntos en actualización
+    let currentAdjuntos: string[] = Array.isArray((noticia as any).adjuntos) ? [...(noticia as any).adjuntos] : [];
+    if (data.adjuntosParaEliminar && Array.isArray(data.adjuntosParaEliminar)) {
+      for (const toDelete of data.adjuntosParaEliminar) {
+        currentAdjuntos = currentAdjuntos.filter((a) => a !== toDelete);
+        try {
+          await this.storageService.deleteFile(toDelete);
+        } catch (e) {
+          console.warn(`No se pudo eliminar archivo físico ${toDelete}:`, e.message);
+        }
+      }
+    }
+    console.log('[NEWS SERVICE UPDATE] files param length:', files?.length || 0);
+    if (files && files.length > 0) {
+      console.log('[NEWS SERVICE UPDATE] nombres:', files.map(f => f.originalname));
+      try {
+        const storedNew = await this.storageService.saveMultipleFiles(noticia.radicado || 'sin-radicado', files);
+        console.log('[NEWS SERVICE UPDATE] archivos guardados en disco:', storedNew);
+        currentAdjuntos.push(...storedNew);
+      } catch (e) {
+        console.error('Error guardando nuevos adjuntos en update:', e);
+      }
+    }
+    (noticia as any).adjuntos = currentAdjuntos;
 
     // Registrar en historial de auditoría
     const historyEntry = {

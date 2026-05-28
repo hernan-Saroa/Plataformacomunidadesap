@@ -270,18 +270,18 @@ export class RequerimientosOCService {
         await this.requerimientoRepo.remove(req);
     }
 
-    async reasignar(id: string, nuevoAbogadoId: string, nuevoAbogadoNombre?: string): Promise<RequerimientoOC> {
+    async reasignar(id: string, nuevoProfesionalId: string, nuevoProfesionalNombre?: string): Promise<RequerimientoOC> {
         // 1. Get current requerimiento
         const req = await this.findOne(id);
         const responsableAnterior = req.funcionarioResponsable || req.abogadoAsignadoId || 'Sin asignar';
 
         // 2. Resolve lawyer name from auth-service data sent by the frontend.
         //    Assignments are auth user ids, not records from legal_management.abogados.
-        const nuevoResponsable = nuevoAbogadoNombre || nuevoAbogadoId;
+        const nuevoResponsable = nuevoProfesionalNombre || nuevoProfesionalId;
 
         // 3. Update the requerimiento with new lawyer ID AND name
         await this.requerimientoRepo.update(id, {
-            abogadoAsignadoId: nuevoAbogadoId,
+            abogadoAsignadoId: nuevoProfesionalId,
             funcionarioResponsable: nuevoResponsable
         });
 

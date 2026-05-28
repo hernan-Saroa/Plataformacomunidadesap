@@ -87,6 +87,7 @@ export {
   auditoresApi,
   estadisticasApi,
   planAnualService,
+  invalidatePlanAnualListCache,
   
   // APIs de evidencias (Migración 129)
   adjuntosApi,

@@ -157,7 +157,7 @@ export function usePlanesAnuales(): UseQueryResult<PlanAnual[]> {
     setLoading(true);
     setError(null);
 
-    const response = await planAnualApi.getAll();
+    const response = await planAnualApi.getAll({ light: true });
 
     if (response.success && response.data) {
       setData(response.data);
@@ -226,13 +226,19 @@ export function useAuditores(): UseQueryResult<Auditor[]> {
         .filter((config: any) => config.activo !== false)
         .map((config: any) => {
           const rawRole = String(config.rolOcig || config.rolOCI || config.rol_ocig || config.cargo || 'Auditor');
+          const idPerson = String(config.idTercero || '').trim();
+          if (!idPerson) return null;
           return {
-            id: String(config.idTercero || config.id), // UUID de la persona
-            nombre: config.nombre || `Profesional ${config.idTercero?.substring(0,6) || config.id?.substring(0,6)}`,
+            id: idPerson,
+            idPerson,
+            idTercero: idPerson,
+            configId: config.id,
+            nombre: config.nombre || `Profesional ${idPerson.substring(0, 6)}`,
             cargo: rawRole,
-            email: config.email || ''
+            email: config.email || '',
           };
-        });
+        })
+        .filter((p): p is NonNullable<typeof p> => p != null);
       console.log('⚡ [useAuditores] Profesionales mapeados:', profesionales);
       setData(profesionales);
     } else {

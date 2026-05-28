@@ -7,10 +7,10 @@ import {
   Index,
 } from 'typeorm';
 
-// Valores sugeridos (no restrictivos)
+// Catálogo operativo (combo paso 2 — Profesionales OCI)
 export const ROLES_OCIG_SUGERIDOS = [
   'Jefe OCIG',
-  'Auditor Sénior',
+  'Auditor Líder',
   'Auditor',
   'Auditor Júnior',
   'Apoyo Técnico',

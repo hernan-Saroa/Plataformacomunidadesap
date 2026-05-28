@@ -228,7 +228,7 @@ export class AudienciaService {
             radicado: a.expediente ? a.expediente.radicado : 'N/A',
             nombreInvestigado: a.expediente ? a.expediente.demandante : 'N/A',
             abogadoId: a.abogadoId,
-            nombreAbogado: a.abogadoNombre || 'N/A',
+            nombreProfesional: a.abogadoNombre || 'N/A',
             historial: a.historial || [] // Include historial
         }));
     }

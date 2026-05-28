@@ -171,7 +171,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
   const [formData, setFormData] = useState({
     origen: origenInicial,
-    fechaQueja: noticiaToEdit?.fechaRecepcion,
+    fechaQueja: (noticiaToEdit?.fechaQueja || noticiaToEdit?.fechaRecepcion)?.split('T')[0],
     fechaHechos: noticiaToEdit?.fechaHechos || '',
     territorial: noticiaToEdit?.territorial || '',
     denunciado: {
@@ -338,9 +338,25 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     setEditingDenuncianteId(null);
     resetDenunciadoForm();
     resetDenuncianteForm();
+
+    // ✅ Soporte para documentos adjuntos en edición (acepta tanto adjuntos crudos como desde archivosAdjuntos del kanban)
+    let initialAdj: string[] = [];
+    if (Array.isArray(noticiaToEdit?.adjuntos)) {
+      initialAdj = noticiaToEdit.adjuntos;
+    } else if (noticiaToEdit?.adjuntos) {
+      initialAdj = [noticiaToEdit.adjuntos];
+    } else if (Array.isArray(noticiaToEdit?.archivosAdjuntos)) {
+      initialAdj = noticiaToEdit.archivosAdjuntos
+        .map((a: any) => a.url || a.fullUrl || a.nombre || a)
+        .filter(Boolean);
+    }
+    setAdjuntosExistentes(initialAdj);
+    setAdjuntosParaEliminar([]);
   }, [isEditMode, noticiaToEdit]);
 
   const [archivosAdjuntos, setArchivosAdjuntos] = useState<File[]>([]);
+  const [adjuntosExistentes, setAdjuntosExistentes] = useState<string[]>([]);
+  const [adjuntosParaEliminar, setAdjuntosParaEliminar] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // ✅ NUEVO: Estado para apoderados
@@ -685,6 +701,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     }
   };
 
+  // ✅ Manejo de eliminación de documentos existentes en modo edición
+  const handleRemoveExistingAdjunto = (filename: string) => {
+    setAdjuntosExistentes((prev) => prev.filter((a) => a !== filename));
+    setAdjuntosParaEliminar((prev) => (prev.includes(filename) ? prev : [...prev, filename]));
+  };
+
   const validateStep1 = () => {
     const newErrors: Record<string, string> = {};
 
@@ -782,6 +804,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
       hechosSeparados, // ✅ Incluir los hechos separados
       denunciantes, // ✅ Incluir múltiples denunciantes
       archivosAdjuntos,
+      adjuntosExistentes, // kept existing in edit mode
+      adjuntosParaEliminar,
       fechaRegistro: new Date().toISOString(),
       radicadorId: currentUser?.id, // ✅ ID del usuario que radica
       porDeterminar, // ✅ Incluir flags de campos "Por determinar"
@@ -792,10 +816,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
     };
 
     try {
+      console.log('[MODAL] Enviando a onSave - archivosAdjuntos.length:', archivosAdjuntos?.length || 0);
+      console.log('[MODAL] Enviando a onSave - adjuntosParaEliminar.length:', adjuntosParaEliminar?.length || 0);
+      console.log('[MODAL] Enviando a onSave - adjuntosExistentes.length:', adjuntosExistentes?.length || 0);
       await onSave(dataToSave);
       onClose();
     } catch (error) {
-      // Error is handled by the parent, but ensure modal stays open
       console.error('Error saving noticia:', error);
     }
   };
@@ -2405,8 +2431,36 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
                     </p>
                   </label>
                 </div>
+
+                {/* ✅ Documentos existentes en modo edición - permite eliminar */}
+                {isEditMode && adjuntosExistentes.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs font-semibold text-gray-600 mb-1">Documentos actuales (clic en papelera para eliminar):</p>
+                    <div className="space-y-1">
+                      {adjuntosExistentes.map((filename, idx) => {
+                        const displayName = filename.split('/').pop() || filename;
+                        return (
+                          <div key={idx} className="flex items-center justify-between bg-blue-50 border border-blue-200 p-2 rounded text-sm">
+                            <span className="text-gray-700 truncate" title={filename}>{displayName}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveExistingAdjunto(filename)}
+                              className="text-red-600 hover:text-red-800"
+                              title="Eliminar documento"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Nuevos archivos seleccionados para subir */}
                 {archivosAdjuntos.length > 0 && (
                   <div className="mt-3 space-y-2">
+                    <p className="text-xs font-semibold text-gray-600 mb-1">{isEditMode ? 'Nuevos documentos a añadir:' : 'Documentos seleccionados:'}</p>
                     {archivosAdjuntos.map((file, idx) => (
                       <div key={idx} className="flex items-center justify-between bg-gray-50 p-2 rounded">
                         <span className="text-sm text-gray-700">{file.name}</span>
