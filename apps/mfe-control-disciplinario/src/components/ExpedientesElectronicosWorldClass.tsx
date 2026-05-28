@@ -67,14 +67,20 @@ interface Documento {
   // 10. ACCESO (nombre del archivo)
   archivoAcceso: string;
   
-  // Campos adicionales para la aplicación
-  tipo: string; // ID del tipo de documento
-  tipoNombre: string;
-  fechaSubida: string; // ISO format para ordenamiento
-  subidoPor: string;
-  expedienteId: string;
-  radicado: string;
-}
+// Campos adicionales para la aplicación
+   tipo: string; // ID del tipo de documento
+   tipoNombre: string;
+   fechaSubida: string; // ISO format para ordenamiento
+   subidoPor: string;
+   expedienteId: string;
+   radicado: string;
+   downloadUrl?: string; // URL de descarga directa (para documentos de noticia)
+   processId?: string; // ID del proceso (opcional, puede ser null para documentos de noticia)
+   fileType?: string;
+   fileSize?: number;
+   versiones?: any[];
+   metadatos?: any;
+ }
 
 interface ExpedienteElectronico {
   id: string;
@@ -456,25 +462,31 @@ export function ExpedientesElectronicosWorldClass() {
                 'otro': 'informes'
               };
               
-              todosDocumentos.push({
-                id: doc.id,
-                descripcionPrincipal: doc.nombre || doc.descripcion || 'Documento sin descripción',
-                tipologiaDocumental: doc.tipo || 'Documento',
-                anexos: doc.fileType || 'PDF',
-                fechaCreacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
-                fechaIncorporacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
-                paginaInicio: 1,
-                paginaFinal: doc.tamaño ? Math.ceil(parseInt(doc.tamaño.replace(/[^0-9]/g, '')) / 50) : 1,
-                formato: doc.fileType?.split('/')[1]?.toUpperCase() || 'PDF',
-                tamanoKB: doc.tamaño || '0 KB',
-                archivoAcceso: doc.archivoNombre || doc.nombre || 'documento.pdf',
-                tipo: tipoMap[doc.tipo] || 'informes',
-                tipoNombre: doc.tipo || 'Documento',
-                fechaSubida: doc.fechaCarga || new Date().toISOString(),
-                subidoPor: doc.usuarioCarga || 'Sistema',
-                expedienteId: proceso.id,
-                radicado: proceso.radicadoProceso
-              });
+todosDocumentos.push({
+                 id: doc.id,
+                 descripcionPrincipal: doc.nombre || doc.descripcion || 'Documento sin descripción',
+                 tipologiaDocumental: doc.tipo || 'Documento',
+                 anexos: doc.fileType || 'PDF',
+                 fechaCreacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
+                 fechaIncorporacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
+                 paginaInicio: 1,
+                 paginaFinal: doc.tamaño ? Math.ceil(parseInt(doc.tamaño.replace(/[^0-9]/g, '')) / 50) : 1,
+                 formato: doc.fileType?.split('/')[1]?.toUpperCase() || 'PDF',
+                 tamanoKB: doc.tamaño || '0 KB',
+                 archivoAcceso: doc.archivoNombre || doc.nombre || 'documento.pdf',
+                 tipo: tipoMap[doc.tipo] || 'informes',
+                 tipoNombre: doc.tipo || 'Documento',
+                 fechaSubida: doc.fechaCarga || new Date().toISOString(),
+                 subidoPor: doc.usuarioCarga || 'Sistema',
+                 expedienteId: proceso.id,
+                 radicado: proceso.radicadoProceso,
+                 downloadUrl: doc.downloadUrl, // Para documentos de noticia
+                 processId: doc.processId,
+                 fileType: doc.fileType,
+                 fileSize: doc.fileSize,
+                 versiones: doc.versiones,
+                 metadatos: doc.metadatos
+               });
             });
           }
         } catch (docError) {
@@ -1092,22 +1104,26 @@ export function ExpedientesElectronicosWorldClass() {
     return names[type] || names.other;
   };
 
-  // ✅ HELPER: Abrir archivo según su tipo - abre el modal con visor
-  const abrirArchivo = async (doc: Documento) => {
-    setDocumentoParaVer(doc);
-    setCargandoDocumento(true);
-    setShowModalVisor(true);
-    
-    try {
-      // Construir la URL del documento usando buildApiUrl (respeta gateway/direct)
-      // ?view=true hace que el backend devuelva Content-Type correcto (ej. application/pdf) e inline
-      const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download?view=true`;
-      const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
-      // Cargar el documento como blob para crear una URL local
-      const response = await fetch(downloadUrl, {
-        method: 'GET',
-        credentials: 'include',
-      });
+// ✅ HELPER: Abrir archivo según su tipo - abre el modal con visor
+   const abrirArchivo = async (doc: Documento) => {
+     setDocumentoParaVer(doc);
+     setCargandoDocumento(true);
+     setShowModalVisor(true);
+     
+     try {
+       let downloadUrl: string;
+       // Si el documento tiene una URL de descarga directa (documentos de noticia), usarla
+       // De lo contrario, usar el endpoint del proceso
+       if (doc.downloadUrl) {
+         downloadUrl = disciplinaryService.getAbsoluteFileUrl(doc.downloadUrl);
+       } else {
+         const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download?view=true`;
+         downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
+       }
+       const response = await fetch(downloadUrl, {
+         method: 'GET',
+         credentials: 'include',
+       });
       
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
@@ -1165,18 +1181,23 @@ export function ExpedientesElectronicosWorldClass() {
     }
   };
 
-  // ✅ HELPER: Descargar documento según su tipo
-  const descargarDocumento = async (doc: Documento) => {
-    try {
-      toast.loading('Descargando documento...', { id: 'download' });
+// ✅ HELPER: Descargar documento según su tipo
+   const descargarDocumento = async (doc: Documento) => {
+     try {
+       toast.loading('Descargando documento...', { id: 'download' });
 
-      // Construir la URL del documento usando buildApiUrl (respeta gateway/direct)
-      const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download`;
-      const downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
-      const response = await fetch(downloadUrl, {
-        method: 'GET',
-        credentials: 'include',
-      });
+       let downloadUrl: string;
+       // Si el documento tiene una URL de descarga directa (documentos de noticia), usarla
+       if (doc.downloadUrl) {
+         downloadUrl = disciplinaryService.getAbsoluteFileUrl(doc.downloadUrl);
+       } else {
+         const restPath = `/disciplinary-processes/${doc.expedienteId}/documents/${doc.id}/download`;
+         downloadUrl = buildApiUrl('control-disciplinario', API_MODE === 'direct' ? restPath : `/api/v1${restPath}`);
+       }
+       const response = await fetch(downloadUrl, {
+         method: 'GET',
+         credentials: 'include',
+       });
       
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);

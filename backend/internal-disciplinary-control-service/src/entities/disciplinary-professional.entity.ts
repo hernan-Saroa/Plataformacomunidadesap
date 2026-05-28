@@ -38,6 +38,9 @@ export class DisciplinaryProfessional {
     @Column({ name: 'firma_url', nullable: true })
     firmaUrl: string;
 
+    @Column({ name: 'id_user', type: 'uuid', nullable: true })
+    idUser: string | null;
+
     @Column({ default: 'ACTIVO' })
     estado: string;
 
