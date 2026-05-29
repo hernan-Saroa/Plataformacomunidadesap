@@ -2668,8 +2668,6 @@ export function PTAForm({ onBack, userPersonId, ptaId, isAdminEdit = false, jefa
       </div>{/* cierra Active section bg-white */}
             </div>{/* cierra columna derecha flex-1 */}
           </div>{/* cierra wrapper dos columnas flex-row */}
-        </div>{/* cierra flex-1 flex flex-col gap-6 */}
-      </div>{/* cierra grid grid-cols-1 */}
 
       {/* ─── STICKY FOOTER ─── */}
       <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-2xl border-t border-gray-200/50 p-4 px-6 md:px-8 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
