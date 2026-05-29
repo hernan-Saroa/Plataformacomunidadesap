@@ -46,6 +46,7 @@ import {
 import { toast } from 'sonner';
 import { controlInternoService } from '../../../services/api/controlInternoService';
 import { notificationsService } from '../../../services/api/notificationsService';
+import { rolesService, SystemRole } from '../../../services/api/roles.service';
 import { HeaderSeccionConfig } from './HeaderSeccionConfig';
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -81,16 +82,8 @@ interface NotificacionEnviada {
   };
 }
 
-// Roles del sistema
-const ROLES_SISTEMA = [
-  'Jefe OCIG',
-  'Auditor Líder',
-  'Auditor Equipo',
-  'Auditado',
-  'Jefe Dependencia',
-  'Responsable Plan Mejoramiento',
-  'Administrador Sistema'
-];
+// Roles dinámicos se cargarán desde la BD
+// Se elimina ROLES_SISTEMA hardcodeado
 
 // Categorías disponibles
 const CATEGORIAS_DISPONIBLES = [
@@ -103,232 +96,11 @@ const CATEGORIAS_DISPONIBLES = [
 ] as const;
 
 // ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK - CONFIGURACIÓN DE EVENTOS NOTIFICABLES
-// ════════════════════════════════════════════════════════════════════════════
-
-const EVENTOS_NOTIFICABLES_MOCK: EventoNotificable[] = [
-  // KANBAN
-  {
-    id: 'EVT-KANBAN-001',
-    categoria: 'Kanban',
-    nombre: 'Auditoría movida de etapa',
-    descripcion: 'Notifica cuando una auditoría cambia de etapa en el Kanban',
-    activo: true,
-    canal: 'sistema',
-    destinatarios: ['Auditor Líder', 'Jefe OCIG'],
-    condicion: 'Al mover tarjeta entre columnas'
-  },
-  {
-    id: 'EVT-KANBAN-002',
-    categoria: 'Kanban',
-    nombre: 'SLA próximo a vencer',
-    descripcion: 'Alerta cuando una auditoría está por vencer su SLA en la etapa actual',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Auditor Líder', 'Jefe OCIG'],
-    condicion: '3 días antes del vencimiento',
-    plantillaEmail: 'La auditoría [NOMBRE] vence en [DÍAS] días en etapa [ETAPA]'
-  },
-  {
-    id: 'EVT-KANBAN-003',
-    categoria: 'Kanban',
-    nombre: 'SLA vencido',
-    descripcion: 'Notifica cuando una auditoría supera el SLA de su etapa',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Auditor Líder', 'Jefe OCIG'],
-    condicion: 'Al vencer el SLA'
-  },
-  {
-    id: 'EVT-KANBAN-004',
-    categoria: 'Kanban',
-    nombre: 'Límite WIP alcanzado',
-    descripcion: 'Alerta cuando una columna alcanza su límite de trabajo en progreso',
-    activo: true,
-    canal: 'sistema',
-    destinatarios: ['Jefe OCIG'],
-    condicion: 'Al alcanzar límite WIP'
-  },
-
-  // AUDITORÍAS
-  {
-    id: 'EVT-AUD-001',
-    categoria: 'Auditorías',
-    nombre: 'Nueva auditoría asignada',
-    descripcion: 'Notifica al auditor cuando se le asigna una nueva auditoría',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Auditor Líder', 'Auditor Equipo'],
-    condicion: 'Al asignar auditor',
-    plantillaEmail: 'Has sido asignado a la auditoría [NOMBRE] con rol de [ROL]'
-  },
-  {
-    id: 'EVT-AUD-002',
-    categoria: 'Auditorías',
-    nombre: 'Reunión de apertura programada',
-    descripcion: 'Recordatorio de reunión de apertura',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Auditor Líder', 'Auditor Equipo', 'Auditado', 'Jefe Dependencia'],
-    condicion: '1 día antes de la reunión'
-  },
-  {
-    id: 'EVT-AUD-003',
-    categoria: 'Auditorías',
-    nombre: 'Plazo de respuesta próximo',
-    descripcion: 'Alerta al auditado sobre plazo de respuesta',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Auditado', 'Jefe Dependencia'],
-    condicion: '5 días antes del vencimiento'
-  },
-  {
-    id: 'EVT-AUD-004',
-    categoria: 'Auditorías',
-    nombre: 'Auditoría finalizada',
-    descripcion: 'Notifica cuando una auditoría se completa',
-    activo: true,
-    canal: 'sistema',
-    destinatarios: ['Auditor Líder', 'Jefe OCIG', 'Auditado'],
-    condicion: 'Al marcar como finalizada'
-  },
-
-  // PLANES DE MEJORAMIENTO
-  {
-    id: 'EVT-PM-001',
-    categoria: 'Planes Mejoramiento',
-    nombre: 'Seguimiento trimestral próximo',
-    descripcion: 'Recordatorio de seguimiento trimestral del plan de mejoramiento',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Responsable Plan Mejoramiento', 'Jefe OCIG'],
-    condicion: '7 días antes del seguimiento',
-    plantillaEmail: 'El seguimiento trimestral del PM [CÓDIGO] vence el [FECHA]'
-  },
-  {
-    id: 'EVT-PM-002',
-    categoria: 'Planes Mejoramiento',
-    nombre: 'Evidencia rechazada',
-    descripcion: 'Notifica cuando se rechaza una evidencia cargada',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Responsable Plan Mejoramiento'],
-    condicion: 'Al rechazar evidencia'
-  },
-  {
-    id: 'EVT-PM-003',
-    categoria: 'Planes Mejoramiento',
-    nombre: 'Acción vencida sin cumplir',
-    descripcion: 'Alerta cuando una acción supera su fecha de cumplimiento',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Responsable Plan Mejoramiento', 'Jefe Dependencia', 'Jefe OCIG'],
-    condicion: 'Al día siguiente del vencimiento'
-  },
-
-  // APROBACIONES
-  {
-    id: 'EVT-APR-001',
-    categoria: 'Aprobaciones',
-    nombre: 'Documento aprobado',
-    descripcion: 'Notifica cuando un documento es aprobado',
-    activo: true,
-    canal: 'sistema',
-    destinatarios: ['Auditor Líder'],
-    condicion: 'Al aprobar documento'
-  },
-  {
-    id: 'EVT-APR-002',
-    categoria: 'Aprobaciones',
-    nombre: 'Documento rechazado',
-    descripcion: 'Notifica cuando un documento es rechazado con observaciones',
-    activo: true,
-    canal: 'ambos',
-    destinatarios: ['Auditor Líder'],
-    condicion: 'Al rechazar documento',
-    plantillaEmail: 'El documento [NOMBRE] fue rechazado. Motivo: [MOTIVO]'
-  },
-
-  // SISTEMA
-  {
-    id: 'EVT-SYS-001',
-    categoria: 'Sistema',
-    nombre: 'Carga de trabajo alta',
-    descripcion: 'Alerta cuando un auditor supera 90% de su capacidad',
-    activo: true,
-    canal: 'sistema',
-    destinatarios: ['Jefe OCIG'],
-    condicion: 'Al superar 90% de capacidad'
-  },
-  {
-    id: 'EVT-SYS-002',
-    categoria: 'Sistema',
-    nombre: 'Nuevo documento en repositorio',
-    descripcion: 'Notifica cuando se sube un nuevo documento compartido',
-    activo: false,
-    canal: 'sistema',
-    destinatarios: ['Todos'],
-    condicion: 'Al cargar documento'
-  }
-];
-
-// ════════════════════════════════════════════════════════════════════════════
-// MOCK - HISTORIAL DE NOTIFICACIONES ENVIADAS
-// ════════════════════════════════════════════════════════════════════════════
-
-const NOTIFICACIONES_ENVIADAS_MOCK: NotificacionEnviada[] = [
-  {
-    id: 'N-001',
-    eventoId: 'EVT-PM-001',
-    titulo: 'Seguimiento Trimestral Próximo',
-    mensaje: 'El seguimiento trimestral del Plan de Mejoramiento PM-2025-005 vence en 7 días (15 de Octubre).',
-    destinatario: 'Mario Oswaldo Bernal Rodríguez',
-    canal: 'sistema',
-    fechaEnvio: '2025-10-08T09:00:00',
-    leida: false,
-    accion: {
-      texto: 'Ir al Seguimiento',
-      url: '/seguimiento-plan/PM-2025-005'
-    }
-  },
-  {
-    id: 'N-002',
-    eventoId: 'EVT-APR-001',
-    titulo: 'Informe Aprobado',
-    mensaje: 'El Informe Pormenorizado 2025-S1 ha sido aprobado por el Jefe de OCIG.',
-    destinatario: 'Ana María López Gómez',
-    canal: 'sistema',
-    fechaEnvio: '2025-09-30T14:22:00',
-    leida: true
-  },
-  {
-    id: 'N-003',
-    eventoId: 'EVT-AUD-003',
-    titulo: 'Plazo de Respuesta Próximo',
-    mensaje: 'El plazo de respuesta para la auditoría AUD-2025-008 vence en 5 días.',
-    destinatario: 'Carlos Andrés Mendoza Silva',
-    canal: 'email',
-    fechaEnvio: '2025-10-05T10:15:00',
-    leida: true
-  },
-  {
-    id: 'N-004',
-    eventoId: 'EVT-KANBAN-002',
-    titulo: 'SLA Próximo a Vencer',
-    mensaje: 'La auditoría AUD-2025-010 en etapa "Ejecución" vence en 3 días.',
-    destinatario: 'Ana María López Gómez',
-    canal: 'sistema',
-    fechaEnvio: '2025-10-07T08:00:00',
-    leida: false
-  }
-];
-
-// ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ════════════════════════════════════════════════════════════════════════════
 
 export function NotificacionesModule() {
-  const [eventos, setEventos] = useState<EventoNotificable[]>(EVENTOS_NOTIFICABLES_MOCK);
+  const [eventos, setEventos] = useState<EventoNotificable[]>([]);
   const [historial, setHistorial] = useState<NotificacionEnviada[]>([]);
   const [tabActiva, setTabActiva] = useState<'configuracion' | 'historial'>('configuracion');
   const [categoriaFiltro, setCategoriaFiltro] = useState<string>('Todas');
@@ -339,6 +111,7 @@ export function NotificacionesModule() {
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rolesDb, setRolesDb] = useState<SystemRole[]>([]);
   const yaCargadoRef = useRef(false); // ✅ Ref para evitar múltiples cargas (no causa re-render)
 
   // ✅ Obtener el usuarioId desde el cache de autenticación en memoria
@@ -370,7 +143,6 @@ export function NotificacionesModule() {
       // Mapear preferencias del backend a eventos del frontend
       if (preferencias?.tiposNotificacion) {
         const tiposBackend = preferencias.tiposNotificacion;
-        const eventosBase = [...EVENTOS_NOTIFICABLES_MOCK];
         const eventosFinales: EventoNotificable[] = [];
 
         Object.keys(tiposBackend).forEach(id => {
@@ -378,35 +150,18 @@ export function NotificacionesModule() {
           const nuevoCanal = (configBackend.email && configBackend.sistema) ? 'ambos' as const : 
                             configBackend.email ? 'email' as const : 'sistema' as const;
 
-          const eventoMock = eventosBase.find(e => e.id === id);
-          if (eventoMock) {
-            // Regla por defecto, actualizamos con datos del backend
-            eventosFinales.push({
-              ...eventoMock,
-              activo: configBackend.activo === true || configBackend.activo === 'true',
-              canal: nuevoCanal,
-              destinatarios: configBackend.roles && configBackend.roles.length > 0 ? configBackend.roles : eventoMock.destinatarios
-            });
-            const idx = eventosBase.findIndex(e => e.id === id);
-            if (idx > -1) eventosBase.splice(idx, 1);
-          } else {
-            // Regla personalizada recuperada de la base de datos
-            eventosFinales.push({
-              id: id,
-              categoria: configBackend.categoria || 'Personalizada',
-              nombre: configBackend.nombre || 'Notificación Personalizada',
-              descripcion: configBackend.descripcion || '',
-              activo: configBackend.activo === true || configBackend.activo === 'true',
-              canal: nuevoCanal,
-              destinatarios: configBackend.roles || [],
-              esPersonalizada: true
-            });
-          }
-        });
-
-        // Agregar los del mock que aún no han sido guardados en backend
-        eventosBase.forEach(evento => {
-          eventosFinales.push(evento);
+          eventosFinales.push({
+            id: id,
+            categoria: configBackend.categoria || 'Personalizada',
+            nombre: configBackend.nombre || 'Notificación Personalizada',
+            descripcion: configBackend.descripcion || '',
+            activo: configBackend.activo === true || configBackend.activo === 'true',
+            canal: nuevoCanal,
+            destinatarios: configBackend.roles || [],
+            condicion: configBackend.condicion || '',
+            plantillaEmail: configBackend.plantillaEmail || '',
+            esPersonalizada: configBackend.esPersonalizada || false
+          });
         });
 
         setEventos(eventosFinales);
@@ -451,6 +206,16 @@ export function NotificacionesModule() {
         setHistorial([]);
       }
       
+      // Cargar roles desde base de datos
+      try {
+        const rolesRes = await rolesService.getRoles({ limit: 100 });
+        if (rolesRes && rolesRes.roles) {
+          setRolesDb(rolesRes.roles);
+        }
+      } catch (rolesErr) {
+        console.error('[NotificacionesModule] Error cargando roles:', rolesErr);
+      }
+      
     } catch (err: any) {
       console.error('[NotificacionesModule] Error al cargar configuración:', err);
       // No mostrar error si es 404 - usar datos mock
@@ -475,13 +240,16 @@ export function NotificacionesModule() {
         tiposNotificacion[evento.id] = {
           email: evento.canal === 'email' || evento.canal === 'ambos',
           sistema: evento.canal === 'sistema' || evento.canal === 'ambos',
-          activo: evento.activo,
-          roles: evento.destinatarios, // Guardar roles
+          canal: evento.canal, // Guardar explícitamente el canal
+          activo: Boolean(evento.activo), // Asegurar booleano real
+          roles: evento.destinatarios, // Guardar roles (role_ids)
           nombre: evento.nombre, // Guardar metadatos para recuperarlos después
           titulo: evento.nombre, // Para el trigger del backend
           descripcion: evento.descripcion,
           mensaje: evento.descripcion, // Para el trigger del backend
           categoria: evento.categoria,
+          condicion: evento.condicion || '',
+          plantillaEmail: evento.plantillaEmail || '',
           esPersonalizada: evento.esPersonalizada || false
         };
       });
@@ -710,11 +478,6 @@ export function NotificacionesModule() {
       />
 
       {/* ═══════════════════════════════════════════════════════════════ */}
-      {/* ESTADÍSTICAS */}
-      {/* ═══════════════════════════════════════════════════════════════ */}
-      
-
-      {/* ═══════════════════════════════════════════════════════════════ */}
       {/* TABS */}
       {/* ═══════════════════════════════════════════════════════════════ */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm mb-5">
@@ -772,6 +535,7 @@ export function NotificacionesModule() {
             onEditar={handleEditarEvento}
             onCrear={handleCrearNueva}
             onEliminar={handleEliminarEvento}
+            rolesDb={rolesDb}
           />
         )}
         {tabActiva === 'historial' && (
@@ -796,6 +560,7 @@ export function NotificacionesModule() {
             setMostrarModal(false);
             setEventoEditando(null);
           }}
+          rolesDb={rolesDb}
         />
       )}
     </div>
@@ -814,6 +579,7 @@ interface TabConfiguracionProps {
   onEditar: (evento: EventoNotificable) => void;
   onCrear: () => void;
   onEliminar: (id: string) => void;
+  rolesDb: SystemRole[];
 }
 
 function TabConfiguracion({
@@ -823,7 +589,8 @@ function TabConfiguracion({
   onToggle,
   onEditar,
   onCrear,
-  onEliminar
+  onEliminar,
+  rolesDb
 }: TabConfiguracionProps) {
   const categorias = ['Todas', 'Kanban', 'Auditorías', 'Planes Mejoramiento', 'Aprobaciones', 'Sistema', 'Personalizada'];
 
@@ -866,6 +633,7 @@ function TabConfiguracion({
             onToggle={onToggle}
             onEditar={onEditar}
             onEliminar={onEliminar}
+            rolesDb={rolesDb}
           />
         ))}
       </div>
@@ -891,9 +659,27 @@ interface TarjetaEventoProps {
   onToggle: (id: string) => void;
   onEditar: (evento: EventoNotificable) => void;
   onEliminar: (id: string) => void;
+  rolesDb: SystemRole[];
 }
 
-function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEventoProps) {
+// Helper robusto para encontrar roles ignorando acentos, mayúsculas o códigos antiguos
+const findRole = (rolesDb: SystemRole[], idOrName: string) => {
+  if (!idOrName) return null;
+  // Búsqueda exacta primero
+  let found = rolesDb.find(r => r.id === idOrName || r.code === idOrName || r.name === idOrName);
+  if (found) return found;
+
+  // Búsqueda aproximada (sin acentos, mayúsculas)
+  const normalize = (str: string) => (str || '').toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  const nVal = normalize(idOrName);
+  
+  // Mapeos especiales antiguos
+  if (nVal === 'JEFE_OCIG') return rolesDb.find(r => normalize(r.name) === 'JEFE OCI' || normalize(r.code || '') === 'JEFE_OCI');
+
+  return rolesDb.find(r => normalize(r.name) === nVal || normalize(r.code || '') === nVal) || null;
+};
+
+function TarjetaEvento({ evento, onToggle, onEditar, onEliminar, rolesDb }: TarjetaEventoProps) {
   const getCategoriaHex = (categoria: string) => {
     switch (categoria) {
       case 'Kanban': return '#2962FF';
@@ -984,7 +770,7 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
             <div className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5">
               <div className="text-[10px] font-medium text-gray-400 mb-0.5">Destinatarios</div>
               <div className="text-xs font-bold text-gray-700">
-                {evento.destinatarios.length} rol(es)
+                {evento.destinatarios.map(r => findRole(rolesDb, r)).filter(Boolean).length} rol(es)
               </div>
             </div>
 
@@ -999,11 +785,15 @@ function TarjetaEvento({ evento, onToggle, onEditar, onEliminar }: TarjetaEvento
           {/* Destinatarios */}
           <div className="flex flex-wrap items-center gap-2 mb-3">
             <Users className="w-4 h-4 text-gray-500" />
-            {evento.destinatarios.map((rol, idx) => (
-              <span key={idx} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">
-                {rol}
-              </span>
-            ))}
+            {evento.destinatarios.map((rolId, idx) => {
+              const rolObj = findRole(rolesDb, rolId);
+              if (!rolObj) return null; // No mostrar roles inválidos o eliminados
+              return (
+                <span key={`rol-${idx}-${rolObj.id}`} className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">
+                  {rolObj.name}
+                </span>
+              );
+            })}
           </div>
 
           {/* Botones editar y eliminar */}
@@ -1203,14 +993,22 @@ interface ModalEditarEventoProps {
   evento: EventoNotificable;
   onGuardar: (evento: EventoNotificable) => void;
   onCerrar: () => void;
+  rolesDb: SystemRole[];
 }
 
-function ModalEditarEvento({ evento, onGuardar, onCerrar }: ModalEditarEventoProps) {
+function ModalEditarEvento({ evento, onGuardar, onCerrar, rolesDb }: ModalEditarEventoProps) {
   // ✅ BUG 4 FIX: Asegurar que destinatarios sea siempre un array al inicializar
-  // y que el estado inicial capture correctamente los datos del evento
+  // y normalizarlos a IDs reales de la base de datos
+  const destinatariosIniciales = Array.isArray(evento.destinatarios)
+    ? evento.destinatarios.map(d => findRole(rolesDb, d)?.id).filter(Boolean) as string[]
+    : [];
+
+  // Eliminar duplicados si los hay
+  const destinatariosUnicos = Array.from(new Set(destinatariosIniciales));
+
   const [form, setForm] = useState({
     ...evento,
-    destinatarios: Array.isArray(evento.destinatarios) ? [...evento.destinatarios] : []
+    destinatarios: destinatariosUnicos
   });
 
   // ✅ BUG 3 FIX: Guardar el nombre original del evento padre para el subtítulo
@@ -1366,31 +1164,40 @@ function ModalEditarEvento({ evento, onGuardar, onCerrar }: ModalEditarEventoPro
                 Destinatarios (Roles)
               </label>
               <div className="grid grid-cols-2 gap-2">
-                {ROLES_SISTEMA.map(rol => (
-                  <button
-                    key={rol}
-                    type="button"
-                    onClick={() => toggleDestinatario(rol)}
-                    className={`px-3 py-2 rounded-lg font-semibold text-sm transition-all border-2 text-left ${
-                      form.destinatarios.includes(rol)
-                        ? 'bg-blue-100 text-blue-700 border-blue-400'
-                        : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-400'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
-                        form.destinatarios.includes(rol)
-                          ? 'bg-blue-600 border-blue-600'
-                          : 'border-gray-400'
-                      }`}>
-                        {form.destinatarios.includes(rol) && (
-                          <CheckCircle2 className="w-3 h-3 text-white" />
-                        )}
-                      </div>
-                      <span>{rol}</span>
-                    </div>
-                  </button>
-                ))}
+                {rolesDb.length > 0 ? (
+                  rolesDb.map(rol => {
+                    const isSelected = form.destinatarios.includes(rol.id);
+                    return (
+                      <button
+                        key={rol.id}
+                        type="button"
+                        onClick={() => toggleDestinatario(rol.id)}
+                        className={`px-3 py-2 rounded-lg font-semibold text-sm transition-all border-2 text-left ${
+                          isSelected
+                            ? 'bg-blue-100 text-blue-700 border-blue-400'
+                            : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-gray-400'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                            isSelected
+                              ? 'bg-blue-600 border-blue-600'
+                              : 'border-gray-400'
+                          }`}>
+                            {isSelected && (
+                              <CheckCircle2 className="w-3 h-3 text-white" />
+                            )}
+                          </div>
+                          <span>{rol.name}</span>
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="col-span-2 text-sm text-gray-500 py-2">
+                    Cargando roles o no hay roles disponibles...
+                  </div>
+                )}
               </div>
             </div>
 
