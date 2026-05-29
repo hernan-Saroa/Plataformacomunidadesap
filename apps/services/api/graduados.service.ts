@@ -231,13 +231,6 @@ export interface ValidacionCertificado {
   result: string;
 }
 
-export interface DescargaCertificado {
-  id: string;
-  certificateId: string;
-  downloadDate: string;
-  ipAddress?: string;
-  userAgent?: string;
-}
 
 export interface GraduationCertificateTemplateTexts {
   cityDatePrefix: string;
@@ -482,26 +475,6 @@ const graduadosService = {
     },
   },
 
-  descargas: {
-    listar: async (certificateId?: string): Promise<DescargaCertificado[]> => {
-      const response = await apiClient.get(
-        `${SERVICE_PREFIX}/certificates/descargas`,
-        certificateId ? { certificateId } : undefined,
-      );
-      return response;
-    },
-    registrar: async (
-      certificateId: string,
-      options?: ApiRequestOptions,
-    ): Promise<{ mensaje: string }> => {
-      const response = await apiClient.post(
-        `${SERVICE_PREFIX}/certificates/descargas`,
-        { certificateId },
-        { ...options, skipAuth: options?.skipAuth ?? true },
-      );
-      return response;
-    },
-  },
 
   /**
    * Administración de solicitudes (requiere autenticación)

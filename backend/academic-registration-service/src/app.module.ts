@@ -9,7 +9,6 @@ import { Graduate } from './graduation-certificates/graduate.entity';
 import { GraduationCertificateRequest } from './graduation-certificates/graduation-certificate-request.entity';
 import { GraduationCertificate } from './graduation-certificates/graduation-certificate.entity';
 import { CertificateValidation } from './graduation-certificates/certificate-validation.entity';
-import { CertificateDownload } from './graduation-certificates/certificate-download.entity';
 import { Signer } from './graduation-certificates/signer.entity';
 import { TemplateConfig } from './graduation-certificates/template-config.entity';
 import { TemplateConfigChange } from './graduation-certificates/template-config-change.entity';
@@ -34,7 +33,6 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
         GraduationCertificateRequest,
         GraduationCertificate,
         CertificateValidation,
-        CertificateDownload,
         Signer,
         TemplateConfig,
         TemplateConfigChange,

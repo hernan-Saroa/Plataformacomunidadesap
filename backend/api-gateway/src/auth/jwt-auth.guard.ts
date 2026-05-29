@@ -6,14 +6,6 @@ import type { Request } from 'express';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
-  private readonly methodScopedPublicPatterns = [
-    {
-      method: 'POST',
-      pattern:
-        /^\/registro-academico\/api\/v\d+\/certificates\/descargas(?:\?.*)?$/i,
-    },
-  ];
-
   private readonly defaultPublicPatterns = [
     /^\/auth\/api\/v\d+\/login/i,
     /^\/auth\/api\/v\d+\/new-person/i,
@@ -92,17 +84,7 @@ console.log('Class:', context.getClass());
   }
 
   private matchesPublicPath(req: Request): boolean {
-    const method = (req.method || '').toUpperCase();
     const requestPath = this.normalizePath(req.originalUrl);
-    const methodScopedMatch = this.methodScopedPublicPatterns.some(
-      ({ method: allowedMethod, pattern }) =>
-        method === allowedMethod && pattern.test(requestPath),
-    );
-
-    if (methodScopedMatch) {
-      return true;
-    }
-
     const configured = (process.env.JWT_PUBLIC_PATHS || '')
       .split(',')
       .map((p) => p.trim())
