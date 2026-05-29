@@ -73,12 +73,10 @@ export function ModuleLayout({
   );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Auto-colapsar cuando la pantalla es pequeña
+  // Sincronizar el estado colapsado cuando cambia la propiedad inicial o el tamaño de pantalla
   useEffect(() => {
-    if (isSmallTablet && !sidebarCollapsed) {
-      setSidebarCollapsed(true);
-    }
-  }, [isSmallTablet]);
+    setSidebarCollapsed(initialSidebarCollapsed || isSmallTablet);
+  }, [initialSidebarCollapsed, isSmallTablet]);
 
   // Cerrar menú mobile al cambiar de sección
   const handleSectionChange = (section: string) => {

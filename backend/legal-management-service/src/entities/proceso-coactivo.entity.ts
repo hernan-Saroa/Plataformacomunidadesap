@@ -23,13 +23,13 @@ export class ProcesoCoactivo {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ unique: true })
+    @Column({ unique: true, nullable: true })
     radicado: string;
 
-    @Column({ type: 'jsonb' })
+    @Column({ type: 'jsonb', nullable: true })
     deudor: DeudorInfo;
 
-    @Column({ type: 'jsonb' })
+    @Column({ type: 'jsonb', nullable: true })
     obligacion: ObligacionInfo;
 
     @Column({

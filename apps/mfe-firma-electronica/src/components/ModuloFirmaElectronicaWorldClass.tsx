@@ -292,7 +292,7 @@ export function ModuloFirmaElectronicaWorldClass() {
 
   return (
     <>
-    <Toaster position="top-right" richColors />
+    <Toaster position="bottom-right" richColors />
     <div className="min-h-screen bg-white">
       {/* Header Premium World-Class */}
       <div className="bg-white border-b-2 border-gray-100 px-6 py-6 sticky top-0 z-10 shadow-sm">

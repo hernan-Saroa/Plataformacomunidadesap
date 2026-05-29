@@ -18,7 +18,6 @@ import { Button } from '@esap-mfe/shared-ui/button';
 import { Avatar, AvatarFallback } from '@esap-mfe/shared-ui/avatar';
 import type { ProcesoDisciplinario } from '../core/types';
 import { ModalProcesoDisciplinario } from './ModalProcesoDisciplinario';
-import { ModalComunicaciones } from './ModalComunicaciones';
 import { ModalAutos } from './ModalAutos';
 import { ModalEvidencias } from './ModalEvidencias';
 import { ModalOficios } from './ModalOficios';
@@ -171,7 +170,6 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet, readOnly =
   // Componente para fila con acciones
   const FilaProceso = ({ proceso }: { proceso: ProcesoDisciplinario }) => {
     const [modalProcesoOpen, setModalProcesoOpen] = useState(false);
-    const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
     const [modalAutosOpen, setModalAutosOpen] = useState(false);
     const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
     const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
@@ -324,17 +322,6 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet, readOnly =
                         <FileCheck className="w-4 h-4" />
                         Actas
                       </button>
-                      <div className="border-t border-gray-200 my-1" />
-                      <button
-                        onClick={() => {
-                          setModalComunicacionesOpen(true);
-                          setMenuOpen(false);
-                        }}
-                        className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center gap-2 text-sm font-semibold text-blue-600"
-                      >
-                        <MessageSquare className="w-4 h-4" />
-                        Comentarios
-                      </button>
                     </div>
                   </>
                 )}
@@ -344,18 +331,14 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet, readOnly =
         </motion.tr>
 
         {/* Modales */}
-        <ModalProcesoDisciplinario
-          isOpen={modalProcesoOpen}
-          onClose={() => setModalProcesoOpen(false)}
-          proceso={proceso}
-          readOnly={readOnly}
-        />
-        <ModalComunicaciones
-          isOpen={modalComunicacionesOpen}
-          onClose={() => setModalComunicacionesOpen(false)}
-          expediente={expedienteParaModales as any}
-          readOnly={readOnly}
-        />
+        {modalProcesoOpen && (
+          <ModalProcesoDisciplinario
+            isOpen={modalProcesoOpen}
+            onClose={() => setModalProcesoOpen(false)}
+            proceso={proceso}
+            readOnly={readOnly}
+          />
+        )}
         <ModalAutos
           isOpen={modalAutosOpen}
           onClose={() => setModalAutosOpen(false)}
@@ -451,7 +434,6 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet, readOnly =
   // Componente de tarjeta mobile con acciones
   function TarjetaProcesoMobile({ proceso }: { proceso: ProcesoDisciplinario }) {
     const [modalProcesoOpen, setModalProcesoOpen] = useState(false);
-    const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
     const [modalAutosOpen, setModalAutosOpen] = useState(false);
     const [modalEvidenciasOpen, setModalEvidenciasOpen] = useState(false);
     const [modalOficiosOpen, setModalOficiosOpen] = useState(false);
@@ -573,31 +555,19 @@ export function VistaListaJuzgamiento({ procesos, isMobile, isTablet, readOnly =
                 </Button>
               </div>
 
-              <Button
-                onClick={() => setModalComunicacionesOpen(true)}
-                size="sm"
-                className="w-full text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                <MessageSquare className="w-3 h-3 mr-1" />
-                Comentarios
-              </Button>
             </div>
           </Card>
         </motion.div>
 
         {/* Modales */}
-        <ModalProcesoDisciplinario
-          isOpen={modalProcesoOpen}
-          onClose={() => setModalProcesoOpen(false)}
-          proceso={proceso}
-          readOnly={readOnly}
-        />
-        <ModalComunicaciones
-          isOpen={modalComunicacionesOpen}
-          onClose={() => setModalComunicacionesOpen(false)}
-          expediente={expedienteParaModales as any}
-          readOnly={readOnly}
-        />
+        {modalProcesoOpen && (
+          <ModalProcesoDisciplinario
+            isOpen={modalProcesoOpen}
+            onClose={() => setModalProcesoOpen(false)}
+            proceso={proceso}
+            readOnly={readOnly}
+          />
+        )}
         <ModalAutos
           isOpen={modalAutosOpen}
           onClose={() => setModalAutosOpen(false)}

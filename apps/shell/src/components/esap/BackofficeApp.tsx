@@ -178,6 +178,9 @@ const ACADEMIC_ROLE_CODES = new Set(['ESTUDIANTE', 'DOCENTE', 'GRADUADO', 'ASPIR
 const ACADEMIC_ROLE_LABELS = new Set(['Estudiante', 'Docente', 'Graduado', 'Aspirante']);
 
 function shouldUseAcademicLayout(userData: any, userRoles?: string[]) {
+  // Con acceso dual el usuario elige el sistema desde SystemSwitcher; no forzar portal aquí.
+  if (userData?.hasBothSystemsAccess) return false;
+
   const roleCodes = Array.isArray(userData?.roles)
     ? (userData.roles as unknown[]).map((r) => String(r))
     : [];
@@ -414,6 +417,21 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialCollapsedState);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const handleSidebarCollapse = (event: Event) => {
+      const customEvent = event as CustomEvent<{ collapsed: boolean }>;
+      if (customEvent.detail && typeof customEvent.detail.collapsed === 'boolean') {
+        setSidebarCollapsed(customEvent.detail.collapsed);
+      }
+    };
+
+    window.addEventListener('esap:sidebar:collapse', handleSidebarCollapse);
+    return () => {
+      window.removeEventListener('esap:sidebar:collapse', handleSidebarCollapse);
+    };
+  }, []);
+
   const [density, setDensity] = useState<'compact' | 'comfortable'>('comfortable');
   const [certificatesPendingCount, setCertificatesPendingCount] = useState(0);
   const [showProfile, setShowProfile] = useState(false);
@@ -790,7 +808,11 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
 
             {/* Module Content - Contenedor con scroll vertical óptimo */}
             <main className={`flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 ${userData?.module === 'procesos' ? '' : ''}`}>
-              <div className={`min-h-full ${userData?.module === 'procesos' ? '' : 'p-3 sm:p-4 md:p-5 lg:p-6'}`}>
+              <div className={`min-h-full ${
+                userData?.module === 'procesos' || ['gestion-legal', 'control-interno', 'control-disciplinario'].includes(currentModule)
+                  ? ''
+                  : 'p-4 sm:p-5 md:p-6 lg:p-8 lg:pl-10'
+              }`}>
                 {renderModule()}
               </div>
             </main>

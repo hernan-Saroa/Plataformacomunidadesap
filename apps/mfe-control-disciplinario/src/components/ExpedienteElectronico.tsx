@@ -1149,9 +1149,8 @@ function ModalVisorDocumento({
                                    console.error('Error converting DOCX to HTML:', conversionError);
                                    // Fallback to original blob
                                  }
-                               }
-                              } else if (nombreArchivo.endsWith('.ppt') || nombreArchivo.endsWith('.pptx')) {
-                                tipoDetectado = 'ppt';
+                               } else if (nombreArchivo.endsWith('.ppt') || nombreArchivo.endsWith('.pptx')) {
+                                 tipoDetectado = 'ppt';
                               } else if (nombreArchivo.endsWith('.xls') || nombreArchivo.endsWith('.xlsx')) {
                                 tipoDetectado = 'xls';
                               }

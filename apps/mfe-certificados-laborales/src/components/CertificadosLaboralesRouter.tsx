@@ -183,7 +183,7 @@ export function CertificadosLaboralesRouter({ userRoles = [], userEmail, userPer
   // Vista principal: Dashboard con las funcionalidades integradas
   return (
     <>
-    <Toaster position="top-right" richColors />
+    <Toaster position="bottom-right" richColors />
     <CertificadosLaboralesDashboard
       onNavigate={handleNavigate}
       canManageTemplates={canManageTemplate}

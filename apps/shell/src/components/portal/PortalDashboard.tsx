@@ -27,6 +27,15 @@ interface PortalDashboardProps {
   onSystemChange?: (system: 'backoffice' | 'portal') => void;
 }
 
+const PORTAL_ACADEMIC_ROLE_CODES = new Set([
+  'ESTUDIANTE',
+  'DOCENTE',
+  'GRADUADO',
+  'EGRESADO',
+  'ASPIRANTE',
+  'USUARIO_AUDITADO',
+]);
+
 const normalizePortalRoleCode = (role?: string | null) =>
   String(role || '')
     .trim()
@@ -50,6 +59,8 @@ const displayPortalRoleFromCode = (roleCode?: string | null) => {
   return labels[code] || roleCode || 'Estudiante';
 };
 
+const isPortalAcademicRoleCode = (roleCode: string) => PORTAL_ACADEMIC_ROLE_CODES.has(roleCode);
+
 export function PortalDashboard({
   userName,
   userEmail,
@@ -65,7 +76,11 @@ export function PortalDashboard({
   const portalRoleCodes = useMemo(
     () =>
       Array.from(
-        new Set(((Array.isArray(userData?.roles) && userData.roles.length ? userData.roles : userRoles) || []).map(normalizePortalRoleCode).filter(Boolean)),
+        new Set(
+          ((Array.isArray(userData?.roles) && userData.roles.length ? userData.roles : userRoles) || [])
+            .map(normalizePortalRoleCode)
+            .filter((code: string) => Boolean(code) && isPortalAcademicRoleCode(code)),
+        ),
       ),
     [userData?.roles, userRoles],
   );

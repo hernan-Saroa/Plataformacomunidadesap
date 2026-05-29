@@ -182,26 +182,7 @@ export const TIPOS_DOCUMENTO = [
 ];
 
 // ════════════════════════════════════════════════════════════════════════════
-// DATOS MOCK (REDUCIDOS PARA OPTIMIZACIÓN)
-// ════════════════════════════════════════════════════════════════════════════
 
-const EXPEDIENTES_MOCK: Expediente[] = [
-  // Ejemplo mínimo de expediente para referencia
-  {
-    id: 'exp-dj-001',
-    radicado: 'PJ-2025-001',
-    nombreProceso: 'Proceso de Ejemplo',
-    tipoProceso: 'DEFENSA_JUDICIAL',
-    fechaInicio: '2024-10-15',
-    fechaActualizacion: '2025-01-12',
-    estado: 'EN_PROCESO',
-    responsable: 'Abogado Responsable',
-    totalDocumentos: 3,
-    documentos: [
-      { id: 'd1', nombre: 'Documento 1.pdf', tipo: 'DEMANDA', tipoArchivo: 'PDF', tamanio: '1.2 MB', fechaCreacion: '2024-10-15', autor: 'Usuario' },
-    ]
-  },
-];
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL

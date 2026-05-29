@@ -33,6 +33,7 @@ export function ModalHeaderClean({
           )}
         </div>
         <button
+          type="button"
           onClick={onClose}
           className="ml-4 p-2 hover:bg-white/50 rounded-lg transition-colors flex-shrink-0"
           aria-label="Cerrar"

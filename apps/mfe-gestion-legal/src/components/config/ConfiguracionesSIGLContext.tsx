@@ -17,6 +17,9 @@ export interface EstadoKanban {
   color: string;
   orden: number;
   activo: boolean;
+  aprobacionTipo?: 'ninguno' | 'rol' | 'usuario';
+  aprobacionRol?: string;
+  aprobacionUsuario?: string;
 }
 
 export interface ConfiguracionTiempo {
@@ -34,6 +37,20 @@ export interface TipoProcesoJudicial {
   plazo: number;
   alertaDias: number;
   activo: boolean;
+  rolAsociado?: string;
+  horaEspecial?: string;
+  camposObligatorios?: Record<string, boolean>;
+  camposVisibles?: Record<string, boolean>;
+  camposAdicionalesConfig?: Array<{
+    id: string;
+    nombre: string;
+    tipo: 'texto' | 'numero' | 'fecha' | 'booleano' | 'alfanumerico' | 'unico' | 'documento';
+    obligatorio: boolean;
+    paso: number;
+    tiposDocumento?: string[];
+  }>;
+  unidadTermino?: 'dias' | 'horas';
+  estados?: EstadoKanban[];
 }
 
 export interface TipoAuto {
@@ -121,6 +138,16 @@ export interface EnteControlPM {
   icono: string;
   color: string;
   activo: boolean;
+}
+
+// Categorías de Documentos Configurables
+export interface CategoriaDocumento {
+  id: string;
+  nombre: string;
+  icono: string;
+  color: string;
+  activo: boolean;
+  orden: number;
 }
 
 export interface ConfiguracionModulo {
@@ -212,6 +239,22 @@ const configuracionesIniciales: ConfiguracionModulo[] = [
       { id: 'auto-correccion', nombre: 'Auto de Corrección', descripcion: 'Auto que corrige errores aritméticos o de transcripción', activo: true },
       { id: 'auto-interlocutorio', nombre: 'Auto Interlocutorio', descripcion: 'Auto que resuelve incidentes o cuestiones de trámite', activo: true },
       { id: 'auto-sustanciacion', nombre: 'Auto de Sustanciación', descripcion: 'Auto que impulsa el proceso y ordena trámites', activo: true },
+    ],
+    tiposActuaciones: [
+      { id: 'aporte-pruebas', nombre: 'Aporte de Pruebas', descripcion: 'Presentación de pruebas documentales o testimoniales.', activo: true, orden: 1 },
+      { id: 'contestacion', nombre: 'Contestación', descripcion: 'Contestación a requerimientos o demandas.', activo: true, orden: 2 },
+      { id: 'asignacion', nombre: 'Asignación', descripcion: 'Asignación de roles o expedientes.', activo: true, orden: 3 },
+      { id: 'auto-interlocutorio', nombre: 'Auto Interlocutorio', descripcion: 'Decisión sobre cuestiones de trámite.', activo: true, orden: 4 },
+      { id: 'sentencia', nombre: 'Sentencia', descripcion: 'Decisión final del proceso.', activo: true, orden: 5 },
+      { id: 'traslado', nombre: 'Traslado', descripcion: 'Comunicación de documentos a otra parte.', activo: true, orden: 6 },
+      { id: 'notificacion', nombre: 'Notificación', descripcion: 'Comunicación formal de un acto.', activo: true, orden: 7 },
+      { id: 'recurso', nombre: 'Recurso', descripcion: 'Interposición de recurso legal.', activo: true, orden: 8 },
+      { id: 'memorial', nombre: 'Memorial', descripcion: 'Escrito presentado por las partes.', activo: true, orden: 9 },
+      { id: 'audiencia', nombre: 'Audiencia', descripcion: 'Diligencia oral y pública.', activo: true, orden: 10 },
+      { id: 'inspeccion-judicial', nombre: 'Inspección Judicial', descripcion: 'Revisión directa por parte del juez.', activo: true, orden: 11 },
+      { id: 'prueba-testimonial', nombre: 'Prueba Testimonial', descripcion: 'Declaración de testigos.', activo: true, orden: 12 },
+      { id: 'diligencia', nombre: 'Diligencia', descripcion: 'Actuación procedimental diversa.', activo: true, orden: 13 },
+      { id: 'otro', nombre: 'Otro', descripcion: 'Otras actuaciones no categorizadas.', activo: true, orden: 14 }
     ],
     mediosControl: [
       { id: 'reparacion-directa', nombre: 'Reparación Directa', descripcion: 'Acción para obtener indemnización por daño antijurídico', activo: true, orden: 1 },
@@ -445,13 +488,25 @@ const organismosControlIniciales: OrganismoControl[] = [
   }
 ];
 
-// ============ ENTES DE CONTROL PLANES DE MEJORAMIENTO ============
-
 const entesControlPMIniciales: EnteControlPM[] = [
   { id: 'CONTRALORIA', nombre: 'Contraloría General', descripcion: 'Máximo órgano de control fiscal del Estado', icono: '🏛️', color: '#DC2626', activo: true },
   { id: 'PROCURADURIA', nombre: 'Procuraduría General', descripcion: 'Órgano de vigilancia de la conducta oficial de servidores públicos', icono: '⚖️', color: '#059669', activo: true },
   { id: 'OCI', nombre: 'Oficina Control Interno', descripcion: 'Control interno institucional', icono: '🔍', color: '#2962FF', activo: true },
   { id: 'AUDITORIA_EXTERNA', nombre: 'Auditoría Externa', descripcion: 'Revisiones de firmas de auditoría externas', icono: '📊', color: '#9C27B0', activo: true },
+];
+
+// ============ CATEGORÍAS DE DOCUMENTOS INICIALES ============
+
+const categoriasDocumentosIniciales: CategoriaDocumento[] = [
+  { id: 'todos', nombre: 'Todos', icono: 'FolderOpen', color: '#003DA5', activo: true, orden: 1 },
+  { id: 'actas', nombre: 'Actas', icono: 'BookOpen', color: '#7C3AED', activo: true, orden: 2 },
+  { id: 'evidencias', nombre: 'Evidencias', icono: 'Shield', color: '#059669', activo: true, orden: 3 },
+  { id: 'oficios', nombre: 'Oficios', icono: 'Mail', color: '#D97706', activo: true, orden: 4 },
+  { id: 'autos', nombre: 'Autos', icono: 'Stamp', color: '#DC2626', activo: true, orden: 5 },
+  { id: 'pruebas', nombre: 'Pruebas', icono: 'Eye', color: '#0891B2', activo: true, orden: 6 },
+  { id: 'comunicaciones', nombre: 'Comunicaciones', icono: 'Share2', color: '#4F46E5', activo: true, orden: 7 },
+  { id: 'notificaciones', nombre: 'Notificaciones', icono: 'Bell', color: '#EA580C', activo: true, orden: 8 },
+  { id: 'documentos', nombre: 'Documentos Generales', icono: 'File', color: '#6B7280', activo: true, orden: 9 },
 ];
 
 // ============ CONTEXT TYPE ============
@@ -463,6 +518,7 @@ interface ConfiguracionesSIGLContextType {
   tiposRequerimientos: TipoRequerimiento[];
   organismosControl: OrganismoControl[];
   entesControlPM: EnteControlPM[];
+  categoriasDocumentos: CategoriaDocumento[];
   cambiosPendientes: boolean;
   getConfiguracionModulo: (moduloId: string) => ConfiguracionModulo | undefined;
   getEstadosActivos: (moduloId: string) => EstadoKanban[];
@@ -477,15 +533,18 @@ interface ConfiguracionesSIGLContextType {
   getTiposRequerimientosActivos: () => TipoRequerimiento[];
   getOrganismosControlActivos: () => OrganismoControl[];
   getEntesControlPMActivos: () => EnteControlPM[];
+  getCategoriasDocumentosActivas: () => CategoriaDocumento[];
   actualizarConfiguraciones: (nuevasConfigs: ConfiguracionModulo[]) => void;
   actualizarEjesEstrategicos: (nuevosEjes: EjeEstrategico[]) => void;
   actualizarTiposIndicadores: (nuevosTipos: TipoIndicador[]) => void;
   actualizarTiposRequerimientos: (nuevosTipos: TipoRequerimiento[]) => void;
   actualizarOrganismosControl: (nuevosOrganismos: OrganismoControl[]) => void;
   actualizarEntesControlPM: (nuevosEntes: EnteControlPM[]) => void;
-  guardarConfiguraciones: () => void;
+  actualizarCategoriasDocumentos: (nuevasCategorias: CategoriaDocumento[]) => void;
+  guardarConfiguraciones: (silencioso?: boolean) => Promise<void>;
   restablecerDefecto: () => void;
   setCambiosPendientes: (value: boolean) => void;
+  savingStatus: 'idle' | 'saving' | 'saved' | 'error';
 }
 
 // ============ CONTEXT ============
@@ -503,7 +562,9 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   const [tiposRequerimientos, setTiposRequerimientos] = useState<TipoRequerimiento[]>(tiposRequerimientosIniciales);
   const [organismosControl, setOrganismosControl] = useState<OrganismoControl[]>(organismosControlIniciales);
   const [entesControlPM, setEntesControlPM] = useState<EnteControlPM[]>(entesControlPMIniciales);
+  const [categoriasDocumentos, setCategoriasDocumentos] = useState<CategoriaDocumento[]>(categoriasDocumentosIniciales);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
+  const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   // Cargar configuraciones desde API
   useEffect(() => {
@@ -626,6 +687,17 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         console.error('❌ Error al cargar entes de control PM:', error);
       }
     }
+
+    const categoriasDocsGuardadas = localStorage.getItem('sigl-categorias-documentos');
+    if (categoriasDocsGuardadas) {
+      try {
+        const parsed = JSON.parse(categoriasDocsGuardadas);
+        setCategoriasDocumentos(parsed);
+        console.log('✅ Categorías de Documentos cargadas desde localStorage');
+      } catch (error) {
+        console.error('❌ Error al cargar categorías de documentos:', error);
+      }
+    }
   }, []);
 
   // Obtener configuración de un módulo específico
@@ -700,6 +772,10 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     return entesControlPM.filter(e => e.activo);
   };
 
+  const getCategoriasDocumentosActivas = (): CategoriaDocumento[] => {
+    return categoriasDocumentos.filter(e => e.activo).sort((a, b) => a.orden - b.orden);
+  };
+
   // Actualizar configuraciones
   const actualizarConfiguraciones = (nuevasConfig: ConfiguracionModulo[]) => {
     setConfiguraciones(nuevasConfig);
@@ -736,8 +812,13 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     setCambiosPendientes(true);
   };
 
+  const actualizarCategoriasDocumentos = (nuevasCategorias: CategoriaDocumento[]) => {
+    setCategoriasDocumentos(nuevasCategorias);
+    setCambiosPendientes(true);
+  };
+
   // Guardar configuraciones
-  const guardarConfiguraciones = async (): Promise<void> => {
+  const guardarConfiguraciones = async (silencioso: boolean = false): Promise<void> => {
     try {
       console.log('💾 Guardando configuraciones en backend...');
 
@@ -815,27 +896,75 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       localStorage.setItem('sigl-tipos-requerimientos', JSON.stringify(tiposRequerimientos));
       localStorage.setItem('sigl-organismos-control', JSON.stringify(organismosControl));
       localStorage.setItem('sigl-entes-control-pm', JSON.stringify(entesControlPM));
-
-      // Aquí se enviaría al backend en producción
-      // await fetch('/api/sigl/configuraciones', { method: 'POST', body: JSON.stringify(configuraciones) });
+      localStorage.setItem('sigl-categorias-documentos', JSON.stringify(categoriasDocumentos));
 
       setCambiosPendientes(false);
-      toast.success('Configuraciones guardadas correctamente', {
-        description: 'Los cambios se han aplicado a todos los módulos',
-        duration: 3000
-      });
+      
+      if (!silencioso) {
+        toast.success('Configuraciones guardadas correctamente', {
+          description: 'Los cambios se han aplicado a todos los módulos',
+          duration: 3000
+        });
+      }
 
       console.log('✅ Configuraciones sincronizadas con servidor');
     } catch (error) {
       console.error('❌ Error al guardar configuraciones:', error);
-      toast.error('Error al guardar configuraciones en el servidor');
+      if (!silencioso) {
+        toast.error('Error al guardar configuraciones en el servidor');
+      }
+      throw error;
     }
   };
+
+  // Guardado automático debil de cambios con debouncing
+  useEffect(() => {
+    if (!cambiosPendientes) return;
+
+    setSavingStatus('saving');
+
+    const timer = setTimeout(async () => {
+      try {
+        console.log('🔄 Iniciando guardado automático...');
+        await guardarConfiguraciones(true);
+        setSavingStatus('saved');
+      } catch (err) {
+        console.error('❌ Error en guardado automático:', err);
+        setSavingStatus('error');
+      }
+    }, 1500); // 1.5s debounce
+
+    return () => clearTimeout(timer);
+  }, [configuraciones, ejesEstrategicos, tiposIndicadores, tiposRequerimientos, organismosControl, entesControlPM]);
+
+  // Limpiar estado 'saved' / 'error' de vuelta a 'idle' después de unos segundos
+  useEffect(() => {
+    if (savingStatus === 'saved' || savingStatus === 'error') {
+      const timer = setTimeout(() => {
+        setSavingStatus('idle');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [savingStatus]);
 
   // Restablecer a valores por defecto
   const restablecerDefecto = () => {
     setConfiguraciones(configuracionesIniciales);
+    setEjesEstrategicos(ejesEstrategicosIniciales);
+    setTiposIndicadores(tiposIndicadoresIniciales);
+    setTiposRequerimientos(tiposRequerimientosIniciales);
+    setOrganismosControl(organismosControlIniciales);
+    setEntesControlPM(entesControlPMIniciales);
+    setCategoriasDocumentos(categoriasDocumentosIniciales);
+
     localStorage.removeItem('sigl-configuraciones');
+    localStorage.removeItem('sigl-ejes-estrategicos');
+    localStorage.removeItem('sigl-tipos-indicadores');
+    localStorage.removeItem('sigl-tipos-requerimientos');
+    localStorage.removeItem('sigl-organismos-control');
+    localStorage.removeItem('sigl-entes-control-pm');
+    localStorage.removeItem('sigl-categorias-documentos');
+
     setCambiosPendientes(false);
     toast.success('Configuraciones restablecidas', {
       description: 'Se han restaurado los valores por defecto',
@@ -850,6 +979,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     tiposRequerimientos,
     organismosControl,
     entesControlPM,
+    categoriasDocumentos,
     cambiosPendientes,
     getConfiguracionModulo,
     getEstadosActivos,
@@ -864,15 +994,18 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     getTiposRequerimientosActivos,
     getOrganismosControlActivos,
     getEntesControlPMActivos,
+    getCategoriasDocumentosActivas,
     actualizarConfiguraciones,
     actualizarEjesEstrategicos,
     actualizarTiposIndicadores,
     actualizarTiposRequerimientos,
     actualizarOrganismosControl,
     actualizarEntesControlPM,
+    actualizarCategoriasDocumentos,
     guardarConfiguraciones,
     restablecerDefecto,
     setCambiosPendientes,
+    savingStatus,
   };
 
   return (

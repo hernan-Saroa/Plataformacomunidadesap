@@ -160,261 +160,7 @@ const getModuloDestinoUI = (moduloSugerido?: string): ModuloDestinoUI | undefine
   );
 };
 
-// DATOS MOCK UNIFICADOS (REDUCIDOS PARA OPTIMIZACIÓN)
-const comunicacionesUnificadas: ComunicacionUnificada[] = [
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 📬 COMUNICACIONES JUDICIALES
-  // ═══════════════════════════════════════════════════════════════════════════
-  {
-    id: 'JUD-2025-001',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'Acción de Tutela',
-    asunto: 'Notificación de admisión de tutela - Derecho a la educación',
-    descripcion: 'El Juzgado 33 Administrativo de Bogotá admite tutela interpuesta por estudiante en contra de ESAP por presunta vulneración al derecho fundamental a la educación.',
-    remitente: 'Juzgado 33 Administrativo del Circuito de Bogotá',
-    despachoOrigen: 'Juzgado 33 Administrativo',
-    radicadoExterno: '25000-33-10-001-2025-00123-00',
-    fechaRadicacion: new Date('2025-01-28'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['admision_tutela.pdf', 'demanda.pdf']
-  },
-  {
-    id: 'JUD-2025-002',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'Acción Popular',
-    asunto: 'Auto admisorio de demanda - Moralidad administrativa',
-    descripcion: 'Juzgado admite acción popular por presuntas irregularidades en proceso de contratación. Se requiere respuesta en término de 10 días.',
-    remitente: 'Juzgado 5 Administrativo de Cundinamarca',
-    despachoOrigen: 'Juzgado 5 Administrativo',
-    radicadoExterno: '25000-05-23-001-2025-00045-00',
-    fechaRadicacion: new Date('2025-01-30'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['auto_admisorio.pdf', 'accion_popular.pdf', 'anexos.pdf']
-  },
-  {
-    id: 'JUD-2025-003',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'Nulidad y Restablecimiento',
-    asunto: 'Citación a audiencia inicial - Proceso laboral',
-    descripcion: 'Se fija fecha para audiencia inicial del 15 de febrero de 2025 a las 9:00 AM. Se requiere presencia del representante legal o apoderado.',
-    remitente: 'Tribunal Administrativo de Cundinamarca',
-    despachoOrigen: 'Tribunal Administrativo',
-    radicadoExterno: '25000-23-33-001-2024-00789-01',
-    fechaRadicacion: new Date('2025-01-25'),
-    urgente: false,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['citacion_audiencia.pdf']
-  },
-  {
-    id: 'JUD-2025-004',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'Acción de Cumplimiento',
-    asunto: 'Requerimiento de información - Cumplimiento de normativa',
-    descripcion: 'Solicitud del juzgado para aportar información sobre cumplimiento de normas en materia de transparencia y acceso a la información pública.',
-    remitente: 'Juzgado 18 Administrativo de Bogotá',
-    despachoOrigen: 'Juzgado 18 Administrativo',
-    radicadoExterno: '25000-18-10-001-2025-00234-00',
-    fechaRadicacion: new Date('2025-01-22'),
-    urgente: false,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['requerimiento.pdf']
-  },
-  {
-    id: 'JUD-2025-005',
-    tipo: 'JUDICIAL',
-    tipoProceso: 'Ejecutivo Singular',
-    asunto: 'Mandamiento de pago - Cobro obligaciones fiscales',
-    descripcion: 'Se libra mandamiento de pago dentro del proceso ejecutivo por obligaciones fiscales pendientes. Monto: $125.000.000',
-    remitente: 'Juzgado 2 Civil del Circuito',
-    despachoOrigen: 'Juzgado 2 Civil',
-    radicadoExterno: '11001-02-31-002-2024-00567-00',
-    fechaRadicacion: new Date('2025-01-20'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['mandamiento_pago.pdf', 'liquidacion.pdf']
-  },
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 📧 CORREOS ELECTRÓNICOS (Con Clasificación IA)
-  // ═══════════════════════════════════════════════════════════════════════════
-  {
-    id: 'CORREO-2025-001',
-    tipo: 'CORREO',
-    asunto: 'Consulta sobre requisitos para inscripción de título',
-    descripcion: 'Ciudadano solicita información sobre procedimiento y documentos necesarios para inscribir título profesional obtenido en ESAP.',
-    remitente: 'ciudadano@gmail.com',
-    fechaRadicacion: new Date('2025-01-29'),
-    urgente: false,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: [],
-    clasificacionIA: {
-      tipoDetectado: 'Derecho de Petición',
-      moduloSugerido: 'Asesoría Jurídica',
-      confianza: 0.92
-    }
-  },
-  {
-    id: 'CORREO-2025-002',
-    tipo: 'CORREO',
-    asunto: 'Solicitud de certificado laboral urgente',
-    descripcion: 'Ex funcionario requiere certificado laboral para trámite pensional ante fondo de pensiones. Solicita respuesta en máximo 5 días.',
-    remitente: 'exfuncionario@outlook.com',
-    fechaRadicacion: new Date('2025-01-28'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['cedula.pdf'],
-    clasificacionIA: {
-      tipoDetectado: 'PQRS - Petición',
-      moduloSugerido: 'Asesoría Jurídica',
-      confianza: 0.88
-    }
-  },
-  {
-    id: 'CORREO-2025-003',
-    tipo: 'CORREO',
-    asunto: 'Queja por demora en trámite de grado',
-    descripcion: 'Estudiante manifiesta inconformidad por demora de más de 6 meses en la expedición de su diploma de grado. Solicita solución inmediata.',
-    remitente: 'estudiante.esap@gmail.com',
-    fechaRadicacion: new Date('2025-01-27'),
-    urgente: true,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['recibo_grado.pdf', 'comunicaciones_previas.pdf'],
-    clasificacionIA: {
-      tipoDetectado: 'PQRS - Queja',
-      moduloSugerido: 'Asesoría Jurídica',
-      confianza: 0.95
-    }
-  },
-  {
-    id: 'CORREO-2025-004',
-    tipo: 'CORREO',
-    asunto: 'Requerimiento Contraloría - Información presupuestal',
-    descripcion: 'La Contraloría General solicita información detallada sobre ejecución presupuestal del último trimestre 2024.',
-    remitente: 'contraloria@contraloria.gov.co',
-    fechaRadicacion: new Date('2025-01-26'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['requerimiento_oficial.pdf'],
-    clasificacionIA: {
-      tipoDetectado: 'Órgano de Control',
-      moduloSugerido: 'Órganos de Control',
-      confianza: 0.98
-    }
-  },
-  {
-    id: 'CORREO-2025-005',
-    tipo: 'CORREO',
-    asunto: 'Solicitud de información pública - Transparencia',
-    descripcion: 'ONG solicita información sobre contratos suscritos en 2024 mayores a $100 millones, en cumplimiento de Ley de Transparencia.',
-    remitente: 'transparencia.colombia@ong.org',
-    fechaRadicacion: new Date('2025-01-25'),
-    urgente: false,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: [],
-    clasificacionIA: {
-      tipoDetectado: 'Derecho de Petición - Información Pública',
-      moduloSugerido: 'Asesoría Jurídica',
-      confianza: 0.91
-    }
-  },
-  {
-    id: 'CORREO-2025-006',
-    tipo: 'CORREO',
-    asunto: 'Propuesta de cooperación interinstitucional',
-    descripcion: 'Universidad Externado propone convenio de cooperación académica para maestría en Gestión Pública.',
-    remitente: 'convenios@uexternado.edu.co',
-    fechaRadicacion: new Date('2025-01-24'),
-    urgente: false,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['propuesta_convenio.pdf'],
-    clasificacionIA: {
-      tipoDetectado: 'Oficio Externo',
-      moduloSugerido: 'Asesoría Jurídica',
-      confianza: 0.85
-    }
-  },
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 📄 OFICIOS INTERNOS/EXTERNOS
-  // ═══════════════════════════════════════════════════════════════════════════
-  {
-    id: 'OFICIO-2025-001',
-    tipo: 'OFICIO',
-    asunto: 'Concepto jurídico sobre modificación contractual',
-    descripcion: 'La Subdirección Financiera solicita concepto jurídico sobre viabilidad de modificación del contrato 045-2024.',
-    remitente: 'Subdirección Financiera - ESAP',
-    fechaRadicacion: new Date('2025-01-30'),
-    urgente: false,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['contrato_045.pdf', 'solicitud_modificacion.pdf']
-  },
-  {
-    id: 'OFICIO-2025-002',
-    tipo: 'OFICIO',
-    asunto: 'Solicitud de revisión de pliegos de condiciones',
-    descripcion: 'Dirección de Contratación solicita revisión jurídica de pliegos para licitación pública de infraestructura.',
-    remitente: 'Dirección de Contratación',
-    fechaRadicacion: new Date('2025-01-29'),
-    urgente: true,
-    leida: false,
-    estado: 'PENDIENTE',
-    documentosAdjuntos: ['pliegos_borrador.pdf', 'estudios_previos.pdf']
-  },
-  {
-    id: 'OFICIO-2025-003',
-    tipo: 'OFICIO',
-    asunto: 'Procuraduría solicita información disciplinaria',
-    descripcion: 'La Procuraduría General de la Nación solicita información sobre procesos disciplinarios en curso contra funcionarios de ESAP.',
-    remitente: 'Procuraduría General de la Nación',
-    radicadoExterno: 'PGN-2025-0123',
-    fechaRadicacion: new Date('2025-01-27'),
-    urgente: true,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['oficio_procuraduria.pdf']
-  },
-  {
-    id: 'OFICIO-2025-004',
-    tipo: 'OFICIO',
-    asunto: 'Concepto sobre licencia de maternidad',
-    descripcion: 'Gestión Humana solicita concepto sobre procedimiento de licencia de maternidad para madre adoptante.',
-    remitente: 'Gestión Humana',
-    fechaRadicacion: new Date('2025-01-26'),
-    urgente: false,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['solicitud_concepto.pdf']
-  },
-  {
-    id: 'OFICIO-2025-005',
-    tipo: 'OFICIO',
-    asunto: 'Ministerio de Educación - Solicitud de estadísticas',
-    descripcion: 'El Ministerio de Educación Nacional solicita estadísticas de graduados 2024 para consolidado nacional.',
-    remitente: 'Ministerio de Educación Nacional',
-    radicadoExterno: 'MINEDU-2025-0456',
-    fechaRadicacion: new Date('2025-01-23'),
-    urgente: false,
-    leida: true,
-    estado: 'LEIDA',
-    documentosAdjuntos: ['oficio_mineducacion.pdf']
-  },
-
-  // (Mock data for archivados removed — now served from API)
-];
+import { correosJuridicosService } from '../../../../services/api/legal.service';
 
 type TabUnificadaType = 'judiciales' | 'correos' | 'oficios' | 'enviados' | 'respuestas' | 'urgentes' | 'archivadas';
 type VistaModulo = 'inbox' | 'lista';
@@ -429,6 +175,40 @@ export function ModuloCentroComunicacionesJuridicasV3() {
   const [busqueda, setBusqueda] = useState('');
   const [comunicacionSeleccionada, setComunicacionSeleccionada] = useState<ComunicacionUnificada | null>(null);
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
+    const [comunicacionesUnificadasDataData, setComunicacionesUnificadasData] = useState<ComunicacionUnificada[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchComunicaciones = async () => {
+      setIsLoading(true);
+      try {
+        const correos = await correosJuridicosService.getCorreos();
+        const mapped = correos.map(c => ({
+          id: c.id,
+          tipo: c.tipo === 'JUDICIAL' ? 'JUDICIAL' : c.tipo === 'OFICIO' ? 'CONCEPTO_OFICIO' : 'OTRO',
+          tipoProceso: c.categoria || 'General',
+          asunto: c.asunto,
+          descripcion: c.cuerpoTexto || 'Sin descripción',
+          remitente: c.remitenteNombre || c.remitenteEmail,
+          remitenteEmail: c.remitenteEmail,
+          despachoOrigen: 'Despacho',
+          radicadoExterno: c.graphMessageId,
+          fechaRadicacion: new Date(c.fechaRecepcion || Date.now()),
+          urgente: c.urgente,
+          leida: c.leido,
+          estado: c.archivado ? 'ARCHIVADO' : c.leido ? 'ATENDIDO' : 'NUEVO',
+          documentosAdjuntos: c.tieneAdjuntos ? ['Adjunto'] : []
+        })) as any[];
+        setComunicacionesUnificadasData(mapped);
+      } catch (error) {
+        console.error('Error fetching comunicaciones:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchComunicaciones();
+  }, []);
+
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
   const [tipoVista, setTipoVista] = useState<VistaModulo>('inbox');
 

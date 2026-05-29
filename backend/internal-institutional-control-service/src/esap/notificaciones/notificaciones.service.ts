@@ -191,37 +191,12 @@ export class NotificacionesService {
         destinatariosSet.add(context.usuarioId);
       }
 
-      const rolesConfigurados = (configEvento as any)?.roles || [];
-      
-        // 🛡️ FALLBACK: Si no hay roles en la DB, usar roles por defecto
-        let rolesDestinatarios = rolesConfigurados;
-        if (rolesDestinatarios.length === 0) {
-          // Mapear códigos extendidos a categorías para fallbacks
-          if (eventoCode.startsWith('EVT-KANBAN')) {
-            rolesDestinatarios = ['JEFE_OCI', 'JEFE_OCIG', 'AUDITOR_LIDER', 'EQUIPO_AUDITOR', 'ADMIN', 'SUPER_ADMIN'];
-          } else if (eventoCode.startsWith('EVT-PM') || eventoCode.includes('PLAN')) {
-            rolesDestinatarios = ['JEFE_OCI', 'JEFE_OCIG', 'RESPONSABLE_PLAN_MEJORAMIENTO', 'AUDITOR_LIDER', 'EQUIPO_AUDITOR', 'ADMIN', 'SUPER_ADMIN'];
-          } else if (eventoCode.startsWith('EVT-APR')) {
-            rolesDestinatarios = ['JEFE_OCI', 'JEFE_OCIG', 'AUDITOR_LIDER', 'EQUIPO_AUDITOR', 'ADMIN', 'SUPER_ADMIN'];
-          } else if (eventoCode.startsWith('EVT-DOC')) {
-            rolesDestinatarios = ['JEFE_OCI', 'JEFE_OCIG', 'AUDITOR_LIDER', 'EQUIPO_AUDITOR', 'ADMIN', 'SUPER_ADMIN'];
-          } else {
-            rolesDestinatarios = ['JEFE_OCI', 'JEFE_OCIG', 'AUDITOR_LIDER', 'EQUIPO_AUDITOR', 'ADMIN', 'SUPER_ADMIN'];
-          }
-          console.log(`[Notificaciones] 🛡️ Usando fallbacks para ${eventoCode}: ${rolesDestinatarios.join(', ')}`);
-        }
-
-        if (rolesDestinatarios.length > 0) {
-          for (const rol of rolesDestinatarios) {
-            const ids = await this.resolverUsuariosPorRol(rol, context);
-            console.log(`[Notificaciones] 👥 Rol '${rol}' resuelto a ${ids.length} usuarios`);
-            ids.forEach(id => destinatariosSet.add(id));
-          }
-        }
+      const rolesDestinatarios = (configEvento as any)?.roles || [];
 
       if (rolesDestinatarios.length > 0) {
-        for (const rol of rolesDestinatarios) {
-          const ids = await this.resolverUsuariosPorRol(rol, context);
+        for (const rolId of rolesDestinatarios) {
+          const ids = await this.resolverUsuariosPorRol(rolId, context);
+          console.log(`[Notificaciones] 👥 Rol '${rolId}' resuelto a ${ids.length} usuarios`);
           ids.forEach(id => destinatariosSet.add(id));
         }
       }
@@ -232,6 +207,25 @@ export class NotificacionesService {
         return { total: 0, exitosos: 0 };
       }
 
+      // 1.5. Resolver plantilla de email si existe
+      let mensajeFinal = (configEvento as any)?.plantillaEmail || context.mensajeCustom || (configEvento as any)?.mensaje || 'Tiene una nueva actividad pendiente.';
+      let tituloFinal = (configEvento as any)?.titulo || context.tituloCustom || 'Notificación de Sistema';
+
+      // Reemplazar variables en el mensaje (ej: [NOMBRE], [CODIGO], etc.)
+      if (mensajeFinal && typeof mensajeFinal === 'string') {
+        const metadatos = {
+          ...context.metadata,
+          CODIGO: context.auditoriaCodigo || context.metadata?.auditoriaCodigo || context.metadata?.codigoAuditoria || '',
+          NOMBRE: context.auditoriaNombre || context.metadata?.auditoriaNombre || context.metadata?.nombreAuditoria || '',
+          ETAPA: context.metadata?.nuevoEstado || context.metadata?.estadoNuevo || '',
+          MOTIVO: context.metadata?.motivo || context.metadata?.justificacion || '',
+        };
+
+        mensajeFinal = mensajeFinal.replace(/\[(.*?)\]/g, (match, p1) => {
+          return metadatos[p1] || metadatos[p1.toLowerCase()] || match;
+        });
+      }
+
       // 2. Ejecutar envío para cada destinatario
       let exitosos = 0;
       for (const idUsuario of destinatarios) {
@@ -239,15 +233,16 @@ export class NotificacionesService {
           await this.create({
             usuarioId: idUsuario,
             tipoNotificacion: eventoCode as any,
-            titulo: context.tituloCustom || (configEvento as any)?.titulo || 'Notificación de Sistema',
-            mensaje: context.mensajeCustom || (configEvento as any)?.mensaje || 'Tiene una nueva actividad pendiente.',
+            titulo: tituloFinal,
+            mensaje: mensajeFinal,
             prioridad: (configEvento as any)?.prioridad || PrioridadNotificacion.NORMAL,
             metadata: { ...context.metadata, eventoCode, auditoriaId: context.auditoriaId },
             accionUrl: context.url_accion || (configEvento as any)?.url_accion || '',
           });
           exitosos++;
-        } catch (err) {
-          console.error(`[Notificaciones] Error enviando a ${idUsuario}:`, err.message);
+          console.log(`[Notificaciones] ✅ Éxito enviando evento ${eventoCode} a usuario ${idUsuario}`);
+        } catch (err: any) {
+          console.error(`[Notificaciones] ❌ Falla enviando evento ${eventoCode} a usuario ${idUsuario}:`, err.message);
         }
       }
 
@@ -261,122 +256,69 @@ export class NotificacionesService {
   /**
    * Resuelve los UUIDs de usuarios basados en un rol dinámico y el contexto
    */
-  private async resolverUsuariosPorRol(rol: string, context: any): Promise<string[]> {
+  private async resolverUsuariosPorRol(rolId: string, context: any): Promise<string[]> {
     const ids: string[] = [];
-    // Normalizar el nombre del rol enviado desde el frontend (ej: "Jefe OCIG" -> "JEFE_OCIG")
-    const rolUpper = rol.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '_');
+    
+    // Obtener información del rol desde la base de datos
+    let roleCode = '';
+    try {
+      const roles = await this.dataSource.query(
+        `SELECT id, code, name FROM auth.role WHERE id::text = $1 OR UPPER(code) = UPPER($1) OR UPPER(name) = UPPER($1) LIMIT 1`,
+        [rolId]
+      );
+      if (!roles || roles.length === 0) {
+        console.warn(`[Notificaciones] Rol '${rolId}' no encontrado en BD. Se omite.`);
+        return []; // No intentar resolver strings libres
+      }
+      roleCode = roles[0].code?.toUpperCase() || '';
+    } catch (e) {
+      console.warn(`[Notificaciones] Error consultando el rol '${rolId}'. Se omite.`);
+      return [];
+    }
 
-    switch (rolUpper) {
-      case 'SUPER_ADMIN':
-      case 'ADMINISTRADOR_SISTEMA':
-        const superAdmins = await this.dataSource.query(
+    // "Si el evento está asociado a una auditoría específica, notificar solo al auditor/área auditada"
+    if (roleCode === 'AUDITOR_LIDER') {
+      if (context.auditoriaId) {
+        const aud = await this.dataSource.query(
+          `SELECT u.id_user 
+           FROM control_interno.auditoria a
+           INNER JOIN auth."user" u ON u.id_person = a.auditor_lider_id
+           WHERE a.id = $1`, 
+          [context.auditoriaId]
+        );
+        if (aud[0]?.id_user) ids.push(aud[0].id_user);
+      }
+      return ids;
+    }
+
+    if (roleCode === 'EQUIPO_AUDITOR' || roleCode === 'AUDITOR_EQUIPO') {
+      if (context.auditoriaId) {
+        const miembros = await this.dataSource.query(
           `SELECT DISTINCT u.id_user 
            FROM auth."user" u
-           LEFT JOIN auth.user_roles ur ON ur.id_user = u.id_user
-           LEFT JOIN auth.role r ON r.id = ur.id_rol
-           WHERE u.is_active = true 
-           AND (UPPER(r.code) IN ('SUPER_ADMIN', 'ADMIN') OR r.name ILIKE '%Administrador%')`
+           LEFT JOIN control_interno.equipo_auditor ea ON u.id_person = ea.persona_id AND ea.auditoria_id = $1 AND ea.activo = true
+           LEFT JOIN control_interno.auditoria a ON a.id = $1
+           WHERE ea.persona_id IS NOT NULL 
+              OR u.id_person = a.auditor_lider_id 
+              OR u.id_person = a.auditor_asignado_id`, 
+          [context.auditoriaId]
         );
-        superAdmins.forEach((sa: any) => ids.push(sa.id_user));
-        break;
+        miembros.forEach((m: any) => ids.push(m.id_user));
+      }
+      return ids;
+    }
 
-      case 'JEFE_OCI':
-      case 'JEFE_OCIG':
-      case 'JEFE_DE_OCI':
-      case 'JEFE_DE_OCIG':
-      case 'JEFE_CONTROL_INTERNO':
-      case 'JEFE_DE_CONTROL_INTERNO':
-      case 'ADMIN':
-      case 'ADMINISTRADOR':
-        const jefes = await this.obtenerJefesControlInterno();
-        jefes.forEach(j => ids.push(j));
-        break;
-
-      case 'AUDITOR_LIDER':
-        if (context.auditoriaId) {
-          const aud = await this.dataSource.query(
-            `SELECT u.id_user 
+    if (roleCode === 'AUDITADO' || roleCode === 'JEFE_DEPENDENCIA' || roleCode === 'RESPONSABLE_AREA_AUDITADA') {
+      if (context.auditoriaId) {
+        try {
+          const emailResult = await this.dataSource.query(
+            `SELECT a.responsable_area_email
              FROM control_interno.auditoria a
-             INNER JOIN auth."user" u ON u.id_person = a.auditor_lider_id
-             WHERE a.id = $1`, 
+             WHERE a.id = $1`,
             [context.auditoriaId]
           );
-          if (aud[0]?.id_user) ids.push(aud[0].id_user);
-        }
-        break;
-
-      case 'EQUIPO_AUDITOR':
-      case 'AUDITOR_EQUIPO':
-      case 'AUDITOR_DE_EQUIPO':
-      case 'EQUIPO_DE_TRABAJO':
-      case 'EQUIPO_AUDITORIA':
-        if (context.auditoriaId) {
-          const miembros = await this.dataSource.query(
-            `SELECT DISTINCT u.id_user 
-             FROM auth."user" u
-             LEFT JOIN control_interno.equipo_auditor ea ON u.id_person = ea.persona_id AND ea.auditoria_id = $1 AND ea.activo = true
-             LEFT JOIN control_interno.auditoria a ON a.id = $1
-             WHERE ea.persona_id IS NOT NULL 
-                OR u.id_person = a.auditor_lider_id 
-                OR u.id_person = a.auditor_asignado_id`, 
-            [context.auditoriaId]
-          );
-          miembros.forEach((m: any) => ids.push(m.id_user));
-        }
-        break;
-        
-      case 'COMITE':
-      case 'COMITE_INSTITUCIONAL':
-        // Por defecto, si hay un comité configurado general o por auditoría, se le envía.
-        // Si no existe tabla, enviamos al Jefe OCI y Super Admin como contingencia del comité
-        const comiteContingencia = await this.obtenerJefesControlInterno();
-        comiteContingencia.forEach(j => ids.push(j));
-        break;
-        
-      case 'AUDITADO':
-      case 'JEFE_DEPENDENCIA':
-      case 'RESPONSABLE_AREA_AUDITADA':
-        // Buscar el id_user del responsable del área auditada por su email
-        // El email está guardado en auditoria.responsable_area_email
-        if (context.auditoriaId) {
-          try {
-            // Intentar por responsable_area_email guardado en la auditoría
-            const emailResult = await this.dataSource.query(
-              `SELECT a.responsable_area_email
-               FROM control_interno.auditoria a
-               WHERE a.id = $1`,
-              [context.auditoriaId]
-            );
-            const emailResponsable = emailResult[0]?.responsable_area_email;
-            if (emailResponsable) {
-              // Buscar el id_user en auth.user por email
-              const userResult = await this.dataSource.query(
-                `SELECT u.id_user
-                 FROM auth."user" u
-                 LEFT JOIN auth.personas p ON p.id_person = u.id_person
-                 WHERE (
-                   LOWER(TRIM(COALESCE(p.dir_email, ''))) = LOWER(TRIM($1))
-                   OR LOWER(TRIM(u.username)) = LOWER(TRIM($1))
-                 )
-                 AND u.is_active = true
-                 LIMIT 1`,
-                [emailResponsable]
-              );
-              if (userResult[0]?.id_user) {
-                ids.push(userResult[0].id_user);
-                console.log(`[Notificaciones] ✅ Auditado resuelto: ${emailResponsable} → ${userResult[0].id_user}`);
-              } else {
-                console.warn(`[Notificaciones] ⚠️ No se encontró usuario activo para el email del auditado: ${emailResponsable}`);
-              }
-            } else {
-              console.warn(`[Notificaciones] ⚠️ La auditoría ${context.auditoriaId} no tiene responsable_area_email registrado`);
-            }
-          } catch (err) {
-            console.error('[Notificaciones] ❌ Error resolviendo AUDITADO:', err.message);
-          }
-        } else if (context.responsableAreaEmail) {
-          // Fallback: si el email viene directo en el contexto
-          try {
+          const emailResponsable = emailResult[0]?.responsable_area_email;
+          if (emailResponsable) {
             const userResult = await this.dataSource.query(
               `SELECT u.id_user
                FROM auth."user" u
@@ -387,40 +329,68 @@ export class NotificacionesService {
                )
                AND u.is_active = true
                LIMIT 1`,
-              [context.responsableAreaEmail]
+              [emailResponsable]
             );
-            if (userResult[0]?.id_user) {
-              ids.push(userResult[0].id_user);
-              console.log(`[Notificaciones] ✅ Auditado resuelto por contexto: ${context.responsableAreaEmail} → ${userResult[0].id_user}`);
-            }
-          } catch (err) {
-            console.error('[Notificaciones] ❌ Error resolviendo AUDITADO por email de contexto:', err.message);
+            if (userResult[0]?.id_user) ids.push(userResult[0].id_user);
           }
-        }
-        break;
-
-      case 'RESPONSABLE_PLAN_MEJORAMIENTO':
-        if (context.planId) {
-          const res = await this.dataSource.query(`
-            SELECT u.id_user 
-            FROM control_interno.plan_mejoramiento pm
-            INNER JOIN auth."user" u ON u.is_active = true
-            LEFT JOIN auth.personas p ON p.id_person = u.id_person
-            WHERE pm.id = $1
-              AND (
-                LOWER(TRIM(u.username)) = LOWER(TRIM(pm.responsable_implementacion))
-                OR LOWER(TRIM(COALESCE(p.dir_email, ''))) = LOWER(TRIM(pm.responsable_implementacion))
-              )
-            LIMIT 1
-          `, [context.planId]);
-          
-          if (res.length > 0) {
-            ids.push(res[0].id_user);
-          }
-        }
-        break;
+        } catch (err) {}
+      } else if (context.responsableAreaEmail) {
+        try {
+          const userResult = await this.dataSource.query(
+            `SELECT u.id_user
+             FROM auth."user" u
+             LEFT JOIN auth.personas p ON p.id_person = u.id_person
+             WHERE (
+               LOWER(TRIM(COALESCE(p.dir_email, ''))) = LOWER(TRIM($1))
+               OR LOWER(TRIM(u.username)) = LOWER(TRIM($1))
+             )
+             AND u.is_active = true
+             LIMIT 1`,
+            [context.responsableAreaEmail]
+          );
+          if (userResult[0]?.id_user) ids.push(userResult[0].id_user);
+        } catch (err) {}
+      }
+      return ids;
     }
-    
+
+    if (roleCode === 'RESPONSABLE_PLAN_MEJORAMIENTO') {
+      if (context.planId) {
+        const res = await this.dataSource.query(`
+          SELECT u.id_user 
+          FROM control_interno.plan_mejoramiento pm
+          INNER JOIN auth."user" u ON u.is_active = true
+          LEFT JOIN auth.personas p ON p.id_person = u.id_person
+          WHERE pm.id = $1
+            AND (
+              LOWER(TRIM(u.username)) = LOWER(TRIM(pm.responsable_implementacion))
+              OR LOWER(TRIM(COALESCE(p.dir_email, ''))) = LOWER(TRIM(pm.responsable_implementacion))
+            )
+          LIMIT 1
+        `, [context.planId]);
+        
+        if (res.length > 0) ids.push(res[0].id_user);
+      }
+      return ids;
+    }
+
+    // Para todos los demás roles (Jefe OCI, Administrador Sistema, etc.),
+    // consultar directamente la tabla de usuarios con ese rol general.
+    try {
+      const users = await this.dataSource.query(
+        `SELECT DISTINCT u.id_user 
+         FROM auth."user" u
+         INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         INNER JOIN auth.role r ON r.id = ur.id_rol
+         WHERE u.is_active = true 
+         AND (r.id::text = $1 OR UPPER(r.code) = UPPER($1) OR UPPER(r.name) = UPPER($1))`,
+        [rolId]
+      );
+      users.forEach((u: any) => ids.push(u.id_user));
+    } catch (e) {
+      console.error('[NotificacionesService.resolverUsuariosPorRol] Error consultando usuarios por rol:', e);
+    }
+
     return ids;
   }
 
@@ -501,17 +471,6 @@ export class NotificacionesService {
     try {
       const configGlobal = await this.preferenciaRepository.findOne({ where: { usuarioId: 'GLOBAL_CONFIG' } });
       
-      // Definición de valores por defecto que coinciden con el Frontend
-      const defaults: Record<string, any> = {
-        'EVT-AUD-001': { email: true, sistema: true, activo: true }, // Nueva auditoría
-        'EVT-AUD-002': { email: true, sistema: true, activo: true }, // Reunión apertura
-        'EVT-AUD-003': { email: true, sistema: true, activo: true }, // Plazo respuesta / informe preliminar
-        'EVT-APR-001': { email: true, sistema: true, activo: true },
-        'EVT-APR-002': { email: true, sistema: true, activo: true },
-        'EVT-PM-001': { email: true, sistema: true, activo: true },  // Seguimiento PM
-        'EVT-KANBAN-001': { email: true, sistema: true, activo: true }
-      };
-
       const mapping: Record<string, string> = {
         'anuncio_auditoria': 'EVT-AUD-001',
         'reunion_apertura': 'EVT-AUD-002',
@@ -521,39 +480,17 @@ export class NotificacionesService {
         'rechazo_plan': 'EVT-APR-002',
         'controversia_hallazgo': 'EVT-AUD-001',
         'seguimiento_trimestral': 'EVT-PM-001',
-        // Mapeo directo para cuando se envía el código directamente
-        'EVT-AUD-001': 'EVT-AUD-001',
-        'EVT-AUD-002': 'EVT-AUD-002',
-        'EVT-AUD-003': 'EVT-AUD-003',
-        'EVT-KANBAN-001': 'EVT-KANBAN-001',
-        'EVT-KANBAN-002': 'EVT-KANBAN-002',
-        'EVT-KANBAN-003': 'EVT-KANBAN-003',
-        'EVT-PM-001': 'EVT-PM-001',
-        'EVT-APR-001': 'EVT-APR-001',
-        'EVT-APR-002': 'EVT-APR-002',
       };
       
       const evtCode = mapping[tipoOriginal] || tipoOriginal;
-      // Si no hay config en DB, usar el default. Si hay config, usar la de DB.
-      const configEvento = (configGlobal?.tiposNotificacion && configGlobal.tiposNotificacion[evtCode]) 
-        ? configGlobal.tiposNotificacion[evtCode] 
-        : defaults[evtCode];
       
-      if (configEvento && configEvento.activo) {
-        // Forzar canales para eventos críticos si no hay configuración
-      if (!configEvento) {
-        if (tipoOriginal.startsWith('EVT-KANBAN') || tipoOriginal.startsWith('EVT-PM')) {
-          canalFinal = CanalNotificacion.AMBOS;
-        }
-      } else if (configEvento) {
+      const configEvento = configGlobal?.tiposNotificacion ? configGlobal.tiposNotificacion[evtCode] : null;
+      
+      if (configEvento) {
         const c = configEvento as any;
         if (c.sistema && c.email) canalFinal = CanalNotificacion.AMBOS;
         else if (c.email) canalFinal = CanalNotificacion.EMAIL;
         else canalFinal = CanalNotificacion.SISTEMA;
-      }
-        // ✅ NUEVA LÓGICA: Si la configuración define roles (destinatarios), 
-        // podríamos expandir esto aquí, pero por ahora aseguramos que el 
-        // canal sea el correcto.
       }
     } catch (e) {
       console.warn(`[NotificacionesService.create] Error en sincronización, usando canal por defecto:`, e.message);
@@ -575,7 +512,7 @@ export class NotificacionesService {
 
     console.log(
       `[NotificacionesService.create] Creando notificación para usuarioId: ${usuarioIdFinal}, ` +
-        `tipo: ${tipoBd} (evento: ${tipoOriginal}), titulo: ${tituloNormalizado}`,
+        `tipo: ${tipoBd} (evento: ${tipoOriginal}), canal: ${canalFinal}`,
     );
 
     // ✅ BUG 1 FIX: Evitar duplicados idénticos en un corto periodo de tiempo (5 segundos)
@@ -1050,28 +987,12 @@ export class NotificacionesService {
     solicitanteNombre: string,
     justificacion: string,
   ): Promise<void> {
-    // TODO: Obtener todos los usuarios con rol JEFE_CONTROL_INTERNO
-    // Por ahora, como no tenemos la integración con auth-service, 
-    // usamos un placeholder que deberá ser implementado
-    const jefesOCI = await this.obtenerJefesControlInterno();
-
-    for (const jefeId of jefesOCI) {
-      await this.create({
-        usuarioId: jefeId,
-        tipoNotificacion: TipoNotificacion.SOLICITUD_AMPLIACION_PLAZO,
-        titulo: `Nueva solicitud de ampliación de plazo - ${auditoriaCodigo}`,
-        mensaje: `${solicitanteNombre} ha solicitado una ampliación de plazo para la auditoría "${auditoriaNombre}".\n\nJustificación: ${justificacion.substring(0, 200)}${justificacion.length > 200 ? '...' : ''}`,
-        prioridad: PrioridadNotificacion.ALTA,
-        canal: CanalNotificacion.AMBOS,
-        metadata: {
-          auditoriaId,
-          auditoriaCodigo,
-          auditoriaNombre,
-          solicitante: solicitanteNombre,
-          accion: 'solicitud_ampliacion',
-        },
-      });
-    }
+    await this.dispararEvento('EVT-APR-REQUESTED', {
+      auditoriaId,
+      tituloCustom: `Nueva solicitud de ampliación - ${auditoriaCodigo}`,
+      mensajeCustom: `${solicitanteNombre} solicitó ampliación. Justificación: ${justificacion.substring(0, 200)}`,
+      metadata: { auditoriaId, auditoriaCodigo }
+    });
   }
 
   /**
@@ -1085,27 +1006,15 @@ export class NotificacionesService {
     nuevaFechaFin: string,
     comentarios?: string,
   ): Promise<void> {
-    // Notificar al auditor líder (auditorLiderId es UUID)
     if (auditorLiderId) {
-      await this.create({
-        usuarioId: auditorLiderId,
-        tipoNotificacion: TipoNotificacion.AMPLIACION_PLAZO_APROBADA,
-        titulo: `✅ Ampliación de plazo aprobada - ${auditoriaCodigo}`,
-        mensaje: `Su solicitud de ampliación de plazo para la auditoría "${auditoriaNombre}" ha sido aprobada.\n\nNueva fecha de finalización: ${nuevaFechaFin}${comentarios ? `\n\nComentarios: ${comentarios}` : ''}`,
-        prioridad: PrioridadNotificacion.ALTA,
-        canal: CanalNotificacion.AMBOS,
-        metadata: {
-          auditoriaId,
-          auditoriaCodigo,
-          auditoriaNombre,
-          nuevaFechaFin,
-          accion: 'aprobacion_ampliacion',
-        },
+      await this.dispararEvento('EVT-APR-001', {
+        auditoriaId,
+        usuarioId: auditorLiderId, // Forzar que le llegue explícitamente a él
+        tituloCustom: `✅ Ampliación de plazo aprobada - ${auditoriaCodigo}`,
+        mensajeCustom: `Su solicitud de ampliación de plazo para la auditoría "${auditoriaNombre}" ha sido aprobada.\n\nNueva fecha de finalización: ${nuevaFechaFin}${comentarios ? `\n\nComentarios: ${comentarios}` : ''}`,
+        metadata: { auditoriaId, auditoriaCodigo, accion: 'aprobacion_ampliacion' }
       });
     }
-
-    // TODO: Notificar al área auditada
-    // Necesitaría el contacto del área auditada de la auditoría
   }
 
   /**
@@ -1118,22 +1027,13 @@ export class NotificacionesService {
     auditorLiderId: string,
     motivo: string,
   ): Promise<void> {
-    // Notificar al auditor líder (auditorLiderId es UUID)
     if (auditorLiderId) {
-      await this.create({
-        usuarioId: auditorLiderId,
-        tipoNotificacion: TipoNotificacion.AMPLIACION_PLAZO_RECHAZADA,
-        titulo: `❌ Ampliación de plazo rechazada - ${auditoriaCodigo}`,
-        mensaje: `Su solicitud de ampliación de plazo para la auditoría "${auditoriaNombre}" ha sido rechazada.\n\nMotivo: ${motivo}`,
-        prioridad: PrioridadNotificacion.ALTA,
-        canal: CanalNotificacion.AMBOS,
-        metadata: {
-          auditoriaId,
-          auditoriaCodigo,
-          auditoriaNombre,
-          motivo,
-          accion: 'rechazo_ampliacion',
-        },
+      await this.dispararEvento('EVT-APR-002', {
+        auditoriaId,
+        usuarioId: auditorLiderId, // Forzar destinatario explícito
+        tituloCustom: `❌ Ampliación de plazo rechazada - ${auditoriaCodigo}`,
+        mensajeCustom: `Su solicitud de ampliación de plazo para la auditoría "${auditoriaNombre}" ha sido rechazada.\n\nMotivo: ${motivo}`,
+        metadata: { auditoriaId, auditoriaCodigo, accion: 'rechazo_ampliacion' }
       });
     }
   }
@@ -1143,29 +1043,15 @@ export class NotificacionesService {
    */
   private async obtenerJefesControlInterno(): Promise<string[]> {
     try {
-      // Búsqueda agresiva: cualquier usuario activo que tenga el string de rol o la relación
       const result = await this.dataSource.query(`
         SELECT DISTINCT u.id_user
         FROM auth."user" u
-        LEFT JOIN auth.user_roles ur ON ur.id_user = u.id_user
-        LEFT JOIN auth.role r ON r.id = ur.id_rol
+        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
+        INNER JOIN auth.role r ON r.id = ur.id_rol
         WHERE u.is_active = true
-        AND (
-          UPPER(r.code) IN (
-            'JEFE_CONTROL_INTERNO', 'JEFE_OCI', 'JEFE_OCIG', 
-            'CONTROL_INTERNO_JEFE', 'OCI_JEFE', 'ADMIN', 'SUPER_ADMIN',
-            'JEFATURA_CONTROL_INTERNO'
-          )
-          OR r.name ILIKE '%Jefe%Control%Interno%'
-          OR r.name ILIKE '%Jefe%OCI%'
-          OR r.name ILIKE '%Jefe%OCIG%'
-          OR r.name ILIKE '%Administrador%'
-        )
+        AND r.code = 'JEFE_OCI'  -- Solo el rol exacto, sin wildcards
       `);
-
-      const uuids = result.map((row: any) => String(row.id_user)).filter(Boolean);
-      console.log(`[NotificacionesService.obtenerJefesControlInterno] Encontrados ${uuids.length} usuarios de gestión/OCI`);
-      return uuids;
+      return result.map((row: any) => String(row.id_user)).filter(Boolean);
     } catch (error) {
       console.error('Error al obtener Jefes de Control Interno:', error);
       return [];

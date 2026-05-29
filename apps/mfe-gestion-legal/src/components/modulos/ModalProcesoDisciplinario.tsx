@@ -10,7 +10,7 @@ import {
   Gavel, FileText, Users, Clock, AlertTriangle, CheckCircle, X,
   Calendar, User, Building, Phone, Mail, MapPin, Briefcase,
   Eye, Download, Upload, Plus, Edit, Trash2, Send,
-  FileDown, Scale, Link as LinkIcon, Unlink, Archive
+  FileDown, Scale, Link as LinkIcon, Unlink, Archive, MessageSquare
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import type { ProcesoDisciplinario, DecisionDisciplinaria } from '../core/types';
@@ -33,6 +33,7 @@ import { VisorDocumentoModal } from './VisorDocumentoModal';
 import { authService } from '../../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 import { ModalNuevaActuacion, type NuevaActuacionData } from './ModalNuevaActuacion';
+import { ModalNuevaComunicacion, NuevaComunicacionData } from './ModalNuevaComunicacion';
 import { useConfiguracionModulo } from '../config/ConfiguracionesSIGLContext';
 import { BarraProgresoExpediente } from '../core/BarraProgresoExpediente';
 import { FooterExpediente } from '../core/FooterExpediente';
@@ -40,6 +41,8 @@ import { TabDocumentosExpediente } from '../core/TabDocumentosExpediente';
 import { TabActuacionesExpediente } from '../core/TabActuacionesExpediente';
 import { TabTareasExpediente } from '../core/TabTareasExpediente';
 import { TabNotasExpediente } from '../core/TabNotasExpediente';
+import { TabTrazabilidadExpediente } from '../core/TabTrazabilidadExpediente';
+import { DialogoConfirmacion } from './DialogoConfirmacion';
 import type {
   DocumentoExpediente,
   ActuacionExpediente,
@@ -113,6 +116,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   const [modalArchivarOpen, setModalArchivarOpen] = useState(false);
   const [motivoArchivar, setMotivoArchivar] = useState('');
   const [archivandoProceso, setArchivandoProceso] = useState(false);
+  const [actuacionIdPendienteEliminar, setActuacionIdPendienteEliminar] = useState<string | null>(null);
+  const [modalNuevaComunicacionOpen, setModalNuevaComunicacionOpen] = useState(false);
+  const [emailInitialData, setEmailInitialData] = useState<Partial<NuevaComunicacionData> | undefined>(undefined);
 
   // Fuente única para actuaciones con datos iniciales (se sobreescribe al cargar del backend)
   const [actuaciones, setActuaciones] = useState([
@@ -628,10 +634,15 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
     return actuacionesTotales.map((act: any) => ({
       id: act.id,
       fecha: act.fecha || (act.fechaActuacion ? new Date(act.fechaActuacion).toLocaleDateString('es-CO') : ''),
+      hora: act.hora || (act.fechaActuacion ? new Date(act.fechaActuacion).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' }) : ''),
       tipo: act.tipo || act.tipoActuacion || 'ACTUACIÓN',
       descripcion: act.descripcion || '',
-      responsable: act.responsable || 'Sistema',
-      estado: act.estado || 'PENDIENTE'
+      responsable: act.responsable || act.usuarioResponsable || 'Sistema',
+      estado: act.estado || act.metadata?.estado || 'PENDIENTE',
+      origen: act.origen || 'MANUAL',
+      documentoUrl: act.documentoUrl,
+      documentoNombre: act.documentoNombre,
+      metadata: act.metadata || {}
     }));
   }, [actuacionesTotales]);
 
@@ -670,9 +681,29 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
     input.click();
   };
 
-  // Removed old handleDescargarPrueba, simplified to use same logic or dedicated logic
-  // The UI calls handleDescargarDocumento for documents, maybe handleVerPrueba is just for viewing.
   // ==================== FUNCIONES PARA ACTUACIONES ====================
+
+  const handleDeleteActuacion = (id: string) => {
+    setActuacionIdPendienteEliminar(id);
+  };
+
+  const confirmarEliminarActuacion = async () => {
+    const id = actuacionIdPendienteEliminar;
+    if (!id) return;
+    setActuacionIdPendienteEliminar(null);
+
+    try {
+      await legalService.deleteActuacion(proceso.id, id);
+      toast.success('🗑️ Actuación eliminada');
+      const data = await legalService.getJuzgamientoActuaciones(proceso.id);
+      setActuaciones(Array.isArray(data) ? data : []);
+      if (onRefresh) onRefresh();
+    } catch (error: any) {
+      console.error('Error eliminando actuación', error);
+      const errorMsg = error?.response?.data?.message || 'No se pudo eliminar la actuación';
+      toast.error(errorMsg);
+    }
+  };
 
   const handleGuardarActuacion = async (nuevaActuacion: NuevaActuacionData) => {
     if (!canRegistrarActuacion) return;
@@ -1023,7 +1054,9 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
       setDocumentoSeleccionado({
         documentoUrl: getFileUrl(url), // Aseguramos usar la URL final formateada
         documentoNombre: doc.nombre || doc.documentoNombre || 'Documento',
-        descripcion: doc.tipo || doc.tipoDocumento || 'Documento del proceso'
+        descripcion: doc.descripcion || '',
+        tipo: doc.tipo || doc.tipoDocumento || 'Documento del proceso',
+        id: doc.id
       });
       setVisorAbierto(true);
     } else {
@@ -1088,6 +1121,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
       firmante: doc.responsable || doc.usuarioResponsable || proceso.abogadoAsignado || 'Oficina Jurídica',
       categoria: categoriaFromTipo(doc.tipoActuacion || 'DOCUMENTO'),
       url: doc.documentoUrl || doc.url || doc.archivoUrl || '',
+      descripcion: doc.descripcion || '',
     }));
   }, [documentos, proceso.abogadoAsignado]);
 
@@ -1168,7 +1202,8 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
   return (
     <>
       <Dialog open={isOpen} onOpenChange={handleCerrar}>
-        <DialogContent hideCloseButton className="w-[95vw] max-w-[1100px] lg:max-w-5xl h-[90vh] flex flex-col p-0">
+        <DialogContent hideCloseButton className="!w-[80vw] !max-w-[80vw] h-[95vh] !max-h-[95vh] flex flex-col p-0 overflow-hidden" style={{ width: '80vw', maxWidth: '80vw' }}>
+          <div style={{ transform: 'scale(0.9)', transformOrigin: 'top left', width: '111.11%', height: '111.11%', minWidth: '111.11%', minHeight: '111.11%' }} className="flex flex-col p-0 m-0">
           <DialogTitle className="sr-only">
             Proceso Disciplinario {proceso.id}
           </DialogTitle>
@@ -1185,12 +1220,14 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
               { texto: proceso.etapa, color: 'azul' },
               { texto: `${proceso.diasRestantes} días restantes`, color: 'naranja' }
             ]}
+            actions={
+              <BarraProgresoExpediente
+                diasTotales={proceso.diasTotales}
+                diasRestantes={proceso.diasRestantes}
+                compact={true}
+              />
+            }
             onClose={handleCerrar}
-          />
-
-          <BarraProgresoExpediente
-            diasTotales={proceso.diasTotales}
-            diasRestantes={proceso.diasRestantes}
           />
 
           {/* ==================== TABS NAVIGATION ==================== */}
@@ -1226,18 +1263,11 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                   Actuaciones
                 </TabsTrigger>
                 <TabsTrigger
-                  value="tareas"
+                  value="comunicaciones"
                   className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
                 >
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Tareas
-                </TabsTrigger>
-                <TabsTrigger
-                  value="notas"
-                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm px-4 py-2 rounded-t-lg font-semibold"
-                >
-                  <Edit className="w-4 h-4 mr-2" />
-                  Notas
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Comunicaciones
                 </TabsTrigger>
                 <TabsTrigger
                   value="anexos"
@@ -1484,11 +1514,14 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                 onViewDocument={(doc) => handleVerDocumento({
                   documentoUrl: doc.url,
                   nombre: doc.nombre,
-                  tipo: doc.tipo
+                  tipo: doc.tipo,
+                  descripcion: doc.descripcion,
+                  id: doc.id
                 })}
                 onDownloadDocument={(doc) => handleDescargarDocumento(doc)}
                 onDownloadAll={handleDescargarTodosDocumentos}
                 onHasChanges={() => setHasChanges(true)}
+                allowSigning={true}
               />
             </TabsContent>
 
@@ -1522,31 +1555,76 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
                 }))}
                 labelRegistrar="Registrar Primera Actuación"
                 onRegistrarPrimera={canRegistrarActuacion ? () => setModalNuevaActuacionOpen(true) : undefined}
-              />
-            </TabsContent>
-
-            {/* ==================== TAB: TAREAS ==================== */}
-            <TabsContent value="tareas" className="flex-1 overflow-y-auto p-6 space-y-4">
-              <TabTareasExpediente
-                tareas={tareas}
-                setTareas={setTareas}
                 expedienteId={proceso.id}
-                onCrearTarea={canEditProceso ? () => {
-                  setModalCrearTareaAbierto(true);
-                } : undefined}
-                onEditarTarea={canEditProceso ? handleEditarTarea : undefined}
-                onMarcarCompletada={canCompletarTareas ? handleMarcarTareaCompletada : undefined}
+                onDeleteActuacion={canEditProceso ? handleDeleteActuacion : undefined}
+                onReloadExpediente={() => {
+                  legalService.getJuzgamientoActuaciones(proceso.id)
+                    .then(data => {
+                      setActuaciones(Array.isArray(data) ? data : []);
+                    })
+                    .catch(err => {
+                      console.error('Error reloading actuaciones:', err);
+                    });
+                  if (onRefresh) {
+                    onRefresh();
+                  }
+                }}
+                onViewDocument={handleVerDocumento}
+                onSendEmail={(initialData) => {
+                  setEmailInitialData(initialData);
+                  setModalNuevaComunicacionOpen(true);
+                }}
               />
             </TabsContent>
 
-            {/* ==================== TAB: NOTAS ==================== */}
-            <TabsContent value="notas" className="flex-1 overflow-y-auto p-6 space-y-4">
-              <TabNotasExpediente
-                notas={notasInternas}
-                onAgregarNota={canEditProceso ? () => {
-                  setModalAgregarNotaAbierto(true);
-                } : undefined}
-              />
+            {/* ==================== TAB: COMUNICACIONES ==================== */}
+            <TabsContent value="comunicaciones" className="flex-1 overflow-y-auto p-6 space-y-4">
+              <Tabs defaultValue="trazabilidad" className="w-full">
+                <TabsList className="grid grid-cols-3 w-[360px] mb-4 bg-gray-100 p-0.5 rounded-lg">
+                  <TabsTrigger value="trazabilidad" className="text-xs font-bold">
+                    ⏱️ Trazabilidad
+                  </TabsTrigger>
+                  <TabsTrigger value="tareas-sub" className="text-xs font-bold">
+                    ✅ Tareas
+                  </TabsTrigger>
+                  <TabsTrigger value="notas-sub" className="text-xs font-bold">
+                    📝 Notas
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="trazabilidad" className="space-y-3">
+                  <TabTrazabilidadExpediente
+                    expedienteId={proceso.id}
+                    profesionalAsignado={proceso.abogadoAsignado}
+                    tareas={tareas}
+                    actuaciones={actuaciones}
+                    notas={notas}
+                    readOnly={readOnly}
+                  />
+                </TabsContent>
+
+                <TabsContent value="tareas-sub" className="space-y-3">
+                  <TabTareasExpediente
+                    tareas={tareas}
+                    setTareas={setTareas}
+                    expedienteId={proceso.id}
+                    onCrearTarea={canEditProceso ? () => {
+                      setModalCrearTareaAbierto(true);
+                    } : undefined}
+                    onEditarTarea={canEditProceso ? handleEditarTarea : undefined}
+                    onMarcarCompletada={canCompletarTareas ? handleMarcarTareaCompletada : undefined}
+                  />
+                </TabsContent>
+
+                <TabsContent value="notas-sub" className="space-y-3">
+                  <TabNotasExpediente
+                    notas={notasInternas}
+                    onAgregarNota={canEditProceso ? () => {
+                      setModalAgregarNotaAbierto(true);
+                    } : undefined}
+                  />
+                </TabsContent>
+              </Tabs>
             </TabsContent>
 
             {/* ==================== TAB: ANEXOS ==================== */}
@@ -1635,7 +1713,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
             expedienteId={proceso.id}
             totalArchivos={documentosExpediente.length}
             totalActuaciones={actuacionesTotales.length}
-            tercerConteo={{ label: 'tareas', valor: tareas.length, color: '#EA580C' }}
+            tercerConteo={{ label: 'trazabilidad', valor: tareas.length + notasInternas.length + actuacionesParaTab.length, color: '#EA580C' }}
             onClose={handleCerrar}
             onNotificar={handleNotificar}
             onCompartir={handleCompartir}
@@ -1653,6 +1731,7 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
             hasChanges={hasChanges}
             labelId="Proceso"
           />
+          </div>
         </DialogContent>
 
         {canRegistrarDecision && (
@@ -1873,10 +1952,66 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
         {documentoSeleccionado && (
           <VisorDocumentoModal
             isOpen={visorAbierto}
-            onClose={() => setVisorAbierto(false)}
+            onClose={() => { setVisorAbierto(false); setDocumentoSeleccionado(null); }}
             archivo={getFileUrl(documentoSeleccionado.documentoUrl || documentoSeleccionado.archivo || documentoSeleccionado.url)}
             numero={documentoSeleccionado.documentoNombre || documentoSeleccionado.nombre}
             asunto={`Documento del proceso ${proceso.id}`}
+            descripcion={documentoSeleccionado.descripcion}
+            docId={documentoSeleccionado.id}
+            allowSigning={true}
+            onSignComplete={async (docId, signedData, pdfFile) => {
+              try {
+                const originalDocName = documentoSeleccionado.documentoNombre || documentoSeleccionado.nombre || 'documento.pdf';
+                let nuevoNombre = originalDocName;
+                if (!originalDocName.toLowerCase().includes('(firmado)')) {
+                  const extIndex = originalDocName.lastIndexOf('.');
+                  if (extIndex !== -1) {
+                    nuevoNombre = `${originalDocName.substring(0, extIndex)} (Firmado)${originalDocName.substring(extIndex)}`;
+                  } else {
+                    nuevoNombre = `${originalDocName} (Firmado)`;
+                  }
+                }
+
+                if (!nuevoNombre.toLowerCase().endsWith('.pdf')) {
+                  nuevoNombre = nuevoNombre.replace(/\.[^/.]+$/, "") + ".pdf";
+                }
+
+                const signatureJson = JSON.stringify({
+                  firmado: true,
+                  coords: signedData.coords,
+                  firmaImg: signedData.firmaImg,
+                  hash: signedData.hash,
+                  timestamp: signedData.timestamp,
+                  firmante: signedData.firmante,
+                  cargo: signedData.cargo,
+                  certificadoId: signedData.certificado_id,
+                  scale: signedData.scale
+                });
+
+                toast.loading('✍️ Guardando firma en el documento...', { id: 'firma-documento' });
+
+                if (pdfFile) {
+                  const renamedFile = new File([pdfFile], nuevoNombre, { type: pdfFile.type });
+                  await legalService.actualizarDocumentoArchivo(docId, renamedFile);
+                }
+
+                await legalService.actualizarDocumento(docId, { 
+                  nombre: nuevoNombre,
+                  descripcion: signatureJson
+                });
+                toast.success('✅ Documento firmado exitosamente', { id: 'firma-documento' });
+
+                if (proceso.id) {
+                  const data = await legalService.getJuzgamientoActuaciones(proceso.id);
+                  setActuaciones(Array.isArray(data) ? data : []);
+                }
+                setVisorAbierto(false);
+                setDocumentoSeleccionado(null);
+              } catch (error) {
+                console.error('Error al firmar documento:', error);
+                toast.error('❌ Error al actualizar la firma del documento', { id: 'firma-documento' });
+              }
+            }}
           />
         )}
 
@@ -2408,6 +2543,38 @@ export function ModalProcesoDisciplinario({ isOpen, onClose, proceso, onRefresh,
             setHasChanges(true);
             setModalAnexarAbierto(false);
             onRefresh?.();
+          }}
+        />
+      )}
+
+      <DialogoConfirmacion
+        isOpen={!!actuacionIdPendienteEliminar}
+        onClose={() => setActuacionIdPendienteEliminar(null)}
+        onConfirm={confirmarEliminarActuacion}
+        titulo="Eliminar Actuación"
+        mensaje="¿Estás seguro de eliminar esta actuación procesal? Esta acción no se puede deshacer."
+        tipo="peligro"
+        textoConfirmar="Sí, eliminar"
+        textoCancelar="Cancelar"
+        icono="eliminar"
+      />
+
+      {/* Modal Nueva Comunicación */}
+      {modalNuevaComunicacionOpen && (
+        <ModalNuevaComunicacion
+          isOpen={modalNuevaComunicacionOpen}
+          onClose={() => {
+            setModalNuevaComunicacionOpen(false);
+            setEmailInitialData(undefined);
+          }}
+          initialData={emailInitialData}
+          onSubmit={async (data) => {
+            console.log('Comunicación enviada desde proceso disciplinario:', data);
+            setModalNuevaComunicacionOpen(false);
+            setEmailInitialData(undefined);
+            const dataActuaciones = await legalService.getJuzgamientoActuaciones(proceso.id);
+            setActuaciones(Array.isArray(dataActuaciones) ? dataActuaciones : []);
+            if (onRefresh) onRefresh();
           }}
         />
       )}

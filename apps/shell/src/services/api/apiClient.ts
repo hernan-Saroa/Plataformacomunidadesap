@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Cliente API Base
  *
  * Maneja todas las requests HTTP al backend con:
@@ -448,9 +448,9 @@ export class ApiClient {
       // Errores de red (servicio no disponible) — solo warn, no spam
       if (!skipErrorLog && !url.includes('/notificaciones/') && !url.includes(':3009/') && !url.includes('/notifications')) {
         if (!error.status && (error.name === 'TypeError' || error.name === 'AbortError')) {
-          console.warn('⚠️ Servicio no disponible:', url);
+          // console.warn('⚠️ Servicio no disponible:', url);
         } else {
-          console.log('🔴 Error en request:', error);
+          // console.log('🔴 Error en request:', error);
         }
       }
 
@@ -620,11 +620,20 @@ export class ApiClient {
     // Error
     if ('error' in data) {
       let errorMessage = 'Error desconocido';
-      let details = data.error.details;
-      if (typeof data.error === 'string') { // 1. Si error es string
+      let details = (data as any).error?.details || null;
+
+      // 1. Preferir siempre `message` si existe en el objeto raíz y es un string o array
+      if ('message' in data && data.message) {
+        if (typeof data.message === 'string' && data.message.trim() !== '') {
+          errorMessage = data.message;
+        } else if (Array.isArray(data.message) && data.message.length > 0) {
+          errorMessage = data.message.join(', ');
+        }
+      } else if (typeof data.error === 'string') {
+        // 2. Si error es string
         errorMessage = data.error || errorMessage;
-      }
-      if (typeof data.error === 'object' && data.error !== null) { // 2. Si error es objeto con message
+      } else if (typeof data.error === 'object' && data.error !== null) {
+        // 3. Si error es objeto con message
         const errObj = data.error as any;
         if (typeof errObj.message === 'string') {
           errorMessage = errObj.message || errorMessage;
@@ -632,18 +641,9 @@ export class ApiClient {
           errorMessage = errObj.message.join(', ');
         }
       }
-      if ((data as any).error === 'Unauthorized' && 'message' in data && typeof (data as any).message === 'string') { // 3. Caso especial Unauthorized con message en la raíz
-        errorMessage = (data as any).message;
+
+      if ((data as any).error === 'Unauthorized' && 'message' in data && typeof (data as any).message === 'string') {
         details = (data as any).message;
-      }
-      // 4. Caso NestJS standard exception filter (statusCode, message, error)
-      if ('message' in data && 'statusCode' in data) {
-        const msg = (data as any).message;
-        if (typeof msg === 'string') {
-          errorMessage = msg;
-        } else if (Array.isArray(msg)) {
-          errorMessage = msg.join(', ');
-        }
       }
 
       const error: any = new Error(errorMessage);

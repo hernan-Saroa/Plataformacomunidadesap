@@ -5,5 +5,4 @@
 ALTER TABLE internal_disciplinary_control.disciplinary_news
 ADD COLUMN IF NOT EXISTS conducta_disciplinaria VARCHAR(255);
 
--- Optional: Add comment for documentation
-COMMENT ON COLUMN internal_disciplinary_control.disciplinary_news.conducta IS 'Conducta indisciplinaria seleccionada';
+COMMENT ON COLUMN internal_disciplinary_control.disciplinary_news.conducta_disciplinaria IS 'Conducta indisciplinaria seleccionada';
