@@ -23,6 +23,7 @@ import * as XLSX from 'xlsx';
 import { ModalCompartirExpediente } from './ModalCompartirExpediente';
 import { ModalSubirDocumento } from './ModalSubirDocumento';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
+import { apiClient } from '../../../services/api/apiClient';
 import { buildApiUrl, API_MODE } from '../../../config/environment';
 import { toast } from 'sonner';
 import * as mammoth from 'mammoth';
@@ -85,7 +86,7 @@ interface Documento {
 interface ExpedienteElectronico {
   id: string;
   radicado: string;
-  estado: 'valoracion' | 'indagacion' | 'investigacion' | 'juzgamiento' | 'finalizado';
+  estado: 'radicada' | 'valoracion' | 'indagacion' | 'investigacion' | 'juzgamiento' | 'finalizado';
   nombreDisciplinado: string;
   tipoProceso: string;
   responsable: string;
@@ -110,247 +111,296 @@ const TIPOS_DOCUMENTO: TipoDocumento[] = [
 ];
 
 const EXPEDIENTES_EJEMPLO: ExpedienteElectronico[] = [
-  {
-    id: 'exp-001',
-    radicado: 'CD-2025-001',
-    estado: 'investigacion',
-    nombreDisciplinado: 'Carlos Ramírez Gómez',
-    tipoProceso: 'Presunta Irregularidad Administrativa',
-    responsable: 'Dra. María González Pérez',
-    fechaInicio: '2024-10-15',
-    totalDocumentos: 15,
-    documentosPorTipo: { queja: 1, apertura: 1, pruebas: 8, informes: 2, pliego: 1, descargos: 1, fallos: 0, recursos: 0, notificaciones: 1, oficios: 0 }
-  },
-  {
-    id: 'exp-002',
-    radicado: 'CD-2025-002',
-    estado: 'indagacion',
-    nombreDisciplinado: 'Ana Lucía Torres Díaz',
-    tipoProceso: 'Presunto Incumplimiento de Deberes',
-    responsable: 'Dr. Juan Pérez López',
-    fechaInicio: '2024-11-20',
-    totalDocumentos: 6,
-    documentosPorTipo: { queja: 1, apertura: 1, pruebas: 3, informes: 1, pliego: 0, descargos: 0, fallos: 0, recursos: 0, notificaciones: 0, oficios: 0 }
-  },
-  {
-    id: 'exp-003',
-    radicado: 'CD-2024-087',
-    estado: 'finalizado',
-    nombreDisciplinado: 'Roberto Méndez Suárez',
-    tipoProceso: 'Presunto Abuso de Autoridad',
-    responsable: 'Dra. Patricia Rodríguez',
-    fechaInicio: '2024-03-10',
-    totalDocumentos: 22,
-    documentosPorTipo: { queja: 1, apertura: 1, pruebas: 12, informes: 3, pliego: 1, descargos: 1, fallos: 1, recursos: 1, notificaciones: 1, oficios: 1 }
-  },
-  {
-    id: 'exp-004',
-    radicado: 'CD-2025-003',
-    estado: 'valoracion',
-    nombreDisciplinado: 'Sandra Jiménez Castro',
-    tipoProceso: 'Presunta Negligencia',
-    responsable: 'Dr. Miguel Ángel Sánchez',
-    fechaInicio: '2025-01-08',
-    totalDocumentos: 3,
-    documentosPorTipo: { queja: 1, apertura: 0, pruebas: 2, informes: 0, pliego: 0, descargos: 0, fallos: 0, recursos: 0, notificaciones: 0, oficios: 0 }
-  }
-];
+   {
+     id: 'exp-001',
+     radicado: 'CD-2025-001',
+     estado: 'investigacion',
+     nombreDisciplinado: 'Carlos Ramírez Gómez',
+     tipoProceso: 'Presunta Irregularidad Administrativa',
+     responsable: 'Dra. María González Pérez',
+     fechaInicio: '2024-10-15',
+     totalDocumentos: 15,
+     documentosPorTipo: { queja: 1, apertura: 1, pruebas: 8, informes: 2, pliego: 1, descargos: 1, fallos: 0, recursos: 0, notificaciones: 1, oficios: 0 }
+   },
+   {
+     id: 'exp-002',
+     radicado: 'CD-2025-002',
+     estado: 'indagacion',
+     nombreDisciplinado: 'Ana Lucía Torres Díaz',
+     tipoProceso: 'Presunto Incumplimiento de Deberes',
+     responsable: 'Dr. Juan Pérez López',
+     fechaInicio: '2024-11-20',
+     totalDocumentos: 6,
+     documentosPorTipo: { queja: 1, apertura: 1, pruebas: 3, informes: 1, pliego: 0, descargos: 0, fallos: 0, recursos: 0, notificaciones: 0, oficios: 0 }
+   },
+   {
+     id: 'exp-003',
+     radicado: 'CD-2024-087',
+     estado: 'finalizado',
+     nombreDisciplinado: 'Roberto Méndez Suárez',
+     tipoProceso: 'Presunto Abuso de Autoridad',
+     responsable: 'Dra. Patricia Rodríguez',
+     fechaInicio: '2024-03-10',
+     totalDocumentos: 22,
+     documentosPorTipo: { queja: 1, apertura: 1, pruebas: 12, informes: 3, pliego: 1, descargos: 1, fallos: 1, recursos: 1, notificaciones: 1, oficios: 1 }
+   },
+   {
+     id: 'exp-004',
+     radicado: 'CD-2025-003',
+     estado: 'valoracion',
+     nombreDisciplinado: 'Sandra Jiménez Castro',
+     tipoProceso: 'Presunta Negligencia',
+     responsable: 'Dr. Miguel Ángel Sánchez',
+     fechaInicio: '2025-01-08',
+     totalDocumentos: 3,
+     documentosPorTipo: { queja: 1, apertura: 0, pruebas: 2, informes: 0, pliego: 0, descargos: 0, fallos: 0, recursos: 0, notificaciones: 0, oficios: 0 }
+   },
+   {
+     id: 'exp-005',
+     radicado: 'CD-2025-004',
+     estado: 'radicada',
+     nombreDisciplinado: 'Luis Fernando Herrera',
+     tipoProceso: 'Presunto Falta al Servicio',
+     responsable: 'Dra. Laura Martínez',
+     fechaInicio: '2025-02-15',
+     totalDocumentos: 2,
+     documentosPorTipo: { queja: 1, apertura: 0, pruebas: 1, informes: 0, pliego: 0, descargos: 0, fallos: 0, recursos: 0, notificaciones: 0, oficios: 0 }
+   }
+ ];
 
 /**
  * ✅ DOCUMENTOS CON HOJA DE CONTROL COMPLETA (10 CAMPOS)
  */
 const DOCUMENTOS_CRONOLOGICOS: Documento[] = [
-  {
-    id: 'doc-001',
-    descripcionPrincipal: 'AUTO No. 178 del 15/01/2025, por el cual se ordena la apertura de investigación disciplinaria contra el funcionario Carlos Ramírez Gómez',
-    tipologiaDocumental: 'Auto de Apertura',
-    anexos: 'PDF',
-    fechaCreacion: '20250115',
-    fechaIncorporacion: '20250115',
-    paginaInicio: 1,
-    paginaFinal: 5,
-    formato: 'PDF',
-    tamanoKB: '245 KB',
-    archivoAcceso: '20250115_AutAbrInv001.pdf',
-    tipo: 'apertura',
-    tipoNombre: 'Auto de Apertura',
-    fechaSubida: '2025-01-15T09:30:00',
-    subidoPor: 'Dra. María González',
-    expedienteId: 'exp-001',
-    radicado: 'CD-2025-001'
-  },
-  {
-    id: 'doc-002',
-    descripcionPrincipal: 'QUEJA CIUDADANA radicada el 14/01/2025, presentada por Pedro Sánchez Ruiz, denunciando presuntas irregularidades administrativas',
-    tipologiaDocumental: 'Queja',
-    anexos: 'PDF con anexos fotográficos',
-    fechaCreacion: '20250114',
-    fechaIncorporacion: '20250114',
-    paginaInicio: 1,
-    paginaFinal: 8,
-    formato: 'PDF',
-    tamanoKB: '1245 KB',
-    archivoAcceso: '20250114_QuejaCiu001.pdf',
-    tipo: 'queja',
-    tipoNombre: 'Quejas y Denuncias',
-    fechaSubida: '2025-01-14T14:20:00',
-    subidoPor: 'Sistema Web',
-    expedienteId: 'exp-001',
-    radicado: 'CD-2025-001'
-  },
-  {
-    id: 'doc-003',
-    descripcionPrincipal: 'PRUEBA DOCUMENTAL - Intercambio de correos electrónicos del periodo 01/11/2024 al 30/11/2024',
-    tipologiaDocumental: 'Pruebas y Testimonios',
-    anexos: 'PDF',
-    fechaCreacion: '20250116',
-    fechaIncorporacion: '20250116',
-    paginaInicio: 1,
-    paginaFinal: 15,
-    formato: 'PDF',
-    tamanoKB: '567 KB',
-    archivoAcceso: '20250116_PrueCorreos.pdf',
-    tipo: 'pruebas',
-    tipoNombre: 'Pruebas y Testimonios',
-    fechaSubida: '2025-01-16T11:45:00',
-    subidoPor: 'Dr. Juan Pérez',
-    expedienteId: 'exp-001',
-    radicado: 'CD-2025-001'
-  },
-  {
-    id: 'doc-004',
-    descripcionPrincipal: 'TESTIMONIO rendido por María López Díaz (Testigo 1) el día 17/01/2025 ante el Despacho de Control Interno Disciplinario',
-    tipologiaDocumental: 'Pruebas y Testimonios',
-    anexos: 'PDF',
-    fechaCreacion: '20250117',
-    fechaIncorporacion: '20250117',
-    paginaInicio: 1,
-    paginaFinal: 12,
-    formato: 'PDF',
-    tamanoKB: '890 KB',
-    archivoAcceso: '20250117_TestTes1.pdf',
-    tipo: 'pruebas',
-    tipoNombre: 'Pruebas y Testimonios',
-    fechaSubida: '2025-01-17T08:15:00',
-    subidoPor: 'Dra. María González',
-    expedienteId: 'exp-001',
-    radicado: 'CD-2025-001'
-  },
-  {
-    id: 'doc-005',
-    descripcionPrincipal: 'INFORME PRELIMINAR de investigación disciplinaria, donde se analizan las conductas presuntamente irregulares',
-    tipologiaDocumental: 'Informes de Investigación',
-    anexos: 'PDF con anexos técnicos',
-    fechaCreacion: '20250118',
-    fechaIncorporacion: '20250118',
-    paginaInicio: 1,
-    paginaFinal: 28,
-    formato: 'PDF',
-    tamanoKB: '2150 KB',
-    archivoAcceso: '20250118_InfPrelim.pdf',
-    tipo: 'informes',
-    tipoNombre: 'Informes de Investigación',
-    fechaSubida: '2025-01-18T16:30:00',
-    subidoPor: 'Dra. María González',
-    expedienteId: 'exp-001',
-    radicado: 'CD-2025-001'
-  },
-  {
-    id: 'doc-006',
-    descripcionPrincipal: 'PLIEGO DE CARGOS formulado contra Carlos Ramírez Gómez por presunta violación al régimen disciplinario',
-    tipologiaDocumental: 'Pliego de Cargos',
-    anexos: 'PDF',
-    fechaCreacion: '20250120',
-    fechaIncorporacion: '20250120',
-    paginaInicio: 1,
-    paginaFinal: 22,
-    formato: 'PDF',
-    tamanoKB: '1845 KB',
-    archivoAcceso: '20250120_PliegCarg.pdf',
-    tipo: 'pliego',
-    tipoNombre: 'Pliego de Cargos',
-    fechaSubida: '2025-01-20T10:00:00',
-    subidoPor: 'Dra. María González',
-    expedienteId: 'exp-001',
-    radicado: 'CD-2025-001'
-  },
-  {
-    id: 'doc-007',
-    descripcionPrincipal: 'NOTIFICACIÓN PERSONAL del Pliego de Cargos realizada el 21/01/2025 al investigado',
-    tipologiaDocumental: 'Notificaciones',
-    anexos: 'PDF con constancia de recibido',
-    fechaCreacion: '20250121',
-    fechaIncorporacion: '20250121',
-    paginaInicio: 1,
-    paginaFinal: 3,
-    formato: 'PDF',
-    tamanoKB: '156 KB',
-    archivoAcceso: '20250121_NotifPlieg.pdf',
-    tipo: 'notificaciones',
-    tipoNombre: 'Notificaciones',
-    fechaSubida: '2025-01-21T09:00:00',
-    subidoPor: 'Sistema',
-    expedienteId: 'exp-001',
-    radicado: 'CD-2025-001'
-  },
-  {
-    id: 'doc-008',
-    descripcionPrincipal: 'ESCRITO DE DESCARGOS presentado por Carlos Ramírez Gómez el 25/01/2025, en el cual controvierte los cargos formulados',
-    tipologiaDocumental: 'Descargos',
-    anexos: 'PDF con pruebas documentales',
-    fechaCreacion: '20250125',
-    fechaIncorporacion: '20250125',
-    paginaInicio: 1,
-    paginaFinal: 35,
-    formato: 'PDF',
-    tamanoKB: '3280 KB',
-    archivoAcceso: '20250125_Descargos.pdf',
-    tipo: 'descargos',
-    tipoNombre: 'Descargos',
-    fechaSubida: '2025-01-25T15:45:00',
-    subidoPor: 'Carlos Ramírez',
-    expedienteId: 'exp-001',
-    radicado: 'CD-2025-001'
-  },
-  {
-    id: 'doc-009',
-    descripcionPrincipal: 'QUEJA INTERNA presentada por el Jefe Inmediato el 10/01/2025 por presunto incumplimiento de deberes',
-    tipologiaDocumental: 'Queja',
-    anexos: 'PDF',
-    fechaCreacion: '20250110',
-    fechaIncorporacion: '20250110',
-    paginaInicio: 1,
-    paginaFinal: 6,
-    formato: 'PDF',
-    tamanoKB: '678 KB',
-    archivoAcceso: '20250110_QuejaInt002.pdf',
-    tipo: 'queja',
-    tipoNombre: 'Quejas y Denuncias',
-    fechaSubida: '2025-01-10T10:30:00',
-    subidoPor: 'Jefe Directo',
-    expedienteId: 'exp-002',
-    radicado: 'CD-2025-002'
-  },
-  {
-    id: 'doc-010',
-    descripcionPrincipal: 'AUTO No. 185 del 12/01/2025, por el cual se ordena la apertura de indagación preliminar',
-    tipologiaDocumental: 'Auto de Apertura',
-    anexos: 'PDF',
-    fechaCreacion: '20250112',
-    fechaIncorporacion: '20250112',
-    paginaInicio: 1,
-    paginaFinal: 4,
-    formato: 'PDF',
-    tamanoKB: '234 KB',
-    archivoAcceso: '20250112_AutAbrInd002.pdf',
-    tipo: 'apertura',
-    tipoNombre: 'Auto de Apertura',
-    fechaSubida: '2025-01-12T11:00:00',
-    subidoPor: 'Dr. Juan Pérez',
-    expedienteId: 'exp-002',
-    radicado: 'CD-2025-002'
-  }
-];
+   {
+     id: 'doc-001',
+     descripcionPrincipal: 'AUTO No. 178 del 15/01/2025, por el cual se ordena la apertura de investigación disciplinaria contra el funcionario Carlos Ramírez Gómez',
+     tipologiaDocumental: 'Auto de Apertura',
+     anexos: 'PDF',
+     fechaCreacion: '20250115',
+     fechaIncorporacion: '20250115',
+     paginaInicio: 1,
+     paginaFinal: 5,
+     formato: 'PDF',
+     tamanoKB: '245 KB',
+     archivoAcceso: '20250115_AutAbrInv001.pdf',
+     tipo: 'apertura',
+     tipoNombre: 'Auto de Apertura',
+     fechaSubida: '2025-01-15T09:30:00',
+     subidoPor: 'Dra. María González',
+     expedienteId: 'exp-001',
+     radicado: 'CD-2025-001'
+   },
+   {
+     id: 'doc-002',
+     descripcionPrincipal: 'QUEJA CIUDADANA radicada el 14/01/2025, presentada por Pedro Sánchez Ruiz, denunciando presuntas irregularidades administrativas',
+     tipologiaDocumental: 'Queja',
+     anexos: 'PDF con anexos fotográficos',
+     fechaCreacion: '20250114',
+     fechaIncorporacion: '20250114',
+     paginaInicio: 1,
+     paginaFinal: 8,
+     formato: 'PDF',
+     tamanoKB: '1245 KB',
+     archivoAcceso: '20250114_QuejaCiu001.pdf',
+     tipo: 'queja',
+     tipoNombre: 'Quejas y Denuncias',
+     fechaSubida: '2025-01-14T14:20:00',
+     subidoPor: 'Sistema Web',
+     expedienteId: 'exp-001',
+     radicado: 'CD-2025-001'
+   },
+   {
+     id: 'doc-003',
+     descripcionPrincipal: 'PRUEBA DOCUMENTAL - Intercambio de correos electrónicos del periodo 01/11/2024 al 30/11/2024',
+     tipologiaDocumental: 'Pruebas y Testimonios',
+     anexos: 'PDF',
+     fechaCreacion: '20250116',
+     fechaIncorporacion: '20250116',
+     paginaInicio: 1,
+     paginaFinal: 15,
+     formato: 'PDF',
+     tamanoKB: '567 KB',
+     archivoAcceso: '20250116_PrueCorreos.pdf',
+     tipo: 'pruebas',
+     tipoNombre: 'Pruebas y Testimonios',
+     fechaSubida: '2025-01-16T11:45:00',
+     subidoPor: 'Dr. Juan Pérez',
+     expedienteId: 'exp-001',
+     radicado: 'CD-2025-001'
+   },
+   {
+     id: 'doc-004',
+     descripcionPrincipal: 'TESTIMONIO rendido por María López Díaz (Testigo 1) el día 17/01/2025 ante el Despacho de Control Interno Disciplinario',
+     tipologiaDocumental: 'Pruebas y Testimonios',
+     anexos: 'PDF',
+     fechaCreacion: '20250117',
+     fechaIncorporacion: '20250117',
+     paginaInicio: 1,
+     paginaFinal: 12,
+     formato: 'PDF',
+     tamanoKB: '890 KB',
+     archivoAcceso: '20250117_TestTes1.pdf',
+     tipo: 'pruebas',
+     tipoNombre: 'Pruebas y Testimonios',
+     fechaSubida: '2025-01-17T08:15:00',
+     subidoPor: 'Dra. María González',
+     expedienteId: 'exp-001',
+     radicado: 'CD-2025-001'
+   },
+   {
+     id: 'doc-005',
+     descripcionPrincipal: 'INFORME PRELIMINAR de investigación disciplinaria, donde se analizan las conductas presuntamente irregulares',
+     tipologiaDocumental: 'Informes de Investigación',
+     anexos: 'PDF con anexos técnicos',
+     fechaCreacion: '20250118',
+     fechaIncorporacion: '20250118',
+     paginaInicio: 1,
+     paginaFinal: 28,
+     formato: 'PDF',
+     tamanoKB: '2150 KB',
+     archivoAcceso: '20250118_InfPrelim.pdf',
+     tipo: 'informes',
+     tipoNombre: 'Informes de Investigación',
+     fechaSubida: '2025-01-18T16:30:00',
+     subidoPor: 'Dra. María González',
+     expedienteId: 'exp-001',
+     radicado: 'CD-2025-001'
+   },
+   {
+     id: 'doc-006',
+     descripcionPrincipal: 'PLIEGO DE CARGOS formulado contra Carlos Ramírez Gómez por presunta violación al régimen disciplinario',
+     tipologiaDocumental: 'Pliego de Cargos',
+     anexos: 'PDF',
+     fechaCreacion: '20250120',
+     fechaIncorporacion: '20250120',
+     paginaInicio: 1,
+     paginaFinal: 22,
+     formato: 'PDF',
+     tamanoKB: '1845 KB',
+     archivoAcceso: '20250120_PliegCarg.pdf',
+     tipo: 'pliego',
+     tipoNombre: 'Pliego de Cargos',
+     fechaSubida: '2025-01-20T10:00:00',
+     subidoPor: 'Dra. María González',
+     expedienteId: 'exp-001',
+     radicado: 'CD-2025-001'
+   },
+   {
+     id: 'doc-007',
+     descripcionPrincipal: 'NOTIFICACIÓN PERSONAL del Pliego de Cargos realizada el 21/01/2025 al investigado',
+     tipologiaDocumental: 'Notificaciones',
+     anexos: 'PDF con constancia de recibido',
+     fechaCreacion: '20250121',
+     fechaIncorporacion: '20250121',
+     paginaInicio: 1,
+     paginaFinal: 3,
+     formato: 'PDF',
+     tamanoKB: '156 KB',
+     archivoAcceso: '20250121_NotifPlieg.pdf',
+     tipo: 'notificaciones',
+     tipoNombre: 'Notificaciones',
+     fechaSubida: '2025-01-21T09:00:00',
+     subidoPor: 'Sistema',
+     expedienteId: 'exp-001',
+     radicado: 'CD-2025-001'
+   },
+   {
+     id: 'doc-008',
+     descripcionPrincipal: 'ESCRITO DE DESCARGOS presentado por Carlos Ramírez Gómez el 25/01/2025, en el cual controvierte los cargos formulados',
+     tipologiaDocumental: 'Descargos',
+     anexos: 'PDF con pruebas documentales',
+     fechaCreacion: '20250125',
+     fechaIncorporacion: '20250125',
+     paginaInicio: 1,
+     paginaFinal: 35,
+     formato: 'PDF',
+     tamanoKB: '3280 KB',
+     archivoAcceso: '20250125_Descargos.pdf',
+     tipo: 'descargos',
+     tipoNombre: 'Descargos',
+     fechaSubida: '2025-01-25T15:45:00',
+     subidoPor: 'Carlos Ramírez',
+     expedienteId: 'exp-001',
+     radicado: 'CD-2025-001'
+   },
+   {
+     id: 'doc-009',
+     descripcionPrincipal: 'QUEJA INTERNA presentada por el Jefe Inmediato el 10/01/2025 por presunto incumplimiento de deberes',
+     tipologiaDocumental: 'Queja',
+     anexos: 'PDF',
+     fechaCreacion: '20250110',
+     fechaIncorporacion: '20250110',
+     paginaInicio: 1,
+     paginaFinal: 6,
+     formato: 'PDF',
+     tamanoKB: '678 KB',
+     archivoAcceso: '20250110_QuejaInt002.pdf',
+     tipo: 'queja',
+     tipoNombre: 'Quejas y Denuncias',
+     fechaSubida: '2025-01-10T10:30:00',
+     subidoPor: 'Jefe Directo',
+     expedienteId: 'exp-002',
+     radicado: 'CD-2025-002'
+   },
+   {
+     id: 'doc-010',
+     descripcionPrincipal: 'AUTO No. 185 del 12/01/2025, por el cual se ordena la apertura de indagación preliminar',
+     tipologiaDocumental: 'Auto de Apertura',
+     anexos: 'PDF',
+     fechaCreacion: '20250112',
+     fechaIncorporacion: '20250112',
+     paginaInicio: 1,
+     paginaFinal: 4,
+     formato: 'PDF',
+     tamanoKB: '234 KB',
+     archivoAcceso: '20250112_AutAbrInd002.pdf',
+     tipo: 'apertura',
+     tipoNombre: 'Auto de Apertura',
+     fechaSubida: '2025-01-12T11:00:00',
+     subidoPor: 'Dr. Juan Pérez',
+     expedienteId: 'exp-002',
+     radicado: 'CD-2025-002'
+   },
+   {
+     id: 'doc-011',
+     descripcionPrincipal: 'QUEJA CIUDADANA presentada por Carlos Méndez el 14/02/2025, denunciando presunta falta al servicio por parte de Luis Fernando Herrera',
+     tipologiaDocumental: 'Queja',
+     anexos: 'PDF con testimonios',
+     fechaCreacion: '20250214',
+     fechaIncorporacion: '20250214',
+     paginaInicio: 1,
+     paginaFinal: 5,
+     formato: 'PDF',
+     tamanoKB: '890 KB',
+     archivoAcceso: '20250214_QuejaCiu002.pdf',
+     tipo: 'queja',
+     tipoNombre: 'Quejas y Denuncias',
+     fechaSubida: '2025-02-14T16:20:00',
+     subidoPor: 'Sistema Web',
+     expedienteId: 'exp-005',
+     radicado: 'CD-2025-004'
+   },
+   {
+     id: 'doc-012',
+     descripcionPrincipal: 'PRUEBA DOCUMENTAL - Registro de entrada y salida del edificio correspondiente al periodo 01/02/2025 al 28/02/2025',
+     tipologiaDocumental: 'Pruebas y Testimonios',
+     anexos: 'PDF',
+     fechaCreacion: '20250215',
+     fechaIncorporacion: '20250215',
+     paginaInicio: 1,
+     paginaFinal: 10,
+     formato: 'PDF',
+     tamanoKB: '1240 KB',
+     archivoAcceso: '20250215_PrueRegistro.pdf',
+     tipo: 'pruebas',
+     tipoNombre: 'Pruebas y Testimonios',
+     fechaSubida: '2025-02-15T09:00:00',
+     subidoPor: 'Auxiliar de Servicios',
+     expedienteId: 'exp-005',
+     radicado: 'CD-2025-004'
+   }
+ ];
 
 // ============ COMPONENTE PRINCIPAL ============
 
@@ -403,66 +453,90 @@ export function ExpedientesElectronicosWorldClass() {
   const [documentoParaEliminar, setDocumentoParaEliminar] = useState<Documento | null>(null);
   const [eliminandoDocumento, setEliminandoDocumento] = useState(false);
 
-  // ✅ Función para cargar datos del backend
-  const cargarDatos = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Obtener todos los procesos del backend
-      const procesosBackend = await disciplinaryService.getAllProcesos();
-      
-      // Transformar datos del backend al formato del componente
-      const procesosTransformados: ExpedienteElectronico[] = procesosBackend.map((proceso: any) => {
-        // Mapear etapas del backend a estados del componente
-        const estadoMap: Record<string, ExpedienteElectronico['estado']> = {
-          'VALORACION': 'valoracion',
-          'INDAGACION_PREVIA': 'indagacion',
-          'INDAGACION': 'indagacion',
-          'INVESTIGACION': 'investigacion',
-          'EVALUACION': 'investigacion',
-          'JUZGAMIENTO': 'juzgamiento',
-          'FALLO': 'finalizado',
-          'SEGUNDA_INSTANCIA': 'finalizado'
-        };
-        
-        return {
-          id: proceso.id,
-          radicado: proceso.radicadoProceso,
-          estado: estadoMap[proceso.etapaActual] || 'valoracion',
-          nombreDisciplinado: proceso.news?.disciplinable?.nombre || 'Sin nombre',
-          tipoProceso: proceso.news?.hechos?.substring(0, 50) || 'Proceso Disciplinario',
-          responsable: proceso.abogadoAsignado?.nombre || proceso.abogadoAsignadoNombre || 'Sin asignar',
-          fechaInicio: proceso.createdAt ? new Date(proceso.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          totalDocumentos: 0, // Se actualizará al cargar documentos
-          documentosPorTipo: {}
-        };
-      });
-      
-      setExpedientes(procesosTransformados);
-      
-      // Cargar documentos para cada proceso
-      const todosDocumentos: Documento[] = [];
-      for (const proceso of procesosBackend.slice(0, 10)) { // Limitar a 10 procesos para evitar muchas llamadas
-        try {
-          const docsResponse = await disciplinaryService.getDocumentosExpediente(proceso.id);
-          if (docsResponse?.documentos) {
-            const documentosFiltrados = docsResponse.documentos.filter((doc: any) => {
-              const estadoAuto = doc.metadatos?.estado;
-              if (!estadoAuto) return true; // No es un auto digital, mostrar siempre
-              return ['APROBADO', 'FIRMADO', 'NOTIFICADO'].includes(estadoAuto);
-            });
-            documentosFiltrados.forEach((doc: any) => {
-              // Mapear tipo de documento del backend
-              const tipoMap: Record<string, string> = {
-                'auto': 'apertura',
-                'evidencia': 'pruebas',
-                'oficio': 'oficios',
-                'notificacion': 'notificaciones',
-                'acta': 'informes',
-                'otro': 'informes'
-              };
-              
-todosDocumentos.push({
+   // ✅ Función para cargar datos del backend
+   const cargarDatos = useCallback(async () => {
+     setLoading(true);
+     setError(null);
+     try {
+       // Obtener todos los procesos del backend
+       const procesosBackend = await disciplinaryService.getAllProcesos();
+       
+       // Obtener noticias radicadas del backend (manejo individual de errores)
+       let noticiasRadicadasBackend: any[] = [];
+       try {
+         noticiasRadicadasBackend = await apiClient.get<any[]>('/control-disciplinario/api/v1/disciplinary-processes/radicated-news');
+       } catch (newsError) {
+         console.warn('Error cargando noticias radicadas, continuando solo con procesos:', newsError);
+         // Continuamos con un array vacío de noticias para no fallar completamente
+         noticiasRadicadasBackend = [];
+       }
+       
+       // Transformar datos del backend al formato del componente
+       const procesosTransformados: ExpedienteElectronico[] = procesosBackend.map((proceso: any) => {
+         // Mapear etapas del backend a estados del componente
+         const estadoMap: Record<string, ExpedienteElectronico['estado']> = {
+           'VALORACION': 'valoracion',
+           'INDAGACION_PREVIA': 'indagacion',
+           'INDAGACION': 'indagacion',
+           'INVESTIGACION': 'investigacion',
+           'EVALUACION': 'investigacion',
+           'JUZGAMIENTO': 'juzgamiento',
+           'FALLO': 'finalizado',
+           'SEGUNDA_INSTANCIA': 'finalizado'
+         };
+         
+         return {
+           id: proceso.id,
+           radicado: proceso.radicadoProceso,
+           estado: estadoMap[proceso.etapaActual] || 'valoracion',
+           nombreDisciplinado: proceso.news?.disciplinable?.nombre || 'Sin nombre',
+           tipoProceso: proceso.news?.hechos?.substring(0, 50) || 'Proceso Disciplinario',
+           responsable: proceso.abogadoAsignado?.nombre || proceso.abogadoAsignadoNombre || 'Sin asignar',
+           fechaInicio: proceso.createdAt ? new Date(proceso.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+           totalDocumentos: 0, // Se actualizará al cargar documentos
+           documentosPorTipo: {}
+         };
+       });
+       
+       const noticiasTransformadas: ExpedienteElectronico[] = noticiasRadicadasBackend.map((noticia: any) => {
+         return {
+           id: noticia.id,
+           radicado: noticia.radicadoProceso,
+           estado: 'radicada',
+           nombreDisciplinado: noticia.news?.disciplinable?.nombre || 'Sin nombre',
+           tipoProceso: noticia.news?.hechos?.substring(0, 50) || 'Noticia Disciplinaria Inicial',
+           responsable: noticia.abogadoAsignadoNombre || 'Sin asignar',
+           fechaInicio: noticia.createdAt ? new Date(noticia.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+           totalDocumentos: 0,
+           documentosPorTipo: {}
+         };
+       });
+       
+       setExpedientes([...procesosTransformados, ...noticiasTransformadas]);
+       
+       // Cargar documentos para cada proceso
+       const todosDocumentos: Documento[] = [];
+       for (const proceso of procesosBackend.slice(0, 10)) { // Limitar a 10 procesos para evitar muchas llamadas
+         try {
+           const docsResponse = await disciplinaryService.getDocumentosExpediente(proceso.id);
+           if (docsResponse?.documentos) {
+             const documentosFiltrados = docsResponse.documentos.filter((doc: any) => {
+               const estadoAuto = doc.metadatos?.estado;
+               if (!estadoAuto) return true; // No es un auto digital, mostrar siempre
+               return ['APROBADO', 'FIRMADO', 'NOTIFICADO'].includes(estadoAuto);
+             });
+             documentosFiltrados.forEach((doc: any) => {
+               // Mapear tipo de documento del backend
+               const tipoMap: Record<string, string> = {
+                 'auto': 'apertura',
+                 'evidencia': 'pruebas',
+                 'oficio': 'oficios',
+                 'notificacion': 'notificaciones',
+                 'acta': 'informes',
+                 'otro': 'informes'
+               };
+               
+               todosDocumentos.push({
                  id: doc.id,
                  descripcionPrincipal: doc.nombre || doc.descripcion || 'Documento sin descripción',
                  tipologiaDocumental: doc.tipo || 'Documento',
@@ -487,48 +561,123 @@ todosDocumentos.push({
                  versiones: doc.versiones,
                  metadatos: doc.metadatos
                });
-            });
-          }
-        } catch (docError) {
-          console.warn(`Error cargando documentos del proceso ${proceso.id}:`, docError);
-        }
-      }
-      
-      setDocumentos(todosDocumentos);
-      
-      // Actualizar total de documentos por proceso y documentos por tipo
-      const docsPorProceso = new Map<string, number>();
-      const docsPorTipoPorProceso = new Map<string, Record<string, number>>();
-      
-      todosDocumentos.forEach(doc => {
-        // Contar total por proceso
-        docsPorProceso.set(doc.expedienteId, (docsPorProceso.get(doc.expedienteId) || 0) + 1);
+             });
+           }
+         } catch (docError) {
+           console.warn(`Error cargando documentos del proceso ${proceso.id}:`, docError);
+         }
+       }
+       
+       // Cargar documentos para cada noticia radicada
+       for (const noticia of noticiasRadicadasBackend) {
+         if (noticia.documentos && Array.isArray(noticia.documentos)) {
+           noticia.documentos.forEach((doc: any) => {
+              todosDocumentos.push({
+                  id: doc.id,
+                  descripcionPrincipal: doc.descripcion || 'Documento sin descripción',
+                  tipologiaDocumental: doc.tipo || 'Documento',
+                  anexos: doc.fileType || 'PDF',
+                  fechaCreacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
+                  fechaIncorporacion: doc.fechaCarga ? new Date(doc.fechaCarga).toISOString().replace(/[-:]/g, '').split('T')[0] : new Date().toISOString().replace(/[-:]/g, '').split('T')[0],
+                  paginaInicio: 1,
+                  paginaFinal: 1,
+                  formato: doc.fileType?.split('/')[1]?.toUpperCase() || 'PDF',
+                  tamanoKB: doc.tamaño || '0 KB',
+                  archivoAcceso: doc.archivoNombre || doc.nombre || 'documento.pdf',
+                  tipo: 'queja',
+                  tipoNombre: 'Quejas y Denuncias',
+                  fechaSubida: doc.fechaCarga || new Date().toISOString(),
+                  subidoPor: doc.usuarioCarga || 'Sistema',
+                  expedienteId: noticia.id,
+                  radicado: noticia.radicadoProceso,
+                  downloadUrl: doc.downloadUrl,
+                  processId: doc.processId,
+                  fileType: doc.fileType,
+                  fileSize: doc.fileSize,
+                  versiones: doc.versiones,
+                  metadatos: doc.metadatos
+              });
+           });
+         }
+       }
+       
+       setDocumentos(todosDocumentos);
+       
+       // Actualizar total de documentos por proceso y documentos por tipo
+       const docsPorProceso = new Map<string, number>();
+       const docsPorTipoPorProceso = new Map<string, Record<string, number>>();
+       
+       todosDocumentos.forEach(doc => {
+         // Contar total por proceso
+         docsPorProceso.set(doc.expedienteId, (docsPorProceso.get(doc.expedienteId) || 0) + 1);
+         
+         // Contar por tipo
+         if (!docsPorTipoPorProceso.has(doc.expedienteId)) {
+           docsPorTipoPorProceso.set(doc.expedienteId, {});
+         }
+         const tipos = docsPorTipoPorProceso.get(doc.expedienteId)!;
+         tipos[doc.tipo] = (tipos[doc.tipo] || 0) + 1;
+       });
+       
+        setExpedientes(prev => prev.map(exp => ({
+          ...exp,
+          totalDocumentos: docsPorProceso.get(exp.id) || 0,
+          documentosPorTipo: docsPorTipoPorProceso.get(exp.id) || {}
+        })));
         
-        // Contar por tipo
-        if (!docsPorTipoPorProceso.has(doc.expedienteId)) {
-          docsPorTipoPorProceso.set(doc.expedienteId, {});
-        }
-        const tipos = docsPorTipoPorProceso.get(doc.expedienteId)!;
-        tipos[doc.tipo] = (tipos[doc.tipo] || 0) + 1;
-      });
-      
-      setExpedientes(prev => prev.map(exp => ({
-        ...exp,
-        totalDocumentos: docsPorProceso.get(exp.id) || 0,
-        documentosPorTipo: docsPorTipoPorProceso.get(exp.id) || {}
-      })));
-      
-    } catch (err: any) {
-      console.error('Error cargando datos del backend:', err);
-      setError(err.message || 'Error al cargar los datos del servidor');
-      toast.error('Error al cargar los expedientes electrónicos');
-      // Usar datos de ejemplo como fallback
-      setExpedientes(EXPEDIENTES_EJEMPLO);
-      setDocumentos(DOCUMENTOS_CRONOLOGICOS);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        // Si cargamos procesos pero no noticias, mostrar datos de ejemplo de noticias
+        // para que el usuario pueda ver cómo se verían las noticias en estado radicado
+        if (noticiasRadicadasBackend.length === 0 && procesosBackend.length > 0) {
+          // Mostrar notificación
+          toast.warning('Se cargaron los procesos pero no las noticias radicadas. Mostrando datos de ejemplo.');
+          
+          // Agregar datos de ejemplo de noticias en estado radicado
+          const ejemploExpedientes = EXPEDIENTES_EJEMPLO.filter(exp => exp.estado === 'radicada');
+          const ejemploDocumentos = DOCUMENTOS_CRONOLOGICOS.filter(doc => 
+            ejemploExpedientes.some(exp => exp.id === doc.expedienteId)
+          );
+          
+          // Combinar procesos reales con ejemplo de noticias
+          setExpedientes([...procesosTransformados, ...ejemploExpedientes]);
+          
+          // Combinar documentos reales de procesos con documentos de ejemplo de noticias
+          const todosDocumentosConEjemplo = [...todosDocumentos, ...ejemploDocumentos];
+          setDocumentos(todosDocumentosConEjemplo);
+          
+          // Actualizar totales con los datos combinados
+          const docsPorProcesoConEjemplo = new Map<string, number>();
+          const docsPorTipoPorProcesoConEjemplo = new Map<string, Record<string, number>>();
+          
+          todosDocumentosConEjemplo.forEach(doc => {
+            // Contar total por proceso
+            docsPorProcesoConEjemplo.set(doc.expedienteId, (docsPorProcesoConEjemplo.get(doc.expedienteId) || 0) + 1);
+            
+            // Contar por tipo
+            if (!docsPorTipoPorProcesoConEjemplo.has(doc.expedienteId)) {
+              docsPorTipoPorProcesoConEjemplo.set(doc.expedienteId, {});
+            }
+            const tipos = docsPorTipoPorProcesoConEjemplo.get(doc.expedienteId)!;
+            tipos[doc.tipo] = (tipos[doc.tipo] || 0) + 1;
+          });
+          
+          setExpedientes(prev => prev.map(exp => ({
+            ...exp,
+            totalDocumentos: docsPorProcesoConEjemplo.get(exp.id) || 0,
+            documentosPorTipo: docsPorTipoPorProcesoConEjemplo.get(exp.id) || {}
+          })));
+         }
+       
+     } catch (err: any) {
+       console.error('Error cargando datos del backend:', err);
+       setError(err.message || 'Error al cargar los datos del servidor');
+       toast.error('Error al cargar los expedientes electrónicos');
+       // Usar datos de ejemplo como fallback
+       setExpedientes(EXPEDIENTES_EJEMPLO);
+       setDocumentos(DOCUMENTOS_CRONOLOGICOS);
+     } finally {
+       setLoading(false);
+     }
+   }, []);
 
   // ✅ Cargar datos al montar el componente
   useEffect(() => {
@@ -620,6 +769,7 @@ todosDocumentos.push({
 
   const getEstadoConfig = (estado: string) => {
     const configs: Record<string, { label: string; color: string; bg: string }> = {
+      radicada: { label: 'Radicada', color: '#8B5CF6', bg: '#EDE9FE' },
       valoracion: { label: 'Valoración', color: '#3B82F6', bg: '#DBEAFE' },
       indagacion: { label: 'Indagación', color: '#F59E0B', bg: '#FEF3C7' },
       investigacion: { label: 'En Proceso', color: '#10B981', bg: '#D1FAE5' },
