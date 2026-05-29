@@ -1745,38 +1745,116 @@ export class ProcessService {
     return procesoOrigenActualizado;
   }
 
-  /**
-   * Restaura un proceso archivado al flujo activo
-   */
-  async restore(id: string): Promise<DisciplinaryProcess> {
-    const proceso = await this.processRepository.findOne({
-      where: { id },
-      relations: ['news'],
-    });
+/**
+    * Restaura un proceso archivado al flujo activo
+    */
+   async restore(id: string): Promise<DisciplinaryProcess> {
+     const proceso = await this.processRepository.findOne({
+       where: { id },
+       relations: ['news'],
+     });
 
-    if (!proceso) {
-      throw new HttpException(
-        `Proceso con ID ${id} no encontrado. No se puede restaurar un proceso que no existe. Verifique que el ID sea correcto y que el proceso haya sido creado previamente.`,
-        HttpStatus.NOT_FOUND,
-      );
-    }
+     if (!proceso) {
+       throw new HttpException(
+         `Proceso con ID ${id} no encontrado. No se puede restaurar un proceso que no existe. Verifique que el ID sea correcto y que el proceso haya sido creado previamente.`,
+         HttpStatus.NOT_FOUND,
+       );
+     }
 
-    // Verificar que el proceso esté archivado
-    if (proceso.estado !== ProcessStatus.ARCHIVADO) {
-      throw new HttpException(
-        `El proceso ${proceso.radicadoProceso} no está archivado (estado actual: ${proceso.estado}). Solo los procesos archivados pueden ser restaurados.`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+     // Verificar que el proceso esté archivado
+     if (proceso.estado !== ProcessStatus.ARCHIVADO) {
+       throw new HttpException(
+         `El proceso ${proceso.radicadoProceso} no está archivado (estado actual: ${proceso.estado}). Solo los procesos archivados pueden ser restaurados.`,
+         HttpStatus.BAD_REQUEST,
+       );
+     }
 
-    // Cambiar estado a ACTIVO y marcar como restaurado
-    proceso.estado = ProcessStatus.ACTIVO;
-    proceso.restaurado = true;
+     // Cambiar estado a ACTIVO y marcar como restaurado
+     proceso.estado = ProcessStatus.ACTIVO;
+     proceso.restaurado = true;
 
-    // Nota: El historial de auditoría se maneja en el frontend o podría agregarse como campo JSON en el futuro
-    console.log(`Proceso ${proceso.radicadoProceso} restaurado al flujo activo desde estado archivado`);
+     // Nota: El historial de auditoría se maneja en el frontend o podría agregarse como campo JSON en el futuro
+     console.log(`Proceso ${proceso.radicadoProceso} restaurado al flujo activo desde estado archivado`);
 
-    return await this.processRepository.save(proceso);
-  }
-}
+     return await this.processRepository.save(proceso);
+   }
+
+   /**
+    * Obtiene todas las noticias en estado RADICADA que tienen documentos adjuntos
+    * Estas noticias no tienen proceso asociado aún
+    */
+async findRadicatedNewsWithDocuments(): Promise<any[]> {
+      // Buscar noticias RADICADA que tienen adjuntos (no array vacío) y NO tienen proceso asociado
+      const noticiasRadicadas = await this.newsRepository
+        .createQueryBuilder('noticia')
+        .where('noticia.estado = :estado', { estado: NewsStatus.RADICADA })
+        .andWhere("noticia.adjuntos IS NOT NULL AND array_length(noticia.adjuntos, 1) > 0")
+        .andWhere('noticia.proceso_asociado_id IS NULL')
+        .orderBy('noticia.createdAt', 'DESC')
+        .getMany();
+
+     // Mapear noticias a formato de expediente virtual para el frontend
+     return noticiasRadicadas.map(noticia => {
+const documentos = noticia.adjuntos && Array.isArray(noticia.adjuntos)
+          ? noticia.adjuntos.map((adjPath: string, index: number) => {
+              const filename = adjPath.includes('/') ? adjPath.split('/').pop()! : adjPath;
+              return {
+                id: `adj-noticia-${noticia.id}-${index}`,
+                nombre: filename,
+                archivoNombre: filename,
+                tipo: 'queja',
+                etapa: 'Recepción (Noticia Inicial)',
+                version: 1,
+                tamaño: 'N/A',
+                fechaCarga: noticia.createdAt?.toISOString() || new Date().toISOString(),
+                usuarioCarga: noticia.radicadorId ? 'Radicador' : 'Sistema',
+                descripcion: 'Archivo adjunto a la noticia disciplinaria original',
+                url: null,
+                urlExterna: null,
+                downloadUrl: `/files/${filename}`,
+                processId: null,
+                expedienteId: `noticia-${noticia.id}`,
+                fileType: 'application/octet-stream',
+                fileSize: 0,
+                versiones: [{
+                  numero: 1,
+                  fecha: noticia.createdAt?.toISOString() || new Date().toISOString(),
+                  usuario: 'Radicador',
+                  cambios: 'Adjunto de noticia inicial',
+                  tamaño: 'N/A',
+                  downloadUrl: `/files/${filename}`,
+                }],
+                metadatos: {
+                  firmado: false,
+                  notificado: false,
+                  esAutoDigital: false,
+                  esNoticiaRadica: true,
+                  estado: 'radicada',
+                },
+              };
+            })
+          : [];
+
+       const disciplinableData = noticia.disciplinable;
+       const disciplinable = Array.isArray(disciplinableData) ? disciplinableData[0] : disciplinableData;
+
+       return {
+         id: `noticia-${noticia.id}`,
+         radicadoProceso: noticia.radicado,
+         radicadoNoticia: noticia.radicado,
+         estado: 'radicada' as const,
+         etapaActual: 'Recepción',
+         nombreDisciplinado: disciplinable?.nombre || 'Sin nombre',
+         tipoProceso: noticia.hechos?.substring(0, 50) || 'Proceso Disciplinario',
+         responsable: 'Pendiente de Asignación',
+         fechaInicio: noticia.fechaRecepcion?.toISOString().split('T')[0] || noticia.createdAt?.toISOString().split('T')[0],
+         totalDocumentos: documentos.length,
+         documentosPorTipo: { queja: documentos.length },
+         esNoticiaRadica: true,
+         noticiaId: noticia.id,
+         documentos: documentos,
+       };
+     });
+   }
+ }
 
