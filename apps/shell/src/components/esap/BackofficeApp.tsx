@@ -178,6 +178,9 @@ const ACADEMIC_ROLE_CODES = new Set(['ESTUDIANTE', 'DOCENTE', 'GRADUADO', 'ASPIR
 const ACADEMIC_ROLE_LABELS = new Set(['Estudiante', 'Docente', 'Graduado', 'Aspirante']);
 
 function shouldUseAcademicLayout(userData: any, userRoles?: string[]) {
+  // Con acceso dual el usuario elige el sistema desde SystemSwitcher; no forzar portal aquí.
+  if (userData?.hasBothSystemsAccess) return false;
+
   const roleCodes = Array.isArray(userData?.roles)
     ? (userData.roles as unknown[]).map((r) => String(r))
     : [];

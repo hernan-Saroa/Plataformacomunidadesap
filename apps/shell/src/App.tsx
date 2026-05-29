@@ -46,6 +46,20 @@ const LEGACY_DISCIPLINARY_ROLES = new Set([
   'PROFESIONAL',
 ]);
 
+/** Roles académicos del portal (no incluye roles administrativos del backoffice). */
+const PORTAL_ACADEMIC_ROLE_CODES = new Set([
+  'ESTUDIANTE',
+  'DOCENTE',
+  'GRADUADO',
+  'EGRESADO',
+  'ASPIRANTE',
+  'USUARIO_AUDITADO',
+]);
+
+function filterPortalRoleCodes(roleCodes: string[]): string[] {
+  return roleCodes.filter((code) => PORTAL_ACADEMIC_ROLE_CODES.has(code));
+}
+
 function hasDisciplinaryAccess(roles: string[]): boolean {
   return roles.some(role =>
     LEGACY_DISCIPLINARY_ROLES.has(role) ||
@@ -247,10 +261,17 @@ function resolveDestino(user: any): {
   // Si ningún rol tiene sistema_destino, usar fallback por código
   if (!destinos.length) {
     const isAdmin = roleCodes.includes('ADMIN') || roleCodes.includes('SUPER_ADMIN');
-    const isPortalOnly = roleCodes.some(c => ['ESTUDIANTE', 'DOCENTE', 'GRADUADO', 'ASPIRANTE', 'USUARIO_AUDITADO'].includes(c));
-    if (isAdmin) destino = 'backoffice';
-    else if (!isPortalOnly) destino = 'backoffice';
-    else destino = 'portal';
+    const hasPortalRole = roleCodes.some((c) => PORTAL_ACADEMIC_ROLE_CODES.has(c));
+    const hasBackofficeRole = roleCodes.some((c) => !PORTAL_ACADEMIC_ROLE_CODES.has(c));
+    if (hasPortalRole && hasBackofficeRole) {
+      destino = 'ambos';
+    } else if (isAdmin) {
+      destino = 'backoffice';
+    } else if (hasBackofficeRole) {
+      destino = 'backoffice';
+    } else if (hasPortalRole) {
+      destino = 'portal';
+    }
   }
 
   // Nombres de rol para mostrar en el portal/backoffice
@@ -283,6 +304,17 @@ const USER_DATA_STORAGE_KEY = config.STORAGE_KEYS.USER_DATA;
 const ACTIVE_SESSION_STORAGE_KEY = 'esap-sesion-activa';
 /** Persiste la elección manual del usuario (portal ↔ backoffice) entre recargas */
 const SYSTEM_OVERRIDE_KEY = 'esap-system-override';
+
+function resolveEffectiveDestino(
+  destino: 'portal' | 'backoffice' | 'ambos',
+  hasBoth: boolean,
+): 'portal' | 'backoffice' {
+  const savedOverride = sessionStorage.getItem(SYSTEM_OVERRIDE_KEY) as 'portal' | 'backoffice' | null;
+  if (hasBoth && savedOverride) return savedOverride;
+  if (destino === 'ambos') return 'backoffice';
+  return destino;
+}
+
 const SENSITIVE_SESSION_STORAGE_KEYS = [
   USER_DATA_STORAGE_KEY,
 ];
@@ -437,12 +469,12 @@ export default function App() {
 
       const { destino, hasBoth, roleCodes, roleNames, permissions, module } = resolveDestino(user);
 
-      const portalRoles = roleNames.length > 0 ? roleNames : (destino !== 'backoffice' ? ['Estudiante'] : ['Administrativo']);
+      const portalRoleCodes = filterPortalRoleCodes(roleCodes);
+      const portalRoles = portalRoleCodes.length > 0
+        ? portalRoleCodes
+        : (destino !== 'backoffice' ? ['Estudiante'] : ['Administrativo']);
 
-      // Respetar la elección manual del usuario si tiene acceso a ambos sistemas
-      const savedOverride = sessionStorage.getItem(SYSTEM_OVERRIDE_KEY) as 'portal' | 'backoffice' | null;
-      const effectiveDestino = (hasBoth && savedOverride) ? savedOverride : (destino === 'ambos' ? 'backoffice' : destino);
-
+      const effectiveDestino = resolveEffectiveDestino(destino, hasBoth);
       const goToBackoffice = effectiveDestino === 'backoffice';
       const nextView: Vista = goToBackoffice ? 'backoffice' : 'portal';
       const nextCurrentView: AppView = goToBackoffice ? 'backoffice' : 'portal-transaccional';
@@ -678,12 +710,16 @@ export default function App() {
       const { destino, hasBoth, roleCodes, roleNames, permissions, module } = resolveDestino(user);
       console.log('🔑 User roles:', roleCodes, '| sistema_destino resuelto:', destino, '| hasBoth:', hasBoth);
 
-      const goToBackoffice = destino === 'backoffice' || destino === 'ambos';
+      const effectiveDestino = resolveEffectiveDestino(destino, hasBoth);
+      const goToBackoffice = effectiveDestino === 'backoffice';
       const vistaActualNext: Vista = goToBackoffice ? 'backoffice' : 'portal';
       const currentViewNext: AppView = goToBackoffice ? 'backoffice' : 'portal-transaccional';
 
-      // Nombres de rol para el Portal (RoleSelector)
-      const portalRoles = roleNames.length > 0 ? roleNames : (goToBackoffice ? ['Administrativo'] : ['Estudiante']);
+      // Roles del portal para el selector (solo académicos, sin roles de backoffice)
+      const portalRoleCodes = filterPortalRoleCodes(roleCodes);
+      const portalRoles = portalRoleCodes.length > 0
+        ? portalRoleCodes
+        : (goToBackoffice ? ['Administrativo'] : ['Estudiante']);
 
       setUserType(goToBackoffice ? 'administrativo' : 'portal');
       setIsAuthenticated(true);
@@ -934,10 +970,10 @@ export default function App() {
             onLogout={handleLogout}
             onBackToSystemSelector={handleBackToSystemSelector}
             onSystemChange={(system) => {
-              if (system === 'portal') {
-                setVistaActual('portal');
-                toast.success('Cambiado al Portal Transaccional');
-              }
+              handleSystemChange(system);
+              toast.success(
+                system === 'portal' ? 'Cambiado al Portal Transaccional' : 'Cambiado al Backoffice',
+              );
             }}
             userData={userData}
             userRoles={userRoles}

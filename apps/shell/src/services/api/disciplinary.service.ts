@@ -676,11 +676,19 @@ class DisciplinaryService {
 
 
 
-    // --- PROCESOS ---
+// --- PROCESOS ---
 
-    async getAllProcesos(): Promise<DisciplinaryProcess[]> {
-        return apiClient.get<DisciplinaryProcess[]>(`${SERVICE_PREFIX}/disciplinary-processes`);
-    }
+     async getAllProcesos(): Promise<DisciplinaryProcess[]> {
+         return apiClient.get<DisciplinaryProcess[]>(`${SERVICE_PREFIX}/disciplinary-processes`);
+     }
+
+     /**
+      * Obtiene todas las noticias RADICADA con documentos adjuntos
+      * Estas noticias no tienen proceso asociado aún
+      */
+     async getNoticiasRadicadasConDocumentos(): Promise<any[]> {
+         return apiClient.get<any[]>(`${SERVICE_PREFIX}/disciplinary-processes/radicated-news`);
+     }
 
     async getAutosByProceso(processId: string): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/disciplinary-autos/by-process/${processId}`);
