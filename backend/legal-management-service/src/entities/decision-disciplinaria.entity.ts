@@ -7,22 +7,22 @@ export class DecisionDisciplinaria {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column({ name: 'tipo_decision' })
+    @Column({ name: 'tipo_decision', nullable: true })
     tipoDecision: string;
 
-    @Column({ name: 'tipo_fallo' })
+    @Column({ name: 'tipo_fallo', nullable: true })
     tipoFallo: string; // Sancionatoria | Absolutoria
 
     @Column({ nullable: true })
     sancion: string;
 
-    @Column('text')
+    @Column('text', { nullable: true })
     consideraciones: string;
 
     @Column('text', { name: 'fundamentos_juridicos', nullable: true })
     fundamentosJuridicos: string;
 
-    @Column()
+    @Column({ nullable: true })
     responsable: string;
 
     @Column({ name: 'cargo_responsable', nullable: true })

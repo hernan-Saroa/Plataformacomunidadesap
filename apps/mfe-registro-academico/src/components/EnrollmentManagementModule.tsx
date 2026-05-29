@@ -201,7 +201,7 @@ export function EnrollmentManagementModule() {
 
   return (
     <>
-    <Toaster position="top-right" richColors />
+    <Toaster position="bottom-right" richColors />
     <div className="space-y-6">
       {/* Header */}
       <motion.div

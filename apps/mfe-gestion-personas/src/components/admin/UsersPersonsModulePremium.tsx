@@ -529,6 +529,11 @@ export function UsersPersonsModulePremium() {
     try {
       setLoading(true);
 
+      const userId = selectedUser?.id_user || selectedUser?.id;
+      if (!userId) {
+        throw new Error("No se pudo identificar el usuario a editar.");
+      }
+
       const principalAsignacion =
         userData.asignacionesSedes?.find((a: any) => a.esPrincipal) ||
         userData.asignacionesSedes?.[0];
@@ -549,6 +554,17 @@ export function UsersPersonsModulePremium() {
         }
       }
 
+      // Map single string role to roleIds array
+      let mappedRoleIds = userData.roleIds || [];
+      if (mappedRoleIds.length === 0 && userData.role) {
+        const roleObj = availableRoles.find(
+          (r: any) => r.name === userData.role || r.nombre === userData.role || r.code === userData.role
+        );
+        if (roleObj) {
+          mappedRoleIds = [roleObj.id];
+        }
+      }
+
       // Mapear datos del formulario al formato esperado por el backend
       const updateUserData = {
         first_name: userData.firstName,
@@ -558,13 +574,36 @@ export function UsersPersonsModulePremium() {
         email: userData.email,
         phone: userData.phone || '',
         gender: userData.gender || '',
-        roleIds: userData.roleIds || [],
+        birth_date: userData.birthDate,
+        address: userData.address,
+        city: userData.city,
+        empresa_contratista: userData.empresaContratista,
+        dependencia_grupo_programa: userData.dependenciaGrupoPrograma,
+        cargo_semestre: userData.cargoSemestre,
+        contrato: userData.contrato,
+        enrollment_date: userData.enrollmentDate,
+        fecha_fin_contrato: userData.fechaFinContrato,
+        observaciones: userData.observaciones,
+        tipo_vinculacion: userData.tipoVinculacion,
+        horas_asignables: userData.horasAsignables,
+        pregrado_detalle: userData.pregradoDetalle,
+        doctorado_detalle: userData.doctoradoDetalle,
+        puntaje_salarial: userData.puntajeSalarial,
+        roleIds: mappedRoleIds,
+        status: userData.status,
         // Agregar seccional y sede si están definidos
         idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
         idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
       };
 
-      await usersService.updateUser(userData.id_user || userData.id, updateUserData);
+      await usersService.updateUser(userId, updateUserData);
+
+      // Si el estado cambió, actualizarlo usando el endpoint específico
+      const wasActive = selectedUser?.status === 'active' || selectedUser?.is_active === true;
+      const isNowActive = userData.status === 'active';
+      if (wasActive !== isNowActive) {
+        await usersService.updateUserStatus(userId, isNowActive);
+      }
 
       toast.success('Usuario Actualizado', {
         description: `${userData.firstName} ${userData.lastName} ha sido actualizado exitosamente.`
@@ -776,6 +815,37 @@ export function UsersPersonsModulePremium() {
     try {
       setLoading(true);
 
+      const principalAsignacion =
+        userData.asignacionesSedes?.find((a: any) => a.esPrincipal) ||
+        userData.asignacionesSedes?.[0];
+      const sedeIdSeleccionada = userData.idSede || userData.sedePrincipalId || principalAsignacion?.unidadId;
+      const sedeIdNumerica = sedeIdSeleccionada ? Number(sedeIdSeleccionada) : undefined;
+      let seccionalIdNumerica = userData.idSeccional ? Number(userData.idSeccional) : undefined;
+
+      // Si hay sede seleccionada y no viene seccional en el formulario, resolverla desde estructura-organizacional
+      if (!Number.isFinite(seccionalIdNumerica as number) && Number.isFinite(sedeIdNumerica as number)) {
+        try {
+          const sedeResponse = await estructuraService.obtenerSedePorId(sedeIdNumerica as number);
+          const resolvedSeccionalId = sedeResponse?.data?.idSeccional;
+          if (resolvedSeccionalId) {
+            seccionalIdNumerica = Number(resolvedSeccionalId);
+          }
+        } catch (error) {
+          console.warn('No se pudo resolver idSeccional desde idSede:', error);
+        }
+      }
+
+      // Map single string role to roleIds array
+      let mappedRoleIds = userData.roleIds || [];
+      if (mappedRoleIds.length === 0 && userData.role) {
+        const roleObj = availableRoles.find(
+          (r: any) => r.name === userData.role || r.nombre === userData.role || r.code === userData.role
+        );
+        if (roleObj) {
+          mappedRoleIds = [roleObj.id];
+        }
+      }
+
       // Mapear datos del formulario al formato esperado por el backend
       const createUserData = {
         first_name: String(userData.firstName || '').trim(),
@@ -787,10 +857,25 @@ export function UsersPersonsModulePremium() {
         email: String(userData.email || '').trim().toLowerCase(),
         phone: String(userData.phone || '').trim(),
         gender: userData.gender || '',
-        roleIds: userData.roleIds || [],
+        birth_date: userData.birthDate,
+        address: userData.address,
+        city: userData.city,
+        empresa_contratista: userData.empresaContratista,
+        dependencia_grupo_programa: userData.dependenciaGrupoPrograma,
+        cargo_semestre: userData.cargoSemestre,
+        contrato: userData.contrato,
+        enrollment_date: userData.enrollmentDate,
+        fecha_fin_contrato: userData.fechaFinContrato,
+        observaciones: userData.observaciones,
+        tipo_vinculacion: userData.tipoVinculacion,
+        horas_asignables: userData.horasAsignables,
+        pregrado_detalle: userData.pregradoDetalle,
+        doctorado_detalle: userData.doctoradoDetalle,
+        puntaje_salarial: userData.puntajeSalarial,
+        roleIds: mappedRoleIds,
         // Agregar seccional y sede si están definidos
-        idSeccional: userData.idSeccional ? Number(userData.idSeccional) : undefined,
-        idSede: userData.idSede ? Number(userData.idSede) : undefined,
+        idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
+        idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
       };
 
       const newUser = await usersService.createUser(createUserData);
@@ -1436,9 +1521,9 @@ export function UsersPersonsModulePremium() {
               <tbody style={{ background: "#FFFFFF" }}>
                 <AnimatePresence mode="popLayout">
                   {displayUsers.map((user, index) => (
-                    <React.Fragment key={user.id}>
+                    <React.Fragment key={user.id || `frag-${index}`}>
                       <motion.tr
-                        key={`row-${user.id}`}
+                        key={user.id ? `row-${user.id}` : `row-${index}`}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
@@ -1864,7 +1949,7 @@ export function UsersPersonsModulePremium() {
                       {/* Fila expandida - Detalles del usuario - REDISEÑADA */}
                       {expandedUserId === user.id && (
                         <motion.tr
-                          key={`${user.id}-expanded`}
+                          key={user.id ? `${user.id}-expanded` : `expanded-${index}`}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
@@ -1997,8 +2082,7 @@ export function UsersPersonsModulePremium() {
                               setSelectedUser(user);
                               setViewMode("digital-folder");
                             }}
-                            className="bg-blue-50 hover:bg-blue-100"
-                            style={{ color: "#003DA5" }}
+                            className="text-blue-700 focus:bg-blue-600 focus:text-white"
                           >
                             <FolderOpen className="w-4 h-4 mr-2" />
                             Ver Carpeta Digital
@@ -2013,8 +2097,7 @@ export function UsersPersonsModulePremium() {
                           {!hasSuperAdminRole(user) && (
                             <DropdownMenuItem
                               onClick={() => handleAssignRoles(user)}
-                              className="bg-blue-50 hover:bg-blue-100"
-                              style={{ color: '#003DA5' }}
+                              className="text-blue-700 focus:bg-blue-600 focus:text-white"
                             >
                               <Users className="w-4 h-4 mr-2" />
                               Asignar Roles
@@ -2032,7 +2115,7 @@ export function UsersPersonsModulePremium() {
                           {user.status === 'active' || user.is_active ? (
                             <DropdownMenuItem
                               onClick={() => handleBlockUser(user)}
-                              style={{ color: '#F59E0B' }}
+                              className="text-amber-600 focus:bg-amber-500 focus:text-white"
                             >
                               <Lock className="w-4 h-4 mr-2" />
                               Bloquear Usuario
@@ -2040,8 +2123,7 @@ export function UsersPersonsModulePremium() {
                           ) : (
                             <DropdownMenuItem
                               onClick={() => handleActivateUser(user)}
-                              className="bg-green-50 hover:bg-green-100"
-                              style={{ color: '#10B981' }}
+                              className="text-green-600 focus:bg-green-600 focus:text-white"
                             >
                               <Unlock className="w-4 h-4 mr-2" />
                               Activar Usuario
@@ -2050,7 +2132,7 @@ export function UsersPersonsModulePremium() {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => handleDelete(user)}
-                            style={{ color: "#EF4444" }}
+                            className="text-red-600 focus:bg-red-600 focus:text-white"
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
                             Eliminar
@@ -2223,16 +2305,17 @@ export function UsersPersonsModulePremium() {
         />
       )}
 
-      {/* ✅ Modal Editar Usuario con Sedes */}
+      {/* ✅ Modal Editar Usuario Unificado */}
       {showEditModal && selectedUser && (
-        <EditUserModal
+        <CreatePersonModal
           isOpen={showEditModal}
           onClose={() => {
             setShowEditModal(false);
             setSelectedUser(null);
           }}
-          user={selectedUser}
-          onSave={handleSaveEdit}
+          initialData={selectedUser}
+          onCreate={handleSaveEdit}
+          editMode={true}
         />
       )}
 

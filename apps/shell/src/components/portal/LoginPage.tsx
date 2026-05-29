@@ -128,7 +128,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
 
         onLogin(loginResponse.user, loginResponse.accessToken, rememberMe);
       } catch (error: any) {
-        console.error('Error en callback de Microsoft:', error);
+        // console.error('Error en callback de Microsoft:', error);
         setMicrosoftLoginError(error?.message || 'No fue posible completar el inicio de sesión con Microsoft.');
         toast.error('No fue posible iniciar sesión con Microsoft', {
           description: error?.message || 'Intenta nuevamente.',
@@ -255,12 +255,18 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         error?.response?.status ??
         error?.response?.data?.statusCode ??
         null;
-      const errorMessage =
+      let errorMessage =
         typeof error?.message === 'string' && error.message.trim()
           ? error.message
           : 'Ocurrió un error inesperado. Intenta nuevamente.';
-      if (![400, 401, 429].includes(statusCode)) {
-        console.error('Error de autenticación:', error);
+
+      if (errorMessage === 'Error' || errorMessage === 'Failed to fetch') {
+        errorMessage = 'No se pudo conectar con el servidor. Verifica tu conexión o intenta más tarde.';
+      }
+
+      // Log para desarrolladores (sin spam)
+      if (process.env.NODE_ENV === 'development') {
+        console.error(`[Login Error] Status: ${statusCode || 'Network/CORS'}, Message:`, error?.message || error);
       }
 
       // Manejar diferentes tipos de errores
@@ -352,7 +358,7 @@ export function LoginPage({ onLogin, onBackToHome }: LoginPageProps) {
         setIsMicrosoftLoading(true);
         window.location.assign(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${query.toString()}`);
       } catch (error: any) {
-        console.error('Error iniciando OAuth Microsoft:', error);
+        // console.error('Error iniciando OAuth Microsoft:', error);
         setIsMicrosoftLoading(false);
         toast.error('No se pudo iniciar el login con Microsoft', {
           description: error?.message || 'Revisa la configuración OAuth.',

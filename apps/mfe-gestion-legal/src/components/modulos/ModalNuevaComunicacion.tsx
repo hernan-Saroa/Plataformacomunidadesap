@@ -200,14 +200,14 @@ export function ModalNuevaComunicacion({ isOpen, onClose, onSubmit, initialData 
   const [enviando, setEnviando] = useState(false);
   const [archivos, setArchivos] = useState<File[]>([]);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [requestReadReceipt, setRequestReadReceipt] = useState(false);
+  const [requestReadReceipt, setRequestReadReceipt] = useState(true);
 
   useEffect(() => {
     if (!isOpen) return;
 
-    setArchivos([]);
+    setArchivos(initialData?.archivos || []);
     setShowCc(false);
-    setRequestReadReceipt(false);
+    setRequestReadReceipt(true);
 
     if (initialData?.isForward) {
       setOriginalBody(initialData.cuerpo || '');

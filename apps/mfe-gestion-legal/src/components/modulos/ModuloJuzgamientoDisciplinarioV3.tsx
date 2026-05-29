@@ -34,7 +34,6 @@ import { ModuleMetrics } from '../design-system/ModuleMetrics';
 import { ModuleFilters } from '../design-system/ModuleFilters';
 import { ModuleInfoTooltip } from '../design-system/ModuleInfoTooltip';
 import { ModalProcesoDisciplinario } from './ModalProcesoDisciplinario';
-import { ModalComunicaciones } from './ModalComunicaciones';
 import { ModalNuevoProcesoDisciplinario } from './ModalNuevoProcesoDisciplinario';
 
 import { VistaListaJuzgamiento } from './VistaListaJuzgamiento';
@@ -851,10 +850,6 @@ function ColumnaKanban({ etapa, isMobile, isTablet, handleMoverProceso, canMove,
                 <h3 className={`font-black ${isMobile ? 'text-xs' : 'text-sm'} text-gray-800`}>
                   {etapa.nombre}
                 </h3>
-                <p className="text-[10px] text-gray-500 flex items-center gap-1">
-                  <Clock className="w-2.5 h-2.5" />
-                  {etapa.diasEstimados} días
-                </p>
               </div>
             </div>
             <Badge className={`font-semibold ${isMobile ? 'text-xs px-1.5 py-0.5' : 'text-sm px-2 py-1'} bg-white border border-gray-200 text-gray-700`}>
@@ -917,7 +912,6 @@ interface TarjetaProcesoProps {
 function TarjetaProceso({ proceso, isMobile, handleMoverProceso, canMove, nuevaEtapa, onRefresh, onVerExpedienteAnexado }: TarjetaProcesoProps) {
   // Estados para modales
   const [modalProcesoOpen, setModalProcesoOpen] = useState(false);
-  const [modalComunicacionesOpen, setModalComunicacionesOpen] = useState(false);
 
   // Drag and Drop
   const [{ isDragging }, drag] = useDrag({
@@ -1045,7 +1039,7 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, canMove, nuevaE
             <p className="text-xs text-gray-500">📅 {proceso.fechaActualizacion.toLocaleDateString('es-CO')}</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-1 pt-1.5 border-t border-gray-200">
+          <div className="pt-1.5 border-t border-gray-200">
             <Button
               onClick={() => setModalProcesoOpen(true)}
               size="sm"
@@ -1055,37 +1049,22 @@ function TarjetaProceso({ proceso, isMobile, handleMoverProceso, canMove, nuevaE
               <FolderOpen className="w-3 h-3 mr-1 flex-shrink-0" />
               Expediente
             </Button>
-
-            <Button
-              onClick={() => setModalComunicacionesOpen(true)}
-              size="sm"
-              variant="outline"
-              className="w-full text-[10px] py-1.5 font-bold border h-auto"
-              style={{ borderColor: '#003DA5', color: '#003DA5' }}
-            >
-              <MessageSquare className="w-3 h-3 mr-1 flex-shrink-0" />
-              Comunic.
-            </Button>
           </div>
         </div>
 
-        <ModalProcesoDisciplinario
-          isOpen={modalProcesoOpen}
-          onClose={() => setModalProcesoOpen(false)}
-          proceso={proceso as any}
-          onRefresh={onRefresh}
-          readOnly={authService.hasRole('MONITOREO_GESTION_LEGAL')}
-          onVerExpedienteAnexado={(id) => {
-            setModalProcesoOpen(false); // Close current nested
-            if (onVerExpedienteAnexado) onVerExpedienteAnexado(id);
-          }}
-        />
-        <ModalComunicaciones
-          isOpen={modalComunicacionesOpen}
-          onClose={() => setModalComunicacionesOpen(false)}
-          expediente={expedienteParaModales as any}
-          readOnly={authService.hasRole('MONITOREO_GESTION_LEGAL')}
-        />
+        {modalProcesoOpen && (
+          <ModalProcesoDisciplinario
+            isOpen={modalProcesoOpen}
+            onClose={() => setModalProcesoOpen(false)}
+            proceso={proceso as any}
+            onRefresh={onRefresh}
+            readOnly={authService.hasRole('MONITOREO_GESTION_LEGAL')}
+            onVerExpedienteAnexado={(id) => {
+              setModalProcesoOpen(false); // Close current nested
+              if (onVerExpedienteAnexado) onVerExpedienteAnexado(id);
+            }}
+          />
+        )}
       </Card>
     </div>
   );

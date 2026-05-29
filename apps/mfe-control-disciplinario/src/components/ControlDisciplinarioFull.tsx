@@ -545,7 +545,7 @@ export function ControlDisciplinarioFull() {
 
   return (
     <>
-    <Toaster position="top-right" richColors />
+    <Toaster position="bottom-right" richColors />
     <ModuleLayout
       moduleName="CONTROL INTERNO DISCIPLINARIO"
       moduleDescription="Sistema de Gestión"

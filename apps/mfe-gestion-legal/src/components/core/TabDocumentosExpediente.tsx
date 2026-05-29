@@ -10,19 +10,22 @@
 
 import { useState, useEffect } from 'react';
 import {
-  FolderOpen, Download, Eye, X, FileText,
-  Filter, User, File, BookOpen, Library, ArrowRight, Loader2, Search
+  FolderOpen, Download, Eye, X, FileText, ChevronDown,
+  Filter, User, File, BookOpen, Library, ArrowRight, Loader2, Search,
+  Shield, Mail, Stamp, Share2, Bell, Trash2, FileSignature
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 import { Button } from '@esap-mfe/shared-ui/button';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { ModalHeaderClean } from '../modulos/ModalHeaderClean';
-import {
-  CATEGORIAS_DOCUMENTOS,
-  type DocumentoExpediente,
-} from './expedienteShared';
+import { type DocumentoExpediente } from './expedienteShared';
 import { apiClient } from '../../../../services/api/apiClient';
+import { useConfiguracionesSIGL } from '../config/ConfiguracionesSIGLContext';
+
+const ICON_MAP: Record<string, any> = {
+  FolderOpen, BookOpen, Shield, Mail, Stamp, Eye, Share2, Bell, File, Filter, User, Library, Download, Search, X, ArrowRight
+};
 
 const LEGAL_API = '/legal/api/v1';
 
@@ -70,7 +73,9 @@ interface TabDocumentosExpedienteProps {
   onViewDocument?: (doc: DocumentoExpediente) => void;
   onDownloadDocument?: (doc: DocumentoExpediente) => void;
   onDownloadAll?: () => Promise<void> | void;
+  onDeleteDocument?: (doc: DocumentoExpediente) => Promise<void> | void;
   moduloContexto?: 'defensa-judicial' | 'juzgamiento';
+  allowSigning?: boolean;
 }
 
 // Categorías que usan el flujo de plantillas (Word → PDF diligenciado)
@@ -98,10 +103,19 @@ export function TabDocumentosExpediente({
   onViewDocument,
   onDownloadDocument,
   onDownloadAll,
-  moduloContexto = 'defensa-judicial'
+  onDeleteDocument,
+  moduloContexto = 'defensa-judicial',
+  allowSigning = false
 }: TabDocumentosExpedienteProps) {
   const [busquedaDocs, setBusquedaDocs] = useState('');
   const [filtroDocTipo, setFiltroDocTipo] = useState('todos');
+
+  // Categorías Dinámicas desde Contexto
+  const { getCategoriasDocumentosActivas } = useConfiguracionesSIGL();
+  const categoriasDocumentos = getCategoriasDocumentosActivas();
+  const categoriasSeguras = categoriasDocumentos.length > 0 
+    ? categoriasDocumentos 
+    : [{ id: 'todos', nombre: 'Todos', icono: 'FolderOpen', color: '#003DA5', activo: true, orden: 1 }];
 
   // Plantillas desde API
   const [plantillas, setPlantillas] = useState<PlantillaApi[]>([]);
@@ -315,28 +329,37 @@ export function TabDocumentosExpediente({
               {documentos.length} documentos en total • {documentosFiltrados.length} mostrados
             </p>
           </div>
-          <div className="flex gap-2 flex-wrap">
-            {usaPlantillas && onUploadDocument ? (
-              <Button
-                size="sm"
-                onClick={() => setModalPlantillas(true)}
-                className="font-semibold"
-                style={{ background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)', color: '#FFFFFF' }}
-              >
-                <Library className="w-4 h-4 mr-1.5" />
-                Plantillas
-              </Button>
-            ) : !usaPlantillas && onUploadDocument ? (
-              <Button
-                size="sm"
-                onClick={handleSubirDocumento}
-                className="font-semibold"
-                style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#FFFFFF' }}
-              >
-                <FolderOpen className="w-4 h-4 mr-1.5" />
-                Subir Documento
-              </Button>
-            ) : null}
+          <div className="flex gap-2 flex-wrap items-center">
+            {onUploadDocument && (
+              <>
+                {usaPlantillas && (
+                  <Button
+                    onClick={() => setModalPlantillas(true)}
+                    className="font-semibold shadow-sm hover:opacity-90 transition-opacity border-none"
+                    style={{ 
+                      background: 'linear-gradient(135deg, #2962FF 0%, #003DA5 100%)', 
+                      color: '#FFFFFF',
+                      height: '32px', 
+                      padding: '0 12px', 
+                      fontSize: '13px', 
+                      borderRadius: '6px'
+                    }}
+                  >
+                    <Library className="w-4 h-4 mr-1.5" />
+                    Plantillas
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  onClick={handleSubirDocumento}
+                  className="font-semibold"
+                  style={{ background: 'linear-gradient(135deg, #059669 0%, #047857 100%)', color: '#FFFFFF' }}
+                >
+                  <FolderOpen className="w-4 h-4 mr-1.5" />
+                  Subir Documento
+                </Button>
+              </>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -350,46 +373,78 @@ export function TabDocumentosExpediente({
           </div>
         </div>
 
-        {/* Búsqueda */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={busquedaDocs}
-            onChange={(e) => setBusquedaDocs(e.target.value)}
-            placeholder="Buscar por nombre o tipo de documento..."
-            className="w-full pl-10 pr-4 py-2.5 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-          {busquedaDocs && (
-            <button onClick={() => setBusquedaDocs('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <X className="w-4 h-4" />
-            </button>
-          )}
-        </div>
+        {/* Barra de Búsqueda y Filtro Unificada (Diseño Premium World-Class) */}
+        <div 
+          className="flex flex-col sm:flex-row items-center w-full bg-white rounded-2xl border border-gray-200 transition-all duration-300 overflow-hidden mt-6 mb-4"
+          style={{
+            boxShadow: '0 4px 20px -4px rgba(0,61,165,0.08)' // Sombra azulada sutil y elegante
+          }}
+        >
+          
+          {/* 1. Menú Desplegable (Categorías) */}
+          <div dir="ltr" className="relative w-full sm:w-auto min-w-[240px] bg-slate-50 hover:bg-slate-100 transition-colors group cursor-pointer border-b sm:border-b-0 sm:border-r border-gray-200">
+            <div className="absolute left-5 top-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none transition-transform group-hover:scale-110 duration-300">
+              {(() => {
+                const activeCat = categoriasSeguras.find(c => c.id === filtroDocTipo) || categoriasSeguras[0];
+                const ActiveIcon = ICON_MAP[activeCat.icono as string] || Filter;
+                return <ActiveIcon className="w-5 h-5 drop-shadow-sm" style={{ color: activeCat.color || '#475569' }} />;
+              })()}
+            </div>
+            
+            <select
+              dir="ltr"
+              value={filtroDocTipo}
+              onChange={(e) => setFiltroDocTipo(e.target.value)}
+              className="w-full h-14 pl-12 pr-10 bg-transparent text-[15px] font-bold cursor-pointer outline-none appearance-none [&::-ms-expand]:hidden"
+              style={{
+                WebkitAppearance: 'none',
+                MozAppearance: 'none',
+                appearance: 'none',
+                color: categoriasSeguras.find(c => c.id === filtroDocTipo)?.color || '#334155'
+              }}
+            >
+              {categoriasSeguras.map((cat) => {
+                const count = conteoCategoria(cat.id);
+                return (
+                  <option key={cat.id} value={cat.id} className="font-semibold text-slate-800 py-2">
+                    {cat.nombre} {count > 0 ? `(${count})` : ''}
+                  </option>
+                );
+              })}
+            </select>
+            
+            <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-hover:text-blue-600 transition-colors">
+              <ChevronDown className="w-5 h-5" />
+            </div>
+          </div>
 
-        {/* Filtros categoría */}
-        <div className="flex flex-wrap gap-2">
-          {CATEGORIAS_DOCUMENTOS.map((cat) => {
-            const count = conteoCategoria(cat.id);
-            const isActive = filtroDocTipo === cat.id;
-            const IconComponent = cat.icono;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => setFiltroDocTipo(cat.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border-2 ${
-                  isActive ? 'text-white shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                }`}
-                style={isActive ? { background: cat.color, borderColor: cat.color } : {}}
+          {/* 2. Campo de Búsqueda */}
+          <div className="relative flex-1 bg-white flex items-center group w-full">
+            <div className="absolute left-5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-focus-within:text-blue-600 transition-colors duration-300">
+              <Search className="w-5 h-5" />
+            </div>
+            
+            <input
+              type="text"
+              value={busquedaDocs}
+              onChange={(e) => setBusquedaDocs(e.target.value)}
+              placeholder="Buscar por nombre, tipo o palabras clave del documento..."
+              className="w-full h-14 pl-12 pr-14 text-[15px] bg-transparent outline-none text-slate-700 placeholder-slate-400 font-medium transition-all"
+            />
+            
+            {busquedaDocs && (
+              <button 
+                onClick={() => setBusquedaDocs('')} 
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 p-1.5 rounded-full transition-all active:scale-95 shadow-sm"
               >
-                <IconComponent className="w-3.5 h-3.5" />
-                {cat.nombre}
-                <span className={`ml-0.5 px-1.5 py-0.5 rounded-full text-[10px] ${isActive ? 'bg-white/25' : 'bg-gray-100'}`}>
-                  {count}
-                </span>
+                <X className="w-4 h-4" />
               </button>
-            );
-          })}
+            )}
+            
+            {/* Indicador de focus animado en la parte inferior */}
+            <div className="absolute bottom-0 left-0 h-[2px] bg-blue-600 w-0 group-focus-within:w-full transition-all duration-300 ease-out"></div>
+          </div>
+          
         </div>
 
         {/* Lista documentos */}
@@ -397,14 +452,12 @@ export function TabDocumentosExpediente({
           <Card className="p-8 text-center border-2 border-dashed border-gray-300">
             <FolderOpen className="w-16 h-16 mx-auto mb-4 text-gray-300" />
             <h4 className="font-bold text-lg text-gray-600 mb-2">
-              Sin documentos {filtroDocTipo !== 'todos' ? `en "${CATEGORIAS_DOCUMENTOS.find(c => c.id === filtroDocTipo)?.nombre}"` : ''}
+              Sin documentos {filtroDocTipo !== 'todos' ? `en "${categoriasSeguras.find(c => c.id === filtroDocTipo)?.nombre}"` : ''}
             </h4>
             <p className="text-sm text-gray-500 mb-4">
               {busquedaDocs
                 ? `No se encontraron resultados para "${busquedaDocs}"`
-                : usaPlantillas
-                  ? 'Sube documentos usando las plantillas disponibles'
-                  : 'Sube documentos con el botón "Subir Documento"'}
+                : 'Sube documentos con el botón "Subir Documento"' + (usaPlantillas ? ' o usando las plantillas disponibles' : '')}
             </p>
             {(busquedaDocs || filtroDocTipo !== 'todos') && (
               <Button variant="outline" onClick={() => { setBusquedaDocs(''); setFiltroDocTipo('todos'); }} className="font-semibold">
@@ -416,8 +469,21 @@ export function TabDocumentosExpediente({
         ) : (
           <div className="space-y-2">
             {documentosFiltrados.map((doc) => {
-              const catInfo = CATEGORIAS_DOCUMENTOS.find(c => c.id === doc.categoria);
-              const CatIcon = catInfo?.icono || File;
+              const catInfo = categoriasSeguras.find(c => c.id === doc.categoria);
+              const CatIcon = ICON_MAP[catInfo?.icono as string] || File;
+              
+              const isSigned = (() => {
+                if (doc.descripcion) {
+                  try {
+                    const data = JSON.parse(doc.descripcion);
+                    return !!(data && data.firmado);
+                  } catch (e) {
+                    return false;
+                  }
+                }
+                return false;
+              })();
+
               return (
                 <Card key={doc.id} className="p-3 hover:shadow-md transition-all border border-gray-200 hover:border-blue-200">
                   <div className="flex items-center gap-3">
@@ -426,13 +492,22 @@ export function TabDocumentosExpediente({
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="font-bold text-sm truncate">{doc.nombre}</h4>
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap mt-1">
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: catInfo?.color || '#6B7280' }}>
                           {catInfo?.nombre || 'General'}
                         </span>
                         {doc.etapa && (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold text-white" style={{ background: '#0D9488' }}>
                             {doc.etapa}
+                          </span>
+                        )}
+                        {isSigned && (
+                          <span 
+                            className="px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border border-emerald-300" 
+                            style={{ background: '#D1FAE5', color: '#065F46' }}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            Firmado
                           </span>
                         )}
                         <span className="text-xs text-gray-500">{doc.tamaño}</span>
@@ -450,12 +525,41 @@ export function TabDocumentosExpediente({
                       </div>
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50" onClick={() => handleVerDocumento(doc)} title="Ver documento">
+                      <button 
+                        className="h-8 w-8 p-0 flex items-center justify-center rounded-lg text-blue-600 hover:bg-blue-50 hover:text-blue-700 transition-colors" 
+                        onClick={() => handleVerDocumento(doc)} 
+                        title="Ver documento"
+                      >
                         <Eye className="w-4 h-4" />
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-orange-600 hover:bg-orange-50" onClick={() => handleDescargarDocumento(doc)} title="Descargar documento">
+                      </button>
+                      {(() => {
+                        const isPdf = doc.nombre.toLowerCase().endsWith('.pdf') || doc.url?.toLowerCase().includes('.pdf');
+                        return allowSigning && isPdf && !isSigned && (
+                          <button 
+                            className="h-8 w-8 p-0 flex items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors" 
+                            onClick={() => handleVerDocumento(doc)} 
+                            title="Firmar documento"
+                          >
+                            <FileSignature className="w-4 h-4" />
+                          </button>
+                        );
+                      })()}
+                      <button 
+                        className="h-8 w-8 p-0 flex items-center justify-center rounded-lg text-orange-600 hover:bg-orange-50 hover:text-orange-700 transition-colors" 
+                        onClick={() => handleDescargarDocumento(doc)} 
+                        title="Descargar documento"
+                      >
                         <Download className="w-4 h-4" />
-                      </Button>
+                      </button>
+                      {onDeleteDocument && !isSigned && (
+                        <button 
+                          className="h-8 w-8 p-0 flex items-center justify-center rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors" 
+                          onClick={() => onDeleteDocument(doc)} 
+                          title="Eliminar documento"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </Card>

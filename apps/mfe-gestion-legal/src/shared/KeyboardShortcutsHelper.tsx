@@ -65,19 +65,6 @@ export function KeyboardShortcutsHelper({ moduleColor = '#003DA5' }: KeyboardSho
 
   return (
     <>
-      {/* Botón flotante para abrir */}
-      <Button
-        onClick={() => setIsOpen(true)}
-        variant="outline"
-        size="sm"
-        className="fixed bottom-4 right-4 z-30 shadow-lg border-2 hidden md:flex"
-        style={{ borderColor: moduleColor }}
-        title="Atajos de teclado (Ctrl+K)"
-      >
-        <Keyboard className="w-4 h-4 mr-2" style={{ color: moduleColor }} />
-        <span className="text-xs font-bold" style={{ color: moduleColor }}>Atajos</span>
-      </Button>
-
       {/* Modal de atajos */}
       <AnimatePresence>
         {isOpen && (

@@ -27,18 +27,7 @@ interface ModalComunicacionesProps {
   readOnly?: boolean;
 }
 
-// Datos mock de comunicaciones (REDUCIDOS)
-const comunicacionesMock = [
-  {
-    id: 1,
-    usuario: 'Usuario Ejemplo',
-    rol: 'Abogado',
-    mensaje: 'Mensaje de ejemplo para referencia',
-    fecha: '22/12/2024 14:35',
-    avatar: 'UE',
-    tipo: 'update'
-  },
-];
+
 
 export function ModalComunicaciones({ isOpen, onClose, expediente, readOnly = false }: ModalComunicacionesProps) {
   const [nuevoMensaje, setNuevoMensaje] = useState('');

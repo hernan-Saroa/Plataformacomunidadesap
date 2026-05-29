@@ -50,7 +50,7 @@ export function PTAPortalModule({
     >
       <NotificationsProvider>
         <>
-          <Toaster position="top-right" richColors />
+          <Toaster position="bottom-right" richColors />
           <div className="min-h-screen">
             {!embedded && (
               <div className="sticky top-0 z-10 bg-white border-b">

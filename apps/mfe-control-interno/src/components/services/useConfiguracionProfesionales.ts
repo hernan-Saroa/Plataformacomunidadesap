@@ -272,8 +272,9 @@ export function useConfiguracionProfesionales() {
 
       // 4. Cargar auditorías para estadísticas (Usamos el servicio centralizado que coincide con el Programa Anual)
       setCargandoAuditorias(true);
+      let auditoriasData: any[] = [];
       try {
-        const auditoriasData = await auditoriaService.listar();
+        auditoriasData = await auditoriaService.listar();
         setAuditorias(auditoriasData || []);
       } catch (err) {
         console.error('Error cargando auditorías para estadísticas:', err);

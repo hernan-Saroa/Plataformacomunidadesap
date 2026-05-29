@@ -456,6 +456,12 @@ export class LegalService {
         return apiClient.put<Documento>(`${SERVICE_PREFIX}/documentos/${id}`, data);
     }
 
+    async actualizarDocumentoArchivo(id: string, file: File): Promise<Documento> {
+        const formData = new FormData();
+        formData.append('archivo', file);
+        return apiClient.put<Documento>(`${SERVICE_PREFIX}/documentos/${id}/upload`, formData);
+    }
+
     async eliminarDocumento(id: string): Promise<void> {
         return apiClient.delete(`${SERVICE_PREFIX}/documentos/${id}`);
     }

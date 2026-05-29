@@ -706,7 +706,7 @@ function VistaListaTerritorialesCetap({
 
   return (
     <>
-    <Toaster position="top-right" richColors />
+    <Toaster position="bottom-right" richColors />
     <div className="space-y-6">
       {/* Dashboard de Métricas - Diseño Mejorado */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

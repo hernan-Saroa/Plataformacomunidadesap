@@ -3045,7 +3045,6 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
         }));
       })(),
       hechosSeparados: [],
-      archivosAdjuntos: [],
       origenNoticia: proceso.news?.origen || '',
       fechaRecepcionNoticia: proceso.news?.fechaRecepcion || proceso.news?.createdAt || '',
       prioridadNoticia: proceso.news?.prioridad || 'media',
@@ -3784,7 +3783,6 @@ export function DashboardKanbanOperativo({
         }));
       })(),
       hechosSeparados: [],
-      archivosAdjuntos: [],
       origenNoticia: proceso.news?.origen || '',
       fechaRecepcionNoticia: proceso.news?.fechaRecepcion || proceso.news?.createdAt || '',
       prioridadNoticia: proceso.news?.prioridad || 'media',
@@ -4118,7 +4116,6 @@ export function DashboardKanbanOperativo({
           : (data.hechos || data.descripcionHechos || ''),
         fechaHechos: data.fechaHechos ? (data.fechaHechos.length > 10 ? data.fechaHechos.split('T')[0] : data.fechaHechos) : undefined,
         fechaQueja: data.fechaQueja ? (data.fechaQueja.length > 10 ? data.fechaQueja.split('T')[0] : data.fechaQueja) : undefined,
-        fechaQueja: data.fechaQueja || undefined,  // Enviar como string YYYY-MM-DD para que llegue al backend
         conducta: data.conducta || data.conductaSeleccionada || '',
         conductas: data.conductas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : []),
         radicadorId: currentUser.id

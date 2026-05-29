@@ -19,7 +19,7 @@ import { Button } from '@esap-mfe/shared-ui/button';
 import { Input } from '@esap-mfe/shared-ui/input';
 import { Label } from '@esap-mfe/shared-ui/label';
 import { toast } from 'sonner';
-import { validarEmpleadoEnBD, generarCertificadoAutomatico } from '../../lib/api/certificadosAPI';
+import { validarEmpleadoEnBD, generarCertificadoAutomatico } from '../../../../shell/src/lib/api/certificadosAPI';
 
 interface FormData {
   tipoDocumento: string;

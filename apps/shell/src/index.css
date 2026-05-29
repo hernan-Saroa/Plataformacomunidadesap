@@ -18,31 +18,62 @@
 
 @media (min-width: 768px) {
   .backoffice-main-shell:not(.backoffice-main-shell--no-sidebar) {
-    padding-left: 260px;
+    padding-left: 276px;
   }
 
   .backoffice-main-shell--collapsed:not(.backoffice-main-shell--no-sidebar) {
-    padding-left: 80px;
+    padding-left: 96px;
   }
 }
 
 @media (min-width: 1024px) {
   .backoffice-main-shell:not(.backoffice-main-shell--collapsed):not(.backoffice-main-shell--no-sidebar) {
-    padding-left: 220px;
+    padding-left: 236px;
   }
 }
 
 @media (min-width: 1280px) {
   .backoffice-main-shell:not(.backoffice-main-shell--collapsed):not(.backoffice-main-shell--no-sidebar) {
-    padding-left: 240px;
+    padding-left: 256px;
   }
 }
 
 @media (min-width: 1536px) {
   .backoffice-main-shell:not(.backoffice-main-shell--collapsed):not(.backoffice-main-shell--no-sidebar) {
-    padding-left: 260px;
+    padding-left: 276px;
   }
 }
+
+/* Sidebar width sync with main layout padding across all breakpoints */
+#sidebar-navigation:not(.w-\[80px\]) {
+  width: 280px; /* Mobile drawer fallback */
+}
+@media (min-width: 768px) {
+  #sidebar-navigation:not(.w-\[80px\]) {
+    width: 260px;
+  }
+}
+@media (min-width: 1024px) {
+  #sidebar-navigation:not(.w-\[80px\]) {
+    width: 220px;
+  }
+}
+@media (min-width: 1280px) {
+  #sidebar-navigation:not(.w-\[80px\]) {
+    width: 240px;
+  }
+}
+@media (min-width: 1536px) {
+  #sidebar-navigation:not(.w-\[80px\]) {
+    width: 260px;
+  }
+}
+
+/* Collapsed sidebar width fallback style */
+#sidebar-navigation.w-\[80px\] {
+  width: 80px !important;
+}
+
 
 @layer properties {
   @supports (((-webkit-hyphens: none)) and (not (margin-trim: inline))) or ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {

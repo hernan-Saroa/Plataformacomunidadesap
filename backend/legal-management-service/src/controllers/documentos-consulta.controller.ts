@@ -134,6 +134,15 @@ export class DocumentosConsultaController {
         return { success: true };
     }
 
+    @Put('documentos/:documentoId')
+    async updateDocumento(
+        @Param('documentoId') documentoId: string,
+        @Body() body: { firmado?: boolean; nombre?: string; descripcion?: string }
+    ) {
+        return this.documentosService.update(documentoId, body);
+    }
+
+
     // ==================== DOWNLOAD ALL AS ZIP ====================
 
     @Get(':consultaId/documentos/download-zip')

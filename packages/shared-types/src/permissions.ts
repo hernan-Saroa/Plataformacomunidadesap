@@ -5,6 +5,7 @@ export enum Permissions {
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_UPLOAD = 'gestion-legal.defensa-judicial.expediente.doc.upload',
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_DOC_DELETE = 'gestion-legal.defensa-judicial.expediente.doc.delete',
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_CREATE = 'gestion-legal.defensa-judicial.expediente.actuacion.create',
+  GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_DELETE = 'gestion-legal.defensa-judicial.expediente.actuacion.delete',
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_ACTUACION_AUDIENCIA_CREATE = 'gestion-legal.defensa-judicial.expediente.actuacion.audiencia.create',
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_CREATE = 'gestion-legal.defensa-judicial.expediente.tarea.create',
   GESTION_LEGAL_DEFENSA_JUDICIAL_EXPEDIENTE_TAREA_DELETE = 'gestion-legal.defensa-judicial.expediente.tarea.delete',

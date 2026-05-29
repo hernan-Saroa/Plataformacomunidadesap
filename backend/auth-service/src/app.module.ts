@@ -47,7 +47,7 @@ import { TipoDocumento } from './carpeta-digital/tipo-documento.entity';
         CarpetaDigital,
         TipoDocumento,
       ],
-      synchronize: false, // Desactivado para evitar conflictos con tablas existentes
+      synchronize: process.env.TYPEORM_SYNC === 'true' || false, // Desactivado por defecto para evitar conflictos con tablas existentes
     }),
     UsersModule,
     AuthModule,
