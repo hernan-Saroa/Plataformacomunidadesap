@@ -590,14 +590,79 @@ export class NewsService {
     return await this.newsRepository.save(noticia);
   }
 
-  /**
-   * Elimina una noticia (y sus archivos)
-   */
-  async delete(id: string): Promise<void> {
-    const noticia = await this.findById(id);
-    await this.storageService.deleteExpediente(noticia.radicado);
-    await this.newsRepository.delete(id);
-  }
+/**
+    * Elimina una noticia (y sus archivos)
+    */
+   async delete(id: string): Promise<void> {
+     const noticia = await this.findById(id);
+     await this.storageService.deleteExpediente(noticia.radicado);
+     await this.newsRepository.delete(id);
+   }
+
+   /**
+    * Obtiene los documentos/adjuntos de una noticia
+    * Permite acceder a los archivos adjuntos de la noticia original sin necesidad de proceso asociado
+    */
+   async getDocumentosNoticia(noticiaId: string): Promise<{
+     noticia: { id: string; radicado: string };
+     documentos: any[];
+   }> {
+     const noticia = await this.findById(noticiaId);
+
+     const documentos: any[] = [];
+
+     // Procesar los adjuntos de la noticia
+     if (noticia.adjuntos && Array.isArray(noticia.adjuntos) && noticia.adjuntos.length > 0) {
+       noticia.adjuntos.forEach((adjPath: string, index: number) => {
+         const filename = adjPath.includes('/') ? adjPath.split('/').pop()! : adjPath;
+
+         documentos.push({
+           id: `adj-noticia-${noticia.id}-${index}`,
+           nombre: filename,
+           archivoNombre: filename,
+           tipo: 'otro',
+           etapa: 'Recepción (Noticia Inicial)',
+           version: 1,
+           tamaño: 'N/A',
+           fechaCarga: noticia.createdAt?.toISOString() || new Date().toISOString(),
+           usuarioCarga: noticia.radicadorId ? 'Radicador' : 'Sistema',
+           descripcion: 'Archivo adjunto a la noticia disciplinaria original',
+           url: null,
+           urlExterna: null,
+           downloadUrl: `/files/${filename}`,
+           processId: null,
+           fileType: 'application/octet-stream',
+           fileSize: 0,
+           versiones: [{
+             numero: 1,
+             fecha: noticia.createdAt?.toISOString() || new Date().toISOString(),
+             usuario: 'Radicador',
+             cambios: 'Adjunto de noticia inicial',
+             tamaño: 'N/A',
+             downloadUrl: `/files/${filename}`,
+           }],
+           metadatos: {
+             firmado: false,
+             notificado: false,
+             esAutoDigital: false,
+           },
+         });
+       });
+     }
+
+     // Ordenar por fecha descendente
+     documentos.sort((a, b) =>
+       new Date(b.fechaCarga).getTime() - new Date(a.fechaCarga).getTime()
+     );
+
+     return {
+       noticia: {
+         id: noticia.id,
+         radicado: noticia.radicado,
+       },
+       documentos,
+     };
+   }
 
   /**
    * Asocia una noticia a un proceso existente

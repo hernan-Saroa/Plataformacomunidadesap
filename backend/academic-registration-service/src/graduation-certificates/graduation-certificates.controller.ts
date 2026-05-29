@@ -591,36 +591,6 @@ export class GraduationCertificatesController {
   }
 
   /**
-   * GET /academic-registration/api/v1/certificates/descargas
-   * Listar descargas de certificados
-   */
-  @Get('descargas')
-  async listarDescargas(@Query('certificateId') certificateId?: string) {
-    return await this.service.listarDescargas(certificateId);
-  }
-
-  /**
-   * POST /academic-registration/api/v1/certificates/descargas
-   * Registrar una descarga de certificado
-   */
-  @Post('descargas')
-  @Public()
-  @HttpCode(HttpStatus.OK)
-  async registrarDescarga(
-    @Body() body: { certificateId: string },
-    @Req() req: Request,
-  ) {
-    const ipAddress = getClientIp(req);
-    const userAgent = req.headers['user-agent'];
-
-    return await this.service.registrarDescarga(
-      body.certificateId,
-      ipAddress,
-      userAgent,
-    );
-  }
-
-  /**
    * ====================================
    * ENDPOINTS DE ADMINISTRACIÓN
    * ====================================

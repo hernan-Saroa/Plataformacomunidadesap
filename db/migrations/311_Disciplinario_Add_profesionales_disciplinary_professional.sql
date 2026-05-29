@@ -10,7 +10,8 @@ BEGIN
 
   -- Insert professionals from users who have the manage permission
   -- Use DISTINCT ON to avoid duplicates when users have multiple qualifying roles
-  INSERT INTO internal_disciplinary_control.disciplinary_professional (
+INSERT INTO internal_disciplinary_control.disciplinary_professional (
+    id_user,
     nombre_completo,
     email,
     telefono,
@@ -22,24 +23,25 @@ BEGIN
     estado,
     created_at,
     updated_at
-  )
-  SELECT DISTINCT ON (u.username)
-    per.nom_largo as nombre_completo,
-    u.username as email,
-    per.tel_celular as telefono,
-    CASE
-      WHEN r.code = 'JEFE_DE_LA_OCID' THEN 'jefe oficina'
-      WHEN r.code = 'SECRETARIA_RADICADOR' THEN 'radicador'
-      WHEN r.code = 'PROFESIONAL' THEN 'profesional'
-      ELSE 'profesional' -- fallback
-    END as cargo,
-    NULL as especialidad,
-    NULL as tipo_contrato,
-    NULL as territorial,
-    10 as capacidad_maxima,
-    'ACTIVO' as estado,
-    NOW() as created_at,
-    NOW() as updated_at
+)
+   SELECT DISTINCT ON (u.username)
+     u.id_user as id_user,
+     per.nom_largo as nombre_completo,
+     u.username as email,
+     per.tel_celular as telefono,
+     CASE
+       WHEN r.code = 'JEFE_DE_LA_OCID' THEN 'jefe oficina'
+       WHEN r.code = 'SECRETARIA_RADICADOR' THEN 'radicador'
+       WHEN r.code = 'PROFESIONAL' THEN 'profesional'
+       ELSE 'profesional' -- fallback
+     END as cargo,
+     NULL as especialidad,
+     NULL as tipo_contrato,
+     NULL as territorial,
+     10 as capacidad_maxima,
+     'ACTIVO' as estado,
+     NOW() as created_at,
+     NOW() as updated_at
   FROM auth.user u
   JOIN auth.user_roles ur ON ur.id_user = u.id_user
   JOIN auth.role r ON r.id = ur.id_rol

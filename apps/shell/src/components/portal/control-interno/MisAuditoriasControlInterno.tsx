@@ -62,6 +62,7 @@ import {
   SendHorizontal,
   FileText,
   ChevronRight,
+  ChevronDown,
   Paperclip,
   Eye,
   Calendar,
@@ -213,6 +214,7 @@ type EstadoAuditoria = 'Notificada' | 'En Respuesta' | 'Revisión' | 'Finalizada
 type Urgencia = 'alta' | 'media' | 'baja';
 
 type EstadoHallazgo =
+  | 'borrador'
   | 'notificado'
   | 'aceptado'
   | 'en-controversia'
@@ -220,6 +222,30 @@ type EstadoHallazgo =
   | 'modificado'
   | 'retirado'
   | 'cerrado';
+
+const ESTADOS_HALLAZGO_VALIDOS: ReadonlySet<string> = new Set([
+  'borrador',
+  'notificado',
+  'aceptado',
+  'en-controversia',
+  'ratificado',
+  'modificado',
+  'retirado',
+  'cerrado',
+]);
+
+/** Normaliza el estado del API sin forzar "notificado" cuando el hallazgo sigue en borrador. */
+function normalizeEstadoHallazgo(raw?: string | null): EstadoHallazgo {
+  const normalized = String(raw ?? '')
+    .toLowerCase()
+    .replace(/_/g, '-')
+    .trim();
+  if (ESTADOS_HALLAZGO_VALIDOS.has(normalized)) {
+    return normalized as EstadoHallazgo;
+  }
+  // Sin estado (mocks legacy) → notificado; cualquier otro valor desconocido → borrador (sin acciones)
+  return normalized ? 'borrador' : 'notificado';
+}
 
 type GravedadHallazgo = 'LEVE' | 'MODERADO' | 'GRAVE' | 'CRITICO';
 
@@ -573,10 +599,8 @@ function mapAuditoriaApi(raw: any): AuditoriaItem {
 }
 
 function mapHallazgoApi(raw: any): HallazgoItem {
-  const estadoRaw = String(raw.estado ?? 'notificado').toLowerCase().replace('_', '-') as EstadoHallazgo;
-  const estado: EstadoHallazgo = (
-    ['notificado','aceptado','en-controversia','ratificado','modificado','retirado','cerrado'] as const
-  ).includes(estadoRaw as any) ? estadoRaw : 'notificado';
+  const estado = normalizeEstadoHallazgo(raw.estado);
+  const estadoRaw = estado;
   return {
     id: String(raw.id ?? ''),
     codigo: raw.codigo ?? raw.id ?? '',
@@ -682,6 +706,7 @@ const URGENCIA_CONFIG: Record<Urgencia, { color: string; label: string }> = {
 };
 
 const ESTADO_HALLAZGO: Record<EstadoHallazgo, { color: string; bg: string; label: string }> = {
+  'borrador':         { color: '#6B7280', bg: '#F3F4F6', label: 'Borrador' },
   'notificado':       { color: '#B45309', bg: '#FFFBEB', label: 'Notificado' },
   'aceptado':         { color: '#047857', bg: '#ECFDF5', label: 'Aceptado' },
   'en-controversia':  { color: '#1D4ED8', bg: '#EFF6FF', label: 'En controversia' },
@@ -698,12 +723,239 @@ const GRAVEDAD_COLOR: Record<GravedadHallazgo, string> = {
   CRITICO: '#7F1D1D',
 };
 
+/** Umbral a partir del cual se activan paginación y modo compacto en listas. */
+const AUDITORIAS_PAGE_SIZE = 12;
+const HALLAZGOS_PAGE_SIZE = 8;
+const HALLAZGOS_COMPACT_THRESHOLD = 5;
+const ACCIONES_PAGE_SIZE = 6;
+
+type FiltroHallazgoVista = 'todos' | 'pendientes' | 'respondidos' | 'borrador' | 'cerrados';
+
 const DOC_ESTADO_COLOR: Record<DocumentoItem['estado'], { color: string; bg: string }> = {
   'Aprobado':    { color: '#047857', bg: '#ECFDF5' },
   'Pendiente':   { color: '#B45309', bg: '#FFFBEB' },
   'Rechazado':   { color: '#DC2626', bg: '#FEF2F2' },
   'Solicitado':  { color: '#6B7280', bg: '#F3F4F6' },
 };
+
+/** Tarjeta base del módulo (alineada a design tokens ESAP). */
+const portalCardStyle: React.CSSProperties = {
+  background: colors.bgWhite,
+  borderRadius: 14,
+  border: `1px solid ${colors.borderLight}`,
+  boxShadow: '0 1px 2px rgba(15,23,42,0.04), 0 8px 24px rgba(0,61,165,0.04)',
+};
+
+const portalCardNestedStyle: React.CSSProperties = {
+  background: colors.bgWhite,
+  borderRadius: 12,
+  border: `1px solid ${colors.borderLight}`,
+  boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
+};
+
+/** Barra de herramientas reutilizable: búsqueda, filtros y paginación. */
+function ListaToolbar({
+  busqueda,
+  onBusquedaChange,
+  placeholder,
+  filtros,
+  filtroActivo,
+  onFiltroChange,
+  total,
+  pagina,
+  totalPaginas,
+  onPaginaAnterior,
+  onPaginaSiguiente,
+  extra,
+}: {
+  busqueda: string;
+  onBusquedaChange: (v: string) => void;
+  placeholder: string;
+  filtros: { id: string; label: string; count?: number }[];
+  filtroActivo: string;
+  onFiltroChange: (id: string) => void;
+  total: number;
+  pagina: number;
+  totalPaginas: number;
+  desde: number;
+  hasta: number;
+  onPaginaAnterior: () => void;
+  onPaginaSiguiente: () => void;
+  extra?: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        ...portalCardStyle,
+        padding: '14px 16px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}
+    >
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10 }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            flex: 1,
+            minWidth: 180,
+            height: 38,
+            borderRadius: 10,
+            border: `1px solid ${colors.border}`,
+            background: colors.bgHover,
+            paddingLeft: 12,
+          }}
+        >
+          <Search style={{ width: 15, height: 15, color: colors.icon, flexShrink: 0 }} />
+          <input
+            value={busqueda}
+            onChange={(e) => onBusquedaChange(e.target.value)}
+            placeholder={placeholder}
+            style={{
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              fontSize: 13,
+              color: colors.text,
+              flex: 1,
+              height: '100%',
+              padding: '0 10px',
+            }}
+          />
+        </div>
+        {extra}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+        {filtros.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => onFiltroChange(f.id)}
+            style={{
+              height: 32,
+              padding: '0 12px',
+              borderRadius: 20,
+              border: filtroActivo === f.id ? 'none' : `1px solid ${colors.borderLight}`,
+              background: filtroActivo === f.id ? colors.brand : colors.bgWhite,
+              color: filtroActivo === f.id ? 'white' : colors.textMuted,
+              fontSize: 12,
+              fontWeight: filtroActivo === f.id ? 700 : 500,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            {f.label}
+            {typeof f.count === 'number' && (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: '1px 6px',
+                  borderRadius: 10,
+                  background: filtroActivo === f.id ? 'rgba(255,255,255,0.25)' : colors.bgMuted,
+                  color: filtroActivo === f.id ? 'white' : colors.textSecondary,
+                }}
+              >
+                {f.count}
+              </span>
+            )}
+          </button>
+        ))}
+        {totalPaginas > 1 && (
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, color: colors.textMuted, whiteSpace: 'nowrap' }}>
+              {desde}–{hasta} de {total}
+            </span>
+            <button
+              type="button"
+              disabled={pagina <= 1}
+              onClick={onPaginaAnterior}
+              style={{
+                height: 30,
+                padding: '0 10px',
+                borderRadius: 8,
+                border: `1px solid ${colors.borderLight}`,
+                background: colors.bgWhite,
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: pagina <= 1 ? 'not-allowed' : 'pointer',
+                opacity: pagina <= 1 ? 0.45 : 1,
+              }}
+            >
+              Anterior
+            </button>
+            <span style={{ fontSize: 11, fontWeight: 700, color: colors.brand }}>
+              {pagina}/{totalPaginas}
+            </span>
+            <button
+              type="button"
+              disabled={pagina >= totalPaginas}
+              onClick={onPaginaSiguiente}
+              style={{
+                height: 30,
+                padding: '0 10px',
+                borderRadius: 8,
+                border: `1px solid ${colors.borderLight}`,
+                background: colors.bgWhite,
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: pagina >= totalPaginas ? 'not-allowed' : 'pointer',
+                opacity: pagina >= totalPaginas ? 0.45 : 1,
+              }}
+            >
+              Siguiente
+            </button>
+          </div>
+        )}
+        {totalPaginas <= 1 && total > 0 && (
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: colors.textMuted }}>
+            {total} elemento{total === 1 ? '' : 's'}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MetaChip({
+  icon,
+  children,
+  tone = 'neutral',
+}: {
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  tone?: 'neutral' | 'hallazgo' | 'brand';
+}) {
+  const toneStyle =
+    tone === 'hallazgo'
+      ? { bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' }
+      : tone === 'brand'
+        ? { bg: colors.brandLight, color: colors.brand, border: `${colors.brand}22` }
+        : { bg: colors.bgMuted, color: colors.textMuted, border: colors.borderLight };
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        fontSize: 11,
+        fontWeight: 600,
+        padding: '3px 9px',
+        borderRadius: 20,
+        background: toneStyle.bg,
+        color: toneStyle.color,
+        border: `1px solid ${toneStyle.border}`,
+        maxWidth: '100%',
+      }}
+    >
+      {icon}
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{children}</span>
+    </span>
+  );
+}
 
 // ════════════════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -715,6 +967,7 @@ export function MisAuditoriasControlInterno({ personaId, userName, onBack }: Mis
   const [search, setSearch] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [filtroEstado, setFiltroEstado] = useState<'todos' | EstadoAuditoria>('todos');
+  const [paginaAuditorias, setPaginaAuditorias] = useState(1);
   const [seleccionada, setSeleccionada] = useState<AuditoriaItem | null>(null);
 
   const load = useCallback(async () => {
@@ -747,6 +1000,25 @@ export function MisAuditoriasControlInterno({ personaId, userName, onBack }: Mis
       );
     });
   }, [auditorias, search, filtroEstado]);
+
+  useEffect(() => {
+    setPaginaAuditorias(1);
+  }, [search, filtroEstado]);
+
+  const totalPaginasAuditorias = Math.max(1, Math.ceil(filtradas.length / AUDITORIAS_PAGE_SIZE));
+  const paginaAuditoriasSegura = Math.min(paginaAuditorias, totalPaginasAuditorias);
+
+  const auditoriasPaginadas = useMemo(() => {
+    const inicio = (paginaAuditoriasSegura - 1) * AUDITORIAS_PAGE_SIZE;
+    return filtradas.slice(inicio, inicio + AUDITORIAS_PAGE_SIZE);
+  }, [filtradas, paginaAuditoriasSegura]);
+
+  const rangoAuditorias = useMemo(() => {
+    if (filtradas.length === 0) return { desde: 0, hasta: 0 };
+    const desde = (paginaAuditoriasSegura - 1) * AUDITORIAS_PAGE_SIZE + 1;
+    const hasta = Math.min(paginaAuditoriasSegura * AUDITORIAS_PAGE_SIZE, filtradas.length);
+    return { desde, hasta };
+  }, [filtradas.length, paginaAuditoriasSegura]);
 
   const stats = useMemo(() => ({
     total: auditorias.length,
@@ -887,16 +1159,77 @@ export function MisAuditoriasControlInterno({ personaId, userName, onBack }: Mis
             </div>
           </div>
         ) : (
-          <div>
-            {filtradas.map((a, idx) => (
-              <AuditoriaRow
-                key={a.id}
-                auditoria={a}
-                isLast={idx === filtradas.length - 1}
-                onClick={() => setSeleccionada(a)}
-              />
-            ))}
-          </div>
+          <>
+            <div>
+              {auditoriasPaginadas.map((a, idx) => (
+                <AuditoriaRow
+                  key={a.id}
+                  auditoria={a}
+                  isLast={idx === auditoriasPaginadas.length - 1 && paginaAuditoriasSegura >= totalPaginasAuditorias}
+                  onClick={() => setSeleccionada(a)}
+                />
+              ))}
+            </div>
+            {filtradas.length > AUDITORIAS_PAGE_SIZE && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: 10,
+                  padding: '12px 16px',
+                  borderTop: `1px solid ${colors.borderLight}`,
+                  background: colors.bgSubtle,
+                }}
+              >
+                <span style={{ fontSize: 12, color: colors.textMuted }}>
+                  Mostrando {rangoAuditorias.desde}–{rangoAuditorias.hasta} de {filtradas.length} auditorías
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button
+                    type="button"
+                    disabled={paginaAuditoriasSegura <= 1}
+                    onClick={() => setPaginaAuditorias((p) => Math.max(1, p - 1))}
+                    style={{
+                      height: 32,
+                      padding: '0 12px',
+                      borderRadius: 8,
+                      border: `1px solid ${colors.borderLight}`,
+                      background: colors.bgWhite,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: paginaAuditoriasSegura <= 1 ? 'not-allowed' : 'pointer',
+                      opacity: paginaAuditoriasSegura <= 1 ? 0.5 : 1,
+                    }}
+                  >
+                    Anterior
+                  </button>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: colors.brand }}>
+                    Página {paginaAuditoriasSegura} / {totalPaginasAuditorias}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={paginaAuditoriasSegura >= totalPaginasAuditorias}
+                    onClick={() => setPaginaAuditorias((p) => Math.min(totalPaginasAuditorias, p + 1))}
+                    style={{
+                      height: 32,
+                      padding: '0 12px',
+                      borderRadius: 8,
+                      border: `1px solid ${colors.borderLight}`,
+                      background: colors.bgWhite,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: paginaAuditoriasSegura >= totalPaginasAuditorias ? 'not-allowed' : 'pointer',
+                      opacity: paginaAuditoriasSegura >= totalPaginasAuditorias ? 0.5 : 1,
+                    }}
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1069,6 +1402,104 @@ const getAccionBadge = (estado: string) => {
   const icon = ACCION_BADGE_ICON[estado] ?? <ClipboardList style={{ width: 11, height: 11 }} />;
   return { ...meta, icon };
 };
+
+/** Resumen compacto de acción correctiva bajo un hallazgo (pestaña Hallazgos). */
+function AccionCorrectivaResumenCard({ accion }: { accion: any }) {
+  const badge = getAccionBadge(accion.estado || 'programada');
+  const pct = typeof accion.porcentajeAvance === 'number' ? accion.porcentajeAvance : 0;
+  return (
+    <div style={{ ...portalCardNestedStyle, padding: '12px 14px', marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: colors.text, lineHeight: 1.4, flex: 1 }}>
+          {accion.descripcion}
+        </div>
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            padding: '3px 9px',
+            borderRadius: 20,
+            flexShrink: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            background: badge.bg,
+            color: badge.color,
+            border: `1px solid ${badge.border}`,
+          }}
+        >
+          {badge.icon}
+          {badge.label}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        {accion.responsable && (
+          <MetaChip icon={<User2 style={{ width: 11, height: 11 }} />}>{accion.responsable}</MetaChip>
+        )}
+        {accion.fechaInicio && (
+          <MetaChip icon={<CalendarDays style={{ width: 11, height: 11 }} />}>
+            {accion.fechaInicio} → {accion.fechaFin}
+          </MetaChip>
+        )}
+      </div>
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: colors.textMuted, marginBottom: 4 }}>
+          <span style={{ fontWeight: 600 }}>Avance</span>
+          <span style={{ fontWeight: 700, color: colors.brand }}>{pct}%</span>
+        </div>
+        <div style={{ height: 6, background: colors.bgMuted, borderRadius: 99, overflow: 'hidden' }}>
+          <div
+            style={{
+              height: '100%',
+              width: `${Math.min(100, Math.max(0, pct))}%`,
+              background: pct === 100 ? '#10B981' : colors.brand,
+              borderRadius: 99,
+              transition: 'width 0.25s ease',
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Bloque de plan vinculado a un hallazgo. */
+function PlanVinculadoHallazgo({ plan, acciones }: { plan: any; acciones: any[] }) {
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        marginLeft: 8,
+        paddingLeft: 16,
+        borderLeft: `3px solid ${colors.brand}`,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: 10,
+          padding: '8px 12px',
+          borderRadius: 10,
+          background: colors.brandLight,
+          border: `1px solid ${colors.brand}18`,
+        }}
+      >
+        <ClipboardList style={{ width: 14, height: 14, color: colors.brand, flexShrink: 0 }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: colors.brand, letterSpacing: 0.2 }}>
+          Plan {plan.codigo || plan.id}
+        </span>
+        <span style={{ fontSize: 11, color: colors.textMuted }}>
+          · {acciones.length} acción{acciones.length === 1 ? '' : 'es'} correctiva{acciones.length === 1 ? '' : 's'}
+        </span>
+      </div>
+      {acciones.map((accion) => (
+        <AccionCorrectivaResumenCard key={accion.id} accion={accion} />
+      ))}
+    </div>
+  );
+}
 
 /** Planes y acciones del auditado (GET/PATCH bajo /auditorias/auditado/...). */
 function TabPlanMejoramientoAuditado({
@@ -1343,6 +1774,7 @@ function TabPlanMejoramientoAuditado({
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [sendingRevision, setSendingRevision] = useState<string | null>(null);
+  const [paginaAccionesPorPlan, setPaginaAccionesPorPlan] = useState<Record<string, number>>({});
 
   const guardarEdicionAccion = async (planId: string, accionId: string) => {
     const d = editAccion[accionId];
@@ -1457,8 +1889,8 @@ function TabPlanMejoramientoAuditado({
           <div
             key={plan.id}
             style={{
-              background: 'white', borderRadius: 14, padding: 20,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+              ...portalCardStyle,
+              padding: 20,
               border: `1px solid ${estadoColor.border}`,
             }}
           >
@@ -1581,7 +2013,89 @@ function TabPlanMejoramientoAuditado({
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {plan.acciones.map((accion: any) => {
+                {(() => {
+                  const accionesLista = plan.acciones || [];
+                  const muchasAcciones = accionesLista.length > ACCIONES_PAGE_SIZE;
+                  const pagAcc = paginaAccionesPorPlan[plan.id] || 1;
+                  const totalPagAcc = Math.max(1, Math.ceil(accionesLista.length / ACCIONES_PAGE_SIZE));
+                  const pagAccSegura = Math.min(pagAcc, totalPagAcc);
+                  const inicioAcc = (pagAccSegura - 1) * ACCIONES_PAGE_SIZE;
+                  const accionesVisibles = muchasAcciones
+                    ? accionesLista.slice(inicioAcc, inicioAcc + ACCIONES_PAGE_SIZE)
+                    : accionesLista;
+                  return (
+                    <>
+                      {muchasAcciones && (
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: 8,
+                            padding: '8px 12px',
+                            borderRadius: 10,
+                            background: colors.bgMuted,
+                            border: `1px solid ${colors.borderLight}`,
+                          }}
+                        >
+                          <span style={{ fontSize: 12, fontWeight: 600, color: colors.textSecondary }}>
+                            {accionesLista.length} acciones correctivas
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <button
+                              type="button"
+                              disabled={pagAccSegura <= 1}
+                              onClick={() =>
+                                setPaginaAccionesPorPlan((prev) => ({
+                                  ...prev,
+                                  [plan.id]: Math.max(1, pagAccSegura - 1),
+                                }))
+                              }
+                              style={{
+                                height: 28,
+                                padding: '0 10px',
+                                borderRadius: 6,
+                                border: `1px solid ${colors.borderLight}`,
+                                background: colors.bgWhite,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                cursor: pagAccSegura <= 1 ? 'not-allowed' : 'pointer',
+                                opacity: pagAccSegura <= 1 ? 0.5 : 1,
+                              }}
+                            >
+                              Anterior
+                            </button>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: colors.brand }}>
+                              {pagAccSegura}/{totalPagAcc}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={pagAccSegura >= totalPagAcc}
+                              onClick={() =>
+                                setPaginaAccionesPorPlan((prev) => ({
+                                  ...prev,
+                                  [plan.id]: Math.min(totalPagAcc, pagAccSegura + 1),
+                                }))
+                              }
+                              style={{
+                                height: 28,
+                                padding: '0 10px',
+                                borderRadius: 6,
+                                border: `1px solid ${colors.borderLight}`,
+                                background: colors.bgWhite,
+                                fontSize: 11,
+                                fontWeight: 600,
+                                cursor: pagAccSegura >= totalPagAcc ? 'not-allowed' : 'pointer',
+                                opacity: pagAccSegura >= totalPagAcc ? 0.5 : 1,
+                              }}
+                            >
+                              Siguiente
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {accionesVisibles.map((accion: any) => {
                   const dr = drafts[accion.id] ?? {
                     porcentaje: accion.porcentajeAvance ?? 0,
                     obs: accion.observaciones ?? '',
@@ -1597,50 +2111,87 @@ function TabPlanMejoramientoAuditado({
                     : null;
 
                   return (
-                    <div
-                      key={accion.id}
-                      style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 14, background: '#FAFAFA' }}
-                    >
-                      {/* Cabecera acción */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: '#1F2937', lineHeight: 1.4, flex: 1 }}>
-                          {accion.descripcion || 'Acción correctiva'}
+                    <div key={accion.id} style={{ ...portalCardNestedStyle, padding: 0, overflow: 'hidden' }}>
+                      <div style={{ padding: '14px 16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                          <div style={{ fontSize: 14, fontWeight: 700, color: colors.text, lineHeight: 1.4, flex: 1 }}>
+                            {accion.descripcion || 'Acción correctiva'}
+                          </div>
+                          {(() => {
+                            const badge = getAccionBadge(accion.estado || 'programada');
+                            return (
+                              <span
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 700,
+                                  padding: '4px 10px',
+                                  borderRadius: 20,
+                                  flexShrink: 0,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  background: badge.bg,
+                                  color: badge.color,
+                                  border: `1px solid ${badge.border}`,
+                                }}
+                              >
+                                {badge.icon}
+                                {badge.label}
+                              </span>
+                            );
+                          })()}
                         </div>
-                        {(() => {
-                          const badge = getAccionBadge(accion.estado || 'programada');
-                          return (
-                            <span style={{
-                              fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20,
-                              marginLeft: 10, flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 4,
-                              background: badge.bg, color: badge.color, border: `1px solid ${badge.border}`,
-                            }}>
-                              {badge.icon} {badge.label}
+
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                          {accion.responsable && (
+                            <MetaChip icon={<User2 style={{ width: 11, height: 11 }} />}>{accion.responsable}</MetaChip>
+                          )}
+                          {accion.fechaInicio && (
+                            <MetaChip icon={<CalendarDays style={{ width: 11, height: 11 }} />}>
+                              {accion.fechaInicio} → {accion.fechaFin}
+                            </MetaChip>
+                          )}
+                          {hallazgoVinculado && (
+                            <MetaChip icon={<Link2 style={{ width: 11, height: 11 }} />} tone="hallazgo">
+                              {hallazgoVinculado.codigo}:{' '}
+                              {hallazgoVinculado.titulo?.substring(0, 36)}
+                              {hallazgoVinculado.titulo && hallazgoVinculado.titulo.length > 36 ? '…' : ''}
+                            </MetaChip>
+                          )}
+                          {accion.indicador && (
+                            <MetaChip icon={<BarChart3 style={{ width: 11, height: 11 }} />} tone="brand">
+                              {accion.indicador}
+                            </MetaChip>
+                          )}
+                        </div>
+
+                        <div style={{ marginBottom: enFormulacion || editAccion[accion.id] ? 10 : 0 }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              fontSize: 11,
+                              color: colors.textMuted,
+                              marginBottom: 6,
+                            }}
+                          >
+                            <span style={{ fontWeight: 600 }}>Avance</span>
+                            <span style={{ fontWeight: 800, color: dr.porcentaje === 100 ? '#047857' : colors.brand }}>
+                              {dr.porcentaje}%
                             </span>
-                          );
-                        })()}
-                      </div>
-
-                      {/* Meta info: responsable, fechas, hallazgo */}
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 10, fontSize: 11, color: '#6B7280' }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><User2 style={{ width: 11, height: 11 }} /> <strong>{accion.responsable}</strong></span>
-                        {accion.fechaInicio && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><CalendarDays style={{ width: 11, height: 11 }} /> {accion.fechaInicio} → {accion.fechaFin}</span>}
-                        {hallazgoVinculado && (
-                          <span style={{ background: '#FEF3C7', color: '#92400E', padding: '1px 6px', borderRadius: 4, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                            <Link2 style={{ width: 11, height: 11 }} /> {hallazgoVinculado.codigo}: {hallazgoVinculado.titulo?.substring(0, 40)}{hallazgoVinculado.titulo?.length > 40 ? '…' : ''}
-                          </span>
-                        )}
-                        {accion.indicador && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><BarChart3 style={{ width: 11, height: 11 }} /> {accion.indicador}</span>}
-                      </div>
-
-                      {/* Barra de progreso visual */}
-                      <div style={{ marginBottom: 10 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6B7280', marginBottom: 4 }}>
-                          <span>Avance</span><span>{dr.porcentaje}%</span>
+                          </div>
+                          <div style={{ height: 8, background: colors.bgMuted, borderRadius: 99, overflow: 'hidden' }}>
+                            <div
+                              style={{
+                                height: '100%',
+                                width: `${dr.porcentaje}%`,
+                                background: dr.porcentaje === 100 ? '#10B981' : colors.brand,
+                                borderRadius: 99,
+                                transition: 'width 0.3s ease',
+                              }}
+                            />
+                          </div>
                         </div>
-                        <div style={{ height: 6, background: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: `${dr.porcentaje}%`, background: dr.porcentaje === 100 ? '#10B981' : colors.brand, borderRadius: 3, transition: 'width 0.3s' }} />
-                        </div>
-                      </div>
 
                       {/* Botones Editar / Eliminar — solo en formulación */}
                       {!readOnly && enFormulacion && !editAccion[accion.id] && (
@@ -1719,6 +2270,8 @@ function TabPlanMejoramientoAuditado({
                         );
                       })()}
 
+                      </div>
+
                       {/* Controles de edición — solo en ejecución */}
                       {puedeEditarAvance && (() => {
                         const evSubidas: any[] = evidenciasSubidas[accion.id] ?? [];
@@ -1729,28 +2282,76 @@ function TabPlanMejoramientoAuditado({
                         const ocupado = saving || subiendoEste || guardandoEste;
                         const esCompletada = dr.estado === 'completada';
                         return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 10,
+                            padding: '14px 16px',
+                            borderTop: `1px solid ${colors.borderLight}`,
+                            background: colors.bgSubtle,
+                          }}
+                        >
 
-                          {/* Fila: % Avance + Observaciones en horizontal */}
-                          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                            <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'minmax(88px, 100px) 1fr',
+                              gap: 10,
+                              alignItems: 'start',
+                            }}
+                          >
+                            <label style={{ fontSize: 11, color: colors.textMuted, display: 'flex', flexDirection: 'column', gap: 4 }}>
                               % Avance
-                              <input type="number" min={0} max={100} disabled={ocupado}
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                disabled={ocupado}
                                 value={dr.porcentaje}
                                 onChange={(e) => setDraft(accion.id, { porcentaje: Number(e.target.value) })}
-                                style={{ height: 28, width: 68, borderRadius: 6, border: '1px solid #D1D5DB', padding: '0 6px', fontSize: 12 }} />
+                                style={{
+                                  height: 36,
+                                  width: '100%',
+                                  borderRadius: 8,
+                                  border: `1px solid ${colors.border}`,
+                                  padding: '0 8px',
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  color: colors.brand,
+                                }}
+                              />
                             </label>
-                            <label style={{ fontSize: 11, color: '#6B7280', display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
+                            <label style={{ fontSize: 11, color: colors.textMuted, display: 'flex', flexDirection: 'column', gap: 4 }}>
                               Observaciones
-                              <textarea disabled={ocupado} value={dr.obs}
+                              <textarea
+                                disabled={ocupado}
+                                value={dr.obs}
                                 onChange={(e) => setDraft(accion.id, { obs: e.target.value })}
                                 rows={2}
-                                style={{ borderRadius: 6, border: '1px solid #D1D5DB', padding: '4px 7px', fontSize: 12, resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.4 }} />
+                                placeholder="Describe el avance de esta acción..."
+                                style={{
+                                  borderRadius: 8,
+                                  border: `1px solid ${colors.border}`,
+                                  padding: '8px 10px',
+                                  fontSize: 12,
+                                  resize: 'vertical',
+                                  fontFamily: 'inherit',
+                                  lineHeight: 1.45,
+                                  background: colors.bgWhite,
+                                }}
+                              />
                             </label>
                           </div>
 
-                          {/* Evidencias */}
-                          <div style={{ border: '1px solid #E5E7EB', borderRadius: 7, background: '#F9FAFB', overflow: 'hidden' }}>
+                          <div
+                            style={{
+                              border: `1px solid ${colors.borderLight}`,
+                              borderRadius: 10,
+                              background: colors.bgWhite,
+                              overflow: 'hidden',
+                            }}
+                          >
                             {/* Cabecera */}
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderBottom: (evSubidas.length + archivosActuales.length) > 0 ? '1px solid #E5E7EB' : 'none' }}>
                               <span style={{ fontSize: 11, fontWeight: 600, color: '#374151', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1844,13 +2445,38 @@ function TabPlanMejoramientoAuditado({
                               </span>
                             </div>
 
-                            {/* Botón guardar */}
-                            <button type="button" disabled={ocupado}
+                            <button
+                              type="button"
+                              disabled={ocupado}
                               onClick={() => void guardarAccion(plan.id, accion.id)}
-                              style={{ padding: '5px 14px', borderRadius: 6, border: 'none', background: colors.brand, color: 'white', fontSize: 11, fontWeight: 600, cursor: ocupado ? 'wait' : 'pointer', opacity: ocupado ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
-                              {subiendoEste ? <><Loader2 style={{ width: 11, height: 11, animation: 'spin 1s linear infinite' }} /> Subiendo…</> :
-                               guardandoEste ? <><Loader2 style={{ width: 11, height: 11, animation: 'spin 1s linear infinite' }} /> Guardando…</> :
-                               'Guardar avance'}
+                              style={{
+                                padding: '8px 18px',
+                                borderRadius: 8,
+                                border: 'none',
+                                background: colors.brand,
+                                color: 'white',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: ocupado ? 'wait' : 'pointer',
+                                opacity: ocupado ? 0.7 : 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                marginLeft: 'auto',
+                                boxShadow: '0 2px 8px rgba(0,61,165,0.2)',
+                              }}
+                            >
+                              {subiendoEste ? (
+                                <>
+                                  <Loader2 style={{ width: 12, height: 12, animation: 'spin 1s linear infinite' }} /> Subiendo…
+                                </>
+                              ) : guardandoEste ? (
+                                <>
+                                  <Loader2 style={{ width: 12, height: 12, animation: 'spin 1s linear infinite' }} /> Guardando…
+                                </>
+                              ) : (
+                                'Guardar avance'
+                              )}
                             </button>
                           </div>
 
@@ -1861,6 +2487,9 @@ function TabPlanMejoramientoAuditado({
                     </div>
                   );
                 })}
+                    </>
+                  );
+                })()}
               </div>
             )}
 
@@ -2605,6 +3234,14 @@ function BannerEtapaActual({ auditoria }: { auditoria: AuditoriaItem }) {
 // TAB: HALLAZGOS  (Aceptar / Presentar controversia)
 // ════════════════════════════════════════════════════════════════════════════
 
+function grupoFiltroHallazgo(estado: EstadoHallazgo): FiltroHallazgoVista {
+  if (estado === 'borrador') return 'borrador';
+  if (estado === 'notificado') return 'pendientes';
+  if (estado === 'cerrado') return 'cerrados';
+  if (['aceptado', 'en-controversia', 'ratificado', 'modificado', 'retirado'].includes(estado)) return 'respondidos';
+  return 'todos';
+}
+
 function TabHallazgos({
   hallazgos, readOnly, plazoVencido, planes, onAceptar, onSubirDocumentoControversia, onPresentarControversia,
 }: {
@@ -2617,7 +3254,21 @@ function TabHallazgos({
   onSubirDocumentoControversia: (file: File, hallazgoId: string) => Promise<{ documentoId: string; nombre: string }>;
   onPresentarControversia: (id: string, argumentos: string, documentoId: string, documentoNombre: string) => Promise<void>;
 }) {
-  // Construye mapa rápido hallazgoId -> {plan, acciones[]}
+  const [busqueda, setBusqueda] = useState('');
+  const [filtro, setFiltro] = useState<FiltroHallazgoVista>('todos');
+  const [pagina, setPagina] = useState(1);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const modoCompacto = hallazgos.length > HALLAZGOS_COMPACT_THRESHOLD;
+
+  const conteos = useMemo(() => ({
+    todos: hallazgos.length,
+    pendientes: hallazgos.filter((h) => h.estado === 'notificado').length,
+    respondidos: hallazgos.filter((h) => grupoFiltroHallazgo(h.estado) === 'respondidos').length,
+    borrador: hallazgos.filter((h) => h.estado === 'borrador').length,
+    cerrados: hallazgos.filter((h) => h.estado === 'cerrado').length,
+  }), [hallazgos]);
+
   const accionesPorHallazgo = useMemo(() => {
     const map = new Map<string, { plan: any; acciones: any[] }>();
     planes.forEach((plan) => {
@@ -2633,9 +3284,56 @@ function TabHallazgos({
     return map;
   }, [planes]);
 
+  const hallazgosFiltrados = useMemo(() => {
+    const term = busqueda.trim().toLowerCase();
+    return hallazgos.filter((h) => {
+      if (filtro !== 'todos' && grupoFiltroHallazgo(h.estado) !== filtro) return false;
+      if (!term) return true;
+      return (
+        h.codigo.toLowerCase().includes(term) ||
+        h.titulo.toLowerCase().includes(term) ||
+        h.descripcion.toLowerCase().includes(term) ||
+        h.gravedad.toLowerCase().includes(term)
+      );
+    });
+  }, [hallazgos, busqueda, filtro]);
+
+  useEffect(() => {
+    setPagina(1);
+  }, [busqueda, filtro]);
+
+  const totalPaginas = Math.max(1, Math.ceil(hallazgosFiltrados.length / HALLAZGOS_PAGE_SIZE));
+  const paginaSegura = Math.min(pagina, totalPaginas);
+
+  const hallazgosPagina = useMemo(() => {
+    const inicio = (paginaSegura - 1) * HALLAZGOS_PAGE_SIZE;
+    return hallazgosFiltrados.slice(inicio, inicio + HALLAZGOS_PAGE_SIZE);
+  }, [hallazgosFiltrados, paginaSegura]);
+
+  const rango = useMemo(() => {
+    if (hallazgosFiltrados.length === 0) return { desde: 0, hasta: 0 };
+    return {
+      desde: (paginaSegura - 1) * HALLAZGOS_PAGE_SIZE + 1,
+      hasta: Math.min(paginaSegura * HALLAZGOS_PAGE_SIZE, hallazgosFiltrados.length),
+    };
+  }, [hallazgosFiltrados.length, paginaSegura]);
+
+  // En listas largas: abrir el primer pendiente al cambiar página o filtros (no en cada render).
+  useEffect(() => {
+    if (!modoCompacto) {
+      setExpandedId(null);
+      return;
+    }
+    const inicio = (paginaSegura - 1) * HALLAZGOS_PAGE_SIZE;
+    const pagina = hallazgosFiltrados.slice(inicio, inicio + HALLAZGOS_PAGE_SIZE);
+    const primeroPendiente = pagina.find((h) => h.estado === 'notificado');
+    setExpandedId(primeroPendiente?.id ?? pagina[0]?.id ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al cambiar página/filtros, no en cada render del padre
+  }, [modoCompacto, paginaSegura, busqueda, filtro, hallazgosFiltrados.length]);
+
   if (hallazgos.length === 0) {
     return (
-      <div style={{ background: 'white', borderRadius: 14, padding: 48, textAlign: 'center', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+      <div style={{ ...portalCardStyle, padding: 48, textAlign: 'center' }}>
         <CheckCircle2 style={{ width: 32, height: 32, color: '#10B981', margin: '0 auto 12px' }} />
         <div style={{ fontSize: 15, fontWeight: 700, color: '#374151' }}>Sin hallazgos</div>
         <div style={{ fontSize: 13, color: '#9CA3AF', marginTop: 4 }}>Esta auditoría no presenta hallazgos por responder.</div>
@@ -2643,7 +3341,7 @@ function TabHallazgos({
     );
   }
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {plazoVencido && (
         <div style={{
           padding: 14, borderRadius: 12,
@@ -2658,47 +3356,107 @@ function TabHallazgos({
           </div>
         </div>
       )}
-      {hallazgos.map((h) => {
-        const vinculado = accionesPorHallazgo.get(h.id);
-        return (
-          <div key={h.id}>
-            <HallazgoCard
-              hallazgo={h}
-              readOnly={readOnly || plazoVencido}
-              onAceptar={onAceptar}
-              onSubirDocumentoControversia={onSubirDocumentoControversia}
-              onPresentarControversia={onPresentarControversia}
-            />
-            {/* Acciones del plan de mejoramiento vinculadas a este hallazgo */}
-            {vinculado && vinculado.acciones.length > 0 && (
-              <div style={{ margin: '4px 0 0 16px', borderLeft: '3px solid #E5E7EB', paddingLeft: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', marginBottom: 6, letterSpacing: 0.3 }}>
-                  PLAN {vinculado.plan.codigo} — {vinculado.acciones.length} acción(es) correctiva(s)
-                </div>
-                {vinculado.acciones.map((accion: any) => (
-                  <div key={accion.id} style={{ background: '#F8FAFF', border: '1px solid #E0E7FF', borderRadius: 8, padding: '8px 12px', marginBottom: 6, fontSize: 12 }}>
-                    <div style={{ fontWeight: 600, color: '#1F2937', marginBottom: 3 }}>{accion.descripcion}</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, color: '#6B7280', fontSize: 11 }}>
-                      <span>👤 {accion.responsable}</span>
-                      {accion.fechaInicio && <span>📅 {accion.fechaInicio} → {accion.fechaFin}</span>}
-                      <span style={{
-                        padding: '1px 7px', borderRadius: 4, fontWeight: 600, fontSize: 10,
-                        background: accion.estado === 'completada' ? '#ECFDF5' : accion.estado === 'en-progreso' ? '#EFF6FF' : '#F3F4F6',
-                        color: accion.estado === 'completada' ? '#047857' : accion.estado === 'en-progreso' ? '#1D4ED8' : '#4B5563',
-                      }}>
-                        {accion.estado || 'programada'}
-                      </span>
-                      {accion.porcentajeAvance != null && (
-                        <span style={{ color: '#374151' }}>▶ {accion.porcentajeAvance}% avance</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+
+      {modoCompacto && (
+        <div
+          style={{
+            ...portalCardStyle,
+            padding: '12px 16px',
+            background: colors.brandLight,
+            border: `1px solid ${colors.brand}22`,
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 10,
+          }}
+        >
+          <Info style={{ width: 16, height: 16, color: colors.brand, flexShrink: 0, marginTop: 2 }} />
+          <div style={{ fontSize: 12, color: '#1E3A8A', lineHeight: 1.5 }}>
+            Esta auditoría tiene <strong>{hallazgos.length} hallazgos</strong>.
+            Usa los filtros y la paginación; en modo compacto solo un hallazgo queda expandido a la vez para facilitar la lectura.
           </div>
-        );
-      })}
+        </div>
+      )}
+
+      <ListaToolbar
+        busqueda={busqueda}
+        onBusquedaChange={setBusqueda}
+        placeholder="Buscar por código, título o gravedad..."
+        filtros={[
+          { id: 'todos', label: 'Todos', count: conteos.todos },
+          { id: 'pendientes', label: 'Pendientes', count: conteos.pendientes },
+          { id: 'respondidos', label: 'Respondidos', count: conteos.respondidos },
+          { id: 'borrador', label: 'Borrador', count: conteos.borrador },
+          ...(conteos.cerrados > 0 ? [{ id: 'cerrados', label: 'Cerrados', count: conteos.cerrados }] : []),
+        ]}
+        filtroActivo={filtro}
+        onFiltroChange={(id) => setFiltro(id as FiltroHallazgoVista)}
+        total={hallazgosFiltrados.length}
+        pagina={paginaSegura}
+        totalPaginas={totalPaginas}
+        desde={rango.desde}
+        hasta={rango.hasta}
+        onPaginaAnterior={() => setPagina((p) => Math.max(1, p - 1))}
+        onPaginaSiguiente={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
+        extra={
+          modoCompacto ? (
+            <button
+              type="button"
+              onClick={() => {
+                const pendientes = hallazgosFiltrados.filter((h) => h.estado === 'notificado');
+                setExpandedId(pendientes[0]?.id ?? null);
+              }}
+              style={{
+                height: 34,
+                padding: '0 12px',
+                borderRadius: 8,
+                border: `1px solid ${colors.brand}`,
+                background: colors.bgWhite,
+                color: colors.brand,
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Ir al pendiente
+            </button>
+          ) : undefined
+        }
+      />
+
+      {hallazgosFiltrados.length === 0 ? (
+        <div style={{ ...portalCardStyle, padding: 32, textAlign: 'center' }}>
+          <Search style={{ width: 28, height: 28, color: colors.icon, margin: '0 auto 10px' }} />
+          <div style={{ fontSize: 14, fontWeight: 700, color: colors.textSecondary }}>Sin coincidencias</div>
+          <div style={{ fontSize: 12, color: colors.textMuted, marginTop: 4 }}>
+            Prueba otro filtro o término de búsqueda.
+          </div>
+        </div>
+      ) : (
+        hallazgosPagina.map((h) => {
+          const vinculado = accionesPorHallazgo.get(h.id);
+          const isExpanded = modoCompacto ? expandedId === h.id : undefined;
+          return (
+            <div key={h.id}>
+              <HallazgoCard
+                hallazgo={h}
+                readOnly={readOnly || plazoVencido}
+                onAceptar={onAceptar}
+                onSubirDocumentoControversia={onSubirDocumentoControversia}
+                onPresentarControversia={onPresentarControversia}
+                modoCompacto={modoCompacto}
+                expanded={isExpanded}
+                onExpandedChange={(open) => {
+                  setExpandedId(open ? h.id : null);
+                }}
+              />
+              {isExpanded === true && vinculado && vinculado.acciones.length > 0 && (
+                <PlanVinculadoHallazgo plan={vinculado.plan} acciones={vinculado.acciones} />
+              )}
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }
@@ -2744,6 +3502,11 @@ function ConsecuenciaHallazgo({ hallazgo }: { hallazgo: HallazgoItem }) {
     tone = 'success'; Icono = CheckCircle2;
     titulo = 'Hallazgo cerrado';
     mensaje = 'Las acciones del Plan de Mejoramiento se ejecutaron y la OCI verificó su cumplimiento.';
+  } else if (e === 'borrador') {
+    tone = 'warn'; Icono = Clock;
+    titulo = 'Hallazgo en preparación';
+    mensaje =
+      'El equipo auditor aún no ha notificado este hallazgo al área. Cuando se publique el Informe Preliminar podrás aceptarlo o presentar controversia (plazo de 10 días hábiles).';
   } else {
     return null; // 'notificado' no muestra mensaje (los botones se muestran abajo)
   }
@@ -2765,15 +3528,36 @@ function ConsecuenciaHallazgo({ hallazgo }: { hallazgo: HallazgoItem }) {
 }
 
 function HallazgoCard({
-  hallazgo, readOnly, onAceptar, onSubirDocumentoControversia, onPresentarControversia,
+  hallazgo,
+  readOnly,
+  onAceptar,
+  onSubirDocumentoControversia,
+  onPresentarControversia,
+  modoCompacto = false,
+  expanded: expandedControlled,
+  onExpandedChange,
 }: {
   hallazgo: HallazgoItem;
   readOnly: boolean;
   onAceptar: (id: string) => Promise<void>;
   onSubirDocumentoControversia: (file: File, hallazgoId: string) => Promise<{ documentoId: string; nombre: string }>;
   onPresentarControversia: (id: string, argumentos: string, documentoId: string, documentoNombre: string) => Promise<void>;
+  modoCompacto?: boolean;
+  expanded?: boolean;
+  onExpandedChange?: (open: boolean) => void;
 }) {
-  const [expanded, setExpanded] = useState(hallazgo.estado === 'notificado');
+  const [expandedInternal, setExpandedInternal] = useState(
+    !modoCompacto && (hallazgo.estado === 'notificado' || hallazgo.estado === 'borrador'),
+  );
+  const isControlled = expandedControlled !== undefined;
+  const expanded = isControlled ? expandedControlled : expandedInternal;
+  const setExpanded = (open: boolean) => {
+    if (isControlled && onExpandedChange) {
+      onExpandedChange(open);
+    } else {
+      setExpandedInternal(open);
+    }
+  };
   const [showControversiaForm, setShowControversiaForm] = useState(false);
   const [argumentos, setArgumentos] = useState('');
   const [documento, setDocumento] = useState<File | null>(null);
@@ -2821,43 +3605,97 @@ function HallazgoCard({
   };
 
   return (
-    <div style={{ background: 'white', borderRadius: 14, padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
-        <div style={{
-          minWidth: 6, alignSelf: 'stretch', borderRadius: 4,
-          background: GRAVEDAD_COLOR[hallazgo.gravedad],
-        }} />
+    <div style={{ ...portalCardStyle, padding: 0, overflow: 'hidden' }}>
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          width: '100%',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 12,
+          padding: '16px 18px',
+          border: 'none',
+          background: expanded ? colors.bgHover : colors.bgWhite,
+          cursor: 'pointer',
+          textAlign: 'left',
+          transition: 'background 0.15s ease',
+        }}
+      >
+        <div
+          style={{
+            width: 4,
+            alignSelf: 'stretch',
+            borderRadius: 4,
+            background: GRAVEDAD_COLOR[hallazgo.gravedad],
+            flexShrink: 0,
+          }}
+        />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#6B7280', letterSpacing: 0.3 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                color: colors.brand,
+                letterSpacing: 0.4,
+                fontFamily: 'ui-monospace, monospace',
+              }}
+            >
               {hallazgo.codigo}
             </span>
-            <span style={{
-              fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6,
-              color: estadoCol.color, background: estadoCol.bg,
-            }}>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '3px 10px',
+                borderRadius: 20,
+                color: estadoCol.color,
+                background: estadoCol.bg,
+              }}
+            >
               {estadoCol.label}
             </span>
-            <span style={{
-              fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6,
-              color: GRAVEDAD_COLOR[hallazgo.gravedad],
-              background: `${GRAVEDAD_COLOR[hallazgo.gravedad]}12`,
-            }}>
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '3px 10px',
+                borderRadius: 20,
+                color: GRAVEDAD_COLOR[hallazgo.gravedad],
+                background: `${GRAVEDAD_COLOR[hallazgo.gravedad]}14`,
+                border: `1px solid ${GRAVEDAD_COLOR[hallazgo.gravedad]}33`,
+              }}
+            >
               {hallazgo.gravedad}
             </span>
           </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: '#1F2937' }}>{hallazgo.titulo}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: colors.text, lineHeight: 1.35 }}>
+            {hallazgo.titulo}
+          </div>
         </div>
-        <button
-          onClick={() => setExpanded((v) => !v)}
+        <span
           style={{
-            border: 'none', background: 'transparent', cursor: 'pointer',
-            color: '#6B7280', fontSize: 12, fontWeight: 600,
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 12,
+            fontWeight: 600,
+            color: colors.brand,
+            flexShrink: 0,
           }}
         >
           {expanded ? 'Ocultar' : 'Ver detalle'}
-        </button>
-      </div>
+          <ChevronDown
+            style={{
+              width: 16,
+              height: 16,
+              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.2s ease',
+            }}
+          />
+        </span>
+      </button>
 
       <AnimatePresence initial={false}>
         {expanded && (
@@ -2869,7 +3707,13 @@ function HallazgoCard({
             transition={{ duration: 0.2 }}
             style={{ overflow: 'hidden' }}
           >
-            <div style={{ paddingLeft: 18, marginTop: 6 }}>
+            <div
+              style={{
+                padding: '0 18px 18px',
+                borderTop: `1px solid ${colors.borderLight}`,
+                background: colors.bgSubtle,
+              }}
+            >
               <DetalleHallazgoCampos hallazgo={hallazgo} />
 
               {/* Respuesta del auditado (si ya la presentó) */}

@@ -31,6 +31,7 @@ import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext'
 import { controlInternoService, ListaChequeo as ListaChequeoService } from '../../../services/api/controlInternoService';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
 import { useConfiguracionKanban } from './services/useConfiguracionKanban';
+import { useAuth } from '../../../hooks/useAuth';
 
 // ════════════════════════════════════════════════════════════════════════════
 // CONFIGURACIÓN DE URLs PARA DOCUMENTOS
@@ -233,7 +234,7 @@ function documentoAplicaEtapa(
 /** Solo Planeación, Ejecución, Comunicación (listas de chequeo no aplican a Plan Anual, Seguimiento ni Finalizada) */
 function esNombreEtapaListaChequeoCore(nombre: string): boolean {
   const n = normalizarEtapaTexto(nombre);
-  return n.includes('planeac') || n.includes('ejecuc') || n.includes('comunicac');
+  return n.includes('planeac') || n.includes('planificac') || n.includes('ejecuc') || n.includes('comunicac');
 }
 
 function filtrarEtapasListaChequeo(
@@ -1243,6 +1244,7 @@ function GestionListasChequeo({
   planAnualVigencia,
   planAnualId,
 }: GestionListasChequeoProps) {
+  const { user } = useAuth();
   const [listas, setListas] = useState<ListaChequeo[]>(listasIniciales || []);
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODOS');
   const [mostrarModalCrear, setMostrarModalCrear] = useState(false);
@@ -1387,17 +1389,50 @@ function GestionListasChequeo({
     const cumpleFiltroAuditoria = auditoriaIdFoco 
       ? lista.auditoriaId === auditoriaIdFoco 
       : true;
+
+    // Filtro por auditor (solo puede ver las listas creadas por él mismo)
+    const esJefeOciSuperadmin = user?.roles?.some(r => ['superadmin', 'jefe_oci', 'admin'].includes(r)) || false;
+    const nombreCompleto = `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
+    const cumpleFiltroAuditor = esJefeOciSuperadmin ||
+      lista.creadoPor === nombreCompleto ||
+      lista.creadoPor === user?.email ||
+      lista.creadoPor === 'Usuario Actual' ||
+      lista.creadoPor === user?.id ||
+      (lista.creadoPor && lista.creadoPor !== 'Sistema' && user?.firstName && lista.creadoPor.includes(user.firstName));
     
-    return cumpleFiltroEtapa && cumpleFiltroAuditoria;
+    console.log(`[DEBUG LISTAS FILTRADAS] Lista: ${lista.nombre} (${lista.id})`, {
+      etapaKanban: lista.etapaKanban,
+      etapaKanbanId: lista.etapaKanbanId,
+      etapaNombreKanban: lista.etapaNombreKanban,
+      auditoriaId: lista.auditoriaId,
+      creadoPor: lista.creadoPor,
+      filtroEtapa,
+      auditoriaIdFoco,
+      esJefeOciSuperadmin,
+      nombreCompleto,
+      cumpleFiltroEtapa,
+      cumpleFiltroAuditoria,
+      cumpleFiltroAuditor,
+      pasoFiltros: cumpleFiltroEtapa && cumpleFiltroAuditoria && cumpleFiltroAuditor
+    });
+
+    return cumpleFiltroEtapa && cumpleFiltroAuditoria && cumpleFiltroAuditor;
   });
 
   const estadisticas = {
     totalListas: listas.length,
-    // ⚠️ LEGACY: Estas estadísticas usan nombres hardcodeados
-    // TODO: Calcular dinámicamente por etapa configurada
-    planeacion: listas.filter(l => l.etapaKanban === 'PLANEACION' || l.etapaKanban === 'Planeación').length,
-    ejecucion: listas.filter(l => l.etapaKanban === 'EJECUCION' || l.etapaKanban === 'Ejecución').length,
-    comunicacion: listas.filter(l => l.etapaKanban === 'COMUNICACION' || l.etapaKanban === 'Comunicación').length,
+    planeacion: listas.filter(l => {
+      const e = normalizarEtapaTexto(l.etapaKanban || l.etapaNombreKanban || '');
+      return e.includes('planeac') || e.includes('planificac');
+    }).length,
+    ejecucion: listas.filter(l => {
+      const e = normalizarEtapaTexto(l.etapaKanban || l.etapaNombreKanban || '');
+      return e.includes('ejecuc');
+    }).length,
+    comunicacion: listas.filter(l => {
+      const e = normalizarEtapaTexto(l.etapaKanban || l.etapaNombreKanban || '');
+      return e.includes('comunicac');
+    }).length,
     completitudPromedio: listas.length > 0
       ? Math.round(listas.reduce((sum, l) => sum + l.completitud, 0) / listas.length)
       : 0
@@ -1412,7 +1447,7 @@ function GestionListasChequeo({
       etapaKanban: nuevaLista.etapaKanban || 'PLANEACION',
       items: nuevaLista.items || [],
       documentosAdjuntos: nuevaLista.documentosAdjuntos || [],
-      creadoPor: 'Usuario Actual',
+      creadoPor: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Usuario Actual',
       fechaCreacion: new Date().toISOString(),
       ultimaModificacion: new Date().toISOString(),
       completitud: 0,
@@ -1501,6 +1536,9 @@ function GestionListasChequeo({
         etapaKanbanId: listaCompleta.etapaKanbanId,
         // ✅ NOMBRE DE ETAPA (snapshot para display)
         etapaNombreKanban: listaCompleta.etapaNombreKanban || listaCompleta.etapaKanban,
+        // ✅ CREADOR
+        createdBy: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'Usuario Actual',
+        creadoPor: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'Usuario Actual',
         // ✅ FASES DINÁMICAS según la etapa seleccionada
         ...fases,
       });
@@ -2291,11 +2329,15 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
     if (!auditoriaSeleccionada) {
       return [{ value: '', label: '— Seleccione primero una auditoría —' }];
     }
+    const baseOpciones = [
+      { value: '', label: '— Seleccione una etapa —' },
+      ...etapasListaChequeo
+    ];
     if (modoEdicion && listaEditar?.etapaKanbanId) {
       const found = etapasListaChequeo.find((e) => e.value === listaEditar.etapaKanbanId);
-      if (found) return etapasListaChequeo;
+      if (found) return baseOpciones;
       return [
-        ...etapasListaChequeo,
+        ...baseOpciones,
         {
           value: listaEditar.etapaKanbanId,
           label:
@@ -2304,7 +2346,7 @@ function ModalCrearListaChequeo({ onClose, onCrear, documentosBiblioteca, audito
         },
       ];
     }
-    return etapasListaChequeo;
+    return baseOpciones;
   }, [
     auditoriaSeleccionada,
     etapasListaChequeo,
