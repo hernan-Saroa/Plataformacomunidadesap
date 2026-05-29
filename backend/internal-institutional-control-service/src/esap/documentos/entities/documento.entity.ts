@@ -117,6 +117,13 @@ export class Documento {
   @Column({ name: 'visible_auditoria_id', type: 'uuid', nullable: true })
   visibleAuditoriaId?: string | null;
 
+  /** Año de vigencia del plan anual (plantillas de biblioteca) */
+  @Column({ name: 'plan_anual_vigencia', type: 'integer', nullable: true })
+  planAnualVigencia?: number | null;
+
+  @Column({ name: 'plan_anual_id', type: 'uuid', nullable: true })
+  planAnualId?: string | null;
+
   @ManyToOne(() => Documento, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'documento_biblioteca_id' })
   documentoBiblioteca?: Documento | null;

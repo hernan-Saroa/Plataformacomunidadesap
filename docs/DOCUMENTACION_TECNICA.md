@@ -285,7 +285,6 @@ La estructura del proyecto sigue una organización modular y escalable, separand
 │   ├── shared-ui/                 # Componentes de UI compartidos
 │   ├── shared-hooks/              # Hooks de React compartidos
 │   └── shared-types/              # Definiciones TypeScript compartidas
-├── _src_legacy_backup/            # Respaldo del código fuente anterior (SPA monolítica)
 ├── backend/                       # Microservicios del backend
 │   ├── api-gateway/               # API Gateway principal
 │   ├── auth-service/              # Servicio de autenticación

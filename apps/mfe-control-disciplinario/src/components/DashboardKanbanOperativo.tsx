@@ -2029,11 +2029,10 @@ function ColumnaKanban({
     return item.tipo === 'proceso' && item.etapaActual === etapa;
   });
 
-  // Ordenar noticias por la fecha que eligió el usuario al crear (fechaRecepcion/fechaQueja), no por orden de inserción en BD
   const noticias = (itemsFiltrados.filter(i => i.tipo === 'noticia') as Noticia[])
     .sort((a, b) => {
-      const da = new Date(a.fechaRecepcion || (a as any).createdAt || 0).getTime();
-      const db = new Date(b.fechaRecepcion || (b as any).createdAt || 0).getTime();
+      const da = new Date((a as any).createdAt || a.fechaRecepcion || 0).getTime();
+      const db = new Date((b as any).createdAt || b.fechaRecepcion || 0).getTime();
       return db - da;
     });
 
@@ -3583,6 +3582,7 @@ export function DashboardKanbanOperativo({
       })),
       hechos: (noticia as any).hechos || '',
       estado: mapEstadoNoticia((noticia as any).estado) as any,
+      createdAt: (noticia as any).createdAt,
       prioridad: (noticia as any).prioridad || 'media',
       diasPendientes: (noticia as any).diasPendientes ?? dias,
       tipo: 'noticia' as const,

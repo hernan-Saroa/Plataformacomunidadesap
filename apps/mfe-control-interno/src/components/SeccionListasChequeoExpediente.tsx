@@ -27,11 +27,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   CheckSquare, ChevronDown, ChevronRight, CheckCircle2, Circle,
   Paperclip, Download, ExternalLink, FileText, Upload, X,
-  AlertCircle, Calendar, User, Loader2, CheckCircle, Trash2
+  AlertCircle, Calendar, User, Loader2, CheckCircle, Trash2, Plus
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { controlInternoService } from '../../../services/api/controlInternoService';
 import { getServiceUrl, API_MODE, getDefaultHeaders } from '../../../config/environment';
+import { useAuth } from '../../../hooks/useAuth';
 
 // ════════════════════════════════════════════════════════════════════════════
 // HELPERS
@@ -107,6 +108,8 @@ interface SeccionListasChequeoExpedienteProps {
   auditoriaId: string;
   etapaActual: EtapaKanban;
   readOnly?: boolean; // ✅ Modo solo lectura (deshabilita edición)
+  /** Documentos de auditoría ya cargados por el expediente (evita GET duplicado) */
+  documentosAuditoriaPrecargados?: DocumentoAuditoriaSubido[];
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -238,8 +241,10 @@ function mapApiListaToExpediente(
 export function SeccionListasChequeoExpediente({
   auditoriaId,
   etapaActual,
-  readOnly = false
+  readOnly = false,
+  documentosAuditoriaPrecargados,
 }: SeccionListasChequeoExpedienteProps) {
+  const { user } = useAuth();
   const [listas, setListas] = useState<ListaChequeo[]>([]);
   const [listaExpandida, setListaExpandida] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -261,8 +266,9 @@ export function SeccionListasChequeoExpediente({
       const listasApi = await controlInternoService.getListasAplicadas(auditoriaId);
 
       // Cruzar con documentos ya subidos para marcar plantillas diligenciadas
-      const documentosAuditoria = await controlInternoService.getDocumentosByAuditoria(auditoriaId)
-        .catch(() => []) as DocumentoAuditoriaSubido[];
+      const documentosAuditoria = documentosAuditoriaPrecargados !== undefined
+        ? documentosAuditoriaPrecargados
+        : ((await controlInternoService.getDocumentosByAuditoria(auditoriaId).catch(() => [])) as DocumentoAuditoriaSubido[]);
 
       const documentosSubidosPorBiblioteca = (documentosAuditoria || []).reduce((acc, doc) => {
         if (!doc.documentoBibliotecaId) return acc;
@@ -294,7 +300,7 @@ export function SeccionListasChequeoExpediente({
     } finally {
       setIsLoading(false);
     }
-  }, [auditoriaId]);
+  }, [auditoriaId, documentosAuditoriaPrecargados]);
 
   useEffect(() => {
     cargarListasAuditoria();
@@ -348,8 +354,19 @@ export function SeccionListasChequeoExpediente({
     [readOnly, cargarListasAuditoria]
   );
 
-  // Filtrar listas por la etapa actual. Si no hay coincidencias el componente retorna null.
-  const listasEtapaActual = listas.filter(lista => lista.etapaKanban === etapaActual);
+  // Filtrar listas por la etapa actual y por auditor. Si no hay coincidencias el componente retorna UI para generarlas.
+  const listasEtapaActual = listas.filter(lista => {
+    const esEtapaActual = lista.etapaKanban === etapaActual;
+    const esJefeOciSuperadmin = user?.roles?.some(r => ['superadmin', 'jefe_oci', 'admin'].includes(r)) || false;
+    const nombreCompleto = `${user?.firstName || ''} ${user?.lastName || ''}`.trim();
+    const cumpleAuditor = esJefeOciSuperadmin ||
+      lista.creadoPor === nombreCompleto ||
+      lista.creadoPor === user?.email ||
+      lista.creadoPor === 'Usuario Actual' ||
+      lista.creadoPor === user?.id ||
+      (lista.creadoPor && lista.creadoPor !== 'Sistema' && user?.firstName && lista.creadoPor.includes(user.firstName));
+    return esEtapaActual && cumpleAuditor;
+  });
 
   /** Si el ítem exige plantilla, solo puede completarse cuando ya está subida/diligenciada en esta auditoría. */
   const plantillaEstaDiligenciada = (lista: ListaChequeo, bibliotecaId?: string): boolean => {
@@ -502,10 +519,6 @@ export function SeccionListasChequeoExpediente({
     }));
   };
 
-  if (listasEtapaActual.length === 0) {
-    return null;
-  }
-
   const etapaBorderColors: Record<EtapaKanban, string> = {
     'Plan Anual': 'border-gray-200',
     'Planeación': 'border-blue-200',
@@ -513,6 +526,31 @@ export function SeccionListasChequeoExpediente({
     'Comunicación': 'border-green-200',
     'Seguimiento': 'border-indigo-200'
   };
+
+  if (listasEtapaActual.length === 0) {
+    return (
+      <div className={`bg-white border-2 ${etapaBorderColors[etapaActual] || 'border-gray-200'} rounded-lg p-4`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-black text-gray-900 flex items-center gap-2">
+              <CheckSquare className="w-6 h-6 text-gray-400" />
+              Listas de Chequeo - {etapaActual}
+            </h3>
+            <p className="text-sm text-gray-500 mt-1">
+              No hay listas de chequeo configuradas para esta etapa.
+            </p>
+          </div>
+          <button
+            onClick={navegarAModuloListasChequeo}
+            className="px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg font-semibold flex items-center gap-2 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Generar Lista de Chequeo
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`bg-white border-2 ${etapaBorderColors[etapaActual]} rounded-lg p-4`}>

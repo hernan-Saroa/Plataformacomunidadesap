@@ -19,6 +19,7 @@ interface ExpedienteReporte {
   abogadoAsignado?: string;
   demandante?: string;
   demandado?: string;
+  fechaAdmision?: string | Date;
   fechaNotificacion?: string | Date;
   fechaVencimiento?: string | Date;
   diasRestantes?: number;
@@ -26,11 +27,14 @@ interface ExpedienteReporte {
   pretensionDemandante?: string;
   pretensiones?: string;
   hechos?: string;
+  causaDemanda?: string;
   demandantes?: any[];
   demandados?: any[];
   otrosActores?: any[];
   esDelitoAdminPublica?: boolean;
   esConductaPatrimonioPublico?: boolean;
+  esOtroDelitoPenal?: boolean;
+  otroDelitoPenalDescripcion?: string;
   ultimaActuacion?: { descripcion?: string; fecha?: string; tipo?: string };
   fechaCreacion?: Date;
   estado?: string;
@@ -124,15 +128,18 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number): string 
   })();
 
   // Clasificación penal
-  const penalHTML = (exp.tipoProceso === 'Proceso Penal' || exp.esDelitoAdminPublica || exp.esConductaPatrimonioPublico) ? `
+  const penalHTML = (exp.tipoProceso === 'Proceso Penal' || exp.esDelitoAdminPublica || exp.esConductaPatrimonioPublico || exp.esOtroDelitoPenal) ? `
     <div style="margin-top:12px;padding:10px 14px;background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;">
       <p style="font-size:11px;font-weight:700;color:#991B1B;margin:0 0 6px 0;">🛡️ CLASIFICACIÓN PENAL (Contraloría / ANDJE)</p>
-      <div style="display:flex;gap:16px;">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;">
         <span style="font-size:11px;color:${exp.esDelitoAdminPublica ? '#DC2626' : '#9CA3AF'};">
           ${exp.esDelitoAdminPublica ? '✅' : '—'} Delitos contra la Administración Pública
         </span>
         <span style="font-size:11px;color:${exp.esConductaPatrimonioPublico ? '#DC2626' : '#9CA3AF'};">
           ${exp.esConductaPatrimonioPublico ? '✅' : '—'} Conductas que afectan el Patrimonio Público
+        </span>
+        <span style="font-size:11px;color:${exp.esOtroDelitoPenal ? '#DC2626' : '#9CA3AF'};">
+          ${exp.esOtroDelitoPenal ? '✅' : '—'} Otro delito penal${exp.esOtroDelitoPenal && exp.otroDelitoPenalDescripcion ? ': ' + exp.otroDelitoPenalDescripcion : ''}
         </span>
       </div>
     </div>
@@ -207,6 +214,12 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number): string 
           <td style="padding:8px 12px;font-size:12px;font-weight:700;border-bottom:1px solid #E5E7EB;color:${exp.nivelRiesgo === 'Alto' ? '#DC2626' : exp.nivelRiesgo === 'Medio' ? '#D97706' : '#059669'};">${exp.nivelRiesgo || 'No evaluado'}</td>
         </tr>
         <tr>
+          <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Fecha Admisión</td>
+          <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${formatFecha(exp.fechaAdmision)}</td>
+          <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Sede Territorial</td>
+          <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${exp.ubicacionFisica || '—'}</td>
+        </tr>
+        <tr>
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Fecha Notificación</td>
           <td style="padding:8px 12px;font-size:11px;font-weight:600;border-bottom:1px solid #E5E7EB;">${formatFecha(exp.fechaNotificacion)}</td>
           <td style="padding:8px 12px;font-size:11px;color:#6B7280;border-bottom:1px solid #E5E7EB;">Fecha Vencimiento</td>
@@ -246,18 +259,18 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number): string 
       </div>
       ` : ''}
 
-      <!-- Pretensiones -->
-      ${(exp.pretensionDemandante || exp.pretensiones) ? `
+      <!-- Causa de la demanda -->
+      ${(exp.causaDemanda || exp.pretensionDemandante || exp.pretensiones) ? `
       <div style="margin-top:14px;">
-        <h3 style="font-size:12px;font-weight:800;color:#003DA5;margin:0 0 8px 0;border-bottom:2px solid #003DA5;padding-bottom:4px;">🎯 PRETENSIONES DEL DEMANDANTE</h3>
-        <div style="padding:10px 14px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;font-size:11px;line-height:1.6;white-space:pre-wrap;">${exp.pretensionDemandante || exp.pretensiones}</div>
+        <h3 style="font-size:12px;font-weight:800;color:#003DA5;margin:0 0 8px 0;border-bottom:2px solid #003DA5;padding-bottom:4px;">⚡ CAUSA DE LA DEMANDA</h3>
+        <div style="padding:10px 14px;background:#FFF7ED;border:1px solid #FED7AA;border-radius:6px;font-size:11px;line-height:1.6;white-space:pre-wrap;">${exp.causaDemanda || exp.pretensionDemandante || exp.pretensiones}</div>
       </div>
       ` : ''}
 
-      <!-- Hechos -->
+      <!-- Resumen de hechos -->
       ${exp.hechos ? `
       <div style="margin-top:14px;">
-        <h3 style="font-size:12px;font-weight:800;color:#003DA5;margin:0 0 8px 0;border-bottom:2px solid #003DA5;padding-bottom:4px;">📝 HECHOS</h3>
+        <h3 style="font-size:12px;font-weight:800;color:#003DA5;margin:0 0 8px 0;border-bottom:2px solid #003DA5;padding-bottom:4px;">📝 RESUMEN DE HECHOS</h3>
         <div style="padding:10px 14px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:6px;font-size:11px;line-height:1.6;white-space:pre-wrap;">${exp.hechos}</div>
       </div>
       ` : ''}
@@ -282,7 +295,7 @@ function generarPaginaExpediente(exp: ExpedienteReporte, index: number): string 
   `;
 }
 
-export function generarReporteExpedientesPDF(expedientes: ExpedienteReporte[], filtroTipo: string): void {
+export function generarReporteExpedientesPDF(expedientes: ExpedienteReporte[], filtroTipo: string, descripcionFiltros?: string): void {
   if (expedientes.length === 0) {
     return;
   }
@@ -319,6 +332,10 @@ export function generarReporteExpedientesPDF(expedientes: ExpedienteReporte[], f
             <td style="padding:6px 20px;font-size:13px;color:#6B7280;">Hora:</td>
             <td style="padding:6px 20px;font-size:13px;font-weight:600;">${new Date().toLocaleTimeString('es-CO')}</td>
           </tr>
+          ${descripcionFiltros ? `<tr>
+            <td style="padding:6px 20px;font-size:13px;color:#6B7280;vertical-align:top;">Filtros aplicados:</td>
+            <td style="padding:6px 20px;font-size:12px;font-weight:600;color:#374151;">${descripcionFiltros}</td>
+          </tr>` : ''}
         </table>
       </div>
 

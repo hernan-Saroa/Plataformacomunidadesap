@@ -27,6 +27,7 @@ import { legalService } from '../../../../services/api/legal.service';
 import type { ExpedienteJudicial, EtapaDefensaJudicial } from '../core/types';
 import { ModalNuevaDemanda, NuevaDemandaData } from './ModalNuevaDemanda';
 import { generarReporteExpedientesPDF } from './generarReporteExpedientes';
+import { ModalFiltrosReporte } from './ModalFiltrosReporte';
 import { ModalExpediente } from './ModalExpediente';
 import { ModalComunicaciones } from './ModalComunicaciones';
 import { ModalAutos } from './ModalAutos';
@@ -86,6 +87,7 @@ export function ModuloDefensaJudicialV3() {
   const isSmallDesktop = isLg || (isXl && screenWidth < 1440);
   const [tipoVista, setTipoVista] = useState<VistaModulo>('kanban');
   const [modalNuevaDemandaOpen, setModalNuevaDemandaOpen] = useState(false);
+  const [modalFiltrosReporteOpen, setModalFiltrosReporteOpen] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const [filtroEtapa, setFiltroEtapa] = useState<string>('TODAS');
   const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
@@ -740,23 +742,13 @@ export function ModuloDefensaJudicialV3() {
       label: 'Descargar Reporte',
       icon: <Download className="w-4 h-4 mr-1" />,
       onClick: () => {
-        const tipoConfigSeleccionado = tiposProcesosActivos.find((t: any) => t.id === filtroTipo);
-        const nombreFiltro = filtroTipo === 'TODOS' ? 'TODOS' : (tipoConfigSeleccionado?.nombre || filtroTipo);
         if (expedientesVisibles.length === 0) {
           toast.error('No hay expedientes para exportar', {
             description: 'Ajusta los filtros para incluir expedientes en el reporte.'
           });
           return;
         }
-        toast.loading('Generando reporte PDF...', { id: 'reporte-pdf', duration: 3000 });
-        setTimeout(() => {
-          generarReporteExpedientesPDF(expedientesVisibles as any, nombreFiltro);
-          toast.success(`Reporte generado con ${expedientesVisibles.length} expediente(s)`, {
-            id: 'reporte-pdf',
-            description: `Filtro: ${nombreFiltro}`,
-            duration: 4000
-          });
-        }, 300);
+        setModalFiltrosReporteOpen(true);
       },
       className: 'bg-blue-600 hover:bg-blue-700 text-white font-bold'
     });
@@ -984,6 +976,26 @@ export function ModuloDefensaJudicialV3() {
         isOpen={modalNuevaDemandaOpen}
         onClose={() => setModalNuevaDemandaOpen(false)}
         onSave={handleSaveNuevaDemanda}
+      />
+
+      {/* Modal Filtros Reporte */}
+      <ModalFiltrosReporte
+        open={modalFiltrosReporteOpen}
+        onClose={() => setModalFiltrosReporteOpen(false)}
+        expedientes={expedientesVisibles as any}
+        filtroTipoActual={filtroTipo}
+        nombreTipoActual={filtroTipo === 'TODOS' ? 'Todos los tipos de proceso' : (tiposProcesosActivos.find((t: any) => t.id === filtroTipo)?.nombre || filtroTipo)}
+        onGenerar={(expedientesFiltrados, descripcionFiltros) => {
+          toast.loading('Generando reporte PDF...', { id: 'reporte-pdf', duration: 3000 });
+          setTimeout(() => {
+            generarReporteExpedientesPDF(expedientesFiltrados as any, filtroTipo === 'TODOS' ? 'TODOS' : (tiposProcesosActivos.find((t: any) => t.id === filtroTipo)?.nombre || filtroTipo), descripcionFiltros);
+            toast.success(`Reporte generado con ${expedientesFiltrados.length} expediente(s)`, {
+              id: 'reporte-pdf',
+              description: descripcionFiltros,
+              duration: 4000
+            });
+          }, 300);
+        }}
       />
 
       {/* ✅ Modal Expediente abierto desde notificación (nivel padre) */}

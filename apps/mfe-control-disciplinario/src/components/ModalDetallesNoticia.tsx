@@ -130,6 +130,38 @@ const getApoderadoCorreo = (apoderado?: Apoderado) => apoderado?.correo || apode
 const getApoderadoCelular = (apoderado?: Apoderado) => apoderado?.celular || apoderado?.telefono || '';
 
 // ═══════════════════════════════════════════════════════════════
+// UTILIDADES DE FECHA - Parseo local para fechas sin timezone
+// ═══════════════════════════════════════════════════════════════
+
+const parseLocalDateTime = (dateString: string): Date | null => {
+  if (!dateString) return null;
+  // Manejar formato "YYYY-MM-DD HH:MM:SS" como fecha local
+  const match = dateString.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}):(\d{2}):(\d{2}))?$/);
+  if (match) {
+    const [, year, month, day, hour = '0', minute = '0', second = '0'] = match;
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute), parseInt(second));
+  }
+  // Intentar parsear como ISO
+  const isoMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(:(\d{2}))?/);
+  if (isoMatch) {
+    const [, year, month, day, hour, minute, , second = '0'] = isoMatch;
+    return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute), parseInt(second));
+  }
+  return null;
+};
+
+const formatFechaLocal = (dateString: string | undefined | null): string => {
+  if (!dateString) return '0000';
+  const date = parseLocalDateTime(dateString);
+  if (!date) return '0000';
+  // Formato explícito sin timezone para preservar la fecha exacta
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
+// ═══════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════
 
@@ -209,7 +241,8 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
 
   // Fecha de caducidad (5 años desde fecha de hechos)
   const fechaCaducidad = n.fechaHechos ? (() => {
-    const f = new Date(n.fechaHechos);
+    const f = parseLocalDateTime(n.fechaHechos);
+    if (!f) return null;
     f.setFullYear(f.getFullYear() + 5);
     return f.toISOString().split('T')[0];
   })() : null;
@@ -554,10 +587,10 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
               <X className="w-3.5 h-3.5" />
               Cerrar
             </button>
-            <span className="text-[10px] text-gray-400">
-              Radicado {n.fechaRegistro ? new Date(n.fechaRegistro).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : new Date(n.fechaRecepcion).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}
-              {n.radicador && ` por ${n.radicador}`}
-            </span>
+<span className="text-[10px] text-gray-400">
+               Radicado {formatFechaLocal(n.fechaRegistro) || formatFechaLocal(n.fechaRecepcion)}
+               {n.radicador && ` por ${n.radicador}`}
+             </span>
           </div>
           <div className="flex items-center gap-2">
             {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) && (
@@ -742,13 +775,13 @@ function TabGeneral({
         <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
           <h3 className="text-xs font-black text-gray-700 uppercase tracking-wider">Datos de Radicación</h3>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
-           {[
-             { label: 'NÚMERO', value: n.numero },
-             { label: 'ORIGEN', value: n.origen || '—' },
-             { label: 'FECHA RECEPCIÓN', value: n.fechaRecepcion ? new Date(n.fechaRecepcion).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '—' },
-             { label: 'FECHA QUEJA / NOTIFICACIÓN', value: n.fechaQueja ? new Date(n.fechaQueja).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : (n.fechaRecepcion ? new Date(n.fechaRecepcion).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '—') },
-           ].map(({ label, value }) => (
+<div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
+            {[
+              { label: 'NÚMERO', value: n.numero },
+              { label: 'ORIGEN', value: n.origen || '—' },
+              { label: 'FECHA RECEPCIÓN', value: formatFechaLocal(n.fechaRecepcion) },
+              { label: 'FECHA QUEJA / NOTIFICACIÓN', value: formatFechaLocal(n.fechaQueja) || formatFechaLocal(n.fechaRecepcion) },
+            ].map(({ label, value }) => (
             <div key={label} className="px-4 py-3">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{label}</p>
               <p className="text-sm font-bold text-gray-900">{value}</p>
@@ -783,14 +816,14 @@ function TabGeneral({
               <Calendar className="w-4 h-4 text-amber-600" />
               <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Fecha de Hechos</span>
             </div>
-            <p className="text-sm font-bold text-gray-900">
-              {new Date(n.fechaHechos).toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })}
-            </p>
-            {fechaCaducidad && (
-              <p className="text-[11px] text-amber-700 mt-1">
-                Caducidad: {new Date(fechaCaducidad).toLocaleDateString('es-CO')}
-              </p>
-            )}
+<p className="text-sm font-bold text-gray-900">
+               {parseLocalDateTime(n.fechaHechos) ? `${parseLocalDateTime(n.fechaHechos)!.getDate().toString().padStart(2, '0')}/${(parseLocalDateTime(n.fechaHechos)!.getMonth() + 1).toString().padStart(2, '0')}/${parseLocalDateTime(n.fechaHechos)!.getFullYear()}` : '0000'}
+             </p>
+             {fechaCaducidad && (
+               <p className="text-[11px] text-amber-700 mt-1">
+                 Caducidad: {parseLocalDateTime(fechaCaducidad) ? `${parseLocalDateTime(fechaCaducidad)!.getDate().toString().padStart(2, '0')}/${(parseLocalDateTime(fechaCaducidad)!.getMonth() + 1).toString().padStart(2, '0')}/${parseLocalDateTime(fechaCaducidad)!.getFullYear()}` : ''}
+               </p>
+             )}
           </div>
         )}
       </div>
@@ -1072,12 +1105,12 @@ function TabHechos({ n }: { n: NoticiaCompleta }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-700 leading-relaxed">{hecho.descripcion}</p>
-                    {hecho.fecha && (
-                      <p className="text-[11px] text-gray-400 mt-2 flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {new Date(hecho.fecha).toLocaleDateString('es-CO')}
-                      </p>
-                    )}
+{hecho.fecha && (
+                       <p className="text-[11px] text-gray-400 mt-2 flex items-center gap-1">
+                         <Calendar className="w-3 h-3" />
+                         {formatFechaLocal(hecho.fecha)}
+                       </p>
+                     )}
                   </div>
                 </div>
               </div>
@@ -1161,9 +1194,9 @@ function TabAdjuntos({ n, formatFileSize, onDownload, onView }: { n: NoticiaComp
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-[11px] text-gray-400">{formatFileSize(archivo.tamano)}</span>
                   <span className="text-gray-300">·</span>
-                  <span className="text-[11px] text-gray-400">
-                    {new Date(archivo.fechaSubida).toLocaleDateString('es-CO')}
-                  </span>
+<span className="text-[11px] text-gray-400">
+                     {formatFechaLocal(archivo.fechaSubida)}
+                   </span>
                 </div>
               </div>
                 <div className="flex gap-1" style={{ opacity: 1 }}>
